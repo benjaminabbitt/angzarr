@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# justfile for building C reference implementations
+#
+# These are standalone C implementations that mimic Linux kernel behavior
+# but can be compiled in userspace without kernel headers.
+#
+# They are used by Rust tests to verify binary compatibility.
+
+CC := "gcc"
+CFLAGS := "-Wall -Wextra -Werror -std=c11 -O2 -fPIC -I."
+AR := "ar"
+
+# Default: show help
+default:
+    @just --list
+
+# Build all C reference libraries
+build-all: build-list build-rbtree
+
+# Build list reference library
+build-list:
+    @echo "Building list C reference..."
+    {{CC}} {{CFLAGS}} -c list/list_reference.c -o list/list_reference.o
+    {{AR}} rcs list/liblist_reference.a list/list_reference.o
+    @echo "✓ Built: list/liblist_reference.a"
+
+# Build rbtree reference library (future)
+build-rbtree:
+    @echo "⏭️  RBTree C reference not yet implemented"
+
+# Clean compiled artifacts
+clean:
+    @echo "Cleaning C reference builds..."
+    rm -f list/*.o list/*.a
+    rm -f rbtree/*.o rbtree/*.a
+    @echo "✓ Clean complete"
+
+# Test: compile a simple test program
+test-list: build-list
+    @echo "Testing list C reference..."
+    {{CC}} {{CFLAGS}} -Ilist -o list/test_list list/test_list.c list/liblist_reference.a
+    ./list/test_list
+    @echo "✓ List C reference tests passed"
+
+# Show structure sizes (for ABI verification)
+show-sizes: build-list
+    @echo "C Reference Structure Sizes:"
+    @echo "============================="
+    @size list/list_reference.o
+    @echo ""
+    @echo "Symbols exported:"
+    @nm list/liblist_reference.a | grep " [TD] "

@@ -1,61 +1,62 @@
 // SPDX-License-Identifier: GPL-2.0
 //
-// Build script to compile Linux kernel list helpers for test verification
+// Build script to compile C reference implementation for test verification
 //
 // This implements Decision #9 from LINUX_KERNEL_LESSONS.md:
 // "Direct C Reference Values in Rust Tests"
 //
 // Purpose:
-// - Compile Linux kernel C code into our Rust test binary
+// - Compile standalone C reference code into Rust test binary
 // - Allow Rust tests to call C functions directly
 // - Allow Rust tests to access C variables/constants
 // - Verify Rust implementation matches C behavior exactly
+//
+// Unlike trying to compile full Linux kernel code, we use standalone
+// C implementations inspired by Linux that compile in userspace.
 
 use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    // C reference compilation is currently DISABLED by default because
-    // Linux kernel code requires architecture-specific headers that
-    // aren't available in standard userspace compilation.
-    //
-    // Future work: Create minimal standalone C reference implementations
-    // instead of compiling full kernel code.
-    //
-    // For now, tests validate against documented Linux behavior without
-    // runtime C comparison.
+    // Path to standalone C reference implementation
+    let c_ref_path = PathBuf::from("../tests/c-reference/list");
 
-    let _enable_c_ref = std::env::var("ANGZARR_ENABLE_C_REFERENCE")
-        .unwrap_or_default()
-        == "1";
-
-    // Always return early for now - C compilation not yet working
-    eprintln!("ℹ️  Note: C reference compilation is not yet enabled");
-    eprintln!("   Tests validate against documented Linux behavior.");
-    eprintln!("   See LINUX_TEST_MAPPING.md for test traceability.");
-    return;
-
-    // TODO: Uncomment when we have standalone C reference code
-    // that doesn't require full kernel headers
-    /*
-    if !enable_c_ref {
+    // Check if C reference code exists
+    let list_ref_c = c_ref_path.join("list_reference.c");
+    if !list_ref_c.exists() {
+        eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        eprintln!("ℹ️  C reference not found at {}", list_ref_c.display());
+        eprintln!("   Tests will run without C reference validation.");
+        eprintln!("   This is normal during initial development.");
+        eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         return;
     }
 
-    let kernel_path = PathBuf::from("../tests/linux-kernel");
-    if !kernel_path.exists() {
-        panic!("ANGZARR_ENABLE_C_REFERENCE=1 but submodule not found");
-    }
+    println!("cargo:rerun-if-changed={}", list_ref_c.display());
 
-    let list_sort = kernel_path.join("lib/list_sort.c");
-    println!("cargo:rerun-if-changed={}", list_sort.display());
-    println!("cargo:rustc-cfg=feature=\"c_reference\"");
-
+    // Compile standalone C reference implementation
+    //
+    // This compiles our userspace-compatible C code that mimics Linux behavior
+    // without requiring kernel headers.
     cc::Build::new()
-        .file(&list_sort)
-        .include(kernel_path.join("include"))
-        .warnings(false)
-        .compile("linux_list_reference");
-    */
+        .file(&list_ref_c)
+        .include(&c_ref_path)
+        .warnings(true)
+        .extra_warnings(true)
+        .flag("-Werror")
+        .flag("-std=c11")
+        .opt_level(2)
+        .pic(true)
+        .compile("list_c_reference");
+
+    // Enable c_reference feature for tests
+    println!("cargo:rustc-cfg=c_reference");
+
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    eprintln!("✅ Compiled C reference implementation");
+    eprintln!("   - Source: {}", list_ref_c.display());
+    eprintln!("   - Library: liblist_c_reference.a");
+    eprintln!("   - Tests can now validate against C reference");
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
