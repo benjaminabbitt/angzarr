@@ -18,6 +18,7 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo::rustc-check-cfg=cfg(c_reference)");
 
     // Path to standalone C reference implementation
     let c_ref_path = PathBuf::from("../tests/c-reference/list");

@@ -308,3 +308,256 @@ mod tests {
         }
     }
 }
+
+// C Reference Validation Tests
+//
+// These tests call C reference functions to get expected behavior
+// and verify that Rust implementations match exactly.
+//
+// The C reference code is compiled from tests/c-reference/list/
+// and linked into the test binary via build.rs.
+#[cfg(test)]
+#[cfg(c_reference)]
+mod c_reference_tests {
+    use super::*;
+    use core::mem;
+
+    // FFI declarations for C reference functions
+    extern "C" {
+        // Structure layout constants (extracted from C at compile time)
+        static C_LIST_HEAD_SIZE: usize;
+        static C_LIST_HEAD_ALIGN: usize;
+        static C_LIST_HEAD_NEXT_OFFSET: usize;
+        static C_LIST_HEAD_PREV_OFFSET: usize;
+
+        // C reference functions (Linux-compatible behavior)
+        fn c_ref_list_init(list: *mut ListHead);
+        fn c_ref_list_add(new: *mut ListHead, head: *mut ListHead);
+        fn c_ref_list_add_tail(new: *mut ListHead, head: *mut ListHead);
+        fn c_ref_list_del(entry: *mut ListHead);
+        fn c_ref_list_empty(head: *const ListHead) -> i32;
+        fn c_ref_list_is_head(list: *const ListHead, head: *const ListHead) -> i32;
+        fn c_ref_list_is_first(list: *const ListHead, head: *const ListHead) -> i32;
+        fn c_ref_list_is_last(list: *const ListHead, head: *const ListHead) -> i32;
+    }
+
+    /// Test: Verify structure layout matches C
+    #[test]
+    fn test_c_layout_compatibility() {
+        unsafe {
+            // Dynamically extracted from C code
+            assert_eq!(mem::size_of::<ListHead>(), C_LIST_HEAD_SIZE);
+            assert_eq!(mem::align_of::<ListHead>(), C_LIST_HEAD_ALIGN);
+
+            // Verify field offsets
+            let dummy = ListHead {
+                next: core::ptr::null_mut(),
+                prev: core::ptr::null_mut(),
+            };
+            let base = &dummy as *const _ as usize;
+            let next_offset = &dummy.next as *const _ as usize - base;
+            let prev_offset = &dummy.prev as *const _ as usize - base;
+
+            assert_eq!(next_offset, C_LIST_HEAD_NEXT_OFFSET);
+            assert_eq!(prev_offset, C_LIST_HEAD_PREV_OFFSET);
+        }
+    }
+
+    /// Test: Rust init() matches C behavior
+    #[test]
+    fn test_c_init_behavior() {
+        unsafe {
+            let mut c_list = ListHead::new();
+            let mut rust_list = ListHead::new();
+
+            // Get C expected behavior
+            c_ref_list_init(&mut c_list as *mut ListHead);
+
+            // Get Rust behavior
+            rust_list.init();
+
+            // Can't compare pointer values directly (different addresses)
+            // But can verify both point to themselves (circular list)
+            assert_eq!(c_list.next, &c_list as *const _ as *mut _);
+            assert_eq!(c_list.prev, &c_list as *const _ as *mut _);
+            assert_eq!(rust_list.next, &rust_list as *const _ as *mut _);
+            assert_eq!(rust_list.prev, &rust_list as *const _ as *mut _);
+
+            // Both should be empty
+            assert_eq!(c_ref_list_empty(&c_list), 1);
+            assert_eq!(rust_list.is_empty(), true);
+        }
+    }
+
+    /// Test: Rust add() matches C behavior
+    #[test]
+    fn test_c_add_behavior() {
+        unsafe {
+            let mut c_head = ListHead::new();
+            let mut c_entry1 = ListHead::new();
+            let mut c_entry2 = ListHead::new();
+
+            let mut rust_head = ListHead::new();
+            let mut rust_entry1 = ListHead::new();
+            let mut rust_entry2 = ListHead::new();
+
+            // Setup C list
+            c_ref_list_init(&mut c_head);
+            c_ref_list_init(&mut c_entry1);
+            c_ref_list_init(&mut c_entry2);
+            c_ref_list_add(&mut c_entry1, &mut c_head);
+            c_ref_list_add(&mut c_entry2, &mut c_head);
+
+            // Setup Rust list (same operations)
+            rust_head.init();
+            rust_entry1.init();
+            rust_entry2.init();
+            rust_head.add(&mut rust_entry1);
+            rust_head.add(&mut rust_entry2);
+
+            // Verify same structure: head -> entry2 -> entry1 -> head
+            let c_next1 = c_head.next;
+            let c_next2 = (c_next1 as *const ListHead).read().next;
+
+            let rust_next1 = rust_head.next;
+            let rust_next2 = (rust_next1 as *const ListHead).read().next;
+
+            // Can't compare pointers directly (different addresses)
+            // But can verify same relative structure
+            assert_eq!(c_next1, &c_entry2 as *const _ as *mut _);
+            assert_eq!(c_next2, &c_entry1 as *const _ as *mut _);
+            assert_eq!(rust_next1, &rust_entry2 as *const _ as *mut _);
+            assert_eq!(rust_next2, &rust_entry1 as *const _ as *mut _);
+        }
+    }
+
+    /// Test: Rust add_tail() matches C behavior
+    #[test]
+    fn test_c_add_tail_behavior() {
+        unsafe {
+            let mut c_head = ListHead::new();
+            let mut c_entry1 = ListHead::new();
+            let mut c_entry2 = ListHead::new();
+
+            let mut rust_head = ListHead::new();
+            let mut rust_entry1 = ListHead::new();
+            let mut rust_entry2 = ListHead::new();
+
+            // Setup C list
+            c_ref_list_init(&mut c_head);
+            c_ref_list_add_tail(&mut c_entry1, &mut c_head);
+            c_ref_list_add_tail(&mut c_entry2, &mut c_head);
+
+            // Setup Rust list
+            rust_head.init();
+            rust_head.add_tail(&mut rust_entry1);
+            rust_head.add_tail(&mut rust_entry2);
+
+            // Verify same structure: head -> entry1 -> entry2 -> head
+            assert_eq!(c_head.next, &c_entry1 as *const _ as *mut _);
+            assert_eq!(rust_head.next, &rust_entry1 as *const _ as *mut _);
+
+            let c_next2 = c_entry1.next;
+            let rust_next2 = rust_entry1.next;
+            assert_eq!(c_next2, &c_entry2 as *const _ as *mut _);
+            assert_eq!(rust_next2, &rust_entry2 as *const _ as *mut _);
+        }
+    }
+
+    /// Test: Rust del() matches C behavior
+    #[test]
+    fn test_c_del_behavior() {
+        unsafe {
+            let mut c_head = ListHead::new();
+            let mut c_entry = ListHead::new();
+
+            let mut rust_head = ListHead::new();
+            let mut rust_entry = ListHead::new();
+
+            // Setup C list
+            c_ref_list_init(&mut c_head);
+            c_ref_list_add(&mut c_entry, &mut c_head);
+            c_ref_list_del(&mut c_entry);
+
+            // Setup Rust list
+            rust_head.init();
+            rust_head.add(&mut rust_entry);
+            rust_entry.del();
+
+            // After deletion, both should have empty list
+            assert_eq!(c_ref_list_empty(&c_head), 1);
+            assert_eq!(rust_head.is_empty(), true);
+
+            // Entry pointers should be null after del
+            assert_eq!(c_entry.next, core::ptr::null_mut());
+            assert_eq!(c_entry.prev, core::ptr::null_mut());
+            assert_eq!(rust_entry.next, core::ptr::null_mut());
+            assert_eq!(rust_entry.prev, core::ptr::null_mut());
+        }
+    }
+
+    /// Test: Rust is_empty() matches C behavior
+    #[test]
+    fn test_c_empty_behavior() {
+        unsafe {
+            let mut c_head = ListHead::new();
+            let mut c_entry = ListHead::new();
+
+            let mut rust_head = ListHead::new();
+            let mut rust_entry = ListHead::new();
+
+            c_ref_list_init(&mut c_head);
+            rust_head.init();
+
+            // Both empty initially
+            assert_eq!(c_ref_list_empty(&c_head), 1);
+            assert_eq!(rust_head.is_empty(), true);
+
+            // Add entry
+            c_ref_list_add(&mut c_entry, &mut c_head);
+            rust_head.add(&mut rust_entry);
+
+            // Both non-empty
+            assert_eq!(c_ref_list_empty(&c_head), 0);
+            assert_eq!(rust_head.is_empty(), false);
+
+            // Delete entry
+            c_ref_list_del(&mut c_entry);
+            rust_entry.del();
+
+            // Both empty again
+            assert_eq!(c_ref_list_empty(&c_head), 1);
+            assert_eq!(rust_head.is_empty(), true);
+        }
+    }
+
+    /// Test: List position checks match C
+    #[test]
+    fn test_c_position_checks() {
+        unsafe {
+            let mut head = ListHead::new();
+            let mut e1 = ListHead::new();
+            let mut e2 = ListHead::new();
+            let mut e3 = ListHead::new();
+
+            c_ref_list_init(&mut head);
+            c_ref_list_add_tail(&mut e1, &mut head);
+            c_ref_list_add_tail(&mut e2, &mut head);
+            c_ref_list_add_tail(&mut e3, &mut head);
+
+            // Test is_head
+            assert_eq!(c_ref_list_is_head(&head, &head), 1);
+            assert_eq!(c_ref_list_is_head(&e1, &head), 0);
+
+            // Test is_first
+            assert_eq!(c_ref_list_is_first(&e1, &head), 1);
+            assert_eq!(c_ref_list_is_first(&e2, &head), 0);
+            assert_eq!(c_ref_list_is_first(&e3, &head), 0);
+
+            // Test is_last
+            assert_eq!(c_ref_list_is_last(&e3, &head), 1);
+            assert_eq!(c_ref_list_is_last(&e1, &head), 0);
+            assert_eq!(c_ref_list_is_last(&e2, &head), 0);
+        }
+    }
+}

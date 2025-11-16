@@ -49,12 +49,35 @@ test-verbose:
 test-crate crate:
     cargo test -p {{crate}}
 
+# Run C reference validation tests
+#
+# These tests compile C reference implementations and call them from Rust
+# to verify that Rust behavior matches C exactly.
+#
+# Expected values are extracted dynamically from C at runtime.
+test-c-reference:
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "Running C Reference Validation Tests"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo ""
+    @echo "These tests verify Rust implementations match C behavior:"
+    @echo "  - Compiles C reference code from tests/c-reference/"
+    @echo "  - Links C library into Rust test binary"
+    @echo "  - Calls C functions to get expected values"
+    @echo "  - Compares Rust behavior against C"
+    @echo ""
+    cargo test --package angzarr-list c_reference_tests:: -- --nocapture
+    @echo ""
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "✅ All C reference validation tests passed!"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
 # Run Gherkin/Cucumber tests
 test-gherkin:
     cargo test -p angzarr-test-framework --test kernel_tests
 
-# Run all tests (unit + gherkin)
-test-all: test test-gherkin
+# Run all tests (unit + gherkin + C reference)
+test-all: test test-gherkin test-c-reference
 
 # Check code without building
 check:
