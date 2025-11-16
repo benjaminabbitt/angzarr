@@ -133,6 +133,115 @@ impl ListHead {
         (*next).prev = prev;
         (*prev).next = next;
     }
+
+    /// Check if this entry is the first in the list
+    ///
+    /// Based on Linux kernel list_is_first() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure head is a valid pointer
+    pub unsafe fn is_first(&self, head: *const ListHead) -> bool {
+        self.prev == head as *mut ListHead
+    }
+
+    /// Check if this entry is the last in the list
+    ///
+    /// Based on Linux kernel list_is_last() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure head is a valid pointer
+    pub unsafe fn is_last(&self, head: *const ListHead) -> bool {
+        self.next == head as *mut ListHead
+    }
+
+    /// Replace old entry with new and reinitialize old
+    ///
+    /// Based on Linux kernel list_replace_init() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure this entry is in a list and new is not
+    pub unsafe fn replace_init(&mut self, new: *mut ListHead) {
+        self.replace(new);
+        self.init();
+    }
+
+    /// Move this entry to the head of another list
+    ///
+    /// Based on Linux kernel list_move() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure entry is in a list and head is valid
+    pub unsafe fn list_move(&mut self, head: *mut ListHead) {
+        self.__list_del(self.prev, self.next);
+        (*head).add(self as *mut ListHead);
+    }
+
+    /// Move this entry to the tail of another list
+    ///
+    /// Based on Linux kernel list_move_tail() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure entry is in a list and head is valid
+    pub unsafe fn list_move_tail(&mut self, head: *mut ListHead) {
+        self.__list_del(self.prev, self.next);
+        (*head).add_tail(self as *mut ListHead);
+    }
+
+    /// Rotate list left (move first entry to tail)
+    ///
+    /// Based on Linux kernel list_rotate_left() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure list is not empty
+    pub unsafe fn rotate_left(&mut self) {
+        if !self.is_empty() {
+            let first = self.next;
+            (*first).list_move_tail(self as *mut ListHead);
+        }
+    }
+
+    /// Rotate list until specified entry is first
+    ///
+    /// Based on Linux kernel list_rotate_to_front() in include/linux/list.h
+    ///
+    /// # Safety
+    /// Caller must ensure entry is in this list
+    pub unsafe fn rotate_to_front(&mut self, entry: *mut ListHead) {
+        (*entry).list_move(self as *mut ListHead);
+    }
+}
+
+/// Move a subsection of a list to the tail of another list
+///
+/// Based on Linux kernel list_bulk_move_tail() in include/linux/list.h
+///
+/// Moves entries from `first` to `last` (inclusive) to the tail of `head`.
+/// The entries are moved as a contiguous block, preserving their order.
+///
+/// # Safety
+/// Caller must ensure:
+/// - `first` and `last` are in the same list
+/// - `last` comes after `first` in the list
+/// - `head` is a valid list head
+pub unsafe fn list_bulk_move_tail(
+    head: *mut ListHead,
+    first: *mut ListHead,
+    last: *mut ListHead,
+) {
+    // Save the nodes before first and after last
+    let first_prev = (*first).prev;
+    let last_next = (*last).next;
+
+    // Remove the subsection from its current list
+    (*first_prev).next = last_next;
+    (*last_next).prev = first_prev;
+
+    // Insert the subsection at the tail of the target list
+    let head_prev = (*head).prev;
+    (*head_prev).next = first;
+    (*first).prev = head_prev;
+    (*last).next = head;
+    (*head).prev = last;
 }
 
 /// C-compatible FFI exports
@@ -357,8 +466,9 @@ mod linux_kernel_tests {
             assert_eq!(new.next, &mut head as *mut ListHead);
 
             // Verify old is reinitialized (points to itself)
-            assert_eq!(old.next, &mut old as *mut ListHead);
-            assert_eq!(old.prev, &mut old as *mut ListHead);
+            let old_ptr = &old as *const ListHead as *mut ListHead;
+            assert_eq!(old.next, old_ptr);
+            assert_eq!(old.prev, old_ptr);
             assert!(old.is_empty());
         }
     }
