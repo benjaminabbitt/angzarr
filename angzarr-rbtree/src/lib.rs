@@ -78,6 +78,86 @@ impl RbNode {
     pub fn is_black(&self) -> bool {
         self.color() == RbColor::Black
     }
+
+    /// Find the next node in sorted order
+    ///
+    /// Based on Linux kernel rb_next() in lib/rbtree.c:402
+    ///
+    /// Decision: Follow standard BST successor algorithm
+    /// Rationale: Proven correct, matches kernel exactly
+    ///
+    /// Algorithm (from CLRS):
+    /// 1. If node has right subtree: return leftmost node in right subtree
+    /// 2. Otherwise: go up until we find an ancestor where we came from left
+    ///
+    /// Trade-offs:
+    /// - Pro: O(log n) worst case (height of tree)
+    /// - Con: Can't be cached (tree structure may change)
+    ///
+    /// # Safety
+    /// Returns raw pointer; node must be in a valid tree
+    pub unsafe fn rb_next(node: *const RbNode) -> *mut RbNode {
+        if node.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        // Decision: If right child exists, find leftmost in right subtree
+        // Rationale: That's the next larger value in BST
+        if !(*node).rb_right.is_null() {
+            let mut n = (*node).rb_right;
+            while !(*n).rb_left.is_null() {
+                n = (*n).rb_left;
+            }
+            return n;
+        }
+
+        // Decision: Go up until we came from left (or reach root)
+        // Rationale: First ancestor larger than us
+        let mut parent = (*node).parent();
+        let mut n = node as *mut RbNode;
+        while !parent.is_null() && n == (*parent).rb_right {
+            n = parent;
+            parent = (*parent).parent();
+        }
+        parent
+    }
+
+    /// Find the previous node in sorted order
+    ///
+    /// Based on Linux kernel rb_prev() in lib/rbtree.c:429
+    ///
+    /// Decision: Mirror of rb_next (symmetric algorithm)
+    /// Rationale: Same logic but mirrored left/right
+    ///
+    /// Algorithm:
+    /// 1. If node has left subtree: return rightmost node in left subtree
+    /// 2. Otherwise: go up until we find an ancestor where we came from right
+    ///
+    /// # Safety
+    /// Returns raw pointer; node must be in a valid tree
+    pub unsafe fn rb_prev(node: *const RbNode) -> *mut RbNode {
+        if node.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        // If left child exists, find rightmost in left subtree
+        if !(*node).rb_left.is_null() {
+            let mut n = (*node).rb_left;
+            while !(*n).rb_right.is_null() {
+                n = (*n).rb_right;
+            }
+            return n;
+        }
+
+        // Go up until we came from right (or reach root)
+        let mut parent = (*node).parent();
+        let mut n = node as *mut RbNode;
+        while !parent.is_null() && n == (*parent).rb_left {
+            n = parent;
+            parent = (*parent).parent();
+        }
+        parent
+    }
 }
 
 /// Red-Black tree root
@@ -236,6 +316,322 @@ impl RbRoot {
 
         (*left).rb_right = node;
         (*node).set_parent(left);
+    }
+
+    /// Find the first (leftmost) node in the tree
+    ///
+    /// Based on Linux kernel rb_first() in lib/rbtree.c:366
+    ///
+    /// Decision: Follow left pointers until null
+    /// Rationale: In BST, leftmost node is smallest
+    /// Trade-off: O(log n) traversal, but no caching needed
+    ///
+    /// # Safety
+    /// Returns raw pointer; caller must ensure node is not freed while in use
+    pub unsafe fn rb_first(&self) -> *mut RbNode {
+        // Linux kernel implementation: simple left traversal
+        // No fancy caching or optimization - simple is correct
+        let mut node = self.rb_node;
+        if node.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        while !(*node).rb_left.is_null() {
+            node = (*node).rb_left;
+        }
+        node
+    }
+
+    /// Find the last (rightmost) node in the tree
+    ///
+    /// Based on Linux kernel rb_last() in lib/rbtree.c:384
+    ///
+    /// Mirror of rb_first() - follows right pointers to end
+    ///
+    /// # Safety
+    /// Returns raw pointer; caller must ensure node is not freed while in use
+    pub unsafe fn rb_last(&self) -> *mut RbNode {
+        let mut node = self.rb_node;
+        if node.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        while !(*node).rb_right.is_null() {
+            node = (*node).rb_right;
+        }
+        node
+    }
+
+    /// Replace a node in the tree
+    ///
+    /// Based on Linux kernel rb_replace_node() in lib/rbtree.c:566
+    ///
+    /// Decision: No rebalancing (caller ensures new node has same key)
+    /// Rationale: Common pattern - update node content while keeping position
+    /// Use case: In-place update of cached data in kernel structures
+    ///
+    /// Linux kernel design (from comments):
+    /// - Used when node content changes but sort order doesn't
+    /// - Avoids expensive delete + reinsert
+    /// - Caller must ensure BST property maintained
+    ///
+    /// # Safety
+    /// Caller must ensure:
+    /// - old is in the tree
+    /// - new has same comparison key as old
+    /// - new is not already in a tree
+    pub unsafe fn rb_replace(&mut self, old: *mut RbNode, new: *mut RbNode) {
+        let parent = (*old).parent();
+
+        // Decision: Copy color from old to new
+        // Rationale: Maintains red-black properties without rebalancing
+        // This is safe because position and height don't change
+        (*new).__rb_parent_color = (*old).__rb_parent_color;
+        (*new).rb_left = (*old).rb_left;
+        (*new).rb_right = (*old).rb_right;
+
+        // Update parent pointer
+        if parent.is_null() {
+            // Old was root
+            self.rb_node = new;
+        } else if (*parent).rb_left == old {
+            (*parent).rb_left = new;
+        } else {
+            (*parent).rb_right = new;
+        }
+
+        // Update children's parent pointers
+        if !(*old).rb_left.is_null() {
+            (*(*old).rb_left).set_parent(new);
+        }
+        if !(*old).rb_right.is_null() {
+            (*(*old).rb_right).set_parent(new);
+        }
+    }
+
+    /// Insert node and rebalance (simpler interface for tests)
+    ///
+    /// Based on Linux kernel rb_insert_color() in lib/rbtree.c
+    ///
+    /// Decision: Handle empty tree case, then rebalance
+    /// Rationale: Tests expect this to work on empty tree
+    ///
+    /// # Safety
+    /// Caller must ensure node is initialized
+    pub unsafe fn rb_insert(&mut self, node: *mut RbNode, color: RbColor) {
+        // Decision: If tree is empty, make node the root
+        // Rationale: Common case, simplifies test code
+        if self.rb_node.is_null() {
+            self.rb_node = node;
+            (*node).__rb_parent_color = 0; // No parent
+            (*node).rb_left = core::ptr::null_mut();
+            (*node).rb_right = core::ptr::null_mut();
+            (*node).set_color(color);
+            // Run insert_color to ensure root is black
+            self.insert_color(node);
+        } else {
+            // Node should already be linked by caller
+            // Just run the rebalancing algorithm
+            self.insert_color(node);
+        }
+    }
+
+    /// Recolor node after linking (for test compatibility)
+    ///
+    /// # Safety
+    /// Caller must ensure node is properly linked
+    pub unsafe fn rb_insert_color(&mut self, node: *mut RbNode) {
+        self.insert_color(node);
+    }
+
+    /// Remove a node from the tree and rebalance
+    ///
+    /// Based on Linux kernel rb_erase() in lib/rbtree.c:241
+    ///
+    /// Decision: Complex algorithm, following Linux implementation exactly
+    /// Rationale: Red-black deletion is subtle; don't innovate here
+    ///
+    /// Linux kernel algorithm (from CLRS 2nd edition):
+    /// 1. If node has 0 or 1 child: replace node with child
+    /// 2. If node has 2 children: find successor, replace, delete successor
+    /// 3. Rebalance if we deleted a black node (may violate properties)
+    ///
+    /// Trade-offs:
+    /// - Pro: Maintains O(log n) worst case
+    /// - Con: Complex rebalancing logic (many cases)
+    ///
+    /// # Safety
+    /// Caller must ensure node is in the tree
+    pub unsafe fn rb_erase(&mut self, node: *mut RbNode) {
+        let mut child: *mut RbNode;
+        let mut parent: *mut RbNode;
+        let color: RbColor;
+
+        // Decision: Handle simple cases first (0 or 1 child)
+        // Rationale: Most common in kernel practice, avoids unnecessary work
+        if (*node).rb_left.is_null() {
+            child = (*node).rb_right;
+        } else if (*node).rb_right.is_null() {
+            child = (*node).rb_left;
+        } else {
+            // Node has two children - find successor (leftmost of right subtree)
+            // Decision: Use successor (not predecessor) like Linux kernel
+            // Rationale: Arbitrary choice, but stay consistent with kernel
+            let mut successor = (*node).rb_right;
+            while !(*successor).rb_left.is_null() {
+                successor = (*successor).rb_left;
+            }
+
+            // Replace node with successor
+            child = (*successor).rb_right;
+            parent = (*successor).parent();
+            color = (*successor).color();
+
+            if parent == node {
+                parent = successor;
+            } else {
+                if !child.is_null() {
+                    (*child).set_parent(parent);
+                }
+                (*parent).rb_left = child;
+                (*successor).rb_right = (*node).rb_right;
+                (*(*node).rb_right).set_parent(successor);
+            }
+
+            (*successor).__rb_parent_color = (*node).__rb_parent_color;
+            (*successor).rb_left = (*node).rb_left;
+            (*(*node).rb_left).set_parent(successor);
+
+            if (*node).parent().is_null() {
+                self.rb_node = successor;
+            } else if (*(*node).parent()).rb_left == node {
+                (*(*node).parent()).rb_left = successor;
+            } else {
+                (*(*node).parent()).rb_right = successor;
+            }
+
+            // Rebalance if we removed a black node
+            if color == RbColor::Black {
+                self.erase_color(child, parent);
+            }
+            return;
+        }
+
+        // Simple case: node has at most one child
+        parent = (*node).parent();
+        color = (*node).color();
+
+        if !child.is_null() {
+            (*child).set_parent(parent);
+        }
+
+        if parent.is_null() {
+            self.rb_node = child;
+        } else if (*parent).rb_left == node {
+            (*parent).rb_left = child;
+        } else {
+            (*parent).rb_right = child;
+        }
+
+        if color == RbColor::Black {
+            self.erase_color(child, parent);
+        }
+    }
+
+    /// Rebalance tree after deletion
+    ///
+    /// Based on Linux kernel __rb_erase_color() in lib/rbtree.c
+    ///
+    /// Decision: Implement all 4 deletion cases from CLRS
+    /// Rationale: Necessary for correctness, no shortcuts possible
+    ///
+    /// # Safety
+    /// Internal use only
+    unsafe fn erase_color(&mut self, mut node: *mut RbNode, mut parent: *mut RbNode) {
+        // Decision: Loop until we restore red-black properties
+        // Rationale: May need to propagate fixes up the tree
+        while (node.is_null() || (*node).is_black()) && node != self.rb_node {
+            if node == (*parent).rb_left {
+                let mut sibling = (*parent).rb_right;
+
+                // Case 1: Sibling is red
+                if (*sibling).is_red() {
+                    (*sibling).set_color(RbColor::Black);
+                    (*parent).set_color(RbColor::Red);
+                    self.rotate_left(parent);
+                    sibling = (*parent).rb_right;
+                }
+
+                // Case 2: Sibling's children are both black
+                if ((*sibling).rb_left.is_null() || (*(*sibling).rb_left).is_black())
+                    && ((*sibling).rb_right.is_null() || (*(*sibling).rb_right).is_black())
+                {
+                    (*sibling).set_color(RbColor::Red);
+                    node = parent;
+                    parent = (*node).parent();
+                } else {
+                    // Case 3: Sibling's right child is black
+                    if (*sibling).rb_right.is_null() || (*(*sibling).rb_right).is_black() {
+                        if !(*sibling).rb_left.is_null() {
+                            (*(*sibling).rb_left).set_color(RbColor::Black);
+                        }
+                        (*sibling).set_color(RbColor::Red);
+                        self.rotate_right(sibling);
+                        sibling = (*parent).rb_right;
+                    }
+
+                    // Case 4: Sibling's right child is red
+                    (*sibling).set_color((*parent).color());
+                    (*parent).set_color(RbColor::Black);
+                    if !(*sibling).rb_right.is_null() {
+                        (*(*sibling).rb_right).set_color(RbColor::Black);
+                    }
+                    self.rotate_left(parent);
+                    node = self.rb_node;
+                    break;
+                }
+            } else {
+                // Mirror cases for right child
+                let mut sibling = (*parent).rb_left;
+
+                if (*sibling).is_red() {
+                    (*sibling).set_color(RbColor::Black);
+                    (*parent).set_color(RbColor::Red);
+                    self.rotate_right(parent);
+                    sibling = (*parent).rb_left;
+                }
+
+                if ((*sibling).rb_right.is_null() || (*(*sibling).rb_right).is_black())
+                    && ((*sibling).rb_left.is_null() || (*(*sibling).rb_left).is_black())
+                {
+                    (*sibling).set_color(RbColor::Red);
+                    node = parent;
+                    parent = (*node).parent();
+                } else {
+                    if (*sibling).rb_left.is_null() || (*(*sibling).rb_left).is_black() {
+                        if !(*sibling).rb_right.is_null() {
+                            (*(*sibling).rb_right).set_color(RbColor::Black);
+                        }
+                        (*sibling).set_color(RbColor::Red);
+                        self.rotate_left(sibling);
+                        sibling = (*parent).rb_left;
+                    }
+
+                    (*sibling).set_color((*parent).color());
+                    (*parent).set_color(RbColor::Black);
+                    if !(*sibling).rb_left.is_null() {
+                        (*(*sibling).rb_left).set_color(RbColor::Black);
+                    }
+                    self.rotate_right(parent);
+                    node = self.rb_node;
+                    break;
+                }
+            }
+        }
+
+        if !node.is_null() {
+            (*node).set_color(RbColor::Black);
+        }
     }
 }
 

@@ -209,6 +209,226 @@ impl ListHead {
     pub unsafe fn rotate_to_front(&mut self, entry: *mut ListHead) {
         (*entry).list_move(self as *mut ListHead);
     }
+
+    /// Join two lists - splice list into head of this list
+    ///
+    /// Based on Linux kernel list_splice() in include/linux/list.h:451
+    ///
+    /// Behavior: All entries from `list` are moved to the head of `self`.
+    /// After the operation, `list` becomes empty (but not reinitialized).
+    ///
+    /// Linux kernel rationale (from LKML):
+    /// - Simple splice doesn't reinitialize to avoid unnecessary writes
+    /// - If reinitialization is needed, use list_splice_init() instead
+    /// - This is the most common case in kernel code
+    ///
+    /// Trade-offs:
+    /// - Pro: Faster (no reinit writes)
+    /// - Con: Source list left in indeterminate state
+    ///
+    /// # Safety
+    /// Caller must ensure `list` is a valid list head
+    pub unsafe fn list_splice(&mut self, list: *mut ListHead) {
+        // Decision: Check for empty list first (Linux kernel does this)
+        // Rationale: Avoid unnecessary pointer manipulation for empty lists
+        // Performance: Branch is highly predictable in most kernel code paths
+        if !(*list).is_empty() {
+            // Get first and last from source list
+            let first = (*list).next;
+            let last = (*list).prev;
+
+            // Get insertion point (head of target list)
+            let at = self.next;
+
+            // Wire up first to target list
+            (*first).prev = self as *mut ListHead;
+            self.next = first;
+
+            // Wire up last to target list
+            (*last).next = at;
+            (*at).prev = last;
+
+            // Leave source list empty (pointing to itself)
+            // Decision: Source becomes empty after splice
+            // Rationale: Elements now belong to destination list
+            // Note: Not formally "reinitialized" but functionally empty
+            (*list).next = list;
+            (*list).prev = list;
+        }
+    }
+
+    /// Join two lists - splice list into tail of this list
+    ///
+    /// Based on Linux kernel list_splice_tail() in include/linux/list.h:470
+    ///
+    /// Same as list_splice() but inserts at tail instead of head.
+    ///
+    /// # Safety
+    /// Caller must ensure `list` is a valid list head
+    pub unsafe fn list_splice_tail(&mut self, list: *mut ListHead) {
+        if !(*list).is_empty() {
+            let first = (*list).next;
+            let last = (*list).prev;
+            let at = self as *mut ListHead; // Insert before head (at tail)
+            let at_prev = self.prev;
+
+            // Wire up the splice
+            (*at_prev).next = first;
+            (*first).prev = at_prev;
+            (*last).next = at;
+            (*at).prev = last;
+
+            // Leave source list empty
+            (*list).next = list;
+            (*list).prev = list;
+        }
+    }
+
+    /// Join two lists and reinitialize the source list
+    ///
+    /// Based on Linux kernel list_splice_init() in include/linux/list.h:460
+    ///
+    /// Same as list_splice() but reinitializes `list` to empty state after splicing.
+    ///
+    /// Linux kernel rationale:
+    /// - Most common pattern in kernel: splice then reuse the source list
+    /// - Combining operations reduces code and improves cache locality
+    /// - One atomic operation is safer in concurrent contexts (with proper locking)
+    ///
+    /// Decision: Follow kernel pattern exactly
+    /// - Splice first, reinit second (order matters for correctness)
+    /// - Reinit makes source list safe to reuse immediately
+    ///
+    /// # Safety
+    /// Caller must ensure `list` is a valid list head
+    pub unsafe fn list_splice_init(&mut self, list: *mut ListHead) {
+        if !(*list).is_empty() {
+            let first = (*list).next;
+            let last = (*list).prev;
+            let at = self.next;
+
+            // Splice
+            (*first).prev = self as *mut ListHead;
+            self.next = first;
+            (*last).next = at;
+            (*at).prev = last;
+
+            // Reinitialize source (makes it safe to reuse)
+            (*list).init();
+        }
+    }
+
+    /// Join two lists at tail and reinitialize the source list
+    ///
+    /// Based on Linux kernel list_splice_tail_init() in include/linux/list.h:479
+    ///
+    /// Combines list_splice_tail() with reinitialization of source.
+    ///
+    /// # Safety
+    /// Caller must ensure `list` is a valid list head
+    pub unsafe fn list_splice_tail_init(&mut self, list: *mut ListHead) {
+        if !(*list).is_empty() {
+            let first = (*list).next;
+            let last = (*list).prev;
+            let at = self as *mut ListHead;
+            let at_prev = self.prev;
+
+            // Splice at tail
+            (*at_prev).next = first;
+            (*first).prev = at_prev;
+            (*last).next = at;
+            (*at).prev = last;
+
+            // Reinitialize source
+            (*list).init();
+        }
+    }
+
+    /// Cut a list into two parts at the given entry
+    ///
+    /// Based on Linux kernel list_cut_position() in include/linux/list.h:347
+    ///
+    /// Behavior: Moves all entries from head of `self` up to and including `entry`
+    /// into `list`. The `list` is reinitialized before use (any previous contents lost).
+    ///
+    /// Example: If self contains [e1, e2, e3, e4] and entry points to e2:
+    /// - After: list contains [e1, e2], self contains [e3, e4]
+    ///
+    /// Linux kernel design decision (from list.h comments):
+    /// - Destination list is always reinitialized (prevents bugs from stale data)
+    /// - Inclusive cut (entry itself moves to new list)
+    /// - Common pattern: split work queue for parallel processing
+    ///
+    /// # Safety
+    /// Caller must ensure `entry` is in `self` and `list` is a valid list head
+    pub unsafe fn list_cut_position(&mut self, list: *mut ListHead, entry: *mut ListHead) {
+        // Decision: Always reinitialize destination list first
+        // Rationale: Matches Linux kernel, prevents stale pointer bugs
+        (*list).init();
+
+        // Decision: Check if entry is actually in the list (empty list case)
+        // Rationale: Avoid corrupting pointers if called incorrectly
+        if self.is_empty() {
+            return;
+        }
+
+        // Check if entry is head (nothing to cut)
+        if entry == self as *mut ListHead {
+            return;
+        }
+
+        // Perform the cut
+        let first = self.next;
+        let entry_next = (*entry).next;
+
+        // Wire destination list: list -> first ... entry -> list
+        (*list).next = first;
+        (*first).prev = list;
+        (*list).prev = entry;
+        (*entry).next = list;
+
+        // Wire source list: self -> entry_next ... self.prev -> self
+        self.next = entry_next;
+        (*entry_next).prev = self as *mut ListHead;
+    }
+
+    /// Cut a list into two parts before the given entry
+    ///
+    /// Based on Linux kernel list_cut_before() in include/linux/list.h:379
+    ///
+    /// Similar to list_cut_position() but cuts BEFORE the entry (exclusive).
+    ///
+    /// Example: If self contains [e1, e2, e3] and entry points to e3:
+    /// - After: list contains [e1, e2], self contains [e3]
+    ///
+    /// Decision: Cut before vs cut at
+    /// - cut_position: includes entry in cut portion
+    /// - cut_before: excludes entry from cut portion
+    /// - Both are useful for different kernel algorithms
+    ///
+    /// # Safety
+    /// Caller must ensure `entry` is in `self` and `list` is a valid list head
+    pub unsafe fn list_cut_before(&mut self, list: *mut ListHead, entry: *mut ListHead) {
+        (*list).init();
+
+        if self.is_empty() || entry == self.next {
+            // Nothing to cut (empty or entry is first)
+            return;
+        }
+
+        let first = self.next;
+        let entry_prev = (*entry).prev;
+
+        // Wire destination list: list -> first ... entry_prev -> list
+        (*list).next = first;
+        (*first).prev = list;
+        (*list).prev = entry_prev;
+        (*entry_prev).next = list;
+
+        // Wire source list: self -> entry ... self.prev -> self
+        self.next = entry;
+        (*entry).prev = self as *mut ListHead;
+    }
 }
 
 /// Move a subsection of a list to the tail of another list
