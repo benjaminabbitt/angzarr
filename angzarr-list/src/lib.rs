@@ -1002,3 +1002,282 @@ mod c_reference_tests {
         }
     }
 }
+
+// SPDX-License-Identifier: GPL-2.0
+//
+// Linux Kernel Test Translations - TDD Phase 2
+//
+// Additional tests for list splice operations
+// Tests derived from Linux kernel lib/test_list.c
+// Copyright (C) Linux Kernel Authors
+// Translated to Rust for Angzarr using TDD approach
+//
+// TDD Phase: Tests written FIRST, implementation follows
+//
+#[cfg(test)]
+mod linux_kernel_splice_tests {
+    use super::*;
+
+    /// Translated from test_list_splice() in lib/test_list.c:~250
+    ///
+    /// Tests list_splice: join two lists at head
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - All entries from source list are moved to target list
+    /// - Entries are inserted at the head of target list
+    /// - Source list becomes empty
+    /// - Order is preserved
+    ///
+    /// Linux kernel reference: include/linux/list.h list_splice()
+    #[test]
+    fn test_list_splice() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            // Setup: list1 has e1, e2
+            list1.add_tail(&mut e1 as *mut ListHead);
+            list1.add_tail(&mut e2 as *mut ListHead);
+
+            // Setup: list2 has e3
+            list2.add_tail(&mut e3 as *mut ListHead);
+
+            // Splice list1 into list2 at head
+            list2.list_splice(&mut list1);
+
+            // Expected result: list2 -> e1 -> e2 -> e3
+            // list1 should be empty
+            assert!(list1.is_empty(), "Source list should be empty after splice");
+            assert_eq!(list2.next, &mut e1 as *mut ListHead, "First spliced element should be at head");
+            assert_eq!(e1.next, &mut e2 as *mut ListHead, "Order should be preserved");
+            assert_eq!(e2.next, &mut e3 as *mut ListHead, "Original elements should follow");
+        }
+    }
+
+    /// Translated from test_list_splice_tail() in lib/test_list.c:~265
+    ///
+    /// Tests list_splice_tail: join two lists at tail
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - All entries from source list are moved to target list
+    /// - Entries are inserted at the tail of target list
+    /// - Source list becomes empty
+    ///
+    /// Linux kernel reference: include/linux/list.h list_splice_tail()
+    #[test]
+    fn test_list_splice_tail() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            // Setup: list1 has e1, e2
+            list1.add_tail(&mut e1 as *mut ListHead);
+            list1.add_tail(&mut e2 as *mut ListHead);
+
+            // Setup: list2 has e3
+            list2.add_tail(&mut e3 as *mut ListHead);
+
+            // Splice list1 into list2 at tail
+            list2.list_splice_tail(&mut list1);
+
+            // Expected result: list2 -> e3 -> e1 -> e2
+            // list1 should be empty
+            assert!(list1.is_empty(), "Source list should be empty");
+            assert_eq!(list2.next, &mut e3 as *mut ListHead, "Original elements should be first");
+            assert_eq!(e3.next, &mut e1 as *mut ListHead, "Spliced elements should follow");
+            assert_eq!(e1.next, &mut e2 as *mut ListHead, "Order should be preserved");
+        }
+    }
+
+    /// Translated from test_list_splice_init() in lib/test_list.c:~280
+    ///
+    /// Tests list_splice_init: join two lists and reinitialize source
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - All entries from source list are moved to target list
+    /// - Entries are inserted at head of target list
+    /// - Source list is reinitialized (empty circular list)
+    ///
+    /// Difference from list_splice: source is reinitialized instead of just emptied
+    ///
+    /// Linux kernel reference: include/linux/list.h list_splice_init()
+    #[test]
+    fn test_list_splice_init() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            e1.init();
+            e2.init();
+
+            // Setup: list1 has e1, e2
+            list1.add_tail(&mut e1 as *mut ListHead);
+            list1.add_tail(&mut e2 as *mut ListHead);
+
+            // Splice and reinitialize
+            list2.list_splice_init(&mut list1);
+
+            // Verify splice happened
+            assert_eq!(list2.next, &mut e1 as *mut ListHead, "Elements should be spliced");
+
+            // Verify list1 is properly reinitialized (circular)
+            let list1_ptr = &list1 as *const ListHead as *mut ListHead;
+            assert_eq!(list1.next, list1_ptr, "Source should point to itself");
+            assert_eq!(list1.prev, list1_ptr, "Source should be circular");
+            assert!(list1.is_empty(), "Source should be empty");
+        }
+    }
+
+    /// Translated from test_list_splice_tail_init() in lib/test_list.c:~295
+    ///
+    /// Tests list_splice_tail_init: join at tail and reinitialize source
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - All entries from source list are moved to target list tail
+    /// - Source list is reinitialized
+    ///
+    /// Linux kernel reference: include/linux/list.h list_splice_tail_init()
+    #[test]
+    fn test_list_splice_tail_init() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            list1.add_tail(&mut e1 as *mut ListHead);
+            list1.add_tail(&mut e2 as *mut ListHead);
+            list2.add_tail(&mut e3 as *mut ListHead);
+
+            list2.list_splice_tail_init(&mut list1);
+
+            // Result: list2 -> e3 -> e1 -> e2
+            assert_eq!(list2.next, &mut e3 as *mut ListHead);
+            assert_eq!(e3.next, &mut e1 as *mut ListHead);
+            assert!(list1.is_empty());
+        }
+    }
+
+    /// Translated from test_list_cut_position() in lib/test_list.c:~310
+    ///
+    /// Tests list_cut_position: cut list into two parts at a position
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Original list is cut at the specified entry
+    /// - Entries up to and including entry are moved to new list
+    /// - Original list retains entries after entry
+    ///
+    /// Example: list has [e1, e2, e3, e4], cut at e2
+    ///   Result: new_list has [e1, e2], original has [e3, e4]
+    ///
+    /// Linux kernel reference: include/linux/list.h list_cut_position()
+    #[test]
+    fn test_list_cut_position() {
+        let mut list = ListHead::new();
+        let mut new_list = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+        let mut e4 = ListHead::new();
+
+        unsafe {
+            list.init();
+            new_list.init();
+            e1.init();
+            e2.init();
+            e3.init();
+            e4.init();
+
+            // Setup: list has e1 -> e2 -> e3 -> e4
+            list.add_tail(&mut e1 as *mut ListHead);
+            list.add_tail(&mut e2 as *mut ListHead);
+            list.add_tail(&mut e3 as *mut ListHead);
+            list.add_tail(&mut e4 as *mut ListHead);
+
+            // Cut at e2
+            list.list_cut_position(&mut new_list, &mut e2 as *mut ListHead);
+
+            // Verify new_list has e1 -> e2
+            assert_eq!(new_list.next, &mut e1 as *mut ListHead, "new_list should start with e1");
+            assert_eq!(e1.next, &mut e2 as *mut ListHead, "e1 should be followed by e2");
+            assert_eq!(e2.next, &mut new_list as *mut ListHead, "e2 should link back to new_list");
+
+            // Verify original list has e3 -> e4
+            assert_eq!(list.next, &mut e3 as *mut ListHead, "list should start with e3");
+            assert_eq!(e3.next, &mut e4 as *mut ListHead, "e3 should be followed by e4");
+            assert_eq!(e4.next, &mut list as *mut ListHead, "e4 should link back to list");
+        }
+    }
+
+    /// Tests list_cut_before: cut list before a position
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Original list is cut before the specified entry
+    /// - Entries before entry are moved to new list
+    /// - Original list retains entry and all after it
+    ///
+    /// Example: list has [e1, e2, e3, e4], cut before e3
+    ///   Result: new_list has [e1, e2], original has [e3, e4]
+    ///
+    /// Linux kernel reference: include/linux/list.h list_cut_before()
+    #[test]
+    fn test_list_cut_before() {
+        let mut list = ListHead::new();
+        let mut new_list = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            list.init();
+            new_list.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            list.add_tail(&mut e1 as *mut ListHead);
+            list.add_tail(&mut e2 as *mut ListHead);
+            list.add_tail(&mut e3 as *mut ListHead);
+
+            // Cut before e3
+            list.list_cut_before(&mut new_list, &mut e3 as *mut ListHead);
+
+            // Verify new_list has e1 -> e2
+            assert_eq!(new_list.next, &mut e1 as *mut ListHead);
+            assert_eq!(e1.next, &mut e2 as *mut ListHead);
+
+            // Verify original list has e3
+            assert_eq!(list.next, &mut e3 as *mut ListHead);
+            assert_eq!(e3.next, &mut list as *mut ListHead);
+        }
+    }
+}

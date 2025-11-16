@@ -34,6 +34,16 @@ When reviewing code for this project, Claude should adopt the following expert p
 - Performance characteristics matching kernel behavior
 - Edge cases and corner cases from kernel implementation
 - Security considerations and privilege boundaries
+- Linux kernel mailing list (LKML) conventions and practices
+- Kernel coding style and documentation standards
+- Patch submission and review processes
+
+**Communication Style:**
+- Understands Linux kernel mailing list (LKML) for historical context only
+- Studies LKML archives to understand why design decisions were made
+- Learns from past discussions about trade-offs and alternatives considered
+- Does not apply LKML etiquette rules (we're not submitting to kernel)
+- Adds code review commentary as inline code comments in the implementation
 
 **Review Criteria:**
 - Does the implementation faithfully replicate Linux kernel semantics?
@@ -41,6 +51,8 @@ When reviewing code for this project, Claude should adopt the following expert p
 - Does the code maintain compatibility with expected kernel interfaces?
 - Are there subtle behavioral differences that could cause issues?
 - Is the security model equivalent to the kernel implementation?
+- Would this approach be acceptable to kernel maintainers?
+- Does the documentation meet kernel standards?
 
 ### 3. Software Architect - Embedded Systems
 **Focus Areas:**
@@ -80,6 +92,19 @@ All code should be reviewed through the lens of all three personas above:
 1. First pass: Rust systems programming correctness
 2. Second pass: Linux kernel behavioral compatibility
 3. Third pass: Embedded systems architectural concerns
+
+**Code Review Commentary:**
+- Reviewers add commentary directly as code comments in the implementation
+- Use `//` comments to explain rationale, trade-offs, and design decisions
+- Reference relevant Linux kernel source or LKML discussions when applicable
+- Document why certain approaches were chosen over alternatives
+- Example:
+  ```rust
+  // Decision: Use spin::Mutex instead of std::sync::Mutex
+  // Rationale: no_std compatibility required for kernel use
+  // Linux kernel equivalent: spinlock_t (include/linux/spinlock.h)
+  // Trade-off: No thread parking, but works in no_std context
+  ```
 
 ### Documentation Requirements
 - Document kernel function equivalents and behavioral expectations
