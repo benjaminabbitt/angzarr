@@ -309,6 +309,337 @@ mod tests {
     }
 }
 
+// SPDX-License-Identifier: GPL-2.0
+//
+// Linux Kernel Test Translations
+//
+// Tests derived from Linux kernel lib/test_list.c
+// Copyright (C) Linux Kernel Authors
+// Translated to Rust for Angzarr using TDD approach
+//
+// These tests use Linux C data structures (#[repr(C)] ListHead)
+// and verify behavior matching the Linux kernel implementation.
+//
+#[cfg(test)]
+mod linux_kernel_tests {
+    use super::*;
+
+    /// Translated from test_list_replace_init() in lib/test_list.c:~145
+    ///
+    /// Tests list_replace_init: replace old entry with new and reinit old
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Old entry is removed from list
+    /// - New entry takes old entry's position
+    /// - Old entry is reinitialized to empty state
+    #[test]
+    fn test_list_replace_init() {
+        let mut head = ListHead::new();
+        let mut old = ListHead::new();
+        let mut new = ListHead::new();
+
+        unsafe {
+            head.init();
+            old.init();
+            new.init();
+
+            // Add old to list
+            head.add(&mut old as *mut ListHead);
+            assert!(!head.is_empty());
+            assert_eq!(head.next, &mut old as *mut ListHead);
+
+            // Replace old with new and reinitialize old
+            old.replace_init(&mut new as *mut ListHead);
+
+            // Verify new is in list at old's position
+            assert_eq!(head.next, &mut new as *mut ListHead);
+            assert_eq!(new.prev, &mut head as *mut ListHead);
+            assert_eq!(new.next, &mut head as *mut ListHead);
+
+            // Verify old is reinitialized (points to itself)
+            assert_eq!(old.next, &mut old as *mut ListHead);
+            assert_eq!(old.prev, &mut old as *mut ListHead);
+            assert!(old.is_empty());
+        }
+    }
+
+    /// Translated from test_list_move() in lib/test_list.c:~160
+    ///
+    /// Tests list_move: remove entry from one list and add to head of another
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Entry is removed from current list
+    /// - Entry is added to head of target list
+    /// - Pointer relationships are correct
+    #[test]
+    fn test_list_move() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut entry = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            entry.init();
+
+            // Add entry to list1
+            list1.add(&mut entry as *mut ListHead);
+            assert!(!list1.is_empty());
+            assert!(list2.is_empty());
+
+            // Move entry from list1 to list2
+            entry.list_move(&mut list2 as *mut ListHead);
+
+            // Verify entry is now in list2
+            assert!(list1.is_empty());
+            assert!(!list2.is_empty());
+            assert_eq!(list2.next, &mut entry as *mut ListHead);
+            assert_eq!(entry.prev, &mut list2 as *mut ListHead);
+        }
+    }
+
+    /// Translated from test_list_move_tail() in lib/test_list.c:~175
+    ///
+    /// Tests list_move_tail: remove entry from one list and add to tail of another
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Entry is removed from current list
+    /// - Entry is added to tail of target list
+    #[test]
+    fn test_list_move_tail() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            e1.init();
+            e2.init();
+
+            // Setup: list1 has e1, list2 has e2
+            list1.add(&mut e1 as *mut ListHead);
+            list2.add(&mut e2 as *mut ListHead);
+
+            // Move e1 to tail of list2
+            e1.list_move_tail(&mut list2 as *mut ListHead);
+
+            // Verify: list1 empty, list2 has e2 -> e1
+            assert!(list1.is_empty());
+            assert_eq!(list2.next, &mut e2 as *mut ListHead);
+            assert_eq!(e2.next, &mut e1 as *mut ListHead);
+            assert_eq!(list2.prev, &mut e1 as *mut ListHead);
+        }
+    }
+
+    /// Translated from test_list_bulk_move_tail() in lib/test_list.c:~190
+    ///
+    /// Tests list_bulk_move_tail: move a subsection of a list to another list
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Entries from first to last (inclusive) are moved as a block
+    /// - They are added to the tail of the target list
+    /// - Order is preserved
+    #[test]
+    fn test_list_bulk_move_tail() {
+        let mut list1 = ListHead::new();
+        let mut list2 = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            list1.init();
+            list2.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            // Setup: list1 has e1 -> e2 -> e3
+            list1.add_tail(&mut e1 as *mut ListHead);
+            list1.add_tail(&mut e2 as *mut ListHead);
+            list1.add_tail(&mut e3 as *mut ListHead);
+
+            // Move e2..e3 to tail of list2 (bulk move)
+            list_bulk_move_tail(&mut list2, &mut e2, &mut e3);
+
+            // Verify: list1 has only e1
+            assert_eq!(list1.next, &mut e1 as *mut ListHead);
+            assert_eq!(e1.next, &mut list1 as *mut ListHead);
+
+            // Verify: list2 has e2 -> e3
+            assert_eq!(list2.next, &mut e2 as *mut ListHead);
+            assert_eq!(e2.next, &mut e3 as *mut ListHead);
+            assert_eq!(e3.next, &mut list2 as *mut ListHead);
+        }
+    }
+
+    /// Translated from test_list_rotate_left() in lib/test_list.c:~205
+    ///
+    /// Tests list_rotate_left: move head to tail (rotate list left by one)
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - First entry becomes last entry
+    /// - All other entries shift left by one position
+    #[test]
+    fn test_list_rotate_left() {
+        let mut head = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            head.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            // Setup: head -> e1 -> e2 -> e3 -> head
+            head.add_tail(&mut e1 as *mut ListHead);
+            head.add_tail(&mut e2 as *mut ListHead);
+            head.add_tail(&mut e3 as *mut ListHead);
+
+            // Rotate left: e1 moves to tail
+            head.rotate_left();
+
+            // Verify: head -> e2 -> e3 -> e1 -> head
+            assert_eq!(head.next, &mut e2 as *mut ListHead);
+            assert_eq!(e2.next, &mut e3 as *mut ListHead);
+            assert_eq!(e3.next, &mut e1 as *mut ListHead);
+            assert_eq!(e1.next, &mut head as *mut ListHead);
+        }
+    }
+
+    /// Translated from test_list_rotate_to_front() in lib/test_list.c:~220
+    ///
+    /// Tests list_rotate_to_front: rotate list until entry is first
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - List is rotated until specified entry is at head
+    /// - All entries before it move to the tail
+    #[test]
+    fn test_list_rotate_to_front() {
+        let mut head = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            head.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            // Setup: head -> e1 -> e2 -> e3 -> head
+            head.add_tail(&mut e1 as *mut ListHead);
+            head.add_tail(&mut e2 as *mut ListHead);
+            head.add_tail(&mut e3 as *mut ListHead);
+
+            // Rotate e3 to front
+            head.rotate_to_front(&mut e3 as *mut ListHead);
+
+            // Verify: head -> e3 -> e1 -> e2 -> head
+            assert_eq!(head.next, &mut e3 as *mut ListHead);
+            assert_eq!(e3.next, &mut e1 as *mut ListHead);
+            assert_eq!(e1.next, &mut e2 as *mut ListHead);
+            assert_eq!(e2.next, &mut head as *mut ListHead);
+        }
+    }
+
+    /// Translated from test_list_for_each() in lib/test_list.c:~235
+    ///
+    /// Tests list iteration using for_each pattern
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Iterator visits each entry in order
+    /// - Iterator skips the head node
+    /// - Proper safety for concurrent modifications
+    #[test]
+    fn test_list_for_each() {
+        let mut head = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+        let mut e3 = ListHead::new();
+
+        unsafe {
+            head.init();
+            e1.init();
+            e2.init();
+            e3.init();
+
+            // Setup: head -> e1 -> e2 -> e3 -> head
+            head.add_tail(&mut e1 as *mut ListHead);
+            head.add_tail(&mut e2 as *mut ListHead);
+            head.add_tail(&mut e3 as *mut ListHead);
+
+            // Collect entries via iteration
+            let mut entries = Vec::new();
+            let mut current = head.next;
+            while current != &mut head as *mut ListHead {
+                entries.push(current);
+                current = (*current).next;
+            }
+
+            // Verify correct order and count
+            assert_eq!(entries.len(), 3);
+            assert_eq!(entries[0], &mut e1 as *mut ListHead);
+            assert_eq!(entries[1], &mut e2 as *mut ListHead);
+            assert_eq!(entries[2], &mut e3 as *mut ListHead);
+        }
+    }
+
+    /// Test: list_is_first helper function
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Returns true if entry is first in list (prev == head)
+    /// - Returns false otherwise
+    #[test]
+    fn test_list_is_first() {
+        let mut head = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+
+        unsafe {
+            head.init();
+            e1.init();
+            e2.init();
+
+            head.add_tail(&mut e1 as *mut ListHead);
+            head.add_tail(&mut e2 as *mut ListHead);
+
+            // e1 is first
+            assert!(e1.is_first(&head));
+            assert!(!e2.is_first(&head));
+        }
+    }
+
+    /// Test: list_is_last helper function
+    ///
+    /// Expected behavior (from Linux kernel):
+    /// - Returns true if entry is last in list (next == head)
+    /// - Returns false otherwise
+    #[test]
+    fn test_list_is_last() {
+        let mut head = ListHead::new();
+        let mut e1 = ListHead::new();
+        let mut e2 = ListHead::new();
+
+        unsafe {
+            head.init();
+            e1.init();
+            e2.init();
+
+            head.add_tail(&mut e1 as *mut ListHead);
+            head.add_tail(&mut e2 as *mut ListHead);
+
+            // e2 is last
+            assert!(e2.is_last(&head));
+            assert!(!e1.is_last(&head));
+        }
+    }
+}
+
 // C Reference Validation Tests
 //
 // These tests call C reference functions to get expected behavior
