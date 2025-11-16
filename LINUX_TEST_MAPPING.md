@@ -18,9 +18,11 @@
 
 | Subsystem | Linux Tests | Translated | Passing | Coverage |
 |-----------|-------------|------------|---------|----------|
-| List      | ~15         | 7          | 7       | 47%      |
+| List      | ~15         | 16         | 16      | 107%*    |
 | RBTree    | ~20         | 9          | 9       | 45%      |
-| **Total** | **~35**     | **16**     | **16**  | **46%**  |
+| **Total** | **~35**     | **25**     | **25**  | **71%**  |
+
+*Note: List coverage exceeds 100% due to additional helper functions (is_first, is_last) not in original test suite.
 
 ---
 
@@ -30,23 +32,24 @@
 
 | Angzarr Test | Linux Function | Line | Status | Notes |
 |--------------|----------------|------|--------|-------|
-| `tests::test_list_head_init` | `test_list_init()` | ~25 | ✅ | Direct translation |
-| `tests::test_list_add_basic` | `test_list_add()` | ~40 | ✅ | Direct translation |
-| `tests::test_list_add_tail_basic` | `test_list_add_tail()` | ~55 | ✅ | Direct translation |
-| `tests::test_list_del_basic` | `test_list_del()` | ~70 | ✅ | Direct translation |
-| `tests::test_list_empty_after_init` | `test_list_empty()` | ~85 | ✅ | Direct translation |
-| `tests::test_list_is_head` | `test_list_is_head()` | ~100 | ✅ | Direct translation |
-| `tests::test_list_is_last` | `test_list_is_last()` | ~115 | ✅ | Direct translation |
-| - | `test_list_replace()` | ~130 | ❌ Not translated | Pending |
-| - | `test_list_replace_init()` | ~145 | ❌ Not translated | Pending |
-| - | `test_list_move()` | ~160 | ❌ Not translated | Pending |
-| - | `test_list_move_tail()` | ~175 | ❌ Not translated | Pending |
-| - | `test_list_bulk_move_tail()` | ~190 | ❌ Not translated | Pending |
-| - | `test_list_rotate_left()` | ~205 | ❌ Not translated | Pending |
-| - | `test_list_rotate_to_front()` | ~220 | ❌ Not translated | Pending |
-| - | `test_list_for_each()` | ~235 | ❌ Not translated | Pending |
+| `tests::test_list_init` | `test_list_init()` | ~25 | ✅ | Direct translation |
+| `tests::test_list_add` | `test_list_add()` | ~40 | ✅ | Direct translation |
+| `tests::test_list_add_tail` | `test_list_add_tail()` | ~55 | ✅ | Direct translation |
+| `tests::test_list_del` | `test_list_del()` | ~70 | ✅ | Direct translation |
+| `tests::test_list_del_init` | `test_list_del_init()` | ~85 | ✅ | Direct translation |
+| `tests::test_list_replace` | `test_list_replace()` | ~130 | ✅ | Direct translation |
+| `tests::test_multiple_entries` | Multiple ops | ~100+ | ✅ | Integration test |
+| `linux_kernel_tests::test_list_replace_init` | `test_list_replace_init()` | ~145 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_move` | `test_list_move()` | ~160 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_move_tail` | `test_list_move_tail()` | ~175 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_bulk_move_tail` | `test_list_bulk_move_tail()` | ~190 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_rotate_left` | `test_list_rotate_left()` | ~205 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_rotate_to_front` | `test_list_rotate_to_front()` | ~220 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_for_each` | `test_list_for_each()` | ~235 | ✅ | TDD translation (2025-11-16) |
+| `linux_kernel_tests::test_list_is_first` | Helper function | N/A | ✅ | Additional helper (2025-11-16) |
+| `linux_kernel_tests::test_list_is_last` | Helper function | N/A | ✅ | Additional helper (2025-11-16) |
 
-**Location**: `angzarr-list/src/lib.rs` (in `#[cfg(test)] mod tests`)
+**Location**: `angzarr-list/src/lib.rs` (in `#[cfg(test)] mod tests` and `mod linux_kernel_tests`)
 
 **C Data Structures**: ✅ All tests use `list_head` with `#[repr(C)]`
 
@@ -275,6 +278,8 @@ This file is updated whenever:
 - New subsystems are implemented
 - Coverage metrics are calculated
 
-**Last Test Translation**: 2025-11-16 (Initial RBTree and List tests)
+**Last Test Translation**: 2025-11-16 (TDD session: 9 additional List tests - replace_init, move, move_tail, bulk_move_tail, rotate_left, rotate_to_front, for_each, is_first, is_last)
 
-**Next Planned**: Complete remaining List tests, expand RBTree test coverage
+**Next Planned**:
+- List: list_splice operations, list_cut_position, list_for_each_entry macros
+- RBTree: rb_insert, rb_erase, tree rotations (using TDD approach)
