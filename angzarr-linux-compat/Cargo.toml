@@ -1,0 +1,21 @@
+[package]
+name = "angzarr-linux-compat"
+version = "0.1.0"
+edition = "2021"
+authors = ["Angzarr Project"]
+license = "GPL-2.0"
+description = "Linux kernel ABI compatibility adapter for Angzarr"
+
+[dependencies]
+angzarr-core = { path = "../angzarr-core" }
+angzarr-list = { path = "../angzarr-list" }
+angzarr-rbtree = { path = "../angzarr-rbtree" }
+angzarr-sync = { path = "../angzarr-sync" }
+angzarr-mm = { path = "../angzarr-mm" }
+angzarr-ffi = { path = "../angzarr-ffi" }
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+default = []

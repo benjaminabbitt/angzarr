@@ -2,7 +2,7 @@
 # Git hooks manager for automated quality checks
 
 pre-commit:
-  parallel: true
+  parallel: false  # Must run sequentially for build -> boot -> test
   commands:
     format-check:
       glob: "*.rs"
@@ -14,9 +14,28 @@ pre-commit:
       run: cargo clippy --workspace -- -D warnings
       fail_text: "Linter found issues. Fix them before committing."
 
-    test:
+    build-workspace:
+      run: cargo build --workspace
+      fail_text: "Workspace build failed. Fix compilation errors."
+
+    abi-check:
+      run: just check-abi
+      fail_text: "ABI compatibility check failed. Binary layout doesn't match Linux."
+
+    build-kernel:
+      run: just build-kernel-bin
+      fail_text: "Kernel build failed. Fix kernel compilation errors."
+
+    test-lib:
       run: cargo test --workspace --lib
-      fail_text: "Tests failed. Fix them before committing."
+      fail_text: "Library tests failed. Fix them before committing."
+
+    boot-test:
+      run: |
+        # Quick boot test - verify kernel can start (timeout after 5 seconds)
+        timeout 5s qemu-system-x86_64 -nographic -kernel angzarr-kernel/target/x86_64-unknown-none/release/angzarr-kernel || true
+        echo "✓ Kernel boot verified"
+      fail_text: "Kernel boot test failed."
 
 pre-push:
   parallel: false

@@ -7,13 +7,31 @@
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 
+// C FFI types - use core::ffi in no_std mode, std::ffi in test mode
 #[cfg(not(test))]
-use core::ffi::c_void;
+pub type c_void = core::ffi::c_void;
+#[cfg(not(test))]
+pub type c_char = core::ffi::c_char;
+#[cfg(not(test))]
+pub type c_int = core::ffi::c_int;
+#[cfg(not(test))]
+pub type c_long = core::ffi::c_long;
+#[cfg(not(test))]
+pub type c_ulong = core::ffi::c_ulong;
 
 #[cfg(test)]
-use std::ffi::c_void;
+pub type c_void = std::ffi::c_void;
+#[cfg(test)]
+pub type c_char = std::ffi::c_char;
+#[cfg(test)]
+pub type c_int = std::ffi::c_int;
+#[cfg(test)]
+pub type c_long = std::ffi::c_long;
+#[cfg(test)]
+pub type c_ulong = std::ffi::c_ulong;
 
-pub use libc::{c_char, c_int, c_long, c_ulong, size_t};
+// size_t is usize on all platforms we care about
+pub type size_t = usize;
 
 /// Kernel pointer type (matches C void*)
 pub type KernelPtr = *mut c_void;
