@@ -1,0 +1,24 @@
+[package]
+name = "angzarr-test-framework"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Note: Test framework runs in userspace, so it can use std
+# It tests the no_std kernel crates
+angzarr-core = { path = "../angzarr-core" }
+angzarr-list = { path = "../angzarr-list" }
+angzarr-rbtree = { path = "../angzarr-rbtree" }
+angzarr-sync = { path = "../angzarr-sync" }
+angzarr-mm = { path = "../angzarr-mm" }
+
+[dev-dependencies]
+# Gherkin testing (requires std, only in tests)
+cucumber = { workspace = true }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[[test]]
+name = "kernel_tests"
+harness = false

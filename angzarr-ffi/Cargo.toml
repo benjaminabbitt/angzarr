@@ -1,0 +1,13 @@
+[package]
+name = "angzarr-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = { workspace = true }
+static_assertions = { workspace = true }
+
+[lib]
+crate-type = ["lib"]

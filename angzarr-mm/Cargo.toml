@@ -1,0 +1,19 @@
+[package]
+name = "angzarr-mm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+angzarr-core = { path = "../angzarr-core" }
+angzarr-list = { path = "../angzarr-list" }
+angzarr-sync = { path = "../angzarr-sync" }
+angzarr-ffi = { path = "../angzarr-ffi" }
+static_assertions = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lib]
+crate-type = ["lib"]

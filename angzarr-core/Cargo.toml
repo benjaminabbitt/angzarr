@@ -1,0 +1,20 @@
+[package]
+name = "angzarr-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = { workspace = true }
+bitflags = { workspace = true }
+static_assertions = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+default = []
