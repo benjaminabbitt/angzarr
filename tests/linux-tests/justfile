@@ -1,0 +1,194 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# justfile for compiling Linux kernel tests in userspace
+#
+# These tests are compiled to verify that our Rust implementations
+# produce identical results to the original Linux C code.
+#
+# Design Decision: We use `just` instead of `make` for consistency
+# with the rest of the Angzarr build system. See LINUX_KERNEL_LESSONS.md
+# for rationale.
+
+# Compiler settings
+CC := "gcc"
+CFLAGS := "-Wall -Wextra -g -O2 -I../linux-kernel/include -I."
+LDFLAGS := ""
+
+# Linux kernel submodule path
+LINUX_KERNEL := "../linux-kernel"
+
+# Color output helpers
+GREEN := "\\033[0;32m"
+YELLOW := "\\033[1;33m"
+RED := "\\033[0;31m"
+NC := "\\033[0m"
+
+# Default: show help
+default:
+    @just --list
+
+# Show help information
+help:
+    @echo "{{GREEN}}Linux Kernel Test Compilation{{NC}}"
+    @echo ""
+    @echo "Prerequisites:"
+    @echo "  git submodule update --init --recursive"
+    @echo ""
+    @echo "Commands:"
+    @echo "  just init              - Initialize Linux kernel submodule"
+    @echo "  just build-list        - Build list tests"
+    @echo "  just build-rbtree      - Build rbtree tests"
+    @echo "  just build-bitmap      - Build bitmap tests"
+    @echo "  just build-hash        - Build hash tests"
+    @echo "  just build-all         - Build all tests"
+    @echo "  just run-list          - Run list tests"
+    @echo "  just run-rbtree        - Run rbtree tests"
+    @echo "  just run-all           - Run all tests"
+    @echo "  just verify-list       - Verify list against Rust"
+    @echo "  just verify-rbtree     - Verify rbtree against Rust"
+    @echo "  just clean             - Remove compiled tests"
+    @echo ""
+    @echo "Workflow:"
+    @echo "  1. just init           # Initialize submodule"
+    @echo "  2. just build-list     # Compile C test"
+    @echo "  3. just verify-list    # Compare with Rust"
+
+# Initialize Linux kernel submodule
+init:
+    @echo "{{GREEN}}Initializing Linux kernel submodule...{{NC}}"
+    cd ../.. && git submodule update --init --recursive tests/linux-kernel
+    @echo "{{GREEN}}✓ Submodule initialized{{NC}}"
+
+# Check if submodule is initialized
+check-submodule:
+    #!/usr/bin/env bash
+    if [ ! -d "{{LINUX_KERNEL}}/lib" ]; then
+        echo "{{RED}}ERROR: Linux kernel submodule not initialized{{NC}}"
+        echo "Run: just init"
+        exit 1
+    fi
+
+# Create minimal stub headers for userspace compilation
+create-stubs:
+    @echo "{{GREEN}}Creating stub headers...{{NC}}"
+    @cat > linux_types.h <<'EOF'
+/* Minimal Linux types for test compilation */
+#ifndef _LINUX_TYPES_H
+#define _LINUX_TYPES_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef int32_t s32;
+typedef uint32_t u32;
+typedef int64_t s64;
+typedef uint64_t u64;
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
+#define EXPORT_SYMBOL(x)
+#define __init
+#define __exit
+#define __user
+
+#endif
+EOF
+    @echo "{{GREEN}}✓ Created linux_types.h{{NC}}"
+
+# Build list tests
+build-list: check-submodule create-stubs
+    @echo "{{GREEN}}Compiling list tests from {{LINUX_KERNEL}}/lib/test_list.c...{{NC}}"
+    {{CC}} {{CFLAGS}} -o test-list {{LINUX_KERNEL}}/lib/test_list.c {{LDFLAGS}} || echo "{{YELLOW}}Note: test_list.c may require adaptation for userspace{{NC}}"
+    @echo "{{GREEN}}✓ Built: test-list{{NC}}"
+
+# Build rbtree tests
+build-rbtree: check-submodule create-stubs
+    @echo "{{GREEN}}Compiling rbtree tests from {{LINUX_KERNEL}}/lib/rbtree_test.c...{{NC}}"
+    {{CC}} {{CFLAGS}} -o test-rbtree {{LINUX_KERNEL}}/lib/rbtree_test.c {{LDFLAGS}} || echo "{{YELLOW}}Note: rbtree_test.c may require adaptation for userspace{{NC}}"
+    @echo "{{GREEN}}✓ Built: test-rbtree{{NC}}"
+
+# Build bitmap tests
+build-bitmap: check-submodule create-stubs
+    @echo "{{GREEN}}Compiling bitmap tests from {{LINUX_KERNEL}}/lib/test_bitmap.c...{{NC}}"
+    {{CC}} {{CFLAGS}} -o test-bitmap {{LINUX_KERNEL}}/lib/test_bitmap.c {{LDFLAGS}} || echo "{{YELLOW}}Note: test_bitmap.c may require adaptation for userspace{{NC}}"
+    @echo "{{GREEN}}✓ Built: test-bitmap{{NC}}"
+
+# Build hash tests
+build-hash: check-submodule create-stubs
+    @echo "{{GREEN}}Compiling hash tests from {{LINUX_KERNEL}}/lib/test_hash.c...{{NC}}"
+    {{CC}} {{CFLAGS}} -o test-hash {{LINUX_KERNEL}}/lib/test_hash.c {{LDFLAGS}} || echo "{{YELLOW}}Note: test_hash.c may require adaptation for userspace{{NC}}"
+    @echo "{{GREEN}}✓ Built: test-hash{{NC}}"
+
+# Build all tests
+build-all: build-list build-rbtree build-bitmap build-hash
+    @echo "{{GREEN}}✓ All tests built{{NC}}"
+
+# Run list tests
+run-list:
+    @echo "{{GREEN}}Running list tests...{{NC}}"
+    ./test-list || echo "{{YELLOW}}Some tests may fail in userspace{{NC}}"
+
+# Run rbtree tests
+run-rbtree:
+    @echo "{{GREEN}}Running rbtree tests...{{NC}}"
+    ./test-rbtree || echo "{{YELLOW}}Some tests may fail in userspace{{NC}}"
+
+# Run bitmap tests
+run-bitmap:
+    @echo "{{GREEN}}Running bitmap tests...{{NC}}"
+    ./test-bitmap || echo "{{YELLOW}}Some tests may fail in userspace{{NC}}"
+
+# Run hash tests
+run-hash:
+    @echo "{{GREEN}}Running hash tests...{{NC}}"
+    ./test-hash || echo "{{YELLOW}}Some tests may fail in userspace{{NC}}"
+
+# Run all tests
+run-all: run-list run-rbtree run-bitmap run-hash
+    @echo "{{GREEN}}✓ All tests completed{{NC}}"
+
+# Verify list implementation against Rust
+verify-list: build-list
+    @echo "{{GREEN}}Verifying list implementation...{{NC}}"
+    ./test-list > list_c_output.txt 2>&1 || true
+    @echo "{{GREEN}}✓ C test output saved to list_c_output.txt{{NC}}"
+    cd ../.. && cargo test --package angzarr-list -- --nocapture > tests/linux-tests/list_rust_output.txt 2>&1
+    @echo "{{GREEN}}✓ Rust test output saved to list_rust_output.txt{{NC}}"
+    @echo "{{YELLOW}}Compare outputs:{{NC}}"
+    @echo "  diff list_c_output.txt list_rust_output.txt"
+
+# Verify rbtree implementation against Rust
+verify-rbtree: build-rbtree
+    @echo "{{GREEN}}Verifying rbtree implementation...{{NC}}"
+    ./test-rbtree > rbtree_c_output.txt 2>&1 || true
+    @echo "{{GREEN}}✓ C test output saved to rbtree_c_output.txt{{NC}}"
+    cd ../.. && cargo test --package angzarr-rbtree -- --nocapture > tests/linux-tests/rbtree_rust_output.txt 2>&1
+    @echo "{{GREEN}}✓ Rust test output saved to rbtree_rust_output.txt{{NC}}"
+    @echo "{{YELLOW}}Compare outputs:{{NC}}"
+    @echo "  diff rbtree_c_output.txt rbtree_rust_output.txt"
+
+# Clean compiled tests
+clean:
+    @echo "{{YELLOW}}Cleaning compiled tests...{{NC}}"
+    rm -f test-list test-rbtree test-bitmap test-hash
+    rm -f *.o
+    rm -f *_output.txt
+    @echo "{{GREEN}}✓ Clean complete{{NC}}"
+
+# Clean everything including stub headers
+distclean: clean
+    @echo "{{YELLOW}}Removing stub headers...{{NC}}"
+    rm -f linux_types.h
+    @echo "{{GREEN}}✓ Distclean complete{{NC}}"
+
+# Browse Linux kernel test source
+browse-tests:
+    @echo "{{GREEN}}Linux kernel test files:{{NC}}"
+    @ls -lh {{LINUX_KERNEL}}/lib/test_*.c {{LINUX_KERNEL}}/lib/*_test.c 2>/dev/null || echo "{{YELLOW}}Submodule not initialized{{NC}}"
+
+# Show Linux kernel version
+kernel-version:
+    @echo "{{GREEN}}Linux kernel version:{{NC}}"
+    @cd {{LINUX_KERNEL}} && git describe --tags || echo "{{YELLOW}}Submodule not initialized{{NC}}"

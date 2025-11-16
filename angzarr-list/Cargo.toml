@@ -13,5 +13,8 @@ static_assertions = { workspace = true }
 [dev-dependencies]
 proptest = { workspace = true }
 
+[build-dependencies]
+cc = "1.0"
+
 [lib]
 crate-type = ["lib"]

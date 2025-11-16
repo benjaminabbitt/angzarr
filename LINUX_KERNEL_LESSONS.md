@@ -1033,6 +1033,298 @@ These aren't new features, but better implementations:
 
 ---
 
+## Decision 8: Build System - `just` Instead of `make`
+
+### Problem: Inconsistent Build Tools
+
+**Linux Approach:**
+- Uses `make` and Makefiles throughout
+- Kbuild system for kernel modules
+- Complex recursive Makefiles
+- Platform-specific syntax variations
+
+**Make Limitations:**
+- Non-obvious syntax (tabs vs spaces matter)
+- Platform portability issues (GNU make vs BSD make)
+- Hard to read and maintain
+- Limited error messages
+
+### Angzarr Decision: Use `just` for All Build Tasks
+
+**Rationale:**
+
+1. **Consistency**: Same tool for kernel, tests, CI, and utilities
+2. **Readability**: Clear, obvious syntax (no tab/space issues)
+3. **Cross-platform**: Works identically on Linux, macOS, Windows
+4. **Better errors**: Clear error messages
+5. **Modern features**: Dotenv support, command-line arguments, dependencies
+
+**Implementation:**
+
+Root `justfile`:
+```just
+# Build entire workspace
+build:
+    cargo build --workspace
+
+# Run all tests
+test:
+    cargo test --workspace
+
+# Check ABI compatibility
+check-abi:
+    cargo test --package angzarr-abi-test
+```
+
+Test-specific `justfile` (tests/linux-tests/justfile):
+```just
+# Build list tests from Linux kernel submodule
+build-list: check-submodule
+    gcc -Wall -o test-list ../linux-kernel/lib/test_list.c
+
+# Verify Rust matches C
+verify-list: build-list
+    ./test-list > list_c_output.txt
+    cargo test --package angzarr-list > list_rust_output.txt
+    diff list_c_output.txt list_rust_output.txt
+```
+
+**Benefits:**
+
+- ✅ **Single tool** for all build tasks
+- ✅ **Easy to learn** - obvious syntax
+- ✅ **Cross-platform** - same commands everywhere
+- ✅ **Composable** - justfiles can call other justfiles
+- ✅ **Built-in features** - colored output, command listing, help text
+
+**Trade-offs:**
+
+- ⚠️ **Not POSIX standard** (but neither is Linux's Kbuild)
+- ⚠️ **Extra dependency** (but Rust ecosystem already uses it)
+- ✅ **Better for Rust projects** - designed for modern builds
+
+**Where Used:**
+
+- `justfile` - Root build commands
+- `tests/linux-tests/justfile` - C test compilation
+- CI pipelines reference justfile recipes
+- Pre-commit hooks use `just` commands
+
+**Documentation:**
+
+- Root `justfile` lists all commands via `just --list`
+- Each justfile has inline comments
+- CI scripts document which `just` commands they run
+
+---
+
+## Decision 9: Direct C Reference Values in Rust Tests
+
+### Problem: Verifying Rust Matches C Behavior
+
+**Challenge:** How to ensure Rust implementations produce **identical** results to Linux C code?
+
+**Naive Approach:** Manually compare outputs
+- ❌ Error-prone
+- ❌ Not deterministic
+- ❌ Requires manual inspection
+- ❌ Can't run automatically in CI
+
+### Angzarr Decision: Compile C Code Into Rust Test Binaries
+
+**Approach:** Use `cc` crate to compile Linux C test code and link it directly into Rust tests.
+
+**Implementation:**
+
+```rust
+// angzarr-list/build.rs
+fn main() {
+    // Compile Linux kernel list test helpers
+    cc::Build::new()
+        .file("../tests/linux-kernel/lib/list_helpers.c")
+        .include("../tests/linux-kernel/include")
+        .compile("list_c_reference");
+}
+```
+
+```rust
+// angzarr-list/src/lib.rs (test module)
+#[cfg(test)]
+mod c_reference {
+    use super::*;
+
+    // Approach 1: Call C functions for behavioral testing
+    extern "C" {
+        fn c_list_add(new: *mut list_head, head: *mut list_head);
+        fn c_list_empty(head: *const list_head) -> bool;
+    }
+
+    // Approach 2: Access C constants/variables directly
+    extern "C" {
+        // Expected values from C test suite
+        static EXPECTED_LIST_SIZE: usize;
+        static EXPECTED_ITERATIONS: i32;
+
+        // C helper that returns expected value
+        fn get_expected_offset() -> usize;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rust_matches_c_behavior() {
+        // C version (expected behavior)
+        let mut c_head = list_head::new();
+        let mut c_entry = list_head::new();
+        unsafe {
+            c_reference::c_list_add(&mut c_entry, &mut c_head);
+        }
+
+        // Rust version (implementation)
+        let mut rust_head = list_head::new();
+        let mut rust_entry = list_head::new();
+        unsafe {
+            list_add(&mut rust_entry, &mut rust_head);
+        }
+
+        // Compare: Rust MUST match C exactly
+        assert_eq!(rust_head.next, c_head.next);
+        assert_eq!(rust_head.prev, c_head.prev);
+        assert_eq!(rust_entry.next, c_entry.next);
+        assert_eq!(rust_entry.prev, c_entry.prev);
+    }
+
+    #[test]
+    fn test_rust_matches_c_constants() {
+        // Access C expected values directly
+        unsafe {
+            // No function calls needed - direct variable access
+            let expected_size = c_reference::EXPECTED_LIST_SIZE;
+            let actual_size = core::mem::size_of::<list_head>();
+            assert_eq!(actual_size, expected_size);
+
+            // Or call C helper function
+            let expected_offset = c_reference::get_expected_offset();
+            let actual_offset = offset_of!(list_head, next);
+            assert_eq!(actual_offset, expected_offset);
+        }
+    }
+}
+```
+
+**Benefits:**
+
+1. **Deterministic**: C code compiled with same compiler, same flags
+2. **Automatic**: Runs in `cargo test` - no manual steps
+3. **Binary-level verification**: Compares actual memory layout
+4. **CI-friendly**: Fails automatically if Rust diverges from C
+5. **No AI involved**: Pure compilation and comparison
+
+**Linux Kernel Submodule:**
+
+```bash
+# In repository root
+git submodule add https://github.com/torvalds/linux.git tests/linux-kernel
+git submodule update --init --recursive
+```
+
+**Build Process:**
+
+1. `build.rs` compiles C helpers from Linux kernel submodule
+2. Links them into Rust test binary
+3. Rust tests call C functions for expected values
+4. Compare Rust implementation against C reference
+5. Tests fail if any difference detected
+
+**Directory Structure:**
+
+```
+tests/
+├── linux-kernel/          # Git submodule: Linux kernel source
+│   ├── lib/
+│   │   ├── test_list.c   # Reference for list tests
+│   │   ├── rbtree_test.c # Reference for rbtree tests
+│   │   └── ...
+│   └── include/linux/
+│       ├── list.h
+│       ├── rbtree.h
+│       └── ...
+└── linux-tests/
+    ├── justfile           # Build C tests for manual verification
+    └── README.md
+```
+
+**Why This Works:**
+
+- **Git submodule** pins specific Linux kernel version
+- **build.rs** compiles C code at build time
+- **FFI** allows Rust to call C functions
+- **Same test binary** contains both C reference and Rust implementation
+- **Direct comparison** in same process, same memory
+
+**Comparison with Alternatives:**
+
+| Approach | Deterministic? | Automated? | CI-Friendly? | Notes |
+|----------|----------------|------------|--------------|-------|
+| Manual comparison | ❌ | ❌ | ❌ | Error-prone |
+| Parse C output | ⚠️ | ⚠️ | ⚠️ | Fragile (depends on format) |
+| AI comparison | ❌ | ❌ | ❌ | Non-deterministic |
+| **Compile C into Rust tests** | ✅ | ✅ | ✅ | **Best approach** |
+
+**Real Example from Angzarr:**
+
+File: `angzarr-list/build.rs`:
+```rust
+use std::path::PathBuf;
+
+fn main() {
+    let linux_kernel = PathBuf::from("../tests/linux-kernel");
+
+    if !linux_kernel.exists() {
+        eprintln!("Warning: Linux kernel submodule not initialized");
+        eprintln!("Run: git submodule update --init");
+        return;
+    }
+
+    // Compile Linux list helpers for reference in tests
+    cc::Build::new()
+        .file(linux_kernel.join("lib/list_sort.c"))
+        .include(linux_kernel.join("include"))
+        .warnings(false) // Linux code has warnings
+        .compile("linux_list_reference");
+
+    println!("cargo:rerun-if-changed=../tests/linux-kernel/lib/list_sort.c");
+}
+```
+
+**Testing Strategy:**
+
+1. **Unit tests**: Compare individual functions (Rust vs C)
+2. **Integration tests**: Compare complex workflows
+3. **Property tests**: Randomized inputs, verify Rust matches C
+4. **ABI tests**: Verify structure sizes and layouts
+
+**Trade-offs:**
+
+- ✅ **Pro**: Absolute certainty that Rust matches C
+- ✅ **Pro**: Fully automated, runs on every `cargo test`
+- ✅ **Pro**: Catches any divergence immediately
+- ⚠️ **Con**: Requires Linux kernel submodule (adds ~500MB)
+- ⚠️ **Con**: Build time slightly longer (compiling C code)
+- ✅ **Acceptable**: Testing is worth the overhead
+
+**Documentation:**
+
+- `.claude.md` - Principle #12: "Test Traceability is King"
+- `LINUX_TEST_MAPPING.md` - Tracks which tests reference C code
+- `tests/linux-tests/README.md` - How to use C test infrastructure
+- Each test documents its C reference source
+
+---
+
 ## References
 
 **Linux Kernel:**
