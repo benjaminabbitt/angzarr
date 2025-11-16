@@ -100,7 +100,8 @@ outdated:
 # Verify ABI compatibility
 check-abi:
     @echo "Checking ABI compatibility..."
-    # TODO: Add ABI compatibility checker
+    cargo test -p angzarr-abi-test
+    @echo "✅ ABI compatibility verified"
 
 # Build kernel module (placeholder)
 build-module:

@@ -1,0 +1,23 @@
+[package]
+name = "angzarr-abi-test"
+version = "0.1.0"
+edition = "2021"
+authors = ["Angzarr Project"]
+license = "GPL-2.0"
+publish = false
+
+[dependencies]
+angzarr-core = { path = "../angzarr-core" }
+angzarr-ffi = { path = "../angzarr-ffi" }
+angzarr-list = { path = "../angzarr-list" }
+angzarr-rbtree = { path = "../angzarr-rbtree" }
+angzarr-sync = { path = "../angzarr-sync" }
+static_assertions = "1.1"
+memoffset = "0.9"
+
+[build-dependencies]
+bindgen = "0.70"
+cc = "1.0"
+
+[dev-dependencies]
+libc = "0.2"

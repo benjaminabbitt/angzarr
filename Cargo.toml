@@ -8,6 +8,7 @@ members = [
     "angzarr-mm",
     "angzarr-ffi",
     "angzarr-test-framework",
+    "angzarr-abi-test",
 ]
 exclude = [
     "angzarr-kernel",  # Kernel binary with custom build configuration
