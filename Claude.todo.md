@@ -9,17 +9,28 @@
 
 ### In Progress
 
-- [ ] **Document naming strategy and dual interface approach**
-  - Create NAMING_STRATEGY.md
-  - Document Linux-compatible vs Angzarr native interfaces
-  - Explain adapter layer naming conventions
+None currently.
 
 ### Pending - High Priority
 
-- [ ] **Update migration strategy**
-  - Add adapter layer to MIGRATION_STRATEGY.md
-  - Update phase completion status
-  - Document lessons learned from Phase 0-1
+- [ ] **Continue TDD for remaining list operations**
+  - Implement list_for_each_entry macros/iterators
+  - Add list_splice operations
+  - Add list_cut_position operations
+  - Translate remaining tests from lib/test_list.c
+
+- [ ] **Expand RBTree with TDD**
+  - Write failing tests for rb_insert, rb_erase
+  - Write failing tests for tree rotations
+  - Implement operations to pass tests
+  - Verify against Linux kernel behavior
+
+- [ ] **Update LINUX_TEST_MAPPING.md**
+  - Mark new list tests as translated and passing
+  - Update coverage percentages
+  - Document next tests to translate
+
+### Pending - Medium Priority
 
 - [ ] **Design async and optionally sync bus for kernel**
   - Research Linux and BSD bus architectures
@@ -27,28 +38,25 @@
   - Ensure binary compatibility with Linux bus APIs
   - Document in new KERNEL_BUS.md file
 
-### Pending - Medium Priority
-
-- [ ] **Commit and push current changes**
-  - Run full CI suite
-  - Verify all tests pass
-  - Commit adapter layer work
-  - Push to branch: claude/kernel-rust-migration-01TGZFhj7kaJn2q5v2jRoWZZ
-
 - [ ] **Implement safe Rust list API**
   - Design owned List<T> for pure Rust code
   - Lifetime tracking and safety guarantees
   - Separate from Linux-compatible intrusive lists
 
-- [ ] **Expand RBTree adapter**
-  - Complete rb_insert, rb_erase functions
-  - Add tree rotation functions
-  - Test with C code
+- [ ] **Update migration strategy**
+  - Add adapter layer to MIGRATION_STRATEGY.md
+  - Update phase completion status
+  - Document lessons learned from Phase 0-1
 
 ### Pending - Lower Priority
 
+- [ ] **Document naming strategy and dual interface approach**
+  - Create NAMING_STRATEGY.md
+  - Document Linux-compatible vs Angzarr native interfaces
+  - Explain adapter layer naming conventions
+
 - [ ] **Create PR documentation**
-  - Summarize adapter layer work
+  - Summarize TDD work
   - Document design decisions
   - Link to relevant documentation
 
@@ -61,7 +69,50 @@
 
 ## Completed Steps (Last 100)
 
-### Session: 2025-11-16 (Current)
+### Session: 2025-11-16 (TDD for List Operations)
+
+1. ✅ **Added 9 failing TDD tests for Linux kernel list operations**
+   - test_list_replace_init (lib/test_list.c:~145)
+   - test_list_move (lib/test_list.c:~160)
+   - test_list_move_tail (lib/test_list.c:~175)
+   - test_list_bulk_move_tail (lib/test_list.c:~190)
+   - test_list_rotate_left (lib/test_list.c:~205)
+   - test_list_rotate_to_front (lib/test_list.c:~220)
+   - test_list_for_each (lib/test_list.c:~235)
+   - test_list_is_first (helper function)
+   - test_list_is_last (helper function)
+   - All tests documented with Linux source traceability
+   - All tests use Linux C data structures (#[repr(C)] ListHead)
+   - All tests expect Linux kernel behavior
+   - Initial compilation: 10 errors (expected)
+
+2. ✅ **Implemented all missing list operations to pass tests**
+   - is_first() method - Check if entry is first in list
+   - is_last() method - Check if entry is last in list
+   - replace_init() method - Replace entry and reinitialize old
+   - list_move() method - Move entry to head of another list
+   - list_move_tail() method - Move entry to tail of another list
+   - rotate_left() method - Rotate list left by one position
+   - rotate_to_front() method - Rotate until entry is first
+   - list_bulk_move_tail() function - Bulk move subsection
+   - All implementations match Linux kernel semantics
+   - All reference Linux source (include/linux/list.h)
+   - All include safety documentation
+
+3. ✅ **Verified all tests pass**
+   - 23/23 tests passing
+   - 9 new linux_kernel_tests (all passing)
+   - 7 c_reference_tests (calling C code, all passing)
+   - 7 existing tests (all passing)
+   - Binary compatibility with Linux kernel verified
+
+4. ✅ **Committed TDD work in two commits**
+   - First commit: Failing tests (TDD red phase)
+   - Second commit: Implementation (TDD green phase)
+   - Pushed to branch: claude/kernel-rust-migration-continued-01TVDfKWb1qpcmiKBhc7NMNK
+   - Tests ensure breakage if C code changes (tight coupling by design)
+
+### Session: 2025-11-16 (Adapter Layer)
 
 1. ✅ **Updated .claude.md with communication guidelines**
    - Added "Skip Flattery" principle
