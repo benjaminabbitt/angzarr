@@ -9,6 +9,9 @@ members = [
     "angzarr-ffi",
     "angzarr-test-framework",
 ]
+exclude = [
+    "angzarr-kernel",  # Kernel binary with custom build configuration
+]
 
 [workspace.package]
 version = "0.1.0"

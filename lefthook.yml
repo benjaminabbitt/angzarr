@@ -1,0 +1,45 @@
+# Lefthook configuration for Angzarr
+# Git hooks manager for automated quality checks
+
+pre-commit:
+  parallel: true
+  commands:
+    format-check:
+      glob: "*.rs"
+      run: cargo fmt --all -- --check
+      fail_text: "Code formatting check failed. Run 'cargo fmt' to fix."
+
+    lint:
+      glob: "*.rs"
+      run: cargo clippy --workspace -- -D warnings
+      fail_text: "Linter found issues. Fix them before committing."
+
+    test:
+      run: cargo test --workspace --lib
+      fail_text: "Tests failed. Fix them before committing."
+
+pre-push:
+  parallel: false
+  commands:
+    full-test:
+      run: cargo test --workspace
+      fail_text: "Full test suite failed."
+
+    build-check:
+      run: cargo build --workspace
+      fail_text: "Build failed."
+
+commit-msg:
+  commands:
+    check-message:
+      run: |
+        if ! head -1 $1 | grep -qE "^(feat|fix|docs|style|refactor|test|chore|perf)(\(.+\))?: .{1,}$"; then
+          echo "Commit message must follow conventional commits format:"
+          echo "  type(scope?): description"
+          echo "  "
+          echo "  Examples:"
+          echo "    feat: add new feature"
+          echo "    fix(list): correct memory leak"
+          echo "    docs: update README"
+          exit 1
+        fi

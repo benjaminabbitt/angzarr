@@ -1,0 +1,20 @@
+[package]
+name = "angzarr-kernel"
+version = "0.1.0"
+edition = "2021"
+authors = ["Angzarr Project"]
+license = "GPL-2.0"
+
+[dependencies]
+angzarr-core = { path = "../angzarr-core" }
+angzarr-ffi = { path = "../angzarr-ffi" }
+angzarr-list = { path = "../angzarr-list" }
+angzarr-sync = { path = "../angzarr-sync" }
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = 3
+
+[profile.dev]
+panic = "abort"

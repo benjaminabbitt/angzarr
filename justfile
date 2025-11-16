@@ -16,6 +16,27 @@ build-release:
 build-kernel:
     cargo build --workspace --profile kernel
 
+# Build bootable kernel binary
+build-kernel-bin:
+    @echo "Building bootable kernel..."
+    cd angzarr-kernel && cargo build --release
+    @echo "Kernel binary: angzarr-kernel/target/x86_64-unknown-none/release/angzarr-kernel"
+
+# Create bootable ISO image
+build-iso: build-kernel-bin
+    @echo "Creating bootable ISO..."
+    ./scripts/build-iso.sh
+
+# Run kernel in QEMU
+run-kernel: build-iso
+    @echo "Running kernel in QEMU..."
+    qemu-system-x86_64 -cdrom angzarr.iso -serial stdio
+
+# Run kernel in QEMU with debug
+debug-kernel: build-iso
+    @echo "Running kernel in QEMU with debugging..."
+    qemu-system-x86_64 -cdrom angzarr.iso -serial stdio -s -S
+
 # Run all unit tests
 test:
     cargo test --workspace
