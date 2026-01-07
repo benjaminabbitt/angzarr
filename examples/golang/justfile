@@ -1,0 +1,72 @@
+# Go FFI Business Logic Example
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Generate protobuf Go code using container (recommended)
+proto:
+    cd "{{TOP}}" && just proto-go
+    mkdir -p business/proto/evented
+    cp -r "{{TOP}}/generated/go/evented/"* business/proto/evented/
+    # Create go.mod for the proto package if needed
+    @if [ ! -f business/proto/evented/go.mod ]; then \
+        echo 'module github.com/benjaminabbitt/evented-rs/examples/golang/business/proto/evented' > business/proto/evented/go.mod; \
+        echo '' >> business/proto/evented/go.mod; \
+        echo 'go 1.21' >> business/proto/evented/go.mod; \
+        echo '' >> business/proto/evented/go.mod; \
+        echo 'require google.golang.org/protobuf v1.36.5' >> business/proto/evented/go.mod; \
+    fi
+    cd business && go mod tidy
+
+# Generate protobuf locally (fallback if no Docker)
+proto-local:
+    #!/usr/bin/env bash
+    cd business
+    mkdir -p proto/evented
+    protoc --go_out=proto --go_opt=paths=source_relative \
+        -I../../../proto \
+        ../../../proto/evented/evented.proto
+    # Move generated file to correct location if needed
+    if [ -f proto/evented/evented/evented.pb.go ]; then
+        mv proto/evented/evented/evented.pb.go proto/evented/
+        rmdir proto/evented/evented
+    fi
+    # Create go.mod for the proto package
+    if [ ! -f proto/evented/go.mod ]; then
+        echo 'module github.com/benjaminabbitt/evented-rs/examples/golang/business/proto/evented' > proto/evented/go.mod
+        echo '' >> proto/evented/go.mod
+        echo 'go 1.21' >> proto/evented/go.mod
+        echo '' >> proto/evented/go.mod
+        echo 'require google.golang.org/protobuf v1.36.5' >> proto/evented/go.mod
+    fi
+    go mod tidy
+
+# Build shared library
+build: proto
+    cd business && go build -buildmode=c-shared -o ../libbusiness.so
+
+# Build using local proto (fallback)
+build-local: proto-local
+    cd business && go build -buildmode=c-shared -o ../libbusiness.so
+
+# Run tests
+test: build
+    cd business && go test -v ./...
+
+# Clean build artifacts
+clean:
+    rm -f libbusiness.so libbusiness.h
+    rm -rf business/proto
+
+# Verify the shared library exports
+verify: build
+    nm -D libbusiness.so | grep -E "Handle|FreeResult"
+
+# Full rebuild using proto container
+rebuild: clean build verify
+
+# Full rebuild using local proto (fallback)
+rebuild-local: clean build-local verify

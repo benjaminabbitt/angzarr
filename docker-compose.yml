@@ -1,0 +1,62 @@
+# Docker Compose for local development
+# Run: docker compose up -d
+#
+# Required environment variables (set in .env file or export):
+#   RABBITMQ_USER - RabbitMQ username
+#   RABBITMQ_PASS - RabbitMQ password
+
+services:
+  evented:
+    build: .
+    ports:
+      - "50051:50051"
+    environment:
+      - RUST_LOG=info
+      - EVENTED_DB_PATH=/app/data/events.db
+      - AMQP_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672
+    volumes:
+      - evented-data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-x", "/usr/local/bin/evented-server"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Redis for future event store implementation
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  evented-data:
+  rabbitmq-data:
+  redis-data:

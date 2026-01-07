@@ -1,0 +1,33 @@
+# Evented Server Configuration Example
+# Copy to config.yaml and customize for your environment
+
+storage:
+  type: sqlite
+  path: ./data/events.db
+
+server:
+  command_handler_port: 1313
+  event_query_port: 1314
+  host: 0.0.0.0
+
+# Business logic services (optional - uses placeholder if empty)
+# business_logic:
+#   - domain: orders
+#     address: localhost:50051
+#   - domain: inventory
+#     address: localhost:50052
+
+# Projector endpoints (optional)
+# projectors:
+#   - name: ui_projector
+#     address: localhost:60001
+#     synchronous: false
+#   - name: reporting
+#     address: localhost:60002
+#     synchronous: true
+
+# Saga endpoints (optional)
+# sagas:
+#   - name: order_saga
+#     address: localhost:70001
+#     synchronous: false

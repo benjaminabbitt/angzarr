@@ -1,0 +1,43 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - tooling
+    - just
+content: |-
+    # Command Runner: just
+
+    - Define all common tasks in justfile
+    - Examples: `just test`, `just lint`, `just run`
+    - Language-agnostic task runner
+    - Use `git rev-parse --show-toplevel` to identify repository root (TOP)
+    - Base all just targets with paths on TOP
+    - Build a just target for commands used 3+ times
+    - Document command purpose, caveats, requirements, prerequisites
+
+    ## Cross-Platform Justfiles
+
+    - Maintain platform-specific files: `justfile.nix`, `justfile.windows`
+    - Use a platform_justfile pattern to import the correct platform file
+    - When editing one platform file, make corresponding changes to the other (when not complex)
+    - Keep platform differences minimal
+content_hash: sha256:e57339d46d3c684a4fadf46c9a52b876387fa8723439de5c5f69191e7b8c2baf
+distilled: |-
+    # just: Command Runner
+
+    - Define common tasks in justfile (e.g., `just test`, `just lint`, `just run`)
+    - Language-agnostic task runner
+    - Use `git rev-parse --show-toplevel` for repo root (TOP)
+    - Base paths on TOP
+    - Create target for commands used 3+ times
+    - Document purpose, caveats, requirements, prerequisites
+
+    ## Cross-Platform
+
+    - Platform files: `justfile.nix`, `justfile.windows`
+    - Use platform_justfile pattern for imports
+    - Sync changes across platform files when simple
+    - Minimize platform differences
+distilled_by: claude-code

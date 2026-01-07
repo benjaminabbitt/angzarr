@@ -1,0 +1,97 @@
+# Example: Evented as sidecar to business logic applications
+# Each application type gets its own pod with evented sidecar
+
+replicaCount: 1
+
+# Evented sidecar image
+image:
+  repository: evented
+  tag: "latest"
+
+# AMQP for event bus (projectors and sagas subscribe here)
+# Set credentials via environment variable or secret
+amqp:
+  enabled: true
+  url: ""  # Set via: --set amqp.url="amqp://user:pass@rabbitmq:5672"
+
+# Storage for event store
+storage:
+  type: sqlite
+  sqlite:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+# Application deployments - each gets evented as sidecar
+applications:
+  # Business logic applications
+  # Pod structure: [business-app] <-> [evented sidecar]
+  # - Business app implements evented.BusinessLogic gRPC service
+  # - Evented sidecar provides BusinessCoordinator + EventQuery
+  # - External clients call evented's BusinessCoordinator
+  # - Evented calls business app to process commands
+  business:
+    - name: discount-service
+      image:
+        repository: discount-business
+        tag: "latest"
+      domain: "discounts"
+      port: 50051
+      type: python
+      python:
+        module: discount_logic
+        path: /app/business
+
+    - name: orders-service
+      image:
+        repository: orders-business
+        tag: "latest"
+      domain: "orders"
+      port: 50051
+      type: go
+      go:
+        library: /app/liborders.so
+
+  # Projector applications
+  # Pod structure: [projector-app] <-> [evented sidecar (query-only)]
+  # - Projector app subscribes to AMQP for events
+  # - Calls evented sidecar's EventQuery for historical events
+  # - Builds and maintains read models
+  projectors:
+    - name: order-summary-projector
+      image:
+        repository: order-projector
+        tag: "latest"
+      topics:
+        - "orders.*"
+        - "discounts.DiscountApplied"
+      type: python
+      python:
+        module: order_summary_projector
+        path: /app/projectors
+
+  # Saga applications
+  # Pod structure: [saga-app] <-> [evented sidecar]
+  # - Saga app subscribes to AMQP for events
+  # - Calls evented sidecar's BusinessCoordinator to issue commands
+  # - Calls evented sidecar's EventQuery for state queries
+  # - Orchestrates multi-aggregate transactions
+  sagas:
+    - name: order-fulfillment
+      image:
+        repository: fulfillment-saga
+        tag: "latest"
+      topics:
+        - "orders.OrderCreated"
+        - "payments.PaymentCompleted"
+        - "payments.PaymentFailed"
+        - "inventory.ItemReserved"
+        - "inventory.ReservationFailed"
+      type: python
+      python:
+        module: fulfillment_saga
+        path: /app/sagas
+
+logging:
+  level: info
+  format: json

@@ -1,0 +1,89 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - documentation
+    - readme
+content: |-
+    Write or update a README.md for this project targeting developers as the primary audience.
+
+    ## Structure (in this order)
+
+    1. **Project Name & One-liner** - What it is in one sentence
+    2. **The Problem** - What pain points does this solve? Why should developers care?
+    3. **The Solution** - How does this tool address those problems?
+    4. **Quick Start** - Minimal steps to get running (install, configure, first command)
+    5. **Usage Examples** - Common use cases with concrete commands
+    6. **Configuration** - Key settings and customization options
+    7. **Development** - How to build, test, and contribute (for contributors)
+
+    ## Do Not
+    - Put in a structure with file system/directory lists.  The user can read that on their own computer.
+    - Be verbose/add low-utility verbiage.
+
+    ## When Updating an Existing README
+
+    - Preserve all existing content unless it conflicts with current functionality
+    - Remove or update sections describing changed or removed features
+    - Maintain the author's voice and style where possible
+    - Add new sections for new functionality
+    - Reorganize to match the structure above if needed
+
+    ## Use Version Control History
+
+    - Review git log and diffs to identify recent changes to the codebase
+    - Look for new features, renamed commands, changed behavior
+    - Pay special attention to small README diffs - these are often human edits with important context or corrections
+    - Large README rewrites may be generated; small tweaks are likely intentional refinements
+    - Check commit messages for context on why changes were made
+
+    ## Guidelines
+
+    - Lead with value: problems solved and benefits before technical details
+    - Be concise: developers skim READMEs, use bullets and code blocks
+    - Show, don't tell: prefer examples over descriptions
+    - Keep development/build instructions at the end - most users don't need them
+    - Include a "Why this tool?" section if similar tools exist
+    - Avoid marketing language; be direct and technical
+content_hash: sha256:39309db32877e5ad44ee81fea0ffd1abdc2004eda859b6dd11ccc99b253dce57
+distilled: |-
+    # write-readme
+
+    Write/update README.md for developers.
+
+    ## Structure
+    1. **Name & One-liner** - What it is
+    2. **Problem** - Pain points solved
+    3. **Solution** - How it addresses them
+    4. **Quick Start** - Install, configure, first command
+    5. **Usage Examples** - Common commands
+    6. **Configuration** - Key settings
+    7. **Development** - Build, test, contribute (at end)
+
+    ## Don't
+    - Include filesystem/directory listings
+    - Be verbose
+
+    ## Updating Existing README
+    - Preserve content unless outdated
+    - Update/remove changed features
+    - Keep author's voice
+    - Add new sections as needed
+    - Reorganize to match structure
+
+    ## Use Git History
+    - Check git log/diffs for recent changes
+    - Small README diffs = intentional human edits (important)
+    - Large rewrites = likely generated
+    - Review commit messages for context
+
+    ## Guidelines
+    - Lead w/ value (problems/benefits first)
+    - Be concise (bullets, code blocks)
+    - Show don't tell (examples > descriptions)
+    - Dev instructions at end
+    - Add "Why this tool?" if alternatives exist
+    - No marketing speak; be direct
+distilled_by: claude-code

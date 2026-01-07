@@ -1,0 +1,432 @@
+{{- /* Generate deployments for each application type with evented as sidecar */}}
+
+{{- /* Business logic deployments */}}
+{{- range .Values.applications.business }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "evented.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "evented.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: business
+    evented.io/domain: {{ .domain }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "evented.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: business
+      evented.io/app: {{ .name }}
+  template:
+    metadata:
+      {{- with $.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "evented.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: business
+        evented.io/app: {{ .name }}
+        evented.io/domain: {{ .domain }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "evented.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Main container: Business logic application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: grpc
+              containerPort: {{ .port }}
+              protocol: TCP
+          env:
+            - name: GRPC_PORT
+              value: "{{ .port }}"
+            - name: DOMAIN
+              value: {{ .domain | quote }}
+            # Evented sidecar endpoints
+            - name: EVENTED_COMMAND_HOST
+              value: "localhost"
+            - name: EVENTED_COMMAND_PORT
+              value: "{{ $.Values.service.commandPort }}"
+            - name: EVENTED_QUERY_HOST
+              value: "localhost"
+            - name: EVENTED_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            {{- if eq .type "python" }}
+            - name: BUSINESS_LOGIC_TYPE
+              value: "python"
+            - name: PYTHON_MODULE
+              value: {{ .python.module | quote }}
+            - name: PYTHON_PATH
+              value: {{ .python.path | quote }}
+            {{- end }}
+            {{- if eq .type "go" }}
+            - name: BUSINESS_LOGIC_TYPE
+              value: "go"
+            - name: GO_LIBRARY
+              value: {{ .go.library | quote }}
+            {{- end }}
+            - name: RUST_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+
+        # Sidecar: Evented event sourcing infrastructure
+        - name: evented
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: command
+              containerPort: {{ $.Values.service.commandPort }}
+              protocol: TCP
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: {{ $.Values.logging.level }}
+            - name: DOMAIN
+              value: {{ .domain | quote }}
+            # Business logic endpoint (evented calls this)
+            - name: BUSINESS_LOGIC_ADDRESS
+              value: "localhost:{{ .port }}"
+            {{- if eq $.Values.storage.type "sqlite" }}
+            - name: EVENTED_DB_PATH
+              value: /app/data/events.db
+            {{- end }}
+            {{- if eq $.Values.storage.type "redis" }}
+            - name: REDIS_HOST
+              value: {{ $.Values.storage.redis.host }}
+            - name: REDIS_PORT
+              value: "{{ $.Values.storage.redis.port }}"
+            {{- end }}
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml $.Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $.Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "evented.fullname" $ }}-{{ .name }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Projector deployments */}}
+{{- range .Values.applications.projectors }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "evented.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "evented.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: projector
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "evented.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: projector
+      evented.io/app: {{ .name }}
+  template:
+    metadata:
+      {{- with $.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "evented.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: projector
+        evented.io/app: {{ .name }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "evented.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Main container: Projector application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          env:
+            # Evented sidecar endpoints
+            - name: EVENTED_QUERY_HOST
+              value: "localhost"
+            - name: EVENTED_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # AMQP for event subscription
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url | quote }}
+            {{- end }}
+            - name: EVENT_TOPICS
+              value: {{ .topics | join "," | quote }}
+            {{- if eq .type "python" }}
+            - name: PROJECTOR_TYPE
+              value: "python"
+            - name: PYTHON_MODULE
+              value: {{ .python.module | quote }}
+            - name: PYTHON_PATH
+              value: {{ .python.path | quote }}
+            {{- end }}
+            {{- if eq .type "go" }}
+            - name: PROJECTOR_TYPE
+              value: "go"
+            - name: GO_LIBRARY
+              value: {{ .go.library | quote }}
+            {{- end }}
+            - name: RUST_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+
+        # Sidecar: Evented event query service
+        - name: evented
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: {{ $.Values.logging.level }}
+            - name: MODE
+              value: "query-only"
+            {{- if eq $.Values.storage.type "sqlite" }}
+            - name: EVENTED_DB_PATH
+              value: /app/data/events.db
+            {{- end }}
+            {{- if eq $.Values.storage.type "redis" }}
+            - name: REDIS_HOST
+              value: {{ $.Values.storage.redis.host }}
+            - name: REDIS_PORT
+              value: "{{ $.Values.storage.redis.port }}"
+            {{- end }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+              readOnly: true
+      volumes:
+        - name: data
+          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "evented.fullname" $ }}-shared-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Saga deployments */}}
+{{- range .Values.applications.sagas }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "evented.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "evented.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: saga
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "evented.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: saga
+      evented.io/app: {{ .name }}
+  template:
+    metadata:
+      {{- with $.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "evented.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: saga
+        evented.io/app: {{ .name }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "evented.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Main container: Saga application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          env:
+            # Evented sidecar endpoints
+            - name: EVENTED_COMMAND_HOST
+              value: "localhost"
+            - name: EVENTED_COMMAND_PORT
+              value: "{{ $.Values.service.commandPort }}"
+            - name: EVENTED_QUERY_HOST
+              value: "localhost"
+            - name: EVENTED_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # AMQP for event subscription
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url | quote }}
+            {{- end }}
+            - name: EVENT_TOPICS
+              value: {{ .topics | join "," | quote }}
+            {{- if eq .type "python" }}
+            - name: SAGA_TYPE
+              value: "python"
+            - name: PYTHON_MODULE
+              value: {{ .python.module | quote }}
+            - name: PYTHON_PATH
+              value: {{ .python.path | quote }}
+            {{- end }}
+            {{- if eq .type "go" }}
+            - name: SAGA_TYPE
+              value: "go"
+            - name: GO_LIBRARY
+              value: {{ .go.library | quote }}
+            {{- end }}
+            - name: RUST_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+
+        # Sidecar: Evented command + query services
+        - name: evented
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: command
+              containerPort: {{ $.Values.service.commandPort }}
+              protocol: TCP
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: {{ $.Values.logging.level }}
+            {{- if eq $.Values.storage.type "sqlite" }}
+            - name: EVENTED_DB_PATH
+              value: /app/data/events.db
+            {{- end }}
+            {{- if eq $.Values.storage.type "redis" }}
+            - name: REDIS_HOST
+              value: {{ $.Values.storage.redis.host }}
+            - name: REDIS_PORT
+              value: "{{ $.Values.storage.redis.port }}"
+            {{- end }}
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml $.Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $.Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "evented.fullname" $ }}-shared-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

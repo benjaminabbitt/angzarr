@@ -1,0 +1,18 @@
+apiVersion: v2
+name: evented
+description: CQRS/ES framework - Rust implementation
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - cqrs
+  - event-sourcing
+  - rust
+  - grpc
+maintainers:
+  - name: Benjamin Abbitt
+dependencies:
+  - name: rabbitmq
+    version: "15.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: rabbitmq.enabled

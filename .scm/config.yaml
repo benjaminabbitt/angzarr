@@ -1,0 +1,88 @@
+lm:
+  plugins:
+    claude-code:
+      default: true
+
+editor:
+  command: nano
+
+generators:
+  simple:
+    description: Wrapper that runs any command and outputs as fragment
+    command: scm-gen-simple
+  git:
+    description: Provides git repository context (branch, status, recent commits)
+    command: scm-gen-git
+
+profiles:
+  base:
+    description: Core context for all AI interactions
+    fragments:
+      - general/communication
+      - general/security
+      - general/code-quality
+      - patterns/12-factor/12-factor
+      - general/documentation
+      - general/problem-solving
+      - general/pushback
+
+  tooling:
+    description: Common tooling for AI's use
+    fragments:
+      - tools/cli/git/git
+      - tools/cli/ast-grep/ast-grep
+      - tools/cli/just/just
+
+
+  developer:
+    default: true
+    description: Full development context with all standards and practices
+    parents:
+      - base
+      - tooling
+      - prototype
+    fragments:
+      - general/tdd
+
+  go-developer:
+    description: Go development context
+    parents:
+      - developer
+    tags:
+      - golang
+
+  python-developer:
+    description: Python development context
+    parents:
+      - developer
+    tags:
+      - python
+
+  rust-developer:
+    description: Rust development context
+    parents:
+      - developer
+      - prototype
+    tags:
+      - rust
+    default: true
+
+  typescript-developer:
+    description: TypeScript development context
+    parents:
+      - developer
+    tags:
+      - typescript
+
+  reviewer:
+    description: Code review with all perspectives
+    parents:
+      - base
+    tags:
+      - review
+
+  prototype:
+    description: Prototype mode - no backwards compatibility
+    fragments:
+      - patterns/prototype
+      - general/reductive

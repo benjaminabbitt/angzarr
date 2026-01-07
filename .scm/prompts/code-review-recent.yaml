@@ -1,0 +1,65 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - review
+    - code
+    - git
+content: |-
+    # Code Review - Recent Changes
+
+    Review all changes since the last commit.
+
+    ## Step 1: Examine Changes
+
+    Run `git diff HEAD~1` to see what changed (or `git diff --staged` for uncommitted changes).
+
+    ## Step 2: Apply Review Perspectives
+
+    - **Architecture** - Structure, boundaries, testability, technical debt
+    - **Performance** - Algorithms, data structures, complexity, efficiency
+    - **Standards** - Readability, naming, documentation, canonical patterns
+    - **Concurrency** - Thread safety, race conditions, synchronization (if applicable)
+    - **Domain** - Business logic correctness, domain model accuracy (if applicable)
+
+    ## Step 3: Report Findings
+
+    ### Summary
+    What do these changes accomplish?
+
+    ### Critical Issues
+    Must fix before merging.
+
+    ### Medium Issues
+    Should address but doesn't block.
+
+    ### Minor Issues
+    Style and small improvements.
+
+    ### Positive Observations
+    Good patterns worth noting.
+content_hash: sha256:31155d953aff0925e33805eb1f02c563d6f90d76b6a6cf120cb7fd7398fab21a
+distilled: |-
+    # Code Review - Recent Changes
+
+    Review changes since last commit.
+
+    ## Step 1: Examine Changes
+    Run `git diff HEAD~1` (or `git diff --staged` for uncommitted).
+
+    ## Step 2: Review Perspectives
+    - **Architecture** - Structure, boundaries, testability, tech debt
+    - **Performance** - Algorithms, data structures, complexity
+    - **Standards** - Readability, naming, docs, patterns
+    - **Concurrency** - Thread safety, races, sync (if applicable)
+    - **Domain** - Business logic, domain model (if applicable)
+
+    ## Step 3: Report
+    - **Summary** - What changes accomplish
+    - **Critical** - Must fix before merge
+    - **Medium** - Should address, non-blocking
+    - **Minor** - Style, small improvements
+    - **Positive** - Good patterns worth noting
+distilled_by: claude-code

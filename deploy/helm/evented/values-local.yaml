@@ -1,0 +1,47 @@
+# Local development values
+
+replicaCount: 1
+
+image:
+  repository: evented
+  pullPolicy: Never  # Use local images (minikube/kind)
+  tag: "latest"
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+storage:
+  type: sqlite
+  sqlite:
+    persistence:
+      enabled: true
+      size: 1Gi
+
+amqp:
+  enabled: true
+  url: ""  # Set via: --set amqp.url="amqp://user:pass@rabbitmq:5672"
+
+rabbitmq:
+  enabled: true
+  auth:
+    # Set via: --set rabbitmq.auth.username=xxx --set rabbitmq.auth.password=xxx
+    username: ""
+    password: ""
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+logging:
+  level: debug
+  format: text

@@ -1,0 +1,83 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - review
+    - profile
+    - concurrency
+content: |-
+    # Concurrency Specialist Review
+
+    Review code for thread safety and concurrent execution issues.
+
+    ## Race Conditions
+
+    - Are shared resources properly protected?
+    - Can concurrent access cause data corruption?
+    - Are check-then-act sequences atomic?
+
+    ## Thread Safety
+
+    - Are data structures thread-safe or properly synchronized?
+    - Is mutable state shared between threads?
+    - Are thread-local alternatives considered?
+
+    ## Synchronization
+
+    - Is locking granularity appropriate?
+    - Are locks held for minimal duration?
+    - Is lock ordering consistent to prevent deadlocks?
+
+    ## Deadlock Prevention
+
+    - Can circular wait conditions occur?
+    - Are nested locks acquired in consistent order?
+    - Are timeouts used where appropriate?
+
+    ## Atomic Operations
+
+    - Are compound operations atomic when needed?
+    - Are atomic primitives used correctly?
+    - Is memory ordering considered (for low-level code)?
+
+    ## Resource Management
+
+    - Are resources properly released in concurrent contexts?
+    - Can resource exhaustion occur under load?
+    - Are connection pools sized appropriately?
+content_hash: sha256:b13c6d5de2b2d1a5a448362f6e405c56db4ee5711abbd87747ac2f08bab10e03
+distilled: |-
+    # Concurrency Review
+
+    ## Race Conditions
+    - Shared resources protected?
+    - Concurrent access → data corruption?
+    - Check-then-act atomic?
+
+    ## Thread Safety
+    - Data structures thread-safe/synchronized?
+    - Mutable state shared?
+    - Thread-local alternatives?
+
+    ## Synchronization
+    - Lock granularity appropriate?
+    - Locks held minimally?
+    - Lock ordering consistent (deadlock prevention)?
+
+    ## Deadlock Prevention
+    - Circular wait possible?
+    - Nested locks ordered consistently?
+    - Timeouts used?
+
+    ## Atomic Operations
+    - Compound ops atomic when needed?
+    - Atomic primitives correct?
+    - Memory ordering considered?
+
+    ## Resource Management
+    - Resources released in concurrent contexts?
+    - Resource exhaustion under load?
+    - Connection pools sized properly?
+distilled_by: claude-code

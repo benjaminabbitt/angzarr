@@ -1,0 +1,169 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - pattern
+    - architecture
+    - event-sourcing
+content: |-
+    # Event Sourcing
+
+    Store state as a sequence of immutable events rather than current state.
+
+    ## Core Principles
+
+    - **Events are facts**: Immutable records of what happened, never modified or deleted
+    - **State is derived**: Current state reconstructed by replaying events **Important**: Events must carry minimally sufficient information to reconstruct state
+    - **Append-only**: Event store only supports append operations
+    - **Temporal queries**: Can reconstruct state at any point in time
+
+    ## Event Design
+
+    - Name events in past tense: `OrderPlaced`, `PaymentReceived`, `ItemShipped`
+    - Events are immutable — never update or delete
+    - Include all data needed to understand what happened and *only* that information.  If more information is explicitly instructed to be included, document that as a comment.
+    - Version events when schema evolves
+    - Keep events small and focused on single facts
+
+    ## Event Structure
+
+    ```
+    Event:
+      - id: Unique identifier
+      - type: Event name (e.g., "OrderPlaced")
+      - aggregateId: Entity this event belongs to
+      - version: Sequence number for ordering
+      - timestamp: When the event occurred
+      - data: Event-specific payload
+      - metadata: Correlation IDs, user context, etc.
+    ```
+
+    ## Aggregates
+
+    - Aggregates are the consistency boundary
+    - Load aggregate by replaying its events
+    - Aggregate decides which events to emit
+    - One aggregate = one event stream
+
+    ## Event Store Requirements
+
+    - Append-only writes
+    - Read events by aggregate ID
+    - Read events by position (for projections)
+    - Optimistic concurrency via version numbers
+    - Guarantee ordering within a stream
+
+    ## Projections (Read Models)
+
+    - Build read-optimized views from events
+    - Can be rebuilt from scratch at any time
+    - Multiple projections from same events
+    - Async updates = eventual consistency
+
+    ## Snapshots
+
+    - Periodically store aggregate state to speed up loading
+    - Load from snapshot, then replay only newer events
+    - Snapshots are optimization, not source of truth
+    - Invalidate/rebuild when aggregate logic changes
+
+    ## When to Use Event Sourcing
+
+    - Full audit trail required
+    - Need to understand how state evolved
+    - Complex domain with rich business events
+    - Temporal queries ("state as of date X")
+    - Integration via event-driven architecture
+
+    ## When NOT to Use Event Sourcing
+
+    - Simple CRUD with no audit requirements
+    - High-frequency updates to same entity
+    - Team unfamiliar with pattern
+    - No clear business events to model
+
+    ## Common Pitfalls
+
+    - **Large events**: Keep events focused, split if needed
+    - **Event versioning**: Plan for schema evolution upfront
+    - **Unbounded streams**: Consider snapshotting for long-lived aggregates
+    - **Mixing concerns**: Events record facts, not commands or intentions
+    - **Eventual consistency**: UI must handle stale reads gracefully
+
+    ## Testing
+
+    - Given events → When command → Then new events
+    - Test projections: Given events → Assert read model state
+    - Test event upcasting for version migrations
+content_hash: sha256:19131ab83c0f5a012846cab6c5286a4677b4210c294ba74eeadd229ea908d275
+distilled: |-
+    # Event Sourcing
+
+    Store state as immutable event sequence, not current state.
+
+    ## Core Principles
+    - Events = immutable facts, never modified/deleted
+    - State derived by replaying events
+    - Events carry minimally sufficient info for state reconstruction
+    - Append-only store
+    - Temporal queries possible
+
+    ## Event Design
+    - Past tense names: `OrderPlaced`, `PaymentReceived`
+    - Immutable, never update/delete
+    - Include only necessary data; document if explicitly adding more
+    - Version on schema evolution
+    - Small, single-fact focused
+
+    ## Event Structure
+    - id, type, aggregateId, version, timestamp, data, metadata
+
+    ## Aggregates
+    - Consistency boundary
+    - Load by replaying events
+    - Decides which events to emit
+    - One aggregate = one stream
+
+    ## Event Store Requirements
+    - Append-only, read by aggregateId/position
+    - Optimistic concurrency via versions
+    - Guaranteed ordering per stream
+
+    ## Projections
+    - Read-optimized views from events
+    - Rebuildable anytime
+    - Multiple projections possible
+    - Async = eventual consistency
+
+    ## Snapshots
+    - Periodic state cache for faster loading
+    - Optimization only, not source of truth
+    - Rebuild when aggregate logic changes
+
+    ## When to Use
+    - Audit trail required
+    - State evolution tracking needed
+    - Rich business events
+    - Temporal queries
+    - Event-driven integration
+
+    ## When NOT to Use
+    - Simple CRUD, no audit needs
+    - High-frequency same-entity updates
+    - Unfamiliar team
+    - No clear business events
+
+    ## Pitfalls
+    - Large events → split
+    - Plan event versioning upfront
+    - Snapshot long-lived aggregates
+    - Events = facts, not commands
+    - Handle eventual consistency in UI
+
+    ## Testing
+    - Given events → command → assert new events
+    - Given events → assert projection state
+    - Test event upcasting for migrations
+distilled_by: claude-code

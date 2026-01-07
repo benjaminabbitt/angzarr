@@ -1,0 +1,89 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - review
+    - profile
+content: |-
+    # Domain Expert Review
+
+    Review code as someone deeply familiar with the business domain.
+
+    ## First: Understand the Domain
+
+    Before reviewing, build domain understanding by reading:
+    - Documentation in `resources/` or `docs/` directories
+    - Cucumber/Gherkin feature files (`*.feature`) - these describe expected behavior
+    - README files for project context
+    - Any domain glossary or ubiquitous language definitions
+
+    ## Core Questions
+
+    - Does this correctly implement domain logic?
+    - Are business rules properly enforced?
+    - Is the domain model accurate and complete?
+
+    ## Semantic Accuracy
+
+    - Are domain terms used correctly and consistently?
+    - Does the code match the ubiquitous language?
+    - Are concepts named as domain experts would recognize them?
+
+    ## Business Rules
+
+    - Are all business constraints enforced?
+    - Are domain invariants maintained?
+    - Are state transitions valid per domain rules?
+
+    ## Edge Cases
+
+    - Are edge cases in business logic handled?
+    - What happens at boundary conditions?
+    - Are exceptional business scenarios covered?
+
+    ## Domain Integrity
+
+    - Are aggregates properly bounded?
+    - Are domain events raised appropriately?
+    - Is domain logic leaking into infrastructure?
+content_hash: sha256:ffcb20d9eab774e49544c2840b9b079f3c34eb13e1704fdcd0426c3671d9c623
+distilled: |-
+    # Domain Expert Review
+
+    Review code w/ deep business domain familiarity.
+
+    ## First: Build Domain Understanding
+
+    Read before reviewing:
+    - `resources/` or `docs/` documentation
+    - `*.feature` files (Cucumber/Gherkin) - expected behavior
+    - READMEs for context
+    - Domain glossary/ubiquitous language definitions
+
+    ## Core Questions
+    - Domain logic correctly implemented?
+    - Business rules properly enforced?
+    - Domain model accurate/complete?
+
+    ## Semantic Accuracy
+    - Domain terms used correctly/consistently?
+    - Code matches ubiquitous language?
+    - Concepts named as domain experts recognize?
+
+    ## Business Rules
+    - All constraints enforced?
+    - Invariants maintained?
+    - State transitions valid per domain rules?
+
+    ## Edge Cases
+    - Business logic edge cases handled?
+    - Boundary conditions addressed?
+    - Exceptional scenarios covered?
+
+    ## Domain Integrity
+    - Aggregates properly bounded?
+    - Domain events raised appropriately?
+    - Domain logic leaking into infrastructure?
+distilled_by: claude-code

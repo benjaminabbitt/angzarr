@@ -1,0 +1,87 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - git
+    - workflow
+content: |-
+    # Git Practices
+
+    ## Branching Workflow
+
+    - Create a new branch with a short descriptive name before making code changes
+    - All changes related to a conversation/task should occur within that branch
+
+    ## General
+
+    - **Use `git log`** - View commit history to understand context and recent changes
+    - **File removal:** Use `git rm` to remove files, not `rm`
+
+    ## Commit Messages
+
+    - Keep commit messages straightforward and to the point
+    - Only describe the code changes made
+    - Do not include extraneous details or meta-commentary
+    - **NEVER mention Claude, Anthropic, AI, or "Generated with" in commit messages**
+    - Commit messages describe code changes only, not the tools used
+
+    ## Breaking Changes
+
+    - **Version <1.0:** No backwards compatibility required. Clean up deprecated code immediately.
+    - **New major versions:** No backwards compatibility required. Remove deprecated APIs.
+    - **Post-1.0 minor/patch:** Discuss breaking changes before implementing
+
+    ## Git Hooks: lefthook
+
+    - Configure in `lefthook.yml`
+    - Run linting, formatting, tests on pre-commit
+    - Language-agnostic, fast parallel execution
+
+    ## Pre-commit Checklist
+
+    Before committing:
+    - Run linters (ruff, clippy, golangci-lint)
+    - Run formatters (ruff format, cargo fmt, gofmt)
+    - Run tests
+    - Fix all issues before committing - do not commit broken code
+    - Fix pre-commit errors automatically without asking
+
+    ## Bypassing Hooks
+
+    - Bypass only for WIP on feature branches
+    - Document bypass with `--no-verify` and reasoning
+content_hash: sha256:1f0e101e8c80690717bf32fe61e1b045707df4c63ca815f043659caff04082fd
+distilled: |-
+    # Git Practices
+
+    ## Branching
+    - Create short descriptive branch before changes
+    - Keep related changes in single branch
+
+    ## General
+    - Use `git log` for context/history
+    - Use `git rm` not `rm` for file removal
+
+    ## Commits
+    - Keep messages brief, describe only code changes
+    - **NEVER mention Claude, Anthropic, AI, or "Generated with"**
+
+    ## Breaking Changes
+    - Pre-1.0/new major: no backwards compat needed, clean up deprecated code
+    - Post-1.0 minor/patch: discuss first
+
+    ## Hooks (lefthook)
+    - Config: `lefthook.yml`
+    - Pre-commit: lint, format, test (parallel)
+
+    ## Pre-commit
+    - Run linters/formatters/tests
+    - Fix all issues before commit
+    - Auto-fix pre-commit errors without asking
+
+    ## Bypass
+    - Only for WIP on feature branches
+    - Document with `--no-verify` + reason
+distilled_by: claude-code

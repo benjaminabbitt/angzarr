@@ -1,0 +1,65 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - workflow
+    - debugging
+content: |-
+    # Workarounds and Problem Solving
+
+    **Core Principle:** Find the root cause before figuring out a solution. Fix problems at their source.
+
+    ## When Encountering Failing Functionality
+
+    1. **Find the root cause first** - Do not create workarounds without asking. Always investigate and identify the actual source of the problem.
+
+    2. **Ask before applying complex fixes to simple problems** - If a simple problem seems to require a complex solution, stop and ask questions first.
+
+    3. **Prompt for guidance** with options:
+       - Fix properly (estimate effort)
+       - Create workaround (document trade-offs)
+       - Disable test temporarily (document why)
+       - Alternative approaches
+
+    4. **Perform cost/benefit analysis:**
+       - Pros and cons of each option
+       - Technical debt implications
+       - Impact on maintainability
+       - Time investment required
+
+    5. **Document decision:** Whatever path chosen, document reasoning
+
+    ## Questions When Encountering Problems
+
+    - Should I fix this properly or create a workaround?
+    - What are the pros/cons of each approach?
+    - What's the technical debt impact?
+    - Should this test be disabled temporarily?
+    - Are there alternative approaches?
+content_hash: sha256:e946577f469e94974ca6a17072bb7e8c899f4ba247bb56b9a1e610cccb024417
+distilled: |-
+    # Workarounds & Problem Solving
+
+    **Core:** Find root cause before solving. Fix at source.
+
+    ## When Functionality Fails
+
+    1. **Root cause first** - No workarounds without asking
+    2. **Simple problem needing complex fix?** - Stop, ask questions
+    3. **Prompt with options:**
+       - Fix properly (effort estimate)
+       - Workaround (document trade-offs)
+       - Disable test temporarily (document why)
+       - Alternatives
+    4. **Cost/benefit:** pros/cons, tech debt, maintainability, time
+    5. **Document** reasoning for chosen path
+
+    ## Questions to Ask
+    - Fix properly vs workaround?
+    - Pros/cons of each?
+    - Tech debt impact?
+    - Disable test temporarily?
+    - Alternative approaches?
+distilled_by: claude-code

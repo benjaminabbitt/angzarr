@@ -1,0 +1,54 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - security
+    - code
+content: |-
+    # Security
+
+    ## Core Principles
+
+    - Never commit secrets (use environment variables)
+    - Validate all external input
+    - Use parameterized queries for databases
+    - Keep dependencies updated
+    - Follow principle of least privilege
+
+    ## Security Review Checklist
+
+    - Input validation present and correct?
+    - Path traversal vulnerabilities?
+    - Injection risks (SQL, command, XSS)?
+    - TOCTOU (time-of-check-time-of-use) issues?
+    - Privilege escalation paths?
+    - Authentication/authorization correct?
+    - Secrets properly managed?
+    - Cryptography used correctly?
+    - Sensitive data exposure?
+    - Dependencies scanned for vulnerabilities?
+content_hash: sha256:71779ee63adf131e4c0424e0be090bd669f332119f9b84fec18f96dbc62a56c9
+distilled: |-
+    # Security
+
+    ## Core Principles
+    - No secrets in commits (use env vars)
+    - Validate external input
+    - Parameterized DB queries
+    - Update dependencies
+    - Least privilege
+
+    ## Review Checklist
+    - Input validation
+    - Path traversal
+    - Injection (SQL/cmd/XSS)
+    - TOCTOU issues
+    - Privilege escalation
+    - Auth/authz correct
+    - Secrets managed
+    - Crypto correct
+    - Data exposure
+    - Dependency vulns
+distilled_by: claude-code

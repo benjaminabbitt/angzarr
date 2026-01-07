@@ -1,0 +1,20 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - tooling
+    - devcontainer
+content: |-
+    # Dev Containers
+
+    - Maintain .devcontainer configuration
+    - Ensures consistent development environment
+    - Includes all required tools and dependencies
+    - Documents system-level requirements
+    - Enables reproducible builds
+content_hash: sha256:eae6e1c99180c400ffbf4cb689c8cd8b766b46f45890af58cebc8eee9296c75c
+distilled: |-
+    Dev Containers: Maintain .devcontainer config for consistent dev env w/ required tools, deps, system reqs. Enables reproducible builds.
+distilled_by: claude-code

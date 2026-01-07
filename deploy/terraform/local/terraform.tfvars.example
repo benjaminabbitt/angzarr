@@ -1,0 +1,76 @@
+# Local development configuration
+# Evented runs as a sidecar to your business logic applications
+
+# Kubernetes configuration
+kubeconfig_path    = "~/.kube/config"
+kubeconfig_context = "minikube"  # or "kind-kind", "docker-desktop"
+namespace          = "evented"
+
+# Evented sidecar image
+evented_image_repository = "evented"
+evented_image_tag        = "latest"
+
+# Replicas per application
+replicas  = 1
+log_level = "debug"
+
+# Storage
+storage_type = "sqlite"
+enable_redis = false
+
+# RabbitMQ for event bus
+enable_rabbitmq   = true
+rabbitmq_user     = ""  # Required: set in terraform.tfvars (not committed)
+rabbitmq_password = ""  # Required: set in terraform.tfvars (not committed)
+
+# Business logic applications (evented as sidecar)
+# business_applications = [
+#   {
+#     name   = "discount-service"
+#     domain = "discounts"
+#     port   = 50051
+#     image = {
+#       repository = "discount-business"
+#       tag        = "latest"
+#     }
+#     type = "python"
+#     python = {
+#       module = "discount_logic"
+#       path   = "/app/business"
+#     }
+#   }
+# ]
+
+# Projector applications (evented as sidecar)
+# projector_applications = [
+#   {
+#     name   = "order-projector"
+#     topics = ["orders.*", "discounts.*"]
+#     image = {
+#       repository = "order-projector"
+#       tag        = "latest"
+#     }
+#     type = "python"
+#     python = {
+#       module = "order_projector"
+#       path   = "/app/projectors"
+#     }
+#   }
+# ]
+
+# Saga applications (evented as sidecar)
+# saga_applications = [
+#   {
+#     name   = "order-fulfillment"
+#     topics = ["orders.OrderCreated", "payments.*"]
+#     image = {
+#       repository = "fulfillment-saga"
+#       tag        = "latest"
+#     }
+#     type = "python"
+#     python = {
+#       module = "fulfillment_saga"
+#       path   = "/app/sagas"
+#     }
+#   }
+# ]

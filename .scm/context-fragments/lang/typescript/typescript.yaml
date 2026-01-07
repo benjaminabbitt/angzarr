@@ -1,0 +1,162 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - typescript
+    - language
+content: |-
+    # TypeScript Development
+
+    ## Environment & Tooling
+
+    - **TypeScript Version**: Specify in tsconfig.json, use strict mode
+    - **Package Manager**: npm, pnpm, or yarn
+    - **Testing Framework**: vitest or jest
+    - **Code Quality**: ESLint + Prettier, typescript-eslint
+    - **Build**: tsc, esbuild, or swc
+
+    ## Strict Mode Configuration
+
+    Enable strict mode in tsconfig.json — non-negotiable:
+
+    ```json
+    {
+      "compilerOptions": {
+        "strict": true,
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+        "noUncheckedIndexedAccess": true
+      }
+    }
+    ```
+
+    ## Naming Conventions
+
+    - **Classes, interfaces, types, enums**: PascalCase (`UserService`, `ApiResponse`)
+    - **Functions, variables, parameters**: camelCase (`getUserById`, `isActive`)
+    - **Files**: lowercase with hyphens (`user-service.ts`, `api-client.ts`)
+    - **Test files**: co-located with `.test.ts` suffix (`user-service.test.ts`)
+    - **Constants**: CONSTANT_CASE for true globals only
+    - **Abbreviations**: Treat as words (`loadHttpUrl`, not `loadHTTPURL`)
+
+    ## Type Safety
+
+    - **Never use `any`** — use `unknown` if type is genuinely indeterminate
+    - **Never use `@ts-ignore`** — fix the underlying issue
+    - **Avoid type assertions** (`x as Type`) — they silence the compiler unsafely
+    - **Avoid non-null assertions** (`x!`) — they skip runtime checks
+    - Use explicit return types for public APIs
+    - Leverage type inference for trivial cases (literals, obvious returns)
+
+    ## Imports & Exports
+
+    - Use ES modules exclusively
+    - **No default exports** — use named exports only
+    - Use `import type { X }` for type-only imports
+    - Prefer named imports over namespace imports
+    - Include `.js` extension in imports (for ESM compatibility)
+
+    ## Variables & Declarations
+
+    - **Never use `var`** — always `const` or `let`
+    - Prefer `const` unless reassignment is necessary
+    - One variable per declaration
+
+    ## Interfaces vs Types
+
+    - Prefer `interface` for object shapes (better performance, error messages)
+    - Use `type` for unions, intersections, mapped types, primitives
+
+    ## Classes
+
+    - Use `readonly` for properties that don't change after construction
+    - Use parameter properties to reduce boilerplate: `constructor(private readonly service: Service)`
+    - Use TypeScript visibility modifiers (`private`, `protected`), not `#` private fields
+
+    ## Functions
+
+    - Prefer function declarations over arrow functions for named functions
+    - Use arrow functions for callbacks and when `this` binding matters
+    - Explicit return types for public APIs, inferred for internal code
+
+    ## Utility Types
+
+    Use built-in utility types:
+    - `Partial<T>`, `Required<T>`, `Readonly<T>`
+    - `Pick<T, K>`, `Omit<T, K>`
+    - `Record<K, V>`, `Extract<T, U>`, `Exclude<T, U>`
+
+    ## Error Handling
+
+    - Always throw `Error` instances (or subclasses), never primitives
+    - Assume caught values are `Error` unless documented otherwise
+    - Never leave empty catch blocks without explanation
+
+    ## Control Flow
+
+    - Always use braces for control structures (even single statements)
+    - Use `===` and `!==`, never `==` or `!=` (exception: `== null` for null/undefined)
+
+    ## Disallowed Patterns
+
+    - `var` declarations
+    - `any` type
+    - `@ts-ignore` or `@ts-nocheck`
+    - Default exports
+    - `namespace` declarations
+    - `eval()` or dynamic code execution
+    - Modifying built-in prototypes
+    - Wrapper objects (`new String()`, `new Boolean()`)
+content_hash: sha256:0606885bc81c28124eaacef77255a9e4b35404049bf63b24feca74b6460187b1
+distilled: |-
+    # TypeScript Dev
+
+    ## Config
+    - tsconfig: strict mode required (strict, noImplicitAny, strictNullChecks, noUncheckedIndexedAccess)
+    - Tools: npm/pnpm/yarn, vitest/jest, ESLint+Prettier, tsc/esbuild/swc
+
+    ## Naming
+    - PascalCase: classes/interfaces/types/enums
+    - camelCase: functions/variables/params
+    - kebab-case: files (`user-service.ts`)
+    - Tests: `.test.ts` co-located
+    - CONSTANT_CASE: true globals only
+    - Abbrevs as words: `loadHttpUrl`
+
+    ## Type Safety
+    - Never: `any`, `@ts-ignore`, type assertions (`as`), non-null assertions (`!`)
+    - Use `unknown` for indeterminate types
+    - Explicit return types for public APIs
+
+    ## Imports/Exports
+    - ES modules only, named exports only (no default)
+    - `import type` for type-only
+    - Include `.js` extension for ESM
+
+    ## Variables
+    - Never `var`; prefer `const`, use `let` if reassignment needed
+
+    ## Interfaces vs Types
+    - `interface` for objects; `type` for unions/intersections/mapped/primitives
+
+    ## Classes
+    - `readonly` for immutable props
+    - Parameter properties: `constructor(private readonly x: X)`
+    - Use TS visibility (`private`/`protected`), not `#`
+
+    ## Functions
+    - Declarations for named fns, arrows for callbacks/this-binding
+
+    ## Errors
+    - Throw `Error` instances only
+    - No empty catch blocks
+
+    ## Control Flow
+    - Always use braces
+    - `===`/`!==` only (except `== null`)
+
+    ## Disallowed
+    var, any, @ts-ignore, @ts-nocheck, default exports, namespace, eval(), prototype modification, wrapper objects
+distilled_by: claude-code

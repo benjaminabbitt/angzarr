@@ -1,0 +1,88 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - documentation
+    - workflow
+content: |-
+    # Documentation Guidelines
+
+    ## README Management
+
+    - **Read first** - Consult the README before taking action
+    - **Update README** when adding new commands or features
+    - README should always reflect the current state of the project
+
+    ## Ask First Before Creating
+
+    - Markdown files (*.md) - REFACTORING.md, architecture docs, etc.
+    - Planning or strategy documents
+    - Project tracking files
+    - Meta-documentation
+
+    **Exception:** README updates permitted when adding new features.
+
+    ## Plan Files
+
+    - Place planning documents in `.plan/` directory
+    - Ensure `.plan/` is in `.gitignore` - plan files should not be committed
+    - Use descriptive names: `.plan/feature-name.md`, `.plan/refactor-strategy.md`
+
+    ## Don't Document Progress in Code
+
+    - No "reorganized code to..." comments
+    - No "refactored X to Y" inline documentation
+    - No changelog-style comments in code
+    - Version control handles this - use commit messages instead
+
+    ## Don't Include Change History in Files
+
+    - No "Updated on..." or "Changed from..." annotations
+    - No "Previously this was..." explanations
+    - No revision history within data/content
+    - History belongs in version control, not in the data itself
+
+    ## Do
+
+    - Suggest documentation needs first
+    - Summarize findings in chat
+    - Update existing documentation
+    - Create code, tests, and configuration files
+    - Write meaningful commit messages for progress tracking
+content_hash: sha256:2481f885e714c651a51c140c41e92dcff11e445283211847581b24343b319e8c
+distilled: |-
+    # Documentation
+
+    ## README
+    - Read first before acting
+    - Update when adding commands/features
+    - Keep current with project state
+
+    ## Ask Before Creating
+    - *.md files (REFACTORING.md, arch docs)
+    - Planning/strategy docs
+    - Project tracking files
+    - Meta-docs
+
+    **Exception:** README updates for new features OK
+
+    ## Plan Files
+    - Place in `.plan/` directory
+    - Add `.plan/` to `.gitignore` (never commit)
+    - Use descriptive names: `.plan/feature-name.md`
+
+    ## Don't
+    - Add progress comments in code ("reorganized...", "refactored X to Y")
+    - Include changelog-style comments
+    - Add "Updated on...", "Changed from...", revision history in files
+    - History belongs in VCS, not data
+
+    ## Do
+    - Suggest doc needs first
+    - Summarize in chat
+    - Update existing docs
+    - Create code/tests/config
+    - Use commit messages for tracking
+distilled_by: claude-code

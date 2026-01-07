@@ -1,0 +1,94 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - review
+    - profile
+    - architecture
+content: |-
+    # Architect Review
+
+    Review code for structural quality and long-term maintainability.
+
+    ## Separation of Concerns
+
+    - Are responsibilities clearly divided?
+    - Is business logic separate from infrastructure?
+    - Are cross-cutting concerns properly isolated?
+
+    ## Testability
+
+    - Can components be tested in isolation?
+    - Are dependencies injectable?
+    - Is the code mockable where needed?
+
+    ## Module Boundaries
+
+    - Are interfaces well-defined?
+    - Is coupling between modules minimized?
+    - Are dependencies flowing in the right direction?
+
+    ## Technical Debt
+
+    - Does this introduce unnecessary complexity?
+    - Are shortcuts documented with TODOs?
+    - Is the solution proportional to the problem?
+
+    ## Cohesion
+
+    - Does each module have a single purpose?
+    - Are related functions grouped together?
+    - Is functionality in the right place?
+
+    ## Extensibility
+
+    - Can this be extended without modification?
+    - Are extension points identified?
+    - Is the design open for future needs without overengineering?
+
+    ## Consistency
+
+    - Does this follow existing architectural patterns?
+    - Are similar problems solved similarly?
+    - Does it fit the overall system design?
+content_hash: sha256:1a37043337e1d75287c66615e9c31f41eb9a974e4b761d0458fbe2ddd01b2124
+distilled: |-
+    # Architect Review
+
+    Review code for structure & maintainability.
+
+    ## Separation of Concerns
+    - Clear responsibility division?
+    - Business logic separate from infra?
+    - Cross-cutting concerns isolated?
+
+    ## Testability
+    - Components testable in isolation?
+    - Dependencies injectable/mockable?
+
+    ## Module Boundaries
+    - Well-defined interfaces?
+    - Minimal coupling, correct dependency direction?
+
+    ## Technical Debt
+    - Unnecessary complexity?
+    - Shortcuts documented (TODOs)?
+    - Solution proportional to problem?
+
+    ## Cohesion
+    - Single purpose per module?
+    - Related functions grouped?
+    - Functionality in right place?
+
+    ## Extensibility
+    - Extendable without modification?
+    - Extension points identified?
+    - Open for future needs, no overengineering?
+
+    ## Consistency
+    - Follows existing patterns?
+    - Similar problems solved similarly?
+    - Fits overall system design?
+distilled_by: claude-code

@@ -1,0 +1,72 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - workflow
+    - quality
+content: |-
+    # When to Push Back
+
+    ## Situations Requiring Pushback
+
+    If asked to:
+    - Skip tests ("just make it work first")
+    - Add features without tests
+    - Ignore type hints/annotations
+    - Work around linting errors instead of fixing them
+
+    ## Response Pattern
+
+    1. State why this is problematic
+    2. Explain the consequences
+    3. Suggest the correct approach
+    4. Defer to user if they insist, but note the technical debt
+
+    ## Questions When Starting Features
+
+    - What is the acceptance criterion?
+    - Are there performance requirements?
+    - What error cases should be handled?
+    - Are there security implications?
+    - What should be logged?
+    - What are the dependencies?
+    - How will this be tested?
+    - What error messages are needed?
+
+    ## Questions When Designing Components
+
+    - What dependencies does this need?
+    - What interface/protocol should dependencies implement?
+    - What context should be logged?
+    - What error conditions exist and what messages should they have?
+content_hash: sha256:dcb677dd3c01df01a6c70d5e0aebb57e6ba29bb06e916fc5b498afc421d3d39e
+distilled: |-
+    # Pushback Guidelines
+
+    ## When to Push Back
+    If asked to: skip tests, add untested features, ignore type hints, work around (vs fix) lint errors
+
+    ## Response Pattern
+    1. State why problematic
+    2. Explain consequences
+    3. Suggest correct approach
+    4. Defer if insisted, note tech debt
+
+    ## Feature Start Questions
+    - Acceptance criteria?
+    - Performance requirements?
+    - Error cases to handle?
+    - Security implications?
+    - What to log?
+    - Dependencies?
+    - Testing approach?
+    - Error messages needed?
+
+    ## Component Design Questions
+    - Required dependencies?
+    - Interface/protocol for dependencies?
+    - Logging context?
+    - Error conditions & messages?
+distilled_by: claude-code

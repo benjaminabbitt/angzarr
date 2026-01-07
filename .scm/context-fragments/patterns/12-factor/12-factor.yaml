@@ -1,0 +1,106 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - architecture
+    - cloud-native
+    - patterns
+    - saas
+content: |-
+    # Twelve-Factor App
+
+    Methodology for building modern, cloud-native SaaS applications that are portable, scalable, and maintainable.
+
+    ## I. Codebase
+    One codebase tracked in version control, many deploys. Each app has exactly one repo. Multiple apps sharing code is a violation—extract shared code into libraries included via dependency manager. Multiple deploys (dev, staging, prod) share the same codebase but may run different versions.
+
+    ## II. Dependencies
+    Explicitly declare and isolate all dependencies. Never rely on implicit existence of system-wide packages. Use a dependency declaration manifest (go.mod, package.json, requirements.txt, Gemfile) and a dependency isolation tool (Go modules, npm, virtualenv, bundler) to ensure no dependencies leak in from the surrounding system.
+
+    ## III. Config
+    Store configuration in environment variables. Config is everything that varies between deploys (credentials, resource handles, hostnames). Strict separation of config from code—config changes without code changes. Never commit credentials, API keys, or secrets to the codebase. Environment variables are language/OS-agnostic and granular.
+
+    ## IV. Backing Services
+    Treat backing services as attached resources. A backing service is any service the app consumes over the network: databases (MySQL, PostgreSQL), message queues (RabbitMQ, Kafka), caches (Redis, Memcached), SMTP services, APIs. Make no distinction between local and third-party services. Swap a local MySQL for Amazon RDS by changing config, no code changes required.
+
+    ## V. Build, Release, Run
+    Strictly separate build, release, and run stages:
+    - **Build**: Convert code repo into executable bundle (compile, fetch dependencies, build assets)
+    - **Release**: Combine build with deploy's config. Every release has a unique ID (timestamp or version)
+    - **Run**: Execute release in the execution environment (launch processes)
+
+    Releases are immutable. Any change creates a new release. Rollback by deploying a previous release.
+
+    ## VI. Processes
+    Execute the app as one or more stateless processes. Processes are stateless and share-nothing. Any data that needs to persist must be stored in a stateful backing service (database, cache). Never assume anything cached in memory or on disk will be available on a future request. Sticky sessions violate twelve-factor—store session state in a datastore with time-expiration (Redis, Memcached).
+
+    ## VII. Port Binding
+    Export services via port binding. The app is completely self-contained and does not rely on runtime injection of a webserver. The web app exports HTTP as a service by binding to a port and listening for requests. In development, the developer visits a URL like http://localhost:5000/. In production, a routing layer handles routing from a public hostname to the port-bound process.
+
+    ## VIII. Concurrency
+    Scale out via the process model. Processes are a first-class citizen. The app can scale horizontally by running more processes. Different process types handle different workloads (web processes handle HTTP requests, worker processes handle background jobs). Never daemonize or write PID files—rely on the operating system's process manager (systemd, Kubernetes, Heroku dyno manager).
+
+    ## IX. Disposability
+    Maximize robustness with fast startup and graceful shutdown. Processes are disposable—they can be started or stopped at a moment's notice. Minimize startup time to facilitate rapid scaling and deployment. Shut down gracefully on SIGTERM: stop accepting new requests, finish current requests, then exit. For workers, return current job to the queue. Design for sudden death—use robust queueing backends.
+
+    ## X. Dev/Prod Parity
+    Keep development, staging, and production as similar as possible. Minimize gaps:
+    - **Time gap**: Deploy code hours after writing, not weeks
+    - **Personnel gap**: Developers who write code are closely involved in deploying and observing it
+    - **Tools gap**: Keep dev and prod as similar as possible (same databases, queues, caches)
+
+    Resist the urge to use different backing services between environments (SQLite in dev, PostgreSQL in prod). Lightweight local services like Docker make this achievable.
+
+    ## XI. Logs
+    Treat logs as event streams. A twelve-factor app never concerns itself with routing or storage of its output stream. Write all logs unbuffered to stdout. In development, the developer views the stream in their terminal. In staging/production, the execution environment captures and routes streams to log aggregators (Splunk, Datadog, ELK stack) or archives. The app is unaware of and decoupled from log management.
+
+    ## XII. Admin Processes
+    Run admin and management tasks as one-off processes. One-off admin processes (database migrations, console/REPL, one-time scripts) should run in an identical environment to the app's regular long-running processes. Run against a release using the same codebase and config. Admin code ships with application code to avoid synchronization issues.
+content_hash: sha256:f93f98d5fa45c5f7ee1114f32a4f4aa3afb078b21401ad1c6d6276e297521795
+distilled: |-
+    # 12-Factor App
+
+    Methodology for cloud-native SaaS: portable, scalable, maintainable.
+
+    ## I. Codebase
+    1 repo, many deploys. Shared code → libraries via deps. Same codebase across dev/staging/prod.
+
+    ## II. Dependencies
+    Declare explicitly (go.mod, package.json, requirements.txt). Isolate deps—no system-wide packages.
+
+    ## III. Config
+    Store in env vars. Strict separation from code. Never commit secrets.
+
+    ## IV. Backing Services
+    Treat as attached resources (DBs, queues, caches, APIs). Swap local↔cloud via config only.
+
+    ## V. Build, Release, Run
+    - **Build**: code → executable (compile, fetch deps)
+    - **Release**: build + config, unique ID, immutable
+    - **Run**: execute in environment
+
+    Rollback = deploy previous release.
+
+    ## VI. Processes
+    Stateless, share-nothing. Persist data in backing services. No sticky sessions—use Redis/Memcached for session state.
+
+    ## VII. Port Binding
+    Self-contained; export HTTP via port binding. Routing layer maps hostname → port.
+
+    ## VIII. Concurrency
+    Scale horizontally via process model. Web processes for HTTP, workers for background jobs. Use OS process manager.
+
+    ## IX. Disposability
+    Fast startup, graceful shutdown on SIGTERM. Return incomplete jobs to queue. Design for sudden death.
+
+    ## X. Dev/Prod Parity
+    Minimize time/personnel/tools gaps. Same backing services across environments. Use Docker for local parity.
+
+    ## XI. Logs
+    Event streams to stdout. Env routes to aggregators (Splunk, Datadog, ELK). App decoupled from log management.
+
+    ## XII. Admin Processes
+    Run one-off tasks (migrations, REPL, scripts) in identical environment. Admin code ships with app code.
+distilled_by: claude-code

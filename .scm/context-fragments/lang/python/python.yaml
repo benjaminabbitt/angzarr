@@ -1,0 +1,276 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - python
+    - language
+content: |-
+    # Python Development
+
+    ## Environment & Tooling
+
+    - **Python Version**: Python 3 (specify exact version in pyproject.toml)
+    - **Package Manager**: UV exclusively
+    - **Testing Framework**: pytest
+    - **Acceptance Testing**: Gherkin (pytest-bdd or behave)
+    - **Code Quality**: ruff (linting and formatting)
+    - **Logging**: structlog (structured logging with context)
+
+    ## Test Structure
+
+    - **Unit Tests**: `test_*.py` (co-located with source code)
+    - **Integration Tests**: `tests/integration/test_*.py`
+    - **Acceptance Tests**: `tests/acceptance/features/*.feature`
+
+    ## Code Organization
+
+    ```
+    project/
+    ├── src/package_name/
+    │   ├── log_messages.py
+    │   ├── error_messages.py
+    │   ├── module.py
+    │   └── test_module.py
+    ├── tests/
+    │   ├── integration/
+    │   └── acceptance/
+    ├── .devcontainer/
+    ├── justfile
+    └── pyproject.toml
+    ```
+
+    ## Excluding Co-located Tests from Package
+
+    When using co-located unit tests (`test_*.py` alongside source), exclude them from distribution:
+
+    ```toml
+    # pyproject.toml
+    [tool.setuptools.packages.find]
+    where = ["src"]
+    exclude = ["**/test_*"]
+    ```
+
+    ## Logging with structlog
+
+    ```python
+    # log_messages.py
+    @dataclass(frozen=True)
+    class LogMessages:
+        USER_CREATED = "user_created"
+
+    LOG_MSG = LogMessages()
+
+    # Usage
+    logger.info(LOG_MSG.USER_CREATED, username=username)
+    ```
+
+    ## Error Message Constants
+
+    ```python
+    # error_messages.py
+    @dataclass(frozen=True)
+    class ErrorMessages:
+        DIVIDE_BY_ZERO = "Cannot divide by zero"
+
+    ERROR_MSG = ErrorMessages()
+
+    # Usage
+    raise ValueError(ERROR_MSG.DIVIDE_BY_ZERO)
+    ```
+
+    ## IoC Pattern
+
+    ```python
+    class UserService:
+        def __init__(self, repo: UserRepository, logger: structlog.BoundLogger):
+            self._repo = repo
+            self._logger = logger
+
+        @classmethod
+        def create(cls, db: DatabaseConnection) -> "UserService":  # pragma: no cover
+            return cls(SQLUserRepository(db), structlog.get_logger())
+    ```
+
+    ## Attribute Access & Typing
+
+    - Use type hints consistently throughout all code
+    - **Avoid string-based attribute access** when the string is a static/hardcoded value:
+      - Do NOT use `getattr(obj, "method_name")` — use `obj.method_name` directly
+      - Do NOT use `getattr(module, "ClassName")` — use `module.ClassName` directly
+      - Do NOT use `globals()["func_name"]` or `locals()["var_name"]`
+      - Do NOT use `operator.attrgetter("field")` with hardcoded strings
+    - These patterns defeat static analysis, IDE navigation, and refactoring tools
+    - **Exception**: Dynamic access is acceptable when the string comes from runtime data (config, user input, database) — but prefer explicit mappings or match/case when possible
+
+    ## Dictionaries vs Structured Types
+
+    - **Do NOT use dictionaries with known/hardcoded keys** — use dataclasses, NamedTuple, or classes instead
+    - If you know the structure at development time, it should be a proper type
+
+    ```python
+    # BAD: Keys are known, but using dict
+    game_state = {"score": 0, "level": 1, "lives": 3}
+    game_state["score"] += 10  # String-based access to known field
+
+    # GOOD: Use a dataclass for known structure
+    @dataclass
+    class GameState:
+        score: int = 0
+        level: int = 1
+        lives: int = 3
+
+    game_state = GameState()
+    game_state.score += 10  # Attribute access, type-checked
+    ```
+
+    - Dictionaries are appropriate when:
+      - Keys are truly dynamic (from user input, config files, APIs)
+      - Building lookup tables with variable keys
+      - Key set is not known until runtime
+    - Use `TypedDict` if you must use dict syntax with known keys (e.g., JSON serialization)
+
+    ## Flow Control Anti-Patterns
+
+    Do NOT use these for branching or dispatch when values are known at development time:
+
+    - **getattr/hasattr for branching**:
+      ```python
+      # BAD: Using hasattr for flow control
+      if hasattr(handler, "process"):
+          handler.process()
+
+      # GOOD: Use protocols/ABCs or explicit type checks
+      if isinstance(handler, Processor):
+          handler.process()
+      ```
+
+    - **Dictionary dispatch with hardcoded keys**:
+      ```python
+      # BAD: Dict dispatch for known operations
+      handlers = {"add": add_func, "remove": remove_func}
+      handlers[operation]()
+
+      # GOOD: Use match/case or explicit conditionals
+      match operation:
+          case Operation.ADD: add_func()
+          case Operation.REMOVE: remove_func()
+      ```
+
+    - **String comparisons for state/type**:
+      ```python
+      # BAD: Stringly-typed flow control
+      if status == "pending":
+          process_pending()
+
+      # GOOD: Use enums
+      class Status(Enum):
+          PENDING = auto()
+
+      if status == Status.PENDING:
+          process_pending()
+      ```
+
+    These patterns hide control flow from static analysis, make refactoring error-prone, and turn typos into runtime bugs instead of type errors.
+
+    **Exception**: These patterns are acceptable when parsing external data (files, API responses, user input) — but confine them to the outer layer. Parse strings/dicts into proper types at the boundary, then use typed values throughout the rest of the codebase.
+
+    ```python
+    # Outer layer: parse external string into enum
+    def parse_status(raw: str) -> Status:
+        match raw:
+            case "pending": return Status.PENDING
+            case "complete": return Status.COMPLETE
+            case _: raise ValueError(f"Unknown status: {raw}")
+
+    # Inner layers: use Status enum, never raw strings
+    ```
+content_hash: sha256:da3dbe93061b8b53ed16bd7cdfc3154570a08b5365364f58ec85449c4450122c
+distilled: |-
+    # Python Dev
+
+    ## Env/Tools
+    - Python 3 (version in pyproject.toml)
+    - UV (pkg mgr), pytest, Gherkin (pytest-bdd/behave), ruff, structlog
+
+    ## Test Structure
+    - Unit: `test_*.py` (co-located)
+    - Integration: `tests/integration/test_*.py`
+    - Acceptance: `tests/acceptance/features/*.feature`
+
+    ## Layout
+    ```
+    src/package_name/{log_messages,error_messages,module,test_module}.py
+    tests/{integration,acceptance}/
+    .devcontainer/, justfile, pyproject.toml
+    ```
+
+    ## Exclude Co-located Tests
+    ```toml
+    [tool.setuptools.packages.find]
+    where = ["src"]
+    exclude = ["**/test_*"]
+    ```
+
+    ## structlog
+    ```python
+    @dataclass(frozen=True)
+    class LogMessages:
+        USER_CREATED = "user_created"
+    LOG_MSG = LogMessages()
+    logger.info(LOG_MSG.USER_CREATED, username=username)
+    ```
+
+    ## Error Constants
+    ```python
+    @dataclass(frozen=True)
+    class ErrorMessages:
+        DIVIDE_BY_ZERO = "Cannot divide by zero"
+    ERROR_MSG = ErrorMessages()
+    raise ValueError(ERROR_MSG.DIVIDE_BY_ZERO)
+    ```
+
+    ## IoC
+    ```python
+    class UserService:
+        def __init__(self, repo: UserRepository, logger: structlog.BoundLogger):
+            self._repo, self._logger = repo, logger
+        @classmethod
+        def create(cls, db: DatabaseConnection) -> "UserService":  # pragma: no cover
+            return cls(SQLUserRepository(db), structlog.get_logger())
+    ```
+
+    ## Type Hints & Attribute Access
+    - Use type hints consistently
+    - NO hardcoded string attr access: avoid `getattr(obj, "method")`, `globals()["x"]`, `operator.attrgetter("field")`
+    - Defeats static analysis/refactoring
+    - OK if string from runtime data; prefer explicit mappings
+
+    ## Dicts vs Structured Types
+    - NO dicts w/ known keys → use dataclass/NamedTuple
+    ```python
+    # BAD
+    game_state = {"score": 0}
+    # GOOD
+    @dataclass
+    class GameState:
+        score: int = 0
+    ```
+    - Dicts OK for truly dynamic keys
+    - Use TypedDict if dict syntax required
+
+    ## Flow Control Anti-Patterns
+    Avoid when values known at dev time:
+    - `hasattr` branching → use Protocol/ABC/isinstance
+    - Dict dispatch w/ hardcoded keys → match/case
+    - String comparisons for state → use Enum
+
+    Exception: OK at boundaries parsing external data; convert to typed values immediately:
+    ```python
+    def parse_status(raw: str) -> Status:
+        match raw:
+            case "pending": return Status.PENDING
+            case _: raise ValueError(f"Unknown: {raw}")
+    ```
+distilled_by: claude-code

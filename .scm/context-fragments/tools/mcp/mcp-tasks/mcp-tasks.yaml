@@ -1,0 +1,64 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - workflow
+    - mcp
+    - tasks
+content: |-
+    # MCP Tasks
+
+    Use mcp-tasks for persistent task management across sessions.
+
+    ## Setup
+
+    - Store tasks in `.tasks/todos.md`
+    - Call `tasks_setup` once per conversation with the source path
+    - Use the workspace parameter to specify the project directory
+    - Note that the user may refer to this plugin as "tasks" or "todo" in the conversation
+
+    ## Task Statuses
+
+    - **In Progress**: Current work item (limit to one at a time)
+    - **To Do**: Upcoming tasks
+    - **Backlog**: Lower priority items
+    - **Done**: Completed tasks
+    - **Reminders**: Persistent instructions for the AI
+    - **Notes**: Non-actionable reference information
+
+    ## Best Practices
+
+    - Keep mcp-tasks synchronized with TodoWrite
+    - Use `tasks_add` for batch additions
+    - Use `tasks_update` for bulk status changes
+    - Call `tasks_search` to find specific tasks by status or text
+    - Avoid redundant `tasks_summary` calls after add/update operations
+content_hash: sha256:663acebd8ff3aba08c6c99ecd9f84917d0382f8ce205ea73a2f49370594effc6
+distilled: |-
+    # MCP Tasks
+
+    Persistent task mgmt across sessions via mcp-tasks.
+
+    ## Setup
+    - Store in `.tasks/todos.md`
+    - Call `tasks_setup` once/conversation w/ source path
+    - Use workspace param for project dir
+    - User may say "tasks" or "todo"
+
+    ## Statuses
+    - **In Progress**: Current work (max 1)
+    - **To Do**: Upcoming
+    - **Backlog**: Lower priority
+    - **Done**: Completed
+    - **Reminders**: Persistent AI instructions
+    - **Notes**: Reference info
+
+    ## Best Practices
+    - Sync w/ TodoWrite
+    - `tasks_add`: batch additions
+    - `tasks_update`: bulk status changes
+    - `tasks_search`: find by status/text
+    - Skip `tasks_summary` after add/update ops
+distilled_by: claude-code

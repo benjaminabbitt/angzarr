@@ -1,0 +1,34 @@
+# Build artifacts
+target/
+*.rs.bk
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Development files
+.plan/
+*.md
+!README.md
+
+# Test data
+data/
+*.db
+
+# Example projects (separate containers)
+examples/
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile*
+docker-compose*
+!Dockerfile
+!docker-compose.yml

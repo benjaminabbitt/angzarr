@@ -1,0 +1,41 @@
+# Python Business Logic Example
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Generate protobuf Python code using container (recommended)
+proto:
+    cd "{{TOP}}" && just proto-python
+    mkdir -p evented
+    cp -r "{{TOP}}/generated/python/evented/"* evented/
+
+# Generate protobuf locally (fallback if no Docker)
+proto-local:
+    ./generate_proto.sh
+
+# Install dependencies
+install:
+    uv sync --dev
+
+# Run the example
+run:
+    uv run python -c "from discount_logic import handle_discount; print('Discount handler loaded successfully')"
+
+# Run tests
+test:
+    uv run pytest -v
+
+# Full setup using proto container
+setup: install proto
+
+# Full setup using local proto generation (fallback)
+setup-local: install proto-local
+
+# Clean
+clean:
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+    find . -type f -name "*.pyc" -delete 2>/dev/null || true
+    rm -rf .venv evented/

@@ -1,0 +1,159 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - mcp
+    - context
+    - scm
+content: |-
+    # SCM - Sophisticated Context Management
+
+    MCP server for managing reusable AI context fragments.
+
+    ## MCP Tools
+
+    - `list_fragments`: List available fragments with tags
+    - `get_fragment`: Get fragment content by name
+    - `list_profiles`: List configured profiles
+    - `get_profile`: Get profile configuration
+    - `assemble_context`: Combine fragments/profiles into context
+    - `list_prompts`: List saved prompts
+    - `get_prompt`: Get prompt content by name
+
+    ## Key Concepts
+
+    **Fragments**: Reusable context snippets (coding standards, language patterns, security guidelines)
+    - Organized by category: general/, lang/, patterns/, profiles/
+    - Tagged for filtering (e.g., golang, security, review)
+    - Support {{variables}} via Mustache templating
+
+    **Profiles**: Named fragment collections for common workflows
+    - `developer`: Full dev context (TDD, code-quality, security)
+    - `go-developer`, `python-developer`, etc.: Language-specific
+    - `reviewer`: Multi-perspective code review
+    - `prototype`: Rapid prototyping without backwards compat concerns
+
+    **Distillation**: Token-optimized versions of fragments
+    - Fragments with `no_distill: true` are never compressed
+    - Falls back to full content if no distilled version exists
+
+    ## Common MCP Workflows
+
+    **Switching profiles**: Use `assemble_context` with the desired profile.
+
+    ```
+    # Switch to code review context
+    assemble_context(profile="reviewer")
+    ```
+
+    **Adding fragments to a profile**: Call `assemble_context` with additional fragments alongside a profile.
+
+    ```
+    # Add security focus to current profile
+    assemble_context(profile="go-developer", fragments=["security"])
+
+    # Layer on specific patterns
+    assemble_context(profile="developer", fragments=["patterns/cqrs", "patterns/event-sourcing"])
+    ```
+
+    **Exploring available context**: List what's available before assembling.
+
+    ```
+    # See all fragments
+    list_fragments()
+
+    # Filter by tag
+    list_fragments(tags=["golang"])
+
+    # Check profile contents
+    get_profile(name="reviewer")
+    ```
+
+    **Ad-hoc context assembly**: Skip profiles entirely, pick specific fragments.
+
+    ```
+    # Just security and Go guidance
+    assemble_context(fragments=["security", "lang/golang/golang"])
+
+    # Everything tagged "review"
+    assemble_context(tags=["review"])
+    ```
+
+    ## Fragment Format
+
+    ```yaml
+    version: "1.0"
+    tags: [golang, code-style]
+    variables: [project_name]
+    no_distill: true  # Optional: skip distillation
+    content: |
+      Your context here. Use {{project_name}} for variables.
+    ```
+content_hash: sha256:232571a263a650fb6de2ca62c43ce532ffb7290eaa4903c0d8d7afc0b2019f78
+distilled: |-
+    # SCM - Sophisticated Context Management
+
+    MCP server for reusable AI context fragments.
+
+    ## MCP Tools
+
+    - `list_fragments`: List fragments w/ tags
+    - `get_fragment`: Get fragment by name
+    - `list_profiles`: List profiles
+    - `get_profile`: Get profile config
+    - `assemble_context`: Combine fragments/profiles
+    - `list_prompts`: List prompts
+    - `get_prompt`: Get prompt by name
+
+    ## Concepts
+
+    **Fragments**: Reusable context (standards, patterns, guidelines)
+    - Categories: general/, lang/, patterns/, profiles/
+    - Tagged for filtering
+    - {{variables}} via Mustache
+
+    **Profiles**: Named fragment collections
+    - `developer`: Full context (TDD, quality, security)
+    - `go-developer`, `python-developer`: Language-specific
+    - `reviewer`: Multi-perspective review
+    - `prototype`: Rapid prototyping
+
+    **Distillation**: Token-optimized fragments
+    - `no_distill: true` skips compression
+    - Falls back to full content if unavailable
+
+    ## Workflows
+
+    ```
+    # Switch profile
+    assemble_context(profile="reviewer")
+
+    # Add fragments to profile
+    assemble_context(profile="go-developer", fragments=["security"])
+
+    # Layer patterns
+    assemble_context(profile="developer", fragments=["patterns/cqrs", "patterns/event-sourcing"])
+
+    # Explore
+    list_fragments()
+    list_fragments(tags=["golang"])
+    get_profile(name="reviewer")
+
+    # Ad-hoc assembly
+    assemble_context(fragments=["security", "lang/golang/golang"])
+    assemble_context(tags=["review"])
+    ```
+
+    ## Fragment Format
+
+    ```yaml
+    version: "1.0"
+    tags: [golang, code-style]
+    variables: [project_name]
+    no_distill: true  # Optional
+    content: |
+      Context here. Use {{project_name}} for variables.
+    ```
+distilled_by: claude-code

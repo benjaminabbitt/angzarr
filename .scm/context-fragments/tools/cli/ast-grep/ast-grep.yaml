@@ -1,0 +1,185 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - tooling
+    - ast-grep
+    - refactoring
+content: |-
+    # ast-grep: Structural Code Search & Replace
+
+    Use ast-grep for large-scale find and replace operations in source code. It understands code structure (AST) rather than treating code as plain text.
+
+    ## When to Use ast-grep
+
+    - Renaming functions, variables, or types across a codebase
+    - Refactoring API usage patterns
+    - Migrating deprecated patterns to new ones
+    - Finding structural code patterns (not just text matches)
+    - Any change affecting more than a handful of files
+
+    ## Why ast-grep Over Text-Based Tools
+
+    - **Structure-aware**: Matches actual code constructs, not accidental text
+    - **Language-aware**: Understands syntax of supported languages
+    - **Safe refactoring**: Won't match strings, comments, or unrelated code
+    - **Preserves formatting**: Replaces only the matched pattern
+
+    ## Basic Usage
+
+    ```bash
+    # Search for pattern
+    ast-grep --pattern 'console.log($ARG)' --lang ts
+
+    # Search and replace
+    ast-grep --pattern 'console.log($ARG)' --rewrite 'logger.debug($ARG)' --lang ts
+
+    # Interactive mode (review each match)
+    ast-grep --pattern 'OLD_PATTERN' --rewrite 'NEW_PATTERN' --interactive
+
+    # Apply changes in place
+    ast-grep --pattern 'OLD' --rewrite 'NEW' --lang py --update-all
+    ```
+
+    ## Pattern Syntax
+
+    - `$NAME` — Named metavariable, matches any single AST node
+    - `$$$` — Matches zero or more AST nodes (variadic)
+    - `$_` — Anonymous metavariable (wildcard, don't capture)
+    - Literal code matches itself exactly
+
+    ## Examples
+
+    ```bash
+    # Rename function calls
+    ast-grep -p 'getUserById($ID)' -r 'fetchUser($ID)' --lang ts
+
+    # Update import paths
+    ast-grep -p 'from "old/path"' -r 'from "new/path"' --lang ts
+
+    # Wrap function calls
+    ast-grep -p 'dangerousOp($ARGS)' -r 'try { dangerousOp($ARGS) } catch (e) { handleError(e) }' --lang ts
+
+    # Remove deprecated function argument
+    ast-grep -p 'createUser($NAME, $EMAIL, true)' -r 'createUser($NAME, $EMAIL)' --lang ts
+
+    # Python: dict.get with default to walrus operator
+    ast-grep -p '$D.get($K, $V)' -r '($D[$K] if $K in $D else $V)' --lang py
+    ```
+
+    ## Rule Files (Complex Patterns)
+
+    For complex or reusable patterns, use YAML rule files:
+
+    ```yaml
+    # rules/no-console-log.yaml
+    id: no-console-log
+    language: typescript
+    rule:
+      pattern: console.log($$$ARGS)
+    fix: "logger.debug($$$ARGS)"
+    ```
+
+    ```bash
+    ast-grep scan --rule rules/no-console-log.yaml
+    ```
+
+    ## Workflow
+
+    1. **Test pattern first**: Run without `--update-all` to preview matches
+    2. **Review interactively**: Use `--interactive` for careful review
+    3. **Apply changes**: Use `--update-all` when confident
+    4. **Run tests**: Verify refactoring didn't break anything
+    5. **Commit**: One logical change per commit
+
+    ## Supported Languages
+
+    TypeScript, JavaScript, Python, Rust, Go, Java, C, C++, and more.
+
+    ## Installation
+
+    ```bash
+    # macOS
+    brew install ast-grep
+
+    # cargo
+    cargo install ast-grep --locked
+
+    # npm
+    npm install -g @ast-grep/cli
+    ```
+content_hash: sha256:88330a15740255d9c6b512a00f13e99fb545675dd83dd9112fa7bc26f1f72d9e
+distilled: |-
+    # ast-grep: Structural Code Search/Replace
+
+    AST-aware find/replace for large-scale refactoring. Matches code structure, not text.
+
+    ## When to Use
+    - Renaming functions/variables/types across codebase
+    - Refactoring API patterns, migrating deprecated code
+    - Finding structural patterns (multi-file changes)
+
+    ## Why Over Text Tools
+    - Structure/language-aware, safe refactoring
+    - Won't match strings/comments, preserves formatting
+
+    ## Usage
+
+    ```bash
+    # Search
+    ast-grep --pattern 'console.log($ARG)' --lang ts
+
+    # Replace
+    ast-grep --pattern 'console.log($ARG)' --rewrite 'logger.debug($ARG)' --lang ts
+
+    # Interactive review
+    ast-grep -p 'OLD' -r 'NEW' --interactive
+
+    # Apply in place
+    ast-grep -p 'OLD' -r 'NEW' --lang py --update-all
+    ```
+
+    ## Pattern Syntax
+    - `$NAME` — matches single AST node
+    - `$$$` — matches zero+ nodes (variadic)
+    - `$_` — wildcard (no capture)
+    - Literal code matches exactly
+
+    ## Examples
+
+    ```bash
+    ast-grep -p 'getUserById($ID)' -r 'fetchUser($ID)' --lang ts
+    ast-grep -p 'from "old/path"' -r 'from "new/path"' --lang ts
+    ast-grep -p 'createUser($NAME, $EMAIL, true)' -r 'createUser($NAME, $EMAIL)' --lang ts
+    ```
+
+    ## Rule Files
+
+    ```yaml
+    id: no-console-log
+    language: typescript
+    rule:
+      pattern: console.log($$$ARGS)
+    fix: "logger.debug($$$ARGS)"
+    ```
+
+    ```bash
+    ast-grep scan --rule rules/no-console-log.yaml
+    ```
+
+    ## Workflow
+    1. Test pattern (preview matches)
+    2. Review interactively
+    3. Apply with `--update-all`
+    4. Run tests, commit
+
+    ## Install
+
+    ```bash
+    brew install ast-grep
+    cargo install ast-grep --locked
+    npm install -g @ast-grep/cli
+    ```
+distilled_by: claude-code

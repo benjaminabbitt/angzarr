@@ -1,0 +1,126 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - code
+    - quality
+    - principles
+content: |-
+    # Code Quality Standards
+
+    ## Before Writing Code
+
+    - **Research first**: Search the codebase for existing implementations before writing new code
+    - **Read existing code**: Understand patterns, conventions, and utilities already in use
+    - **No duplication**: Reuse existing functions, types, and modules rather than creating duplicates
+    - **Extend, don't recreate**: If similar functionality exists, extend or refactor it instead of writing parallel implementations
+
+    ## Code Size
+    - **Small**: Less than 500 lines of code per file
+    - Keep files small and focused.  Only exceed small if necessary, with very high coupling and cohesion
+    - Keep functions small.  Each function should do one thing and do it well
+    - Optimize for reading and understanding, not performance
+    - Prefer to separate via files interfaces and implementations
+
+    ## Naming
+    - Interfaces/protocols (py) are the thing -- UserService is a Protocol.  Do not use IWhatever
+    - Implementations are to be named after the description of *how* the thing, the interface, is implemented.  If it's implemented one way, it'll be Default{{InterfaceName}}.
+
+    ## Philosophy
+
+    - **SOLID** - Single responsibility, Open/closed, Liskov substitution, Interface segregation, Dependency inversion
+    - **KISS** - Keep It Simple, Stupid. Prefer clear, straightforward solutions
+    - **YAGNI** - You Ain't Gonna Need It. Don't build features until they're actually needed
+
+    ## General Principles
+
+    - Follow language-specific style guides
+    - Use type hints/annotations where available
+    - Write clear, self-documenting code over excessive comments
+    - Document public APIs
+    - Keep functions small and focused
+    - Prefer composition over inheritance
+
+    ## Coupling and Cohesion
+
+    - **Low coupling**: Modules should have minimal dependencies on other modules
+    - **High cohesion**: Related functionality should be grouped together
+    - Each module/class should have a single, well-defined purpose
+
+    ## Code Markers
+
+    - `TODO` - Work that needs to be done
+    - `FIXME` - Known bugs or issues that need fixing
+    - `NOTE` - Important explanations or warnings
+    - `HACK` - Non-ideal solutions that work but need improvement
+
+    ## Performance Considerations
+
+    - Profile before optimizing
+    - Document performance requirements in tests
+    - Use appropriate data structures
+    - State algorithmic complexity for non-trivial algorithms
+    - Consider memory allocation patterns
+
+    ## Clean Up
+
+    - Kill background processes when no longer needed
+    - Remove unused code, files, imports, and variables
+    - Don't leave dead code behind
+
+    ## Comments
+
+    - **Never add change-tracking comments** - git tracks history; no "changed X to Y", "removed Z", "updated for feature W"
+    - **No revision history in code** - don't document what was modified, when, or by whom
+    - **No commented-out code** - delete it; git has it if needed
+    - Comments explain *why*, not *what* or *what changed*
+content_hash: sha256:65d45a27c694b7dc3f0c58498da36c6f2cbabc5718e1fe62079fa63cc66c09bf
+distilled: |-
+    # Code Quality
+
+    ## Before Writing
+    - Research codebase first; read existing patterns
+    - No duplication—reuse/extend existing code
+
+    ## Size
+    - Files <500 LOC; exceed only w/ high coupling+cohesion
+    - Small, single-purpose functions
+    - Optimize for readability
+    - Separate interfaces from implementations
+
+    ## Naming
+    - Interfaces = the thing (UserService is Protocol, no IWhatever)
+    - Implementations = Default{{InterfaceName}} or descriptive how
+
+    ## Philosophy
+    - SOLID, KISS, YAGNI
+
+    ## Principles
+    - Follow lang style guides; use type hints
+    - Self-documenting code > comments
+    - Document public APIs
+    - Composition > inheritance
+
+    ## Coupling/Cohesion
+    - Low coupling, high cohesion
+    - Single well-defined purpose per module
+
+    ## Markers
+    - TODO, FIXME, NOTE, HACK
+
+    ## Performance
+    - Profile first; document requirements in tests
+    - Appropriate data structures; state complexity
+    - Consider memory patterns
+
+    ## Cleanup
+    - Kill unused processes
+    - Remove dead code/imports/variables
+
+    ## Comments
+    - No change-tracking—git handles history
+    - No commented-out code
+    - Explain *why*, not *what*
+distilled_by: claude-code

@@ -1,0 +1,107 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - golang
+    - language
+content: |-
+    # Golang Development
+
+    ## Environment & Tooling
+
+    - **Go Version**: Specify in go.mod
+    - **Testing Framework**: Standard library `testing`
+    - **Acceptance Testing**: Gherkin (godog)
+    - **Code Quality**: golangci-lint, gofmt/goimports
+    - **Logging**: zap (high-performance structured logging)
+
+    ## Test Structure
+
+    - **Unit Tests**: `*_test.go` (co-located)
+    - **Integration Tests**: `tests/integration/*_test.go` or build tags
+    - **Acceptance Tests**: `tests/acceptance/features/*.feature`
+
+    ## Testing Tools
+
+    - **Testify Suites**: Use testify suites to DRY up related tests with shared setup/teardown. Don't create a suite for a single test.
+    - **Mocking**: Use gomock for mocks. Generate mocks via just target.
+
+    ## Logging with zap
+
+    ```go
+    // logmsg/messages.go
+    const UserCreated = "user_created"
+
+    // Usage
+    logger.Info(logmsg.UserCreated, zap.String("username", username))
+    ```
+
+    ## Error Message Constants
+
+    ```go
+    // errmsg/messages.go
+    const DivideByZero = "cannot divide by zero"
+
+    // Usage
+    return 0, errors.New(errmsg.DivideByZero)
+    ```
+
+    ## IoC Pattern
+
+    ```go
+    func NewUserService(repo UserRepository, logger *zap.Logger) *UserService {
+        return &UserService{repo: repo, logger: logger}
+    }
+
+    func NewUserServiceDefault(db *Database) *UserService {  // nolint:unused
+        logger, _ := zap.NewProduction()
+        return NewUserService(NewSQLUserRepository(db), logger)
+    }
+    ```
+content_hash: sha256:0bcef5ab7e6a370085f8bd7b48a2a898c61443e124ab55c255aa818cd109bd14
+distilled: |-
+    # Golang Dev
+
+    ## Env/Tools
+    - Go version in go.mod
+    - Testing: stdlib `testing`
+    - Acceptance: Gherkin (godog)
+    - Lint: golangci-lint, gofmt/goimports
+    - Logging: zap
+
+    ## Test Structure
+    - Unit: `*_test.go` (co-located)
+    - Integration: `tests/integration/*_test.go` or build tags
+    - Acceptance: `tests/acceptance/features/*.feature`
+
+    ## Testing
+    - Testify suites for shared setup; skip for single tests
+    - Mocking: gomock, generate via just target
+
+    ## Logging
+    ```go
+    // logmsg/messages.go
+    const UserCreated = "user_created"
+    logger.Info(logmsg.UserCreated, zap.String("username", username))
+    ```
+
+    ## Error Constants
+    ```go
+    // errmsg/messages.go
+    const DivideByZero = "cannot divide by zero"
+    return 0, errors.New(errmsg.DivideByZero)
+    ```
+
+    ## IoC
+    ```go
+    func NewUserService(repo UserRepository, logger *zap.Logger) *UserService {
+        return &UserService{repo: repo, logger: logger}
+    }
+    func NewUserServiceDefault(db *Database) *UserService {  // nolint:unused
+        logger, _ := zap.NewProduction()
+        return NewUserService(NewSQLUserRepository(db), logger)
+    }
+    ```
+distilled_by: claude-code

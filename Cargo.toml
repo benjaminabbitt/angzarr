@@ -1,0 +1,75 @@
+[package]
+name = "evented"
+version = "0.1.0"
+edition = "2021"
+authors = ["Benjamin Abbitt"]
+description = "CQRS/ES framework - Rust implementation"
+license = "MIT"
+
+[features]
+default = []
+python = ["pyo3"]
+go-ffi = ["libloading"]
+amqp = ["lapin", "deadpool-lapin"]
+redis = ["dep:redis"]
+
+[dependencies]
+# gRPC
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+tokio-stream = "0.1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Storage - Query builder approach (like jOOQ)
+sea-query = "0.32"
+sea-query-binder = { version = "0.7", features = ["sqlx-sqlite"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Core utilities
+uuid = { version = "1", features = ["v4"] }
+async-trait = "0.1"
+thiserror = "2"
+futures = "0.3"
+chrono = "0.4"
+hex = "0.4"
+
+# Logging/Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+
+# Python integration (optional)
+pyo3 = { version = "0.22", optional = true, features = ["auto-initialize"] }
+
+# Go FFI integration (optional)
+libloading = { version = "0.8", optional = true }
+
+# AMQP/RabbitMQ (optional)
+lapin = { version = "2", optional = true }
+deadpool-lapin = { version = "0.12", optional = true }
+
+# Redis (optional)
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[[bin]]
+name = "evented-server"
+path = "src/bin/evented_server.rs"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+cucumber = "0.21"
+futures = "0.3"
+
+[[test]]
+name = "acceptance"
+harness = false

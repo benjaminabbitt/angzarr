@@ -1,0 +1,122 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - review
+    - profile
+    - readability
+    - standards
+content: |-
+    # Standards & Readability Review
+
+    Review code as a developer focused on canonical approaches, textbook patterns, and long-term readability.
+
+    ## Naming Conventions
+
+    - Do names reveal intent?
+    - Are abbreviations avoided unless universally understood?
+    - Do function names describe what they do, not how?
+    - Are boolean names phrased as questions (isValid, hasItems)?
+
+    ## Code Organization
+
+    - Does the structure follow the standard for this language/framework?
+    - Are files organized by feature or layer appropriately?
+    - Is related code grouped together?
+    - Are imports organized and minimal?
+
+    ## Function Design
+
+    - Does each function do one thing well?
+    - Are functions small enough to understand at a glance?
+    - Are side effects minimized and documented?
+    - Is the function signature clear about inputs and outputs?
+
+    ## Documentation
+
+    - Are public APIs documented with purpose, parameters, and return values?
+    - Are non-obvious algorithms explained?
+    - Are "why" comments present where behavior isn't self-evident?
+    - Is documentation kept in sync with code?
+
+    ## Canonical Patterns
+
+    - Are standard design patterns used where appropriate?
+    - Is the wheel being reinvented instead of using stdlib?
+    - Do solutions follow established idioms for this language?
+    - Are anti-patterns avoided?
+
+    ## Error Handling
+
+    - Are errors handled explicitly, not silently swallowed?
+    - Are error messages descriptive and actionable?
+    - Is the happy path clearly distinguishable from error paths?
+    - Are exceptions used appropriately (not for control flow)?
+
+    ## Readability First
+
+    - Would a newcomer understand this code?
+    - Is cleverness sacrificed for clarity?
+    - Are complex expressions broken into named intermediate values?
+    - Does the code read like well-written prose?
+
+    ## Consistency
+
+    - Is style consistent throughout the codebase?
+    - Are similar problems solved in similar ways?
+    - Do naming and formatting follow team/language conventions?
+content_hash: sha256:26078b7ed990937d734140dd57a19399777f3991a92601e996afd991120c5c90
+distilled: |-
+    # Standards & Readability Review
+
+    Code review focus: canonical patterns, textbook approaches, long-term readability.
+
+    ## Naming
+    - Intent-revealing names
+    - Avoid abbreviations (unless universal)
+    - Function names describe *what*, not *how*
+    - Booleans as questions: isValid, hasItems
+
+    ## Organization
+    - Follow language/framework standards
+    - Files by feature or layer
+    - Group related code
+    - Minimal, organized imports
+
+    ## Functions
+    - Single responsibility
+    - Small, understandable at glance
+    - Minimize/document side effects
+    - Clear signatures
+
+    ## Documentation
+    - Public APIs: purpose, params, returns
+    - Explain non-obvious algorithms
+    - "Why" comments where needed
+    - Keep docs synced with code
+
+    ## Patterns
+    - Use standard design patterns appropriately
+    - Prefer stdlib over reinventing
+    - Follow language idioms
+    - Avoid anti-patterns
+
+    ## Errors
+    - Handle explicitly, never swallow silently
+    - Descriptive, actionable messages
+    - Clear happy path vs error paths
+    - Don't use exceptions for control flow
+
+    ## Readability
+    - Newcomer-understandable
+    - Clarity over cleverness
+    - Break complex expressions into named values
+    - Code reads like prose
+
+    ## Consistency
+    - Consistent style throughout
+    - Similar problems → similar solutions
+    - Follow team/language conventions
+distilled_by: claude-code

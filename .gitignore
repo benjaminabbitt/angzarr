@@ -1,0 +1,25 @@
+/target
+Cargo.lock
+*.swp
+*.swo
+.DS_Store
+*.db
+/data/
+.plan/
+.tasks/
+
+# Secrets - never commit
+.env
+*.tfvars
+!*.tfvars.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Go build artifacts
+*.so
+*.h
+!build/**/*.h

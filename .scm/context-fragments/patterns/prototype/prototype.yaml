@@ -1,0 +1,137 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - pattern
+    - prototype
+    - greenfield
+content: |-
+    # Prototype Mode
+
+    This is a prototype. Build it correctly. Do not compromise.
+
+    ## No Backwards Compatibility
+
+    **DO NOT** maintain backwards compatibility. Ever. For anything.
+
+    - Delete deprecated code immediately — do not leave it "for later"
+    - Remove old APIs entirely — do not keep them around "just in case"
+    - Break every external dependency that requires compromise
+    - Rip out legacy patterns the moment you see them
+    - If something is wrong, delete it and rebuild it correctly
+
+    ## No Legacy Accommodation
+
+    **DO NOT** accommodate legacy systems, formats, or interfaces.
+
+    - If the old format is bad, use a new format — do not support both
+    - If the old API is wrong, design a new one — do not wrap the old one
+    - If existing code depends on broken behavior, fix the code — do not preserve the bug
+    - Migration paths are someone else's problem — build the correct solution
+
+    ## Hard Changes Only
+
+    When you encounter resistance from existing code:
+
+    1. **Delete** the offending code
+    2. **Rebuild** it correctly
+    3. **Fix** everything that breaks
+    4. **Never** add compatibility shims, feature flags, or fallbacks
+
+    The correct response to "but this will break X" is to fix X.
+
+    ## What This Means In Practice
+
+    - Rename things to their correct names — fix all references
+    - Change function signatures to their correct form — fix all callers
+    - Restructure data to its correct shape — fix all consumers
+    - Remove parameters that shouldn't exist — fix all call sites
+    - Change return types to what they should be — fix all handlers
+
+    ## Forbidden Patterns
+
+    **NEVER** use these compatibility patterns:
+
+    - `// Deprecated: use X instead` — delete it, use X now
+    - `@deprecated` annotations — delete the code entirely
+    - Feature flags for old behavior — remove the old behavior
+    - Version checks or conditional logic for legacy support
+    - Wrapper functions that translate between old and new
+    - Default parameters that preserve old behavior
+    - Union types that accept "old format or new format"
+    - Any code comment containing "backwards compatibility"
+    - Fallback logic for renames — don't check "old name or new name", just use new name
+    - Case handling for multiple versions — there is only one version
+    - "Handle both formats" logic — if we control the data generation, we can change the data generation or the code to handle it.  Don't use if/thens or ors or switches to handle legacy formats and new formats.
+
+    ## The Prototype Standard
+
+    A prototype has exactly one version: the correct one.
+
+    There is no v1 compatibility. There is no migration period. There is no deprecation cycle. There is only the correct implementation, built correctly, right now.
+
+    If you find yourself writing code to handle "the old way" — stop. Delete the old way. There is only the new way.
+content_hash: sha256:99236a463fdde9e1dc06a48b1bc72eafb9489ce5c2c72ab13119127c8ac41633
+distilled: |-
+    # Prototype Mode
+
+    Build correctly. No compromise.
+
+    ## No Backwards Compatibility
+
+    - Delete deprecated code immediately
+    - Remove old APIs entirely
+    - Break dependencies requiring compromise
+    - Rip out legacy patterns on sight
+    - Wrong? Delete and rebuild correctly
+
+    ## No Legacy Accommodation
+
+    - Bad format → new format, don't support both
+    - Wrong API → new API, don't wrap old
+    - Broken behavior → fix code, don't preserve bug
+    - Migration = someone else's problem
+
+    ## Hard Changes Only
+
+    When existing code resists:
+    1. Delete offending code
+    2. Rebuild correctly
+    3. Fix everything that breaks
+    4. Never add shims/flags/fallbacks
+
+    "This breaks X" → fix X
+
+    ## In Practice
+
+    - Rename correctly, fix all refs
+    - Correct signatures, fix all callers
+    - Restructure data, fix all consumers
+    - Remove bad params, fix call sites
+    - Correct return types, fix handlers
+
+    ## Forbidden Patterns
+
+    Never use:
+    - `// Deprecated` comments — delete now
+    - `@deprecated` annotations — delete code
+    - Feature flags for old behavior
+    - Version checks/legacy conditionals
+    - Old→new wrapper functions
+    - Defaults preserving old behavior
+    - Union types for old+new formats
+    - Any "backwards compatibility" comments
+    - Fallback logic for renames
+    - Multi-version case handling
+    - "Handle both formats" logic when you control data generation
+
+    ## Standard
+
+    One version: correct one.
+
+    No v1 compat. No migration period. No deprecation cycle. Only correct implementation, built correctly, now.
+
+    Writing code for "the old way"? Stop. Delete it. Only the new way exists.
+distilled_by: claude-code

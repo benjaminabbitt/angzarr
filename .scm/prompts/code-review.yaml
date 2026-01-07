@@ -1,0 +1,73 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - review
+    - code
+content: |-
+    # Code Review
+
+    Perform a comprehensive code review applying multiple perspectives.
+
+    ## Perspectives
+
+    Apply each systematically:
+    - **Architecture** - Structure, boundaries, testability, technical debt
+    - **Performance** - Algorithms, data structures, complexity, efficiency
+    - **Standards** - Readability, naming, documentation, canonical patterns
+    - **Concurrency** - Thread safety, race conditions, synchronization (if applicable)
+    - **Domain** - Business logic correctness, domain model accuracy (if applicable)
+
+    ## Process
+
+    1. Understand what the code does
+    2. Apply each perspective
+    3. Categorize findings by severity
+    4. Provide file:line references for all findings
+    5. Note positive patterns worth maintaining
+
+    ## Output Format
+
+    ### Summary
+    Brief description of what the code does.
+
+    ### Critical Issues
+    Must fix before merging.
+
+    ### Medium Issues
+    Should address but doesn't block.
+
+    ### Minor Issues
+    Style and small improvements.
+
+    ### Positive Observations
+    Good patterns worth noting.
+content_hash: sha256:85ec39503cd67964d4fa0af8b26b9fbb342be1f543ee893603a432ea840d16af
+distilled: |-
+    # Code Review
+
+    Comprehensive review using multiple perspectives.
+
+    ## Perspectives
+    - **Architecture** - Structure, boundaries, testability, tech debt
+    - **Performance** - Algorithms, data structures, complexity
+    - **Standards** - Readability, naming, docs, canonical patterns
+    - **Concurrency** - Thread safety, races, sync (if applicable)
+    - **Domain** - Business logic, domain model accuracy (if applicable)
+
+    ## Process
+    1. Understand code purpose
+    2. Apply each perspective
+    3. Categorize by severity
+    4. Include file:line refs
+    5. Note positive patterns
+
+    ## Output Format
+    - **Summary** - What code does
+    - **Critical** - Must fix pre-merge
+    - **Medium** - Should fix, non-blocking
+    - **Minor** - Style/small improvements
+    - **Positive** - Good patterns to maintain
+distilled_by: claude-code

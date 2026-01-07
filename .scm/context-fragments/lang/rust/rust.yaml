@@ -1,0 +1,131 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - rust
+    - language
+content: |-
+    # Rust Development
+
+    ## Environment & Tooling
+
+    - **Rust Version**: Specify in Cargo.toml
+    - **Testing Framework**: Built-in with `#[cfg(test)]`
+    - **Acceptance Testing**: Gherkin (cucumber-rs)
+    - **Code Quality**: clippy, rustfmt, cargo-audit
+    - **Logging**: tracing (structured, async-aware)
+
+    ## Test Structure
+
+    - **Unit Tests**: Inline `#[cfg(test)]` modules
+    - **Integration Tests**: `tests/*.rs`
+    - **Acceptance Tests**: `tests/acceptance/features/*.feature`
+
+    ## Logging with tracing
+
+    ```rust
+    // logmsg.rs
+    pub const USER_CREATED: &str = "user_created";
+
+    // Usage
+    info!(message = logmsg::USER_CREATED, username = %username);
+    ```
+
+    ## Error Message Constants
+
+    ```rust
+    pub mod errmsg {
+        pub const DIVIDE_BY_ZERO: &str = "cannot divide by zero";
+    }
+
+    #[derive(Error, Debug)]
+    pub enum AppError {
+        #[error("{}", errmsg::DIVIDE_BY_ZERO)]
+        DivideByZero,
+    }
+    ```
+
+    ## IoC Pattern
+
+    ```rust
+    impl<R: UserRepository, E: EmailService> UserService<R, E> {
+        pub fn new(user_repo: R, email_service: E) -> Self {
+            Self { user_repo, email_service }
+        }
+    }
+
+    pub type DefaultUserService = UserService<SqlUserRepository, SmtpEmailService>;
+
+    impl DefaultUserService {
+        pub fn create(db: Database) -> Self {
+            Self::new(SqlUserRepository::new(db), SmtpEmailService::new())
+        }
+    }
+    ```
+
+    ## Best Practices
+
+    **Memory:**
+    - Use `Arc<RwLock<T>>` for read-heavy
+    - Use `Arc<Mutex<T>>` for write-heavy
+    - Accept `&str` parameters
+
+    **Concurrency:**
+    - Thread-safe operations
+    - Minimal lock hold times
+    - Consistent lock order
+    - Document ordering
+
+    **Error Handling:**
+    - Use `Result<T, E>` and `?` operator
+    - NEVER use `unwrap()`/`expect()` in library code
+
+    **Code Style:**
+    - `cargo fmt` for formatting
+    - Fix all `clippy` warnings
+    - `///` doc comments explain WHY not WHAT
+content_hash: sha256:b8bfb25299e9dc55ef7a896ab732693a12587a122456793fe096bdb9187f78f7
+distilled: |-
+    # Rust Dev
+
+    ## Tooling
+    - Version: Cargo.toml
+    - Tests: `#[cfg(test)]`, cucumber-rs (Gherkin)
+    - Quality: clippy, rustfmt, cargo-audit
+    - Logging: tracing
+
+    ## Test Layout
+    - Unit: inline `#[cfg(test)]`
+    - Integration: `tests/*.rs`
+    - Acceptance: `tests/acceptance/features/*.feature`
+
+    ## Logging
+    ```rust
+    // logmsg.rs
+    pub const USER_CREATED: &str = "user_created";
+    info!(message = logmsg::USER_CREATED, username = %username);
+    ```
+
+    ## Error Constants
+    ```rust
+    pub mod errmsg {
+        pub const DIVIDE_BY_ZERO: &str = "cannot divide by zero";
+    }
+    #[error("{}", errmsg::DIVIDE_BY_ZERO)]
+    DivideByZero,
+    ```
+
+    ## IoC
+    ```rust
+    impl<R: UserRepository, E: EmailService> UserService<R, E> { ... }
+    pub type DefaultUserService = UserService<SqlUserRepository, SmtpEmailService>;
+    ```
+
+    ## Best Practices
+    - Memory: `Arc<RwLock<T>>` read-heavy, `Arc<Mutex<T>>` write-heavy, accept `&str`
+    - Concurrency: thread-safe, minimal lock time, consistent order, document
+    - Errors: `Result<T, E>` + `?`, NO `unwrap()`/`expect()` in libs
+    - Style: `cargo fmt`, fix clippy, `///` docs explain WHY
+distilled_by: claude-code

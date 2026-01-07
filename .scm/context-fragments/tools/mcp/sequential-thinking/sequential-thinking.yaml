@@ -1,0 +1,13 @@
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DO NOT EDIT - Changes will be overwritten on next 'scm copy'              │
+# │ To customize: scm fragment edit {{name}} then re-run 'scm copy'          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+version: 1.0
+tags:
+    - mcp
+    - reasoning
+    - problem-solving
+no_distill: true
+content: |-
+    # Sequential Thinking MCP Server
+    Use sequential thinking MCP server in accordance with its documentation.
