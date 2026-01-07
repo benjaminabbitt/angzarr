@@ -595,13 +595,22 @@ async fn given_python_logic(world: &mut TestWorld, module_name: String, module_p
 
 #[cfg(feature = "python")]
 #[when(expr = "I send a {string} command via Python for aggregate {string}")]
-async fn when_send_python_command(world: &mut TestWorld, command_type: String, aggregate_id: String) {
-    when_send_python_command_in_domain(world, command_type, aggregate_id, "orders".to_string()).await;
+async fn when_send_python_command(
+    world: &mut TestWorld,
+    command_type: String,
+    aggregate_id: String,
+) {
+    when_send_python_command_in_domain(world, command_type, aggregate_id, "orders".to_string())
+        .await;
 }
 
 #[cfg(feature = "python")]
 #[when(expr = "I send an {string} command via Python for aggregate {string}")]
-async fn when_send_an_python_command(world: &mut TestWorld, command_type: String, aggregate_id: String) {
+async fn when_send_an_python_command(
+    world: &mut TestWorld,
+    command_type: String,
+    aggregate_id: String,
+) {
     when_send_python_command(world, command_type, aggregate_id).await;
 }
 
@@ -674,7 +683,9 @@ async fn then_command_rejected(world: &mut TestWorld, expected_error: String) {
         .as_ref()
         .expect("Expected command to be rejected, but it succeeded");
     assert!(
-        error.to_lowercase().contains(&expected_error.to_lowercase()),
+        error
+            .to_lowercase()
+            .contains(&expected_error.to_lowercase()),
         "Expected error containing '{}', got '{}'",
         expected_error,
         error

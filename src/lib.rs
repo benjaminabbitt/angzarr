@@ -22,7 +22,5 @@ pub mod proto {
 // Re-export common types for library usage
 pub use config::Config;
 pub use facade::{Evented, EventedBuilder, EventedConfig, EventedError};
-pub use interfaces::{
-    BusinessLogicClient, EventBus, EventStore, Projector, Saga, SnapshotStore,
-};
+pub use interfaces::{BusinessLogicClient, EventBus, EventStore, Projector, Saga, SnapshotStore};
 pub use proto::{CommandBook, ContextualCommand, Cover, EventBook, EventPage, Snapshot};

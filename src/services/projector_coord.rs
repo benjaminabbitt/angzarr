@@ -90,7 +90,7 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         };
 
         // Return the first successful projection
-        for (config, mut client) in connections {
+        if let Some((config, mut client)) = connections.into_iter().next() {
             let req = Request::new(event_book.clone());
             match client.handle_sync(req).await {
                 Ok(response) => {
@@ -141,7 +141,9 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
             } else {
                 match client.handle(req).await {
                     Ok(_) => info!(projector.name = %config.name, "Async projection queued"),
-                    Err(e) => warn!(projector.name = %config.name, error = %e, "Failed to queue projection"),
+                    Err(e) => {
+                        warn!(projector.name = %config.name, error = %e, "Failed to queue projection")
+                    }
                 }
             }
         }

@@ -91,20 +91,34 @@ impl EventQueryTrait for EventQueryService {
                                 Ok(uuid) => uuid,
                                 Err(e) => {
                                     error!(error = %e, "Invalid UUID in synchronize query");
-                                    let _ = tx.send(Err(Status::invalid_argument(format!("Invalid UUID: {e}")))).await;
+                                    let _ = tx
+                                        .send(Err(Status::invalid_argument(format!(
+                                            "Invalid UUID: {e}"
+                                        ))))
+                                        .await;
                                     continue;
                                 }
                             },
                             None => {
-                                let _ = tx.send(Err(Status::invalid_argument("Query must have a root UUID"))).await;
+                                let _ = tx
+                                    .send(Err(Status::invalid_argument(
+                                        "Query must have a root UUID",
+                                    )))
+                                    .await;
                                 continue;
                             }
                         };
 
                         // Support range queries if bounds are specified
                         let result = if query.lower_bound > 0 || query.upper_bound > 0 {
-                            let upper = if query.upper_bound == 0 { u32::MAX } else { query.upper_bound };
-                            event_book_repo.get_from_to(&domain, root, query.lower_bound, upper).await
+                            let upper = if query.upper_bound == 0 {
+                                u32::MAX
+                            } else {
+                                query.upper_bound
+                            };
+                            event_book_repo
+                                .get_from_to(&domain, root, query.lower_bound, upper)
+                                .await
                         } else {
                             event_book_repo.get(&domain, root).await
                         };

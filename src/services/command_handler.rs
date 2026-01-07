@@ -88,7 +88,9 @@ impl BusinessCoordinator for CommandHandlerService {
             .handle(domain, contextual_command)
             .await
             .map_err(|e| match e {
-                BusinessError::DomainNotFound(d) => Status::not_found(format!("Domain not found: {d}")),
+                BusinessError::DomainNotFound(d) => {
+                    Status::not_found(format!("Domain not found: {d}"))
+                }
                 BusinessError::Rejected(msg) => Status::failed_precondition(msg),
                 BusinessError::Timeout { domain } => {
                     Status::deadline_exceeded(format!("Timeout waiting for domain: {domain}"))

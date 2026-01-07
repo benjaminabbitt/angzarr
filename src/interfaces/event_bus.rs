@@ -41,10 +41,8 @@ pub enum BusError {
 /// Handler for processing events from the bus.
 pub trait EventHandler: Send + Sync {
     /// Process an event book.
-    fn handle(
-        &self,
-        book: Arc<EventBook>,
-    ) -> BoxFuture<'static, std::result::Result<(), BusError>>;
+    fn handle(&self, book: Arc<EventBook>)
+        -> BoxFuture<'static, std::result::Result<(), BusError>>;
 }
 
 /// Interface for event delivery to projectors/sagas.

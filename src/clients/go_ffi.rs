@@ -69,16 +69,14 @@ impl GoBusinessLogic {
             BusinessError::Rejected(format!("Handle function not found: {}", e))
         })?;
 
-        let free_result: Symbol<FreeResultFn> =
-            unsafe { lib.get(b"FreeResult") }.map_err(|e| {
-                error!(error = %e, "Failed to find FreeResult function");
-                BusinessError::Rejected(format!("FreeResult function not found: {}", e))
-            })?;
+        let free_result: Symbol<FreeResultFn> = unsafe { lib.get(b"FreeResult") }.map_err(|e| {
+            error!(error = %e, "Failed to find FreeResult function");
+            BusinessError::Rejected(format!("FreeResult function not found: {}", e))
+        })?;
 
         // Prepare arguments
-        let domain_cstr = CString::new(domain).map_err(|e| {
-            BusinessError::Rejected(format!("Invalid domain string: {}", e))
-        })?;
+        let domain_cstr = CString::new(domain)
+            .map_err(|e| BusinessError::Rejected(format!("Invalid domain string: {}", e)))?;
 
         // Call Go function
         let (result_ptr, result_len) = unsafe {

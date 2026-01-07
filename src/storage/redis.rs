@@ -151,9 +151,7 @@ impl EventStore for RedisEventStore {
         let events_key = self.events_key(domain, root);
         let mut conn = self.conn.clone();
 
-        let bytes_list: Vec<Vec<u8>> = conn
-            .zrangebyscore(&events_key, from as f64, "+inf")
-            .await?;
+        let bytes_list: Vec<Vec<u8>> = conn.zrangebyscore(&events_key, from as f64, "+inf").await?;
 
         let events: Result<Vec<EventPage>> = bytes_list
             .iter()

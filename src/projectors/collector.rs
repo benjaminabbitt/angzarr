@@ -122,8 +122,14 @@ mod tests {
     async fn test_collector_collects_events() {
         let projector = CollectorProjector::new("test_collector");
 
-        projector.project(&Arc::new(make_event_book("orders", 2))).await.unwrap();
-        projector.project(&Arc::new(make_event_book("orders", 3))).await.unwrap();
+        projector
+            .project(&Arc::new(make_event_book("orders", 2)))
+            .await
+            .unwrap();
+        projector
+            .project(&Arc::new(make_event_book("orders", 3)))
+            .await
+            .unwrap();
 
         assert_eq!(projector.count().await, 2);
         assert_eq!(projector.event_count().await, 5);
@@ -133,7 +139,10 @@ mod tests {
     async fn test_collector_take_clears() {
         let projector = CollectorProjector::new("test_collector");
 
-        projector.project(&Arc::new(make_event_book("orders", 2))).await.unwrap();
+        projector
+            .project(&Arc::new(make_event_book("orders", 2)))
+            .await
+            .unwrap();
 
         let taken = projector.take().await;
         assert_eq!(taken.len(), 1);
@@ -145,7 +154,10 @@ mod tests {
         let projector = CollectorProjector::new("test_collector");
         let handle = projector.collected();
 
-        projector.project(&Arc::new(make_event_book("orders", 2))).await.unwrap();
+        projector
+            .project(&Arc::new(make_event_book("orders", 2)))
+            .await
+            .unwrap();
 
         assert_eq!(handle.read().await.len(), 1);
     }

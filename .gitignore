@@ -23,3 +23,16 @@ __pycache__/
 *.so
 *.h
 !build/**/*.h
+
+# Generated proto files
+/generated/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# IDE
+.vscode/
+*.ipr
+*.iws

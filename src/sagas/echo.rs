@@ -46,7 +46,11 @@ impl EchoSaga {
         }
     }
 
-    fn event_to_command(&self, page: &EventPage, source_root: Option<&crate::proto::Uuid>) -> CommandBook {
+    fn event_to_command(
+        &self,
+        page: &EventPage,
+        source_root: Option<&crate::proto::Uuid>,
+    ) -> CommandBook {
         // Convert event type to command type (e.g., "OrderCreated" -> "ProcessOrder")
         let command_type = page
             .event
@@ -152,16 +156,16 @@ mod tests {
         let commands = saga.handle(&book).await.unwrap();
 
         assert_eq!(commands.len(), 2);
-        assert_eq!(
-            commands[0].cover.as_ref().unwrap().domain,
-            "target_domain"
-        );
+        assert_eq!(commands[0].cover.as_ref().unwrap().domain, "target_domain");
     }
 
     #[tokio::test]
     async fn test_echo_saga_transforms_event_types() {
         let saga = EchoSaga::new("test_echo", "notifications");
-        let book = Arc::new(make_event_book("orders", vec!["OrderCreated", "OrderUpdated", "OrderShipped"]));
+        let book = Arc::new(make_event_book(
+            "orders",
+            vec!["OrderCreated", "OrderUpdated", "OrderShipped"],
+        ));
 
         let commands = saga.handle(&book).await.unwrap();
 

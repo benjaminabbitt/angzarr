@@ -330,10 +330,7 @@ mod tests {
         };
 
         // "test-123" as bytes becomes "746573742d313233" in hex
-        assert_eq!(
-            AmqpEventBus::routing_key(&book),
-            "orders.746573742d313233"
-        );
+        assert_eq!(AmqpEventBus::routing_key(&book), "orders.746573742d313233");
     }
 
     #[test]

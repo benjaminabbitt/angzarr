@@ -28,9 +28,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::bus::InProcessEventBus;
-use crate::interfaces::{
-    BusinessLogicClient, EventBus, EventStore, Projector, Saga, StorageError,
-};
+use crate::interfaces::{BusinessLogicClient, EventBus, EventStore, Projector, Saga, StorageError};
 use crate::proto::{CommandBook, EventBook, SynchronousProcessingResponse};
 use crate::repository::EventBookRepository;
 use crate::storage::{SqliteEventStore, SqliteSnapshotStore};
@@ -135,9 +133,9 @@ impl EventedBuilder {
         }
 
         // Use placeholder if no business logic provided
-        let business_logic = self.business_logic.unwrap_or_else(|| {
-            Arc::new(crate::clients::PlaceholderBusinessLogic::with_defaults())
-        });
+        let business_logic = self
+            .business_logic
+            .unwrap_or_else(|| Arc::new(crate::clients::PlaceholderBusinessLogic::with_defaults()));
 
         Ok(Evented {
             event_store,
@@ -197,8 +195,7 @@ impl Evented {
             let domain = cover.domain.clone();
             let root = cover.root.as_ref().ok_or(EventedError::MissingRoot)?;
 
-            let root_uuid =
-                Uuid::from_slice(&root.value).map_err(EventedError::InvalidUuid)?;
+            let root_uuid = Uuid::from_slice(&root.value).map_err(EventedError::InvalidUuid)?;
 
             // Load prior state
             let prior_events = self.repository.get(&domain, root_uuid).await?;

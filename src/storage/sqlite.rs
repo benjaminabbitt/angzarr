@@ -93,11 +93,12 @@ impl EventStore for SqliteEventStore {
                 .created_at
                 .as_ref()
                 .map(|ts| {
-                    chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
-                        .ok_or_else(|| StorageError::InvalidTimestamp {
+                    chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32).ok_or_else(|| {
+                        StorageError::InvalidTimestamp {
                             seconds: ts.seconds,
                             nanos: ts.nanos,
-                        })
+                        }
+                    })
                 })
                 .transpose()?
                 .map(|dt| dt.to_rfc3339())
@@ -220,10 +221,7 @@ impl EventStore for SqliteEventStore {
 
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 
-        let domains = rows
-            .iter()
-            .map(|row| row.get("domain"))
-            .collect();
+        let domains = rows.iter().map(|row| row.get("domain")).collect();
 
         Ok(domains)
     }
