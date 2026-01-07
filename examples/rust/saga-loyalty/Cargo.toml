@@ -1,0 +1,13 @@
+[package]
+name = "saga-loyalty"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+evented = { path = "../../.." }
+prost = "0.13"
+prost-types = "0.13"
+hex = "0.4"

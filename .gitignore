@@ -1,4 +1,5 @@
 /target
+**/target/
 Cargo.lock
 *.swp
 *.swo
@@ -26,6 +27,13 @@ __pycache__/
 
 # Generated proto files
 /generated/
+
+# Python examples - generated protos
+examples/python/*/evented/
+examples/python/*/proto/
+
+# Go examples - generated protos
+examples/go/*/proto/
 
 # Terraform
 .terraform/

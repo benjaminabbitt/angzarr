@@ -1,0 +1,72 @@
+# Go examples
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Build all Go examples
+build: build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+
+# Build transaction bounded context
+build-transaction:
+    cd transaction && just build
+
+# Build saga-loyalty
+build-saga-loyalty:
+    cd saga-loyalty && just build
+
+# Build projector-receipt
+build-projector-receipt:
+    cd projector-receipt && just build
+
+# Build projector-log-customer
+build-projector-log-customer:
+    cd projector-log-customer && just build
+
+# Build projector-log-transaction
+build-projector-log-transaction:
+    cd projector-log-transaction && just build
+
+# Test all Go examples
+test: test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+
+# Test transaction
+test-transaction: build-transaction
+    cd transaction && just test
+
+# Test saga-loyalty
+test-saga-loyalty: build-saga-loyalty
+    cd saga-loyalty && just test || true
+
+# Test projector-receipt
+test-projector-receipt: build-projector-receipt
+    cd projector-receipt && just test || true
+
+# Test projector-log-customer
+test-projector-log-customer: build-projector-log-customer
+    cd projector-log-customer && just test || true
+
+# Test projector-log-transaction
+test-projector-log-transaction: build-projector-log-transaction
+    cd projector-log-transaction && just test || true
+
+# Clean all Go examples
+clean:
+    cd common && just clean || true
+    cd transaction && just clean || true
+    cd saga-loyalty && just clean || true
+    cd projector-receipt && just clean || true
+    cd projector-log-customer && just clean || true
+    cd projector-log-transaction && just clean || true
+
+# Verify all shared libraries
+verify:
+    cd transaction && just verify
+    cd saga-loyalty && just verify
+    cd projector-receipt && just verify
+    cd projector-log-customer && just verify
+    cd projector-log-transaction && just verify

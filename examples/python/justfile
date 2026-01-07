@@ -1,4 +1,6 @@
-# Python Business Logic Example
+# Python examples
+
+set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 
@@ -6,36 +8,70 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-# Generate protobuf Python code using container (recommended)
-proto:
-    cd "{{TOP}}" && just proto-python
-    mkdir -p evented
-    cp -r "{{TOP}}/generated/python/evented/"* evented/
+# Setup all Python examples
+setup: setup-common setup-customer setup-transaction setup-saga-loyalty setup-projector-receipt setup-projector-log-customer setup-projector-log-transaction
 
-# Generate protobuf locally (fallback if no Docker)
-proto-local:
-    ./generate_proto.sh
+# Setup common utilities
+setup-common:
+    cd common && just setup
 
-# Install dependencies
-install:
-    uv sync --dev
+# Setup customer bounded context
+setup-customer:
+    cd customer && just setup
 
-# Run the example
-run:
-    uv run python -c "from discount_logic import handle_discount; print('Discount handler loaded successfully')"
+# Setup transaction bounded context
+setup-transaction:
+    cd transaction && just setup
 
-# Run tests
-test:
-    uv run pytest -v
+# Setup saga-loyalty
+setup-saga-loyalty:
+    cd saga-loyalty && just setup
 
-# Full setup using proto container
-setup: install proto
+# Setup projector-receipt
+setup-projector-receipt:
+    cd projector-receipt && just setup
 
-# Full setup using local proto generation (fallback)
-setup-local: install proto-local
+# Setup projector-log-customer
+setup-projector-log-customer:
+    cd projector-log-customer && just setup
 
-# Clean
+# Setup projector-log-transaction
+setup-projector-log-transaction:
+    cd projector-log-transaction && just setup
+
+# Test all Python examples
+test: test-customer test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+
+# Test customer
+test-customer: setup-customer
+    cd customer && just test
+
+# Test transaction
+test-transaction: setup-transaction
+    cd transaction && just test
+
+# Test saga-loyalty
+test-saga-loyalty: setup-saga-loyalty
+    cd saga-loyalty && just test
+
+# Test projector-receipt
+test-projector-receipt: setup-projector-receipt
+    cd projector-receipt && just test
+
+# Test projector-log-customer
+test-projector-log-customer: setup-projector-log-customer
+    cd projector-log-customer && just test
+
+# Test projector-log-transaction
+test-projector-log-transaction: setup-projector-log-transaction
+    cd projector-log-transaction && just test
+
+# Clean all Python examples
 clean:
-    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-    find . -type f -name "*.pyc" -delete 2>/dev/null || true
-    rm -rf .venv evented/
+    cd common && just clean || true
+    cd customer && just clean || true
+    cd transaction && just clean || true
+    cd saga-loyalty && just clean || true
+    cd projector-receipt && just clean || true
+    cd projector-log-customer && just clean || true
+    cd projector-log-transaction && just clean || true

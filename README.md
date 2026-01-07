@@ -38,6 +38,24 @@ Business logic lives in external services called via gRPC. evented-rs handles:
 - **ProjectorCoordinator**: Route events to read model builders
 - **SagaCoordinator**: Route events to cross-aggregate workflows
 
+## Deployment Modes
+
+evented-rs supports two deployment modes for each major component:
+
+| Component | Production | Development |
+|-----------|------------|-------------|
+| Event Bus | `DirectEventBus` (gRPC) | `InProcessEventBus` |
+| Storage | SQLite file / Redis | In-memory SQLite |
+| Business Logic | External gRPC services | In-process trait implementations |
+
+**In-process mode** (in-memory storage, `InProcessEventBus`, embedded facade) is intended for:
+- Initial development and prototyping
+- Debugging without network complexity
+- Unit and integration testing
+- Single-process deployments
+
+This allows stepping through the entire command-event-projection flow in a debugger without gRPC boundaries, then switching to distributed components for production.
+
 ## Roadmap
 
 Features to reach parity with mature frameworks like Axon:

@@ -1,0 +1,37 @@
+# Customer Log Projector (Rust)
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Setup common first
+setup-common:
+    cd ../common && just proto
+
+# Build the library
+build: setup-common
+    cargo build
+
+# Build release
+build-release:
+    cargo build --release
+
+# Run tests
+test:
+    cargo test
+
+# Clean build artifacts
+clean:
+    cargo clean
+
+# Check code
+check:
+    cargo check
+
+# Lint code
+lint:
+    cargo clippy -- -D warnings

@@ -1,0 +1,61 @@
+# Evented examples
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Generate protos (required before building examples)
+proto:
+    cd "{{TOP}}" && just proto-generate
+
+# Build all examples (all languages)
+build: proto
+    cd python && just setup
+    cd go && just build
+    cd rust && just build
+
+# Test all examples (all languages)
+test: build
+    cd python && just test
+    cd go && just test
+    cd rust && just test
+
+# Clean all examples
+clean:
+    cd python && just clean
+    cd go && just clean
+    cd rust && just clean
+
+# === Python examples ===
+
+# Build Python examples
+build-python: proto
+    cd python && just setup
+
+# Test Python examples
+test-python: build-python
+    cd python && just test
+
+# === Go examples ===
+
+# Build Go examples
+build-go: proto
+    cd go && just build
+
+# Test Go examples
+test-go: build-go
+    cd go && just test
+
+# === Rust examples ===
+
+# Build Rust examples
+build-rust:
+    cd rust && just build
+
+# Test Rust examples
+test-rust:
+    cd rust && just test

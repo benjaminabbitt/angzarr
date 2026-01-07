@@ -1,0 +1,40 @@
+# Customer Log Projector (Python)
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Setup common first
+setup-common:
+    cd ../common && just setup
+
+# Install dependencies
+install:
+    uv venv --quiet 2>/dev/null || true
+    uv pip install --quiet protobuf>=5.0.0 pytest>=8.0.0
+
+# Copy generated proto files
+proto:
+    mkdir -p proto
+    cp -r "{{TOP}}/generated/python/examples/"* proto/ 2>/dev/null || true
+    touch proto/__init__.py
+
+# Full setup
+setup: setup-common install proto
+
+# Run tests
+test: setup
+    .venv/bin/python -m pytest -v
+
+# Run demo
+demo: setup
+    .venv/bin/python log_projector.py
+
+# Clean
+clean:
+    rm -rf __pycache__ proto/*.py .venv
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

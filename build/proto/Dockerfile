@@ -1,11 +1,12 @@
 # Protobuf generation container
 # Generates proto files for Rust, Python, and Go
 
-FROM golang:1.22-bookworm AS base
+FROM golang:1.23-bookworm AS base
 
 # Install protoc and base dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler \
+    libprotobuf-dev \
     python3 \
     python3-pip \
     python3-venv \
@@ -13,9 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Go protoc plugins
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+# Install Go protoc plugins (pinned versions compatible with Go 1.23)
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.0 && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
 # Install Python grpcio-tools
 RUN python3 -m venv /opt/venv && \

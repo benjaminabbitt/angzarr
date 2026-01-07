@@ -1,4 +1,4 @@
-//! Example saga implementations for in-process usage.
+//! Saga implementations for cross-aggregate workflows.
 
 mod echo;
 

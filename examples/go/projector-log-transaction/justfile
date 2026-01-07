@@ -1,0 +1,40 @@
+# Transaction Log Projector (Go)
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Setup common first
+setup-common:
+    cd ../common && just proto
+
+# Copy generated proto files
+proto: setup-common
+    mkdir -p proto/evented proto/examples
+    cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
+    cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
+
+# Build shared library for FFI
+build: proto
+    go mod tidy
+    go build -buildmode=c-shared -o libprojector_log_transaction.so .
+
+# Full rebuild
+rebuild: proto build
+
+# Run tests
+test: proto
+    go test -v ./...
+
+# Clean build artifacts
+clean:
+    rm -f libprojector_log_transaction.so libprojector_log_transaction.h
+    rm -rf proto/evented/*.go proto/examples/*.go
+
+# Verify the shared library exports
+verify: build
+    nm -D libprojector_log_transaction.so | grep -E "(Handle|Name|Domains|IsSynchronous)"

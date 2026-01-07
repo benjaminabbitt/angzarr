@@ -68,6 +68,7 @@ if [ "$GENERATE_RUST" = true ]; then
             --prost_opt=compile_well_known_types \
             --tonic_opt=compile_well_known_types \
             -I "$PROTO_DIR" \
+            -I /usr/include \
             "$proto"
     done
 
@@ -90,6 +91,7 @@ if [ "$GENERATE_PYTHON" = true ]; then
             --grpc_python_out="$PYTHON_OUT" \
             --pyi_out="$PYTHON_OUT" \
             -I "$PROTO_DIR" \
+            -I /usr/include \
             "$proto"
     done
 
@@ -116,6 +118,7 @@ if [ "$GENERATE_GO" = true ]; then
             --go-grpc_out="$GO_OUT" \
             --go-grpc_opt=paths=source_relative \
             -I "$PROTO_DIR" \
+            -I /usr/include \
             "$proto"
     done
 

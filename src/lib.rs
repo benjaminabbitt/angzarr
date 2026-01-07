@@ -19,6 +19,9 @@ pub mod proto {
     tonic::include_proto!("evented");
 }
 
+// Re-export async_trait for implementors
+pub use async_trait;
+
 // Re-export common types for library usage
 pub use config::Config;
 pub use facade::{Evented, EventedBuilder, EventedConfig, EventedError};

@@ -1,0 +1,32 @@
+# Customer bounded context (Python)
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Install dependencies
+install:
+    uv sync --dev
+
+# Copy generated proto files
+proto:
+    mkdir -p evented/proto proto
+    cp -r "{{TOP}}/generated/python/evented/"* evented/proto/ 2>/dev/null || true
+    cp -r "{{TOP}}/generated/python/examples/"* proto/ 2>/dev/null || true
+    touch evented/__init__.py evented/proto/__init__.py proto/__init__.py
+
+# Full setup
+setup: install proto
+
+# Run tests
+test:
+    uv run pytest -v
+
+# Clean
+clean:
+    rm -rf __pycache__ .pytest_cache evented/proto/*.py proto/*.py
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

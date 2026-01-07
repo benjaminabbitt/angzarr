@@ -1,0 +1,38 @@
+# Loyalty Points Saga (Rust)
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Copy generated proto files
+proto:
+    mkdir -p src/proto
+    cp "{{TOP}}/generated/rust/examples/examples.rs" src/proto/examples.rs
+
+# Build the library
+build: proto
+    cargo build
+
+# Build release
+build-release:
+    cargo build --release
+
+# Run tests
+test:
+    cargo test
+
+# Clean build artifacts
+clean:
+    cargo clean
+
+# Check code
+check:
+    cargo check
+
+# Lint code
+lint:
+    cargo clippy -- -D warnings

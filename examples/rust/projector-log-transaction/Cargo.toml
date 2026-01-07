@@ -1,0 +1,13 @@
+[package]
+name = "projector-log-transaction"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+evented = { path = "../../.." }
+common = { path = "../common" }
+hex = "0.4"
+async-trait = "0.1"

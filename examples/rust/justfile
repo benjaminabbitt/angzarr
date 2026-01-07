@@ -1,0 +1,60 @@
+# Rust examples
+
+set shell := ["bash", "-c"]
+
+# Show available commands
+default:
+    @just --list
+
+# Build all Rust examples
+build: build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+
+# Build saga-loyalty
+build-saga-loyalty:
+    cd saga-loyalty && just build
+
+# Build projector-receipt
+build-projector-receipt:
+    cd projector-receipt && just build
+
+# Build projector-log-customer
+build-projector-log-customer:
+    cd projector-log-customer && just build
+
+# Build projector-log-transaction
+build-projector-log-transaction:
+    cd projector-log-transaction && just build
+
+# Test all Rust examples
+test: test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+
+# Test saga-loyalty
+test-saga-loyalty:
+    cd saga-loyalty && just test
+
+# Test projector-receipt
+test-projector-receipt:
+    cd projector-receipt && just test
+
+# Test projector-log-customer
+test-projector-log-customer:
+    cd projector-log-customer && just test
+
+# Test projector-log-transaction
+test-projector-log-transaction:
+    cd projector-log-transaction && just test
+
+# Clean all Rust examples
+clean:
+    cd common && just clean || true
+    cd saga-loyalty && just clean || true
+    cd projector-receipt && just clean || true
+    cd projector-log-customer && just clean || true
+    cd projector-log-transaction && just clean || true
+
+# Lint all Rust examples
+lint:
+    cd saga-loyalty && just lint
+    cd projector-receipt && just lint
+    cd projector-log-customer && just lint
+    cd projector-log-transaction && just lint
