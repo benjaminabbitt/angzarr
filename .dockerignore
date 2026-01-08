@@ -1,5 +1,6 @@
 # Build artifacts
 target/
+**/target/
 *.rs.bk
 
 # IDE/Editor
@@ -21,8 +22,11 @@ target/
 data/
 *.db
 
-# Example projects (separate containers)
-examples/
+# Example projects - exclude venvs and build artifacts, keep source
+examples/go/**/go-*
+examples/python/**/.venv/
+examples/python/**/__pycache__/
+examples/python/**/.pytest_cache/
 
 # CI/CD
 .github/

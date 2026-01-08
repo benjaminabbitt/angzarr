@@ -1,4 +1,4 @@
-# Receipt Projector (Go)
+# Receipt Projector - Go gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -14,10 +14,18 @@ proto:
     cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
 
-# Build shared library for FFI
+# Build the binary
 build: proto
     go mod tidy
-    go build -buildmode=c-shared -o libprojector_receipt.so .
+    go build -o projector-receipt .
+
+# Run the server
+run: build
+    ./projector-receipt
+
+# Run with custom port
+run-port port:
+    PORT={{port}} ./projector-receipt
 
 # Full rebuild
 rebuild: proto build
@@ -28,9 +36,13 @@ test: proto
 
 # Clean build artifacts
 clean:
-    rm -f libprojector_receipt.so libprojector_receipt.h
+    rm -f projector-receipt
     rm -rf proto/evented/*.go proto/examples/*.go
 
-# Verify the shared library exports
-verify: build
-    nm -D libprojector_receipt.so | grep -E "(Handle|Name|Domains|IsSynchronous)"
+# Format code
+fmt:
+    go fmt ./...
+
+# Lint code
+lint:
+    golangci-lint run

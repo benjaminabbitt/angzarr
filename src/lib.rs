@@ -14,6 +14,9 @@ pub mod sagas;
 pub mod services;
 pub mod storage;
 
+#[cfg(test)]
+pub mod test_utils;
+
 // Re-export generated proto types
 pub mod proto {
     tonic::include_proto!("evented");

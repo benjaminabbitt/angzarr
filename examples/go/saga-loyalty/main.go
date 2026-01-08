@@ -3,17 +3,17 @@
 // commands to the customer domain.
 package main
 
-/*
-#include <stdlib.h>
-*/
-import "C"
-
 import (
+	"context"
+	"encoding/hex"
 	"fmt"
-	"unsafe"
+	"net"
+	"os"
 
-	goproto "google.golang.org/protobuf/proto"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"saga-loyalty/proto/evented"
 	"saga-loyalty/proto/examples"
@@ -21,55 +21,35 @@ import (
 
 const SagaName = "loyalty_points"
 
-// Handle processes an EventBook and returns CommandBooks.
-//
-//export Handle
-func Handle(data *C.char, length C.int) (*C.char, C.int) {
-	inputBytes := C.GoBytes(unsafe.Pointer(data), length)
+var logger *zap.Logger
 
-	var eventBook evented.EventBook
-	if err := goproto.Unmarshal(inputBytes, &eventBook); err != nil {
-		return nil, 0
+// server implements the Saga gRPC service.
+type server struct {
+	evented.UnimplementedSagaServer
+}
+
+// Handle processes events asynchronously (fire-and-forget).
+func (s *server) Handle(ctx context.Context, req *evented.EventBook) (*emptypb.Empty, error) {
+	// Saga always needs to return commands, so use HandleSync internally
+	_, _ = s.HandleSync(ctx, req)
+	return &emptypb.Empty{}, nil
+}
+
+// HandleSync processes events and returns commands synchronously.
+func (s *server) HandleSync(ctx context.Context, req *evented.EventBook) (*evented.SynchronousProcessingResponse, error) {
+	commandBooks := processEvents(req)
+
+	return &evented.SynchronousProcessingResponse{
+		Commands: commandBooks,
+	}, nil
+}
+
+// processEvents extracts TransactionCompleted events and generates AddLoyaltyPoints commands.
+func processEvents(eventBook *evented.EventBook) []*evented.CommandBook {
+	if eventBook == nil || len(eventBook.Pages) == 0 {
+		return nil
 	}
 
-	commandBooks := handle(&eventBook)
-	if len(commandBooks) == 0 {
-		return nil, 0
-	}
-
-	// For simplicity, return the first command book
-	// In a real implementation, you'd return all of them
-	outputBytes, err := goproto.Marshal(commandBooks[0])
-	if err != nil {
-		return nil, 0
-	}
-
-	return (*C.char)(C.CBytes(outputBytes)), C.int(len(outputBytes))
-}
-
-// Name returns the saga name.
-//
-//export Name
-func Name() (*C.char, C.int) {
-	return C.CString(SagaName), C.int(len(SagaName))
-}
-
-// Domains returns the domains this saga listens to.
-//
-//export Domains
-func Domains() (*C.char, C.int) {
-	domains := "transaction"
-	return C.CString(domains), C.int(len(domains))
-}
-
-// IsSynchronous returns whether this saga is synchronous.
-//
-//export IsSynchronous
-func IsSynchronous() C.int {
-	return 1 // true
-}
-
-func handle(eventBook *evented.EventBook) []*evented.CommandBook {
 	var commands []*evented.CommandBook
 
 	for _, page := range eventBook.Pages {
@@ -84,6 +64,8 @@ func handle(eventBook *evented.EventBook) []*evented.CommandBook {
 
 		var event examples.TransactionCompleted
 		if err := page.Event.UnmarshalTo(&event); err != nil {
+			logger.Error("failed to unmarshal TransactionCompleted",
+				zap.Error(err))
 			continue
 		}
 
@@ -95,13 +77,19 @@ func handle(eventBook *evented.EventBook) []*evented.CommandBook {
 		// Get customer_id from the transaction cover
 		customerID := eventBook.Cover.Root
 		if customerID == nil {
+			logger.Warn("transaction has no root ID, skipping loyalty points")
 			continue
 		}
 
-		transactionID := fmt.Sprintf("%x", customerID.Value)
+		transactionID := hex.EncodeToString(customerID.Value)
+		shortID := transactionID
+		if len(shortID) > 16 {
+			shortID = shortID[:16]
+		}
 
-		fmt.Printf("[%s] Awarding %d loyalty points for transaction %s...\n",
-			SagaName, points, transactionID[:min(16, len(transactionID))])
+		logger.Info("awarding loyalty points",
+			zap.Int32("points", points),
+			zap.String("transaction_id", shortID))
 
 		// Create AddLoyaltyPoints command
 		addPointsCmd := &examples.AddLoyaltyPoints{
@@ -111,6 +99,8 @@ func handle(eventBook *evented.EventBook) []*evented.CommandBook {
 
 		cmdAny, err := anypb.New(addPointsCmd)
 		if err != nil {
+			logger.Error("failed to create Any for AddLoyaltyPoints",
+				zap.Error(err))
 			continue
 		}
 
@@ -134,13 +124,35 @@ func handle(eventBook *evented.EventBook) []*evented.CommandBook {
 	return commands
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func main() {
-	fmt.Println("Loyalty Points Saga (Go) loaded")
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "50054"
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		logger.Fatal("failed to listen",
+			zap.String("port", port),
+			zap.Error(err))
+	}
+
+	s := grpc.NewServer()
+	evented.RegisterSagaServer(s, &server{})
+
+	logger.Info("saga server started",
+		zap.String("name", SagaName),
+		zap.String("port", port),
+		zap.String("listens_to", "transaction domain"))
+
+	if err := s.Serve(lis); err != nil {
+		logger.Fatal("failed to serve", zap.Error(err))
+	}
 }

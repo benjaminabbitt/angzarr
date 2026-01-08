@@ -115,6 +115,7 @@ impl SagaCoordinator for SagaCoordinatorService {
 
         Ok(Response::new(SynchronousProcessingResponse {
             books: all_books,
+            commands: vec![],
             projections: all_projections,
         }))
     }
@@ -149,5 +150,73 @@ impl SagaCoordinator for SagaCoordinatorService {
         }
 
         Ok(Response::new(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proto::{Cover, Uuid as ProtoUuid};
+
+    fn make_event_book() -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: vec![1; 16],
+                }),
+            }),
+            pages: vec![],
+            snapshot: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_new_creates_empty_coordinator() {
+        let coordinator = SagaCoordinatorService::new();
+        assert!(coordinator.sagas.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_default_creates_empty_coordinator() {
+        let coordinator = SagaCoordinatorService::default();
+        assert!(coordinator.sagas.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_sync_with_no_sagas_returns_empty_response() {
+        let coordinator = SagaCoordinatorService::new();
+        let event_book = make_event_book();
+
+        let response = coordinator.handle_sync(Request::new(event_book)).await;
+
+        assert!(response.is_ok());
+        let sync_response = response.unwrap().into_inner();
+        assert!(sync_response.books.is_empty());
+        assert!(sync_response.projections.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_with_no_sagas_succeeds() {
+        let coordinator = SagaCoordinatorService::new();
+        let event_book = make_event_book();
+
+        let response = coordinator.handle(Request::new(event_book)).await;
+
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_add_saga_invalid_address() {
+        let coordinator = SagaCoordinatorService::new();
+        let config = SagaConfig {
+            name: "test".to_string(),
+            address: "".to_string(), // Invalid
+            synchronous: false,
+        };
+
+        let result = coordinator.add_saga(config).await;
+
+        assert!(result.is_err());
     }
 }

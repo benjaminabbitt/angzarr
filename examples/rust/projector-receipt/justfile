@@ -1,4 +1,4 @@
-# Receipt Projector (Rust)
+# Receipt Projector - Rust gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -13,26 +13,34 @@ proto:
     mkdir -p src/proto
     cp "{{TOP}}/generated/rust/examples/examples.rs" src/proto/examples.rs
 
-# Build the library
+# Build the server
 build: proto
-    cargo build
+    cargo build -p projector-receipt --bin projector-receipt-server
 
 # Build release
-build-release:
-    cargo build --release
+build-release: proto
+    cargo build -p projector-receipt --bin projector-receipt-server --release
+
+# Run the server
+run: build
+    cargo run -p projector-receipt --bin projector-receipt-server
+
+# Run with custom port
+run-port port:
+    PORT={{port}} cargo run -p projector-receipt --bin projector-receipt-server
 
 # Run tests
 test:
-    cargo test
+    cargo test -p projector-receipt
 
 # Clean build artifacts
 clean:
-    cargo clean
+    cargo clean -p projector-receipt
 
 # Check code
 check:
-    cargo check
+    cargo check -p projector-receipt
 
 # Lint code
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy -p projector-receipt -- -D warnings

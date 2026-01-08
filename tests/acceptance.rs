@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use evented::clients::PlaceholderBusinessLogic;
 use evented::interfaces::business_client::Result as BusinessResult;
-use evented::interfaces::event_bus::{BusError, EventBus, Result as BusResult};
+use evented::interfaces::event_bus::{BusError, EventBus, PublishResult, Result as BusResult};
 use evented::interfaces::event_store::EventStore;
 use evented::interfaces::snapshot_store::SnapshotStore;
 use evented::interfaces::BusinessLogicClient;
@@ -22,14 +22,6 @@ use evented::proto::{
 };
 use evented::services::CommandHandlerService;
 use evented::storage::{SqliteEventStore, SqliteSnapshotStore};
-
-#[cfg(feature = "python")]
-use evented::clients::PyBusinessLogic;
-#[cfg(feature = "python")]
-use pyo3::types::PyAnyMethods;
-
-#[cfg(feature = "go-ffi")]
-use evented::clients::GoBusinessLogic;
 
 /// Stub business logic that records calls and returns configured events.
 pub struct StubBusinessLogic {
@@ -140,9 +132,9 @@ impl StubEventBus {
 
 #[async_trait]
 impl EventBus for StubEventBus {
-    async fn publish(&self, book: Arc<EventBook>) -> BusResult<()> {
+    async fn publish(&self, book: Arc<EventBook>) -> BusResult<PublishResult> {
         self.published.write().await.push((*book).clone());
-        Ok(())
+        Ok(PublishResult::default())
     }
 
     async fn subscribe(
@@ -166,11 +158,8 @@ pub struct TestWorld {
     event_bus: Arc<StubEventBus>,
     current_domain: String,
     current_aggregate: Uuid,
+    #[allow(dead_code)]
     use_placeholder: bool,
-    #[cfg(feature = "python")]
-    python_logic: Option<Arc<PyBusinessLogic>>,
-    #[cfg(feature = "go-ffi")]
-    go_logic: Option<Arc<GoBusinessLogic>>,
     /// Last error from a rejected command.
     last_error: Option<String>,
 }
@@ -202,10 +191,6 @@ impl TestWorld {
             current_domain: String::new(),
             current_aggregate: Uuid::nil(),
             use_placeholder: false,
-            #[cfg(feature = "python")]
-            python_logic: None,
-            #[cfg(feature = "go-ffi")]
-            go_logic: None,
             last_error: None,
         }
     }
@@ -551,131 +536,6 @@ async fn then_latest_event_type_contains(world: &mut TestWorld, expected: String
     then_event_type_contains(world, expected).await;
 }
 
-// Python business logic steps (feature-gated)
-
-#[cfg(feature = "python")]
-#[given(expr = "Python business logic from module {string} at path {string}")]
-async fn given_python_logic(world: &mut TestWorld, module_name: String, module_path: String) {
-    // Add venv site-packages to Python path for protobuf access
-    pyo3::Python::with_gil(|py| {
-        let sys = py.import_bound("sys").unwrap();
-        let sys_path = sys.getattr("path").unwrap();
-
-        // Add the module path
-        if !sys_path.contains(&module_path).unwrap_or(false) {
-            sys_path.call_method1("insert", (0, &module_path)).unwrap();
-        }
-
-        // Find and add venv site-packages
-        let venv_path = format!("{}/venv/lib", module_path);
-        let venv_path_alt = format!("{}/.venv/lib", module_path);
-
-        for base in [&venv_path, &venv_path_alt] {
-            if let Ok(entries) = std::fs::read_dir(base) {
-                for entry in entries.flatten() {
-                    let site_packages = entry.path().join("site-packages");
-                    if site_packages.exists() {
-                        let sp_str = site_packages.to_string_lossy().to_string();
-                        if !sys_path.contains(&sp_str).unwrap_or(false) {
-                            sys_path.call_method1("insert", (0, sp_str)).unwrap();
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    let python_logic = PyBusinessLogic::with_path(
-        module_name,
-        module_path,
-        vec!["orders".to_string(), "inventory".to_string()],
-    );
-    world.python_logic = Some(Arc::new(python_logic));
-}
-
-#[cfg(feature = "python")]
-#[when(expr = "I send a {string} command via Python for aggregate {string}")]
-async fn when_send_python_command(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-) {
-    when_send_python_command_in_domain(world, command_type, aggregate_id, "orders".to_string())
-        .await;
-}
-
-#[cfg(feature = "python")]
-#[when(expr = "I send an {string} command via Python for aggregate {string}")]
-async fn when_send_an_python_command(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-) {
-    when_send_python_command(world, command_type, aggregate_id).await;
-}
-
-#[cfg(feature = "python")]
-#[when(expr = "I send a {string} command via Python for aggregate {string} in domain {string}")]
-async fn when_send_python_command_in_domain(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-    domain: String,
-) {
-    let root = world.parse_aggregate_id(&aggregate_id);
-    world.current_aggregate = root;
-    world.current_domain = domain.clone();
-    world.last_error = None;
-
-    let python_logic = world
-        .python_logic
-        .as_ref()
-        .expect("Python logic not configured");
-
-    let handler = CommandHandlerService::new(
-        world.event_store.clone(),
-        world.snapshot_store.clone(),
-        python_logic.clone(),
-        world.event_bus.clone(),
-    );
-
-    let command_book = CommandBook {
-        cover: Some(Cover {
-            domain: domain.clone(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-        }),
-        pages: vec![evented::proto::CommandPage {
-            sequence: 0,
-            synchronous: false,
-            command: Some(prost_types::Any {
-                type_url: format!("type.googleapis.com/{}", command_type),
-                value: vec![],
-            }),
-        }],
-    };
-
-    use evented::proto::business_coordinator_server::BusinessCoordinator;
-    match handler.handle(tonic::Request::new(command_book)).await {
-        Ok(_) => {}
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-        }
-    }
-}
-
-#[cfg(feature = "python")]
-#[when(expr = "I send an {string} command via Python for aggregate {string} in domain {string}")]
-async fn when_send_an_python_command_in_domain(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-    domain: String,
-) {
-    when_send_python_command_in_domain(world, command_type, aggregate_id, domain).await;
-}
-
 #[then(expr = "the command is rejected with error containing {string}")]
 async fn then_command_rejected(world: &mut TestWorld, expected_error: String) {
     let error = world
@@ -692,115 +552,9 @@ async fn then_command_rejected(world: &mut TestWorld, expected_error: String) {
     );
 }
 
-// Go FFI business logic steps (feature-gated)
-
-#[cfg(feature = "go-ffi")]
-#[given(expr = "Go business logic from library {string}")]
-async fn given_go_logic(world: &mut TestWorld, library_path: String) {
-    let go_logic = GoBusinessLogic::new(
-        library_path,
-        vec![
-            "orders".to_string(),
-            "inventory".to_string(),
-            "discounts".to_string(),
-        ],
-    );
-    world.go_logic = Some(Arc::new(go_logic));
-}
-
-#[cfg(feature = "go-ffi")]
-#[when(expr = "I send a {string} command via Go for aggregate {string}")]
-async fn when_send_go_command(world: &mut TestWorld, command_type: String, aggregate_id: String) {
-    when_send_go_command_in_domain(world, command_type, aggregate_id, "orders".to_string()).await;
-}
-
-#[cfg(feature = "go-ffi")]
-#[when(expr = "I send an {string} command via Go for aggregate {string}")]
-async fn when_send_an_go_command(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-) {
-    when_send_go_command(world, command_type, aggregate_id).await;
-}
-
-#[cfg(feature = "go-ffi")]
-#[when(expr = "I send a {string} command via Go for aggregate {string} in domain {string}")]
-async fn when_send_go_command_in_domain(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-    domain: String,
-) {
-    let root = world.parse_aggregate_id(&aggregate_id);
-    world.current_aggregate = root;
-    world.current_domain = domain.clone();
-    world.last_error = None;
-
-    let go_logic = world.go_logic.as_ref().expect("Go logic not configured");
-
-    let handler = CommandHandlerService::new(
-        world.event_store.clone(),
-        world.snapshot_store.clone(),
-        go_logic.clone(),
-        world.event_bus.clone(),
-    );
-
-    let command_book = CommandBook {
-        cover: Some(Cover {
-            domain: domain.clone(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-        }),
-        pages: vec![evented::proto::CommandPage {
-            sequence: 0,
-            synchronous: false,
-            command: Some(prost_types::Any {
-                type_url: format!("type.googleapis.com/{}", command_type),
-                value: vec![],
-            }),
-        }],
-    };
-
-    use evented::proto::business_coordinator_server::BusinessCoordinator;
-    match handler.handle(tonic::Request::new(command_book)).await {
-        Ok(_) => {}
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-        }
-    }
-}
-
-#[cfg(feature = "go-ffi")]
-#[when(expr = "I send an {string} command via Go for aggregate {string} in domain {string}")]
-async fn when_send_an_go_command_in_domain(
-    world: &mut TestWorld,
-    command_type: String,
-    aggregate_id: String,
-    domain: String,
-) {
-    when_send_go_command_in_domain(world, command_type, aggregate_id, domain).await;
-}
-
 #[tokio::main]
 async fn main() {
-    // Support tag filtering via CUCUMBER_TAGS env var
-    let tags = std::env::var("CUCUMBER_TAGS").ok();
-
-    let runner = TestWorld::cucumber();
-
-    if let Some(tag_expr) = tags {
-        runner
-            .filter_run(
-                "tests/acceptance/features",
-                move |_feature, _rule, scenario| {
-                    // Check if scenario has matching tag
-                    scenario.tags.iter().any(|t| t == &tag_expr)
-                },
-            )
-            .await;
-    } else {
-        runner.run("tests/acceptance/features").await;
-    }
+    TestWorld::cucumber()
+        .run("tests/acceptance/features")
+        .await;
 }

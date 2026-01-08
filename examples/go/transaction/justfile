@@ -1,4 +1,4 @@
-# Transaction bounded context (Go)
+# Transaction Business Logic - Go gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -14,10 +14,18 @@ proto:
     cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
 
-# Build shared library for FFI
+# Build the binary
 build: proto
     go mod tidy
-    go build -buildmode=c-shared -o libtransaction.so .
+    go build -o transaction .
+
+# Run the server
+run: build
+    ./transaction
+
+# Run with custom port
+run-port port:
+    PORT={{port}} ./transaction
 
 # Full rebuild
 rebuild: proto build
@@ -28,9 +36,13 @@ test: proto
 
 # Clean build artifacts
 clean:
-    rm -f libtransaction.so libtransaction.h
+    rm -f transaction
     rm -rf proto/evented/*.go proto/examples/*.go
 
-# Verify the shared library exports
-verify: build
-    nm -D libtransaction.so | grep -E "(Handle|Domains)"
+# Format code
+fmt:
+    go fmt ./...
+
+# Lint code
+lint:
+    golangci-lint run

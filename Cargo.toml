@@ -1,3 +1,16 @@
+[workspace]
+members = [
+    ".",
+    "examples/rust/common",
+    "examples/rust/customer",
+    "examples/rust/transaction",
+    "examples/rust/saga-loyalty",
+    "examples/rust/projector-receipt",
+    "examples/rust/projector-log-customer",
+    "examples/rust/projector-log-transaction",
+]
+resolver = "2"
+
 [package]
 name = "evented"
 version = "0.1.0"
@@ -8,8 +21,6 @@ license = "MIT"
 
 [features]
 default = []
-python = ["pyo3"]
-go-ffi = ["libloading"]
 amqp = ["lapin", "deadpool-lapin"]
 redis = ["dep:redis"]
 
@@ -44,12 +55,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 
-# Python integration (optional)
-pyo3 = { version = "0.22", optional = true, features = ["auto-initialize"] }
-
-# Go FFI integration (optional)
-libloading = { version = "0.8", optional = true }
-
 # AMQP/RabbitMQ (optional)
 lapin = { version = "2", optional = true }
 deadpool-lapin = { version = "0.12", optional = true }
@@ -69,7 +74,12 @@ tokio-test = "0.4"
 tempfile = "3"
 cucumber = "0.21"
 futures = "0.3"
+common = { path = "examples/rust/common" }
 
 [[test]]
 name = "acceptance"
+harness = false
+
+[[test]]
+name = "docker_integration"
 harness = false

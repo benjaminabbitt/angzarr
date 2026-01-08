@@ -2,24 +2,26 @@
 // Generates human-readable receipts when transactions complete.
 package main
 
-/*
-#include <stdlib.h>
-*/
-import "C"
-
 import (
+	"context"
+	"encoding/hex"
 	"fmt"
+	"net"
+	"os"
 	"strings"
-	"unsafe"
 
-	goproto "google.golang.org/protobuf/proto"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"projector-receipt/proto/evented"
 	"projector-receipt/proto/examples"
 )
 
 const ProjectorName = "receipt"
+
+var logger *zap.Logger
 
 // TransactionState holds the rebuilt state from events.
 type TransactionState struct {
@@ -34,53 +36,28 @@ type TransactionState struct {
 	Completed           bool
 }
 
-// Handle processes an EventBook and returns a Projection.
-//
-//export Handle
-func Handle(data *C.char, length C.int) (*C.char, C.int) {
-	inputBytes := C.GoBytes(unsafe.Pointer(data), length)
-
-	var eventBook evented.EventBook
-	if err := goproto.Unmarshal(inputBytes, &eventBook); err != nil {
-		return nil, 0
-	}
-
-	projection := project(&eventBook)
-	if projection == nil {
-		return nil, 0
-	}
-
-	outputBytes, err := goproto.Marshal(projection)
-	if err != nil {
-		return nil, 0
-	}
-
-	return (*C.char)(C.CBytes(outputBytes)), C.int(len(outputBytes))
+// server implements the Projector gRPC service.
+type server struct {
+	evented.UnimplementedProjectorServer
 }
 
-// Name returns the projector name.
-//
-//export Name
-func Name() (*C.char, C.int) {
-	return C.CString(ProjectorName), C.int(len(ProjectorName))
+// Handle processes events asynchronously (fire-and-forget).
+func (s *server) Handle(ctx context.Context, req *evented.EventBook) (*emptypb.Empty, error) {
+	_, _ = s.HandleSync(ctx, req)
+	return &emptypb.Empty{}, nil
 }
 
-// Domains returns the domains this projector listens to.
-//
-//export Domains
-func Domains() (*C.char, C.int) {
-	domains := "transaction"
-	return C.CString(domains), C.int(len(domains))
+// HandleSync processes events and returns projection synchronously.
+func (s *server) HandleSync(ctx context.Context, req *evented.EventBook) (*evented.Projection, error) {
+	return project(req), nil
 }
 
-// IsSynchronous returns whether this projector is synchronous.
-//
-//export IsSynchronous
-func IsSynchronous() C.int {
-	return 1 // true
-}
-
+// project rebuilds transaction state and generates a receipt if completed.
 func project(eventBook *evented.EventBook) *evented.Projection {
+	if eventBook == nil || len(eventBook.Pages) == 0 {
+		return nil
+	}
+
 	// Rebuild transaction state from all events
 	state := &TransactionState{}
 
@@ -123,30 +100,39 @@ func project(eventBook *evented.EventBook) *evented.Projection {
 
 	transactionID := ""
 	if eventBook.Cover != nil && eventBook.Cover.Root != nil {
-		transactionID = fmt.Sprintf("%x", eventBook.Cover.Root.Value)
+		transactionID = hex.EncodeToString(eventBook.Cover.Root.Value)
+	}
+
+	shortID := transactionID
+	if len(shortID) > 16 {
+		shortID = shortID[:16]
 	}
 
 	// Generate formatted receipt text
 	receiptText := formatReceipt(transactionID, state)
 
-	fmt.Printf("[%s] Generated receipt for transaction %s...\n",
-		ProjectorName, transactionID[:min(16, len(transactionID))])
+	logger.Info("generated receipt",
+		zap.String("transaction_id", shortID),
+		zap.Int32("total_cents", state.FinalTotalCents),
+		zap.String("payment_method", state.PaymentMethod))
 
 	// Create Receipt message
 	receipt := &examples.Receipt{
-		TransactionId:        transactionID,
-		CustomerId:           state.CustomerID,
-		Items:                state.Items,
-		SubtotalCents:        state.SubtotalCents,
-		DiscountCents:        state.DiscountCents,
-		FinalTotalCents:      state.FinalTotalCents,
-		PaymentMethod:        state.PaymentMethod,
-		LoyaltyPointsEarned:  state.LoyaltyPointsEarned,
-		FormattedText:        receiptText,
+		TransactionId:       transactionID,
+		CustomerId:          state.CustomerID,
+		Items:               state.Items,
+		SubtotalCents:       state.SubtotalCents,
+		DiscountCents:       state.DiscountCents,
+		FinalTotalCents:     state.FinalTotalCents,
+		PaymentMethod:       state.PaymentMethod,
+		LoyaltyPointsEarned: state.LoyaltyPointsEarned,
+		FormattedText:       receiptText,
 	}
 
 	receiptAny, err := anypb.New(receipt)
 	if err != nil {
+		logger.Error("failed to create Any for Receipt",
+			zap.Error(err))
 		return nil
 	}
 
@@ -170,12 +156,22 @@ func project(eventBook *evented.EventBook) *evented.Projection {
 func formatReceipt(transactionID string, state *TransactionState) string {
 	var lines []string
 
+	shortTxID := transactionID
+	if len(shortTxID) > 16 {
+		shortTxID = shortTxID[:16]
+	}
+
+	shortCustID := state.CustomerID
+	if len(shortCustID) > 16 {
+		shortCustID = shortCustID[:16]
+	}
+
 	lines = append(lines, strings.Repeat("═", 40))
 	lines = append(lines, "           RECEIPT")
 	lines = append(lines, strings.Repeat("═", 40))
-	lines = append(lines, fmt.Sprintf("Transaction: %s...", transactionID[:min(16, len(transactionID))]))
+	lines = append(lines, fmt.Sprintf("Transaction: %s...", shortTxID))
 	if state.CustomerID != "" {
-		lines = append(lines, fmt.Sprintf("Customer: %s...", state.CustomerID[:min(16, len(state.CustomerID))]))
+		lines = append(lines, fmt.Sprintf("Customer: %s...", shortCustID))
 	} else {
 		lines = append(lines, "Customer: N/A")
 	}
@@ -212,13 +208,35 @@ func formatReceipt(transactionID string, state *TransactionState) string {
 	return strings.Join(lines, "\n")
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func main() {
-	fmt.Println("Receipt Projector (Go) loaded")
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "50055"
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		logger.Fatal("failed to listen",
+			zap.String("port", port),
+			zap.Error(err))
+	}
+
+	s := grpc.NewServer()
+	evented.RegisterProjectorServer(s, &server{})
+
+	logger.Info("projector server started",
+		zap.String("name", ProjectorName),
+		zap.String("port", port),
+		zap.String("listens_to", "transaction domain"))
+
+	if err := s.Serve(lis); err != nil {
+		logger.Fatal("failed to serve", zap.Error(err))
+	}
 }

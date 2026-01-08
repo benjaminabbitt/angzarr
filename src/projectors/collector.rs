@@ -161,4 +161,41 @@ mod tests {
 
         assert_eq!(handle.read().await.len(), 1);
     }
+
+    #[tokio::test]
+    async fn test_collector_for_domains() {
+        let projector =
+            CollectorProjector::for_domains("domain_collector", vec!["orders".to_string()]);
+
+        assert_eq!(projector.name(), "domain_collector");
+        assert_eq!(projector.domains(), vec!["orders".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_collector_clear() {
+        let projector = CollectorProjector::new("test_collector");
+
+        projector
+            .project(&Arc::new(make_event_book("orders", 2)))
+            .await
+            .unwrap();
+        projector
+            .project(&Arc::new(make_event_book("orders", 3)))
+            .await
+            .unwrap();
+
+        assert_eq!(projector.count().await, 2);
+
+        projector.clear().await;
+
+        assert_eq!(projector.count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_collector_name_and_domains() {
+        let projector = CollectorProjector::new("my_collector");
+
+        assert_eq!(projector.name(), "my_collector");
+        assert!(projector.domains().is_empty());
+    }
 }

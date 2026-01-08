@@ -1,0 +1,41 @@
+# Customer Business Logic - Rust gRPC Server
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Build the server
+build:
+    cargo build -p customer --bin customer-server
+
+# Build release
+build-release:
+    cargo build -p customer --bin customer-server --release
+
+# Run the server
+run: build
+    cargo run -p customer --bin customer-server
+
+# Run with custom port
+run-port port:
+    PORT={{port}} cargo run -p customer --bin customer-server
+
+# Run tests
+test:
+    cargo test -p customer
+
+# Clean build artifacts
+clean:
+    cargo clean -p customer
+
+# Check code
+check:
+    cargo check -p customer
+
+# Lint code
+lint:
+    cargo clippy -p customer -- -D warnings

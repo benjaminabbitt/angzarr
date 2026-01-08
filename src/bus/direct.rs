@@ -10,10 +10,10 @@ use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tracing::{error, info, warn};
 
-use crate::interfaces::event_bus::{BusError, EventBus, EventHandler, Result};
+use crate::interfaces::event_bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use crate::proto::saga_coordinator_client::SagaCoordinatorClient;
-use crate::proto::EventBook;
+use crate::proto::{EventBook, Projection};
 
 // gRPC requires owned EventBook, so we need to clone from Arc for remote calls.
 // This is unavoidable for network serialization.
@@ -119,7 +119,8 @@ impl DirectEventBus {
     }
 
     /// Publish to all projectors.
-    async fn publish_to_projectors(&self, book: &Arc<EventBook>) -> Result<()> {
+    /// Returns projections from synchronous projectors.
+    async fn publish_to_projectors(&self, book: &Arc<EventBook>) -> Result<Vec<Projection>> {
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
             let projectors = self.projectors.read().await;
@@ -129,6 +130,8 @@ impl DirectEventBus {
                 .collect()
         };
 
+        let mut projections = Vec::new();
+
         for (config, mut client) in connections {
             // gRPC requires owned data for serialization
             let request = tonic::Request::new((**book).clone());
@@ -137,7 +140,11 @@ impl DirectEventBus {
                 match client.handle_sync(request).await {
                     Ok(response) => {
                         info!(projector.name = %config.name, "Synchronous projection completed");
-                        let _ = response.into_inner();
+                        projections.push(response.into_inner());
+                    }
+                    Err(e) if e.code() == tonic::Code::NotFound => {
+                        // NotFound means projector had no output for this event (expected)
+                        info!(projector.name = %config.name, "No projection generated");
                     }
                     Err(e) => {
                         error!(projector.name = %config.name, error = %e, "Synchronous projector failed");
@@ -156,7 +163,7 @@ impl DirectEventBus {
             }
         }
 
-        Ok(())
+        Ok(projections)
     }
 
     /// Publish to all sagas.
@@ -209,14 +216,14 @@ impl Default for DirectEventBus {
 
 #[async_trait]
 impl EventBus for DirectEventBus {
-    async fn publish(&self, book: Arc<EventBook>) -> Result<()> {
+    async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         // Publish to projectors first
-        self.publish_to_projectors(&book).await?;
+        let projections = self.publish_to_projectors(&book).await?;
 
         // Then publish to sagas
         self.publish_to_sagas(&book).await?;
 
-        Ok(())
+        Ok(PublishResult { projections })
     }
 
     async fn subscribe(&self, _handler: Box<dyn EventHandler>) -> Result<()> {

@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rs-projector-receipt
+  namespace: evented
+  labels:
+    app: rs-projector-receipt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rs-projector-receipt
+  template:
+    metadata:
+      labels:
+        app: rs-projector-receipt
+    spec:
+      containers:
+        - name: rs-projector-receipt
+          image: rs-projector-receipt:latest
+          ports:
+            - containerPort: 50055
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: PORT
+              value: "50055"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rs-projector-receipt
+  namespace: evented
+spec:
+  selector:
+    app: rs-projector-receipt
+  ports:
+    - port: 50055
+      targetPort: 50055
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rs-projector-log-customer
+  namespace: evented
+  labels:
+    app: rs-projector-log-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rs-projector-log-customer
+  template:
+    metadata:
+      labels:
+        app: rs-projector-log-customer
+    spec:
+      containers:
+        - name: rs-projector-log-customer
+          image: rs-projector-log-customer:latest
+          ports:
+            - containerPort: 50056
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: PORT
+              value: "50056"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rs-projector-log-customer
+  namespace: evented
+spec:
+  selector:
+    app: rs-projector-log-customer
+  ports:
+    - port: 50056
+      targetPort: 50056
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rs-projector-log-transaction
+  namespace: evented
+  labels:
+    app: rs-projector-log-transaction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rs-projector-log-transaction
+  template:
+    metadata:
+      labels:
+        app: rs-projector-log-transaction
+    spec:
+      containers:
+        - name: rs-projector-log-transaction
+          image: rs-projector-log-transaction:latest
+          ports:
+            - containerPort: 50057
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: PORT
+              value: "50057"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rs-projector-log-transaction
+  namespace: evented
+spec:
+  selector:
+    app: rs-projector-log-transaction
+  ports:
+    - port: 50057
+      targetPort: 50057

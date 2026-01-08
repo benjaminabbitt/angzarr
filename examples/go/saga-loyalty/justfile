@@ -1,4 +1,4 @@
-# Loyalty Points Saga (Go)
+# Loyalty Points Saga - Go gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -14,10 +14,18 @@ proto:
     cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
 
-# Build shared library for FFI
+# Build the binary
 build: proto
     go mod tidy
-    go build -buildmode=c-shared -o libsaga_loyalty.so .
+    go build -o saga-loyalty .
+
+# Run the server
+run: build
+    ./saga-loyalty
+
+# Run with custom port
+run-port port:
+    PORT={{port}} ./saga-loyalty
 
 # Full rebuild
 rebuild: proto build
@@ -28,9 +36,13 @@ test: proto
 
 # Clean build artifacts
 clean:
-    rm -f libsaga_loyalty.so libsaga_loyalty.h
+    rm -f saga-loyalty
     rm -rf proto/evented/*.go proto/examples/*.go
 
-# Verify the shared library exports
-verify: build
-    nm -D libsaga_loyalty.so | grep -E "(Handle|Name|Domains|IsSynchronous)"
+# Format code
+fmt:
+    go fmt ./...
+
+# Lint code
+lint:
+    golangci-lint run

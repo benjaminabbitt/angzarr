@@ -1,4 +1,4 @@
-# Customer bounded context (Python)
+# Customer Business Logic - Python gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -22,8 +22,20 @@ proto:
 # Full setup
 setup: install proto
 
+# Run the server
+run: setup
+    uv run python server.py
+
+# Run with debugpy (for remote debugging)
+debug: setup
+    uv run python -m debugpy --listen 0.0.0.0:5678 --wait-for-client server.py
+
+# Run with custom port
+run-port port:
+    PORT={{port}} uv run python server.py
+
 # Run tests
-test:
+test: setup
     uv run pytest -v
 
 # Clean

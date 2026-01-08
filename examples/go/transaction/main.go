@@ -2,15 +2,17 @@
 // Handles purchases, discounts, and transaction lifecycle.
 package main
 
-/*
-#include <stdlib.h>
-*/
-import "C"
-
 import (
+	"context"
 	"fmt"
-	"unsafe"
+	"net"
+	"os"
+	"strings"
 
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,6 +23,8 @@ import (
 
 const Domain = "transaction"
 
+var logger *zap.Logger
+
 // TransactionState represents the current state of a transaction.
 type TransactionState struct {
 	CustomerID    string
@@ -28,7 +32,7 @@ type TransactionState struct {
 	SubtotalCents int32
 	DiscountCents int32
 	DiscountType  string
-	Status        string // "pending", "completed", "cancelled"
+	Status        string // "new", "pending", "completed", "cancelled"
 }
 
 // rebuildState reconstructs transaction state from events.
@@ -74,105 +78,33 @@ func rebuildState(eventBook *evented.EventBook) *TransactionState {
 	return state
 }
 
-// calculateSubtotal computes the subtotal from line items.
-func calculateSubtotal(items []*examples.LineItem) int32 {
-	var total int32
-	for _, item := range items {
-		total += item.Quantity * item.UnitPriceCents
-	}
-	return total
-}
-
-// calculateLoyaltyPoints determines points earned (1 point per dollar).
-func calculateLoyaltyPoints(totalCents int32) int32 {
-	return totalCents / 100
-}
-
-// Handle processes a contextual command and returns resulting events.
-//
-//export Handle
-func Handle(data *C.char, length C.int) (*C.char, C.int) {
-	inputBytes := C.GoBytes(unsafe.Pointer(data), length)
-
-	var contextualCommand evented.ContextualCommand
-	if err := goproto.Unmarshal(inputBytes, &contextualCommand); err != nil {
-		return nil, 0
-	}
-
-	eventBook, err := handle(&contextualCommand)
-	if err != nil {
-		// Return error as a rejected event (in real impl, use proper error handling)
-		return nil, 0
-	}
-
-	outputBytes, err := goproto.Marshal(eventBook)
-	if err != nil {
-		return nil, 0
-	}
-
-	return (*C.char)(C.CBytes(outputBytes)), C.int(len(outputBytes))
-}
-
-// Domains returns the list of domains this logic handles.
-//
-//export Domains
-func Domains() (*C.char, C.int) {
-	domains := Domain
-	return C.CString(domains), C.int(len(domains))
-}
-
-func handle(contextualCommand *evented.ContextualCommand) (*evented.EventBook, error) {
-	commandBook := contextualCommand.Command
-	priorEvents := contextualCommand.Events
-
-	// Rebuild current state
-	state := rebuildState(priorEvents)
-
-	// Get command from first page
-	if len(commandBook.Pages) == 0 {
-		return nil, fmt.Errorf("CommandBook has no pages")
-	}
-
-	commandAny := commandBook.Pages[0].Command
-	if commandAny == nil {
-		return nil, fmt.Errorf("Command is nil")
-	}
-
-	// Route to handler based on command type
-	switch {
-	case commandAny.MessageIs(&examples.CreateTransaction{}):
-		return handleCreateTransaction(commandBook, commandAny, state)
-	case commandAny.MessageIs(&examples.ApplyDiscount{}):
-		return handleApplyDiscount(commandBook, commandAny, state)
-	case commandAny.MessageIs(&examples.CompleteTransaction{}):
-		return handleCompleteTransaction(commandBook, commandAny, state)
-	case commandAny.MessageIs(&examples.CancelTransaction{}):
-		return handleCancelTransaction(commandBook, commandAny, state)
-	default:
-		return nil, fmt.Errorf("unknown command type: %s", commandAny.TypeUrl)
-	}
-}
-
-func handleCreateTransaction(commandBook *evented.CommandBook, commandAny *anypb.Any, state *TransactionState) (*evented.EventBook, error) {
-	// Validate: transaction shouldn't already exist
+// handleCreateTransaction handles the CreateTransaction command.
+func handleCreateTransaction(cmdBook *evented.CommandBook, cmdData []byte, state *TransactionState) (*evented.EventBook, error) {
 	if state.Status != "new" {
-		return nil, fmt.Errorf("transaction already exists")
+		return nil, status.Error(codes.FailedPrecondition, "Transaction already exists")
 	}
 
 	var cmd examples.CreateTransaction
-	if err := commandAny.UnmarshalTo(&cmd); err != nil {
-		return nil, err
+	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
 	}
 
-	// Validate
 	if cmd.CustomerId == "" {
-		return nil, fmt.Errorf("customer_id is required")
+		return nil, status.Error(codes.InvalidArgument, "customer_id is required")
 	}
 	if len(cmd.Items) == 0 {
-		return nil, fmt.Errorf("at least one item is required")
+		return nil, status.Error(codes.InvalidArgument, "at least one item is required")
 	}
 
-	subtotal := calculateSubtotal(cmd.Items)
+	var subtotal int32
+	for _, item := range cmd.Items {
+		subtotal += item.Quantity * item.UnitPriceCents
+	}
+
+	logger.Info("creating transaction",
+		zap.String("customer_id", cmd.CustomerId),
+		zap.Int("item_count", len(cmd.Items)),
+		zap.Int32("subtotal_cents", subtotal))
 
 	event := &examples.TransactionCreated{
 		CustomerId:    cmd.CustomerId,
@@ -183,11 +115,11 @@ func handleCreateTransaction(commandBook *evented.CommandBook, commandAny *anypb
 
 	eventAny, err := anypb.New(event)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
 	}
 
 	return &evented.EventBook{
-		Cover: commandBook.Cover,
+		Cover: cmdBook.Cover,
 		Pages: []*evented.EventPage{
 			{
 				Sequence:  &evented.EventPage_Num{Num: 0},
@@ -198,23 +130,22 @@ func handleCreateTransaction(commandBook *evented.CommandBook, commandAny *anypb
 	}, nil
 }
 
-func handleApplyDiscount(commandBook *evented.CommandBook, commandAny *anypb.Any, state *TransactionState) (*evented.EventBook, error) {
-	// Validate: transaction must be pending
+// handleApplyDiscount handles the ApplyDiscount command.
+func handleApplyDiscount(cmdBook *evented.CommandBook, cmdData []byte, state *TransactionState) (*evented.EventBook, error) {
 	if state.Status != "pending" {
-		return nil, fmt.Errorf("can only apply discount to pending transaction")
+		return nil, status.Error(codes.FailedPrecondition, "Can only apply discount to pending transaction")
 	}
 
 	var cmd examples.ApplyDiscount
-	if err := commandAny.UnmarshalTo(&cmd); err != nil {
-		return nil, err
+	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
 	}
 
-	// Calculate discount
 	var discountCents int32
 	switch cmd.DiscountType {
 	case "percentage":
 		if cmd.Value < 0 || cmd.Value > 100 {
-			return nil, fmt.Errorf("percentage must be 0-100")
+			return nil, status.Error(codes.InvalidArgument, "Percentage must be 0-100")
 		}
 		discountCents = (state.SubtotalCents * cmd.Value) / 100
 	case "fixed":
@@ -223,11 +154,15 @@ func handleApplyDiscount(commandBook *evented.CommandBook, commandAny *anypb.Any
 			discountCents = state.SubtotalCents
 		}
 	case "coupon":
-		// Coupon codes give fixed discounts (simplified)
 		discountCents = 500 // $5 off
 	default:
-		return nil, fmt.Errorf("unknown discount type: %s", cmd.DiscountType)
+		return nil, status.Errorf(codes.InvalidArgument, "Unknown discount type: %s", cmd.DiscountType)
 	}
+
+	logger.Info("applying discount",
+		zap.String("discount_type", cmd.DiscountType),
+		zap.Int32("value", cmd.Value),
+		zap.Int32("discount_cents", discountCents))
 
 	event := &examples.DiscountApplied{
 		DiscountType:  cmd.DiscountType,
@@ -238,11 +173,11 @@ func handleApplyDiscount(commandBook *evented.CommandBook, commandAny *anypb.Any
 
 	eventAny, err := anypb.New(event)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
 	}
 
 	return &evented.EventBook{
-		Cover: commandBook.Cover,
+		Cover: cmdBook.Cover,
 		Pages: []*evented.EventPage{
 			{
 				Sequence:  &evented.EventPage_Num{Num: 0},
@@ -253,38 +188,42 @@ func handleApplyDiscount(commandBook *evented.CommandBook, commandAny *anypb.Any
 	}, nil
 }
 
-func handleCompleteTransaction(commandBook *evented.CommandBook, commandAny *anypb.Any, state *TransactionState) (*evented.EventBook, error) {
-	// Validate: transaction must be pending
+// handleCompleteTransaction handles the CompleteTransaction command.
+func handleCompleteTransaction(cmdBook *evented.CommandBook, cmdData []byte, state *TransactionState) (*evented.EventBook, error) {
 	if state.Status != "pending" {
-		return nil, fmt.Errorf("can only complete pending transaction")
+		return nil, status.Error(codes.FailedPrecondition, "Can only complete pending transaction")
 	}
 
 	var cmd examples.CompleteTransaction
-	if err := commandAny.UnmarshalTo(&cmd); err != nil {
-		return nil, err
+	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
 	}
 
 	finalTotal := state.SubtotalCents - state.DiscountCents
 	if finalTotal < 0 {
 		finalTotal = 0
 	}
+	loyaltyPoints := finalTotal / 100 // 1 point per dollar
 
-	loyaltyPoints := calculateLoyaltyPoints(finalTotal)
+	logger.Info("completing transaction",
+		zap.Int32("final_total_cents", finalTotal),
+		zap.String("payment_method", cmd.PaymentMethod),
+		zap.Int32("loyalty_points_earned", loyaltyPoints))
 
 	event := &examples.TransactionCompleted{
-		FinalTotalCents:      finalTotal,
-		PaymentMethod:        cmd.PaymentMethod,
-		LoyaltyPointsEarned:  loyaltyPoints,
-		CompletedAt:          timestamppb.Now(),
+		FinalTotalCents:     finalTotal,
+		PaymentMethod:       cmd.PaymentMethod,
+		LoyaltyPointsEarned: loyaltyPoints,
+		CompletedAt:         timestamppb.Now(),
 	}
 
 	eventAny, err := anypb.New(event)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
 	}
 
 	return &evented.EventBook{
-		Cover: commandBook.Cover,
+		Cover: cmdBook.Cover,
 		Pages: []*evented.EventPage{
 			{
 				Sequence:  &evented.EventPage_Num{Num: 0},
@@ -295,16 +234,19 @@ func handleCompleteTransaction(commandBook *evented.CommandBook, commandAny *any
 	}, nil
 }
 
-func handleCancelTransaction(commandBook *evented.CommandBook, commandAny *anypb.Any, state *TransactionState) (*evented.EventBook, error) {
-	// Validate: transaction must be pending
+// handleCancelTransaction handles the CancelTransaction command.
+func handleCancelTransaction(cmdBook *evented.CommandBook, cmdData []byte, state *TransactionState) (*evented.EventBook, error) {
 	if state.Status != "pending" {
-		return nil, fmt.Errorf("can only cancel pending transaction")
+		return nil, status.Error(codes.FailedPrecondition, "Can only cancel pending transaction")
 	}
 
 	var cmd examples.CancelTransaction
-	if err := commandAny.UnmarshalTo(&cmd); err != nil {
-		return nil, err
+	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
 	}
+
+	logger.Info("cancelling transaction",
+		zap.String("reason", cmd.Reason))
 
 	event := &examples.TransactionCancelled{
 		Reason:      cmd.Reason,
@@ -313,11 +255,11 @@ func handleCancelTransaction(commandBook *evented.CommandBook, commandAny *anypb
 
 	eventAny, err := anypb.New(event)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
 	}
 
 	return &evented.EventBook{
-		Cover: commandBook.Cover,
+		Cover: cmdBook.Cover,
 		Pages: []*evented.EventPage{
 			{
 				Sequence:  &evented.EventPage_Num{Num: 0},
@@ -328,7 +270,74 @@ func handleCancelTransaction(commandBook *evented.CommandBook, commandAny *anypb
 	}, nil
 }
 
+// server implements the BusinessLogic gRPC service.
+type server struct {
+	evented.UnimplementedBusinessLogicServer
+}
+
+// Handle processes a contextual command and returns resulting events.
+func (s *server) Handle(ctx context.Context, req *evented.ContextualCommand) (*evented.EventBook, error) {
+	cmdBook := req.Command
+	priorEvents := req.Events
+
+	if cmdBook == nil || len(cmdBook.Pages) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "CommandBook has no pages")
+	}
+
+	cmdPage := cmdBook.Pages[0]
+	if cmdPage.Command == nil {
+		return nil, status.Error(codes.InvalidArgument, "Command page has no command")
+	}
+
+	state := rebuildState(priorEvents)
+	typeURL := cmdPage.Command.TypeUrl
+
+	switch {
+	case strings.HasSuffix(typeURL, "CreateTransaction"):
+		return handleCreateTransaction(cmdBook, cmdPage.Command.Value, state)
+
+	case strings.HasSuffix(typeURL, "ApplyDiscount"):
+		return handleApplyDiscount(cmdBook, cmdPage.Command.Value, state)
+
+	case strings.HasSuffix(typeURL, "CompleteTransaction"):
+		return handleCompleteTransaction(cmdBook, cmdPage.Command.Value, state)
+
+	case strings.HasSuffix(typeURL, "CancelTransaction"):
+		return handleCancelTransaction(cmdBook, cmdPage.Command.Value, state)
+
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "Unknown command type: %s", typeURL)
+	}
+}
+
 func main() {
-	// Required for cgo shared library
-	fmt.Println("Transaction business logic loaded")
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "50053"
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		logger.Fatal("failed to listen",
+			zap.String("port", port),
+			zap.Error(err))
+	}
+
+	s := grpc.NewServer()
+	evented.RegisterBusinessLogicServer(s, &server{})
+
+	logger.Info("business logic server started",
+		zap.String("domain", Domain),
+		zap.String("port", port))
+
+	if err := s.Serve(lis); err != nil {
+		logger.Fatal("failed to serve", zap.Error(err))
+	}
 }

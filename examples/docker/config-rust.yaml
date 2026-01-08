@@ -1,0 +1,30 @@
+storage:
+  type: sqlite
+  path: /app/data/events.db
+
+server:
+  command_handler_port: 50051
+  event_query_port: 50052
+  host: 0.0.0.0
+
+business_logic:
+  - domain: customer
+    address: rs-customer:50052
+  - domain: transaction
+    address: rs-transaction:50053
+
+projectors:
+  - name: receipt
+    address: rs-projector-receipt:50055
+    synchronous: true
+  - name: projector-log-customer
+    address: rs-projector-log-customer:50056
+    synchronous: false
+  - name: projector-log-transaction
+    address: rs-projector-log-transaction:50057
+    synchronous: false
+
+sagas:
+  - name: saga-loyalty
+    address: rs-saga-loyalty:50054
+    synchronous: false

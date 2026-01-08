@@ -1,0 +1,27 @@
+# Minimal runtime image for statically-linked Rust binaries
+# Uses Google's distroless static image (~2MB) - no shell, no package manager
+#
+# Build with:
+#   podman build -t evented:dev \
+#     --build-arg BUILDER_IMAGE=evented-builder:dev \
+#     --build-arg BINARY=evented-server \
+#     -f examples/docker/Dockerfile.runtime .
+
+ARG BUILDER_IMAGE=evented-builder:dev
+
+FROM ${BUILDER_IMAGE} AS builder
+
+# Google distroless static - minimal security-approved base (~2MB)
+# Contains only ca-certificates and tzdata, no shell or package manager
+# https://github.com/GoogleContainerTools/distroless
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+
+ARG BINARY
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/${BINARY} ./server
+
+# Run as nonroot user (uid 65532)
+USER nonroot:nonroot
+
+ENTRYPOINT ["./server"]

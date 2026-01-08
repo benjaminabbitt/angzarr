@@ -1,4 +1,4 @@
-# Go examples
+# Go examples - gRPC servers
 
 set shell := ["bash", "-c"]
 
@@ -9,7 +9,11 @@ default:
     @just --list
 
 # Build all Go examples
-build: build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+build: build-customer build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+
+# Build customer bounded context
+build-customer:
+    cd customer && just build
 
 # Build transaction bounded context
 build-transaction:
@@ -32,7 +36,11 @@ build-projector-log-transaction:
     cd projector-log-transaction && just build
 
 # Test all Go examples
-test: test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+test: test-customer test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+
+# Test customer
+test-customer: build-customer
+    cd customer && just test
 
 # Test transaction
 test-transaction: build-transaction
@@ -57,16 +65,18 @@ test-projector-log-transaction: build-projector-log-transaction
 # Clean all Go examples
 clean:
     cd common && just clean || true
+    cd customer && just clean || true
     cd transaction && just clean || true
     cd saga-loyalty && just clean || true
     cd projector-receipt && just clean || true
     cd projector-log-customer && just clean || true
     cd projector-log-transaction && just clean || true
 
-# Verify all shared libraries
-verify:
-    cd transaction && just verify
-    cd saga-loyalty && just verify
-    cd projector-receipt && just verify
-    cd projector-log-customer && just verify
-    cd projector-log-transaction && just verify
+# Format all Go code
+fmt:
+    cd customer && just fmt || true
+    cd transaction && just fmt || true
+    cd saga-loyalty && just fmt || true
+    cd projector-receipt && just fmt || true
+    cd projector-log-customer && just fmt || true
+    cd projector-log-transaction && just fmt || true

@@ -1,0 +1,54 @@
+# Rust example gRPC service - multi-stage build
+FROM rust:1.92-slim AS builder
+
+# Install protobuf compiler and well-known types
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    libprotobuf-dev \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy manifests
+COPY Cargo.toml Cargo.lock ./
+
+# Copy proto files
+COPY proto proto/
+COPY build.rs ./
+
+# Copy source code
+COPY src src/
+
+# Copy all examples
+COPY examples/rust examples/rust/
+
+# Create stub test files (required by Cargo.toml)
+RUN mkdir -p tests && \
+    echo "fn main() {}" > tests/acceptance.rs && \
+    echo "fn main() {}" > tests/docker_integration.rs
+
+# Build the specific example binary
+ARG SERVICE
+ARG BINARY
+RUN cargo build --release -p ${SERVICE} --bin ${BINARY}
+
+# Final stage - minimal image
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+ARG BINARY
+# Copy binary from builder
+COPY --from=builder /app/target/release/${BINARY} ./server
+
+# Run the server
+CMD ["./server"]

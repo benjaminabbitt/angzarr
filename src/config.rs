@@ -174,6 +174,8 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_default_config() {
@@ -220,5 +222,160 @@ sagas:
         assert_eq!(config.projectors.len(), 1);
         assert!(config.projectors[0].synchronous);
         assert_eq!(config.sagas.len(), 1);
+    }
+
+    #[test]
+    fn test_from_file_valid() {
+        let yaml = r#"
+storage:
+  type: sqlite
+  path: /tmp/from_file.db
+server:
+  command_handler_port: 9000
+"#;
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(yaml.as_bytes()).unwrap();
+
+        let config = Config::from_file(file.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(config.storage.path, "/tmp/from_file.db");
+        assert_eq!(config.server.command_handler_port, 9000);
+    }
+
+    #[test]
+    fn test_from_file_not_found() {
+        let result = Config::from_file("/nonexistent/path/config.yaml");
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::FileRead(path, _) => {
+                assert_eq!(path, "/nonexistent/path/config.yaml");
+            }
+            _ => panic!("Expected FileRead error"),
+        }
+    }
+
+    #[test]
+    fn test_from_file_invalid_yaml() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"not: valid: yaml: content: [[[").unwrap();
+
+        let result = Config::from_file(file.path().to_str().unwrap());
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ConfigError::Parse(_)));
+    }
+
+    #[test]
+    fn test_business_logic_addresses() {
+        let config = Config {
+            business_logic: vec![
+                BusinessLogicEndpoint {
+                    domain: "orders".to_string(),
+                    address: "localhost:50051".to_string(),
+                },
+                BusinessLogicEndpoint {
+                    domain: "inventory".to_string(),
+                    address: "localhost:50052".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let addresses = config.business_logic_addresses();
+
+        assert_eq!(addresses.len(), 2);
+        assert_eq!(addresses.get("orders").unwrap(), "http://localhost:50051");
+        assert_eq!(
+            addresses.get("inventory").unwrap(),
+            "http://localhost:50052"
+        );
+    }
+
+    #[test]
+    fn test_storage_config_default() {
+        let storage = StorageConfig::default();
+        assert_eq!(storage.storage_type, "sqlite");
+        assert_eq!(storage.path, "./data/events.db");
+    }
+
+    #[test]
+    fn test_server_config_default() {
+        let server = ServerConfig::default();
+        assert_eq!(server.command_handler_port, 1313);
+        assert_eq!(server.event_query_port, 1314);
+        assert_eq!(server.host, "0.0.0.0");
+    }
+
+    #[test]
+    fn test_projector_endpoint_default() {
+        let endpoint = ProjectorEndpoint::default();
+        assert_eq!(endpoint.name, "");
+        assert_eq!(endpoint.address, "");
+        assert!(!endpoint.synchronous);
+    }
+
+    #[test]
+    fn test_saga_endpoint_default() {
+        let endpoint = SagaEndpoint::default();
+        assert_eq!(endpoint.name, "");
+        assert_eq!(endpoint.address, "");
+        assert!(!endpoint.synchronous);
+    }
+
+    #[test]
+    fn test_apply_env_overrides_storage_path() {
+        let mut config = Config::default();
+        std::env::set_var("STORAGE_PATH", "/custom/path.db");
+
+        config.apply_env_overrides();
+
+        assert_eq!(config.storage.path, "/custom/path.db");
+        std::env::remove_var("STORAGE_PATH");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_command_handler_port() {
+        let mut config = Config::default();
+        std::env::set_var("COMMAND_HANDLER_PORT", "9999");
+
+        config.apply_env_overrides();
+
+        assert_eq!(config.server.command_handler_port, 9999);
+        std::env::remove_var("COMMAND_HANDLER_PORT");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_event_query_port() {
+        let mut config = Config::default();
+        std::env::set_var("EVENT_QUERY_PORT", "8888");
+
+        config.apply_env_overrides();
+
+        assert_eq!(config.server.event_query_port, 8888);
+        std::env::remove_var("EVENT_QUERY_PORT");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_server_host() {
+        let mut config = Config::default();
+        std::env::set_var("SERVER_HOST", "127.0.0.1");
+
+        config.apply_env_overrides();
+
+        assert_eq!(config.server.host, "127.0.0.1");
+        std::env::remove_var("SERVER_HOST");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_invalid_port_ignored() {
+        let mut config = Config::default();
+        let original_port = config.server.command_handler_port;
+        std::env::set_var("COMMAND_HANDLER_PORT", "not_a_number");
+
+        config.apply_env_overrides();
+
+        assert_eq!(config.server.command_handler_port, original_port);
+        std::env::remove_var("COMMAND_HANDLER_PORT");
     }
 }

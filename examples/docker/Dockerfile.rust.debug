@@ -1,0 +1,47 @@
+# Rust gRPC service with debug symbols
+FROM rust:1.83-slim-bookworm AS builder
+
+# Install protobuf compiler
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy manifests
+COPY Cargo.toml Cargo.lock ./
+
+# Copy proto files
+COPY proto proto/
+
+# Copy source code
+COPY src src/
+COPY build.rs ./
+
+# Build debug binary (includes debug symbols)
+RUN cargo build --bin evented-server
+
+# Final stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies and debugging tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    gdb \
+    strace \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy debug binary from builder
+COPY --from=builder /app/target/debug/evented-server .
+
+# Enable backtraces
+ENV RUST_BACKTRACE=1
+
+# Run the server
+CMD ["./evented-server"]

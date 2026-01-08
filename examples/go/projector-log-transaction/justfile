@@ -1,4 +1,4 @@
-# Transaction Log Projector (Go)
+# Transaction Log Projector - Go gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -8,20 +8,24 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-# Setup common first
-setup-common:
-    cd ../common && just proto
-
 # Copy generated proto files
-proto: setup-common
+proto:
     mkdir -p proto/evented proto/examples
     cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
 
-# Build shared library for FFI
+# Build the binary
 build: proto
     go mod tidy
-    go build -buildmode=c-shared -o libprojector_log_transaction.so .
+    go build -o projector-log-transaction .
+
+# Run the server
+run: build
+    ./projector-log-transaction
+
+# Run with custom port
+run-port port:
+    PORT={{port}} ./projector-log-transaction
 
 # Full rebuild
 rebuild: proto build
@@ -32,9 +36,13 @@ test: proto
 
 # Clean build artifacts
 clean:
-    rm -f libprojector_log_transaction.so libprojector_log_transaction.h
+    rm -f projector-log-transaction
     rm -rf proto/evented/*.go proto/examples/*.go
 
-# Verify the shared library exports
-verify: build
-    nm -D libprojector_log_transaction.so | grep -E "(Handle|Name|Domains|IsSynchronous)"
+# Format code
+fmt:
+    go fmt ./...
+
+# Lint code
+lint:
+    golangci-lint run

@@ -1,0 +1,45 @@
+# Customer Business Logic - Go gRPC Server
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Copy generated proto files
+proto:
+    mkdir -p proto/evented proto/examples
+    cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
+    cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
+
+# Build the binary
+build: proto
+    go mod tidy
+    go build -o customer .
+
+# Run the server
+run: build
+    ./customer
+
+# Run with custom port
+run-port port:
+    PORT={{port}} ./customer
+
+# Clean build artifacts
+clean:
+    rm -f customer
+    rm -rf proto/evented/*.go proto/examples/*.go
+
+# Test
+test: proto
+    go test -v ./...
+
+# Format code
+fmt:
+    go fmt ./...
+
+# Lint code
+lint:
+    golangci-lint run

@@ -47,16 +47,13 @@ pub fn event_color(event_type: &str) -> &'static str {
 pub fn log_event(domain: &str, root_id: &str, sequence: u32, type_url: &str, data: &[u8]) {
     let event_type = type_url.rsplit('.').next().unwrap_or(type_url);
 
+    // Standardized event identifier: bounded_ctx:entity_id:sequence (10-digit zero-padded)
+    let event_id = format!("{}:{}:{:010}", domain, root_id, sequence);
+
     // Header
     println!();
     println!("{BOLD}{}{RESET}", "─".repeat(60));
-    println!(
-        "{BOLD}{}[{}]{RESET} {DIM}seq:{}{RESET}  {CYAN}{}...{RESET}",
-        domain_color(domain),
-        domain.to_uppercase(),
-        sequence,
-        root_id
-    );
+    println!("{DIM}{}{RESET}", event_id);
     println!("{BOLD}{}{}{RESET}", event_color(event_type), event_type);
     println!("{}", "─".repeat(60));
 
@@ -146,8 +143,8 @@ pub fn print_event_details(event_type: &str, data: &[u8]) {
 }
 
 fn format_timestamp(ts: &prost_types::Timestamp) -> String {
-    use std::time::{Duration, UNIX_EPOCH};
-    let duration = Duration::new(ts.seconds as u64, ts.nanos as u32);
-    let datetime = UNIX_EPOCH + duration;
-    format!("{:?}", datetime)
+    use chrono::{DateTime, Utc};
+    DateTime::<Utc>::from_timestamp(ts.seconds, ts.nanos as u32)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| format!("{}s", ts.seconds))
 }

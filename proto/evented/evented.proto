@@ -46,6 +46,7 @@ message Projection {
 
 message SynchronousProcessingResponse {
   repeated EventBook books = 1;
+  repeated CommandBook commands = 2;
   repeated Projection projections = 3;
 }
 

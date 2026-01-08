@@ -1,4 +1,4 @@
-# Transaction Log Projector (Rust)
+# Transaction Log Projector - Rust gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -8,30 +8,34 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-# Setup common first
-setup-common:
-    cd ../common && just proto
-
-# Build the library
-build: setup-common
-    cargo build
+# Build the server
+build:
+    cargo build -p projector-log-transaction --bin projector-log-transaction-server
 
 # Build release
 build-release:
-    cargo build --release
+    cargo build -p projector-log-transaction --bin projector-log-transaction-server --release
+
+# Run the server
+run: build
+    cargo run -p projector-log-transaction --bin projector-log-transaction-server
+
+# Run with custom port
+run-port port:
+    PORT={{port}} cargo run -p projector-log-transaction --bin projector-log-transaction-server
 
 # Run tests
 test:
-    cargo test
+    cargo test -p projector-log-transaction
 
 # Clean build artifacts
 clean:
-    cargo clean
+    cargo clean -p projector-log-transaction
 
 # Check code
 check:
-    cargo check
+    cargo check -p projector-log-transaction
 
 # Lint code
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy -p projector-log-transaction -- -D warnings

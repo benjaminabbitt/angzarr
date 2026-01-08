@@ -193,3 +193,181 @@ impl EventQueryTrait for EventQueryService {
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proto::{event_page, EventPage};
+    use crate::test_utils::{MockEventStore, MockSnapshotStore};
+    use prost_types::Any;
+    use tokio_stream::StreamExt;
+
+    fn create_test_service_with_mocks(
+        event_store: Arc<MockEventStore>,
+        snapshot_store: Arc<MockSnapshotStore>,
+    ) -> EventQueryService {
+        EventQueryService::new(event_store, snapshot_store)
+    }
+
+    fn create_default_test_service() -> (
+        EventQueryService,
+        Arc<MockEventStore>,
+        Arc<MockSnapshotStore>,
+    ) {
+        let event_store = Arc::new(MockEventStore::new());
+        let snapshot_store = Arc::new(MockSnapshotStore::new());
+
+        let service = create_test_service_with_mocks(event_store.clone(), snapshot_store.clone());
+
+        (service, event_store, snapshot_store)
+    }
+
+    #[tokio::test]
+    async fn test_get_events_empty_aggregate() {
+        let (service, _, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_events(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let mut stream = response.unwrap().into_inner();
+        let first = stream.next().await;
+        assert!(first.is_some());
+        let book = first.unwrap().unwrap();
+        assert!(book.pages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_events_with_data() {
+        let (service, event_store, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        // First add some events via the store directly
+        let events = vec![EventPage {
+            sequence: Some(event_page::Sequence::Num(0)),
+            event: Some(Any {
+                type_url: "test.Event".to_string(),
+                value: vec![],
+            }),
+            created_at: None,
+            synchronous: false,
+        }];
+        event_store.add("orders", root, events).await.unwrap();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_events(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let mut stream = response.unwrap().into_inner();
+        let first = stream.next().await;
+        assert!(first.is_some());
+        let book = first.unwrap().unwrap();
+        assert_eq!(book.pages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_events_missing_root() {
+        let (service, _, _) = create_default_test_service();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: None,
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_events(Request::new(query)).await;
+
+        assert!(response.is_err());
+        let status = response.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_events_invalid_uuid() {
+        let (service, _, _) = create_default_test_service();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: vec![1, 2, 3], // Invalid: must be 16 bytes
+            }),
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_events(Request::new(query)).await;
+
+        assert!(response.is_err());
+        let status = response.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_aggregate_roots_empty() {
+        let (service, _, _) = create_default_test_service();
+
+        let response = service.get_aggregate_roots(Request::new(())).await;
+
+        assert!(response.is_ok());
+        let mut stream = response.unwrap().into_inner();
+        let first = stream.next().await;
+        assert!(first.is_none()); // No aggregates yet
+    }
+
+    #[tokio::test]
+    async fn test_get_aggregate_roots_with_data() {
+        let (service, event_store, _) = create_default_test_service();
+        let root1 = uuid::Uuid::new_v4();
+        let root2 = uuid::Uuid::new_v4();
+
+        // Add some events
+        event_store.add("orders", root1, vec![]).await.unwrap();
+        event_store.add("orders", root2, vec![]).await.unwrap();
+
+        let response = service.get_aggregate_roots(Request::new(())).await;
+
+        assert!(response.is_ok());
+        let stream = response.unwrap().into_inner();
+        let roots: Vec<_> = stream.collect().await;
+        assert_eq!(roots.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_aggregate_roots_multiple_domains() {
+        let (service, event_store, _) = create_default_test_service();
+
+        event_store
+            .add("orders", uuid::Uuid::new_v4(), vec![])
+            .await
+            .unwrap();
+        event_store
+            .add("inventory", uuid::Uuid::new_v4(), vec![])
+            .await
+            .unwrap();
+
+        let response = service.get_aggregate_roots(Request::new(())).await;
+
+        assert!(response.is_ok());
+        let stream = response.unwrap().into_inner();
+        let roots: Vec<_> = stream.collect().await;
+        assert_eq!(roots.len(), 2);
+    }
+}

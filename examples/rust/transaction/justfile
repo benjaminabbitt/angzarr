@@ -1,0 +1,41 @@
+# Transaction Business Logic - Rust gRPC Server
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Build the server
+build:
+    cargo build -p transaction --bin transaction-server
+
+# Build release
+build-release:
+    cargo build -p transaction --bin transaction-server --release
+
+# Run the server
+run: build
+    cargo run -p transaction --bin transaction-server
+
+# Run with custom port
+run-port port:
+    PORT={{port}} cargo run -p transaction --bin transaction-server
+
+# Run tests
+test:
+    cargo test -p transaction
+
+# Clean build artifacts
+clean:
+    cargo clean -p transaction
+
+# Check code
+check:
+    cargo check -p transaction
+
+# Lint code
+lint:
+    cargo clippy -p transaction -- -D warnings

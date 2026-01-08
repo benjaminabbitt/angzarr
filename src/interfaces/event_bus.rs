@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use tonic::Status;
 
-use crate::proto::EventBook;
+use crate::proto::{EventBook, Projection};
 
 /// Result type for bus operations.
 pub type Result<T> = std::result::Result<T, BusError>;
@@ -45,6 +45,13 @@ pub trait EventHandler: Send + Sync {
         -> BoxFuture<'static, std::result::Result<(), BusError>>;
 }
 
+/// Result of publishing events to the bus.
+#[derive(Debug, Default)]
+pub struct PublishResult {
+    /// Projections returned by synchronous projectors.
+    pub projections: Vec<Projection>,
+}
+
 /// Interface for event delivery to projectors/sagas.
 ///
 /// Implementations:
@@ -60,7 +67,9 @@ pub trait EventBus: Send + Sync {
     ///
     /// For synchronous events, this blocks until all consumers acknowledge.
     /// For async events, this returns immediately after queuing.
-    async fn publish(&self, book: Arc<EventBook>) -> Result<()>;
+    ///
+    /// Returns projections from synchronous projectors.
+    async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult>;
 
     /// Subscribe to events (for projector/saga implementations).
     ///

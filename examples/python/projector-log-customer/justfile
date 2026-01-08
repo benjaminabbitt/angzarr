@@ -1,4 +1,4 @@
-# Customer Log Projector (Python)
+# Customer Log Projector - Python gRPC Server
 
 set shell := ["bash", "-c"]
 
@@ -8,33 +8,37 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-# Setup common first
-setup-common:
-    cd ../common && just setup
-
 # Install dependencies
 install:
-    uv venv --quiet 2>/dev/null || true
-    uv pip install --quiet protobuf>=5.0.0 pytest>=8.0.0
+    uv sync --dev
 
 # Copy generated proto files
 proto:
-    mkdir -p proto
+    mkdir -p evented/proto proto
+    cp -r "{{TOP}}/generated/python/evented/"* evented/proto/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/python/examples/"* proto/ 2>/dev/null || true
-    touch proto/__init__.py
+    touch evented/__init__.py evented/proto/__init__.py proto/__init__.py
 
 # Full setup
-setup: setup-common install proto
+setup: install proto
+
+# Run the server
+run: setup
+    uv run python server.py
+
+# Run with debugpy (for remote debugging)
+debug: setup
+    uv run python -m debugpy --listen 0.0.0.0:5678 --wait-for-client server.py
+
+# Run with custom port
+run-port port:
+    PORT={{port}} uv run python server.py
 
 # Run tests
 test: setup
-    .venv/bin/python -m pytest -v
-
-# Run demo
-demo: setup
-    .venv/bin/python log_projector.py
+    uv run pytest -v
 
 # Clean
 clean:
-    rm -rf __pycache__ proto/*.py .venv
+    rm -rf __pycache__ .pytest_cache evented/proto/*.py proto/*.py
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

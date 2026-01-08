@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "projector-receipt-server"
+path = "src/main.rs"
 
 [dependencies]
 evented = { path = "../../.." }
@@ -12,3 +16,7 @@ prost = "0.13"
 prost-types = "0.13"
 hex = "0.4"
 async-trait = "0.1"
+tonic = "0.12"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }

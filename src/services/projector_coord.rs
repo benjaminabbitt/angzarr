@@ -151,3 +151,71 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         Ok(Response::new(()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proto::{Cover, Uuid as ProtoUuid};
+
+    fn make_event_book() -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: vec![1; 16],
+                }),
+            }),
+            pages: vec![],
+            snapshot: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_new_creates_empty_coordinator() {
+        let coordinator = ProjectorCoordinatorService::new();
+        assert!(coordinator.projectors.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_default_creates_empty_coordinator() {
+        let coordinator = ProjectorCoordinatorService::default();
+        assert!(coordinator.projectors.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_sync_with_no_projectors_returns_empty_projection() {
+        let coordinator = ProjectorCoordinatorService::new();
+        let event_book = make_event_book();
+
+        let response = coordinator.handle_sync(Request::new(event_book)).await;
+
+        assert!(response.is_ok());
+        let projection = response.unwrap().into_inner();
+        assert!(projection.projector.is_empty());
+        assert_eq!(projection.sequence, 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_with_no_projectors_succeeds() {
+        let coordinator = ProjectorCoordinatorService::new();
+        let event_book = make_event_book();
+
+        let response = coordinator.handle(Request::new(event_book)).await;
+
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_add_projector_invalid_address() {
+        let coordinator = ProjectorCoordinatorService::new();
+        let config = ProjectorConfig {
+            name: "test".to_string(),
+            address: "".to_string(), // Invalid
+            synchronous: false,
+        };
+
+        let result = coordinator.add_projector(config).await;
+
+        assert!(result.is_err());
+    }
+}

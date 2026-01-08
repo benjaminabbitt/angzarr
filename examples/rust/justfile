@@ -1,4 +1,4 @@
-# Rust examples
+# Rust example gRPC servers
 
 set shell := ["bash", "-c"]
 
@@ -6,27 +6,47 @@ set shell := ["bash", "-c"]
 default:
     @just --list
 
-# Build all Rust examples
-build: build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+# === Build ===
 
-# Build saga-loyalty
+# Build all Rust example servers
+build: build-customer build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+
+# Build customer server
+build-customer:
+    cd customer && just build
+
+# Build transaction server
+build-transaction:
+    cd transaction && just build
+
+# Build saga-loyalty server
 build-saga-loyalty:
     cd saga-loyalty && just build
 
-# Build projector-receipt
+# Build projector-receipt server
 build-projector-receipt:
     cd projector-receipt && just build
 
-# Build projector-log-customer
+# Build projector-log-customer server
 build-projector-log-customer:
     cd projector-log-customer && just build
 
-# Build projector-log-transaction
+# Build projector-log-transaction server
 build-projector-log-transaction:
     cd projector-log-transaction && just build
 
+# === Test ===
+
 # Test all Rust examples
-test: test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+test: test-customer test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+
+# Test customer
+test-customer:
+    cd customer && just test
+
+# Test transaction
+test-transaction:
+    cd transaction && just test
 
 # Test saga-loyalty
 test-saga-loyalty:
@@ -44,17 +64,51 @@ test-projector-log-customer:
 test-projector-log-transaction:
     cd projector-log-transaction && just test
 
+# === Clean ===
+
 # Clean all Rust examples
 clean:
     cd common && just clean || true
+    cd customer && just clean || true
+    cd transaction && just clean || true
     cd saga-loyalty && just clean || true
     cd projector-receipt && just clean || true
     cd projector-log-customer && just clean || true
     cd projector-log-transaction && just clean || true
 
+# === Lint ===
+
 # Lint all Rust examples
 lint:
-    cd saga-loyalty && just lint
-    cd projector-receipt && just lint
-    cd projector-log-customer && just lint
-    cd projector-log-transaction && just lint
+    cd customer && just lint || true
+    cd transaction && just lint || true
+    cd saga-loyalty && just lint || true
+    cd projector-receipt && just lint || true
+    cd projector-log-customer && just lint || true
+    cd projector-log-transaction && just lint || true
+
+# === Run ===
+
+# Run customer server (default port 50052)
+run-customer:
+    cd customer && just run
+
+# Run transaction server (default port 50053)
+run-transaction:
+    cd transaction && just run
+
+# Run saga-loyalty server (default port 50054)
+run-saga-loyalty:
+    cd saga-loyalty && just run
+
+# Run projector-receipt server (default port 50055)
+run-projector-receipt:
+    cd projector-receipt && just run
+
+# Run projector-log-customer server (default port 50056)
+run-projector-log-customer:
+    cd projector-log-customer && just run
+
+# Run projector-log-transaction server (default port 50057)
+run-projector-log-transaction:
+    cd projector-log-transaction && just run

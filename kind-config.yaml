@@ -1,0 +1,33 @@
+# Kind cluster configuration for evented-rs development
+# Create cluster: kind create cluster --config kind-config.yaml --name evented
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Evented command handler
+      - containerPort: 30051
+        hostPort: 50051
+        protocol: TCP
+      # Evented event query
+      - containerPort: 30052
+        hostPort: 50052
+        protocol: TCP
+      # RabbitMQ AMQP
+      - containerPort: 30672
+        hostPort: 5672
+        protocol: TCP
+      # RabbitMQ Management UI
+      - containerPort: 31672
+        hostPort: 15672
+        protocol: TCP
+      # Redis
+      - containerPort: 30379
+        hostPort: 6379
+        protocol: TCP

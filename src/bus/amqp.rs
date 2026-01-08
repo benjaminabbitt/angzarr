@@ -20,7 +20,7 @@ use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
-use crate::interfaces::event_bus::{BusError, EventBus, EventHandler, Result};
+use crate::interfaces::event_bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
 
 /// Exchange name for evented events.
@@ -265,9 +265,9 @@ impl AmqpEventBus {
 
 #[async_trait]
 impl EventBus for AmqpEventBus {
-    async fn publish(&self, book: &EventBook) -> Result<()> {
+    async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let channel = self.get_channel().await?;
-        let routing_key = Self::routing_key(book);
+        let routing_key = Self::routing_key(&book);
 
         // Serialize event book to protobuf
         let payload = book.encode_to_vec();
@@ -293,7 +293,8 @@ impl EventBus for AmqpEventBus {
             "Published event book"
         );
 
-        Ok(())
+        // AMQP is async-only, no synchronous projections
+        Ok(PublishResult::default())
     }
 
     async fn subscribe(&self, handler: Box<dyn EventHandler>) -> Result<()> {

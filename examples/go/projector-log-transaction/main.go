@@ -1,74 +1,64 @@
 // Package main provides the Transaction Log Projector - Go Implementation.
-// Pretty prints transaction events to terminal.
+// Logs transaction events using structured logging.
 package main
 
-/*
-#include <stdlib.h>
-*/
-import "C"
-
 import (
+	"context"
+	"encoding/hex"
 	"fmt"
-	"unsafe"
+	"net"
+	"os"
+	"strings"
 
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	goproto "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 
-	"common"
 	"projector-log-transaction/proto/evented"
+	"projector-log-transaction/proto/examples"
 )
 
 const ProjectorName = "log-transaction"
 
-// Handle processes an EventBook and logs events (returns nil - no projection).
-//
-//export Handle
-func Handle(data *C.char, length C.int) (*C.char, C.int) {
-	inputBytes := C.GoBytes(unsafe.Pointer(data), length)
+var logger *zap.Logger
 
-	var eventBook evented.EventBook
-	if err := goproto.Unmarshal(inputBytes, &eventBook); err != nil {
-		return nil, 0
+// server implements the ProjectorCoordinator gRPC service.
+type server struct {
+	evented.UnimplementedProjectorCoordinatorServer
+}
+
+// Handle processes events asynchronously (fire-and-forget).
+func (s *server) Handle(ctx context.Context, req *evented.EventBook) (*emptypb.Empty, error) {
+	logEvents(req)
+	return &emptypb.Empty{}, nil
+}
+
+// HandleSync processes events and returns projection synchronously.
+func (s *server) HandleSync(ctx context.Context, req *evented.EventBook) (*evented.Projection, error) {
+	logEvents(req)
+	// Log projector doesn't produce a projection
+	return nil, nil
+}
+
+// logEvents logs all events in the event book.
+func logEvents(eventBook *evented.EventBook) {
+	if eventBook == nil || len(eventBook.Pages) == 0 {
+		return
 	}
 
-	logEvents(&eventBook)
-
-	// Log projector doesn't produce a projection
-	return nil, 0
-}
-
-// Name returns the projector name.
-//
-//export Name
-func Name() (*C.char, C.int) {
-	return C.CString(ProjectorName), C.int(len(ProjectorName))
-}
-
-// Domains returns the domains this projector listens to.
-//
-//export Domains
-func Domains() (*C.char, C.int) {
-	domains := "transaction"
-	return C.CString(domains), C.int(len(domains))
-}
-
-// IsSynchronous returns whether this projector is synchronous.
-//
-//export IsSynchronous
-func IsSynchronous() C.int {
-	return 0 // false
-}
-
-func logEvents(eventBook *evented.EventBook) {
-	domain := ""
-	rootID := ""
+	domain := "transaction"
 	if eventBook.Cover != nil {
 		domain = eventBook.Cover.Domain
-		if eventBook.Cover.Root != nil {
-			rootID = fmt.Sprintf("%x", eventBook.Cover.Root.Value)
-			if len(rootID) > 16 {
-				rootID = rootID[:16]
-			}
-		}
+	}
+
+	rootID := ""
+	if eventBook.Cover != nil && eventBook.Cover.Root != nil {
+		rootID = hex.EncodeToString(eventBook.Cover.Root.Value)
+	}
+	shortID := rootID
+	if len(shortID) > 16 {
+		shortID = shortID[:16]
 	}
 
 	for _, page := range eventBook.Pages {
@@ -77,15 +67,113 @@ func logEvents(eventBook *evented.EventBook) {
 		}
 
 		var sequence uint32
-		if num, ok := page.Sequence.(*evented.EventPage_Num); ok {
-			sequence = num.Num
+		if seq, ok := page.Sequence.(*evented.EventPage_Num); ok {
+			sequence = seq.Num
 		}
 
-		common.LogEvent(domain, rootID, sequence, page.Event.GetTypeUrl(), page.Event.GetValue())
+		eventType := page.Event.TypeUrl
+		if idx := strings.LastIndex(eventType, "."); idx >= 0 {
+			eventType = eventType[idx+1:]
+		}
+
+		// Log base event info
+		eventLogger := logger.With(
+			zap.String("domain", domain),
+			zap.String("root_id", shortID),
+			zap.Uint32("sequence", sequence),
+			zap.String("event_type", eventType),
+		)
+
+		// Add event-specific fields
+		logEventDetails(eventLogger, eventType, page.Event.Value)
+	}
+}
+
+// logEventDetails adds event-specific fields to the log.
+func logEventDetails(eventLogger *zap.Logger, eventType string, data []byte) {
+	switch eventType {
+	case "TransactionCreated":
+		var event examples.TransactionCreated
+		if err := goproto.Unmarshal(data, &event); err == nil {
+			custID := event.CustomerId
+			if len(custID) > 16 {
+				custID = custID[:16]
+			}
+			eventLogger.Info("event",
+				zap.String("customer_id", custID),
+				zap.Int("item_count", len(event.Items)),
+				zap.Int32("subtotal_cents", event.SubtotalCents))
+		} else {
+			eventLogger.Info("event", zap.Error(err))
+		}
+
+	case "DiscountApplied":
+		var event examples.DiscountApplied
+		if err := goproto.Unmarshal(data, &event); err == nil {
+			eventLogger.Info("event",
+				zap.String("discount_type", event.DiscountType),
+				zap.Int32("value", event.Value),
+				zap.Int32("discount_cents", event.DiscountCents),
+				zap.String("coupon_code", event.CouponCode))
+		} else {
+			eventLogger.Info("event", zap.Error(err))
+		}
+
+	case "TransactionCompleted":
+		var event examples.TransactionCompleted
+		if err := goproto.Unmarshal(data, &event); err == nil {
+			eventLogger.Info("event",
+				zap.Int32("final_total_cents", event.FinalTotalCents),
+				zap.String("payment_method", event.PaymentMethod),
+				zap.Int32("loyalty_points_earned", event.LoyaltyPointsEarned))
+		} else {
+			eventLogger.Info("event", zap.Error(err))
+		}
+
+	case "TransactionCancelled":
+		var event examples.TransactionCancelled
+		if err := goproto.Unmarshal(data, &event); err == nil {
+			eventLogger.Info("event",
+				zap.String("reason", event.Reason))
+		} else {
+			eventLogger.Info("event", zap.Error(err))
+		}
+
+	default:
+		eventLogger.Info("event",
+			zap.Int("raw_bytes", len(data)))
 	}
 }
 
 func main() {
-	fmt.Println("Transaction Log Projector (Go) loaded")
-	fmt.Println("Listening to domain: transaction")
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "50057"
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		logger.Fatal("failed to listen",
+			zap.String("port", port),
+			zap.Error(err))
+	}
+
+	s := grpc.NewServer()
+	evented.RegisterProjectorCoordinatorServer(s, &server{})
+
+	logger.Info("projector server started",
+		zap.String("name", ProjectorName),
+		zap.String("port", port),
+		zap.String("listens_to", "transaction domain"))
+
+	if err := s.Serve(lis); err != nil {
+		logger.Fatal("failed to serve", zap.Error(err))
+	}
 }

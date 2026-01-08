@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rs-saga-loyalty
+  namespace: evented
+  labels:
+    app: rs-saga-loyalty
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rs-saga-loyalty
+  template:
+    metadata:
+      labels:
+        app: rs-saga-loyalty
+    spec:
+      containers:
+        - name: rs-saga-loyalty
+          image: rs-saga-loyalty:latest
+          ports:
+            - containerPort: 50054
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: PORT
+              value: "50054"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rs-saga-loyalty
+  namespace: evented
+spec:
+  selector:
+    app: rs-saga-loyalty
+  ports:
+    - port: 50054
+      targetPort: 50054
