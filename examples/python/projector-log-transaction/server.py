@@ -8,11 +8,12 @@ from concurrent import futures
 
 import grpc
 import structlog
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from google.protobuf import empty_pb2
 
-from evented import evented_pb2 as evented
-from evented import evented_pb2_grpc
+from angzarr import angzarr_pb2 as angzarr
+from angzarr import angzarr_pb2_grpc
 from proto import domains_pb2 as domains
 
 # Configure structlog
@@ -32,7 +33,7 @@ logger = structlog.get_logger()
 PROJECTOR_NAME = "log-transaction"
 
 
-def log_events(event_book: evented.EventBook) -> None:
+def log_events(event_book: angzarr.EventBook) -> None:
     """Log all events in the event book."""
     if not event_book or not event_book.pages:
         return
@@ -118,7 +119,7 @@ def log_event_details(event_logger: structlog.BoundLogger, event_type: str, even
         event_logger.info("event", raw_bytes=len(event_any.value))
 
 
-class ProjectorServicer(evented_pb2_grpc.ProjectorCoordinatorServicer):
+class ProjectorServicer(angzarr_pb2_grpc.ProjectorCoordinatorServicer):
     """gRPC service implementation for Transaction Log projector."""
 
     def __init__(self) -> None:
@@ -126,7 +127,7 @@ class ProjectorServicer(evented_pb2_grpc.ProjectorCoordinatorServicer):
 
     def Handle(
         self,
-        request: evented.EventBook,
+        request: angzarr.EventBook,
         context: grpc.ServicerContext,
     ) -> empty_pb2.Empty:
         """Process events asynchronously (fire-and-forget)."""
@@ -135,9 +136,9 @@ class ProjectorServicer(evented_pb2_grpc.ProjectorCoordinatorServicer):
 
     def HandleSync(
         self,
-        request: evented.EventBook,
+        request: angzarr.EventBook,
         context: grpc.ServicerContext,
-    ) -> evented.Projection:
+    ) -> angzarr.Projection:
         """Process events and return projection synchronously."""
         log_events(request)
         # Log projector doesn't produce a projection
@@ -149,7 +150,13 @@ def serve() -> None:
     port = os.environ.get("PORT", "50057")
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    evented_pb2_grpc.add_ProjectorCoordinatorServicer_to_server(ProjectorServicer(), server)
+    angzarr_pb2_grpc.add_ProjectorCoordinatorServicer_to_server(ProjectorServicer(), server)
+
+    # Register gRPC health service
+    health_servicer = health.HealthServicer()
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+
     server.add_insecure_port(f"[::]:{port}")
 
     logger.info(

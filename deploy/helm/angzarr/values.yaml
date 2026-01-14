@@ -1,0 +1,289 @@
+# Default values for angzarr
+# Angzarr runs as a sidecar providing event sourcing infrastructure
+
+replicaCount: 1
+
+# Angzarr sidecar images (separate binaries per mode)
+# angzarr-standalone is for local development only, not deployed to K8s
+images:
+  command:
+    repository: angzarr-command
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  projector:
+    repository: angzarr-projector
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  saga:
+    repository: angzarr-saga
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  stream:
+    repository: angzarr-stream
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  gateway:
+    repository: angzarr-gateway
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Angzarr gRPC ports
+service:
+  type: ClusterIP
+  commandPort: 1313
+  queryPort: 1314
+
+# Service discovery configuration
+serviceDiscovery:
+  # Enable headless service for DNS-based discovery
+  headless: false
+  # DNS suffix for service names
+  dnsSuffix: "svc.cluster.local"
+
+# Infrastructure services (standalone, not sidecars)
+infrastructure:
+  # Event stream service - broadcasts events to registered subscribers
+  stream:
+    enabled: false
+    replicas: 1
+    port: 1315
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Command gateway service - routes commands and streams back events
+  gateway:
+    enabled: false
+    replicas: 1
+    port: 1316
+    # Address of command service to forward to
+    commandService: ""
+    # Address of stream service
+    streamService: ""
+    # Timeout for event stream (seconds)
+    streamTimeoutSecs: 30
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: angzarr.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+# Resources for angzarr sidecar
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+livenessProbe:
+  tcpSocket:
+    port: command
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  tcpSocket:
+    port: command
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Storage configuration for angzarr
+storage:
+  # sqlite or mongodb
+  type: mongodb
+  sqlite:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: ""
+  mongodb:
+    # Connection URI (credentials should be set via --set or secretRef)
+    uri: "mongodb://mongodb:27017"
+    database: "angzarr"
+    # Use existing secret for credentials
+    existingSecret: ""
+    secretKeys:
+      username: "username"
+      password: "password"
+
+# AMQP/RabbitMQ configuration for event bus
+amqp:
+  enabled: false
+  url: "amqp://rabbitmq:5672"
+
+# RabbitMQ subchart configuration
+rabbitmq:
+  enabled: false
+  auth:
+    # Required: set via --set or values file, never commit credentials
+    username: ""
+    password: ""
+  persistence:
+    size: 1Gi
+
+# MongoDB subchart configuration
+mongodb:
+  enabled: true
+  auth:
+    # Required: set via --set or values file, never commit credentials
+    rootUsername: ""
+    rootPassword: ""
+    usernames: ["angzarr"]
+    passwords: [""]  # Set via --set mongodb.auth.passwords[0]=<password>
+    databases: ["angzarr"]
+  persistence:
+    size: 8Gi
+
+# Main application containers - angzarr runs as sidecar to these
+# Each application type gets angzarr infrastructure
+applications:
+  # Business logic applications - handle commands, produce events
+  # Angzarr sidecar provides: BusinessCoordinator gRPC service
+  business: []
+  # - name: discount-service
+  #   image:
+  #     repository: discount-business
+  #     tag: "latest"
+  #   # Domain this business logic handles
+  #   domain: "discounts"
+  #   # Port the business logic exposes (angzarr calls this)
+  #   port: 50051
+  #   type: python  # python, go, or custom
+  #   python:
+  #     module: discount_logic
+  #     path: /app/business
+  #   # go:
+  #   #   library: /app/libbusiness.so
+  #   resources: {}
+
+  # Projector applications - subscribe to events, build read models
+  # Angzarr sidecar subscribes to AMQP and calls projector via gRPC
+  projectors: []
+  # - name: order-projector
+  #   image:
+  #     repository: order-projector
+  #     tag: "latest"
+  #   # Port the projector gRPC server listens on
+  #   port: 50051
+  #   # Event topics/domains to subscribe to (AMQP routing keys)
+  #   topics:
+  #     - "orders.*"
+  #     - "discounts.DiscountApplied"
+  #   resources: {}
+
+  # Saga applications - subscribe to events, orchestrate transactions
+  # Angzarr sidecar subscribes to AMQP and calls saga via gRPC
+  sagas: []
+  # - name: order-fulfillment
+  #   image:
+  #     repository: fulfillment-saga
+  #     tag: "latest"
+  #   # Port the saga gRPC server listens on
+  #   port: 50051
+  #   # Event topics/domains to subscribe to (AMQP routing keys)
+  #   topics:
+  #     - "orders.OrderCreated"
+  #     - "payments.PaymentCompleted"
+  #     - "inventory.ItemReserved"
+  #   resources: {}
+
+# Default resources for application containers
+applicationResources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Environment variables
+env: []
+
+# Extra volumes
+extraVolumes: []
+extraVolumeMounts: []
+
+# Logging
+logging:
+  level: info
+  format: json
+
+# Stakater Reloader configuration
+# Automatically restarts pods when ConfigMaps/Secrets change
+# Requires Reloader to be installed: helm install reloader stakater/reloader -n reloader --create-namespace
+reloader:
+  enabled: true
+  # Watch specific secrets/configmaps (auto-detects if not specified)
+  watchSecrets: true
+  watchConfigMaps: true
+
+# External Secrets Operator configuration
+# Requires ESO to be installed in cluster: helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
+externalSecrets:
+  enabled: false
+  # Provider: kubernetes, fake, aws, vault, gcp, azure
+  provider: kubernetes
+  # How often to sync secrets
+  refreshInterval: "1h"
+  # Kubernetes provider config (for local dev)
+  kubernetes:
+    # Namespace containing source secrets
+    sourceNamespace: "angzarr-secrets"
+  # Secret references
+  mongodb:
+    secretName: "angzarr-secrets"
+  rabbitmq:
+    secretName: "angzarr-secrets"

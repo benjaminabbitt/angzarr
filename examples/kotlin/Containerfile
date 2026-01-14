@@ -1,0 +1,104 @@
+# Kotlin examples - multi-stage build with Gradle
+# Build from this directory: docker build -t kt-customer --target customer .
+# Build all: docker build -t kt-examples .
+
+# ============================================================================
+# Builder stage - compiles Kotlin projects with Gradle
+# ============================================================================
+FROM gradle:8.11-jdk21-alpine AS builder
+
+WORKDIR /app
+
+# Copy proto files
+COPY proto/ /app/proto/
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY customer/build.gradle.kts customer/settings.gradle.kts ./
+COPY customer/gradle/ ./gradle/
+RUN gradle dependencies --no-daemon || true
+COPY customer/src/ ./src/
+RUN gradle shadowJar --no-daemon
+
+FROM builder AS build-transaction
+COPY transaction/build.gradle.kts transaction/settings.gradle.kts ./
+COPY transaction/gradle/ ./gradle/
+RUN gradle dependencies --no-daemon || true
+COPY transaction/src/ ./src/
+RUN gradle shadowJar --no-daemon
+
+FROM builder AS build-saga-loyalty
+COPY saga-loyalty/build.gradle.kts saga-loyalty/settings.gradle.kts ./
+COPY saga-loyalty/gradle/ ./gradle/
+RUN gradle dependencies --no-daemon || true
+COPY saga-loyalty/src/ ./src/
+RUN gradle shadowJar --no-daemon
+
+FROM builder AS build-projector-receipt
+COPY projector-receipt/build.gradle.kts projector-receipt/settings.gradle.kts ./
+COPY projector-receipt/gradle/ ./gradle/
+RUN gradle dependencies --no-daemon || true
+COPY projector-receipt/src/ ./src/
+RUN gradle shadowJar --no-daemon
+
+FROM builder AS build-projector-log-customer
+COPY projector-log-customer/build.gradle.kts projector-log-customer/settings.gradle.kts ./
+COPY projector-log-customer/gradle/ ./gradle/
+RUN gradle dependencies --no-daemon || true
+COPY projector-log-customer/src/ ./src/
+RUN gradle shadowJar --no-daemon
+
+FROM builder AS build-projector-log-transaction
+COPY projector-log-transaction/build.gradle.kts projector-log-transaction/settings.gradle.kts ./
+COPY projector-log-transaction/gradle/ ./gradle/
+RUN gradle dependencies --no-daemon || true
+COPY projector-log-transaction/src/ ./src/
+RUN gradle shadowJar --no-daemon
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM eclipse-temurin:21-jre-alpine AS runtime
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /app/build/libs/*-all.jar ./server.jar
+ENV PORT=50500
+EXPOSE 50500
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /app/build/libs/*-all.jar ./server.jar
+ENV PORT=50501
+EXPOSE 50501
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /app/build/libs/*-all.jar ./server.jar
+ENV PORT=50502
+EXPOSE 50502
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /app/build/libs/*-all.jar ./server.jar
+ENV PORT=50503
+EXPOSE 50503
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /app/build/libs/*-all.jar ./server.jar
+ENV PORT=50504
+EXPOSE 50504
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /app/build/libs/*-all.jar ./server.jar
+ENV PORT=50505
+EXPOSE 50505
+CMD ["java", "-jar", "server.jar"]

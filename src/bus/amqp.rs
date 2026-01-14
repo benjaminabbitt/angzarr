@@ -23,8 +23,8 @@ use tracing::{debug, error, info};
 use crate::interfaces::event_bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
 
-/// Exchange name for evented events.
-const EVENTS_EXCHANGE: &str = "evented.events";
+/// Exchange name for angzarr events.
+const EVENTS_EXCHANGE: &str = "angzarr.events";
 
 /// Configuration for AMQP connection.
 #[derive(Clone, Debug)]
@@ -208,7 +208,7 @@ impl AmqpEventBus {
         let mut consumer = channel
             .basic_consume(
                 queue,
-                "evented-consumer",
+                "angzarr-consumer",
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
@@ -232,10 +232,13 @@ impl AmqpEventBus {
                                     "Received event book"
                                 );
 
+                                // Wrap in Arc for sharing across handlers
+                                let book = Arc::new(book);
+
                                 // Call all handlers
                                 let handlers_guard = handlers.read().await;
                                 for handler in handlers_guard.iter() {
-                                    if let Err(e) = handler.handle(book.clone()).await {
+                                    if let Err(e) = handler.handle(Arc::clone(&book)).await {
                                         error!(error = %e, "Handler failed");
                                     }
                                 }
@@ -328,6 +331,8 @@ mod tests {
             }),
             pages: vec![],
             snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         // "test-123" as bytes becomes "746573742d313233" in hex
@@ -337,7 +342,7 @@ mod tests {
     #[test]
     fn test_publisher_config() {
         let config = AmqpConfig::publisher("amqp://localhost:5672");
-        assert_eq!(config.exchange, "evented.events");
+        assert_eq!(config.exchange, "angzarr.events");
         assert!(config.queue.is_none());
     }
 

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rs-transaction
-  namespace: evented
+  namespace: angzarr
   labels:
     app: rs-transaction
 spec:
@@ -18,22 +18,33 @@ spec:
       containers:
         - name: rs-transaction
           image: rs-transaction:latest
+          imagePullPolicy: Never
           ports:
-            - containerPort: 50053
+            - containerPort: 50101
           env:
-            - name: RUST_LOG
+            - name: ANGZARR_LOG
               value: info
             - name: PORT
-              value: "50053"
+              value: "50101"
+          readinessProbe:
+            grpc:
+              port: 50101
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50101
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rs-transaction
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: rs-transaction
   ports:
-    - port: 50053
-      targetPort: 50053
+    - port: 50101
+      targetPort: 50101

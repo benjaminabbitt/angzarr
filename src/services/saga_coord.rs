@@ -2,20 +2,22 @@
 //!
 //! Receives events from the event bus and distributes them to registered sagas.
 //! Sagas can produce new commands in response to events, enabling cross-aggregate
-//! workflows.
+//! workflows. Ensures sagas receive complete EventBooks by fetching missing history
+//! from the EventQuery service when needed.
 
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
 
 use crate::bus::SagaConfig;
 use crate::proto::{
-    saga_client::SagaClient, saga_coordinator_server::SagaCoordinator, EventBook,
-    SynchronousProcessingResponse,
+    event_page::Sequence, saga_client::SagaClient, saga_coordinator_server::SagaCoordinator,
+    EventBook, SagaCommandOrigin, SagaResponse,
 };
+use crate::services::event_book_repair::{self, EventBookRepairer};
 
 /// Re-export for backwards compatibility.
 pub type SagaEndpoint = SagaConfig;
@@ -29,15 +31,47 @@ struct SagaConnection {
 /// Saga coordinator service.
 ///
 /// Distributes events to all registered sagas and collects responses.
+/// Before forwarding, checks if EventBooks are complete and fetches
+/// missing history from the EventQuery service if needed.
 pub struct SagaCoordinatorService {
     sagas: Arc<RwLock<Vec<SagaConnection>>>,
+    repairer: Option<Arc<Mutex<EventBookRepairer>>>,
 }
 
 impl SagaCoordinatorService {
-    /// Create a new saga coordinator.
+    /// Create a new saga coordinator without repair capability.
     pub fn new() -> Self {
         Self {
             sagas: Arc::new(RwLock::new(Vec::new())),
+            repairer: None,
+        }
+    }
+
+    /// Create a new saga coordinator with repair capability.
+    ///
+    /// The repairer will fetch missing events from the EventQuery service
+    /// at the given address when incomplete EventBooks are received.
+    pub async fn with_repair(event_query_address: &str) -> Result<Self, String> {
+        let repairer = EventBookRepairer::connect(event_query_address)
+            .await
+            .map_err(|e| format!("Failed to connect to EventQuery service: {}", e))?;
+
+        info!(
+            address = %event_query_address,
+            "Connected to EventQuery service for EventBook repair"
+        );
+
+        Ok(Self {
+            sagas: Arc::new(RwLock::new(Vec::new())),
+            repairer: Some(Arc::new(Mutex::new(repairer))),
+        })
+    }
+
+    /// Create a new saga coordinator with an existing repairer.
+    pub fn with_repairer(repairer: EventBookRepairer) -> Self {
+        Self {
+            sagas: Arc::new(RwLock::new(Vec::new())),
+            repairer: Some(Arc::new(Mutex::new(repairer))),
         }
     }
 
@@ -64,6 +98,32 @@ impl SagaCoordinatorService {
 
         Ok(())
     }
+
+    /// Repair an EventBook if incomplete.
+    ///
+    /// If a repairer is configured and the EventBook is incomplete,
+    /// fetches the complete history from the EventQuery service.
+    async fn repair_event_book(&self, event_book: EventBook) -> Result<EventBook, Status> {
+        // Check if repair is needed
+        if event_book_repair::is_complete(&event_book) {
+            return Ok(event_book);
+        }
+
+        // No repairer configured - log warning and pass through
+        let Some(ref repairer) = self.repairer else {
+            warn!(
+                "Received incomplete EventBook but no repairer configured, passing through as-is"
+            );
+            return Ok(event_book);
+        };
+
+        // Repair the EventBook
+        let mut repairer = repairer.lock().await;
+        repairer.repair(event_book).await.map_err(|e| {
+            error!(error = %e, "Failed to repair EventBook");
+            Status::internal(format!("Failed to repair EventBook: {}", e))
+        })
+    }
 }
 
 impl Default for SagaCoordinatorService {
@@ -72,14 +132,45 @@ impl Default for SagaCoordinatorService {
     }
 }
 
+/// Extract the triggering event sequence from an EventBook.
+///
+/// Returns the highest sequence number from the EventBook's pages,
+/// or 0 if no events are present.
+fn extract_triggering_sequence(book: &EventBook) -> u32 {
+    book.pages
+        .iter()
+        .filter_map(|page| match &page.sequence {
+            Some(Sequence::Num(n)) => Some(*n),
+            Some(Sequence::Force(_)) => None,
+            None => None,
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Build a SagaCommandOrigin from an EventBook and saga name.
+fn build_saga_origin(book: &EventBook, saga_name: &str) -> Option<SagaCommandOrigin> {
+    let cover = book.cover.as_ref()?;
+
+    Some(SagaCommandOrigin {
+        saga_name: saga_name.to_string(),
+        triggering_aggregate: Some(cover.clone()),
+        triggering_event_sequence: extract_triggering_sequence(book),
+    })
+}
+
 #[tonic::async_trait]
 impl SagaCoordinator for SagaCoordinatorService {
-    /// Handle events synchronously, collecting all resulting event books.
+    /// Handle events synchronously, collecting all resulting commands.
     async fn handle_sync(
         &self,
         request: Request<EventBook>,
-    ) -> Result<Response<SynchronousProcessingResponse>, Status> {
+    ) -> Result<Response<SagaResponse>, Status> {
         let event_book = request.into_inner();
+        let correlation_id = event_book.correlation_id.clone();
+
+        // Repair EventBook if incomplete
+        let event_book = self.repair_event_book(event_book).await?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -91,8 +182,7 @@ impl SagaCoordinator for SagaCoordinatorService {
                 .collect()
         };
 
-        let mut all_books = Vec::new();
-        let mut all_projections = Vec::new();
+        let mut all_commands = Vec::new();
 
         for (config, mut client) in connections {
             let req = Request::new(event_book.clone());
@@ -100,8 +190,21 @@ impl SagaCoordinator for SagaCoordinatorService {
                 Ok(response) => {
                     info!(saga.name = %config.name, "Synchronous saga completed");
                     let inner = response.into_inner();
-                    all_books.extend(inner.books);
-                    all_projections.extend(inner.projections);
+
+                    // Build saga origin for tracking compensation flow
+                    let saga_origin = build_saga_origin(&event_book, &config.name);
+
+                    // Propagate correlation_id and saga_origin to saga-produced commands
+                    for mut cmd in inner.commands {
+                        if cmd.correlation_id.is_empty() {
+                            cmd.correlation_id = correlation_id.clone();
+                        }
+                        // Set saga_origin if not already set by the saga
+                        if cmd.saga_origin.is_none() {
+                            cmd.saga_origin = saga_origin.clone();
+                        }
+                        all_commands.push(cmd);
+                    }
                 }
                 Err(e) => {
                     error!(saga.name = %config.name, error = %e, "Synchronous saga failed");
@@ -113,16 +216,17 @@ impl SagaCoordinator for SagaCoordinatorService {
             }
         }
 
-        Ok(Response::new(SynchronousProcessingResponse {
-            books: all_books,
-            commands: vec![],
-            projections: all_projections,
+        Ok(Response::new(SagaResponse {
+            commands: all_commands,
         }))
     }
 
     /// Handle events asynchronously (fire and forget).
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         let event_book = request.into_inner();
+
+        // Repair EventBook if incomplete
+        let event_book = self.repair_event_book(event_book).await?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -156,18 +260,61 @@ impl SagaCoordinator for SagaCoordinatorService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{Cover, Uuid as ProtoUuid};
+    use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
+    use prost_types::Any;
 
     fn make_event_book() -> EventBook {
         EventBook {
             cover: Some(Cover {
                 domain: "orders".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             pages: vec![],
             snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        }
+    }
+
+    fn make_complete_event_book() -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
+            }),
+            pages: vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(0)),
+                event: Some(Any {
+                    type_url: "test.Event".to_string(),
+                    value: vec![],
+                }),
+                created_at: None,
+                synchronous: false,
+            }],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        }
+    }
+
+    fn make_incomplete_event_book() -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
+            }),
+            pages: vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(5)), // Missing events 0-4
+                event: Some(Any {
+                    type_url: "test.Event".to_string(),
+                    value: vec![],
+                }),
+                created_at: None,
+                synchronous: false,
+            }],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
         }
     }
 
@@ -175,6 +322,7 @@ mod tests {
     async fn test_new_creates_empty_coordinator() {
         let coordinator = SagaCoordinatorService::new();
         assert!(coordinator.sagas.read().await.is_empty());
+        assert!(coordinator.repairer.is_none());
     }
 
     #[tokio::test]
@@ -192,8 +340,7 @@ mod tests {
 
         assert!(response.is_ok());
         let sync_response = response.unwrap().into_inner();
-        assert!(sync_response.books.is_empty());
-        assert!(sync_response.projections.is_empty());
+        assert!(sync_response.commands.is_empty());
     }
 
     #[tokio::test]
@@ -218,5 +365,145 @@ mod tests {
         let result = coordinator.add_saga(config).await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_repair_event_book_complete_passes_through() {
+        let coordinator = SagaCoordinatorService::new();
+        let event_book = make_complete_event_book();
+
+        let result = coordinator.repair_event_book(event_book.clone()).await;
+
+        assert!(result.is_ok());
+        let repaired = result.unwrap();
+        assert_eq!(repaired.pages.len(), event_book.pages.len());
+    }
+
+    #[tokio::test]
+    async fn test_repair_event_book_incomplete_without_repairer_warns() {
+        let coordinator = SagaCoordinatorService::new();
+        let event_book = make_incomplete_event_book();
+
+        // Without a repairer, incomplete books pass through with a warning
+        let result = coordinator.repair_event_book(event_book.clone()).await;
+
+        assert!(result.is_ok());
+        let passed = result.unwrap();
+        // Still incomplete since no repairer
+        assert_eq!(passed.pages.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_triggering_sequence_empty() {
+        let book = make_event_book();
+        assert_eq!(extract_triggering_sequence(&book), 0);
+    }
+
+    #[test]
+    fn test_extract_triggering_sequence_single_event() {
+        let book = make_complete_event_book();
+        assert_eq!(extract_triggering_sequence(&book), 0);
+    }
+
+    #[test]
+    fn test_extract_triggering_sequence_multiple_events() {
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
+            }),
+            pages: vec![
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(0)),
+                    event: Some(Any {
+                        type_url: "test.Event".to_string(),
+                        value: vec![],
+                    }),
+                    created_at: None,
+                    synchronous: false,
+                },
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(1)),
+                    event: Some(Any {
+                        type_url: "test.Event".to_string(),
+                        value: vec![],
+                    }),
+                    created_at: None,
+                    synchronous: false,
+                },
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(5)),
+                    event: Some(Any {
+                        type_url: "test.Event".to_string(),
+                        value: vec![],
+                    }),
+                    created_at: None,
+                    synchronous: false,
+                },
+            ],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        };
+
+        assert_eq!(extract_triggering_sequence(&book), 5);
+    }
+
+    #[test]
+    fn test_build_saga_origin_success() {
+        let book = make_complete_event_book();
+        let origin = build_saga_origin(&book, "loyalty_points");
+
+        assert!(origin.is_some());
+        let origin = origin.unwrap();
+        assert_eq!(origin.saga_name, "loyalty_points");
+        assert!(origin.triggering_aggregate.is_some());
+        let agg = origin.triggering_aggregate.unwrap();
+        assert_eq!(agg.domain, "orders");
+        assert_eq!(origin.triggering_event_sequence, 0);
+    }
+
+    #[test]
+    fn test_build_saga_origin_no_cover() {
+        let book = EventBook {
+            cover: None,
+            pages: vec![],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        };
+
+        let origin = build_saga_origin(&book, "test_saga");
+        assert!(origin.is_none());
+    }
+
+    #[test]
+    fn test_build_saga_origin_uses_max_sequence() {
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
+            }),
+            pages: vec![
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(3)),
+                    event: None,
+                    created_at: None,
+                    synchronous: false,
+                },
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(7)),
+                    event: None,
+                    created_at: None,
+                    synchronous: false,
+                },
+            ],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        };
+
+        let origin = build_saga_origin(&book, "test").unwrap();
+        assert_eq!(origin.triggering_event_sequence, 7);
     }
 }

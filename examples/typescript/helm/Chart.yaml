@@ -1,0 +1,12 @@
+apiVersion: v2
+name: angzarr-typescript-examples
+description: Angzarr TypeScript example services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - angzarr
+  - typescript
+  - nodejs
+  - cqrs
+  - event-sourcing

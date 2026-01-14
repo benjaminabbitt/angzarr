@@ -1,0 +1,223 @@
+# Local development values for angzarr
+# Uses MongoDB + RabbitMQ with example applications
+
+replicaCount: 1
+
+image:
+  repository: angzarr
+  pullPolicy: Never  # Use local images (minikube/kind)
+  tag: "latest"
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+# MongoDB storage (shared across all aggregates)
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+# AMQP for event bus
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+# RabbitMQ subchart
+rabbitmq:
+  enabled: true
+  auth:
+    username: "guest"
+    password: "guest"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# MongoDB subchart
+mongodb:
+  enabled: true
+  auth:
+    rootUsername: "root"
+    rootPassword: "rootpassword"
+    usernames: ["angzarr"]
+    passwords: ["angzarr"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Example applications - each gets angzarr as sidecar
+applications:
+  # Business logic aggregates
+  business:
+    # Rust customer aggregate
+    - name: rs-customer
+      image:
+        repository: rs-customer
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 50052
+
+    # Rust transaction aggregate
+    - name: rs-transaction
+      image:
+        repository: rs-transaction
+        tag: "latest"
+        pullPolicy: Never
+      domain: "transaction"
+      port: 50053
+
+    # Go customer aggregate
+    - name: go-customer
+      image:
+        repository: go-customer
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 50052
+
+    # Go transaction aggregate
+    - name: go-transaction
+      image:
+        repository: go-transaction
+        tag: "latest"
+        pullPolicy: Never
+      domain: "transaction"
+      port: 50053
+
+    # Python customer aggregate
+    - name: py-customer
+      image:
+        repository: py-customer
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 50052
+
+    # Python transaction aggregate
+    - name: py-transaction
+      image:
+        repository: py-transaction
+        tag: "latest"
+        pullPolicy: Never
+      domain: "transaction"
+      port: 50053
+
+  # Projector applications
+  projectors:
+    # Receipt projector (synchronous - returns projection in command response)
+    - name: rs-projector-receipt
+      image:
+        repository: rs-projector-receipt
+        tag: "latest"
+        pullPolicy: Never
+      port: 50055
+      topics:
+        - "transaction.*"
+
+    # Log projectors - customer domain
+    - name: rs-projector-log-customer
+      image:
+        repository: rs-projector-log-customer
+        tag: "latest"
+        pullPolicy: Never
+      port: 50056
+      topics:
+        - "customer.*"
+
+    - name: go-projector-log-customer
+      image:
+        repository: go-projector-log-customer
+        tag: "latest"
+        pullPolicy: Never
+      port: 50058
+      topics:
+        - "customer.*"
+
+    - name: py-projector-log-customer
+      image:
+        repository: py-projector-log-customer
+        tag: "latest"
+        pullPolicy: Never
+      port: 50060
+      topics:
+        - "customer.*"
+
+    # Log projectors - transaction domain
+    - name: rs-projector-log-transaction
+      image:
+        repository: rs-projector-log-transaction
+        tag: "latest"
+        pullPolicy: Never
+      port: 50057
+      topics:
+        - "transaction.*"
+
+    - name: go-projector-log-transaction
+      image:
+        repository: go-projector-log-transaction
+        tag: "latest"
+        pullPolicy: Never
+      port: 50059
+      topics:
+        - "transaction.*"
+
+    - name: py-projector-log-transaction
+      image:
+        repository: py-projector-log-transaction
+        tag: "latest"
+        pullPolicy: Never
+      port: 50061
+      topics:
+        - "transaction.*"
+
+  # Saga applications
+  sagas:
+    # Loyalty saga - subscribes to transactions, issues loyalty commands
+    - name: rs-saga-loyalty
+      image:
+        repository: rs-saga-loyalty
+        tag: "latest"
+        pullPolicy: Never
+      port: 50054
+      topics:
+        - "transaction.*"
+
+    - name: go-saga-loyalty
+      image:
+        repository: go-saga-loyalty
+        tag: "latest"
+        pullPolicy: Never
+      port: 50054
+      topics:
+        - "transaction.*"
+
+    - name: py-saga-loyalty
+      image:
+        repository: py-saga-loyalty
+        tag: "latest"
+        pullPolicy: Never
+      port: 50054
+      topics:
+        - "transaction.*"
+
+logging:
+  level: debug

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: angzarr-kotlin-examples
+description: Angzarr Kotlin example services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - angzarr
+  - kotlin
+  - cqrs
+  - event-sourcing

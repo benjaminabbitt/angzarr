@@ -383,7 +383,7 @@ class ReceiptProjector:
         buf.extend(self._encode_varint(value))
 
 
-# FFI entry points for evented-rs integration
+# FFI entry points for angzarr integration
 
 _projector = ReceiptProjector()
 

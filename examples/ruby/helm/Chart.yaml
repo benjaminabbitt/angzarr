@@ -1,0 +1,11 @@
+apiVersion: v2
+name: angzarr-ruby-examples
+description: Angzarr Ruby example services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - angzarr
+  - ruby
+  - cqrs
+  - event-sourcing

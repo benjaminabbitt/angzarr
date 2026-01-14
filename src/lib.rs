@@ -1,12 +1,18 @@
-//! Evented - CQRS/ES Framework
+//! Angzarr - CQRS/ES Framework
 //!
-//! A Rust implementation of the evented framework for building
+//! A Rust implementation of the angzarr framework for building
 //! event-sourced applications with CQRS architecture.
 
 pub mod bus;
 pub mod clients;
 pub mod config;
-pub mod facade;
+#[cfg(any(
+    feature = "mode-projector",
+    feature = "mode-saga",
+    feature = "mode-stream",
+    feature = "mode-gateway"
+))]
+pub mod handlers;
 pub mod interfaces;
 pub mod projectors;
 pub mod repository;
@@ -19,7 +25,7 @@ pub mod test_utils;
 
 // Re-export generated proto types
 pub mod proto {
-    tonic::include_proto!("evented");
+    tonic::include_proto!("angzarr");
 }
 
 // Re-export async_trait for implementors
@@ -27,6 +33,5 @@ pub use async_trait;
 
 // Re-export common types for library usage
 pub use config::Config;
-pub use facade::{Evented, EventedBuilder, EventedConfig, EventedError};
 pub use interfaces::{BusinessLogicClient, EventBus, EventStore, Projector, Saga, SnapshotStore};
 pub use proto::{CommandBook, ContextualCommand, Cover, EventBook, EventPage, Snapshot};

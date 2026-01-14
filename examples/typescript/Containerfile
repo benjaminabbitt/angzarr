@@ -1,0 +1,98 @@
+# TypeScript examples - multi-stage build with Node.js
+# Build from this directory: docker build -t ts-customer --target customer .
+# Build all: docker build -t ts-examples .
+
+# ============================================================================
+# Builder stage - compiles TypeScript with npm
+# ============================================================================
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Copy generated proto files
+COPY generated/angzarr angzarr/proto/
+COPY generated/examples proto/
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY customer/package*.json ./
+RUN npm ci
+COPY customer/ ./
+RUN npm run build
+
+FROM builder AS build-transaction
+COPY transaction/package*.json ./
+RUN npm ci
+COPY transaction/ ./
+RUN npm run build
+
+FROM builder AS build-saga-loyalty
+COPY saga-loyalty/package*.json ./
+RUN npm ci
+COPY saga-loyalty/ ./
+RUN npm run build
+
+FROM builder AS build-projector-receipt
+COPY projector-receipt/package*.json ./
+RUN npm ci
+COPY projector-receipt/ ./
+RUN npm run build
+
+FROM builder AS build-projector-log-customer
+COPY projector-log-customer/package*.json ./
+RUN npm ci
+COPY projector-log-customer/ ./
+RUN npm run build
+
+FROM builder AS build-projector-log-transaction
+COPY projector-log-transaction/package*.json ./
+RUN npm ci
+COPY projector-log-transaction/ ./
+RUN npm run build
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /app ./
+ENV PORT=50400
+EXPOSE 50400
+CMD ["node", "dist/server.js"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /app ./
+ENV PORT=50401
+EXPOSE 50401
+CMD ["node", "dist/server.js"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /app ./
+ENV PORT=50402
+EXPOSE 50402
+CMD ["node", "dist/server.js"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /app ./
+ENV PORT=50403
+EXPOSE 50403
+CMD ["node", "dist/server.js"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /app ./
+ENV PORT=50404
+EXPOSE 50404
+CMD ["node", "dist/server.js"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /app ./
+ENV PORT=50405
+EXPOSE 50405
+CMD ["node", "dist/server.js"]

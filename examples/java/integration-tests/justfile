@@ -1,0 +1,17 @@
+# Integration Tests - Java
+
+# Run integration tests (requires running angzarr system)
+test:
+    mvn test
+
+# Compile integration tests
+build:
+    mvn compile test-compile -q
+
+# Clean build artifacts
+clean:
+    mvn clean -q
+
+# Generate proto files
+proto:
+    mvn generate-sources -q

@@ -1,0 +1,68 @@
+# Ruby example services for Angzarr
+
+namespace: angzarr-rb
+
+# Angzarr infrastructure images
+angzarr:
+  command:
+    image: angzarr-command:latest
+    port: 50051
+  query:
+    port: 50052
+  stream:
+    image: angzarr-stream:latest
+    port: 1315
+  gateway:
+    image: angzarr-gateway:latest
+    port: 1316
+    streamTimeoutSecs: 30
+
+# Business logic services
+services:
+  customer:
+    image: rb-customer:latest
+    port: 50700
+    domain: customer
+  transaction:
+    image: rb-transaction:latest
+    port: 50701
+    domain: transaction
+
+# Projector services
+projectors:
+  receipt:
+    image: rb-projector-receipt:latest
+    port: 50703
+  logCustomer:
+    image: rb-projector-log-customer:latest
+    port: 50704
+  logTransaction:
+    image: rb-projector-log-transaction:latest
+    port: 50705
+
+# Saga services
+sagas:
+  loyalty:
+    image: rb-saga-loyalty:latest
+    port: 50702
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    command: command.rb.angzarr.local
+    query: query.rb.angzarr.local
+    gateway: gateway.rb.angzarr.local
+
+# Secrets (values should be provided via --set or external secrets)
+secrets:
+  mongodbUri: ""
+  amqpUrl: ""
+
+# Logging
+logging:
+  level: info

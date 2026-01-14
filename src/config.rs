@@ -1,4 +1,4 @@
-//! Configuration for evented server.
+//! Configuration for angzarr server.
 //!
 //! Supports YAML file and environment variable overrides.
 
@@ -6,19 +6,42 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Angzarr operation mode.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    /// Standalone server mode (legacy, for backward compatibility).
+    #[default]
+    Standalone,
+    /// Aggregate sidecar: receives commands, calls business logic, stores/publishes events.
+    Aggregate,
+    /// Projector sidecar: subscribes to events, calls projector gRPC.
+    Projector,
+    /// Saga sidecar: subscribes to events, calls saga gRPC, publishes commands.
+    Saga,
+}
+
 /// Server configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// Operation mode.
+    pub mode: Mode,
     /// Storage configuration.
     pub storage: StorageConfig,
     /// Server port configuration.
     pub server: ServerConfig,
-    /// Business logic service endpoints.
+    /// Saga compensation configuration.
+    pub saga_compensation: SagaCompensationConfig,
+    /// AMQP configuration (for sidecar modes).
+    pub amqp: Option<AmqpConfig>,
+    /// Target service address (for sidecar modes).
+    pub target: Option<TargetConfig>,
+    /// Business logic service endpoints (standalone mode).
     pub business_logic: Vec<BusinessLogicEndpoint>,
-    /// Projector endpoints.
+    /// Projector endpoints (standalone mode).
     pub projectors: Vec<ProjectorEndpoint>,
-    /// Saga endpoints.
+    /// Saga endpoints (standalone mode).
     pub sagas: Vec<SagaEndpoint>,
 }
 
@@ -26,11 +49,15 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct StorageConfig {
-    /// Storage type (sqlite).
+    /// Storage type: "sqlite" or "mongodb".
     #[serde(rename = "type")]
     pub storage_type: String,
-    /// Path to database file.
+    /// Path to database file (SQLite) or connection URI (MongoDB).
     pub path: String,
+    /// Database name (MongoDB only).
+    pub database: Option<String>,
+    /// Snapshot enable/disable flags for debugging and troubleshooting.
+    pub snapshots_enable: SnapshotsEnableConfig,
 }
 
 impl Default for StorageConfig {
@@ -38,6 +65,35 @@ impl Default for StorageConfig {
         Self {
             storage_type: "sqlite".to_string(),
             path: "./data/events.db".to_string(),
+            database: None,
+            snapshots_enable: SnapshotsEnableConfig::default(),
+        }
+    }
+}
+
+/// Snapshot enable/disable configuration.
+///
+/// These flags are useful for debugging and troubleshooting snapshot-related issues.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SnapshotsEnableConfig {
+    /// Enable reading snapshots when loading aggregate state.
+    /// When false, always replays all events from the beginning.
+    /// Useful for debugging to verify event replay produces correct state.
+    /// Default: true
+    pub read: bool,
+    /// Enable writing snapshots after processing commands.
+    /// When false, no snapshots are stored (pure event sourcing).
+    /// Useful for troubleshooting snapshot persistence issues.
+    /// Default: true
+    pub write: bool,
+}
+
+impl Default for SnapshotsEnableConfig {
+    fn default() -> Self {
+        Self {
+            read: true,
+            write: true,
         }
     }
 }
@@ -97,6 +153,60 @@ pub struct SagaEndpoint {
     pub synchronous: bool,
 }
 
+/// Saga compensation configuration.
+///
+/// Controls how saga command rejections are handled.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SagaCompensationConfig {
+    /// Domain for fallback events when business logic cannot handle revocation.
+    /// Default: "angzarr.saga-failures"
+    pub fallback_domain: String,
+    /// Dead letter queue URL (AMQP). None = DLQ disabled.
+    pub dead_letter_queue_url: Option<String>,
+    /// Webhook URL for escalation alerts. None = log only.
+    pub escalation_webhook_url: Option<String>,
+    /// Emit SagaCompensationFailed event on fallback (empty response or gRPC error).
+    pub fallback_emit_system_revocation: bool,
+    /// Send to DLQ on fallback.
+    pub fallback_send_to_dlq: bool,
+    /// Trigger escalation on fallback.
+    pub fallback_escalate: bool,
+}
+
+impl Default for SagaCompensationConfig {
+    fn default() -> Self {
+        Self {
+            fallback_domain: "angzarr.saga-failures".to_string(),
+            dead_letter_queue_url: None,
+            escalation_webhook_url: None,
+            fallback_emit_system_revocation: true,
+            fallback_send_to_dlq: false,
+            fallback_escalate: false,
+        }
+    }
+}
+
+/// AMQP configuration for sidecar modes.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AmqpConfig {
+    /// AMQP connection URL.
+    pub url: String,
+    /// Domain to subscribe to (for aggregate mode, this is the command queue).
+    pub domain: Option<String>,
+    /// Domains to subscribe to (for projector/saga modes).
+    pub domains: Option<Vec<String>>,
+}
+
+/// Target service configuration for sidecar modes.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TargetConfig {
+    /// gRPC address of the target service.
+    pub address: String,
+    /// Domain handled by this service (for aggregate mode).
+    pub domain: Option<String>,
+}
+
 impl Config {
     /// Load configuration from file and environment.
     ///
@@ -107,7 +217,7 @@ impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         // Try to load from file
         let config_path =
-            std::env::var("EVENTED_CONFIG").unwrap_or_else(|_| "config.yaml".to_string());
+            std::env::var("ANGZARR_CONFIG").unwrap_or_else(|_| "config.yaml".to_string());
 
         let mut config = if Path::new(&config_path).exists() {
             Self::from_file(&config_path)?
@@ -131,10 +241,39 @@ impl Config {
 
     /// Apply environment variable overrides.
     fn apply_env_overrides(&mut self) {
+        // Mode override
+        if let Ok(mode) = std::env::var("ANGZARR_MODE") {
+            self.mode = match mode.to_lowercase().as_str() {
+                "aggregate" => Mode::Aggregate,
+                "projector" => Mode::Projector,
+                "saga" => Mode::Saga,
+                _ => Mode::Standalone,
+            };
+        }
+
+        // Storage overrides
+        if let Ok(storage_type) = std::env::var("STORAGE_TYPE") {
+            self.storage.storage_type = storage_type;
+        }
+
         if let Ok(path) = std::env::var("STORAGE_PATH") {
             self.storage.path = path;
         }
 
+        if let Ok(database) = std::env::var("STORAGE_DATABASE") {
+            self.storage.database = Some(database);
+        }
+
+        if let Ok(enabled) = std::env::var("STORAGE_SNAPSHOTS_ENABLE_READ") {
+            self.storage.snapshots_enable.read = enabled.to_lowercase() == "true" || enabled == "1";
+        }
+
+        if let Ok(enabled) = std::env::var("STORAGE_SNAPSHOTS_ENABLE_WRITE") {
+            self.storage.snapshots_enable.write =
+                enabled.to_lowercase() == "true" || enabled == "1";
+        }
+
+        // Server overrides
         if let Ok(port) = std::env::var("COMMAND_HANDLER_PORT") {
             if let Ok(p) = port.parse() {
                 self.server.command_handler_port = p;
@@ -149,6 +288,43 @@ impl Config {
 
         if let Ok(host) = std::env::var("SERVER_HOST") {
             self.server.host = host;
+        }
+
+        // AMQP overrides
+        if let Ok(url) = std::env::var("AMQP_URL") {
+            if self.amqp.is_none() {
+                self.amqp = Some(AmqpConfig {
+                    url: url.clone(),
+                    domain: None,
+                    domains: None,
+                });
+            } else if let Some(ref mut amqp) = self.amqp {
+                amqp.url = url;
+            }
+        }
+
+        if let Ok(domain) = std::env::var("AMQP_DOMAIN") {
+            if let Some(ref mut amqp) = self.amqp {
+                amqp.domain = Some(domain);
+            }
+        }
+
+        // Target overrides
+        if let Ok(address) = std::env::var("TARGET_ADDRESS") {
+            if self.target.is_none() {
+                self.target = Some(TargetConfig {
+                    address: address.clone(),
+                    domain: None,
+                });
+            } else if let Some(ref mut target) = self.target {
+                target.address = address;
+            }
+        }
+
+        if let Ok(domain) = std::env::var("TARGET_DOMAIN") {
+            if let Some(ref mut target) = self.target {
+                target.domain = Some(domain);
+            }
         }
     }
 
@@ -297,6 +473,61 @@ server:
         let storage = StorageConfig::default();
         assert_eq!(storage.storage_type, "sqlite");
         assert_eq!(storage.path, "./data/events.db");
+        assert!(storage.snapshots_enable.read);
+        assert!(storage.snapshots_enable.write);
+    }
+
+    #[test]
+    fn test_snapshots_enable_config_default() {
+        let config = SnapshotsEnableConfig::default();
+        assert!(config.read);
+        assert!(config.write);
+    }
+
+    #[test]
+    fn test_apply_env_overrides_snapshots_read_disabled() {
+        let mut config = Config::default();
+        std::env::set_var("STORAGE_SNAPSHOTS_ENABLE_READ", "false");
+
+        config.apply_env_overrides();
+
+        assert!(!config.storage.snapshots_enable.read);
+        std::env::remove_var("STORAGE_SNAPSHOTS_ENABLE_READ");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_snapshots_write_disabled() {
+        let mut config = Config::default();
+        std::env::set_var("STORAGE_SNAPSHOTS_ENABLE_WRITE", "false");
+
+        config.apply_env_overrides();
+
+        assert!(!config.storage.snapshots_enable.write);
+        std::env::remove_var("STORAGE_SNAPSHOTS_ENABLE_WRITE");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_snapshots_read_enabled() {
+        let mut config = Config::default();
+        config.storage.snapshots_enable.read = false;
+        std::env::set_var("STORAGE_SNAPSHOTS_ENABLE_READ", "true");
+
+        config.apply_env_overrides();
+
+        assert!(config.storage.snapshots_enable.read);
+        std::env::remove_var("STORAGE_SNAPSHOTS_ENABLE_READ");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_snapshots_write_enabled() {
+        let mut config = Config::default();
+        config.storage.snapshots_enable.write = false;
+        std::env::set_var("STORAGE_SNAPSHOTS_ENABLE_WRITE", "true");
+
+        config.apply_env_overrides();
+
+        assert!(config.storage.snapshots_enable.write);
+        std::env::remove_var("STORAGE_SNAPSHOTS_ENABLE_WRITE");
     }
 
     #[test]
@@ -321,6 +552,17 @@ server:
         assert_eq!(endpoint.name, "");
         assert_eq!(endpoint.address, "");
         assert!(!endpoint.synchronous);
+    }
+
+    #[test]
+    fn test_saga_compensation_config_default() {
+        let config = SagaCompensationConfig::default();
+        assert_eq!(config.fallback_domain, "angzarr.saga-failures");
+        assert!(config.dead_letter_queue_url.is_none());
+        assert!(config.escalation_webhook_url.is_none());
+        assert!(config.fallback_emit_system_revocation);
+        assert!(!config.fallback_send_to_dlq);
+        assert!(!config.fallback_escalate);
     }
 
     #[test]

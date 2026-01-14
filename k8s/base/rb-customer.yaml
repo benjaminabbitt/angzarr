@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rb-customer
+  namespace: angzarr
+  labels:
+    app: rb-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rb-customer
+  template:
+    metadata:
+      labels:
+        app: rb-customer
+    spec:
+      containers:
+        - name: rb-customer
+          image: rb-customer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50800
+          env:
+            - name: PORT
+              value: "50800"
+          readinessProbe:
+            grpc:
+              port: 50800
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50800
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rb-customer
+  namespace: angzarr
+spec:
+  selector:
+    app: rb-customer
+  ports:
+    - port: 50800
+      targetPort: 50800

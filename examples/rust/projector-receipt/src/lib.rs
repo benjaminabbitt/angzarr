@@ -4,15 +4,16 @@
 
 use std::sync::Arc;
 
-use evented::async_trait::async_trait;
-use evented::interfaces::projector::{Projector, Result};
-use evented::proto::{EventBook, Projection};
+use angzarr::async_trait::async_trait;
+use angzarr::interfaces::projector::{Projector, Result};
+use angzarr::proto::{EventBook, Projection};
 use prost::Message;
 
 mod proto;
-use proto::{DiscountApplied, LineItem, Receipt, TransactionCompleted, TransactionCreated};
+pub use proto::{DiscountApplied, LineItem, Receipt, TransactionCompleted, TransactionCreated};
 
 /// Projector that generates receipts when transactions complete.
+#[derive(Debug)]
 pub struct ReceiptProjector {
     name: String,
 }
@@ -23,6 +24,54 @@ impl ReceiptProjector {
         Self {
             name: "receipt".to_string(),
         }
+    }
+
+    /// Project events and return a receipt if the transaction is complete.
+    /// This is exposed for testing purposes.
+    pub fn project_events(&self, events: &[prost_types::Any]) -> Option<Receipt> {
+        let mut state = TransactionState::default();
+
+        for event in events {
+            if event.type_url.contains("TransactionCreated") {
+                if let Ok(created) = TransactionCreated::decode(event.value.as_slice()) {
+                    state.customer_id = created.customer_id;
+                    state.items = created.items;
+                    state.subtotal_cents = created.subtotal_cents;
+                }
+            } else if event.type_url.contains("DiscountApplied") {
+                if let Ok(discount) = DiscountApplied::decode(event.value.as_slice()) {
+                    state.discount_type = discount.discount_type;
+                    state.discount_cents = discount.discount_cents;
+                }
+            } else if event.type_url.contains("TransactionCompleted") {
+                if let Ok(completed) = TransactionCompleted::decode(event.value.as_slice()) {
+                    state.final_total_cents = completed.final_total_cents;
+                    state.payment_method = completed.payment_method;
+                    state.loyalty_points_earned = completed.loyalty_points_earned;
+                    state.completed = true;
+                }
+            }
+        }
+
+        if !state.completed {
+            return None;
+        }
+
+        let transaction_id = "test-transaction-id".to_string();
+        let receipt_text = format_receipt(&transaction_id, &state);
+
+        Some(Receipt {
+            transaction_id,
+            customer_id: state.customer_id,
+            items: state.items,
+            subtotal_cents: state.subtotal_cents,
+            discount_cents: state.discount_cents,
+            final_total_cents: state.final_total_cents,
+            payment_method: state.payment_method,
+            loyalty_points_earned: state.loyalty_points_earned,
+            completed_at: None,
+            formatted_text: receipt_text,
+        })
     }
 }
 
@@ -129,8 +178,8 @@ impl Projector for ReceiptProjector {
                 .last()
                 .and_then(|p| p.sequence.as_ref())
                 .map(|s| match s {
-                    evented::proto::event_page::Sequence::Num(n) => *n,
-                    evented::proto::event_page::Sequence::Force(_) => 0,
+                    angzarr::proto::event_page::Sequence::Num(n) => *n,
+                    angzarr::proto::event_page::Sequence::Force(_) => 0,
                 })
                 .unwrap_or(0),
             projection: Some(prost_types::Any {

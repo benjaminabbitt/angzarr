@@ -1,0 +1,52 @@
+{{- range $name, $proj := .Values.projectors }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kt-projector-{{ $name | kebabcase }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "angzarr-examples.labels" $ | nindent 4 }}
+    app: kt-projector-{{ $name | kebabcase }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kt-projector-{{ $name | kebabcase }}
+  template:
+    metadata:
+      labels:
+        app: kt-projector-{{ $name | kebabcase }}
+    spec:
+      containers:
+        - name: kt-projector-{{ $name | kebabcase }}
+          image: {{ $proj.image }}
+          ports:
+            - containerPort: {{ $proj.port }}
+          env:
+            - name: PORT
+              value: "{{ $proj.port }}"
+            - name: ANGZARR_ADDRESS
+              value: "angzarr:{{ $.Values.angzarr.query.port }}"
+            {{- if $.Values.secrets.amqpUrl }}
+            - name: AMQP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: angzarr-secrets
+                  key: amqp-url
+            {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kt-projector-{{ $name | kebabcase }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "angzarr-examples.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app: kt-projector-{{ $name | kebabcase }}
+  ports:
+    - port: {{ $proj.port }}
+      targetPort: {{ $proj.port }}
+{{- end }}

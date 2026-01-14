@@ -1,4 +1,4 @@
-//! Abstract interfaces for evented components.
+//! Abstract interfaces for angzarr components.
 //!
 //! These traits define the contracts for:
 //! - Event storage (persistence)

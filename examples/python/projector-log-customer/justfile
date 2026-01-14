@@ -14,10 +14,10 @@ install:
 
 # Copy generated proto files
 proto:
-    mkdir -p evented/proto proto
-    cp -r "{{TOP}}/generated/python/evented/"* evented/proto/ 2>/dev/null || true
+    mkdir -p angzarr/proto proto
+    cp -r "{{TOP}}/generated/python/angzarr/"* angzarr/proto/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/python/examples/"* proto/ 2>/dev/null || true
-    touch evented/__init__.py evented/proto/__init__.py proto/__init__.py
+    touch angzarr/__init__.py angzarr/proto/__init__.py proto/__init__.py
 
 # Full setup
 setup: install proto
@@ -40,5 +40,5 @@ test: setup
 
 # Clean
 clean:
-    rm -rf __pycache__ .pytest_cache evented/proto/*.py proto/*.py
+    rm -rf __pycache__ .pytest_cache angzarr/proto/*.py proto/*.py
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

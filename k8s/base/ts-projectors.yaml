@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ts-projector-receipt
+  namespace: angzarr
+  labels:
+    app: ts-projector-receipt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ts-projector-receipt
+  template:
+    metadata:
+      labels:
+        app: ts-projector-receipt
+    spec:
+      containers:
+        - name: ts-projector-receipt
+          image: ts-projector-receipt:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50403
+          env:
+            - name: PORT
+              value: "50403"
+          readinessProbe:
+            grpc:
+              port: 50403
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50403
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ts-projector-receipt
+  namespace: angzarr
+spec:
+  selector:
+    app: ts-projector-receipt
+  ports:
+    - port: 50403
+      targetPort: 50403
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ts-projector-log-customer
+  namespace: angzarr
+  labels:
+    app: ts-projector-log-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ts-projector-log-customer
+  template:
+    metadata:
+      labels:
+        app: ts-projector-log-customer
+    spec:
+      containers:
+        - name: ts-projector-log-customer
+          image: ts-projector-log-customer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50404
+          env:
+            - name: PORT
+              value: "50404"
+          readinessProbe:
+            grpc:
+              port: 50404
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50404
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ts-projector-log-customer
+  namespace: angzarr
+spec:
+  selector:
+    app: ts-projector-log-customer
+  ports:
+    - port: 50404
+      targetPort: 50404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ts-projector-log-transaction
+  namespace: angzarr
+  labels:
+    app: ts-projector-log-transaction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ts-projector-log-transaction
+  template:
+    metadata:
+      labels:
+        app: ts-projector-log-transaction
+    spec:
+      containers:
+        - name: ts-projector-log-transaction
+          image: ts-projector-log-transaction:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50405
+          env:
+            - name: PORT
+              value: "50405"
+          readinessProbe:
+            grpc:
+              port: 50405
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50405
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ts-projector-log-transaction
+  namespace: angzarr
+spec:
+  selector:
+    app: ts-projector-log-transaction
+  ports:
+    - port: 50405
+      targetPort: 50405

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: angzarr-csharp-examples
+description: Angzarr C# example services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - angzarr
+  - csharp
+  - dotnet
+  - cqrs
+  - event-sourcing

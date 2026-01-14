@@ -1,0 +1,167 @@
+# Fast development values for angzarr
+# Uses local registry (localhost:5001) for faster image loading
+# Create cluster with: just kind-create-registry
+# Deploy with: just deploy-fast
+
+replicaCount: 1
+
+# Global image registry prefix for local registry
+global:
+  imageRegistry: "localhost:5001"
+  # Allow non-bitnami images (required for local registry)
+  security:
+    allowInsecureImages: true
+
+image:
+  repository: evented
+  pullPolicy: Always
+  tag: "dev"
+
+images:
+  command:
+    repository: localhost:5001/angzarr-command
+    pullPolicy: Always
+    tag: "dev"
+  projector:
+    repository: localhost:5001/angzarr-projector
+    pullPolicy: Always
+    tag: "dev"
+  saga:
+    repository: localhost:5001/angzarr-saga
+    pullPolicy: Always
+    tag: "dev"
+  stream:
+    repository: localhost:5001/angzarr-stream
+    pullPolicy: Always
+    tag: "dev"
+  gateway:
+    repository: localhost:5001/angzarr-gateway
+    pullPolicy: Always
+    tag: "dev"
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+# MongoDB storage
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+# AMQP for event bus
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+# RabbitMQ subchart
+rabbitmq:
+  enabled: true
+  auth:
+    username: "guest"
+    password: "guest"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# MongoDB subchart
+mongodb:
+  enabled: true
+  auth:
+    rootUsername: "root"
+    rootPassword: "rootpassword"
+    usernames: ["angzarr"]
+    passwords: ["angzarr"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Infrastructure services
+infrastructure:
+  stream:
+    enabled: true
+    replicas: 1
+    port: 1315
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 1316
+    streamTimeoutSecs: 30
+
+# Rust example applications with local registry
+applications:
+  business:
+    - name: rs-customer
+      image:
+        repository: localhost:5001/rs-customer
+        tag: "dev"
+        pullPolicy: Always
+      domain: "customer"
+      port: 50052
+
+    - name: rs-transaction
+      image:
+        repository: localhost:5001/rs-transaction
+        tag: "dev"
+        pullPolicy: Always
+      domain: "transaction"
+      port: 50053
+
+  projectors:
+    - name: rs-projector-receipt
+      image:
+        repository: localhost:5001/rs-projector-receipt
+        tag: "dev"
+        pullPolicy: Always
+      port: 50055
+      topics:
+        - "transaction.*"
+
+    - name: rs-projector-log-customer
+      image:
+        repository: localhost:5001/rs-projector-log-customer
+        tag: "dev"
+        pullPolicy: Always
+      port: 50056
+      topics:
+        - "customer.*"
+
+    - name: rs-projector-log-transaction
+      image:
+        repository: localhost:5001/rs-projector-log-transaction
+        tag: "dev"
+        pullPolicy: Always
+      port: 50057
+      topics:
+        - "transaction.*"
+
+  sagas:
+    - name: rs-saga-loyalty
+      image:
+        repository: localhost:5001/rs-saga-loyalty
+        tag: "dev"
+        pullPolicy: Always
+      port: 50054
+      topics:
+        - "transaction.*"
+
+logging:
+  level: debug

@@ -5,12 +5,15 @@
 use async_trait::async_trait;
 use prost::Message;
 
+use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
+use angzarr::proto::{
+    business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
+    EventBook, EventPage,
+};
 use common::proto::{
     AddLoyaltyPoints, CreateCustomer, CustomerCreated, CustomerState, LoyaltyPointsAdded,
     LoyaltyPointsRedeemed, RedeemLoyaltyPoints,
 };
-use evented::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
-use evented::proto::{event_page::Sequence, CommandBook, ContextualCommand, EventBook, EventPage};
 
 pub mod errmsg {
     pub const CUSTOMER_EXISTS: &str = "Customer already exists";
@@ -101,16 +104,24 @@ impl CustomerLogic {
         }
 
         let event = CustomerCreated {
+            name: cmd.name.clone(),
+            email: cmd.email.clone(),
+            created_at: Some(now()),
+        };
+
+        // New state after applying event
+        let new_state = CustomerState {
             name: cmd.name,
             email: cmd.email,
-            created_at: Some(now()),
+            loyalty_points: 0,
+            lifetime_points: 0,
         };
 
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(0)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.CustomerCreated".to_string(),
                     value: event.encode_to_vec(),
@@ -118,6 +129,11 @@ impl CustomerLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.CustomerState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 
@@ -148,11 +164,19 @@ impl CustomerLogic {
             reason: cmd.reason,
         };
 
+        // New state after applying event
+        let new_state = CustomerState {
+            name: state.name.clone(),
+            email: state.email.clone(),
+            loyalty_points: new_balance,
+            lifetime_points: state.lifetime_points + cmd.points,
+        };
+
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(0)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.LoyaltyPointsAdded".to_string(),
                     value: event.encode_to_vec(),
@@ -160,6 +184,11 @@ impl CustomerLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.CustomerState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 
@@ -198,11 +227,19 @@ impl CustomerLogic {
             redemption_type: cmd.redemption_type,
         };
 
+        // New state after applying event (lifetime_points unchanged on redemption)
+        let new_state = CustomerState {
+            name: state.name.clone(),
+            email: state.email.clone(),
+            loyalty_points: new_balance,
+            lifetime_points: state.lifetime_points,
+        };
+
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(0)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.LoyaltyPointsRedeemed".to_string(),
                     value: event.encode_to_vec(),
@@ -210,6 +247,11 @@ impl CustomerLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.CustomerState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 }
@@ -220,9 +262,59 @@ impl Default for CustomerLogic {
     }
 }
 
+// Public test methods for cucumber tests
+impl CustomerLogic {
+    /// Public access to rebuild_state for testing.
+    pub fn rebuild_state_public(&self, event_book: Option<&EventBook>) -> CustomerState {
+        self.rebuild_state(event_book)
+    }
+
+    /// Public access to handle_create_customer for testing.
+    pub fn handle_create_customer_public(
+        &self,
+        command_book: &CommandBook,
+        state: &CustomerState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_create_customer(command_book, &command_any.value, state)
+    }
+
+    /// Public access to handle_add_loyalty_points for testing.
+    pub fn handle_add_loyalty_points_public(
+        &self,
+        command_book: &CommandBook,
+        state: &CustomerState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_add_loyalty_points(command_book, &command_any.value, state)
+    }
+
+    /// Public access to handle_redeem_loyalty_points for testing.
+    pub fn handle_redeem_loyalty_points_public(
+        &self,
+        command_book: &CommandBook,
+        state: &CustomerState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_redeem_loyalty_points(command_book, &command_any.value, state)
+    }
+}
+
 #[async_trait]
 impl BusinessLogicClient for CustomerLogic {
-    async fn handle(&self, _domain: &str, cmd: ContextualCommand) -> Result<EventBook> {
+    async fn handle(&self, _domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -244,19 +336,23 @@ impl BusinessLogicClient for CustomerLogic {
             .as_ref()
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
 
-        if command_any.type_url.ends_with("CreateCustomer") {
-            self.handle_create_customer(cb, &command_any.value, &state)
+        let events = if command_any.type_url.ends_with("CreateCustomer") {
+            self.handle_create_customer(cb, &command_any.value, &state)?
         } else if command_any.type_url.ends_with("AddLoyaltyPoints") {
-            self.handle_add_loyalty_points(cb, &command_any.value, &state)
+            self.handle_add_loyalty_points(cb, &command_any.value, &state)?
         } else if command_any.type_url.ends_with("RedeemLoyaltyPoints") {
-            self.handle_redeem_loyalty_points(cb, &command_any.value, &state)
+            self.handle_redeem_loyalty_points(cb, &command_any.value, &state)?
         } else {
-            Err(BusinessError::Rejected(format!(
+            return Err(BusinessError::Rejected(format!(
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )))
-        }
+            )));
+        };
+
+        Ok(BusinessResponse {
+            result: Some(business_response::Result::Events(events)),
+        })
     }
 
     fn has_domain(&self, domain: &str) -> bool {
@@ -281,7 +377,7 @@ fn now() -> prost_types::Timestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use evented::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+    use angzarr::proto::{CommandPage, Cover, Uuid as ProtoUuid};
 
     fn make_command_book(domain: &str, root: &[u8], type_url: &str, value: Vec<u8>) -> CommandBook {
         CommandBook {
@@ -299,6 +395,17 @@ mod tests {
                     value,
                 }),
             }],
+            correlation_id: String::new(),
+            saga_origin: None,
+            auto_resequence: false,
+            fact: false,
+        }
+    }
+
+    fn extract_events(response: BusinessResponse) -> EventBook {
+        match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events in response"),
         }
     }
 
@@ -323,10 +430,13 @@ mod tests {
             events: None,
         };
 
-        let result = logic.handle("customer", ctx).await.unwrap();
+        let response = logic.handle("customer", ctx).await.unwrap();
+        let result = extract_events(response);
         assert_eq!(result.pages.len(), 1);
 
-        let event = CustomerCreated::decode(result.pages[0].event.as_ref().unwrap().value.as_slice()).unwrap();
+        let event =
+            CustomerCreated::decode(result.pages[0].event.as_ref().unwrap().value.as_slice())
+                .unwrap();
         assert_eq!(event.name, "John Doe");
         assert_eq!(event.email, "john@example.com");
     }
@@ -339,9 +449,7 @@ mod tests {
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "customer".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -358,6 +466,8 @@ mod tests {
                 created_at: None,
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = CreateCustomer {
@@ -390,9 +500,7 @@ mod tests {
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "customer".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -409,6 +517,8 @@ mod tests {
                 created_at: None,
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = AddLoyaltyPoints {
@@ -428,10 +538,13 @@ mod tests {
             events: Some(prior),
         };
 
-        let result = logic.handle("customer", ctx).await.unwrap();
+        let response = logic.handle("customer", ctx).await.unwrap();
+        let result = extract_events(response);
         assert_eq!(result.pages.len(), 1);
 
-        let event = LoyaltyPointsAdded::decode(result.pages[0].event.as_ref().unwrap().value.as_slice()).unwrap();
+        let event =
+            LoyaltyPointsAdded::decode(result.pages[0].event.as_ref().unwrap().value.as_slice())
+                .unwrap();
         assert_eq!(event.points, 100);
         assert_eq!(event.new_balance, 100);
     }
@@ -470,9 +583,7 @@ mod tests {
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "customer".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![
@@ -505,6 +616,8 @@ mod tests {
                     synchronous: false,
                 },
             ],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = RedeemLoyaltyPoints {

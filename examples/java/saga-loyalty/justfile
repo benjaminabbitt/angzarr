@@ -1,0 +1,29 @@
+# Loyalty Points Saga - Java
+
+# Build the project
+build:
+    mvn compile -q
+
+# Run tests
+test:
+    mvn test
+
+# Run the server
+run:
+    mvn exec:java -Dexec.mainClass=dev.angzarr.examples.saga.LoyaltySagaServer
+
+# Clean build artifacts
+clean:
+    mvn clean -q
+
+# Format code (if spotless is configured)
+fmt:
+    mvn spotless:apply || echo "Spotless not configured"
+
+# Generate proto files
+proto:
+    mvn generate-sources -q
+
+# Build fat JAR
+jar:
+    mvn package -DskipTests -q

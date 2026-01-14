@@ -1,0 +1,219 @@
+name: Integration Tests (Matrix)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      language:
+        description: 'Language to test (or "all")'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - rust
+          - go
+          - python
+          - csharp
+          - java
+          - typescript
+          - kotlin
+          - ruby
+
+env:
+  CARGO_TERM_COLOR: always
+  KIND_VERSION: v0.20.0
+  KUBECTL_VERSION: v1.28.0
+
+jobs:
+  # Build core framework (shared by all language tests)
+  build-framework:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build framework
+        run: cargo build --release --bin angzarr-standalone --features "mode-standalone,amqp,mongodb"
+
+      - name: Upload framework binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework-binary
+          path: target/release/angzarr-standalone
+          retention-days: 1
+
+  # Matrix test for each language
+  integration-test:
+    needs: build-framework
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust, go, python, csharp, java, typescript, kotlin, ruby]
+        exclude:
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'python' && 'python' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'csharp' && 'csharp' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'java' && 'java' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'typescript' && 'typescript' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'kotlin' && 'kotlin' || '' }}
+          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'ruby' && 'ruby' || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download framework binary
+        uses: actions/download-artifact@v4
+        with:
+          name: framework-binary
+          path: target/release/
+
+      - name: Make binary executable
+        run: chmod +x target/release/angzarr-standalone
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${{ env.KIND_VERSION }}/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Language-specific setup
+      - name: Set up Rust
+        if: matrix.language == 'rust'
+        uses: dtolnay/rust-action@stable
+
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up .NET
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Set up Java
+        if: matrix.language == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Node.js
+        if: matrix.language == 'typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Kotlin/Gradle
+        if: matrix.language == 'kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Ruby
+        if: matrix.language == 'ruby'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      # Create Kind cluster
+      - name: Create Kind cluster
+        run: |
+          kind create cluster --config kind-config.yaml --name angzarr
+          kubectl cluster-info
+
+      # Build and load images for the specific language
+      - name: Build ${{ matrix.language }} images
+        run: just images-build-${{ matrix.language }}
+
+      - name: Load images into Kind
+        run: just images-load-${{ matrix.language }}
+
+      # Deploy infrastructure
+      - name: Deploy infrastructure
+        run: |
+          just images-pull-infra
+          just images-load-infra
+          kubectl apply -f k8s/base/namespace.yaml
+          kubectl apply -f k8s/base/secrets.yaml
+          kubectl apply -f k8s/base/redis.yaml
+          kubectl apply -f k8s/base/rabbitmq.yaml
+          kubectl apply -f k8s/base/mongodb.yaml
+
+      # Deploy language-specific services
+      - name: Deploy ${{ matrix.language }} services
+        run: |
+          just k8s-apply-${{ matrix.language }}
+          kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+
+      # Run integration tests
+      - name: Run integration tests
+        run: |
+          ANGZARR_TEST_MODE=container cargo test --test acceptance -- --test-threads=1
+        env:
+          TEST_LANGUAGE: ${{ matrix.language }}
+
+      # Collect logs on failure
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          kubectl logs -n angzarr -l app=angzarr --tail=100 || true
+          kubectl describe pods -n angzarr || true
+
+      # Cleanup
+      - name: Delete Kind cluster
+        if: always()
+        run: kind delete cluster --name angzarr || true
+
+  # Aggregate results
+  test-results:
+    needs: integration-test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.integration-test.result }}" == "failure" ]; then
+            echo "Some integration tests failed"
+            exit 1
+          fi
+          echo "All integration tests passed"

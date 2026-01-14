@@ -10,8 +10,27 @@
       <sourceFolder url="file://$MODULE_DIR$/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/customer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-log-customer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-log-transaction/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-receipt/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/transaction/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/customer/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-log-customer/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-log-transaction/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-receipt/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/transaction/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/rust/customer/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/rust/projector-log-customer/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/rust/projector-log-transaction/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/rust/projector-receipt/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty/target" />
+      <excludeFolder url="file://$MODULE_DIR$/examples/rust/transaction/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

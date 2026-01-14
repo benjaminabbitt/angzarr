@@ -116,6 +116,8 @@ mod tests {
             }),
             pages,
             snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
         }
     }
 

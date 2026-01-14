@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rb-projector-receipt
+  namespace: angzarr
+  labels:
+    app: rb-projector-receipt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rb-projector-receipt
+  template:
+    metadata:
+      labels:
+        app: rb-projector-receipt
+    spec:
+      containers:
+        - name: rb-projector-receipt
+          image: rb-projector-receipt:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50803
+          env:
+            - name: PORT
+              value: "50803"
+          readinessProbe:
+            grpc:
+              port: 50803
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50803
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rb-projector-receipt
+  namespace: angzarr
+spec:
+  selector:
+    app: rb-projector-receipt
+  ports:
+    - port: 50803
+      targetPort: 50803
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rb-projector-log-customer
+  namespace: angzarr
+  labels:
+    app: rb-projector-log-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rb-projector-log-customer
+  template:
+    metadata:
+      labels:
+        app: rb-projector-log-customer
+    spec:
+      containers:
+        - name: rb-projector-log-customer
+          image: rb-projector-log-customer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50804
+          env:
+            - name: PORT
+              value: "50804"
+          readinessProbe:
+            grpc:
+              port: 50804
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50804
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rb-projector-log-customer
+  namespace: angzarr
+spec:
+  selector:
+    app: rb-projector-log-customer
+  ports:
+    - port: 50804
+      targetPort: 50804
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rb-projector-log-transaction
+  namespace: angzarr
+  labels:
+    app: rb-projector-log-transaction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rb-projector-log-transaction
+  template:
+    metadata:
+      labels:
+        app: rb-projector-log-transaction
+    spec:
+      containers:
+        - name: rb-projector-log-transaction
+          image: rb-projector-log-transaction:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50805
+          env:
+            - name: PORT
+              value: "50805"
+          readinessProbe:
+            grpc:
+              port: 50805
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50805
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rb-projector-log-transaction
+  namespace: angzarr
+spec:
+  selector:
+    app: rb-projector-log-transaction
+  ports:
+    - port: 50805
+      targetPort: 50805

@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: angzarr-stream
+  namespace: angzarr
+  labels:
+    app: angzarr-stream
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: angzarr-stream
+  template:
+    metadata:
+      labels:
+        app: angzarr-stream
+    spec:
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z rabbitmq 5672; do echo waiting for rabbitmq; sleep 2; done']
+      containers:
+        - name: angzarr-stream
+          image: angzarr-stream:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 1315
+              name: grpc
+          env:
+            - name: ANGZARR_LOG
+              value: info
+            - name: GRPC_PORT
+              value: "1315"
+            - name: AMQP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: angzarr-secrets
+                  key: amqp-url
+          readinessProbe:
+            grpc:
+              port: 1315
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 1315
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: angzarr-stream
+  namespace: angzarr
+  labels:
+    app: angzarr-stream
+spec:
+  selector:
+    app: angzarr-stream
+  ports:
+    - name: grpc
+      port: 1315
+      targetPort: 1315
+      nodePort: 30054
+  type: NodePort

@@ -11,17 +11,18 @@ use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use evented::clients::PlaceholderBusinessLogic;
-use evented::interfaces::business_client::Result as BusinessResult;
-use evented::interfaces::event_bus::{BusError, EventBus, PublishResult, Result as BusResult};
-use evented::interfaces::event_store::EventStore;
-use evented::interfaces::snapshot_store::SnapshotStore;
-use evented::interfaces::BusinessLogicClient;
-use evented::proto::{
-    CommandBook, ContextualCommand, Cover, EventBook, EventPage, Snapshot, Uuid as ProtoUuid,
+use angzarr::clients::PlaceholderBusinessLogic;
+use angzarr::interfaces::business_client::Result as BusinessResult;
+use angzarr::interfaces::event_bus::{BusError, EventBus, PublishResult, Result as BusResult};
+use angzarr::interfaces::event_store::EventStore;
+use angzarr::interfaces::snapshot_store::SnapshotStore;
+use angzarr::interfaces::BusinessLogicClient;
+use angzarr::proto::{
+    business_response, BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook,
+    EventPage, Snapshot, Uuid as ProtoUuid,
 };
-use evented::services::CommandHandlerService;
-use evented::storage::{SqliteEventStore, SqliteSnapshotStore};
+use angzarr::services::CommandHandlerService;
+use angzarr::storage::{SqliteEventStore, SqliteSnapshotStore};
 
 /// Stub business logic that records calls and returns configured events.
 pub struct StubBusinessLogic {
@@ -29,6 +30,8 @@ pub struct StubBusinessLogic {
     pub calls: Arc<RwLock<Vec<RecordedCall>>>,
     /// Events to return for each call.
     response_events: Arc<RwLock<Vec<EventPage>>>,
+    /// Optional snapshot state to return.
+    response_snapshot_state: Arc<RwLock<Option<prost_types::Any>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +47,7 @@ impl Default for StubBusinessLogic {
         Self {
             calls: Arc::new(RwLock::new(Vec::new())),
             response_events: Arc::new(RwLock::new(Vec::new())),
+            response_snapshot_state: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -55,6 +59,16 @@ impl StubBusinessLogic {
 
     pub async fn set_response_events(&self, events: Vec<EventPage>) {
         *self.response_events.write().await = events;
+        *self.response_snapshot_state.write().await = None;
+    }
+
+    pub async fn set_response_events_with_snapshot(
+        &self,
+        events: Vec<EventPage>,
+        snapshot_state: Option<prost_types::Any>,
+    ) {
+        *self.response_events.write().await = events;
+        *self.response_snapshot_state.write().await = snapshot_state;
     }
 
     pub async fn get_calls(&self) -> Vec<RecordedCall> {
@@ -64,7 +78,11 @@ impl StubBusinessLogic {
 
 #[async_trait]
 impl BusinessLogicClient for StubBusinessLogic {
-    async fn handle(&self, domain: &str, command: ContextualCommand) -> BusinessResult<EventBook> {
+    async fn handle(
+        &self,
+        domain: &str,
+        command: ContextualCommand,
+    ) -> BusinessResult<BusinessResponse> {
         let prior_events = command.events.as_ref();
         let prior_event_count = prior_events.map(|e| e.pages.len()).unwrap_or(0);
         let has_snapshot = prior_events.map(|e| e.snapshot.is_some()).unwrap_or(false);
@@ -82,6 +100,7 @@ impl BusinessLogicClient for StubBusinessLogic {
 
         // Build response with configured events
         let response_events = self.response_events.read().await.clone();
+        let response_snapshot_state = self.response_snapshot_state.read().await.clone();
         let cover = command
             .command
             .as_ref()
@@ -91,10 +110,14 @@ impl BusinessLogicClient for StubBusinessLogic {
                 root: None,
             });
 
-        Ok(EventBook {
-            cover: Some(cover),
-            snapshot: None,
-            pages: response_events,
+        Ok(BusinessResponse {
+            result: Some(business_response::Result::Events(EventBook {
+                cover: Some(cover),
+                snapshot: None,
+                pages: response_events,
+                correlation_id: String::new(),
+                snapshot_state: response_snapshot_state,
+            })),
         })
     }
 
@@ -139,7 +162,7 @@ impl EventBus for StubEventBus {
 
     async fn subscribe(
         &self,
-        _handler: Box<dyn evented::interfaces::event_bus::EventHandler>,
+        _handler: Box<dyn angzarr::interfaces::event_bus::EventHandler>,
     ) -> BusResult<()> {
         Err(BusError::SubscribeNotSupported)
     }
@@ -162,6 +185,10 @@ pub struct TestWorld {
     use_placeholder: bool,
     /// Last error from a rejected command.
     last_error: Option<String>,
+    /// Enable snapshot reading (default: true).
+    snapshot_read_enabled: bool,
+    /// Enable snapshot writing (default: true).
+    snapshot_write_enabled: bool,
 }
 
 impl std::fmt::Debug for TestWorld {
@@ -192,12 +219,14 @@ impl TestWorld {
             current_aggregate: Uuid::nil(),
             use_placeholder: false,
             last_error: None,
+            snapshot_read_enabled: true,
+            snapshot_write_enabled: true,
         }
     }
 
     fn make_event(&self, sequence: u32, event_type: &str) -> EventPage {
         EventPage {
-            sequence: Some(evented::proto::event_page::Sequence::Num(sequence)),
+            sequence: Some(angzarr::proto::event_page::Sequence::Num(sequence)),
             created_at: Some(Timestamp {
                 seconds: 1704067200 + sequence as i64,
                 nanos: 0,
@@ -304,12 +333,14 @@ async fn when_send_command(world: &mut TestWorld, command_type: String, aggregat
         .set_response_events(vec![world.make_event(next_seq, &command_type)])
         .await;
 
-    // Create command handler and send command
-    let handler = CommandHandlerService::new(
+    // Create command handler with snapshot configuration
+    let handler = CommandHandlerService::with_config(
         world.event_store.clone(),
         world.snapshot_store.clone(),
         world.business_logic.clone(),
         world.event_bus.clone(),
+        world.snapshot_read_enabled,
+        world.snapshot_write_enabled,
     );
 
     let command_book = CommandBook {
@@ -319,7 +350,7 @@ async fn when_send_command(world: &mut TestWorld, command_type: String, aggregat
                 value: root.as_bytes().to_vec(),
             }),
         }),
-        pages: vec![evented::proto::CommandPage {
+        pages: vec![angzarr::proto::CommandPage {
             sequence: 0,
             synchronous: false,
             command: Some(prost_types::Any {
@@ -327,9 +358,13 @@ async fn when_send_command(world: &mut TestWorld, command_type: String, aggregat
                 value: vec![],
             }),
         }],
+        correlation_id: String::new(),
+        saga_origin: None,
+        auto_resequence: false,
+        fact: false,
     };
 
-    use evented::proto::business_coordinator_server::BusinessCoordinator;
+    use angzarr::proto::business_coordinator_server::BusinessCoordinator;
     handler
         .handle(tonic::Request::new(command_book))
         .await
@@ -374,9 +409,11 @@ async fn when_record_events(
         }),
         snapshot: None,
         pages: events,
+        correlation_id: String::new(),
+        snapshot_state: None,
     };
 
-    use evented::proto::business_coordinator_server::BusinessCoordinator;
+    use angzarr::proto::business_coordinator_server::BusinessCoordinator;
     handler
         .record(tonic::Request::new(event_book))
         .await
@@ -480,7 +517,7 @@ async fn when_send_placeholder_command(
                 value: root.as_bytes().to_vec(),
             }),
         }),
-        pages: vec![evented::proto::CommandPage {
+        pages: vec![angzarr::proto::CommandPage {
             sequence: 0,
             synchronous: false,
             command: Some(prost_types::Any {
@@ -488,9 +525,13 @@ async fn when_send_placeholder_command(
                 value: vec![],
             }),
         }],
+        correlation_id: String::new(),
+        saga_origin: None,
+        auto_resequence: false,
+        fact: false,
     };
 
-    use evented::proto::business_coordinator_server::BusinessCoordinator;
+    use angzarr::proto::business_coordinator_server::BusinessCoordinator;
     handler
         .handle(tonic::Request::new(command_book))
         .await
@@ -552,9 +593,156 @@ async fn then_command_rejected(world: &mut TestWorld, expected_error: String) {
     );
 }
 
+// Snapshot configuration steps
+
+#[given("snapshot reading is disabled")]
+async fn given_snapshot_reading_disabled(world: &mut TestWorld) {
+    world.snapshot_read_enabled = false;
+}
+
+#[given("snapshot writing is disabled")]
+async fn given_snapshot_writing_disabled(world: &mut TestWorld) {
+    world.snapshot_write_enabled = false;
+}
+
+#[given("snapshots are enabled")]
+async fn given_snapshots_enabled(world: &mut TestWorld) {
+    world.snapshot_read_enabled = true;
+    world.snapshot_write_enabled = true;
+}
+
+#[when(expr = "I send a {string} command for aggregate {string} that returns a snapshot")]
+async fn when_send_command_with_snapshot(
+    world: &mut TestWorld,
+    command_type: String,
+    aggregate_id: String,
+) {
+    let root = world.parse_aggregate_id(&aggregate_id);
+
+    // Configure stub to return one new event with a snapshot
+    let next_seq = world
+        .event_store
+        .get_next_sequence(&world.current_domain, root)
+        .await
+        .unwrap();
+    world
+        .business_logic
+        .set_response_events_with_snapshot(
+            vec![world.make_event(next_seq, &command_type)],
+            Some(prost_types::Any {
+                type_url: "type.googleapis.com/TestState".to_string(),
+                value: vec![1, 2, 3],
+            }),
+        )
+        .await;
+
+    // Create command handler with snapshot configuration
+    let handler = CommandHandlerService::with_config(
+        world.event_store.clone(),
+        world.snapshot_store.clone(),
+        world.business_logic.clone(),
+        world.event_bus.clone(),
+        world.snapshot_read_enabled,
+        world.snapshot_write_enabled,
+    );
+
+    let command_book = CommandBook {
+        cover: Some(Cover {
+            domain: world.current_domain.clone(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+        }),
+        pages: vec![angzarr::proto::CommandPage {
+            sequence: 0,
+            synchronous: false,
+            command: Some(prost_types::Any {
+                type_url: format!("type.googleapis.com/{}", command_type),
+                value: vec![],
+            }),
+        }],
+        correlation_id: String::new(),
+        saga_origin: None,
+        auto_resequence: false,
+        fact: false,
+    };
+
+    use angzarr::proto::business_coordinator_server::BusinessCoordinator;
+    handler
+        .handle(tonic::Request::new(command_book))
+        .await
+        .unwrap();
+}
+
+#[then("the business logic receives all 3 prior events without snapshot")]
+async fn then_business_receives_all_events_no_snapshot(world: &mut TestWorld) {
+    let calls = world.business_logic.get_calls().await;
+    assert!(!calls.is_empty(), "Business logic should have been called");
+    let last_call = calls.last().unwrap();
+    assert_eq!(
+        last_call.prior_event_count, 3,
+        "Expected 3 prior events, got {}",
+        last_call.prior_event_count
+    );
+    assert!(
+        !last_call.has_snapshot,
+        "Expected no snapshot when snapshot reading is disabled"
+    );
+}
+
+#[then(expr = "no snapshot is stored for aggregate {string}")]
+async fn then_no_snapshot_stored(world: &mut TestWorld, aggregate_id: String) {
+    use angzarr::interfaces::SnapshotStore;
+    let root = world.parse_aggregate_id(&aggregate_id);
+    let snapshot = world
+        .snapshot_store
+        .get(&world.current_domain, root)
+        .await
+        .unwrap();
+    assert!(
+        snapshot.is_none(),
+        "Expected no snapshot to be stored, but found one"
+    );
+}
+
+#[then(expr = "a snapshot is stored for aggregate {string}")]
+async fn then_snapshot_stored(world: &mut TestWorld, aggregate_id: String) {
+    use angzarr::interfaces::SnapshotStore;
+    let root = world.parse_aggregate_id(&aggregate_id);
+    let snapshot = world
+        .snapshot_store
+        .get(&world.current_domain, root)
+        .await
+        .unwrap();
+    assert!(
+        snapshot.is_some(),
+        "Expected a snapshot to be stored, but none found"
+    );
+}
+
 #[tokio::main]
 async fn main() {
-    TestWorld::cucumber()
-        .run("tests/acceptance/features")
-        .await;
+    // By default, only run @unit tests (in-memory)
+    // Set ANGZARR_TEST_MODE=container to run @container tests (requires running services)
+    let run_container = std::env::var("ANGZARR_TEST_MODE")
+        .map(|v| v.to_lowercase() == "container")
+        .unwrap_or(false);
+
+    let cucumber = TestWorld::cucumber();
+
+    if run_container {
+        cucumber
+            .filter_run("tests/acceptance/features", |feature, _, sc| {
+                feature.tags.iter().any(|t| t == "container")
+                    || sc.tags.iter().any(|t| t == "container")
+            })
+            .await;
+    } else {
+        cucumber
+            .filter_run("tests/acceptance/features", |feature, _, sc| {
+                !feature.tags.iter().any(|t| t == "container")
+                    && !sc.tags.iter().any(|t| t == "container")
+            })
+            .await;
+    }
 }

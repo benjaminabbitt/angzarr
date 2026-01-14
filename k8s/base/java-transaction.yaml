@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-transaction
+  namespace: angzarr
+  labels:
+    app: java-transaction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-transaction
+  template:
+    metadata:
+      labels:
+        app: java-transaction
+    spec:
+      containers:
+        - name: java-transaction
+          image: java-transaction:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50701
+          env:
+            - name: PORT
+              value: "50701"
+          readinessProbe:
+            grpc:
+              port: 50701
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50701
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-transaction
+  namespace: angzarr
+spec:
+  selector:
+    app: java-transaction
+  ports:
+    - port: 50701
+      targetPort: 50701

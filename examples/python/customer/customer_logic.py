@@ -8,7 +8,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from datetime import datetime, timezone
 
 # Import generated proto (will be copied from generated/)
-from evented.proto import evented_pb2 as evented
+from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 
 
@@ -17,7 +17,7 @@ class CustomerLogic:
 
     DOMAIN = "customer"
 
-    def handle(self, contextual_command: evented.ContextualCommand) -> evented.EventBook:
+    def handle(self, contextual_command: angzarr.ContextualCommand) -> angzarr.EventBook:
         """Process a command and return resulting events."""
         command_book = contextual_command.command
         prior_events = contextual_command.events
@@ -42,7 +42,7 @@ class CustomerLogic:
         else:
             raise ValueError(f"Unknown command type: {command_any.type_url}")
 
-    def _rebuild_state(self, event_book: evented.EventBook | None) -> domains.CustomerState:
+    def _rebuild_state(self, event_book: angzarr.EventBook | None) -> domains.CustomerState:
         """Rebuild customer state from events."""
         state = domains.CustomerState()
 
@@ -79,10 +79,10 @@ class CustomerLogic:
 
     def _handle_create_customer(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.CustomerState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle CreateCustomer command."""
         # Validate: customer shouldn't already exist
         if state.name:
@@ -107,10 +107,10 @@ class CustomerLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
@@ -120,10 +120,10 @@ class CustomerLogic:
 
     def _handle_add_loyalty_points(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.CustomerState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle AddLoyaltyPoints command."""
         # Validate: customer must exist
         if not state.name:
@@ -148,10 +148,10 @@ class CustomerLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
@@ -161,10 +161,10 @@ class CustomerLogic:
 
     def _handle_redeem_loyalty_points(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.CustomerState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle RedeemLoyaltyPoints command."""
         # Validate: customer must exist
         if not state.name:
@@ -191,10 +191,10 @@ class CustomerLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
@@ -203,10 +203,10 @@ class CustomerLogic:
         )
 
 
-# Entry point for evented-rs Python FFI
+# Entry point for angzarr Python FFI
 def handle(contextual_command_bytes: bytes) -> bytes:
     """Handle a contextual command and return event book bytes."""
-    contextual_command = evented.ContextualCommand()
+    contextual_command = angzarr.ContextualCommand()
     contextual_command.ParseFromString(contextual_command_bytes)
 
     logic = CustomerLogic()

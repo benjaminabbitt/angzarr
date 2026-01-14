@@ -1,5 +1,4 @@
-// Package main provides the Customer bounded context business logic.
-// Handles customer lifecycle and loyalty points management.
+// Package main provides the Customer bounded context gRPC server.
 package main
 
 import (
@@ -12,12 +11,13 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	goproto "google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"customer/proto/evented"
+	"customer/logic"
+	"customer/proto/angzarr"
 	"customer/proto/examples"
 )
 
@@ -25,211 +25,14 @@ const Domain = "customer"
 
 var logger *zap.Logger
 
-// CustomerState represents the current state of a customer.
-type CustomerState struct {
-	Name           string
-	Email          string
-	LoyaltyPoints  int32
-	LifetimePoints int32
-}
-
-// rebuildState reconstructs customer state from events.
-func rebuildState(eventBook *evented.EventBook) *CustomerState {
-	state := &CustomerState{}
-
-	if eventBook == nil || len(eventBook.Pages) == 0 {
-		return state
-	}
-
-	// Start from snapshot if present
-	if eventBook.Snapshot != nil && eventBook.Snapshot.State != nil {
-		var snapState examples.CustomerState
-		if err := eventBook.Snapshot.State.UnmarshalTo(&snapState); err == nil {
-			state.Name = snapState.Name
-			state.Email = snapState.Email
-			state.LoyaltyPoints = snapState.LoyaltyPoints
-			state.LifetimePoints = snapState.LifetimePoints
-		}
-	}
-
-	// Apply events
-	for _, page := range eventBook.Pages {
-		if page.Event == nil {
-			continue
-		}
-
-		switch {
-		case page.Event.MessageIs(&examples.CustomerCreated{}):
-			var event examples.CustomerCreated
-			if err := page.Event.UnmarshalTo(&event); err == nil {
-				state.Name = event.Name
-				state.Email = event.Email
-			}
-
-		case page.Event.MessageIs(&examples.LoyaltyPointsAdded{}):
-			var event examples.LoyaltyPointsAdded
-			if err := page.Event.UnmarshalTo(&event); err == nil {
-				state.LoyaltyPoints = event.NewBalance
-				state.LifetimePoints += event.Points
-			}
-
-		case page.Event.MessageIs(&examples.LoyaltyPointsRedeemed{}):
-			var event examples.LoyaltyPointsRedeemed
-			if err := page.Event.UnmarshalTo(&event); err == nil {
-				state.LoyaltyPoints = event.NewBalance
-			}
-		}
-	}
-
-	return state
-}
-
-// handleCreateCustomer handles the CreateCustomer command.
-func handleCreateCustomer(cmdBook *evented.CommandBook, cmdData []byte, state *CustomerState) (*evented.EventBook, error) {
-	if state.Name != "" {
-		return nil, status.Error(codes.FailedPrecondition, "Customer already exists")
-	}
-
-	var cmd examples.CreateCustomer
-	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
-	}
-
-	if cmd.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "Customer name is required")
-	}
-	if cmd.Email == "" {
-		return nil, status.Error(codes.InvalidArgument, "Customer email is required")
-	}
-
-	logger.Info("creating customer",
-		zap.String("name", cmd.Name),
-		zap.String("email", cmd.Email))
-
-	event := &examples.CustomerCreated{
-		Name:      cmd.Name,
-		Email:     cmd.Email,
-		CreatedAt: timestamppb.Now(),
-	}
-
-	eventAny, err := anypb.New(event)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
-	}
-
-	return &evented.EventBook{
-		Cover: cmdBook.Cover,
-		Pages: []*evented.EventPage{
-			{
-				Sequence:  &evented.EventPage_Num{Num: 0},
-				Event:     eventAny,
-				CreatedAt: timestamppb.Now(),
-			},
-		},
-	}, nil
-}
-
-// handleAddLoyaltyPoints handles the AddLoyaltyPoints command.
-func handleAddLoyaltyPoints(cmdBook *evented.CommandBook, cmdData []byte, state *CustomerState) (*evented.EventBook, error) {
-	if state.Name == "" {
-		return nil, status.Error(codes.FailedPrecondition, "Customer does not exist")
-	}
-
-	var cmd examples.AddLoyaltyPoints
-	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
-	}
-
-	if cmd.Points <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "Points must be positive")
-	}
-
-	newBalance := state.LoyaltyPoints + cmd.Points
-
-	logger.Info("adding loyalty points",
-		zap.Int32("points", cmd.Points),
-		zap.Int32("new_balance", newBalance),
-		zap.String("reason", cmd.Reason))
-
-	event := &examples.LoyaltyPointsAdded{
-		Points:     cmd.Points,
-		NewBalance: newBalance,
-		Reason:     cmd.Reason,
-	}
-
-	eventAny, err := anypb.New(event)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
-	}
-
-	return &evented.EventBook{
-		Cover: cmdBook.Cover,
-		Pages: []*evented.EventPage{
-			{
-				Sequence:  &evented.EventPage_Num{Num: 0},
-				Event:     eventAny,
-				CreatedAt: timestamppb.Now(),
-			},
-		},
-	}, nil
-}
-
-// handleRedeemLoyaltyPoints handles the RedeemLoyaltyPoints command.
-func handleRedeemLoyaltyPoints(cmdBook *evented.CommandBook, cmdData []byte, state *CustomerState) (*evented.EventBook, error) {
-	if state.Name == "" {
-		return nil, status.Error(codes.FailedPrecondition, "Customer does not exist")
-	}
-
-	var cmd examples.RedeemLoyaltyPoints
-	if err := goproto.Unmarshal(cmdData, &cmd); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
-	}
-
-	if cmd.Points <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "Points must be positive")
-	}
-	if cmd.Points > state.LoyaltyPoints {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"Insufficient points: have %d, need %d", state.LoyaltyPoints, cmd.Points)
-	}
-
-	newBalance := state.LoyaltyPoints - cmd.Points
-
-	logger.Info("redeeming loyalty points",
-		zap.Int32("points", cmd.Points),
-		zap.Int32("new_balance", newBalance),
-		zap.String("redemption_type", cmd.RedemptionType))
-
-	event := &examples.LoyaltyPointsRedeemed{
-		Points:         cmd.Points,
-		NewBalance:     newBalance,
-		RedemptionType: cmd.RedemptionType,
-	}
-
-	eventAny, err := anypb.New(event)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create Any: %v", err)
-	}
-
-	return &evented.EventBook{
-		Cover: cmdBook.Cover,
-		Pages: []*evented.EventPage{
-			{
-				Sequence:  &evented.EventPage_Num{Num: 0},
-				Event:     eventAny,
-				CreatedAt: timestamppb.Now(),
-			},
-		},
-	}, nil
-}
-
 // server implements the BusinessLogic gRPC service.
 type server struct {
-	evented.UnimplementedBusinessLogicServer
+	angzarr.UnimplementedBusinessLogicServer
+	logic logic.CustomerLogic
 }
 
 // Handle processes a contextual command and returns resulting events.
-func (s *server) Handle(ctx context.Context, req *evented.ContextualCommand) (*evented.EventBook, error) {
+func (s *server) Handle(ctx context.Context, req *angzarr.ContextualCommand) (*angzarr.BusinessResponse, error) {
 	cmdBook := req.Command
 	priorEvents := req.Events
 
@@ -242,22 +45,73 @@ func (s *server) Handle(ctx context.Context, req *evented.ContextualCommand) (*e
 		return nil, status.Error(codes.InvalidArgument, "Command page has no command")
 	}
 
-	state := rebuildState(priorEvents)
+	state := s.logic.RebuildState(priorEvents)
+	seq := logic.NextSequence(priorEvents)
 	typeURL := cmdPage.Command.TypeUrl
+
+	var event goproto.Message
+	var err error
 
 	switch {
 	case strings.HasSuffix(typeURL, "CreateCustomer"):
-		return handleCreateCustomer(cmdBook, cmdPage.Command.Value, state)
+		var cmd examples.CreateCustomer
+		if err := goproto.Unmarshal(cmdPage.Command.Value, &cmd); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
+		}
+		logger.Info("creating customer",
+			zap.String("name", cmd.Name),
+			zap.String("email", cmd.Email))
+		event, err = s.logic.HandleCreateCustomer(state, cmd.Name, cmd.Email)
 
 	case strings.HasSuffix(typeURL, "AddLoyaltyPoints"):
-		return handleAddLoyaltyPoints(cmdBook, cmdPage.Command.Value, state)
+		var cmd examples.AddLoyaltyPoints
+		if err := goproto.Unmarshal(cmdPage.Command.Value, &cmd); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
+		}
+		logger.Info("adding loyalty points",
+			zap.Int32("points", cmd.Points),
+			zap.String("reason", cmd.Reason))
+		event, err = s.logic.HandleAddLoyaltyPoints(state, cmd.Points, cmd.Reason)
 
 	case strings.HasSuffix(typeURL, "RedeemLoyaltyPoints"):
-		return handleRedeemLoyaltyPoints(cmdBook, cmdPage.Command.Value, state)
+		var cmd examples.RedeemLoyaltyPoints
+		if err := goproto.Unmarshal(cmdPage.Command.Value, &cmd); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to unmarshal command: %v", err)
+		}
+		logger.Info("redeeming loyalty points",
+			zap.Int32("points", cmd.Points),
+			zap.String("redemption_type", cmd.RedemptionType))
+		event, err = s.logic.HandleRedeemLoyaltyPoints(state, cmd.Points, cmd.RedemptionType)
 
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "Unknown command type: %s", typeURL)
 	}
+
+	if err != nil {
+		return nil, mapError(err)
+	}
+
+	eventBook, err := logic.PackEvent(cmdBook.Cover, event, seq)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to pack event: %v", err)
+	}
+
+	return &angzarr.BusinessResponse{
+		Result: &angzarr.BusinessResponse_Events{Events: eventBook},
+	}, nil
+}
+
+// mapError converts logic errors to gRPC status errors.
+func mapError(err error) error {
+	if cmdErr, ok := err.(*logic.CommandError); ok {
+		switch cmdErr.Code {
+		case logic.StatusInvalidArgument:
+			return status.Error(codes.InvalidArgument, cmdErr.Message)
+		case logic.StatusFailedPrecondition:
+			return status.Error(codes.FailedPrecondition, cmdErr.Message)
+		}
+	}
+	return status.Errorf(codes.Internal, "internal error: %v", err)
 }
 
 func main() {
@@ -281,7 +135,14 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	evented.RegisterBusinessLogicServer(s, &server{})
+	angzarr.RegisterBusinessLogicServer(s, &server{
+		logic: logic.NewCustomerLogic(),
+	})
+
+	// Register gRPC health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(s, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	logger.Info("business logic server started",
 		zap.String("domain", Domain),

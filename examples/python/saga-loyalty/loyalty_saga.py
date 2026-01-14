@@ -90,7 +90,7 @@ class LoyaltyPointsSaga:
         return commands
 
 
-# FFI entry points for evented-rs integration
+# FFI entry points for angzarr integration
 
 _saga = LoyaltyPointsSaga()
 

@@ -1,0 +1,109 @@
+# Java examples - multi-stage build with Maven
+# Build from this directory: docker build -t java-customer --target customer .
+# Build all: docker build -t java-examples .
+
+# ============================================================================
+# Builder stage - compiles Java projects with Maven
+# ============================================================================
+FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+
+WORKDIR /app
+
+# Proto files are already in relative path (../proto from each module)
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY proto/ /app/proto/
+COPY customer/pom.xml ./customer/
+WORKDIR /app/customer
+RUN mvn dependency:go-offline -q || true
+COPY customer/src/ ./src/
+RUN mvn package -DskipTests -q
+
+FROM builder AS build-transaction
+COPY proto/ /app/proto/
+COPY transaction/pom.xml ./transaction/
+WORKDIR /app/transaction
+RUN mvn dependency:go-offline -q || true
+COPY transaction/src/ ./src/
+RUN mvn package -DskipTests -q
+
+FROM builder AS build-saga-loyalty
+COPY proto/ /app/proto/
+COPY saga-loyalty/pom.xml ./saga-loyalty/
+WORKDIR /app/saga-loyalty
+RUN mvn dependency:go-offline -q || true
+COPY saga-loyalty/src/ ./src/
+RUN mvn package -DskipTests -q
+
+FROM builder AS build-projector-receipt
+COPY proto/ /app/proto/
+COPY projector-receipt/pom.xml ./projector-receipt/
+WORKDIR /app/projector-receipt
+RUN mvn dependency:go-offline -q || true
+COPY projector-receipt/src/ ./src/
+RUN mvn package -DskipTests -q
+
+FROM builder AS build-projector-log-customer
+COPY proto/ /app/proto/
+COPY projector-log-customer/pom.xml ./projector-log-customer/
+WORKDIR /app/projector-log-customer
+RUN mvn dependency:go-offline -q || true
+COPY projector-log-customer/src/ ./src/
+RUN mvn package -DskipTests -q
+
+FROM builder AS build-projector-log-transaction
+COPY proto/ /app/proto/
+COPY projector-log-transaction/pom.xml ./projector-log-transaction/
+WORKDIR /app/projector-log-transaction
+RUN mvn dependency:go-offline -q || true
+COPY projector-log-transaction/src/ ./src/
+RUN mvn package -DskipTests -q
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM eclipse-temurin:21-jre-alpine AS runtime
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /app/customer/target/customer-*.jar ./server.jar
+ENV PORT=50700
+EXPOSE 50700
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /app/transaction/target/transaction-*.jar ./server.jar
+ENV PORT=50701
+EXPOSE 50701
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /app/saga-loyalty/target/saga-loyalty-*.jar ./server.jar
+ENV PORT=50702
+EXPOSE 50702
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /app/projector-receipt/target/projector-receipt-*.jar ./server.jar
+ENV PORT=50703
+EXPOSE 50703
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /app/projector-log-customer/target/projector-log-customer-*.jar ./server.jar
+ENV PORT=50704
+EXPOSE 50704
+CMD ["java", "-jar", "server.jar"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /app/projector-log-transaction/target/projector-log-transaction-*.jar ./server.jar
+ENV PORT=50705
+EXPOSE 50705
+CMD ["java", "-jar", "server.jar"]

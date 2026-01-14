@@ -1,0 +1,220 @@
+# Rust example applications for local development
+# Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-rust.yaml -n angzarr --create-namespace
+
+# Allow non-bitnami images for local development
+global:
+  security:
+    allowInsecureImages: true
+
+replicaCount: 1
+
+# Angzarr sidecar images
+images:
+  command:
+    repository: angzarr-command
+    pullPolicy: Never
+    tag: "latest"
+  projector:
+    repository: angzarr-projector
+    pullPolicy: Never
+    tag: "latest"
+  saga:
+    repository: angzarr-saga
+    pullPolicy: Never
+    tag: "latest"
+  stream:
+    repository: angzarr-stream
+    pullPolicy: Never
+    tag: "latest"
+  gateway:
+    repository: angzarr-gateway
+    pullPolicy: Never
+    tag: "latest"
+
+# Minimal resources for local dev
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "32Mi"
+    cpu: "25m"
+  limits:
+    memory: "128Mi"
+    cpu: "100m"
+
+# MongoDB storage
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+# AMQP event bus
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+# RabbitMQ subchart - use pre-loaded image
+rabbitmq:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/rabbitmq
+    tag: "3.13-management-alpine"
+    pullPolicy: Never
+  auth:
+    username: "guest"
+    password: "guest"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# MongoDB subchart - use pre-loaded image
+mongodb:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/mongo
+    tag: "7"
+    pullPolicy: Never
+  auth:
+    rootUsername: "root"
+    rootPassword: "rootpassword"
+    usernames: ["angzarr"]
+    passwords: ["angzarr"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Central infrastructure services
+infrastructure:
+  # Stream is now a projector (see applications.projectors below)
+  stream:
+    enabled: false
+
+  # Gateway service - central, routes commands and streams events
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 1316
+    # Command handlers per domain (gateway routes based on URL path)
+    commandHandlers:
+      customer: "angzarr-rs-customer:50051"
+      transaction: "angzarr-rs-transaction:50051"
+    # Stream projector service
+    streamService: "angzarr-rs-stream:1315"
+    streamTimeoutSecs: 30
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Business logic applications - each gets angzarr as sidecar
+applications:
+  business:
+    - name: rs-customer
+      image:
+        repository: rs-customer
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 50100
+
+    - name: rs-transaction
+      image:
+        repository: rs-transaction
+        tag: "latest"
+        pullPolicy: Never
+      domain: "transaction"
+      port: 50101
+
+  projectors:
+    # Stream projector - broadcasts events to clients by correlation ID
+    - name: rs-stream
+      image:
+        repository: angzarr-stream
+        tag: "latest"
+        pullPolicy: Never
+      port: 1315
+      topics:
+        - "#"  # Subscribe to all events
+
+    - name: rs-projector-receipt
+      image:
+        repository: rs-projector-receipt
+        tag: "latest"
+        pullPolicy: Never
+      port: 50103
+      topics:
+        - "transaction.*"
+
+    - name: rs-projector-log-customer
+      image:
+        repository: rs-projector-log-customer
+        tag: "latest"
+        pullPolicy: Never
+      port: 50104
+      topics:
+        - "customer.*"
+
+    - name: rs-projector-log-transaction
+      image:
+        repository: rs-projector-log-transaction
+        tag: "latest"
+        pullPolicy: Never
+      port: 50105
+      topics:
+        - "transaction.*"
+
+  sagas:
+    - name: rs-saga-loyalty
+      image:
+        repository: rs-saga-loyalty
+        tag: "latest"
+        pullPolicy: Never
+      port: 50102
+      topics:
+        - "transaction.*"
+
+# Service configuration
+service:
+  type: NodePort
+  commandPort: 50051
+  queryPort: 50052
+
+logging:
+  level: info
+
+# Disable autoscaling for local dev
+autoscaling:
+  enabled: false
+
+# Disable reloader for simpler local setup
+reloader:
+  enabled: false
+
+# Service discovery options
+serviceDiscovery:
+  headless: false

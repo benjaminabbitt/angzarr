@@ -12,10 +12,12 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"projector-log-transaction/proto/evented"
+	"projector-log-transaction/proto/angzarr"
 	"projector-log-transaction/proto/examples"
 )
 
@@ -25,24 +27,24 @@ var logger *zap.Logger
 
 // server implements the ProjectorCoordinator gRPC service.
 type server struct {
-	evented.UnimplementedProjectorCoordinatorServer
+	angzarr.UnimplementedProjectorCoordinatorServer
 }
 
 // Handle processes events asynchronously (fire-and-forget).
-func (s *server) Handle(ctx context.Context, req *evented.EventBook) (*emptypb.Empty, error) {
+func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*emptypb.Empty, error) {
 	logEvents(req)
 	return &emptypb.Empty{}, nil
 }
 
 // HandleSync processes events and returns projection synchronously.
-func (s *server) HandleSync(ctx context.Context, req *evented.EventBook) (*evented.Projection, error) {
+func (s *server) HandleSync(ctx context.Context, req *angzarr.EventBook) (*angzarr.Projection, error) {
 	logEvents(req)
 	// Log projector doesn't produce a projection
 	return nil, nil
 }
 
 // logEvents logs all events in the event book.
-func logEvents(eventBook *evented.EventBook) {
+func logEvents(eventBook *angzarr.EventBook) {
 	if eventBook == nil || len(eventBook.Pages) == 0 {
 		return
 	}
@@ -67,7 +69,7 @@ func logEvents(eventBook *evented.EventBook) {
 		}
 
 		var sequence uint32
-		if seq, ok := page.Sequence.(*evented.EventPage_Num); ok {
+		if seq, ok := page.Sequence.(*angzarr.EventPage_Num); ok {
 			sequence = seq.Num
 		}
 
@@ -166,7 +168,12 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	evented.RegisterProjectorCoordinatorServer(s, &server{})
+	angzarr.RegisterProjectorCoordinatorServer(s, &server{})
+
+	// Register gRPC health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(s, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	logger.Info("projector server started",
 		zap.String("name", ProjectorName),

@@ -1,0 +1,112 @@
+‹21:57:43.113 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- cancelling_transaction reason=customer request
+–21:57:43.162 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- completing_transaction final_total=2000 loyalty_points=20
+š21:57:43.165 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- applying_discount type=percentage value=10 discount_cents=200
+œ21:57:43.174 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- creating_transaction customer_id=cust-123 items=1 subtotal=2000
+
+zScenario: Create a new transaction                                              [90m# features/transaction.feature:7[0m
+Ó  [32mGiven [0m[32mno prior events for the aggregate[0m                                       [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.noPriorEventsForAggregate()[0m
+œ21:57:43.268 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- creating_transaction customer_id=cust-001 items=1 subtotal=2000
+ž  [32mWhen [0m[32mI handle a CreateTransaction command with customer [0m[32m[1m"cust-001"[0m[32m and items:[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCreateTransactionCommand(java.lang.String,io.cucumber.datatable.DataTable)[0m
+:    | product_id | name   | quantity | unit_price_cents |
+:    | SKU-001    | Widget | 2        | 1000             |
+Ù  [32mThen [0m[32mthe result is a TransactionCreated event[0m                                 [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsTransactionCreatedEvent()[0m
+é  [32mAnd [0m[32mthe event has customer_id [0m[32m[1m"cust-001"[0m                                      [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasCustomerId(java.lang.String)[0m
+ß  [32mAnd [0m[32mthe event has subtotal_cents [0m[32m[1m2000[0m                                         [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasSubtotalCents(int)[0m
+
+{Scenario: Create transaction with multiple items                                [90m# features/transaction.feature:16[0m
+Ó  [32mGiven [0m[32mno prior events for the aggregate[0m                                       [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.noPriorEventsForAggregate()[0m
+œ21:57:43.278 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- creating_transaction customer_id=cust-002 items=2 subtotal=4500
+ž  [32mWhen [0m[32mI handle a CreateTransaction command with customer [0m[32m[1m"cust-002"[0m[32m and items:[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCreateTransactionCommand(java.lang.String,io.cucumber.datatable.DataTable)[0m
+:    | product_id | name   | quantity | unit_price_cents |
+:    | SKU-001    | Widget | 2        | 1000             |
+:    | SKU-002    | Gadget | 1        | 2500             |
+Ù  [32mThen [0m[32mthe result is a TransactionCreated event[0m                                 [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsTransactionCreatedEvent()[0m
+ß  [32mAnd [0m[32mthe event has subtotal_cents [0m[32m[1m4500[0m                                         [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasSubtotalCents(int)[0m
+
+{Scenario: Cannot create transaction twice                                       [90m# features/transaction.feature:25[0m
+ˆ  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-003"[0m[32m and subtotal [0m[32m[1m3000[0m   [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+ž  [32mWhen [0m[32mI handle a CreateTransaction command with customer [0m[32m[1m"cust-003"[0m[32m and items:[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCreateTransactionCommand(java.lang.String,io.cucumber.datatable.DataTable)[0m
+:    | product_id | name   | quantity | unit_price_cents |
+:    | SKU-001    | Widget | 1        | 1000             |
+í  [32mThen [0m[32mthe command fails with status [0m[32m[1m"FAILED_PRECONDITION"[0m                      [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.commandFailsWithStatus(java.lang.String)[0m
+
+sScenario: Creating transaction requires customer ID                     [90m# features/transaction.feature:32[0m
+Ë  [32mGiven [0m[32mno prior events for the aggregate[0m                               [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.noPriorEventsForAggregate()[0m
+–  [32mWhen [0m[32mI handle a CreateTransaction command with customer [0m[32m[1m""[0m[32m and items:[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCreateTransactionCommand(java.lang.String,io.cucumber.datatable.DataTable)[0m
+:    | product_id | name   | quantity | unit_price_cents |
+:    | SKU-001    | Widget | 1        | 1000             |
+å  [32mThen [0m[32mthe command fails with status [0m[32m[1m"INVALID_ARGUMENT"[0m                 [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.commandFailsWithStatus(java.lang.String)[0m
+
+}Scenario: Creating transaction requires items                                     [90m# features/transaction.feature:39[0m
+Õ  [32mGiven [0m[32mno prior events for the aggregate[0m                                         [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.noPriorEventsForAggregate()[0m
+‡  [32mWhen [0m[32mI handle a CreateTransaction command with customer [0m[32m[1m"cust-004"[0m[32m and no items[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCreateTransactionCommandNoItems(java.lang.String)[0m
+ï  [32mThen [0m[32mthe command fails with status [0m[32m[1m"INVALID_ARGUMENT"[0m                           [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.commandFailsWithStatus(java.lang.String)[0m
+
+yScenario: Apply percentage discount                                           [90m# features/transaction.feature:46[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-005"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+š21:57:43.296 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- applying_discount type=percentage value=10 discount_cents=200
+‰  [32mWhen [0m[32mI handle an ApplyDiscount command with type [0m[32m[1m"percentage"[0m[32m and value [0m[32m[1m10[0m  [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleApplyDiscountCommand(java.lang.String,int)[0m
+Ô  [32mThen [0m[32mthe result is a DiscountApplied event[0m                                  [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsDiscountAppliedEvent()[0m
+Ý  [32mAnd [0m[32mthe event has discount_cents [0m[32m[1m200[0m                                        [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasDiscountCents(int)[0m
+
+yScenario: Apply fixed discount                                                [90m# features/transaction.feature:52[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-006"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+–21:57:43.299 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- applying_discount type=fixed value=500 discount_cents=500
+‰  [32mWhen [0m[32mI handle an ApplyDiscount command with type [0m[32m[1m"fixed"[0m[32m and value [0m[32m[1m500[0m      [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleApplyDiscountCommand(java.lang.String,int)[0m
+Ô  [32mThen [0m[32mthe result is a DiscountApplied event[0m                                  [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsDiscountAppliedEvent()[0m
+Ý  [32mAnd [0m[32mthe event has discount_cents [0m[32m[1m500[0m                                        [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasDiscountCents(int)[0m
+
+yScenario: Cannot apply discount to non-pending transaction                    [90m# features/transaction.feature:58[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-007"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+Ñ  [32mAnd [0m[32ma TransactionCompleted event[0m                                            [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCompletedEvent()[0m
+‰  [32mWhen [0m[32mI handle an ApplyDiscount command with type [0m[32m[1m"percentage"[0m[32m and value [0m[32m[1m10[0m  [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleApplyDiscountCommand(java.lang.String,int)[0m
+ë  [32mThen [0m[32mthe command fails with status [0m[32m[1m"FAILED_PRECONDITION"[0m                    [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.commandFailsWithStatus(java.lang.String)[0m
+
+yScenario: Complete transaction                                                [90m# features/transaction.feature:66[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-008"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+–21:57:43.304 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- completing_transaction final_total=2000 loyalty_points=20
+õ  [32mWhen [0m[32mI handle a CompleteTransaction command with payment method [0m[32m[1m"card"[0m      [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCompleteTransactionCommand(java.lang.String)[0m
+Ù  [32mThen [0m[32mthe result is a TransactionCompleted event[0m                             [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsTransactionCompletedEvent()[0m
+ß  [32mAnd [0m[32mthe event has final_total_cents [0m[32m[1m2000[0m                                    [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasFinalTotalCents(int)[0m
+ê  [32mAnd [0m[32mthe event has payment_method [0m[32m[1m"card"[0m                                     [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasPaymentMethod(java.lang.String)[0m
+ã  [32mAnd [0m[32mthe event has loyalty_points_earned [0m[32m[1m20[0m                                  [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasLoyaltyPointsEarned(int)[0m
+
+yScenario: Complete transaction with discount                                  [90m# features/transaction.feature:74[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-009"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+å  [32mAnd [0m[32ma DiscountApplied event with [0m[32m[1m200[0m[32m cents discount[0m                         [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.discountAppliedEvent(int)[0m
+–21:57:43.308 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- completing_transaction final_total=1800 loyalty_points=18
+õ  [32mWhen [0m[32mI handle a CompleteTransaction command with payment method [0m[32m[1m"cash"[0m      [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCompleteTransactionCommand(java.lang.String)[0m
+Ù  [32mThen [0m[32mthe result is a TransactionCompleted event[0m                             [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsTransactionCompletedEvent()[0m
+ß  [32mAnd [0m[32mthe event has final_total_cents [0m[32m[1m1800[0m                                    [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasFinalTotalCents(int)[0m
+ã  [32mAnd [0m[32mthe event has loyalty_points_earned [0m[32m[1m18[0m                                  [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasLoyaltyPointsEarned(int)[0m
+
+tScenario: Cannot complete non-pending transaction                        [90m# features/transaction.feature:82[0m
+Ì  [32mGiven [0m[32mno prior events for the aggregate[0m                                [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.noPriorEventsForAggregate()[0m
+ð  [32mWhen [0m[32mI handle a CompleteTransaction command with payment method [0m[32m[1m"card"[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCompleteTransactionCommand(java.lang.String)[0m
+æ  [32mThen [0m[32mthe command fails with status [0m[32m[1m"FAILED_PRECONDITION"[0m               [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.commandFailsWithStatus(java.lang.String)[0m
+
+yScenario: Cancel transaction                                                  [90m# features/transaction.feature:89[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-010"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+‹21:57:43.315 [Test worker] INFO dev.angzarr.examples.transaction.DefaultTransactionLogic -- cancelling_transaction reason=customer request
+ó  [32mWhen [0m[32mI handle a CancelTransaction command with reason [0m[32m[1m"customer request"[0m    [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCancelTransactionCommand(java.lang.String)[0m
+Ù  [32mThen [0m[32mthe result is a TransactionCancelled event[0m                             [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.resultIsTransactionCancelledEvent()[0m
+ã  [32mAnd [0m[32mthe event has reason [0m[32m[1m"customer request"[0m                                 [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.eventHasReason(java.lang.String)[0m
+
+yScenario: Cannot cancel completed transaction                                 [90m# features/transaction.feature:95[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-011"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+Ñ  [32mAnd [0m[32ma TransactionCompleted event[0m                                            [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCompletedEvent()[0m
+ó  [32mWhen [0m[32mI handle a CancelTransaction command with reason [0m[32m[1m"too late"[0m            [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.handleCancelTransactionCommand(java.lang.String)[0m
+ë  [32mThen [0m[32mthe command fails with status [0m[32m[1m"FAILED_PRECONDITION"[0m                    [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.commandFailsWithStatus(java.lang.String)[0m
+
+zScenario: Rebuild pending transaction state                                   [90m# features/transaction.feature:103[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-012"[0m[32m and subtotal [0m[32m[1m3000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+Ï  [32mWhen [0m[32mI rebuild the transaction state[0m                                        [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.rebuildTransactionState()[0m
+ç  [32mThen [0m[32mthe state has customer_id [0m[32m[1m"cust-012"[0m                                   [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.stateHasCustomerId(java.lang.String)[0m
+Ý  [32mAnd [0m[32mthe state has subtotal_cents [0m[32m[1m3000[0m                                       [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.stateHasSubtotalCents(int)[0m
+ã  [32mAnd [0m[32mthe state has status [0m[32m[1m"pending"[0m                                          [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.stateHasStatus(java.lang.String)[0m
+
+zScenario: Rebuild completed transaction state                                 [90m# features/transaction.feature:110[0m
+†  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-013"[0m[32m and subtotal [0m[32m[1m3000[0m [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
+Ñ  [32mAnd [0m[32ma TransactionCompleted event[0m                                            [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.transactionCompletedEvent()[0m
+Ï  [32mWhen [0m[32mI rebuild the transaction state[0m                                        [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.rebuildTransactionState()[0m
+ã  [32mThen [0m[32mthe state has status [0m[32m[1m"completed"[0m                                       [90m# void dev.angzarr.examples.transaction.cucumber.TransactionStepDefinitions.stateHasStatus(java.lang.String)[0m

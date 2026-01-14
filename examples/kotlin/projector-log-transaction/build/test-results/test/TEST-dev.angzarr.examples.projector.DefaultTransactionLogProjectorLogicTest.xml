@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-01-11T21:58:15" hostname="DESKTOP-GJ1OCQP" time="0.088">
+  <properties/>
+  <testcase name="processEvents handles DiscountApplied event()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.078"/>
+  <testcase name="processEvents handles multiple events()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.002"/>
+  <testcase name="processEvents handles TransactionCreated event()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.0"/>
+  <testcase name="processEvents handles unknown event type()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.001"/>
+  <testcase name="processEvents handles TransactionCompleted event()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.0"/>
+  <testcase name="processEvents handles TransactionCancelled event()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.001"/>
+  <testcase name="processEvents returns empty for empty event book()" classname="dev.angzarr.examples.projector.DefaultTransactionLogProjectorLogicTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

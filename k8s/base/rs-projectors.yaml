@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rs-projector-receipt
-  namespace: evented
+  namespace: angzarr
   labels:
     app: rs-projector-receipt
 spec:
@@ -18,31 +18,42 @@ spec:
       containers:
         - name: rs-projector-receipt
           image: rs-projector-receipt:latest
+          imagePullPolicy: Never
           ports:
-            - containerPort: 50055
+            - containerPort: 50103
           env:
-            - name: RUST_LOG
+            - name: ANGZARR_LOG
               value: info
             - name: PORT
-              value: "50055"
+              value: "50103"
+          readinessProbe:
+            grpc:
+              port: 50103
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50103
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rs-projector-receipt
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: rs-projector-receipt
   ports:
-    - port: 50055
-      targetPort: 50055
+    - port: 50103
+      targetPort: 50103
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rs-projector-log-customer
-  namespace: evented
+  namespace: angzarr
   labels:
     app: rs-projector-log-customer
 spec:
@@ -58,31 +69,42 @@ spec:
       containers:
         - name: rs-projector-log-customer
           image: rs-projector-log-customer:latest
+          imagePullPolicy: Never
           ports:
-            - containerPort: 50056
+            - containerPort: 50104
           env:
-            - name: RUST_LOG
+            - name: ANGZARR_LOG
               value: info
             - name: PORT
-              value: "50056"
+              value: "50104"
+          readinessProbe:
+            grpc:
+              port: 50104
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50104
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rs-projector-log-customer
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: rs-projector-log-customer
   ports:
-    - port: 50056
-      targetPort: 50056
+    - port: 50104
+      targetPort: 50104
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rs-projector-log-transaction
-  namespace: evented
+  namespace: angzarr
   labels:
     app: rs-projector-log-transaction
 spec:
@@ -98,22 +120,33 @@ spec:
       containers:
         - name: rs-projector-log-transaction
           image: rs-projector-log-transaction:latest
+          imagePullPolicy: Never
           ports:
-            - containerPort: 50057
+            - containerPort: 50105
           env:
-            - name: RUST_LOG
+            - name: ANGZARR_LOG
               value: info
             - name: PORT
-              value: "50057"
+              value: "50105"
+          readinessProbe:
+            grpc:
+              port: 50105
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50105
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rs-projector-log-transaction
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: rs-projector-log-transaction
   ports:
-    - port: 50057
-      targetPort: 50057
+    - port: 50105
+      targetPort: 50105

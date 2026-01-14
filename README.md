@@ -1,15 +1,23 @@
-# evented-rs
+# ⍼ Angzarr
 
 A CQRS/Event Sourcing infrastructure framework in Rust.
 
 ## Overview
 
-evented-rs provides the infrastructure layer for event-sourced systems:
+Angzarr provides the infrastructure layer for event-sourced systems:
 - Event persistence with sequence validation
 - Snapshot optimization for aggregate replay
 - gRPC event distribution
 - Projector and saga coordination
-- Multi-language support (Python, Go, Rust)
+- Multi-language support (Python, Go, Rust, and more)
+
+## Documentation
+
+- **[docs/](docs/)** — Architecture guides and pattern documentation
+  - [CQRS and Event Sourcing Concepts](docs/cqrs-event-sourcing.md) — Background for newcomers
+  - [Command Handlers (Aggregates)](docs/command-handlers.md) — Processing commands, emitting events
+  - [Projectors](docs/projectors.md) — Building read models from event streams
+  - [Sagas](docs/sagas.md) — Orchestrating workflows across aggregates
 
 ## Getting Started
 
@@ -17,14 +25,46 @@ evented-rs provides the infrastructure layer for event-sourced systems:
 
 - Rust 1.70+
 - Podman or Docker (for Kubernetes development)
-- [just](https://github.com/casey/just) command runner
+- [just](https://github.com/casey/just) - command runner (see below)
+- [Helm](https://helm.sh/) - Kubernetes package manager
 - grpcurl (optional, for debugging)
+
+### About `just`
+
+This project uses [just](https://github.com/casey/just) as its command runner. If you're familiar with Makefiles, `just` will feel familiar - it uses a similar syntax but is purpose-built for running commands rather than building files. Justfiles are easy to read even without prior experience.
+
+**Install just:**
+```bash
+# macOS
+brew install just
+
+# Arch Linux
+pacman -S just
+
+# Cargo (any platform)
+cargo install just
+```
+
+**Basic usage:**
+```bash
+# List all available commands
+just
+
+# Run a specific command
+just build
+
+# Commands can have submodules
+just examples build
+just examples helm-lint
+```
+
+View any `justfile` in the repository to see what commands do - they're self-documenting with comments.
 
 ### 1. Clone and Build
 
 ```bash
-git clone https://github.com/yourorg/evented-rs
-cd evented-rs
+git clone https://github.com/yourorg/angzarr
+cd angzarr
 
 # Build the framework
 just build
@@ -50,7 +90,7 @@ cargo test --test acceptance
 For realistic multi-service deployments:
 
 ```bash
-# Deploy evented + dependencies (RabbitMQ, Redis) to Kind cluster
+# Deploy Angzarr + dependencies (RabbitMQ, Redis) to Kind cluster
 just deploy
 
 # Watch logs
@@ -59,22 +99,24 @@ just k8s-logs
 
 ### 4. Create Your First Domain
 
-Create a command handler in your preferred language. Example in Rust:
+Create a command handler in your preferred language. Example in Python:
 
-```rust
-// examples/rust/customer/src/lib.rs
-pub struct CustomerLogic;
+```python
+# examples/python/customer/customer_logic.py
+class CustomerLogic:
+    def handle(self, contextual_command):
+        state = self._rebuild_state(contextual_command.events)
+        command = contextual_command.command
 
-impl CustomerLogic {
-    pub async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<EventBook> {
-        // Validate command against current state (cmd.prior_state)
-        // Return events to persist
-        Ok(EventBook {
-            events: vec![Event { /* CustomerCreated */ }],
-            ..Default::default()
-        })
-    }
-}
+        # Validate and emit events
+        if command.type_url.endswith("CreateCustomer"):
+            return self._handle_create_customer(command, state)
+        # ... other commands
+
+    def _handle_create_customer(self, command, state):
+        if state.name:
+            raise ValueError("Customer already exists")
+        return EventBook(pages=[CustomerCreated(name=command.name, email=command.email)])
 ```
 
 Register it in `config.yaml`:
@@ -87,17 +129,99 @@ business_logic:
 
 ## Architecture
 
-Business logic lives in external services called via gRPC. evented-rs handles:
-- **EventStore**: Persist and query events (SQLite, Redis)
+Business logic lives in external services called via gRPC. Angzarr handles:
+- **EventStore**: Persist and query events (SQLite, Redis, MongoDB)
 - **SnapshotStore**: Optimize replay with snapshots
 - **EventBus**: Distribute events to projectors/sagas
 - **CommandHandler**: Orchestrate command processing
 - **ProjectorCoordinator**: Route events to read model builders
 - **SagaCoordinator**: Route events to cross-aggregate workflows
+- **EventStream**: Stream filtered events to subscribers by correlation ID
+- **CommandGateway**: Forward commands and stream back resulting events
+
+### Streaming Infrastructure
+
+For clients that need real-time event streaming, Angzarr provides two standalone infrastructure services:
+
+```
+┌────────┐     ┌──────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Client │────▶│ angzarr-gateway│────▶│ angzarr-command │────▶│ Business Logic  │
+└────────┘     └──────────────┘     └─────────────────┘     └─────────────────┘
+    ▲                 │                      │
+    │                 │                      │ publishes events
+    │                 │                      ▼
+    │                 │              ┌─────────────────┐
+    │                 │              │     AMQP        │
+    │                 │              └────────┬────────┘
+    │                 │                       │
+    │                 │              ┌────────▼────────┐
+    │                 │              │  angzarr-stream │
+    │                 └─────────────▶│  (projector)    │
+    │                 registers      └────────┬────────┘
+    │                 correlation ID          │ only forwards if
+    │                                         │ correlation ID matches
+    └─────────────────────────────────────────┘
+              streams matching events back
+```
+
+**angzarr-stream** - A projector that enables event streaming:
+- Subscribes to all AMQP events (like any projector)
+- Maintains a registry of correlation IDs with active subscribers
+- Forwards events only to subscribers who registered interest in that correlation ID
+- Drops events with no matching subscribers (no storage/buffering)
+
+**angzarr-gateway** - Standalone service that:
+- Receives commands via `CommandGateway.Execute`
+- Generates a deterministic correlation ID (UUIDv5 from command body) if not provided
+- Registers interest with angzarr-stream for that correlation ID
+- Forwards command to angzarr-command
+- Streams resulting events back to the client
+
+#### Usage
+
+```bash
+# Build the streaming services
+cargo build --release --features mode-stream,mongodb --bin angzarr-stream
+cargo build --release --features mode-gateway --bin angzarr-gateway
+```
+
+Configuration via environment variables:
+
+**angzarr-stream:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AMQP_URL` | RabbitMQ connection URL | Required |
+| `GRPC_PORT` | Port for EventStream gRPC service | 1315 |
+
+**angzarr-gateway:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `COMMAND_ADDRESS` | angzarr-command service address | Required |
+| `STREAM_ADDRESS` | angzarr-stream service address | Required |
+| `GRPC_PORT` | Port for CommandGateway gRPC service | 1316 |
+| `STREAM_TIMEOUT_SECS` | Timeout for event stream | 30 |
+
+#### gRPC API
+
+```protobuf
+// Subscribe to events matching a correlation ID
+service EventStream {
+  rpc Subscribe (EventStreamFilter) returns (stream EventBook) {}
+}
+
+message EventStreamFilter {
+  string correlation_id = 1;  // Required
+}
+
+// Send command and receive resulting events
+service CommandGateway {
+  rpc Execute (CommandBook) returns (stream EventBook) {}
+}
+```
 
 ## Development Experience
 
-CQRS/Event Sourcing systems are notoriously complex—event stores, snapshot optimization, distributed event routing, projection rebuilds, saga coordination, and concurrency control create significant infrastructure burden. evented-rs absorbs this complexity so you write only business logic.
+CQRS/Event Sourcing systems are notoriously complex—event stores, snapshot optimization, distributed event routing, projection rebuilds, saga coordination, and concurrency control create significant infrastructure burden. Angzarr absorbs this complexity so you write only business logic.
 
 ### What You Write
 
@@ -115,26 +239,31 @@ def handle_create_customer(command, state):
 
 **Projectors** — React to events and build read models:
 
-```go
-func (p *ReceiptProjector) Project(event EventBook) {
-    if event.TypeUrl.Contains("TransactionCompleted") {
-        p.receipts.Store(event.AggregateId, buildReceipt(event))
-    }
-}
+```python
+class ReceiptProjector:
+    def project(self, event_book):
+        for page in event_book.pages:
+            if page.event.type_url.endswith("TransactionCompleted"):
+                return Receipt(formatted_text=self._build_receipt(event_book))
+        return None  # No projection if transaction not complete
 ```
 
 **Sagas** — Cross-aggregate workflows that react to events and emit commands:
 
-```rust
-fn on_transaction_completed(&self, event: TransactionCompleted) -> Vec<Command> {
-    vec![AddLoyaltyPoints {
-        customer_id: event.customer_id,
-        points: calculate_points(event.amount),
-    }]
-}
+```python
+class LoyaltyPointsSaga:
+    def handle(self, event_book):
+        for page in event_book.pages:
+            if page.event.type_url.endswith("TransactionCompleted"):
+                completed = TransactionCompleted.FromString(page.event.value)
+                return [AddLoyaltyPoints(
+                    customer_id=completed.customer_id,
+                    points=completed.loyalty_points_earned
+                )]
+        return []
 ```
 
-### What evented-rs Handles
+### What Angzarr Handles
 
 - Event persistence with sequence validation and optimistic concurrency
 - Snapshot creation and optimized aggregate replay
@@ -182,9 +311,11 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 |---------|-------------|
 | `just build` | Build the framework |
 | `just build-release` | Build optimized release binary |
+| `just build-stream` | Build angzarr-stream binary |
+| `just build-gateway` | Build angzarr-gateway binary |
 | `just test` | Run all unit tests |
 | `just acceptance-test` | Run Gherkin acceptance tests (no containers) |
-| `just run` | Start the evented server |
+| `just run` | Start the Angzarr server |
 | `just check` | Fast compile check without building |
 | `just fmt` | Format code with rustfmt |
 | `just lint` | Run clippy lints |
@@ -201,13 +332,18 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 
 ### Examples
 
+Examples use a submodule - access them with `just examples <command>`:
+
 | Command | Description |
 |---------|-------------|
-| `just examples-build` | Build all example services |
-| `just examples-test` | Test all examples |
-| `just examples-rust` | Build Rust examples only |
-| `just examples-go` | Build Go examples only |
-| `just examples-python` | Build Python examples only |
+| `just examples build` | Build all example services |
+| `just examples test` | Test all examples |
+| `just examples fmt` | Format all examples |
+| `just examples lint` | Lint all examples |
+| `just examples helm-lint` | Lint all Helm charts |
+| `just examples build-rust` | Build Rust examples only |
+| `just examples build-go` | Build Go examples only |
+| `just examples build-python` | Build Python examples only |
 
 ### Kubernetes/Kind
 
@@ -218,7 +354,7 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 | `just deploy` | Build images, load into Kind, and deploy |
 | `just redeploy` | Rebuild and redeploy (faster iteration) |
 | `just undeploy` | Remove deployment |
-| `just k8s-logs` | Stream evented pod logs |
+| `just k8s-logs` | Stream Angzarr pod logs |
 | `just k8s-port-forward` | Forward gRPC ports to localhost |
 
 ### Testing
@@ -229,6 +365,8 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 | `just acceptance-test` | Run in-memory acceptance tests (no containers) |
 | `just integration-test` | Deploy to Kind and run integration tests |
 | `just integration-test-only` | Run integration tests against already-running cluster |
+| `just integration-test-streaming` | Run only streaming integration tests |
+| `just integration-test-e2e` | Run only end-to-end integration tests (no streaming) |
 
 #### Test Types
 
@@ -241,36 +379,43 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 **Integration Tests** (`just integration-test-only`)
 - Run against deployed Kubernetes pods via gRPC
 - Test full end-to-end flow: commands → business logic → events → projectors
+- Includes streaming tests for angzarr-gateway and angzarr-stream services
 - Requires `just deploy` first (or use `just integration-test` to deploy and test)
 - Feature files: `tests/integration/features/*.feature`
-- Projector logs show actual events: `kubectl logs -n evented -l app=rs-projector-log-customer`
+- Projector logs show actual events: `kubectl logs -n angzarr -l app=rs-projector-log-customer`
+
+**Streaming Tests** (in `tests/integration/features/streaming.feature`)
+- Test round-trip event streaming via angzarr-gateway
+- Verify correlation ID propagation across events
+- Test stream timeout behavior for non-matching subscriptions
+- Requires angzarr-stream and angzarr-gateway services running
 
 ## Debugging and Observability
 
 ### Logging
 
-evented-rs uses [tracing](https://docs.rs/tracing) for structured logging. Control verbosity with `RUST_LOG`:
+Angzarr uses [tracing](https://docs.rs/tracing) for structured logging. Control verbosity with `ANGZARR_LOG`:
 
 ```bash
 # Default: info level
 just run
 
-# Debug level for evented, info for dependencies
-RUST_LOG=evented=debug just run
+# Debug level for angzarr, info for dependencies
+ANGZARR_LOG=angzarr=debug just run
 
 # Trace all SQL queries
-RUST_LOG=sqlx=debug,evented=info just run
+ANGZARR_LOG=sqlx=debug,angzarr=info just run
 
 # Full trace (verbose)
-RUST_LOG=trace just run
+ANGZARR_LOG=trace just run
 ```
 
 Log output is structured JSON in production, human-readable in development:
 
 ```
-2024-01-15T10:30:45.123Z  INFO evented: Starting evented server
-2024-01-15T10:30:45.456Z  INFO evented: Storage: sqlite at ./data/events.db
-2024-01-15T10:30:45.789Z  INFO evented: Command handler listening on 0.0.0.0:1313
+2024-01-15T10:30:45.123Z  INFO angzarr: Starting angzarr server
+2024-01-15T10:30:45.456Z  INFO angzarr: Storage: sqlite at ./data/events.db
+2024-01-15T10:30:45.789Z  INFO angzarr: Command handler listening on 0.0.0.0:1313
 ```
 
 ### Inspecting gRPC Services
@@ -282,7 +427,7 @@ Use [grpcurl](https://github.com/fullstorydev/grpcurl) to interact with services
 grpcurl -plaintext localhost:1313 list
 
 # Describe a service
-grpcurl -plaintext localhost:1313 describe evented.BusinessCoordinator
+grpcurl -plaintext localhost:1313 describe angzarr.BusinessCoordinator
 
 # Send a command
 grpcurl -plaintext -d '{
@@ -292,7 +437,7 @@ grpcurl -plaintext -d '{
     "type_url": "CreateCustomer",
     "payload": "..."
   }
-}' localhost:1313 evented.BusinessCoordinator/Handle
+}' localhost:1313 angzarr.BusinessCoordinator/Handle
 ```
 
 ### Event Store Inspection
@@ -304,14 +449,14 @@ Query events directly via the EventQuery service:
 grpcurl -plaintext -d '{
   "domain": "customer",
   "aggregate_id": "cust-001"
-}' localhost:1314 evented.EventQuery/GetEvents
+}' localhost:1314 angzarr.EventQuery/GetEvents
 
 # Get events since a specific sequence
 grpcurl -plaintext -d '{
   "domain": "customer",
   "aggregate_id": "cust-001",
   "from_sequence": 5
-}' localhost:1314 evented.EventQuery/GetEvents
+}' localhost:1314 angzarr.EventQuery/GetEvents
 ```
 
 ### SQLite Direct Access
@@ -337,14 +482,14 @@ GROUP BY domain, aggregate_id;
 ### Kubernetes Debugging
 
 ```bash
-# Stream logs from evented pods
+# Stream logs from Angzarr pods
 just k8s-logs
 
 # Get pod status
-kubectl get pods -n evented
+kubectl get pods -n angzarr
 
 # Describe pod for events/errors
-kubectl describe pod -n evented -l app.kubernetes.io/name=evented
+kubectl describe pod -n angzarr -l app.kubernetes.io/name=angzarr
 
 # Port forward for local debugging
 just k8s-port-forward
@@ -360,9 +505,11 @@ just k8s-port-forward
 | Events not persisting | Database path not writable | Ensure `data/` directory exists with write permissions |
 | AMQP connection failed | RabbitMQ not running | Start RabbitMQ or use DirectEventBus for local dev |
 
+For Kind/Podman infrastructure issues (cgroup delegation, port conflicts, cluster cleanup), see [COMMON_PROBLEMS.md](COMMON_PROBLEMS.md).
+
 ## Local Kubernetes Development
 
-For local development with Kubernetes, evented-rs uses Kind (Kubernetes in Docker) with Podman.
+For local development with Kubernetes, Angzarr uses Kind (Kubernetes in Docker) with Podman.
 
 ### Prerequisites
 
@@ -386,23 +533,66 @@ just redeploy
 
 | Command | Description |
 |---------|-------------|
-| `just kind-create` | Create Kind cluster with port mappings for evented services |
+| `just kind-create` | Create Kind cluster with port mappings for Angzarr services |
 | `just kind-delete` | Delete the Kind cluster |
 | `just deploy` | Full deployment: build images, load into Kind, apply manifests |
+| `just deploy-with-ingress` | Full deployment with nginx-ingress controller |
 | `just redeploy` | Rebuild and redeploy (faster iteration) |
 | `just undeploy` | Remove deployment from cluster |
+| `just ingress-install` | Install nginx-ingress controller for Kind |
+| `just ingress-status` | Check ingress controller status |
+
+### gRPC Client Helpers
+
+| Command | Description |
+|---------|-------------|
+| `just grpc-list-command` | List gRPC services on command handler |
+| `just grpc-list-gateway` | List gRPC services on gateway |
+| `just grpc-list-stream` | List gRPC services on event stream |
+| `just grpc-describe-command` | Describe BusinessCoordinator service |
+| `just grpc-describe-gateway` | Describe CommandGateway service |
+| `just grpc-describe-stream` | Describe EventStream service |
+| `just grpc-query-events DOMAIN UUID` | Query events for an aggregate |
+| `just grpc-example-command DOMAIN UUID` | Send command via command handler |
+| `just grpc-example-gateway DOMAIN UUID` | Send command via gateway with streaming |
+| `just grpc-subscribe-stream CORRELATION_ID` | Subscribe to events by correlation ID |
 
 ### Exposed Ports
 
-The Kind cluster exposes these services to localhost:
+The Kind cluster exposes these services to localhost via NodePort:
 
 | Port | Service |
 |------|---------|
-| 50051 | Evented command handler (gRPC) |
-| 50052 | Evented event query (gRPC) |
+| 50051 | Angzarr command handler (gRPC) |
+| 50052 | Angzarr event query (gRPC) |
+| 50053 | Angzarr gateway (gRPC streaming) |
+| 50054 | Angzarr stream (gRPC event subscription) |
 | 5672 | RabbitMQ AMQP |
 | 15672 | RabbitMQ Management UI |
 | 6379 | Redis |
+
+### Ingress Endpoints
+
+When using `just deploy-with-ingress`, gRPC services are also available via nginx-ingress:
+
+| Host | Service |
+|------|---------|
+| command.angzarr.local:80 | Command handler |
+| query.angzarr.local:80 | Event query |
+| gateway.angzarr.local:80 | Command gateway (streaming) |
+| stream.angzarr.local:80 | Event stream subscription |
+
+Add to `/etc/hosts`:
+```
+127.0.0.1 command.angzarr.local query.angzarr.local gateway.angzarr.local stream.angzarr.local angzarr.local
+```
+
+Use grpcurl with ingress:
+```bash
+grpcurl -plaintext command.angzarr.local:80 list
+grpcurl -plaintext gateway.angzarr.local:80 angzarr.CommandGateway/Execute
+grpcurl -plaintext stream.angzarr.local:80 angzarr.EventStream/Subscribe
+```
 
 ## Roadmap
 

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: py-projector-log-customer
-  namespace: evented
+  namespace: angzarr
   labels:
     app: py-projector-log-customer
 spec:
@@ -17,31 +17,41 @@ spec:
     spec:
       containers:
         - name: py-projector-log-customer
-          image: py-projector-log-customer:dev
+          image: py-projector-log-customer:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 50060
+            - containerPort: 50304
           env:
             - name: PORT
-              value: "50060"
+              value: "50304"
+          readinessProbe:
+            grpc:
+              port: 50304
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50304
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: py-projector-log-customer
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: py-projector-log-customer
   ports:
-    - port: 50060
-      targetPort: 50060
+    - port: 50304
+      targetPort: 50304
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: py-projector-log-transaction
-  namespace: evented
+  namespace: angzarr
   labels:
     app: py-projector-log-transaction
 spec:
@@ -56,22 +66,32 @@ spec:
     spec:
       containers:
         - name: py-projector-log-transaction
-          image: py-projector-log-transaction:dev
+          image: py-projector-log-transaction:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 50061
+            - containerPort: 50305
           env:
             - name: PORT
-              value: "50061"
+              value: "50305"
+          readinessProbe:
+            grpc:
+              port: 50305
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50305
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: py-projector-log-transaction
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: py-projector-log-transaction
   ports:
-    - port: 50061
-      targetPort: 50061
+    - port: 50305
+      targetPort: 50305

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rs-saga-loyalty
-  namespace: evented
+  namespace: angzarr
   labels:
     app: rs-saga-loyalty
 spec:
@@ -18,22 +18,33 @@ spec:
       containers:
         - name: rs-saga-loyalty
           image: rs-saga-loyalty:latest
+          imagePullPolicy: Never
           ports:
-            - containerPort: 50054
+            - containerPort: 50102
           env:
-            - name: RUST_LOG
+            - name: ANGZARR_LOG
               value: info
             - name: PORT
-              value: "50054"
+              value: "50102"
+          readinessProbe:
+            grpc:
+              port: 50102
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50102
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rs-saga-loyalty
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: rs-saga-loyalty
   ports:
-    - port: 50054
-      targetPort: 50054
+    - port: 50102
+      targetPort: 50102

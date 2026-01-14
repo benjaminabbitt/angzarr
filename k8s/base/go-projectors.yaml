@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: go-projector-log-customer
-  namespace: evented
+  namespace: angzarr
   labels:
     app: go-projector-log-customer
 spec:
@@ -17,31 +17,41 @@ spec:
     spec:
       containers:
         - name: go-projector-log-customer
-          image: go-projector-log-customer:dev
+          image: go-projector-log-customer:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 50058
+            - containerPort: 50204
           env:
             - name: PORT
-              value: "50058"
+              value: "50204"
+          readinessProbe:
+            grpc:
+              port: 50204
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50204
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: go-projector-log-customer
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: go-projector-log-customer
   ports:
-    - port: 50058
-      targetPort: 50058
+    - port: 50204
+      targetPort: 50204
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: go-projector-log-transaction
-  namespace: evented
+  namespace: angzarr
   labels:
     app: go-projector-log-transaction
 spec:
@@ -56,22 +66,32 @@ spec:
     spec:
       containers:
         - name: go-projector-log-transaction
-          image: go-projector-log-transaction:dev
+          image: go-projector-log-transaction:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 50059
+            - containerPort: 50205
           env:
             - name: PORT
-              value: "50059"
+              value: "50205"
+          readinessProbe:
+            grpc:
+              port: 50205
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50205
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: go-projector-log-transaction
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: go-projector-log-transaction
   ports:
-    - port: 50059
-      targetPort: 50059
+    - port: 50205
+      targetPort: 50205

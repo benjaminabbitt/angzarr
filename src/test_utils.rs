@@ -10,11 +10,18 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::interfaces::business_client::{BusinessError, BusinessLogicClient, Result as BusinessResult};
-use crate::interfaces::event_bus::{BusError, EventBus, EventHandler, PublishResult, Result as BusResult};
+use crate::interfaces::business_client::{
+    BusinessError, BusinessLogicClient, Result as BusinessResult,
+};
+use crate::interfaces::event_bus::{
+    BusError, EventBus, EventHandler, PublishResult, Result as BusResult,
+};
 use crate::interfaces::event_store::{EventStore, Result as StorageResult, StorageError};
 use crate::interfaces::snapshot_store::SnapshotStore;
-use crate::proto::{ContextualCommand, Cover, EventBook, EventPage, Snapshot, Uuid as ProtoUuid};
+use crate::proto::{
+    business_response, BusinessResponse, ContextualCommand, Cover, EventBook, EventPage, Snapshot,
+    Uuid as ProtoUuid,
+};
 
 /// Mock event store that stores events in memory.
 #[derive(Default)]
@@ -126,6 +133,15 @@ impl MockSnapshotStore {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub async fn get_stored(&self, domain: &str, root: Uuid) -> Option<Snapshot> {
+        let key = (domain.to_string(), root);
+        self.snapshots.read().await.get(&key).cloned()
+    }
+
+    pub async fn stored_count(&self) -> usize {
+        self.snapshots.read().await.len()
+    }
 }
 
 #[async_trait]
@@ -154,6 +170,7 @@ pub struct MockBusinessLogic {
     domains: Vec<String>,
     fail_on_handle: RwLock<bool>,
     reject_command: RwLock<bool>,
+    return_snapshot: RwLock<bool>,
 }
 
 impl MockBusinessLogic {
@@ -162,6 +179,7 @@ impl MockBusinessLogic {
             domains,
             fail_on_handle: RwLock::new(false),
             reject_command: RwLock::new(false),
+            return_snapshot: RwLock::new(false),
         }
     }
 
@@ -172,11 +190,19 @@ impl MockBusinessLogic {
     pub async fn set_reject_command(&self, reject: bool) {
         *self.reject_command.write().await = reject;
     }
+
+    pub async fn set_return_snapshot(&self, return_snapshot: bool) {
+        *self.return_snapshot.write().await = return_snapshot;
+    }
 }
 
 #[async_trait]
 impl BusinessLogicClient for MockBusinessLogic {
-    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> BusinessResult<EventBook> {
+    async fn handle(
+        &self,
+        domain: &str,
+        cmd: ContextualCommand,
+    ) -> BusinessResult<BusinessResponse> {
         if *self.fail_on_handle.read().await {
             return Err(BusinessError::Connection {
                 domain: domain.to_string(),
@@ -200,18 +226,32 @@ impl BusinessLogicClient for MockBusinessLogic {
             .map(|e| e.pages.len() as u32)
             .unwrap_or(0);
 
-        Ok(EventBook {
-            cover,
-            pages: vec![EventPage {
-                sequence: Some(crate::proto::event_page::Sequence::Num(prior_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "test.MockEvent".to_string(),
-                    value: vec![],
-                }),
-                created_at: None,
-                synchronous: false,
-            }],
-            snapshot: None,
+        // Optionally include snapshot state (framework computes sequence)
+        let snapshot_state = if *self.return_snapshot.read().await {
+            Some(prost_types::Any {
+                type_url: "test.MockState".to_string(),
+                value: vec![1, 2, 3],
+            })
+        } else {
+            None
+        };
+
+        Ok(BusinessResponse {
+            result: Some(business_response::Result::Events(EventBook {
+                cover,
+                pages: vec![EventPage {
+                    sequence: Some(crate::proto::event_page::Sequence::Num(prior_seq)),
+                    event: Some(prost_types::Any {
+                        type_url: "test.MockEvent".to_string(),
+                        value: vec![],
+                    }),
+                    created_at: None,
+                    synchronous: false,
+                }],
+                snapshot: None, // Framework-populated on load, not set by business logic
+                correlation_id: String::new(),
+                snapshot_state,
+            })),
         })
     }
 
@@ -285,6 +325,8 @@ pub fn make_event_book(domain: &str, root: Uuid, event_count: usize) -> EventBoo
             })
             .collect(),
         snapshot: None,
+        correlation_id: String::new(),
+        snapshot_state: None,
     }
 }
 
@@ -356,7 +398,10 @@ mod tests {
         let store = MockEventStore::new();
 
         store.add("orders", Uuid::new_v4(), vec![]).await.unwrap();
-        store.add("inventory", Uuid::new_v4(), vec![]).await.unwrap();
+        store
+            .add("inventory", Uuid::new_v4(), vec![])
+            .await
+            .unwrap();
 
         let domains = store.list_domains().await.unwrap();
         assert_eq!(domains.len(), 2);

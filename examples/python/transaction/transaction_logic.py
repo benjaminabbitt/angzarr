@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from evented.proto import evented_pb2 as evented
+from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 
 
@@ -17,7 +17,7 @@ class TransactionLogic:
 
     DOMAIN = "transaction"
 
-    def handle(self, contextual_command: evented.ContextualCommand) -> evented.EventBook:
+    def handle(self, contextual_command: angzarr.ContextualCommand) -> angzarr.EventBook:
         """Process a command and return resulting events."""
         command_book = contextual_command.command
         prior_events = contextual_command.events
@@ -44,7 +44,7 @@ class TransactionLogic:
         else:
             raise ValueError(f"Unknown command type: {command_any.type_url}")
 
-    def _rebuild_state(self, event_book: evented.EventBook | None) -> domains.TransactionState:
+    def _rebuild_state(self, event_book: angzarr.EventBook | None) -> domains.TransactionState:
         """Rebuild transaction state from events."""
         state = domains.TransactionState(status="new")
 
@@ -79,10 +79,10 @@ class TransactionLogic:
 
     def _handle_create_transaction(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.TransactionState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle CreateTransaction command."""
         if state.status != "new":
             raise ValueError("Transaction already exists")
@@ -107,10 +107,10 @@ class TransactionLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=self._now(),
@@ -120,10 +120,10 @@ class TransactionLogic:
 
     def _handle_apply_discount(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.TransactionState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle ApplyDiscount command."""
         if state.status != "pending":
             raise ValueError("Can only apply discount to pending transaction")
@@ -153,10 +153,10 @@ class TransactionLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=self._now(),
@@ -166,10 +166,10 @@ class TransactionLogic:
 
     def _handle_complete_transaction(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.TransactionState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle CompleteTransaction command."""
         if state.status != "pending":
             raise ValueError("Can only complete pending transaction")
@@ -190,10 +190,10 @@ class TransactionLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=self._now(),
@@ -203,10 +203,10 @@ class TransactionLogic:
 
     def _handle_cancel_transaction(
         self,
-        command_book: evented.CommandBook,
+        command_book: angzarr.CommandBook,
         command_any: Any,
         state: domains.TransactionState,
-    ) -> evented.EventBook:
+    ) -> angzarr.EventBook:
         """Handle CancelTransaction command."""
         if state.status != "pending":
             raise ValueError("Can only cancel pending transaction")
@@ -222,10 +222,10 @@ class TransactionLogic:
         event_any = Any()
         event_any.Pack(event, type_url_prefix="type.examples/")
 
-        return evented.EventBook(
+        return angzarr.EventBook(
             cover=command_book.cover,
             pages=[
-                evented.EventPage(
+                angzarr.EventPage(
                     num=0,
                     event=event_any,
                     created_at=self._now(),
@@ -264,12 +264,12 @@ if __name__ == "__main__":
     cmd_any = Any()
     cmd_any.Pack(create_cmd, type_url_prefix="type.examples/")
 
-    command_book = evented.CommandBook(
-        cover=evented.Cover(domain="transaction"),
-        pages=[evented.CommandPage(sequence=0, command=cmd_any)],
+    command_book = angzarr.CommandBook(
+        cover=angzarr.Cover(domain="transaction"),
+        pages=[angzarr.CommandPage(sequence=0, command=cmd_any)],
     )
 
-    ctx_cmd = evented.ContextualCommand(command=command_book)
+    ctx_cmd = angzarr.ContextualCommand(command=command_book)
     result = logic.handle(ctx_cmd)
 
     print(f"Created transaction with {len(result.pages)} event(s)")

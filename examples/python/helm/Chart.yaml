@@ -1,0 +1,11 @@
+apiVersion: v2
+name: angzarr-python-examples
+description: Angzarr Python example services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - angzarr
+  - python
+  - cqrs
+  - event-sourcing

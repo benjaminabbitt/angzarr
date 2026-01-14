@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ts-customer
+  namespace: angzarr
+  labels:
+    app: ts-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ts-customer
+  template:
+    metadata:
+      labels:
+        app: ts-customer
+    spec:
+      containers:
+        - name: ts-customer
+          image: ts-customer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50400
+          env:
+            - name: PORT
+              value: "50400"
+          readinessProbe:
+            grpc:
+              port: 50400
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50400
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ts-customer
+  namespace: angzarr
+spec:
+  selector:
+    app: ts-customer
+  ports:
+    - port: 50400
+      targetPort: 50400

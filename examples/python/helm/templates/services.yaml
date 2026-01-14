@@ -1,0 +1,47 @@
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: py-{{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "angzarr-examples.labels" $ | nindent 4 }}
+    app: py-{{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: py-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app: py-{{ $name }}
+    spec:
+      containers:
+        - name: py-{{ $name }}
+          image: {{ $svc.image }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          env:
+            - name: PORT
+              value: "{{ $svc.port }}"
+            - name: DOMAIN
+              value: {{ $svc.domain }}
+            - name: ANGZARR_ADDRESS
+              value: "angzarr:{{ $.Values.angzarr.command.port }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: py-{{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "angzarr-examples.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app: py-{{ $name }}
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- end }}

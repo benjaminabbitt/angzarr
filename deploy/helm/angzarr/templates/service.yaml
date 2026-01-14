@@ -1,0 +1,168 @@
+{{- /* Services for business logic applications */}}
+{{- range .Values.applications.business }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: business
+    angzarr.io/domain: {{ .domain }}
+  annotations:
+    # DNS: {{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local
+    angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    # Angzarr sidecar command handler (external access)
+    - port: {{ $.Values.service.commandPort }}
+      targetPort: command
+      protocol: TCP
+      name: command
+    # Angzarr sidecar event query (external access)
+    - port: {{ $.Values.service.queryPort }}
+      targetPort: query
+      protocol: TCP
+      name: query
+    # Business logic gRPC (internal only)
+    - port: {{ .port }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: business
+    angzarr.io/app: {{ .name }}
+{{- end }}
+
+{{- /* Services for projector applications */}}
+{{- range .Values.applications.projectors }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: projector
+  annotations:
+    angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    # Projector gRPC service
+    - port: {{ .port | default 50051 }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: projector
+    angzarr.io/app: {{ .name }}
+{{- end }}
+
+{{- /* Services for saga applications */}}
+{{- range .Values.applications.sagas }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: saga
+  annotations:
+    angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    # Saga gRPC service
+    - port: {{ .port | default 50051 }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: saga
+    angzarr.io/app: {{ .name }}
+{{- end }}
+
+{{- /* Headless service for service discovery (optional) */}}
+{{- if .Values.serviceDiscovery.headless }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: {{ .Values.service.commandPort }}
+      targetPort: command
+      protocol: TCP
+      name: command
+  selector:
+    {{- include "angzarr.selectorLabels" . | nindent 4 }}
+{{- end }}
+
+{{- /* Event Stream service */}}
+{{- if .Values.infrastructure.stream.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" . }}-stream
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: stream
+  annotations:
+    angzarr.io/dns-name: "{{ include "angzarr.fullname" . }}-stream.{{ .Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.infrastructure.stream.port }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "angzarr.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: stream
+{{- end }}
+
+{{- /* Command Proxy service */}}
+{{- if .Values.infrastructure.gateway.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: gateway
+  annotations:
+    angzarr.io/dns-name: "{{ include "angzarr.fullname" . }}-gateway.{{ .Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.infrastructure.gateway.port }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "angzarr.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: gateway
+{{- end }}

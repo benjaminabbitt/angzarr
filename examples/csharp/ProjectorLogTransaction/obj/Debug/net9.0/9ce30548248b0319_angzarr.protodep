@@ -1,0 +1,5 @@
+obj/Debug/net9.0/angzarr/Angzarr.cs \
+obj/Debug/net9.0/angzarr/AngzarrGrpc.cs: /root/.nuget/packages/grpc.tools/2.67.0/build/native/include/google/protobuf/any.proto\
+ /root/.nuget/packages/grpc.tools/2.67.0/build/native/include/google/protobuf/timestamp.proto\
+ /root/.nuget/packages/grpc.tools/2.67.0/build/native/include/google/protobuf/empty.proto\
+ ../../../proto/angzarr/angzarr.proto

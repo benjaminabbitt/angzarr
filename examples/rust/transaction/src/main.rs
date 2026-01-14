@@ -9,9 +9,9 @@ use tonic::{transport::Server, Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use evented::interfaces::business_client::BusinessLogicClient;
-use evented::proto::business_logic_server::{BusinessLogic, BusinessLogicServer};
-use evented::proto::{ContextualCommand, EventBook};
+use angzarr::interfaces::business_client::BusinessLogicClient;
+use angzarr::proto::business_logic_server::{BusinessLogic, BusinessLogicServer};
+use angzarr::proto::{BusinessResponse, ContextualCommand};
 use transaction::TransactionLogic;
 
 const DOMAIN: &str = "transaction";
@@ -34,11 +34,11 @@ impl BusinessLogic for TransactionService {
     async fn handle(
         &self,
         request: Request<ContextualCommand>,
-    ) -> Result<Response<EventBook>, Status> {
+    ) -> Result<Response<BusinessResponse>, Status> {
         let cmd = request.into_inner();
 
         match self.logic.handle(DOMAIN, cmd).await {
-            Ok(event_book) => Ok(Response::new(event_book)),
+            Ok(response) => Ok(Response::new(response)),
             Err(e) => Err(Status::failed_precondition(e.to_string())),
         }
     }
@@ -49,12 +49,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     FmtSubscriber::builder()
         .with_max_level(Level::INFO)
-        .json().init();
+        .json()
+        .init();
 
     let port = env::var("PORT").unwrap_or_else(|_| "50053".to_string());
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
     let service = TransactionService::new();
+
+    // Create gRPC health service
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<BusinessLogicServer<TransactionService>>()
+        .await;
 
     info!(
         domain = DOMAIN,
@@ -63,6 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Server::builder()
+        .add_service(health_service)
         .add_service(BusinessLogicServer::new(service))
         .serve(addr)
         .await?;

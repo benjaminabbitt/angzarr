@@ -1,0 +1,179 @@
+# Python example applications for local development
+
+global:
+  security:
+    allowInsecureImages: true
+
+replicaCount: 1
+
+images:
+  command:
+    repository: angzarr-command
+    pullPolicy: Never
+    tag: "latest"
+  projector:
+    repository: angzarr-projector
+    pullPolicy: Never
+    tag: "latest"
+  saga:
+    repository: angzarr-saga
+    pullPolicy: Never
+    tag: "latest"
+  stream:
+    repository: angzarr-stream
+    pullPolicy: Never
+    tag: "latest"
+  gateway:
+    repository: angzarr-gateway
+    pullPolicy: Never
+    tag: "latest"
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+rabbitmq:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/rabbitmq
+    tag: "3.13-management-alpine"
+    pullPolicy: Never
+  auth:
+    username: "guest"
+    password: "guest"
+  persistence:
+    size: 1Gi
+
+mongodb:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/mongo
+    tag: "7"
+    pullPolicy: Never
+  auth:
+    rootUsername: "root"
+    rootPassword: "rootpassword"
+    usernames: ["angzarr"]
+    passwords: ["angzarr"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+
+infrastructure:
+  stream:
+    enabled: false
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 1316
+    commandHandlers:
+      customer: "angzarr-py-customer:50051"
+      transaction: "angzarr-py-transaction:50051"
+    streamService: "angzarr-py-stream:1315"
+    streamTimeoutSecs: 30
+
+applications:
+  business:
+    - name: py-customer
+      image:
+        repository: py-customer
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 50100
+
+    - name: py-transaction
+      image:
+        repository: py-transaction
+        tag: "latest"
+        pullPolicy: Never
+      domain: "transaction"
+      port: 50101
+
+  projectors:
+    - name: py-stream
+      image:
+        repository: angzarr-stream
+        tag: "latest"
+        pullPolicy: Never
+      port: 1315
+      topics:
+        - "#"
+
+    - name: py-projector-receipt
+      image:
+        repository: py-projector-receipt
+        tag: "latest"
+        pullPolicy: Never
+      port: 50103
+      topics:
+        - "transaction.*"
+
+    - name: py-projector-log-customer
+      image:
+        repository: py-projector-log-customer
+        tag: "latest"
+        pullPolicy: Never
+      port: 50104
+      topics:
+        - "customer.*"
+
+    - name: py-projector-log-transaction
+      image:
+        repository: py-projector-log-transaction
+        tag: "latest"
+        pullPolicy: Never
+      port: 50105
+      topics:
+        - "transaction.*"
+
+  sagas:
+    - name: py-saga-loyalty
+      image:
+        repository: py-saga-loyalty
+        tag: "latest"
+        pullPolicy: Never
+      port: 50102
+      topics:
+        - "transaction.*"
+
+service:
+  type: NodePort
+  commandPort: 50051
+  queryPort: 50052
+
+logging:
+  level: info
+
+autoscaling:
+  enabled: false
+
+reloader:
+  enabled: false
+
+serviceDiscovery:
+  headless: false

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis
-  namespace: evented
+  namespace: angzarr
   labels:
     app: redis
 spec:
@@ -35,7 +35,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis
-  namespace: evented
+  namespace: angzarr
 spec:
   selector:
     app: redis

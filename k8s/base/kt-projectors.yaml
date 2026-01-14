@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kt-projector-receipt
+  namespace: angzarr
+  labels:
+    app: kt-projector-receipt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kt-projector-receipt
+  template:
+    metadata:
+      labels:
+        app: kt-projector-receipt
+    spec:
+      containers:
+        - name: kt-projector-receipt
+          image: kt-projector-receipt:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50503
+          env:
+            - name: PORT
+              value: "50503"
+          readinessProbe:
+            grpc:
+              port: 50503
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50503
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kt-projector-receipt
+  namespace: angzarr
+spec:
+  selector:
+    app: kt-projector-receipt
+  ports:
+    - port: 50503
+      targetPort: 50503
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kt-projector-log-customer
+  namespace: angzarr
+  labels:
+    app: kt-projector-log-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kt-projector-log-customer
+  template:
+    metadata:
+      labels:
+        app: kt-projector-log-customer
+    spec:
+      containers:
+        - name: kt-projector-log-customer
+          image: kt-projector-log-customer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50504
+          env:
+            - name: PORT
+              value: "50504"
+          readinessProbe:
+            grpc:
+              port: 50504
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50504
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kt-projector-log-customer
+  namespace: angzarr
+spec:
+  selector:
+    app: kt-projector-log-customer
+  ports:
+    - port: 50504
+      targetPort: 50504
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kt-projector-log-transaction
+  namespace: angzarr
+  labels:
+    app: kt-projector-log-transaction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kt-projector-log-transaction
+  template:
+    metadata:
+      labels:
+        app: kt-projector-log-transaction
+    spec:
+      containers:
+        - name: kt-projector-log-transaction
+          image: kt-projector-log-transaction:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50505
+          env:
+            - name: PORT
+              value: "50505"
+          readinessProbe:
+            grpc:
+              port: 50505
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50505
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kt-projector-log-transaction
+  namespace: angzarr
+spec:
+  selector:
+    app: kt-projector-log-transaction
+  ports:
+    - port: 50505
+      targetPort: 50505

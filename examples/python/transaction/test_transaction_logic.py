@@ -2,27 +2,27 @@
 
 from google.protobuf.any_pb2 import Any as AnyProto
 from proto import domains_pb2 as domains
-from evented.proto import evented_pb2 as evented
+from angzarr import angzarr_pb2 as angzarr
 from transaction_logic import TransactionLogic
 
 
-def _create_command_book(command, domain: str = "transaction") -> evented.CommandBook:
+def _create_command_book(command, domain: str = "transaction") -> angzarr.CommandBook:
     """Helper to wrap a command in a CommandBook."""
     command_any = AnyProto()
     command_any.Pack(command, type_url_prefix="type.examples/")
 
-    return evented.CommandBook(
-        cover=evented.Cover(domain=domain),
-        pages=[evented.CommandPage(sequence=0, command=command_any)],
+    return angzarr.CommandBook(
+        cover=angzarr.Cover(domain=domain),
+        pages=[angzarr.CommandPage(sequence=0, command=command_any)],
     )
 
 
 def _create_contextual_command(
-    command_book: evented.CommandBook,
-    prior_events: evented.EventBook | None = None,
-) -> evented.ContextualCommand:
+    command_book: angzarr.CommandBook,
+    prior_events: angzarr.EventBook | None = None,
+) -> angzarr.ContextualCommand:
     """Helper to create a ContextualCommand."""
-    return evented.ContextualCommand(
+    return angzarr.ContextualCommand(
         command=command_book,
         events=prior_events,
     )

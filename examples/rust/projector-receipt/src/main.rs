@@ -10,9 +10,11 @@ use tonic::{transport::Server, Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use evented::interfaces::projector::Projector as ProjectorTrait;
-use evented::proto::projector_coordinator_server::{ProjectorCoordinator, ProjectorCoordinatorServer};
-use evented::proto::{EventBook, Projection};
+use angzarr::interfaces::projector::Projector as ProjectorTrait;
+use angzarr::proto::projector_coordinator_server::{
+    ProjectorCoordinator, ProjectorCoordinatorServer,
+};
+use angzarr::proto::{EventBook, Projection};
 use projector_receipt::ReceiptProjector;
 
 const PROJECTOR_NAME: &str = "receipt";
@@ -57,12 +59,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     FmtSubscriber::builder()
         .with_max_level(Level::INFO)
-        .json().init();
+        .json()
+        .init();
 
     let port = env::var("PORT").unwrap_or_else(|_| "50055".to_string());
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
     let service = ReceiptService::new();
+
+    // Create gRPC health service
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<ProjectorCoordinatorServer<ReceiptService>>()
+        .await;
 
     info!(
         projector = PROJECTOR_NAME,
@@ -72,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Server::builder()
+        .add_service(health_service)
         .add_service(ProjectorCoordinatorServer::new(service))
         .serve(addr)
         .await?;

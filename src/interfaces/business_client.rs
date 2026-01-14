@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::proto::{ContextualCommand, EventBook};
+use crate::proto::{BusinessResponse, ContextualCommand};
 
 /// Result type for business logic operations.
 pub type Result<T> = std::result::Result<T, BusinessError>;
@@ -36,7 +36,8 @@ impl From<tonic::Status> for BusinessError {
 ///
 /// Business logic services implement the domain-specific command handling.
 /// They receive a ContextualCommand (prior events + new command) and
-/// return new events to be persisted.
+/// return a BusinessResponse containing either events to persist or
+/// a RevocationResponse with handling instructions.
 ///
 /// Implementations:
 /// - `StaticBusinessLogicClient` (now): Hardcoded addresses per domain
@@ -46,8 +47,8 @@ pub trait BusinessLogicClient: Send + Sync {
     /// Handle a contextual command.
     ///
     /// Routes to the appropriate business logic service based on domain,
-    /// sends the command, and returns the resulting events.
-    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<EventBook>;
+    /// sends the command, and returns the BusinessResponse.
+    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse>;
 
     /// Check if a domain is registered.
     fn has_domain(&self, domain: &str) -> bool;

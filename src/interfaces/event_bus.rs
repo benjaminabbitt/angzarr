@@ -17,6 +17,12 @@ pub enum BusError {
     #[error("Connection failed: {0}")]
     Connection(String),
 
+    #[error("Publish failed: {0}")]
+    Publish(String),
+
+    #[error("Subscribe failed: {0}")]
+    Subscribe(String),
+
     #[error("Projector '{name}' failed")]
     ProjectorFailed {
         name: String,

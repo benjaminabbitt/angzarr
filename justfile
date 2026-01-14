@@ -1,9 +1,12 @@
-# Evented-rs development commands
+# Angzarr development commands
 
 set shell := ["bash", "-c"]
 
 # Repository root
 TOP := `git rev-parse --show-toplevel`
+
+# Import examples justfile as a module
+mod examples "examples/justfile"
 
 # Default recipe - show available commands
 default:
@@ -13,35 +16,42 @@ default:
 
 # Build the proto generation container
 proto-container-build:
-    podman build -t evented-proto:latest build/proto/
+    podman build -t angzarr-proto:latest build/proto/
 
 # Generate all proto files using container
 proto-generate: proto-container-build
     podman run --rm \
         -v "{{TOP}}/proto:/workspace/proto:ro" \
         -v "{{TOP}}/generated:/workspace/generated" \
-        evented-proto:latest --all
+        angzarr-proto:latest --all
 
 # Generate only Rust protos
 proto-rust: proto-container-build
     podman run --rm \
         -v "{{TOP}}/proto:/workspace/proto:ro" \
         -v "{{TOP}}/generated:/workspace/generated" \
-        evented-proto:latest --rust
+        angzarr-proto:latest --rust
 
 # Generate only Python protos
 proto-python: proto-container-build
     podman run --rm \
         -v "{{TOP}}/proto:/workspace/proto:ro" \
         -v "{{TOP}}/generated:/workspace/generated" \
-        evented-proto:latest --python
+        angzarr-proto:latest --python
 
 # Generate only Go protos
 proto-go: proto-container-build
     podman run --rm \
         -v "{{TOP}}/proto:/workspace/proto:ro" \
         -v "{{TOP}}/generated:/workspace/generated" \
-        evented-proto:latest --go
+        angzarr-proto:latest --go
+
+# Generate only Ruby protos
+proto-ruby: proto-container-build
+    podman run --rm \
+        -v "{{TOP}}/proto:/workspace/proto:ro" \
+        -v "{{TOP}}/generated:/workspace/generated" \
+        angzarr-proto:latest --ruby
 
 # Clean generated proto files
 proto-clean:
@@ -53,17 +63,76 @@ proto-clean:
 build:
     cargo build
 
-# Build release
-build-release:
-    cargo build --release
+# Build release (all binaries)
+build-release: build-standalone build-sidecars build-infrastructure
+
+# === Sidecar Binaries ===
+
+# Build standalone binary (local development only, not containerized)
+build-standalone:
+    cargo build --release --bin angzarr-standalone --features "mode-standalone,amqp,mongodb"
+
+# Build command sidecar binary
+build-command:
+    cargo build --release --bin angzarr-command --features "mode-command,mongodb"
+
+# Build projector sidecar binary
+build-projector:
+    cargo build --release --bin angzarr-projector --features "mode-projector,mongodb"
+
+# Build saga sidecar binary
+build-saga:
+    cargo build --release --bin angzarr-saga --features "mode-saga,mongodb"
+
+# Build stream service binary (infrastructure)
+build-stream:
+    cargo build --release --bin angzarr-stream --features "mode-stream"
+
+# Build gateway service binary (infrastructure)
+build-gateway:
+    cargo build --release --bin angzarr-gateway --features "mode-gateway"
+
+# Build all sidecar binaries
+build-sidecars: build-command build-projector build-saga
+
+# Build all infrastructure service binaries
+build-infrastructure: build-stream build-gateway
+
+# === Sidecar Container Images ===
+
+# Build command sidecar container image
+container-build-command:
+    podman build --target angzarr-command -t angzarr-command:latest .
+
+# Build projector sidecar container image
+container-build-projector:
+    podman build --target angzarr-projector -t angzarr-projector:latest .
+
+# Build saga sidecar container image
+container-build-saga:
+    podman build --target angzarr-saga -t angzarr-saga:latest .
+
+# Build stream service container image (infrastructure)
+container-build-stream:
+    podman build --target angzarr-stream -t angzarr-stream:latest .
+
+# Build gateway service container image (infrastructure)
+container-build-gateway:
+    podman build --target angzarr-gateway -t angzarr-gateway:latest .
+
+# Build all sidecar container images
+container-build-sidecars: container-build-command container-build-projector container-build-saga
+
+# Build all infrastructure container images
+container-build-infrastructure: container-build-stream container-build-gateway
 
 # Run tests
 test:
     cargo test
 
-# Run the server
+# Run the standalone server (local development)
 run:
-    cargo run --bin evented-server
+    cargo run --bin angzarr-standalone --features "mode-standalone,amqp,mongodb"
 
 # Check code
 check:
@@ -77,6 +146,13 @@ fmt:
 lint:
     cargo clippy -- -D warnings
 
+# Lint all Helm charts (main + all examples)
+helm-lint:
+    @echo "Linting main Helm chart..."
+    helm lint "{{TOP}}/deploy/helm/angzarr"
+    @echo "Linting example Helm charts..."
+    just examples helm-lint
+
 # Clean build artifacts
 clean:
     cargo clean
@@ -86,43 +162,20 @@ init-db:
     mkdir -p data
     touch data/events.db
 
-# === Examples ===
-
-# Build all examples
-examples-build: proto-generate
-    cd examples && just build
-
-# Test all examples
-examples-test: proto-generate
-    cd examples && just test
-
-# Clean all examples
-examples-clean:
-    cd examples && just clean
-
-# Build Python examples
-examples-python: proto-generate
-    cd examples && just build-python
-
-# Build Go examples
-examples-go: proto-generate
-    cd examples && just build-go
-
-# Build Rust examples
-examples-rust:
-    cd examples && just build-rust
-
 # === Integration Tests ===
 
 # Run integration tests (starts kind cluster and deploys)
 integration-test: deploy
-    @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=evented -n evented --timeout=120s
-    cargo test --test docker_integration
+    @echo "Waiting for all services to be ready via gRPC health checks..."
+    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
+        localhost:50051 localhost:50052 localhost:50053 localhost:50054
+    @echo "All services healthy:"
+    @kubectl get pods -n angzarr
+    ANGZARR_TEST_MODE=container cargo test --test acceptance
 
-# Run integration tests without starting services (assumes already running)
-integration-test-only:
-    cargo test --test docker_integration
+# Run container integration tests without starting services (assumes already running)
+container-integration-test:
+    ANGZARR_TEST_MODE=container cargo test --test acceptance
 
 # Run acceptance tests (in-memory, no containers needed)
 acceptance-test:
@@ -132,11 +185,11 @@ acceptance-test:
 
 # Load image into minikube
 k8s-load-minikube:
-    minikube image load evented:latest
+    minikube image load angzarr:latest
 
 # Load image into kind
 k8s-load-kind:
-    kind load docker-image evented:latest
+    kind load docker-image angzarr:latest
 
 # Deploy to local k8s with Helm
 k8s-deploy-helm:
@@ -160,289 +213,335 @@ k8s-undeploy-tf:
 
 # Port forward evented service
 k8s-port-forward:
-    kubectl port-forward -n evented svc/evented 1313:1313 1314:1314
+    kubectl port-forward -n angzarr svc/evented 1313:1313 1314:1314
 
 # View k8s logs
 k8s-logs:
-    kubectl logs -n evented -l app.kubernetes.io/name=evented -f
+    kubectl logs -n angzarr -l app.kubernetes.io/name=evented -f
+
+# === Skaffold Development ===
+
+# One-time setup: configure Podman and Skaffold for local registry
+skaffold-init:
+    @echo "Configuring Podman for local registry..."
+    @uv run "{{TOP}}/scripts/configure_podman_registry.py"
+    @echo "Configuring Skaffold for Kind..."
+    @uv run "{{TOP}}/scripts/configure_skaffold.py"
+    @echo ""
+    @echo "Setup complete. Run 'just skaffold-dev' to start developing."
+
+# Check if Podman and Skaffold are configured
+skaffold-check:
+    @echo "Checking Podman registry configuration..."
+    @uv run "{{TOP}}/scripts/configure_podman_registry.py" --check || true
+    @echo "Checking Skaffold configuration..."
+    @uv run "{{TOP}}/scripts/configure_skaffold.py" --check || true
+
+# Build and deploy with skaffold (recommended workflow)
+skaffold-dev: skaffold-init kind-create-registry secrets-init
+    skaffold dev --profile local
+
+# Build and deploy once with skaffold
+skaffold-run: skaffold-init kind-create-registry secrets-init
+    skaffold run --profile local
+
+# Build only (no deploy)
+skaffold-build:
+    skaffold build
+
+# Delete skaffold deployment
+skaffold-delete:
+    skaffold delete --profile local
+
+# Render skaffold manifests (dry-run)
+skaffold-render:
+    skaffold render --profile local
 
 # === Kind/Podman Development ===
 
 # Image tag for local development
 IMAGE_TAG := "dev"
 
-# All application images
-APP_IMAGES := "evented rs-customer rs-transaction rs-saga-loyalty rs-projector-receipt rs-projector-log-customer rs-projector-log-transaction"
+# Local registry settings
+REGISTRY_NAME := "kind-registry"
+REGISTRY_PORT := "5001"
 
 # Infrastructure images
-INFRA_IMAGES := "docker.io/library/rabbitmq:3.13-management-alpine docker.io/library/redis:7-alpine"
+INFRA_IMAGES := "docker.io/library/mongo:7 docker.io/library/rabbitmq:3.13-management-alpine docker.io/library/redis:7-alpine"
 
-# Create Kind cluster for local development (idempotent)
+# Ingress controller images
+INGRESS_IMAGES := "registry.k8s.io/ingress-nginx/controller:v1.12.0 registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.4.4"
+
+# Create Kind cluster for local development (idempotent) - uses tar loading
 kind-create:
-    @KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters 2>/dev/null | grep -q '^evented$' || \
-        KIND_EXPERIMENTAL_PROVIDER=podman kind create cluster --config kind-config.yaml --name evented
+    @KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters 2>/dev/null | grep -q '^angzarr$' || \
+        KIND_EXPERIMENTAL_PROVIDER=podman kind create cluster --config kind-config.yaml --name angzarr
+    @kubectl config use-context kind-angzarr 2>/dev/null || true
 
-# Delete Kind cluster
+# Create Kind cluster with local registry (faster image loading)
+kind-create-registry:
+    uv run "{{TOP}}/scripts/kind-with-registry.py"
+
+# Show Kind cluster and registry status
+kind-status:
+    uv run "{{TOP}}/scripts/kind-with-registry.py" status
+
+# Delete Kind cluster (keeps registry for reuse)
 kind-delete:
-    KIND_EXPERIMENTAL_PROVIDER=podman kind delete cluster --name evented
+    uv run "{{TOP}}/scripts/kind-with-registry.py" delete
 
-# === Builders (Parallel) ===
+# Delete Kind cluster and registry
+kind-delete-all:
+    uv run "{{TOP}}/scripts/kind-with-registry.py" delete-all
 
-# Build all builders in parallel (~3 min instead of ~4 min)
-builders:
-    #!/usr/bin/env bash
-    set -e
-    echo "Building all builders in parallel..."
-    podman build -t docker.io/library/evented-builder:{{IMAGE_TAG}} -f examples/docker/Dockerfile.builder . &
-    PID_RUST=$!
-    podman build -t docker.io/library/evented-builder-go:{{IMAGE_TAG}} -f examples/docker/Dockerfile.builder-go . &
-    PID_GO=$!
-    podman build -t docker.io/library/evented-builder-python:{{IMAGE_TAG}} -f examples/docker/Dockerfile.builder-python . &
-    PID_PYTHON=$!
-    echo "Waiting for builders: Rust=$PID_RUST Go=$PID_GO Python=$PID_PYTHON"
-    wait $PID_RUST && echo "Rust builder done" || exit 1
-    wait $PID_GO && echo "Go builder done" || exit 1
-    wait $PID_PYTHON && echo "Python builder done" || exit 1
-    echo "All builders complete"
+# === Local Registry Operations ===
 
-# === Rust Images ===
+# Push image to local registry (faster than kind load)
+registry-push IMAGE:
+    podman tag {{IMAGE}} localhost:{{REGISTRY_PORT}}/{{IMAGE}}
+    podman push localhost:{{REGISTRY_PORT}}/{{IMAGE}} --tls-verify=false
 
-# Build Rust builder image (compiles all binaries once)
-builder-rust:
-    podman build -t docker.io/library/evented-builder:{{IMAGE_TAG}} -f examples/docker/Dockerfile.builder .
+# Push all Rust images to local registry
+registry-push-rust:
+    @for img in evented:{{IMAGE_TAG}} angzarr-stream:{{IMAGE_TAG}} angzarr-gateway:{{IMAGE_TAG}} \
+        rs-customer:{{IMAGE_TAG}} rs-transaction:{{IMAGE_TAG}} rs-saga-loyalty:{{IMAGE_TAG}} \
+        rs-projector-receipt:{{IMAGE_TAG}} rs-projector-log-customer:{{IMAGE_TAG}} rs-projector-log-transaction:{{IMAGE_TAG}}; do \
+        podman tag "docker.io/library/$img" "localhost:{{REGISTRY_PORT}}/$img" && \
+        podman push "localhost:{{REGISTRY_PORT}}/$img" --tls-verify=false; \
+    done
 
-# Alias for backwards compatibility
-builder: builder-rust
-
-# Build Rust runtime images from builder (fast - just copies binaries)
-images-build-rust: builder-rust
-    podman build -t docker.io/library/evented:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=evented-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=customer-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=transaction-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-saga-loyalty:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=saga-loyalty-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-projector-receipt:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=projector-receipt-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-projector-log-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=projector-log-customer-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-projector-log-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=projector-log-transaction-server \
-        -f examples/docker/Dockerfile.runtime .
-
-# === Go Images ===
-
-# Build Go builder image (compiles all binaries once)
-builder-go:
-    podman build -t docker.io/library/evented-builder-go:{{IMAGE_TAG}} -f examples/docker/Dockerfile.builder-go .
-
-# Build Go runtime images from builder
-images-build-go: builder-go
-    podman build -t docker.io/library/go-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-customer \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-transaction \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-saga-loyalty:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-saga-loyalty \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-projector-receipt:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-projector-receipt \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-projector-log-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-projector-log-customer \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-projector-log-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-projector-log-transaction \
-        -f examples/docker/Dockerfile.runtime-go .
-
-# === Python Images ===
-
-# Build Python builder image (creates venvs for all services)
-builder-python:
-    podman build -t docker.io/library/evented-builder-python:{{IMAGE_TAG}} -f examples/docker/Dockerfile.builder-python .
-
-# Build Python runtime images from builder
-images-build-python: builder-python
-    podman build -t docker.io/library/py-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=customer \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=transaction \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-saga-loyalty:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=saga-loyalty \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-projector-receipt:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=projector-receipt \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-projector-log-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=projector-log-customer \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-projector-log-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=projector-log-transaction \
-        -f examples/docker/Dockerfile.runtime-python .
-
-# === All Images ===
-
-# Build all runtimes (assumes builders exist)
-runtimes-rust:
-    podman build -t docker.io/library/evented:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=evented-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=customer-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=transaction-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-saga-loyalty:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=saga-loyalty-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-projector-receipt:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=projector-receipt-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-projector-log-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=projector-log-customer-server \
-        -f examples/docker/Dockerfile.runtime .
-    podman build -t docker.io/library/rs-projector-log-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder:{{IMAGE_TAG}} \
-        --build-arg BINARY=projector-log-transaction-server \
-        -f examples/docker/Dockerfile.runtime .
-
-runtimes-go:
-    podman build -t docker.io/library/go-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-customer \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-transaction \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-saga-loyalty:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-saga-loyalty \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-projector-receipt:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-projector-receipt \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-projector-log-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-projector-log-customer \
-        -f examples/docker/Dockerfile.runtime-go .
-    podman build -t docker.io/library/go-projector-log-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-go:{{IMAGE_TAG}} \
-        --build-arg BINARY=go-projector-log-transaction \
-        -f examples/docker/Dockerfile.runtime-go .
-
-runtimes-python:
-    podman build -t docker.io/library/py-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=customer \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=transaction \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-saga-loyalty:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=saga-loyalty \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-projector-receipt:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=projector-receipt \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-projector-log-customer:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=projector-log-customer \
-        -f examples/docker/Dockerfile.runtime-python .
-    podman build -t docker.io/library/py-projector-log-transaction:{{IMAGE_TAG}} \
-        --build-arg BUILDER_IMAGE=docker.io/library/evented-builder-python:{{IMAGE_TAG}} \
-        --build-arg SERVICE=projector-log-transaction \
-        -f examples/docker/Dockerfile.runtime-python .
-
-# Build all images with parallel builders (~3 min total)
-images-build-all: builders runtimes-rust runtimes-go runtimes-python
-
-# Alias: build only Rust images (default for now)
-images-build: images-build-rust
+# === Infrastructure Images ===
 
 # Pull infrastructure images
 images-pull-infra:
     @for img in {{INFRA_IMAGES}}; do podman pull "$img" || true; done
 
-# Load application images into kind cluster
-images-load: images-build
-    @for img in {{APP_IMAGES}}; do \
-        "{{TOP}}/scripts/kind-load-images.sh" evented "docker.io/library/$img:{{IMAGE_TAG}}"; \
-    done
-
 # Load infrastructure images into kind cluster
 images-load-infra: images-pull-infra
     @for img in {{INFRA_IMAGES}}; do \
-        "{{TOP}}/scripts/kind-load-images.sh" evented "$img"; \
+        "{{TOP}}/scripts/kind-load-images.sh" angzarr "$img"; \
     done
 
-# Apply k8s manifests with correct image tags
-k8s-apply:
-    @kubectl kustomize "{{TOP}}/k8s/overlays/dev" | \
-        sed 's|evented:latest|evented:{{IMAGE_TAG}}|g' | \
-        sed 's|rs-customer:latest|rs-customer:{{IMAGE_TAG}}|g' | \
-        sed 's|rs-transaction:latest|rs-transaction:{{IMAGE_TAG}}|g' | \
-        sed 's|rs-saga-loyalty:latest|rs-saga-loyalty:{{IMAGE_TAG}}|g' | \
-        sed 's|rs-projector-receipt:latest|rs-projector-receipt:{{IMAGE_TAG}}|g' | \
-        sed 's|rs-projector-log-customer:latest|rs-projector-log-customer:{{IMAGE_TAG}}|g' | \
-        sed 's|rs-projector-log-transaction:latest|rs-projector-log-transaction:{{IMAGE_TAG}}|g' | \
-        kubectl apply -f -
+# Pull ingress controller images
+images-pull-ingress:
+    @for img in {{INGRESS_IMAGES}}; do podman pull "$img" || true; done
 
-# Full deployment: create cluster, build, load, and apply
-deploy: kind-create images-load images-load-infra k8s-apply
-    @echo "Waiting for pods to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=evented -n evented --timeout=180s || true
-    @kubectl get pods -n evented
+# Load ingress images into kind cluster
+images-load-ingress: images-pull-ingress
+    @for img in {{INGRESS_IMAGES}}; do \
+        "{{TOP}}/scripts/kind-load-images.sh" angzarr "$img"; \
+    done
+
+# Full deployment: create cluster, build, and deploy via skaffold (recommended)
+deploy: kind-create-registry secrets-init
+    cd "{{TOP}}/examples/rust" && skaffold run
+    @echo "Waiting for core services via gRPC health..."
+    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
+        localhost:50051 localhost:50052 || true
+    @kubectl get pods -n angzarr
 
 # Delete deployment
 undeploy:
-    kubectl delete namespace evented --ignore-not-found=true
+    cd "{{TOP}}/examples/rust" && skaffold delete || true
+    kubectl delete namespace angzarr --ignore-not-found=true
 
-# Rebuild and redeploy (faster iteration)
-redeploy: images-load k8s-apply
-    @kubectl rollout restart deployment -n evented
-    @echo "Waiting for rollout..."
-    @kubectl rollout status deployment/evented -n evented --timeout=120s || true
-    @kubectl get pods -n evented
+# Rebuild and redeploy via skaffold (handles incremental builds)
+redeploy:
+    cd "{{TOP}}/examples/rust" && skaffold run
+    @kubectl get pods -n angzarr
+
+# Redeploy a single Rust service (e.g., just redeploy-service customer)
+redeploy-service SERVICE:
+    @echo "Building {{SERVICE}}..."
+    podman build --target {{SERVICE}} -t docker.io/library/rs-{{SERVICE}}:{{IMAGE_TAG}} \
+        -f examples/rust/Containerfile "{{TOP}}/examples/rust"
+    podman tag docker.io/library/rs-{{SERVICE}}:{{IMAGE_TAG}} localhost:{{REGISTRY_PORT}}/rs-{{SERVICE}}:{{IMAGE_TAG}}
+    podman push localhost:{{REGISTRY_PORT}}/rs-{{SERVICE}}:{{IMAGE_TAG}} --tls-verify=false
+    @kubectl rollout restart deployment/rs-{{SERVICE}} -n angzarr 2>/dev/null || true
+    @kubectl rollout status deployment/rs-{{SERVICE}} -n angzarr --timeout=60s 2>/dev/null || true
+
+# Helm upgrade (use after registry-push-rust)
+helm-upgrade:
+    helm upgrade --install angzarr "{{TOP}}/deploy/helm/angzarr" \
+        -f "{{TOP}}/deploy/helm/angzarr/values-local.yaml" \
+        --namespace angzarr --create-namespace
+
+# Uninstall helm release
+helm-uninstall:
+    helm uninstall angzarr --namespace angzarr || true
+
+# === Secrets Management ===
+
+# Generate and store secure secrets (idempotent - won't overwrite existing)
+secrets-init:
+    uv run "{{TOP}}/scripts/manage_secrets.py" init
+
+# Force regenerate all secrets (credential rotation)
+secrets-rotate:
+    uv run "{{TOP}}/scripts/manage_secrets.py" rotate
+
+# Show current secrets (from K8s secret store, masked)
+secrets-show:
+    uv run "{{TOP}}/scripts/manage_secrets.py" show
+
+# Show current secrets (full values revealed)
+secrets-reveal:
+    uv run "{{TOP}}/scripts/manage_secrets.py" show --reveal
+
+# Check if secrets exist
+secrets-check:
+    uv run "{{TOP}}/scripts/manage_secrets.py" check
+
+# === External Secrets Operator ===
+
+# Install External Secrets Operator
+eso-install:
+    helm repo add external-secrets https://charts.external-secrets.io || true
+    helm repo update
+    helm upgrade --install external-secrets external-secrets/external-secrets \
+        --namespace external-secrets \
+        --create-namespace \
+        --set installCRDs=true \
+        --wait
+
+# Full ESO setup (install + generate secrets)
+eso-setup: eso-install secrets-init
+
+# Check ESO status
+eso-status:
+    @kubectl get pods -n external-secrets 2>/dev/null || echo "ESO not installed"
+    @echo "---"
+    @kubectl get secretstores,externalsecrets -n angzarr 2>/dev/null || echo "No ESO resources in evented namespace"
+
+# === Service Discovery / DNS ===
+
+# List all services with their DNS names
+svc-list:
+    @echo "Services in evented namespace:"
+    @kubectl get svc -n angzarr -o custom-columns='NAME:.metadata.name,DNS:.metadata.annotations.evented\.io/dns-name,CLUSTER-IP:.spec.clusterIP,PORTS:.spec.ports[*].port'
+
+# Test DNS resolution from within the cluster
+svc-dns-test SERVICE:
+    @kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -n angzarr -- nslookup {{SERVICE}}.angzarr.svc.cluster.local
+
+# Show service endpoints
+svc-endpoints:
+    @kubectl get endpoints -n angzarr
+
+# === Ingress Controller ===
+
+# Install nginx-ingress controller for Kind
+ingress-install:
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+    @echo "Waiting for ingress controller to be ready..."
+    kubectl wait --namespace ingress-nginx \
+        --for=condition=ready pod \
+        --selector=app.kubernetes.io/component=controller \
+        --timeout=120s
+
+# Check ingress status
+ingress-status:
+    @kubectl get pods -n ingress-nginx
+    @echo "---"
+    @kubectl get ingress -n angzarr
+
+# === gRPC Health Checks ===
+
+# Check gRPC health of all core services
+grpc-health-check:
+    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 10 --interval 1 \
+        localhost:50051 localhost:50052 localhost:50053 localhost:50054
+
+# Check gRPC health of command handler only
+grpc-health-command:
+    @grpcurl -plaintext -d '{"service": ""}' localhost:50051 grpc.health.v1.Health/Check
+
+# Check gRPC health of query service only
+grpc-health-query:
+    @grpcurl -plaintext -d '{"service": ""}' localhost:50052 grpc.health.v1.Health/Check
+
+# Check gRPC health of gateway only
+grpc-health-gateway:
+    @grpcurl -plaintext -d '{"service": ""}' localhost:50053 grpc.health.v1.Health/Check
+
+# Check gRPC health of stream only
+grpc-health-stream:
+    @grpcurl -plaintext -d '{"service": ""}' localhost:50054 grpc.health.v1.Health/Check
+
+# === gRPC Client Helpers ===
+
+# List available gRPC services via command handler
+grpc-list-command:
+    grpcurl -plaintext localhost:50051 list
+
+# List available gRPC services via gateway
+grpc-list-gateway:
+    grpcurl -plaintext localhost:50053 list
+
+# List available gRPC services via stream
+grpc-list-stream:
+    grpcurl -plaintext localhost:50054 list
+
+# Describe BusinessCoordinator service
+grpc-describe-command:
+    grpcurl -plaintext localhost:50051 describe angzarr.BusinessCoordinator
+
+# Describe CommandProxy service
+grpc-describe-gateway:
+    grpcurl -plaintext localhost:50053 describe angzarr.CommandProxy
+
+# Describe EventStream service
+grpc-describe-stream:
+    grpcurl -plaintext localhost:50054 describe angzarr.EventStream
+
+# Send a command via command handler (example)
+grpc-example-command DOMAIN AGGREGATE_ID:
+    @echo "Sending command to {{DOMAIN}}/{{AGGREGATE_ID}}..."
+    grpcurl -plaintext -d '{"cover": {"domain": "{{DOMAIN}}", "root": {"value": "{{AGGREGATE_ID}}"}}, "pages": []}' \
+        localhost:50051 angzarr.BusinessCoordinator/Handle
+
+# Send a command via gateway with streaming response (example)
+grpc-example-gateway DOMAIN AGGREGATE_ID:
+    @echo "Sending command via gateway to {{DOMAIN}}/{{AGGREGATE_ID}} with streaming..."
+    grpcurl -plaintext -d '{"cover": {"domain": "{{DOMAIN}}", "root": {"value": "{{AGGREGATE_ID}}"}}, "pages": [], "correlation_id": ""}' \
+        localhost:50053 angzarr.CommandProxy/Execute
+
+# Subscribe to events by correlation ID (example)
+grpc-subscribe-stream CORRELATION_ID:
+    @echo "Subscribing to events with correlation ID {{CORRELATION_ID}}..."
+    grpcurl -plaintext -d '{"correlation_id": "{{CORRELATION_ID}}"}' \
+        localhost:50054 angzarr.EventStream/Subscribe
+
+# Query events for an aggregate
+grpc-query-events DOMAIN AGGREGATE_ID:
+    @echo "Querying events for {{DOMAIN}}/{{AGGREGATE_ID}}..."
+    grpcurl -plaintext -d '{"domain": "{{DOMAIN}}", "root": {"value": "{{AGGREGATE_ID}}"}, "lower_bound": 0, "upper_bound": 0}' \
+        localhost:50052 angzarr.EventQuery/GetEvents
+
+# === Full Setup with Ingress ===
+
+# Full deployment with ingress controller
+deploy-with-ingress: kind-create-registry images-load-ingress ingress-install secrets-init
+    cd "{{TOP}}/examples/rust" && skaffold run
+    @echo "Waiting for all services via gRPC health..."
+    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
+        localhost:50051 localhost:50052 localhost:50053 localhost:50054
+    @kubectl get pods -n angzarr
+    @echo ""
+    @echo "Services available:"
+    @echo "  Command (NodePort): localhost:50051"
+    @echo "  Query (NodePort):   localhost:50052"
+    @echo "  Gateway (NodePort): localhost:50053"
+    @echo "  Stream (NodePort):  localhost:50054"
+    @echo ""
+    @echo "Ingress endpoints (add to /etc/hosts: 127.0.0.1 command.angzarr.local gateway.angzarr.local query.angzarr.local stream.angzarr.local angzarr.local):"
+    @echo "  Command: command.angzarr.local:80"
+    @echo "  Gateway: gateway.angzarr.local:80"
+    @echo "  Query:   query.angzarr.local:80"
+    @echo "  Stream:  stream.angzarr.local:80"
+    @echo ""
+    @echo "Example grpcurl commands:"
+    @echo "  just grpc-list-command"
+    @echo "  just grpc-list-gateway"
+    @echo "  just grpc-list-stream"
+    @echo "  just grpc-query-events customer <uuid>"

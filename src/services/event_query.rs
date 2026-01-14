@@ -23,11 +23,27 @@ pub struct EventQueryService {
 
 impl EventQueryService {
     /// Create a new event query service.
+    ///
+    /// Note: Snapshot reading is disabled by default for queries because clients
+    /// typically want to see all raw events, not a snapshot-optimized view.
     pub fn new(event_store: Arc<dyn EventStore>, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
+        Self::with_options(event_store, snapshot_store, false)
+    }
+
+    /// Create a new event query service with configurable snapshot reading.
+    ///
+    /// Use `enable_snapshots = true` for repair use cases where snapshots
+    /// improve efficiency. Use `false` (default) for raw event queries.
+    pub fn with_options(
+        event_store: Arc<dyn EventStore>,
+        snapshot_store: Arc<dyn SnapshotStore>,
+        enable_snapshots: bool,
+    ) -> Self {
         Self {
-            event_book_repo: Arc::new(EventBookRepository::new(
+            event_book_repo: Arc::new(EventBookRepository::with_config(
                 event_store.clone(),
                 snapshot_store,
+                enable_snapshots,
             )),
             event_store,
         }
@@ -39,6 +55,35 @@ impl EventQueryTrait for EventQueryService {
     type GetEventsStream = ReceiverStream<Result<EventBook, Status>>;
     type SynchronizeStream = ReceiverStream<Result<EventBook, Status>>;
     type GetAggregateRootsStream = ReceiverStream<Result<AggregateRoot, Status>>;
+
+    async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
+        let query = request.into_inner();
+        let domain = query.domain;
+        let root = query
+            .root
+            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID"))?;
+
+        let root_uuid = uuid::Uuid::from_slice(&root.value)
+            .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
+
+        // Support range queries if bounds are specified
+        let book = if query.lower_bound > 0 || query.upper_bound > 0 {
+            let upper = if query.upper_bound == 0 {
+                u32::MAX
+            } else {
+                query.upper_bound
+            };
+            self.event_book_repo
+                .get_from_to(&domain, root_uuid, query.lower_bound, upper)
+                .await
+        } else {
+            self.event_book_repo.get(&domain, root_uuid).await
+        }
+        .map_err(|e| Status::internal(e.to_string()))?;
+
+        info!(domain = %domain, root = %root_uuid, pages = book.pages.len(), "GetEventBook");
+        Ok(Response::new(book))
+    }
 
     async fn get_events(
         &self,
@@ -220,6 +265,133 @@ mod tests {
         let service = create_test_service_with_mocks(event_store.clone(), snapshot_store.clone());
 
         (service, event_store, snapshot_store)
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_empty_aggregate() {
+        let (service, _, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert!(book.pages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_with_data() {
+        let (service, event_store, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        let events = vec![EventPage {
+            sequence: Some(event_page::Sequence::Num(0)),
+            event: Some(Any {
+                type_url: "test.Event".to_string(),
+                value: vec![],
+            }),
+            created_at: None,
+            synchronous: false,
+        }];
+        event_store.add("orders", root, events).await.unwrap();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert_eq!(book.pages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_missing_root() {
+        let (service, _, _) = create_default_test_service();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: None,
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_err());
+        let status = response.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_invalid_uuid() {
+        let (service, _, _) = create_default_test_service();
+
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: vec![1, 2, 3],
+            }),
+            lower_bound: 0,
+            upper_bound: 0,
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_err());
+        let status = response.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_with_range() {
+        let (service, event_store, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        // Add multiple events
+        for i in 0..5 {
+            let events = vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(i)),
+                event: Some(Any {
+                    type_url: format!("test.Event{}", i),
+                    value: vec![],
+                }),
+                created_at: None,
+                synchronous: false,
+            }];
+            event_store.add("orders", root, events).await.unwrap();
+        }
+
+        // Query for range [2, 4)
+        let query = Query {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            lower_bound: 2,
+            upper_bound: 4,
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert_eq!(book.pages.len(), 2);
     }
 
     #[tokio::test]

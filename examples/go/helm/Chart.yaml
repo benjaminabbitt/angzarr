@@ -1,0 +1,11 @@
+apiVersion: v2
+name: angzarr-go-examples
+description: Angzarr Go example services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - angzarr
+  - go
+  - cqrs
+  - event-sourcing

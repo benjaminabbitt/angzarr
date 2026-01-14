@@ -1,0 +1,101 @@
+# Example: Angzarr as sidecar to business logic applications
+# Each application type gets its own pod with angzarr sidecar
+
+replicaCount: 1
+
+# Angzarr sidecar image
+image:
+  repository: angzarr
+  tag: "latest"
+
+# AMQP for event bus (projectors and sagas subscribe here)
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@rabbitmq:5672"
+
+# MongoDB for event storage (shared across aggregates)
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@mongodb:27017"
+    database: "angzarr"
+
+# MongoDB subchart
+mongodb:
+  enabled: true
+  auth:
+    rootUsername: "root"
+    rootPassword: ""  # Set via --set
+    usernames: ["angzarr"]
+    passwords: [""]  # Set via --set
+    databases: ["angzarr"]
+  persistence:
+    size: 10Gi
+
+# RabbitMQ subchart
+rabbitmq:
+  enabled: true
+  auth:
+    username: "guest"
+    password: ""  # Set via --set
+  persistence:
+    size: 5Gi
+
+# Application deployments - each gets angzarr as sidecar
+applications:
+  # Business logic applications
+  # Pod structure: [business-app] <-> [angzarr sidecar]
+  # - Business app implements angzarr.BusinessLogic gRPC service
+  # - Angzarr sidecar provides BusinessCoordinator + EventQuery services
+  # - External clients call angzarr's BusinessCoordinator
+  # - Angzarr calls business app to process commands
+  business:
+    - name: discount-service
+      image:
+        repository: discount-business
+        tag: "latest"
+      domain: "discounts"
+      port: 50051
+
+    - name: orders-service
+      image:
+        repository: orders-business
+        tag: "latest"
+      domain: "orders"
+      port: 50051
+
+  # Projector applications
+  # Pod structure: [projector-app] <-> [angzarr sidecar (projector mode)]
+  # - Angzarr sidecar subscribes to AMQP events
+  # - Angzarr calls projector gRPC service with EventBook
+  # - Projector builds and maintains read models
+  projectors:
+    - name: order-summary-projector
+      image:
+        repository: order-projector
+        tag: "latest"
+      port: 50051
+      topics:
+        - "orders.*"
+        - "discounts.DiscountApplied"
+
+  # Saga applications
+  # Pod structure: [saga-app] <-> [angzarr sidecar (saga mode)]
+  # - Angzarr sidecar subscribes to AMQP events
+  # - Angzarr calls saga gRPC service with EventBook
+  # - Saga can issue commands through BusinessCoordinator
+  sagas:
+    - name: order-fulfillment
+      image:
+        repository: fulfillment-saga
+        tag: "latest"
+      port: 50051
+      topics:
+        - "orders.OrderCreated"
+        - "payments.PaymentCompleted"
+        - "payments.PaymentFailed"
+        - "inventory.ItemReserved"
+        - "inventory.ReservationFailed"
+
+logging:
+  level: info

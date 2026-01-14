@@ -1,0 +1,68 @@
+# Ruby examples
+# Container: podman build -t angzarr-dev-ruby -f examples/ruby/Containerfile.dev .
+# Run:       podman run --rm -v .:/app:Z -w /app/examples/ruby angzarr-dev-ruby just test
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Build dev container
+container-build:
+    cd {{TOP}} && podman build -t angzarr-dev-ruby -f examples/ruby/Containerfile.dev .
+
+# Run tests in container
+container-test:
+    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/ruby angzarr-dev-ruby just test
+
+# Install dependencies for all Ruby examples
+setup:
+    cd customer && bundle install
+    cd transaction && bundle install
+    cd saga-loyalty && bundle install
+    cd projector-receipt && bundle install
+    cd projector-log-customer && bundle install
+    cd projector-log-transaction && bundle install
+
+# Test all Ruby examples
+test:
+    cd customer && bundle exec rspec
+    cd transaction && bundle exec rspec
+    cd saga-loyalty && bundle exec rspec
+    cd projector-receipt && bundle exec rspec
+    cd projector-log-customer && bundle exec rspec
+    cd projector-log-transaction && bundle exec rspec
+
+# Clean all Ruby examples
+clean:
+    rm -rf customer/.bundle customer/vendor || true
+    rm -rf transaction/.bundle transaction/vendor || true
+    rm -rf saga-loyalty/.bundle saga-loyalty/vendor || true
+    rm -rf projector-receipt/.bundle projector-receipt/vendor || true
+    rm -rf projector-log-customer/.bundle projector-log-customer/vendor || true
+    rm -rf projector-log-transaction/.bundle projector-log-transaction/vendor || true
+
+# Format all Ruby code
+fmt:
+    cd customer && bundle exec rubocop -a || true
+    cd transaction && bundle exec rubocop -a || true
+    cd saga-loyalty && bundle exec rubocop -a || true
+    cd projector-receipt && bundle exec rubocop -a || true
+    cd projector-log-customer && bundle exec rubocop -a || true
+    cd projector-log-transaction && bundle exec rubocop -a || true
+
+# Lint all Ruby code
+lint:
+    cd customer && bundle exec rubocop
+    cd transaction && bundle exec rubocop
+    cd saga-loyalty && bundle exec rubocop
+    cd projector-receipt && bundle exec rubocop
+    cd projector-log-customer && bundle exec rubocop
+    cd projector-log-transaction && bundle exec rubocop
+
+# Lint Helm chart
+helm-lint:
+    helm lint helm

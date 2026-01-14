@@ -2,8 +2,20 @@
 @.scm/context.md
 <!-- SCM:END -->
 
-## Technical Parity
-The in process execution is intended to ease development by making it run in a single binary.  It is not intended to be used in production.
 
-## Interface Parity
-The FFI (Go) and Python client interfaces must maintain parity with the gRPC interface. All three should expose identical operations with equivalent semantics. Changes to the gRPC service definitions must be reflected in FFI and Python bindings.
+## Tooling
+### Helm
+Use helm for all deployments.  Do not use kustomize.
+
+### Python's Role
+Python is to be used for support files and general scripting.  Things like manage secrets, initializing a registry, and waiting for grpc health checks.  The author prefers python for this role over shell.
+
+### Skaffold
+Use skaffold for all deployments. (this uses helm under the hood)
+
+## Examples files
+Examples for nine common languages are provided.  This should encompass the vast majority of general purpose software development.
+
+Each example directory should be largely self sufficient and know how to build and deploy itself.  A few exceptions:
+1) They'll all require the angzarr base binaries/images.  They're implementing an angzarr application.
+2) The gherkin files themselves are in the examples directory.  They are kept out of the language specific directories because they are applicable to all languages and should be kept DRY.  They're business speak.

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Install development tools for evented-rs on Debian
+# Install development tools for angzarr-rs on Debian
 # Uninstalls Docker and installs Podman, Kind, kubectl
 # Run with: sudo ./scripts/install-dev-tools.sh
 
 set -euo pipefail
 
 echo "=========================================="
-echo "  evented-rs Development Setup for Debian"
+echo "  angzarr-rs Development Setup for Debian"
 echo "=========================================="
 echo ""
 

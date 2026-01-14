@@ -1,10 +1,22 @@
 # Rust example gRPC servers
+# Container: podman build -t angzarr-dev-rust -f examples/rust/Containerfile.dev .
+# Run:       podman run --rm -v .:/app:Z -w /app/examples/rust angzarr-dev-rust just test
 
 set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
 
 # Show available commands
 default:
     @just --list
+
+# Build dev container
+container-build:
+    cd {{TOP}} && podman build -t angzarr-dev-rust -f examples/rust/Containerfile.dev .
+
+# Run tests in container
+container-test:
+    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/rust angzarr-dev-rust just test
 
 # === Build ===
 
@@ -76,16 +88,31 @@ clean:
     cd projector-log-customer && just clean || true
     cd projector-log-transaction && just clean || true
 
+# === Format ===
+
+# Format all Rust examples
+fmt:
+    cd customer && cargo fmt
+    cd transaction && cargo fmt
+    cd saga-loyalty && cargo fmt
+    cd projector-receipt && cargo fmt
+    cd projector-log-customer && cargo fmt
+    cd projector-log-transaction && cargo fmt
+
 # === Lint ===
 
 # Lint all Rust examples
 lint:
-    cd customer && just lint || true
-    cd transaction && just lint || true
-    cd saga-loyalty && just lint || true
-    cd projector-receipt && just lint || true
-    cd projector-log-customer && just lint || true
-    cd projector-log-transaction && just lint || true
+    cd customer && cargo clippy -- -D warnings
+    cd transaction && cargo clippy -- -D warnings
+    cd saga-loyalty && cargo clippy -- -D warnings
+    cd projector-receipt && cargo clippy -- -D warnings
+    cd projector-log-customer && cargo clippy -- -D warnings
+    cd projector-log-transaction && cargo clippy -- -D warnings
+
+# Lint Helm chart
+helm-lint:
+    helm lint helm
 
 # === Run ===
 
@@ -112,3 +139,45 @@ run-projector-log-customer:
 # Run projector-log-transaction server (default port 50057)
 run-projector-log-transaction:
     cd projector-log-transaction && just run
+
+# === Skaffold Development (recommended workflow) ===
+
+# One-time setup: configure Podman and Skaffold for local registry
+setup:
+    @echo "Configuring Podman for local registry..."
+    @uv run "{{TOP}}/scripts/configure_podman_registry.py"
+    @echo "Configuring Skaffold for Kind..."
+    @uv run "{{TOP}}/scripts/configure_skaffold.py"
+    uv run "{{TOP}}/scripts/kind-with-registry.py"
+
+# Start skaffold dev loop (watches files, rebuilds on change)
+dev: setup
+    cd "{{TOP}}" && just secrets-init
+    skaffold dev
+
+# Build and deploy once
+run: setup
+    cd "{{TOP}}" && just secrets-init
+    skaffold run
+
+# Build images only (no deploy)
+build-images:
+    skaffold build
+
+# Delete deployed resources
+delete:
+    skaffold delete
+
+# Debug mode (with debugger support)
+debug: setup
+    cd "{{TOP}}" && just secrets-init
+    skaffold debug
+
+# Aliases for backwards compatibility
+skaffold-init: setup
+skaffold-setup: setup
+skaffold-dev: dev
+skaffold-run: run
+skaffold-build: build-images
+skaffold-delete: delete
+skaffold-debug: debug

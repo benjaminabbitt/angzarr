@@ -1,0 +1,105 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: angzarr-grpc
+  namespace: angzarr
+  labels:
+    app: angzarr
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: command.angzarr.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: angzarr
+                port:
+                  number: 50051
+    - host: gateway.angzarr.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: angzarr-gateway
+                port:
+                  number: 1316
+    - host: query.angzarr.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: angzarr
+                port:
+                  number: 50052
+    - host: stream.angzarr.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: angzarr-stream
+                port:
+                  number: 1315
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: angzarr-grpc-path
+  namespace: angzarr
+  labels:
+    app: angzarr
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: angzarr.local
+      http:
+        paths:
+          - path: /command(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: angzarr
+                port:
+                  number: 50051
+          - path: /gateway(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: angzarr-gateway
+                port:
+                  number: 1316
+          - path: /query(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: angzarr
+                port:
+                  number: 50052
+          - path: /stream(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: angzarr-stream
+                port:
+                  number: 1315

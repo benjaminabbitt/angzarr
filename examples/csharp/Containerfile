@@ -1,0 +1,104 @@
+# C# examples - multi-stage build
+# Build from this directory: docker build -t cs-customer --target customer .
+# Build all: docker build -t cs-examples .
+
+# ============================================================================
+# Builder stage - compiles .NET projects
+# ============================================================================
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS builder
+
+WORKDIR /app
+
+# Copy proto files
+COPY proto/ /app/proto/
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY Customer/Customer.csproj ./
+RUN dotnet restore
+COPY Customer/ ./
+RUN dotnet publish -c Release -o /out --no-restore
+
+FROM builder AS build-transaction
+COPY Transaction/Transaction.csproj ./
+RUN dotnet restore
+COPY Transaction/ ./
+RUN dotnet publish -c Release -o /out --no-restore
+
+FROM builder AS build-saga-loyalty
+COPY SagaLoyalty/SagaLoyalty.csproj ./
+RUN dotnet restore
+COPY SagaLoyalty/ ./
+RUN dotnet publish -c Release -o /out --no-restore
+
+FROM builder AS build-projector-receipt
+COPY ProjectorReceipt/ProjectorReceipt.csproj ./
+RUN dotnet restore
+COPY ProjectorReceipt/ ./
+RUN dotnet publish -c Release -o /out --no-restore
+
+FROM builder AS build-projector-log-customer
+COPY ProjectorLogCustomer/ProjectorLogCustomer.csproj ./
+RUN dotnet restore
+COPY ProjectorLogCustomer/ ./
+RUN dotnet publish -c Release -o /out --no-restore
+
+FROM builder AS build-projector-log-transaction
+COPY ProjectorLogTransaction/ProjectorLogTransaction.csproj ./
+RUN dotnet restore
+COPY ProjectorLogTransaction/ ./
+RUN dotnet publish -c Release -o /out --no-restore
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS runtime
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /out ./
+ENV PORT=50600
+ENV ASPNETCORE_URLS=http://+:50600
+EXPOSE 50600
+CMD ["dotnet", "Customer.dll"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /out ./
+ENV PORT=50601
+ENV ASPNETCORE_URLS=http://+:50601
+EXPOSE 50601
+CMD ["dotnet", "Transaction.dll"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /out ./
+ENV PORT=50602
+ENV ASPNETCORE_URLS=http://+:50602
+EXPOSE 50602
+CMD ["dotnet", "SagaLoyalty.dll"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /out ./
+ENV PORT=50603
+ENV ASPNETCORE_URLS=http://+:50603
+EXPOSE 50603
+CMD ["dotnet", "ProjectorReceipt.dll"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /out ./
+ENV PORT=50604
+ENV ASPNETCORE_URLS=http://+:50604
+EXPOSE 50604
+CMD ["dotnet", "ProjectorLogCustomer.dll"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /out ./
+ENV PORT=50605
+ENV ASPNETCORE_URLS=http://+:50605
+EXPOSE 50605
+CMD ["dotnet", "ProjectorLogTransaction.dll"]

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-01-11T22:37:49" hostname="33b8ad96725c" time="0.093">
+  <properties/>
+  <testcase name="Create a new customer" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.044"/>
+  <testcase name="Cannot create customer twice" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.007"/>
+  <testcase name="Creating customer requires name" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.004"/>
+  <testcase name="Creating customer requires email" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.005"/>
+  <testcase name="Add loyalty points to existing customer" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.007"/>
+  <testcase name="Add loyalty points accumulates balance" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.004"/>
+  <testcase name="Cannot add points to non-existent customer" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.002"/>
+  <testcase name="Cannot add zero points" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.002"/>
+  <testcase name="Cannot add negative points" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.003"/>
+  <testcase name="Redeem loyalty points" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.003"/>
+  <testcase name="Cannot redeem more points than available" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.002"/>
+  <testcase name="Cannot redeem points from non-existent customer" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.002"/>
+  <testcase name="Cannot redeem zero points" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.002"/>
+  <testcase name="Rebuild state from multiple events" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.002"/>
+  <testcase name="Lifetime points not reduced by redemptions" classname="dev.angzarr.examples.customer.cucumber.CucumberTestRunner" time="0.001"/>
+  <system-out><![CDATA[
+Scenario: Create a new customer                                                          ?[90m# features/customer.feature:7?[0m
+  ?[32mGiven ?[0m?[32mno prior events for the aggregate?[0m                                                ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.noPriorEventsForAggregate()?[0m
+22:37:49.152 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- creating_customer name=Alice email=alice@example.com
+  ?[32mWhen ?[0m?[32mI handle a CreateCustomer command with name ?[0m?[32m?[1m"Alice"?[0m?[32m and email ?[0m?[32m?[1m"alice@example.com"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleCreateCustomerCommand(java.lang.String,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe result is a CustomerCreated event?[0m                                             ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.resultIsCustomerCreatedEvent()?[0m
+  ?[32mAnd ?[0m?[32mthe event has name ?[0m?[32m?[1m"Alice"?[0m                                                         ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasName(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe event has email ?[0m?[32m?[1m"alice@example.com"?[0m                                            ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasEmail(java.lang.String)?[0m
+
+Scenario: Cannot create customer twice                                                 ?[90m# features/customer.feature:14?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Bob"?[0m?[32m and email ?[0m?[32m?[1m"bob@example.com"?[0m            ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mWhen ?[0m?[32mI handle a CreateCustomer command with name ?[0m?[32m?[1m"Bob2"?[0m?[32m and email ?[0m?[32m?[1m"bob2@example.com"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleCreateCustomerCommand(java.lang.String,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"FAILED_PRECONDITION"?[0m                             ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe error message contains ?[0m?[32m?[1m"already exists"?[0m                                      ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.errorMessageContains(java.lang.String)?[0m
+
+Scenario: Creating customer requires name                                            ?[90m# features/customer.feature:20?[0m
+  ?[32mGiven ?[0m?[32mno prior events for the aggregate?[0m                                            ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.noPriorEventsForAggregate()?[0m
+  ?[32mWhen ?[0m?[32mI handle a CreateCustomer command with name ?[0m?[32m?[1m""?[0m?[32m and email ?[0m?[32m?[1m"noname@example.com"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleCreateCustomerCommand(java.lang.String,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"INVALID_ARGUMENT"?[0m                              ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe error message contains ?[0m?[32m?[1m"name"?[0m                                              ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.errorMessageContains(java.lang.String)?[0m
+
+Scenario: Creating customer requires email                                ?[90m# features/customer.feature:26?[0m
+  ?[32mGiven ?[0m?[32mno prior events for the aggregate?[0m                                 ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.noPriorEventsForAggregate()?[0m
+  ?[32mWhen ?[0m?[32mI handle a CreateCustomer command with name ?[0m?[32m?[1m"NoEmail"?[0m?[32m and email ?[0m?[32m?[1m""?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleCreateCustomerCommand(java.lang.String,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"INVALID_ARGUMENT"?[0m                   ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe error message contains ?[0m?[32m?[1m"email"?[0m                                  ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.errorMessageContains(java.lang.String)?[0m
+
+Scenario: Add loyalty points to existing customer                                     ?[90m# features/customer.feature:34?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Carol"?[0m?[32m and email ?[0m?[32m?[1m"carol@example.com"?[0m       ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+22:37:49.179 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- adding_loyalty_points points=100 new_balance=100 reason=signup bonus
+  ?[32mWhen ?[0m?[32mI handle an AddLoyaltyPoints command with ?[0m?[32m?[1m100?[0m?[32m points and reason ?[0m?[32m?[1m"signup bonus"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleAddLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe result is a LoyaltyPointsAdded event?[0m                                       ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.resultIsLoyaltyPointsAddedEvent()?[0m
+  ?[32mAnd ?[0m?[32mthe event has points ?[0m?[32m?[1m100?[0m                                                        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasPoints(int)?[0m
+  ?[32mAnd ?[0m?[32mthe event has new_balance ?[0m?[32m?[1m100?[0m                                                   ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasNewBalance(int)?[0m
+  ?[32mAnd ?[0m?[32mthe event has reason ?[0m?[32m?[1m"signup bonus"?[0m                                             ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasReason(java.lang.String)?[0m
+
+Scenario: Add loyalty points accumulates balance                                 ?[90m# features/customer.feature:42?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Dave"?[0m?[32m and email ?[0m?[32m?[1m"dave@example.com"?[0m    ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m50?[0m?[32m points and new_balance ?[0m?[32m?[1m50?[0m               ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+22:37:49.184 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- adding_loyalty_points points=30 new_balance=80 reason=purchase
+  ?[32mWhen ?[0m?[32mI handle an AddLoyaltyPoints command with ?[0m?[32m?[1m30?[0m?[32m points and reason ?[0m?[32m?[1m"purchase"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleAddLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe result is a LoyaltyPointsAdded event?[0m                                  ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.resultIsLoyaltyPointsAddedEvent()?[0m
+  ?[32mAnd ?[0m?[32mthe event has new_balance ?[0m?[32m?[1m80?[0m                                               ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasNewBalance(int)?[0m
+
+Scenario: Cannot add points to non-existent customer                          ?[90m# features/customer.feature:49?[0m
+  ?[32mGiven ?[0m?[32mno prior events for the aggregate?[0m                                     ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.noPriorEventsForAggregate()?[0m
+  ?[32mWhen ?[0m?[32mI handle an AddLoyaltyPoints command with ?[0m?[32m?[1m100?[0m?[32m points and reason ?[0m?[32m?[1m"test"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleAddLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"FAILED_PRECONDITION"?[0m                    ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe error message contains ?[0m?[32m?[1m"does not exist"?[0m                             ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.errorMessageContains(java.lang.String)?[0m
+
+Scenario: Cannot add zero points                                               ?[90m# features/customer.feature:55?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Eve"?[0m?[32m and email ?[0m?[32m?[1m"eve@example.com"?[0m    ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mWhen ?[0m?[32mI handle an AddLoyaltyPoints command with ?[0m?[32m?[1m0?[0m?[32m points and reason ?[0m?[32m?[1m"invalid"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleAddLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"INVALID_ARGUMENT"?[0m                        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe error message contains ?[0m?[32m?[1m"positive"?[0m                                    ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.errorMessageContains(java.lang.String)?[0m
+
+Scenario: Cannot add negative points                                             ?[90m# features/customer.feature:61?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Frank"?[0m?[32m and email ?[0m?[32m?[1m"frank@example.com"?[0m  ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mWhen ?[0m?[32mI handle an AddLoyaltyPoints command with ?[0m?[32m?[1m-10?[0m?[32m points and reason ?[0m?[32m?[1m"invalid"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleAddLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"INVALID_ARGUMENT"?[0m                          ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+
+Scenario: Redeem loyalty points                                                  ?[90m# features/customer.feature:68?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Grace"?[0m?[32m and email ?[0m?[32m?[1m"grace@example.com"?[0m  ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m100?[0m?[32m points and new_balance ?[0m?[32m?[1m100?[0m             ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+22:37:49.195 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- redeeming_loyalty_points points=50 new_balance=50 redemption_type=discount
+  ?[32mWhen ?[0m?[32mI handle a RedeemLoyaltyPoints command with ?[0m?[32m?[1m50?[0m?[32m points and type ?[0m?[32m?[1m"discount"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleRedeemLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe result is a LoyaltyPointsRedeemed event?[0m                               ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.resultIsLoyaltyPointsRedeemedEvent()?[0m
+  ?[32mAnd ?[0m?[32mthe event has points ?[0m?[32m?[1m50?[0m                                                    ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasPoints(int)?[0m
+  ?[32mAnd ?[0m?[32mthe event has new_balance ?[0m?[32m?[1m50?[0m                                               ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasNewBalance(int)?[0m
+  ?[32mAnd ?[0m?[32mthe event has redemption_type ?[0m?[32m?[1m"discount"?[0m                                   ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.eventHasRedemptionType(java.lang.String)?[0m
+
+Scenario: Cannot redeem more points than available                                ?[90m# features/customer.feature:77?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Henry"?[0m?[32m and email ?[0m?[32m?[1m"henry@example.com"?[0m   ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m50?[0m?[32m points and new_balance ?[0m?[32m?[1m50?[0m                ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+  ?[32mWhen ?[0m?[32mI handle a RedeemLoyaltyPoints command with ?[0m?[32m?[1m100?[0m?[32m points and type ?[0m?[32m?[1m"discount"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleRedeemLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"FAILED_PRECONDITION"?[0m                        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe error message contains ?[0m?[32m?[1m"Insufficient points"?[0m                            ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.errorMessageContains(java.lang.String)?[0m
+
+Scenario: Cannot redeem points from non-existent customer                        ?[90m# features/customer.feature:84?[0m
+  ?[32mGiven ?[0m?[32mno prior events for the aggregate?[0m                                        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.noPriorEventsForAggregate()?[0m
+  ?[32mWhen ?[0m?[32mI handle a RedeemLoyaltyPoints command with ?[0m?[32m?[1m50?[0m?[32m points and type ?[0m?[32m?[1m"discount"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleRedeemLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"FAILED_PRECONDITION"?[0m                       ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+
+Scenario: Cannot redeem zero points                                            ?[90m# features/customer.feature:89?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Ivy"?[0m?[32m and email ?[0m?[32m?[1m"ivy@example.com"?[0m    ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m100?[0m?[32m points and new_balance ?[0m?[32m?[1m100?[0m           ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+  ?[32mWhen ?[0m?[32mI handle a RedeemLoyaltyPoints command with ?[0m?[32m?[1m0?[0m?[32m points and type ?[0m?[32m?[1m"invalid"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.handleRedeemLoyaltyPointsCommand(int,java.lang.String)?[0m
+  ?[32mThen ?[0m?[32mthe command fails with status ?[0m?[32m?[1m"INVALID_ARGUMENT"?[0m                        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.commandFailsWithStatus(java.lang.String)?[0m
+
+Scenario: Rebuild state from multiple events                                  ?[90m# features/customer.feature:97?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Jack"?[0m?[32m and email ?[0m?[32m?[1m"jack@example.com"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m100?[0m?[32m points and new_balance ?[0m?[32m?[1m100?[0m          ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m50?[0m?[32m points and new_balance ?[0m?[32m?[1m150?[0m           ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsRedeemed event with ?[0m?[32m?[1m30?[0m?[32m points and new_balance ?[0m?[32m?[1m120?[0m        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsRedeemedEvent(int,int)?[0m
+  ?[32mWhen ?[0m?[32mI rebuild the customer state?[0m                                           ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.rebuildCustomerState()?[0m
+  ?[32mThen ?[0m?[32mthe state has name ?[0m?[32m?[1m"Jack"?[0m                                              ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.stateHasName(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe state has email ?[0m?[32m?[1m"jack@example.com"?[0m                                  ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.stateHasEmail(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe state has loyalty_points ?[0m?[32m?[1m120?[0m                                        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.stateHasLoyaltyPoints(int)?[0m
+  ?[32mAnd ?[0m?[32mthe state has lifetime_points ?[0m?[32m?[1m150?[0m                                       ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.stateHasLifetimePoints(int)?[0m
+
+Scenario: Lifetime points not reduced by redemptions                          ?[90m# features/customer.feature:108?[0m
+  ?[32mGiven ?[0m?[32ma CustomerCreated event with name ?[0m?[32m?[1m"Kate"?[0m?[32m and email ?[0m?[32m?[1m"kate@example.com"?[0m ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsAdded event with ?[0m?[32m?[1m200?[0m?[32m points and new_balance ?[0m?[32m?[1m200?[0m          ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsAddedEvent(int,int)?[0m
+  ?[32mAnd ?[0m?[32ma LoyaltyPointsRedeemed event with ?[0m?[32m?[1m50?[0m?[32m points and new_balance ?[0m?[32m?[1m150?[0m        ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.loyaltyPointsRedeemedEvent(int,int)?[0m
+  ?[32mWhen ?[0m?[32mI rebuild the customer state?[0m                                           ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.rebuildCustomerState()?[0m
+  ?[32mThen ?[0m?[32mthe state has loyalty_points ?[0m?[32m?[1m150?[0m                                       ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.stateHasLoyaltyPoints(int)?[0m
+  ?[32mAnd ?[0m?[32mthe state has lifetime_points ?[0m?[32m?[1m200?[0m                                       ?[90m# void dev.angzarr.examples.customer.cucumber.CustomerStepDefinitions.stateHasLifetimePoints(int)?[0m
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

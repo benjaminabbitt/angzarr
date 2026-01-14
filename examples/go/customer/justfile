@@ -10,8 +10,8 @@ default:
 
 # Copy generated proto files
 proto:
-    mkdir -p proto/evented proto/examples
-    cp -r "{{TOP}}/generated/go/evented/"* proto/evented/ 2>/dev/null || true
+    mkdir -p proto/angzarr proto/examples
+    cp -r "{{TOP}}/generated/go/angzarr/"* proto/angzarr/ 2>/dev/null || true
     cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
 
 # Build the binary
@@ -30,7 +30,7 @@ run-port port:
 # Clean build artifacts
 clean:
     rm -f customer
-    rm -rf proto/evented/*.go proto/examples/*.go
+    rm -rf proto/angzarr/*.go proto/examples/*.go
 
 # Test
 test: proto

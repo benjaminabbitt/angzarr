@@ -1,0 +1,175 @@
+//! Streaming event handler for angzarr-stream service.
+
+use std::collections::HashMap;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use futures::Stream;
+use tokio::sync::{mpsc, RwLock};
+use tokio_stream::wrappers::ReceiverStream;
+use tonic::{Request, Response, Status};
+use tracing::{debug, warn};
+
+use crate::interfaces::{BusError, EventHandler};
+use crate::proto::event_stream_server::EventStream;
+use crate::proto::{EventBook, EventStreamFilter};
+
+type SubscriberSender = mpsc::Sender<Result<EventBook, Status>>;
+
+/// Subscriber registration.
+pub(crate) struct Subscriber {
+    pub(crate) sender: SubscriberSender,
+}
+
+/// Streaming event service.
+///
+/// Receives events from AMQP and forwards to subscribers filtered by correlation ID.
+/// Events without matching subscribers are dropped.
+pub struct StreamService {
+    /// Map of correlation_id -> list of subscribers
+    subscriptions: Arc<RwLock<HashMap<String, Vec<Subscriber>>>>,
+}
+
+impl StreamService {
+    /// Create a new stream service.
+    pub fn new() -> Self {
+        Self {
+            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Get a reference to subscriptions for the event handler.
+    pub(crate) fn subscriptions(&self) -> Arc<RwLock<HashMap<String, Vec<Subscriber>>>> {
+        Arc::clone(&self.subscriptions)
+    }
+}
+
+impl Default for StreamService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[tonic::async_trait]
+impl EventStream for StreamService {
+    type SubscribeStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
+
+    async fn subscribe(
+        &self,
+        request: Request<EventStreamFilter>,
+    ) -> Result<Response<Self::SubscribeStream>, Status> {
+        let filter = request.into_inner();
+
+        if filter.correlation_id.is_empty() {
+            return Err(Status::invalid_argument(
+                "correlation_id is required for event stream subscription",
+            ));
+        }
+
+        let correlation_id = filter.correlation_id.clone();
+        debug!(correlation_id = %correlation_id, "New subscription registered");
+
+        // Create channel for this subscriber
+        let (tx, rx) = mpsc::channel(32);
+
+        // Clone tx for cleanup task before moving into subscriber
+        let cleanup_tx = tx.clone();
+
+        // Register subscriber
+        {
+            let mut subs = self.subscriptions.write().await;
+            subs.entry(correlation_id.clone())
+                .or_default()
+                .push(Subscriber { sender: tx });
+        }
+
+        // Spawn cleanup task that removes subscriber when channel closes
+        let subscriptions = Arc::clone(&self.subscriptions);
+        let cleanup_correlation_id = correlation_id.clone();
+        tokio::spawn(async move {
+            cleanup_tx.closed().await;
+            debug!(correlation_id = %cleanup_correlation_id, "Subscription ended, cleaning up");
+            let mut subs = subscriptions.write().await;
+            if let Some(subscribers) = subs.get_mut(&cleanup_correlation_id) {
+                subscribers.retain(|s| !s.sender.is_closed());
+                if subscribers.is_empty() {
+                    subs.remove(&cleanup_correlation_id);
+                }
+            }
+        });
+
+        let stream = ReceiverStream::new(rx);
+        Ok(Response::new(Box::pin(stream)))
+    }
+}
+
+/// Event handler that forwards to stream subscribers.
+pub struct StreamEventHandler {
+    subscriptions: Arc<RwLock<HashMap<String, Vec<Subscriber>>>>,
+}
+
+impl StreamEventHandler {
+    /// Create handler from stream service.
+    pub fn new(service: &StreamService) -> Self {
+        Self {
+            subscriptions: service.subscriptions(),
+        }
+    }
+}
+
+impl EventHandler for StreamEventHandler {
+    fn handle(
+        &self,
+        book: Arc<EventBook>,
+    ) -> futures::future::BoxFuture<'static, Result<(), BusError>> {
+        let subscriptions = Arc::clone(&self.subscriptions);
+        let book = Arc::clone(&book);
+
+        Box::pin(async move {
+            // Skip events without correlation ID
+            if book.correlation_id.is_empty() {
+                debug!("Dropping event without correlation_id");
+                return Ok(());
+            }
+
+            let correlation_id = &book.correlation_id;
+
+            // Look up subscribers
+            let mut subs = subscriptions.write().await;
+            if let Some(subscribers) = subs.get_mut(correlation_id) {
+                // Send to all subscribers, remove closed ones
+                let mut to_remove = Vec::new();
+                for (idx, sub) in subscribers.iter().enumerate() {
+                    if sub.sender.is_closed() {
+                        to_remove.push(idx);
+                        continue;
+                    }
+
+                    if let Err(e) = sub.sender.try_send(Ok((*book).clone())) {
+                        warn!(
+                            correlation_id = %correlation_id,
+                            error = %e,
+                            "Failed to send event to subscriber"
+                        );
+                        if sub.sender.is_closed() {
+                            to_remove.push(idx);
+                        }
+                    }
+                }
+
+                // Remove closed subscribers (reverse order to preserve indices)
+                for idx in to_remove.into_iter().rev() {
+                    subscribers.remove(idx);
+                }
+
+                // Remove correlation_id entry if no subscribers left
+                if subscribers.is_empty() {
+                    subs.remove(correlation_id);
+                }
+            }
+            // Events without subscribers are silently dropped
+
+            Ok(())
+        })
+    }
+}

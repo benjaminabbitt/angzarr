@@ -5,12 +5,15 @@
 use async_trait::async_trait;
 use prost::Message;
 
+use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
+use angzarr::proto::{
+    business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
+    EventBook, EventPage,
+};
 use common::proto::{
     ApplyDiscount, CancelTransaction, CompleteTransaction, CreateTransaction, DiscountApplied,
     TransactionCancelled, TransactionCompleted, TransactionCreated, TransactionState,
 };
-use evented::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
-use evented::proto::{event_page::Sequence, CommandBook, ContextualCommand, EventBook, EventPage};
 
 pub mod errmsg {
     pub const TRANSACTION_EXISTS: &str = "Transaction already exists";
@@ -24,6 +27,7 @@ pub mod errmsg {
 }
 
 /// Business logic for Transaction aggregate.
+#[derive(Debug)]
 pub struct TransactionLogic {
     domain: String,
 }
@@ -39,9 +43,7 @@ impl TransactionLogic {
 
     /// Get the next sequence number from prior events.
     fn next_sequence(&self, event_book: Option<&EventBook>) -> u32 {
-        event_book
-            .map(|b| b.pages.len() as u32)
-            .unwrap_or(0)
+        event_book.map(|b| b.pages.len() as u32).unwrap_or(0)
     }
 
     /// Rebuild transaction state from events.
@@ -54,6 +56,15 @@ impl TransactionLogic {
         let Some(book) = event_book else {
             return state;
         };
+
+        // Start from snapshot if present
+        if let Some(snapshot) = &book.snapshot {
+            if let Some(snapshot_state) = &snapshot.state {
+                if let Ok(s) = TransactionState::decode(snapshot_state.value.as_slice()) {
+                    state = s;
+                }
+            }
+        }
 
         for page in &book.pages {
             let Some(event) = &page.event else {
@@ -87,7 +98,6 @@ impl TransactionLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &TransactionState,
-        next_seq: u32,
     ) -> Result<EventBook> {
         if state.status != "new" {
             return Err(BusinessError::Rejected(
@@ -114,17 +124,27 @@ impl TransactionLogic {
             .sum();
 
         let event = TransactionCreated {
+            customer_id: cmd.customer_id.clone(),
+            items: cmd.items.clone(),
+            subtotal_cents: subtotal,
+            created_at: Some(now()),
+        };
+
+        // New state after applying event
+        let new_state = TransactionState {
             customer_id: cmd.customer_id,
             items: cmd.items,
             subtotal_cents: subtotal,
-            created_at: Some(now()),
+            discount_cents: 0,
+            discount_type: String::new(),
+            status: "pending".to_string(),
         };
 
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.TransactionCreated".to_string(),
                     value: event.encode_to_vec(),
@@ -132,6 +152,11 @@ impl TransactionLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.TransactionState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 
@@ -140,7 +165,6 @@ impl TransactionLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &TransactionState,
-        next_seq: u32,
     ) -> Result<EventBook> {
         if state.status != "pending" {
             return Err(BusinessError::Rejected(errmsg::NOT_PENDING.to_string()));
@@ -170,17 +194,27 @@ impl TransactionLogic {
         };
 
         let event = DiscountApplied {
-            discount_type: cmd.discount_type,
+            discount_type: cmd.discount_type.clone(),
             value: cmd.value,
             discount_cents,
             coupon_code: cmd.coupon_code,
+        };
+
+        // New state after applying event
+        let new_state = TransactionState {
+            customer_id: state.customer_id.clone(),
+            items: state.items.clone(),
+            subtotal_cents: state.subtotal_cents,
+            discount_cents,
+            discount_type: cmd.discount_type,
+            status: state.status.clone(),
         };
 
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.DiscountApplied".to_string(),
                     value: event.encode_to_vec(),
@@ -188,6 +222,11 @@ impl TransactionLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.TransactionState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 
@@ -196,7 +235,6 @@ impl TransactionLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &TransactionState,
-        next_seq: u32,
     ) -> Result<EventBook> {
         if state.status != "pending" {
             return Err(BusinessError::Rejected(errmsg::NOT_PENDING.to_string()));
@@ -215,11 +253,21 @@ impl TransactionLogic {
             completed_at: Some(now()),
         };
 
+        // New state after applying event
+        let new_state = TransactionState {
+            customer_id: state.customer_id.clone(),
+            items: state.items.clone(),
+            subtotal_cents: state.subtotal_cents,
+            discount_cents: state.discount_cents,
+            discount_type: state.discount_type.clone(),
+            status: "completed".to_string(),
+        };
+
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.TransactionCompleted".to_string(),
                     value: event.encode_to_vec(),
@@ -227,6 +275,11 @@ impl TransactionLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.TransactionState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 
@@ -235,7 +288,6 @@ impl TransactionLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &TransactionState,
-        next_seq: u32,
     ) -> Result<EventBook> {
         if state.status != "pending" {
             return Err(BusinessError::Rejected(errmsg::NOT_PENDING.to_string()));
@@ -249,11 +301,21 @@ impl TransactionLogic {
             cancelled_at: Some(now()),
         };
 
+        // New state after applying event
+        let new_state = TransactionState {
+            customer_id: state.customer_id.clone(),
+            items: state.items.clone(),
+            subtotal_cents: state.subtotal_cents,
+            discount_cents: state.discount_cents,
+            discount_type: state.discount_type.clone(),
+            status: "cancelled".to_string(),
+        };
+
         Ok(EventBook {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
+                sequence: Some(Sequence::Force(true)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.TransactionCancelled".to_string(),
                     value: event.encode_to_vec(),
@@ -261,6 +323,11 @@ impl TransactionLogic {
                 created_at: Some(now()),
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: Some(prost_types::Any {
+                type_url: "type.examples/examples.TransactionState".to_string(),
+                value: new_state.encode_to_vec(),
+            }),
         })
     }
 }
@@ -271,14 +338,78 @@ impl Default for TransactionLogic {
     }
 }
 
+// Public test methods for cucumber tests
+impl TransactionLogic {
+    /// Public access to rebuild_state for testing.
+    pub fn rebuild_state_public(&self, event_book: Option<&EventBook>) -> TransactionState {
+        self.rebuild_state(event_book)
+    }
+
+    /// Public access to handle_create_transaction for testing.
+    pub fn handle_create_transaction_public(
+        &self,
+        command_book: &CommandBook,
+        state: &TransactionState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_create_transaction(command_book, &command_any.value, state)
+    }
+
+    /// Public access to handle_apply_discount for testing.
+    pub fn handle_apply_discount_public(
+        &self,
+        command_book: &CommandBook,
+        state: &TransactionState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_apply_discount(command_book, &command_any.value, state)
+    }
+
+    /// Public access to handle_complete_transaction for testing.
+    pub fn handle_complete_transaction_public(
+        &self,
+        command_book: &CommandBook,
+        state: &TransactionState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_complete_transaction(command_book, &command_any.value, state)
+    }
+
+    /// Public access to handle_cancel_transaction for testing.
+    pub fn handle_cancel_transaction_public(
+        &self,
+        command_book: &CommandBook,
+        state: &TransactionState,
+    ) -> Result<EventBook> {
+        let command_any = command_book
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+        self.handle_cancel_transaction(command_book, &command_any.value, state)
+    }
+}
+
 #[async_trait]
 impl BusinessLogicClient for TransactionLogic {
-    async fn handle(&self, _domain: &str, cmd: ContextualCommand) -> Result<EventBook> {
+    async fn handle(&self, _domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
         let state = self.rebuild_state(prior_events);
-        let next_seq = self.next_sequence(prior_events);
+        self.next_sequence(prior_events);
 
         let Some(cb) = command_book else {
             return Err(BusinessError::Rejected(
@@ -296,21 +427,25 @@ impl BusinessLogicClient for TransactionLogic {
             .as_ref()
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
 
-        if command_any.type_url.ends_with("CreateTransaction") {
-            self.handle_create_transaction(cb, &command_any.value, &state, next_seq)
+        let events = if command_any.type_url.ends_with("CreateTransaction") {
+            self.handle_create_transaction(cb, &command_any.value, &state)?
         } else if command_any.type_url.ends_with("ApplyDiscount") {
-            self.handle_apply_discount(cb, &command_any.value, &state, next_seq)
+            self.handle_apply_discount(cb, &command_any.value, &state)?
         } else if command_any.type_url.ends_with("CompleteTransaction") {
-            self.handle_complete_transaction(cb, &command_any.value, &state, next_seq)
+            self.handle_complete_transaction(cb, &command_any.value, &state)?
         } else if command_any.type_url.ends_with("CancelTransaction") {
-            self.handle_cancel_transaction(cb, &command_any.value, &state, next_seq)
+            self.handle_cancel_transaction(cb, &command_any.value, &state)?
         } else {
-            Err(BusinessError::Rejected(format!(
+            return Err(BusinessError::Rejected(format!(
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )))
-        }
+            )));
+        };
+
+        Ok(BusinessResponse {
+            result: Some(business_response::Result::Events(events)),
+        })
     }
 
     fn has_domain(&self, domain: &str) -> bool {
@@ -335,7 +470,8 @@ fn now() -> prost_types::Timestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use evented::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+    use angzarr::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+    use common::proto::LineItem;
 
     fn make_command_book(domain: &str, root: &[u8], type_url: &str, value: Vec<u8>) -> CommandBook {
         CommandBook {
@@ -353,6 +489,17 @@ mod tests {
                     value,
                 }),
             }],
+            correlation_id: String::new(),
+            saga_origin: None,
+            auto_resequence: false,
+            fact: false,
+        }
+    }
+
+    fn extract_events(response: BusinessResponse) -> EventBook {
+        match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events in response"),
         }
     }
 
@@ -389,7 +536,8 @@ mod tests {
             events: None,
         };
 
-        let result = logic.handle("transaction", ctx).await.unwrap();
+        let response = logic.handle("transaction", ctx).await.unwrap();
+        let result = extract_events(response);
         assert_eq!(result.pages.len(), 1);
 
         let event =
@@ -433,9 +581,7 @@ mod tests {
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "transaction".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -453,6 +599,8 @@ mod tests {
                 created_at: None,
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = ApplyDiscount {
@@ -473,7 +621,8 @@ mod tests {
             events: Some(prior),
         };
 
-        let result = logic.handle("transaction", ctx).await.unwrap();
+        let response = logic.handle("transaction", ctx).await.unwrap();
+        let result = extract_events(response);
         let event =
             DiscountApplied::decode(result.pages[0].event.as_ref().unwrap().value.as_slice())
                 .unwrap();
@@ -488,9 +637,7 @@ mod tests {
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "transaction".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -508,6 +655,8 @@ mod tests {
                 created_at: None,
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = CompleteTransaction {
@@ -526,7 +675,8 @@ mod tests {
             events: Some(prior),
         };
 
-        let result = logic.handle("transaction", ctx).await.unwrap();
+        let response = logic.handle("transaction", ctx).await.unwrap();
+        let result = extract_events(response);
         let event =
             TransactionCompleted::decode(result.pages[0].event.as_ref().unwrap().value.as_slice())
                 .unwrap();
@@ -542,9 +692,7 @@ mod tests {
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "transaction".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -562,6 +710,8 @@ mod tests {
                 created_at: None,
                 synchronous: false,
             }],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = CancelTransaction {
@@ -580,7 +730,8 @@ mod tests {
             events: Some(prior),
         };
 
-        let result = logic.handle("transaction", ctx).await.unwrap();
+        let response = logic.handle("transaction", ctx).await.unwrap();
+        let result = extract_events(response);
         let event =
             TransactionCancelled::decode(result.pages[0].event.as_ref().unwrap().value.as_slice())
                 .unwrap();
@@ -591,13 +742,11 @@ mod tests {
     async fn test_cannot_complete_cancelled_transaction() {
         let logic = TransactionLogic::new();
 
-        // Prior events: cancelled transaction
+        // Prior events: canceled transaction
         let prior = EventBook {
             cover: Some(Cover {
                 domain: "transaction".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             snapshot: None,
             pages: vec![
@@ -630,6 +779,8 @@ mod tests {
                     synchronous: false,
                 },
             ],
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = CompleteTransaction {

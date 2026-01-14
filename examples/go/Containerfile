@@ -1,0 +1,107 @@
+# Go examples - multi-stage build
+# Build from this directory: docker build -t go-customer --target customer .
+# Build all: docker build -t go-examples .
+
+# ============================================================================
+# Builder stage - compiles Go binaries
+# ============================================================================
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache git protobuf-dev
+
+WORKDIR /app
+
+# Copy proto and generated files
+COPY proto proto/
+COPY generated generated/
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+WORKDIR /app/service
+COPY customer/go.mod customer/go.sum ./
+RUN go mod download
+COPY customer/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+
+FROM builder AS build-transaction
+WORKDIR /app/service
+COPY transaction/go.mod transaction/go.sum ./
+RUN go mod download
+COPY transaction/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+
+FROM builder AS build-saga-loyalty
+WORKDIR /app/service
+COPY saga-loyalty/go.mod saga-loyalty/go.sum ./
+RUN go mod download
+COPY saga-loyalty/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+
+FROM builder AS build-projector-receipt
+WORKDIR /app/service
+COPY projector-receipt/go.mod projector-receipt/go.sum ./
+RUN go mod download
+COPY projector-receipt/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+
+FROM builder AS build-projector-log-customer
+WORKDIR /app/service
+COPY projector-log-customer/go.mod projector-log-customer/go.sum ./
+RUN go mod download
+COPY projector-log-customer/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+
+FROM builder AS build-projector-log-transaction
+WORKDIR /app/service
+COPY projector-log-transaction/go.mod projector-log-transaction/go.sum ./
+RUN go mod download
+COPY projector-log-transaction/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+WORKDIR /app
+USER nonroot:nonroot
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /server ./server
+ENV PORT=50200
+EXPOSE 50200
+ENTRYPOINT ["./server"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /server ./server
+ENV PORT=50201
+EXPOSE 50201
+ENTRYPOINT ["./server"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /server ./server
+ENV PORT=50202
+EXPOSE 50202
+ENTRYPOINT ["./server"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /server ./server
+ENV PORT=50203
+EXPOSE 50203
+ENTRYPOINT ["./server"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /server ./server
+ENV PORT=50204
+EXPOSE 50204
+ENTRYPOINT ["./server"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /server ./server
+ENV PORT=50205
+EXPOSE 50205
+ENTRYPOINT ["./server"]

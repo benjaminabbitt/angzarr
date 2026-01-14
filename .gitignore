@@ -13,6 +13,11 @@ Cargo.lock
 .env
 *.tfvars
 !*.tfvars.example
+secrets/
+*-secrets.yaml
+*-credentials.yaml
+deploy/helm/angzarr/values-secrets.yaml
+**/k8s/secrets.yaml
 
 # Python
 __pycache__/
@@ -29,7 +34,7 @@ __pycache__/
 /generated/
 
 # Python examples - generated protos
-examples/python/*/evented/
+examples/python/*/angzarr/
 examples/python/*/proto/
 
 # Go examples - generated protos

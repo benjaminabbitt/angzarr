@@ -1,0 +1,96 @@
+# Python examples - multi-stage build with uv
+# Build from this directory: docker build -t py-customer --target customer .
+# Build all: docker build -t py-examples .
+
+# ============================================================================
+# Builder stage - installs dependencies with uv
+# ============================================================================
+FROM python:3.12-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Copy generated proto files
+COPY generated/angzarr angzarr/proto/
+COPY generated/examples proto/
+RUN touch angzarr/__init__.py angzarr/proto/__init__.py proto/__init__.py
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY customer/pyproject.toml .
+RUN uv sync --no-dev
+COPY customer/*.py ./
+
+FROM builder AS build-transaction
+COPY transaction/pyproject.toml .
+RUN uv sync --no-dev
+COPY transaction/*.py ./
+
+FROM builder AS build-saga-loyalty
+COPY saga-loyalty/pyproject.toml .
+RUN uv sync --no-dev
+COPY saga-loyalty/*.py ./
+
+FROM builder AS build-projector-receipt
+COPY projector-receipt/pyproject.toml .
+RUN uv sync --no-dev
+COPY projector-receipt/*.py ./
+
+FROM builder AS build-projector-log-customer
+COPY projector-log-customer/pyproject.toml .
+RUN uv sync --no-dev
+COPY projector-log-customer/*.py ./
+
+FROM builder AS build-projector-log-transaction
+COPY projector-log-transaction/pyproject.toml .
+RUN uv sync --no-dev
+COPY projector-log-transaction/*.py ./
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM python:3.12-slim AS runtime
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+WORKDIR /app
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /app ./
+ENV PORT=50300
+EXPOSE 50300
+CMD ["uv", "run", "python", "server.py"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /app ./
+ENV PORT=50301
+EXPOSE 50301
+CMD ["uv", "run", "python", "server.py"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /app ./
+ENV PORT=50302
+EXPOSE 50302
+CMD ["uv", "run", "python", "server.py"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /app ./
+ENV PORT=50303
+EXPOSE 50303
+CMD ["uv", "run", "python", "server.py"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /app ./
+ENV PORT=50304
+EXPOSE 50304
+CMD ["uv", "run", "python", "server.py"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /app ./
+ENV PORT=50305
+EXPOSE 50305
+CMD ["uv", "run", "python", "server.py"]

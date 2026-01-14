@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - CucumberTestRunner</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>CucumberTestRunner</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/dev.angzarr.examples.projector.cucumber.html">dev.angzarr.examples.projector.cucumber</a> &gt; CucumberTestRunner</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">5</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">0.067s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div id="tabs">
+<ul class="tabLinks">
+<li>
+<a href="#tab0">Tests</a>
+</li>
+<li>
+<a href="#tab1">Standard output</a>
+</li>
+</ul>
+<div id="tab0" class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">Generate receipt for completed transaction</td>
+<td class="success">0.010s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">No projection for incomplete transaction</td>
+<td class="success">0.042s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Receipt has formatted text</td>
+<td class="success">0.006s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Receipt includes discount</td>
+<td class="success">0.004s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Receipt includes loyalty points earned</td>
+<td class="success">0.005s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div id="tab1" class="tab">
+<h2>Standard output</h2>
+<span class="code">
+<pre>
+Scenario: No projection for incomplete transaction                            ?[90m# features/projector-receipt.feature:5?[0m
+  ?[32mGiven ?[0m?[32ma TransactionCreated event with customer ?[0m?[32m?[1m&quot;cust-001&quot;?[0m?[32m and subtotal ?[0m?[32m?[1m2000?[0m ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)?[0m
+  ?[32mWhen ?[0m?[32mI project the events?[0m                                                   ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()?[0m
+  ?[32mThen ?[0m?[32mno projection is generated?[0m                                             ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.noProjectionIsGenerated()?[0m
+
+Scenario: Generate receipt for completed transaction                   ?[90m# features/projector-receipt.feature:10?[0m
+  ?[32mGiven ?[0m?[32ma TransactionCreated event with customer ?[0m?[32m?[1m&quot;cust-001&quot;?[0m?[32m and items:?[0m ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEventWithItems(java.lang.String,io.cucumber.datatable.DataTable)?[0m
+    | product_id | name   | quantity | unit_price_cents |
+    | SKU-001    | Widget | 2        | 1000             |
+  ?[32mAnd ?[0m?[32ma TransactionCompleted event with total ?[0m?[32m?[1m2000?[0m?[32m and payment ?[0m?[32m?[1m&quot;card&quot;?[0m  ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)?[0m
+  ?[32mWhen ?[0m?[32mI project the events?[0m                                            ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()?[0m
+  ?[32mThen ?[0m?[32ma Receipt projection is generated?[0m                               ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has customer_id ?[0m?[32m?[1m&quot;cust-001&quot;?[0m                           ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasCustomerId(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has final_total_cents ?[0m?[32m?[1m2000?[0m                           ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasFinalTotalCents(int)?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has payment_method ?[0m?[32m?[1m&quot;card&quot;?[0m                            ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasPaymentMethod(java.lang.String)?[0m
+
+Scenario: Receipt includes discount                                           ?[90m# features/projector-receipt.feature:21?[0m
+  ?[32mGiven ?[0m?[32ma TransactionCreated event with customer ?[0m?[32m?[1m&quot;cust-002&quot;?[0m?[32m and subtotal ?[0m?[32m?[1m2000?[0m ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)?[0m
+  ?[32mAnd ?[0m?[32ma DiscountApplied event with ?[0m?[32m?[1m200?[0m?[32m cents discount?[0m                         ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.discountAppliedEvent(int)?[0m
+  ?[32mAnd ?[0m?[32ma TransactionCompleted event with total ?[0m?[32m?[1m1800?[0m?[32m and payment ?[0m?[32m?[1m&quot;cash&quot;?[0m         ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)?[0m
+  ?[32mWhen ?[0m?[32mI project the events?[0m                                                   ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()?[0m
+  ?[32mThen ?[0m?[32ma Receipt projection is generated?[0m                                      ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has subtotal_cents ?[0m?[32m?[1m2000?[0m                                     ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasSubtotalCents(int)?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has discount_cents ?[0m?[32m?[1m200?[0m                                      ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasDiscountCents(int)?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has final_total_cents ?[0m?[32m?[1m1800?[0m                                  ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasFinalTotalCents(int)?[0m
+
+Scenario: Receipt includes loyalty points earned                                        ?[90m# features/projector-receipt.feature:31?[0m
+  ?[32mGiven ?[0m?[32ma TransactionCreated event with customer ?[0m?[32m?[1m&quot;cust-003&quot;?[0m?[32m and subtotal ?[0m?[32m?[1m5000?[0m           ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)?[0m
+  ?[32mAnd ?[0m?[32ma TransactionCompleted event with total ?[0m?[32m?[1m5000?[0m?[32m and payment ?[0m?[32m?[1m&quot;card&quot;?[0m?[32m earning ?[0m?[32m?[1m50?[0m?[32m points?[0m ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEventWithPoints(int,java.lang.String,int)?[0m
+  ?[32mWhen ?[0m?[32mI project the events?[0m                                                             ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()?[0m
+  ?[32mThen ?[0m?[32ma Receipt projection is generated?[0m                                                ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()?[0m
+  ?[32mAnd ?[0m?[32mthe receipt has loyalty_points_earned ?[0m?[32m?[1m50?[0m                                          ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasLoyaltyPointsEarned(int)?[0m
+
+Scenario: Receipt has formatted text                                   ?[90m# features/projector-receipt.feature:38?[0m
+  ?[32mGiven ?[0m?[32ma TransactionCreated event with customer ?[0m?[32m?[1m&quot;cust-004&quot;?[0m?[32m and items:?[0m ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEventWithItems(java.lang.String,io.cucumber.datatable.DataTable)?[0m
+    | product_id | name   | quantity | unit_price_cents |
+    | SKU-001    | Widget | 1        | 1000             |
+  ?[32mAnd ?[0m?[32ma TransactionCompleted event with total ?[0m?[32m?[1m1000?[0m?[32m and payment ?[0m?[32m?[1m&quot;card&quot;?[0m  ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)?[0m
+  ?[32mWhen ?[0m?[32mI project the events?[0m                                            ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()?[0m
+  ?[32mThen ?[0m?[32ma Receipt projection is generated?[0m                               ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()?[0m
+  ?[32mAnd ?[0m?[32mthe receipt formatted_text contains ?[0m?[32m?[1m&quot;RECEIPT&quot;?[0m                    ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptFormattedTextContains(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe receipt formatted_text contains ?[0m?[32m?[1m&quot;Widget&quot;?[0m                     ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptFormattedTextContains(java.lang.String)?[0m
+  ?[32mAnd ?[0m?[32mthe receipt formatted_text contains ?[0m?[32m?[1m&quot;Thank you&quot;?[0m                  ?[90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptFormattedTextContains(java.lang.String)?[0m
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="http://www.gradle.org">Gradle 8.5</a> at Jan 11, 2026, 9:58:01 PM</p>
+</div>
+</div>
+</body>
+</html>

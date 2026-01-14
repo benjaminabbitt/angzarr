@@ -1,4 +1,6 @@
 # Go examples - gRPC servers
+# Container: podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
+# Run:       podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
 
 set shell := ["bash", "-c"]
 
@@ -7,6 +9,14 @@ TOP := `git rev-parse --show-toplevel`
 # Show available commands
 default:
     @just --list
+
+# Build dev container
+container-build:
+    cd {{TOP}} && podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
+
+# Run tests in container
+container-test:
+    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
 
 # Build all Go examples
 build: build-customer build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
@@ -74,9 +84,22 @@ clean:
 
 # Format all Go code
 fmt:
-    cd customer && just fmt || true
-    cd transaction && just fmt || true
-    cd saga-loyalty && just fmt || true
-    cd projector-receipt && just fmt || true
-    cd projector-log-customer && just fmt || true
-    cd projector-log-transaction && just fmt || true
+    cd customer && go fmt ./...
+    cd transaction && go fmt ./...
+    cd saga-loyalty && go fmt ./...
+    cd projector-receipt && go fmt ./...
+    cd projector-log-customer && go fmt ./...
+    cd projector-log-transaction && go fmt ./...
+
+# Lint all Go code
+lint:
+    cd customer && go vet ./...
+    cd transaction && go vet ./...
+    cd saga-loyalty && go vet ./...
+    cd projector-receipt && go vet ./...
+    cd projector-log-customer && go vet ./...
+    cd projector-log-transaction && go vet ./...
+
+# Lint Helm chart
+helm-lint:
+    helm lint helm

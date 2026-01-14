@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cs-customer
+  namespace: angzarr
+  labels:
+    app: cs-customer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cs-customer
+  template:
+    metadata:
+      labels:
+        app: cs-customer
+    spec:
+      containers:
+        - name: cs-customer
+          image: cs-customer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50600
+          env:
+            - name: PORT
+              value: "50600"
+          readinessProbe:
+            grpc:
+              port: 50600
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50600
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cs-customer
+  namespace: angzarr
+spec:
+  selector:
+    app: cs-customer
+  ports:
+    - port: 50600
+      targetPort: 50600

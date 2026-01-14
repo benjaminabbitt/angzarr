@@ -1,4 +1,6 @@
 # Python examples
+# Container: podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
+# Run:       podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
 
 set shell := ["bash", "-c"]
 
@@ -7,6 +9,14 @@ TOP := `git rev-parse --show-toplevel`
 # Show available commands
 default:
     @just --list
+
+# Build dev container
+container-build:
+    cd {{TOP}} && podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
+
+# Run tests in container
+container-test:
+    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
 
 # Setup all Python examples
 setup: setup-common setup-customer setup-transaction setup-saga-loyalty setup-projector-receipt setup-projector-log-customer setup-projector-log-transaction
@@ -75,3 +85,25 @@ clean:
     cd projector-receipt && just clean || true
     cd projector-log-customer && just clean || true
     cd projector-log-transaction && just clean || true
+
+# Format all Python code
+fmt:
+    cd customer && uv run ruff format .
+    cd transaction && uv run ruff format .
+    cd saga-loyalty && uv run ruff format .
+    cd projector-receipt && uv run ruff format .
+    cd projector-log-customer && uv run ruff format .
+    cd projector-log-transaction && uv run ruff format .
+
+# Lint all Python code
+lint:
+    cd customer && uv run ruff check .
+    cd transaction && uv run ruff check .
+    cd saga-loyalty && uv run ruff check .
+    cd projector-receipt && uv run ruff check .
+    cd projector-log-customer && uv run ruff check .
+    cd projector-log-transaction && uv run ruff check .
+
+# Lint Helm chart
+helm-lint:
+    helm lint helm

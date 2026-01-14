@@ -1,6 +1,6 @@
 #!/bin/bash
 # Protobuf generation script for all languages
-# Usage: generate-protos [--rust] [--python] [--go] [--all]
+# Usage: generate-protos [--rust] [--python] [--go] [--ruby] [--all]
 
 set -euo pipefail
 
@@ -11,11 +11,13 @@ OUTPUT_DIR="/workspace/generated"
 GENERATE_RUST=false
 GENERATE_PYTHON=false
 GENERATE_GO=false
+GENERATE_RUBY=false
 
 if [ $# -eq 0 ]; then
     GENERATE_RUST=true
     GENERATE_PYTHON=true
     GENERATE_GO=true
+    GENERATE_RUBY=true
 else
     for arg in "$@"; do
         case $arg in
@@ -28,14 +30,18 @@ else
             --go)
                 GENERATE_GO=true
                 ;;
+            --ruby)
+                GENERATE_RUBY=true
+                ;;
             --all)
                 GENERATE_RUST=true
                 GENERATE_PYTHON=true
                 GENERATE_GO=true
+                GENERATE_RUBY=true
                 ;;
             *)
                 echo "Unknown option: $arg"
-                echo "Usage: generate-protos [--rust] [--python] [--go] [--all]"
+                echo "Usage: generate-protos [--rust] [--python] [--go] [--ruby] [--all]"
                 exit 1
                 ;;
         esac
@@ -123,6 +129,25 @@ if [ "$GENERATE_GO" = true ]; then
     done
 
     echo "Go protos generated in $GO_OUT"
+    echo ""
+fi
+
+# Generate Ruby code
+if [ "$GENERATE_RUBY" = true ]; then
+    echo "=== Generating Ruby code ==="
+    RUBY_OUT="$OUTPUT_DIR/ruby"
+    mkdir -p "$RUBY_OUT"
+
+    for proto in $PROTO_FILES; do
+        grpc_tools_ruby_protoc \
+            --ruby_out="$RUBY_OUT" \
+            --grpc_out="$RUBY_OUT" \
+            -I "$PROTO_DIR" \
+            -I /usr/include \
+            "$proto"
+    done
+
+    echo "Ruby protos generated in $RUBY_OUT"
     echo ""
 fi
 

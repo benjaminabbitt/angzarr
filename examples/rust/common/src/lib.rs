@@ -128,7 +128,10 @@ pub fn print_event_details(event_type: &str, data: &[u8]) {
                     event.final_total_cents as f64 / 100.0
                 );
                 println!("  {DIM}payment:{RESET}  {}", event.payment_method);
-                println!("  {DIM}loyalty:{RESET}  +{} pts", event.loyalty_points_earned);
+                println!(
+                    "  {DIM}loyalty:{RESET}  +{} pts",
+                    event.loyalty_points_earned
+                );
             }
         }
         "TransactionCancelled" => {

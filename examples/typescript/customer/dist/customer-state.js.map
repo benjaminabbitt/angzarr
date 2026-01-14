@@ -1,0 +1,1 @@
+{"version":3,"file":"customer-state.js","sourceRoot":"","sources":["../src/customer-state.ts"],"names":[],"mappings":"AAUA,MAAM,UAAU,kBAAkB;IAChC,OAAO;QACL,IAAI,EAAE,EAAE;QACR,KAAK,EAAE,EAAE;QACT,aAAa,EAAE,CAAC;QAChB,cAAc,EAAE,CAAC;KAClB,CAAC;AACJ,CAAC;AAED,MAAM,UAAU,cAAc,CAAC,KAAoB;IACjD,OAAO,KAAK,CAAC,IAAI,KAAK,EAAE,CAAC;AAC3B,CAAC"}

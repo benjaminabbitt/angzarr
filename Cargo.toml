@@ -12,21 +12,31 @@ members = [
 resolver = "2"
 
 [package]
-name = "evented"
+name = "angzarr"
 version = "0.1.0"
 edition = "2021"
 authors = ["Benjamin Abbitt"]
-description = "CQRS/ES framework - Rust implementation"
-license = "MIT"
+description = "Schema-first CQRS/ES framework for polyglot business logic"
+license-file = "LICENSE"
 
 [features]
 default = []
 amqp = ["lapin", "deadpool-lapin"]
 redis = ["dep:redis"]
+mongodb = ["dep:mongodb"]
+
+# Mode features - enable only code needed for each mode
+mode-standalone = []
+mode-command = []
+mode-projector = ["amqp"]
+mode-saga = ["amqp"]
+mode-stream = ["amqp"]
+mode-gateway = []
 
 [dependencies]
 # gRPC
 tonic = "0.12"
+tonic-health = "0.12"
 prost = "0.13"
 prost-types = "0.13"
 tokio-stream = "0.1"
@@ -40,7 +50,7 @@ sea-query-binder = { version = "0.7", features = ["sqlx-sqlite"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 
 # Core utilities
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 async-trait = "0.1"
 thiserror = "2"
 futures = "0.3"
@@ -62,12 +72,41 @@ deadpool-lapin = { version = "0.12", optional = true }
 # Redis (optional)
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
 
+# MongoDB (optional)
+mongodb = { version = "3", optional = true }
+
 [build-dependencies]
 tonic-build = "0.12"
 
 [[bin]]
-name = "evented-server"
-path = "src/bin/evented_server.rs"
+name = "angzarr-standalone"
+path = "src/bin/angzarr_standalone.rs"
+required-features = ["mode-standalone"]
+
+[[bin]]
+name = "angzarr-command"
+path = "src/bin/angzarr_command.rs"
+required-features = ["mode-command"]
+
+[[bin]]
+name = "angzarr-projector"
+path = "src/bin/angzarr_projector.rs"
+required-features = ["mode-projector"]
+
+[[bin]]
+name = "angzarr-saga"
+path = "src/bin/angzarr_saga.rs"
+required-features = ["mode-saga"]
+
+[[bin]]
+name = "angzarr-stream"
+path = "src/bin/angzarr_stream.rs"
+required-features = ["mode-stream"]
+
+[[bin]]
+name = "angzarr-gateway"
+path = "src/bin/angzarr_gateway.rs"
+required-features = ["mode-gateway"]
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -78,8 +117,4 @@ common = { path = "examples/rust/common" }
 
 [[test]]
 name = "acceptance"
-harness = false
-
-[[test]]
-name = "docker_integration"
 harness = false

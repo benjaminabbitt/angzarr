@@ -1,0 +1,36 @@
+# Kotlin dev container for running tests
+# Build: podman build --network=host -t angzarr-dev-kotlin -f examples/kotlin/Containerfile.dev .
+# Run:   podman run --rm -v .:/app:Z -w /app/examples/kotlin angzarr-dev-kotlin just test
+
+FROM docker.io/library/eclipse-temurin:21-jdk
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Install Gradle
+ENV GRADLE_VERSION=8.5
+RUN curl -sL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -o gradle.zip \
+    && unzip -q gradle.zip -d /opt \
+    && rm gradle.zip \
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle
+
+# Gradle settings: disable daemon, single worker for container networking compatibility
+ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1"
+
+# Pre-cache Kotlin/Gradle dependencies
+COPY examples/kotlin/customer/build.gradle.kts /tmp/deps/build.gradle.kts
+COPY examples/kotlin/customer/settings.gradle.kts /tmp/deps/settings.gradle.kts
+WORKDIR /tmp/deps
+RUN gradle dependencies --no-daemon --max-workers=1 || true
+RUN rm -rf /tmp/deps
+
+WORKDIR /app/examples/kotlin
+
+CMD ["just", "test"]

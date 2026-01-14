@@ -2,8 +2,8 @@
 //!
 //! Stores events in Redis using sorted sets for ordered retrieval.
 //! Key structure:
-//! - `evented:{domain}:{root}:events` - Sorted set of events by sequence
-//! - `evented:{domain}:roots` - Set of all root IDs in domain
+//! - `angzarr:{domain}:{root}:events` - Sorted set of events by sequence
+//! - `angzarr:{domain}:roots` - Set of all root IDs in domain
 
 use async_trait::async_trait;
 use prost::Message;
@@ -28,7 +28,7 @@ impl RedisEventStore {
     ///
     /// # Arguments
     /// * `url` - Redis connection URL (e.g., redis://localhost:6379)
-    /// * `key_prefix` - Prefix for all keys (default: "evented")
+    /// * `key_prefix` - Prefix for all keys (default: "angzarr")
     pub async fn new(url: &str, key_prefix: Option<&str>) -> Result<Self> {
         let client = Client::open(url)?;
         let conn = ConnectionManager::new(client).await?;
@@ -37,7 +37,7 @@ impl RedisEventStore {
 
         Ok(Self {
             conn,
-            key_prefix: key_prefix.unwrap_or("evented").to_string(),
+            key_prefix: key_prefix.unwrap_or("angzarr").to_string(),
         })
     }
 

@@ -1,0 +1,11 @@
+source 'https://rubygems.org'
+
+gem 'grpc', '~> 1.60'
+gem 'grpc-tools', '~> 1.60'
+gem 'google-protobuf', '~> 3.25'
+gem 'oj', '~> 3.16'  # Fast JSON
+
+group :test do
+  gem 'rspec', '~> 3.12'
+  gem 'cucumber', '~> 9.0'
+end

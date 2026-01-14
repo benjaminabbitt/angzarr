@@ -6,7 +6,7 @@ use tonic::transport::Channel;
 
 use crate::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
 use crate::proto::{
-    business_logic_client::BusinessLogicClient as GrpcClient, ContextualCommand, EventBook,
+    business_logic_client::BusinessLogicClient as GrpcClient, BusinessResponse, ContextualCommand,
 };
 
 /// Business logic client with static address configuration.
@@ -43,7 +43,7 @@ impl StaticBusinessLogicClient {
 
 #[async_trait]
 impl BusinessLogicClient for StaticBusinessLogicClient {
-    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<EventBook> {
+    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse> {
         let client = self
             .clients
             .get(domain)

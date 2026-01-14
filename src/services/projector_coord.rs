@@ -1,10 +1,12 @@
 //! Projector coordinator service.
 //!
 //! Receives events from the event bus and distributes them to registered projectors.
+//! Ensures projectors receive complete EventBooks by fetching missing history
+//! from the EventQuery service when needed.
 
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
@@ -14,6 +16,7 @@ use crate::proto::{
     projector_client::ProjectorClient, projector_coordinator_server::ProjectorCoordinator,
     EventBook, Projection,
 };
+use crate::services::event_book_repair::{self, EventBookRepairer};
 
 /// Re-export for backwards compatibility.
 pub type ProjectorEndpoint = ProjectorConfig;
@@ -26,16 +29,48 @@ struct ProjectorConnection {
 
 /// Projector coordinator service.
 ///
-/// Distributes events to all registered projectors.
+/// Distributes events to all registered projectors. Before forwarding,
+/// checks if EventBooks are complete and fetches missing history from
+/// the EventQuery service if needed.
 pub struct ProjectorCoordinatorService {
     projectors: Arc<RwLock<Vec<ProjectorConnection>>>,
+    repairer: Option<Arc<Mutex<EventBookRepairer>>>,
 }
 
 impl ProjectorCoordinatorService {
-    /// Create a new projector coordinator.
+    /// Create a new projector coordinator without repair capability.
     pub fn new() -> Self {
         Self {
             projectors: Arc::new(RwLock::new(Vec::new())),
+            repairer: None,
+        }
+    }
+
+    /// Create a new projector coordinator with repair capability.
+    ///
+    /// The repairer will fetch missing events from the EventQuery service
+    /// at the given address when incomplete EventBooks are received.
+    pub async fn with_repair(event_query_address: &str) -> Result<Self, String> {
+        let repairer = EventBookRepairer::connect(event_query_address)
+            .await
+            .map_err(|e| format!("Failed to connect to EventQuery service: {}", e))?;
+
+        info!(
+            address = %event_query_address,
+            "Connected to EventQuery service for EventBook repair"
+        );
+
+        Ok(Self {
+            projectors: Arc::new(RwLock::new(Vec::new())),
+            repairer: Some(Arc::new(Mutex::new(repairer))),
+        })
+    }
+
+    /// Create a new projector coordinator with an existing repairer.
+    pub fn with_repairer(repairer: EventBookRepairer) -> Self {
+        Self {
+            projectors: Arc::new(RwLock::new(Vec::new())),
+            repairer: Some(Arc::new(Mutex::new(repairer))),
         }
     }
 
@@ -62,6 +97,32 @@ impl ProjectorCoordinatorService {
 
         Ok(())
     }
+
+    /// Repair an EventBook if incomplete.
+    ///
+    /// If a repairer is configured and the EventBook is incomplete,
+    /// fetches the complete history from the EventQuery service.
+    async fn repair_event_book(&self, event_book: EventBook) -> Result<EventBook, Status> {
+        // Check if repair is needed
+        if event_book_repair::is_complete(&event_book) {
+            return Ok(event_book);
+        }
+
+        // No repairer configured - log warning and pass through
+        let Some(ref repairer) = self.repairer else {
+            warn!(
+                "Received incomplete EventBook but no repairer configured, passing through as-is"
+            );
+            return Ok(event_book);
+        };
+
+        // Repair the EventBook
+        let mut repairer = repairer.lock().await;
+        repairer.repair(event_book).await.map_err(|e| {
+            error!(error = %e, "Failed to repair EventBook");
+            Status::internal(format!("Failed to repair EventBook: {}", e))
+        })
+    }
 }
 
 impl Default for ProjectorCoordinatorService {
@@ -78,6 +139,9 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         request: Request<EventBook>,
     ) -> Result<Response<Projection>, Status> {
         let event_book = request.into_inner();
+
+        // Repair EventBook if incomplete
+        let event_book = self.repair_event_book(event_book).await?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -121,6 +185,9 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         let event_book = request.into_inner();
 
+        // Repair EventBook if incomplete
+        let event_book = self.repair_event_book(event_book).await?;
+
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
             let projectors = self.projectors.read().await;
@@ -155,18 +222,61 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{Cover, Uuid as ProtoUuid};
+    use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
+    use prost_types::Any;
 
     fn make_event_book() -> EventBook {
         EventBook {
             cover: Some(Cover {
                 domain: "orders".to_string(),
-                root: Some(ProtoUuid {
-                    value: vec![1; 16],
-                }),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
             }),
             pages: vec![],
             snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        }
+    }
+
+    fn make_complete_event_book() -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
+            }),
+            pages: vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(0)),
+                event: Some(Any {
+                    type_url: "test.Event".to_string(),
+                    value: vec![],
+                }),
+                created_at: None,
+                synchronous: false,
+            }],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
+        }
+    }
+
+    fn make_incomplete_event_book() -> EventBook {
+        EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid { value: vec![1; 16] }),
+            }),
+            pages: vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(5)), // Missing events 0-4
+                event: Some(Any {
+                    type_url: "test.Event".to_string(),
+                    value: vec![],
+                }),
+                created_at: None,
+                synchronous: false,
+            }],
+            snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
         }
     }
 
@@ -174,6 +284,7 @@ mod tests {
     async fn test_new_creates_empty_coordinator() {
         let coordinator = ProjectorCoordinatorService::new();
         assert!(coordinator.projectors.read().await.is_empty());
+        assert!(coordinator.repairer.is_none());
     }
 
     #[tokio::test]
@@ -217,5 +328,31 @@ mod tests {
         let result = coordinator.add_projector(config).await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_repair_event_book_complete_passes_through() {
+        let coordinator = ProjectorCoordinatorService::new();
+        let event_book = make_complete_event_book();
+
+        let result = coordinator.repair_event_book(event_book.clone()).await;
+
+        assert!(result.is_ok());
+        let repaired = result.unwrap();
+        assert_eq!(repaired.pages.len(), event_book.pages.len());
+    }
+
+    #[tokio::test]
+    async fn test_repair_event_book_incomplete_without_repairer_warns() {
+        let coordinator = ProjectorCoordinatorService::new();
+        let event_book = make_incomplete_event_book();
+
+        // Without a repairer, incomplete books pass through with a warning
+        let result = coordinator.repair_event_book(event_book.clone()).await;
+
+        assert!(result.is_ok());
+        let passed = result.unwrap();
+        // Still incomplete since no repairer
+        assert_eq!(passed.pages.len(), 1);
     }
 }

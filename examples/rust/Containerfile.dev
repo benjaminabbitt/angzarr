@@ -1,0 +1,27 @@
+# Rust dev container for running tests
+# Build: podman build -t angzarr-dev-rust -f examples/rust/Containerfile.dev .
+# Run:   podman run --rm -v .:/app:Z -w /app/examples/rust angzarr-dev-rust just test
+#
+# Proto bindings are pre-installed at /app/generated/rust/
+
+FROM rust:1.83-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    pkg-config \
+    libssl-dev \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install just
+RUN curl -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+WORKDIR /app
+
+# Copy generated proto files
+COPY generated/rust /app/generated/rust
+
+WORKDIR /app/examples/rust
+
+CMD ["just", "test"]

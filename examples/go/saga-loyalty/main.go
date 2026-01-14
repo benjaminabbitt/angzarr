@@ -12,10 +12,12 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"saga-loyalty/proto/evented"
+	"saga-loyalty/proto/angzarr"
 	"saga-loyalty/proto/examples"
 )
 
@@ -25,32 +27,32 @@ var logger *zap.Logger
 
 // server implements the Saga gRPC service.
 type server struct {
-	evented.UnimplementedSagaServer
+	angzarr.UnimplementedSagaServer
 }
 
 // Handle processes events asynchronously (fire-and-forget).
-func (s *server) Handle(ctx context.Context, req *evented.EventBook) (*emptypb.Empty, error) {
+func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*emptypb.Empty, error) {
 	// Saga always needs to return commands, so use HandleSync internally
 	_, _ = s.HandleSync(ctx, req)
 	return &emptypb.Empty{}, nil
 }
 
 // HandleSync processes events and returns commands synchronously.
-func (s *server) HandleSync(ctx context.Context, req *evented.EventBook) (*evented.SynchronousProcessingResponse, error) {
+func (s *server) HandleSync(ctx context.Context, req *angzarr.EventBook) (*angzarr.SagaResponse, error) {
 	commandBooks := processEvents(req)
 
-	return &evented.SynchronousProcessingResponse{
+	return &angzarr.SagaResponse{
 		Commands: commandBooks,
 	}, nil
 }
 
 // processEvents extracts TransactionCompleted events and generates AddLoyaltyPoints commands.
-func processEvents(eventBook *evented.EventBook) []*evented.CommandBook {
+func processEvents(eventBook *angzarr.EventBook) []*angzarr.CommandBook {
 	if eventBook == nil || len(eventBook.Pages) == 0 {
 		return nil
 	}
 
-	var commands []*evented.CommandBook
+	var commands []*angzarr.CommandBook
 
 	for _, page := range eventBook.Pages {
 		if page.Event == nil {
@@ -104,12 +106,12 @@ func processEvents(eventBook *evented.EventBook) []*evented.CommandBook {
 			continue
 		}
 
-		commandBook := &evented.CommandBook{
-			Cover: &evented.Cover{
+		commandBook := &angzarr.CommandBook{
+			Cover: &angzarr.Cover{
 				Domain: "customer",
 				Root:   customerID,
 			},
-			Pages: []*evented.CommandPage{
+			Pages: []*angzarr.CommandPage{
 				{
 					Sequence:    0,
 					Synchronous: false,
@@ -145,7 +147,12 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	evented.RegisterSagaServer(s, &server{})
+	angzarr.RegisterSagaServer(s, &server{})
+
+	// Register gRPC health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(s, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	logger.Info("saga server started",
 		zap.String("name", SagaName),

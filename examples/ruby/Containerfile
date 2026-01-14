@@ -1,0 +1,94 @@
+# Ruby examples - multi-stage build with Bundler
+# Build from this directory: docker build -t rb-customer --target customer .
+# Build all: docker build -t rb-examples .
+
+# ============================================================================
+# Builder stage - installs dependencies with Bundler
+# ============================================================================
+FROM ruby:3.3-alpine AS builder
+
+RUN apk add --no-cache build-base
+
+WORKDIR /app
+
+# Copy generated proto files
+COPY generated/angzarr angzarr/proto/
+COPY generated/examples proto/
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY customer/Gemfile customer/Gemfile.lock ./
+RUN bundle install --deployment --without development test
+COPY customer/*.rb ./
+
+FROM builder AS build-transaction
+COPY transaction/Gemfile transaction/Gemfile.lock ./
+RUN bundle install --deployment --without development test
+COPY transaction/*.rb ./
+
+FROM builder AS build-saga-loyalty
+COPY saga-loyalty/Gemfile saga-loyalty/Gemfile.lock ./
+RUN bundle install --deployment --without development test
+COPY saga-loyalty/*.rb ./
+
+FROM builder AS build-projector-receipt
+COPY projector-receipt/Gemfile projector-receipt/Gemfile.lock ./
+RUN bundle install --deployment --without development test
+COPY projector-receipt/*.rb ./
+
+FROM builder AS build-projector-log-customer
+COPY projector-log-customer/Gemfile projector-log-customer/Gemfile.lock ./
+RUN bundle install --deployment --without development test
+COPY projector-log-customer/*.rb ./
+
+FROM builder AS build-projector-log-transaction
+COPY projector-log-transaction/Gemfile projector-log-transaction/Gemfile.lock ./
+RUN bundle install --deployment --without development test
+COPY projector-log-transaction/*.rb ./
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM ruby:3.3-alpine AS runtime
+WORKDIR /app
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /app ./
+ENV PORT=50800
+EXPOSE 50800
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS transaction
+COPY --from=build-transaction /app ./
+ENV PORT=50801
+EXPOSE 50801
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS saga-loyalty
+COPY --from=build-saga-loyalty /app ./
+ENV PORT=50802
+EXPOSE 50802
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /app ./
+ENV PORT=50803
+EXPOSE 50803
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS projector-log-customer
+COPY --from=build-projector-log-customer /app ./
+ENV PORT=50804
+EXPOSE 50804
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=build-projector-log-transaction /app ./
+ENV PORT=50805
+EXPOSE 50805
+CMD ["bundle", "exec", "ruby", "server.rb"]

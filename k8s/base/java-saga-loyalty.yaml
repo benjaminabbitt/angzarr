@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-saga-loyalty
+  namespace: angzarr
+  labels:
+    app: java-saga-loyalty
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-saga-loyalty
+  template:
+    metadata:
+      labels:
+        app: java-saga-loyalty
+    spec:
+      containers:
+        - name: java-saga-loyalty
+          image: java-saga-loyalty:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50702
+          env:
+            - name: PORT
+              value: "50702"
+          readinessProbe:
+            grpc:
+              port: 50702
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50702
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-saga-loyalty
+  namespace: angzarr
+spec:
+  selector:
+    app: java-saga-loyalty
+  ports:
+    - port: 50702
+      targetPort: 50702

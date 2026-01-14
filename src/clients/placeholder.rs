@@ -10,7 +10,10 @@ use prost_types::Timestamp;
 use tracing::info;
 
 use crate::interfaces::business_client::{BusinessLogicClient, Result};
-use crate::proto::{event_page::Sequence, ContextualCommand, Cover, EventBook, EventPage};
+use crate::proto::{
+    business_response, event_page::Sequence, BusinessResponse, ContextualCommand, Cover, EventBook,
+    EventPage,
+};
 
 /// Placeholder business logic that echoes commands as events.
 ///
@@ -46,7 +49,7 @@ impl Default for PlaceholderBusinessLogic {
 
 #[async_trait]
 impl BusinessLogicClient for PlaceholderBusinessLogic {
-    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<EventBook> {
+    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -118,10 +121,14 @@ impl BusinessLogicClient for PlaceholderBusinessLogic {
             })
             .unwrap_or_default();
 
-        Ok(EventBook {
-            cover: Some(cover),
-            snapshot: None,
-            pages: events,
+        Ok(BusinessResponse {
+            result: Some(business_response::Result::Events(EventBook {
+                cover: Some(cover),
+                snapshot: None,
+                pages: events,
+                correlation_id: String::new(),
+                snapshot_state: None,
+            })),
         })
     }
 
@@ -208,12 +215,15 @@ mod tests {
 
     #[test]
     fn test_transform_all_verb_types() {
+        assert_eq!(transform_command_to_event_type("RemoveItem"), "ItemRemoved");
         assert_eq!(
-            transform_command_to_event_type("RemoveItem"),
-            "ItemRemoved"
+            transform_command_to_event_type("StartProcess"),
+            "ProcessStarted"
         );
-        assert_eq!(transform_command_to_event_type("StartProcess"), "ProcessStarted");
-        assert_eq!(transform_command_to_event_type("StopProcess"), "ProcessStopped");
+        assert_eq!(
+            transform_command_to_event_type("StopProcess"),
+            "ProcessStopped"
+        );
         assert_eq!(
             transform_command_to_event_type("CompleteTask"),
             "TaskCompleted"
@@ -238,7 +248,8 @@ mod tests {
 
     #[test]
     fn test_new_creates_with_specified_domains() {
-        let logic = PlaceholderBusinessLogic::new(vec!["orders".to_string(), "customers".to_string()]);
+        let logic =
+            PlaceholderBusinessLogic::new(vec!["orders".to_string(), "customers".to_string()]);
         assert!(logic.has_domain("orders"));
         assert!(logic.has_domain("customers"));
         assert!(!logic.has_domain("inventory"));
@@ -289,16 +300,29 @@ mod tests {
                     }),
                     synchronous: false,
                 }],
+                correlation_id: String::new(),
+                saga_origin: None,
+                auto_resequence: false,
+                fact: false,
             }),
         };
 
-        let result = logic.handle("orders", cmd).await.unwrap();
+        let response = logic.handle("orders", cmd).await.unwrap();
+        let result = match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events"),
+        };
 
         assert_eq!(result.pages.len(), 1);
         let event = &result.pages[0];
         assert!(matches!(event.sequence, Some(Sequence::Num(0))));
         assert!(event.event.is_some());
-        assert!(event.event.as_ref().unwrap().type_url.contains("OrderCreated"));
+        assert!(event
+            .event
+            .as_ref()
+            .unwrap()
+            .type_url
+            .contains("OrderCreated"));
     }
 
     #[tokio::test]
@@ -328,6 +352,8 @@ mod tests {
                 },
             ],
             snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
         };
 
         let cmd = ContextualCommand {
@@ -347,10 +373,18 @@ mod tests {
                     }),
                     synchronous: false,
                 }],
+                correlation_id: String::new(),
+                saga_origin: None,
+                auto_resequence: false,
+                fact: false,
             }),
         };
 
-        let result = logic.handle("orders", cmd).await.unwrap();
+        let response = logic.handle("orders", cmd).await.unwrap();
+        let result = match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events"),
+        };
 
         assert_eq!(result.pages.len(), 1);
         assert!(matches!(result.pages[0].sequence, Some(Sequence::Num(2))));
@@ -365,7 +399,11 @@ mod tests {
             command: None,
         };
 
-        let result = logic.handle("orders", cmd).await.unwrap();
+        let response = logic.handle("orders", cmd).await.unwrap();
+        let result = match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events"),
+        };
 
         assert!(result.pages.is_empty());
     }
@@ -392,11 +430,78 @@ mod tests {
                     }),
                     synchronous: true,
                 }],
+                correlation_id: String::new(),
+                saga_origin: None,
+                auto_resequence: false,
+                fact: false,
             }),
         };
 
-        let result = logic.handle("orders", cmd).await.unwrap();
+        let response = logic.handle("orders", cmd).await.unwrap();
+        let result = match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events"),
+        };
 
         assert!(result.pages[0].synchronous);
+    }
+
+    #[tokio::test]
+    async fn test_handle_multiple_commands() {
+        let logic = PlaceholderBusinessLogic::with_defaults();
+        let root = uuid::Uuid::new_v4();
+
+        let cmd = ContextualCommand {
+            events: None,
+            command: Some(CommandBook {
+                cover: Some(Cover {
+                    domain: "orders".to_string(),
+                    root: Some(ProtoUuid {
+                        value: root.as_bytes().to_vec(),
+                    }),
+                }),
+                pages: vec![
+                    CommandPage {
+                        sequence: 0,
+                        command: Some(prost_types::Any {
+                            type_url: "CreateOrder".to_string(),
+                            value: vec![],
+                        }),
+                        synchronous: false,
+                    },
+                    CommandPage {
+                        sequence: 1,
+                        command: Some(prost_types::Any {
+                            type_url: "AddItem".to_string(),
+                            value: vec![],
+                        }),
+                        synchronous: false,
+                    },
+                    CommandPage {
+                        sequence: 2,
+                        command: Some(prost_types::Any {
+                            type_url: "AddItem".to_string(),
+                            value: vec![],
+                        }),
+                        synchronous: false,
+                    },
+                ],
+                correlation_id: String::new(),
+                saga_origin: None,
+                auto_resequence: false,
+                fact: false,
+            }),
+        };
+
+        let response = logic.handle("orders", cmd).await.unwrap();
+        let result = match response.result {
+            Some(business_response::Result::Events(events)) => events,
+            _ => panic!("Expected events"),
+        };
+
+        assert_eq!(result.pages.len(), 3);
+        assert!(matches!(result.pages[0].sequence, Some(Sequence::Num(0))));
+        assert!(matches!(result.pages[1].sequence, Some(Sequence::Num(1))));
+        assert!(matches!(result.pages[2].sequence, Some(Sequence::Num(2))));
     }
 }

@@ -1,18 +1,61 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: evented
+namespace: angzarr
 
 resources:
   - namespace.yaml
   - secrets.yaml
-  - evented-config.yaml
+  - angzarr-config.yaml
   - rabbitmq.yaml
   - redis.yaml
+  - mongodb.yaml
+  # Rust services
   - rs-customer.yaml
   - rs-transaction.yaml
   - rs-projectors.yaml
   - rs-saga-loyalty.yaml
+  # Go services
+  - go-customer.yaml
+  - go-transaction.yaml
   - go-projectors.yaml
+  - go-saga-loyalty.yaml
+  # Python services
+  - py-customer.yaml
+  - py-transaction.yaml
   - py-projectors.yaml
-  - evented.yaml
+  - py-saga-loyalty.yaml
+  # Additional languages disabled to reduce cluster load
+  # Re-enable after testing primary languages
+  # # C# services
+  # - cs-customer.yaml
+  # - cs-transaction.yaml
+  # - cs-projectors.yaml
+  # - cs-saga-loyalty.yaml
+  # # Java services
+  # - java-customer.yaml
+  # - java-transaction.yaml
+  # - java-projectors.yaml
+  # - java-saga-loyalty.yaml
+  # # Kotlin services
+  # - kt-customer.yaml
+  # - kt-transaction.yaml
+  # - kt-projectors.yaml
+  # - kt-saga-loyalty.yaml
+  # # TypeScript services
+  # - ts-customer.yaml
+  # - ts-transaction.yaml
+  # - ts-projectors.yaml
+  # - ts-saga-loyalty.yaml
+  # # Ruby services
+  # - rb-customer.yaml
+  # - rb-transaction.yaml
+  # - rb-projectors.yaml
+  # - rb-saga-loyalty.yaml
+  # Angzarr core
+  - angzarr.yaml
+  # Infrastructure services
+  - angzarr-stream.yaml
+  - angzarr-gateway.yaml
+  # Ingress
+  - ingress.yaml

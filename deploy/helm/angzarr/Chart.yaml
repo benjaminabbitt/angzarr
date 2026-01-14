@@ -1,0 +1,23 @@
+apiVersion: v2
+name: angzarr
+description: CQRS/ES framework - Rust implementation
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+icon: file://icons/angzarr-gateway.svg
+keywords:
+  - cqrs
+  - event-sourcing
+  - rust
+  - grpc
+maintainers:
+  - name: Benjamin Abbitt
+dependencies:
+  - name: rabbitmq
+    version: "15.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: rabbitmq.enabled
+  - name: mongodb
+    version: "16.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: mongodb.enabled

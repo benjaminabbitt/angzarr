@@ -1,0 +1,52 @@
+{{- range $name, $saga := .Values.sagas }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kt-saga-{{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "angzarr-examples.labels" $ | nindent 4 }}
+    app: kt-saga-{{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kt-saga-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app: kt-saga-{{ $name }}
+    spec:
+      containers:
+        - name: kt-saga-{{ $name }}
+          image: {{ $saga.image }}
+          ports:
+            - containerPort: {{ $saga.port }}
+          env:
+            - name: PORT
+              value: "{{ $saga.port }}"
+            - name: ANGZARR_ADDRESS
+              value: "angzarr:{{ $.Values.angzarr.command.port }}"
+            {{- if $.Values.secrets.amqpUrl }}
+            - name: AMQP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: angzarr-secrets
+                  key: amqp-url
+            {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kt-saga-{{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "angzarr-examples.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app: kt-saga-{{ $name }}
+  ports:
+    - port: {{ $saga.port }}
+      targetPort: {{ $saga.port }}
+{{- end }}

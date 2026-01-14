@@ -87,6 +87,10 @@ impl EchoSaga {
                     value: command_payload,
                 }),
             }],
+            correlation_id: String::new(),
+            saga_origin: None,
+            auto_resequence: false,
+            fact: false,
         }
     }
 }
@@ -145,6 +149,8 @@ mod tests {
             }),
             pages,
             snapshot: None,
+            correlation_id: String::new(),
+            snapshot_state: None,
         }
     }
 

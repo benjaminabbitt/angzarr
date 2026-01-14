@@ -1,5 +1,5 @@
-# Kind cluster configuration for evented-rs development
-# Create cluster: kind create cluster --config kind-config.yaml --name evented
+# Kind cluster configuration for angzarr-rs development
+# Create cluster: kind create cluster --config kind-config.yaml --name angzarr
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -10,14 +10,40 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
+      - |
+        kind: KubeletConfiguration
+        # Allow more pods and increase resource headroom
+        maxPods: 200
+        systemReserved:
+          cpu: "500m"
+          memory: "512Mi"
+        kubeReserved:
+          cpu: "500m"
+          memory: "512Mi"
     extraPortMappings:
-      # Evented command handler
+      # Ingress HTTP (for gRPC via nginx-ingress)
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      # Ingress HTTPS
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+      # Angzarr command handler (NodePort fallback)
       - containerPort: 30051
         hostPort: 50051
         protocol: TCP
-      # Evented event query
+      # Angzarr event query (NodePort fallback)
       - containerPort: 30052
         hostPort: 50052
+        protocol: TCP
+      # Angzarr gateway (NodePort fallback)
+      - containerPort: 30053
+        hostPort: 50053
+        protocol: TCP
+      # Angzarr stream (NodePort fallback)
+      - containerPort: 30054
+        hostPort: 50054
         protocol: TCP
       # RabbitMQ AMQP
       - containerPort: 30672

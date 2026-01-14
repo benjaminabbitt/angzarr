@@ -1,0 +1,68 @@
+# C# example services for Angzarr
+
+namespace: angzarr-cs
+
+# Angzarr infrastructure images
+angzarr:
+  command:
+    image: angzarr-command:latest
+    port: 50051
+  query:
+    port: 50052
+  stream:
+    image: angzarr-stream:latest
+    port: 1315
+  gateway:
+    image: angzarr-gateway:latest
+    port: 1316
+    streamTimeoutSecs: 30
+
+# Business logic services
+services:
+  customer:
+    image: cs-customer:latest
+    port: 50600
+    domain: customer
+  transaction:
+    image: cs-transaction:latest
+    port: 50601
+    domain: transaction
+
+# Projector services
+projectors:
+  receipt:
+    image: cs-projector-receipt:latest
+    port: 50603
+  logCustomer:
+    image: cs-projector-log-customer:latest
+    port: 50604
+  logTransaction:
+    image: cs-projector-log-transaction:latest
+    port: 50605
+
+# Saga services
+sagas:
+  loyalty:
+    image: cs-saga-loyalty:latest
+    port: 50602
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    command: command.cs.angzarr.local
+    query: query.cs.angzarr.local
+    gateway: gateway.cs.angzarr.local
+
+# Secrets (values should be provided via --set or external secrets)
+secrets:
+  mongodbUri: ""
+  amqpUrl: ""
+
+# Logging
+logging:
+  level: info

@@ -38,6 +38,10 @@ pub enum StorageError {
     #[cfg(feature = "redis")]
     #[error("Redis error: {0}")]
     Redis(#[from] redis::RedisError),
+
+    #[cfg(feature = "mongodb")]
+    #[error("MongoDB error: {0}")]
+    Mongo(#[from] mongodb::error::Error),
 }
 
 /// Interface for event persistence.

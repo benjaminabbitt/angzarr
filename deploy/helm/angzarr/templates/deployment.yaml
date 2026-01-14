@@ -1,0 +1,575 @@
+{{- /* Generate deployments for each application type with angzarr as sidecar */}}
+
+{{- /* Business logic deployments */}}
+{{- range .Values.applications.business }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: business
+    angzarr.io/domain: {{ .domain }}
+  {{- if $.Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: business
+      angzarr.io/app: {{ .name }}
+  template:
+    metadata:
+      annotations:
+        {{- if $.Values.reloader.enabled }}
+        reloader.stakater.com/auto: "true"
+        {{- end }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "angzarr.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: business
+        angzarr.io/app: {{ .name }}
+        angzarr.io/domain: {{ .domain }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Main container: Business logic application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: grpc
+              containerPort: {{ .port }}
+              protocol: TCP
+          env:
+            - name: GRPC_PORT
+              value: "{{ .port }}"
+            - name: DOMAIN
+              value: {{ .domain | quote }}
+            # Angzarr sidecar endpoints
+            - name: ANGZARR_COMMAND_HOST
+              value: "localhost"
+            - name: ANGZARR_COMMAND_PORT
+              value: "{{ $.Values.service.commandPort }}"
+            - name: ANGZARR_QUERY_HOST
+              value: "localhost"
+            - name: ANGZARR_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            {{- if eq .type "python" }}
+            - name: BUSINESS_LOGIC_TYPE
+              value: "python"
+            - name: PYTHON_MODULE
+              value: {{ .python.module | quote }}
+            - name: PYTHON_PATH
+              value: {{ .python.path | quote }}
+            {{- end }}
+            {{- if eq .type "go" }}
+            - name: BUSINESS_LOGIC_TYPE
+              value: "go"
+            - name: GO_LIBRARY
+              value: {{ .go.library | quote }}
+            {{- end }}
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+
+        # Sidecar: Angzarr command sidecar
+        - name: angzarr
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.images.command.repository }}:{{ $.Values.images.command.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.images.command.pullPolicy }}
+          ports:
+            - name: command
+              containerPort: {{ $.Values.service.commandPort }}
+              protocol: TCP
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+            - name: ANGZARR_CONFIG
+              value: /app/config/config.yaml
+            - name: TARGET_ADDRESS
+              value: "localhost:{{ .port }}"
+            - name: TARGET_DOMAIN
+              value: {{ .domain | quote }}
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml $.Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $.Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            {{- if eq $.Values.storage.type "sqlite" }}
+            - name: data
+              mountPath: /app/data
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "angzarr.fullname" $ }}-config
+        - name: data
+          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "angzarr.fullname" $ }}-{{ .name }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Projector deployments */}}
+{{- range .Values.applications.projectors }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: projector
+  {{- if $.Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: projector
+      angzarr.io/app: {{ .name }}
+  template:
+    metadata:
+      annotations:
+        {{- if $.Values.reloader.enabled }}
+        reloader.stakater.com/auto: "true"
+        {{- end }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "angzarr.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: projector
+        angzarr.io/app: {{ .name }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Main container: Projector application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: grpc
+              containerPort: {{ .port | default 50051 }}
+              protocol: TCP
+          env:
+            # gRPC port this projector listens on
+            - name: GRPC_PORT
+              value: "{{ .port | default 50051 }}"
+            # Angzarr sidecar endpoints
+            - name: ANGZARR_QUERY_HOST
+              value: "localhost"
+            - name: ANGZARR_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # AMQP for event subscription
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url | quote }}
+            {{- end }}
+            - name: EVENT_TOPICS
+              value: {{ .topics | join "," | quote }}
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+
+        # Sidecar: Angzarr projector sidecar
+        - name: angzarr
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.images.projector.repository }}:{{ $.Values.images.projector.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.images.projector.pullPolicy }}
+          ports:
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+            - name: ANGZARR_CONFIG
+              value: /app/config/config.yaml
+            - name: TARGET_ADDRESS
+              value: "localhost:{{ .port | default 50051 }}"
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url }}
+            {{- end }}
+            - name: AMQP_DOMAIN
+              value: {{ .topics | first | default "#" | quote }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "angzarr.fullname" $ }}-config
+        - name: data
+          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "angzarr.fullname" $ }}-shared-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Saga deployments */}}
+{{- range .Values.applications.sagas }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: saga
+  {{- if $.Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: saga
+      angzarr.io/app: {{ .name }}
+  template:
+    metadata:
+      annotations:
+        {{- if $.Values.reloader.enabled }}
+        reloader.stakater.com/auto: "true"
+        {{- end }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "angzarr.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: saga
+        angzarr.io/app: {{ .name }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Main container: Saga application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: grpc
+              containerPort: {{ .port | default 50051 }}
+              protocol: TCP
+          env:
+            # gRPC port this saga listens on
+            - name: GRPC_PORT
+              value: "{{ .port | default 50051 }}"
+            # Angzarr sidecar endpoints
+            - name: ANGZARR_COMMAND_HOST
+              value: "localhost"
+            - name: ANGZARR_COMMAND_PORT
+              value: "{{ $.Values.service.commandPort }}"
+            - name: ANGZARR_QUERY_HOST
+              value: "localhost"
+            - name: ANGZARR_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # AMQP for event subscription
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url | quote }}
+            {{- end }}
+            - name: EVENT_TOPICS
+              value: {{ .topics | join "," | quote }}
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+
+        # Sidecar: Angzarr saga sidecar
+        - name: angzarr
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.images.saga.repository }}:{{ $.Values.images.saga.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.images.saga.pullPolicy }}
+          ports:
+            - name: command
+              containerPort: {{ $.Values.service.commandPort }}
+              protocol: TCP
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+            - name: ANGZARR_CONFIG
+              value: /app/config/config.yaml
+            - name: TARGET_ADDRESS
+              value: "localhost:{{ .port | default 50051 }}"
+            {{- if $.Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ $.Values.amqp.url }}
+            {{- end }}
+            - name: AMQP_DOMAIN
+              value: {{ .topics | first | default "#" | quote }}
+          livenessProbe:
+            {{- toYaml $.Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $.Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "angzarr.fullname" $ }}-config
+        - name: data
+          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "angzarr.fullname" $ }}-shared-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Central infrastructure services */}}
+
+{{- /* Event Stream service */}}
+{{- if .Values.infrastructure.stream.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" . }}-stream
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: stream
+  {{- if .Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  replicas: {{ .Values.infrastructure.stream.replicas }}
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: infrastructure
+      angzarr.io/service: stream
+  template:
+    metadata:
+      labels:
+        {{- include "angzarr.labels" . | nindent 8 }}
+        app.kubernetes.io/component: infrastructure
+        angzarr.io/service: stream
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: stream
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.images.stream.repository }}:{{ .Values.images.stream.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.images.stream.pullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.infrastructure.stream.port }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ .Values.logging.level }}
+            - name: GRPC_PORT
+              value: "{{ .Values.infrastructure.stream.port }}"
+            {{- if .Values.amqp.enabled }}
+            - name: AMQP_URL
+              value: {{ .Values.amqp.url }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.infrastructure.stream.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Command Proxy service */}}
+{{- if .Values.infrastructure.gateway.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" . }}-gateway
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: gateway
+  {{- if .Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  replicas: {{ .Values.infrastructure.gateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: infrastructure
+      angzarr.io/service: gateway
+  template:
+    metadata:
+      labels:
+        {{- include "angzarr.labels" . | nindent 8 }}
+        app.kubernetes.io/component: infrastructure
+        angzarr.io/service: gateway
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gateway
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.images.gateway.repository }}:{{ .Values.images.gateway.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.images.gateway.pullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.infrastructure.gateway.port }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ .Values.logging.level }}
+            - name: GRPC_PORT
+              value: "{{ .Values.infrastructure.gateway.port }}"
+            {{- if .Values.infrastructure.gateway.commandHandlers }}
+            # Domain-based routing: domain=address pairs
+            - name: COMMAND_HANDLERS
+              value: {{ range $domain, $addr := .Values.infrastructure.gateway.commandHandlers }}{{ $domain }}={{ $addr }},{{ end }}
+            {{- else if .Values.infrastructure.gateway.commandService }}
+            - name: COMMAND_ADDRESS
+              value: {{ .Values.infrastructure.gateway.commandService | quote }}
+            {{- end }}
+            - name: STREAM_ADDRESS
+              value: {{ .Values.infrastructure.gateway.streamService | default (printf "%s-stream:%d" (include "angzarr.fullname" .) (.Values.infrastructure.stream.port | int)) | quote }}
+            - name: STREAM_TIMEOUT_SECS
+              value: "{{ .Values.infrastructure.gateway.streamTimeoutSecs }}"
+          resources:
+            {{- toYaml .Values.infrastructure.gateway.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -18,7 +18,8 @@ export KIND_EXPERIMENTAL_PROVIDER=podman
 for IMAGE in "$@"; do
     ARCHIVE="${TMPDIR}/kind-load-$(echo "$IMAGE" | tr ':/' '-').tar"
     echo "Loading ${IMAGE} into kind cluster ${CLUSTER_NAME}..."
-    podman save "$IMAGE" -o "$ARCHIVE"
+    rm -f "$ARCHIVE"
+    podman save "$IMAGE" --format docker-archive -o "$ARCHIVE"
     kind load image-archive "$ARCHIVE" --name "$CLUSTER_NAME"
     rm -f "$ARCHIVE"
 done

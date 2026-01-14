@@ -1,0 +1,68 @@
+# Java example services for Angzarr
+
+namespace: angzarr-java
+
+# Angzarr infrastructure images
+angzarr:
+  command:
+    image: angzarr-command:latest
+    port: 50051
+  query:
+    port: 50052
+  stream:
+    image: angzarr-stream:latest
+    port: 1315
+  gateway:
+    image: angzarr-gateway:latest
+    port: 1316
+    streamTimeoutSecs: 30
+
+# Business logic services
+services:
+  customer:
+    image: java-customer:latest
+    port: 50400
+    domain: customer
+  transaction:
+    image: java-transaction:latest
+    port: 50401
+    domain: transaction
+
+# Projector services
+projectors:
+  receipt:
+    image: java-projector-receipt:latest
+    port: 50403
+  logCustomer:
+    image: java-projector-log-customer:latest
+    port: 50404
+  logTransaction:
+    image: java-projector-log-transaction:latest
+    port: 50405
+
+# Saga services
+sagas:
+  loyalty:
+    image: java-saga-loyalty:latest
+    port: 50402
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    command: command.java.angzarr.local
+    query: query.java.angzarr.local
+    gateway: gateway.java.angzarr.local
+
+# Secrets (values should be provided via --set or external secrets)
+secrets:
+  mongodbUri: ""
+  amqpUrl: ""
+
+# Logging
+logging:
+  level: info

@@ -1,0 +1,105 @@
+# Rust examples - multi-stage build with musl for static binaries
+# Build: docker build -t angzarr-rust-examples -f examples/rust/Containerfile .
+# Build single: docker build --build-arg SERVICE=customer -t rs-customer -f examples/rust/Containerfile .
+
+ARG SERVICE
+
+# ============================================================================
+# Builder stage - compiles all Rust binaries as static musl binaries
+# ============================================================================
+FROM rust:1.85-alpine AS builder
+
+RUN apk add --no-cache \
+    musl-dev \
+    protobuf-dev \
+    protoc \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig
+
+RUN rustup target add x86_64-unknown-linux-musl
+ENV RUSTFLAGS="-C target-feature=+crt-static"
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_DIR=/usr
+
+WORKDIR /app
+
+# Copy workspace manifests
+COPY Cargo.toml Cargo.lock ./
+COPY proto proto/
+COPY build.rs ./
+COPY src src/
+
+# Copy rust examples
+COPY examples/rust examples/rust/
+
+# Create stub test files (required by Cargo.toml)
+RUN mkdir -p tests && \
+    echo "fn main() {}" > tests/acceptance.rs
+
+# Build all example binaries
+RUN cargo build --release --target x86_64-unknown-linux-musl \
+    -p customer --bin customer-server && \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    -p transaction --bin transaction-server && \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    -p saga-loyalty --bin saga-loyalty-server && \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    -p projector-receipt --bin projector-receipt-server && \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    -p projector-log-customer --bin projector-log-customer-server && \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    -p projector-log-transaction --bin projector-log-transaction-server
+
+# ============================================================================
+# Runtime stage - minimal distroless image
+# ============================================================================
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+
+WORKDIR /app
+USER nonroot:nonroot
+
+# ============================================================================
+# Service-specific images (use --target)
+# ============================================================================
+FROM runtime AS customer
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/customer-server ./server
+ENV PORT=50100
+EXPOSE 50100
+ENTRYPOINT ["./server"]
+
+FROM runtime AS transaction
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/transaction-server ./server
+ENV PORT=50101
+EXPOSE 50101
+ENTRYPOINT ["./server"]
+
+FROM runtime AS saga-loyalty
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/saga-loyalty-server ./server
+ENV PORT=50102
+EXPOSE 50102
+ENTRYPOINT ["./server"]
+
+FROM runtime AS projector-receipt
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/projector-receipt-server ./server
+ENV PORT=50103
+EXPOSE 50103
+ENTRYPOINT ["./server"]
+
+FROM runtime AS projector-log-customer
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/projector-log-customer-server ./server
+ENV PORT=50104
+EXPOSE 50104
+ENTRYPOINT ["./server"]
+
+FROM runtime AS projector-log-transaction
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/projector-log-transaction-server ./server
+ENV PORT=50105
+EXPOSE 50105
+ENTRYPOINT ["./server"]
+
+# Default target (requires --build-arg SERVICE=xxx)
+FROM runtime AS default
+ARG SERVICE
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/${SERVICE}-server ./server
+ENTRYPOINT ["./server"]

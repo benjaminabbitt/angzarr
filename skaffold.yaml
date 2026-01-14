@@ -1,0 +1,87 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr
+
+build:
+  local:
+    # Push to local registry instead of kind load (required for podman)
+    push: true
+    # Disable buildkit (podman compatibility)
+    useBuildkit: false
+  artifacts:
+    # Command sidecar - handles commands and event persistence
+    - image: localhost:5001/angzarr-command
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-command
+
+    # Projector sidecar - handles event projections
+    - image: localhost:5001/angzarr-projector
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-projector
+
+    # Saga sidecar - handles saga orchestration
+    - image: localhost:5001/angzarr-saga
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-saga
+
+    # Stream service - broadcasts events to subscribers
+    - image: localhost:5001/angzarr-stream
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-stream
+
+    # Gateway service - routes commands and streams events
+    - image: localhost:5001/angzarr-gateway
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-gateway
+
+deploy:
+  helm:
+    releases:
+      - name: angzarr
+        chartPath: deploy/helm/angzarr
+        namespace: angzarr
+        createNamespace: true
+        valuesFiles:
+          - deploy/helm/angzarr/values.yaml
+        setValues:
+          images.command.repository: localhost:5001/angzarr-command
+          images.command.tag: latest
+          images.projector.repository: localhost:5001/angzarr-projector
+          images.projector.tag: latest
+          images.saga.repository: localhost:5001/angzarr-saga
+          images.saga.tag: latest
+          images.stream.repository: localhost:5001/angzarr-stream
+          images.stream.tag: latest
+          images.gateway.repository: localhost:5001/angzarr-gateway
+          images.gateway.tag: latest
+
+profiles:
+  # Development profile - enables infrastructure services
+  - name: dev
+    activation:
+      - command: dev
+    patches:
+      - op: add
+        path: /deploy/helm/releases/0/setValues/infrastructure.stream.enabled
+        value: true
+      - op: add
+        path: /deploy/helm/releases/0/setValues/infrastructure.gateway.enabled
+        value: true
+
+  # Local values override
+  - name: local
+    patches:
+      - op: add
+        path: /deploy/helm/releases/0/valuesFiles/-
+        value: deploy/helm/angzarr/values-local.yaml

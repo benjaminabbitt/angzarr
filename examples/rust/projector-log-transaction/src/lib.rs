@@ -4,11 +4,21 @@
 
 use std::sync::Arc;
 
-use evented::async_trait::async_trait;
-use evented::interfaces::projector::{Projector, Result};
-use evented::proto::EventBook;
+use angzarr::async_trait::async_trait;
+use angzarr::interfaces::projector::{Projector, Result};
+use angzarr::proto::EventBook;
+
+/// Result of processing an event through the log projector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogResult {
+    /// Event was logged successfully
+    Logged,
+    /// Event type was unknown
+    Unknown,
+}
 
 /// Projector that logs transaction events.
+#[derive(Debug)]
 pub struct TransactionLogProjector {
     name: String,
 }
@@ -18,6 +28,24 @@ impl TransactionLogProjector {
     pub fn new() -> Self {
         Self {
             name: "log-transaction".to_string(),
+        }
+    }
+
+    /// Process an event and return the result for testing.
+    /// Returns LogResult::Logged for known event types, LogResult::Unknown for unknown types.
+    pub fn process_event(&self, type_url: &str, data: &[u8]) -> LogResult {
+        let event_type = type_url.rsplit('.').next().unwrap_or(type_url);
+
+        match event_type {
+            "TransactionCreated" | "DiscountApplied" | "TransactionCompleted"
+            | "TransactionCancelled" => {
+                common::log_event("transaction", "test", 0, type_url, data);
+                LogResult::Logged
+            }
+            _ => {
+                println!("[{}] Unknown event type: {}", self.name, event_type);
+                LogResult::Unknown
+            }
         }
     }
 }
@@ -38,10 +66,7 @@ impl Projector for TransactionLogProjector {
         vec!["transaction".to_string()]
     }
 
-    async fn project(
-        &self,
-        book: &Arc<EventBook>,
-    ) -> Result<Option<evented::proto::Projection>> {
+    async fn project(&self, book: &Arc<EventBook>) -> Result<Option<angzarr::proto::Projection>> {
         let domain = book
             .cover
             .as_ref()
@@ -63,11 +88,17 @@ impl Projector for TransactionLogProjector {
             };
 
             let sequence = page.sequence.as_ref().map_or(0, |s| match s {
-                evented::proto::event_page::Sequence::Num(n) => *n,
-                evented::proto::event_page::Sequence::Force(_) => 0,
+                angzarr::proto::event_page::Sequence::Num(n) => *n,
+                angzarr::proto::event_page::Sequence::Force(_) => 0,
             });
 
-            common::log_event(domain, short_root_id, sequence, &event.type_url, &event.value);
+            common::log_event(
+                domain,
+                short_root_id,
+                sequence,
+                &event.type_url,
+                &event.value,
+            );
         }
 
         // Log projector doesn't produce a projection

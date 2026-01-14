@@ -1,0 +1,2 @@
+obj/Debug/net9.0/examples/Domains.cs: /root/.nuget/packages/grpc.tools/2.67.0/build/native/include/google/protobuf/timestamp.proto\
+ ../../../proto/examples/domains.proto

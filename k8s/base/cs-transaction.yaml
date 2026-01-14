@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cs-transaction
+  namespace: angzarr
+  labels:
+    app: cs-transaction
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cs-transaction
+  template:
+    metadata:
+      labels:
+        app: cs-transaction
+    spec:
+      containers:
+        - name: cs-transaction
+          image: cs-transaction:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50601
+          env:
+            - name: PORT
+              value: "50601"
+          readinessProbe:
+            grpc:
+              port: 50601
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 50601
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cs-transaction
+  namespace: angzarr
+spec:
+  selector:
+    app: cs-transaction
+  ports:
+    - port: 50601
+      targetPort: 50601

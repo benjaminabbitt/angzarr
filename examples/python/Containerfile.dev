@@ -1,0 +1,38 @@
+# Python dev container for running tests
+# Build: podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
+# Run:   podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
+#
+# Proto bindings are pre-installed at /app/generated/python/
+
+FROM python:3.12-slim
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install just
+RUN curl -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+WORKDIR /app
+
+# Copy generated proto files
+COPY generated/python /app/generated/python
+
+# Set up proto symlinks script
+RUN echo '#!/bin/bash\n\
+for dir in customer transaction saga-loyalty projector-receipt projector-log-customer projector-log-transaction; do\n\
+  mkdir -p /app/examples/python/$dir/angzarr/proto /app/examples/python/$dir/proto\n\
+  cp -r /app/generated/python/angzarr/* /app/examples/python/$dir/angzarr/proto/ 2>/dev/null || true\n\
+  cp -r /app/generated/python/examples/* /app/examples/python/$dir/proto/ 2>/dev/null || true\n\
+  touch /app/examples/python/$dir/angzarr/__init__.py /app/examples/python/$dir/angzarr/proto/__init__.py /app/examples/python/$dir/proto/__init__.py\n\
+done\n\
+exec "$@"' > /usr/local/bin/setup-protos.sh && chmod +x /usr/local/bin/setup-protos.sh
+
+WORKDIR /app/examples/python
+
+ENTRYPOINT ["/usr/local/bin/setup-protos.sh"]
+CMD ["just", "test"]

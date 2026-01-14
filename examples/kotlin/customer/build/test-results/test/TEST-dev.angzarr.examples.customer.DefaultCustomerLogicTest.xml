@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.angzarr.examples.customer.DefaultCustomerLogicTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-01-11T22:37:48" hostname="33b8ad96725c" time="0.125">
+  <properties/>
+  <testcase name="rebuildState with CustomerCreated event()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.087"/>
+  <testcase name="rebuildState with points added and redeemed()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.004"/>
+  <testcase name="rebuildState with empty event book returns empty state()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.001"/>
+  <testcase name="handleRedeemLoyaltyPoints success()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.008"/>
+  <testcase name="rebuildState with null returns empty state()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="handleAddLoyaltyPoints success()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="handleRedeemLoyaltyPoints insufficient points throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.01"/>
+  <testcase name="handleCreateCustomer success()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.001"/>
+  <testcase name="handleRedeemLoyaltyPoints customer not exists throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="handleAddLoyaltyPoints negative points throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="handleAddLoyaltyPoints zero points throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="handleRedeemLoyaltyPoints zero points throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="rebuildState with LoyaltyPointsAdded event()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <testcase name="handleCreateCustomer empty email throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.001"/>
+  <testcase name="handleCreateCustomer already exists throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.001"/>
+  <testcase name="handleCreateCustomer empty name throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.001"/>
+  <testcase name="handleAddLoyaltyPoints customer not exists throws()" classname="dev.angzarr.examples.customer.DefaultCustomerLogicTest" time="0.0"/>
+  <system-out><![CDATA[22:37:49.045 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- redeeming_loyalty_points points=50 new_balance=50 redemption_type=discount
+22:37:49.054 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- adding_loyalty_points points=25 new_balance=75 reason=purchase
+22:37:49.066 [Test worker] INFO dev.angzarr.examples.customer.DefaultCustomerLogic -- creating_customer name=Jane Doe email=jane@example.com
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
