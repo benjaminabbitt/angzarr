@@ -1,4 +1,4 @@
-//! Command handler service (BusinessCoordinator).
+//! Entity service (BusinessCoordinator).
 
 use std::sync::Arc;
 
@@ -16,11 +16,11 @@ use crate::repository::EventBookRepository;
 /// Maximum number of retries for auto_resequence on sequence conflicts.
 const MAX_RESEQUENCE_RETRIES: u32 = 3;
 
-/// Command handler service.
+/// Entity service.
 ///
 /// Receives commands, loads prior state, calls business logic,
 /// persists new events, and notifies projectors/sagas.
-pub struct CommandHandlerService {
+pub struct EntityService {
     event_book_repo: Arc<EventBookRepository>,
     snapshot_store: Arc<dyn SnapshotStore>,
     business_client: Arc<dyn BusinessLogicClient>,
@@ -29,8 +29,8 @@ pub struct CommandHandlerService {
     snapshot_write_enabled: bool,
 }
 
-impl CommandHandlerService {
-    /// Create a new command handler service with snapshots enabled.
+impl EntityService {
+    /// Create a new entity service with snapshots enabled.
     pub fn new(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
@@ -49,7 +49,7 @@ impl CommandHandlerService {
         }
     }
 
-    /// Create a new command handler service with configurable snapshot behavior.
+    /// Create a new entity service with configurable snapshot behavior.
     pub fn with_config(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
@@ -73,7 +73,7 @@ impl CommandHandlerService {
 }
 
 #[tonic::async_trait]
-impl BusinessCoordinator for CommandHandlerService {
+impl BusinessCoordinator for EntityService {
     async fn handle(
         &self,
         request: Request<CommandBook>,
@@ -332,12 +332,12 @@ mod tests {
         snapshot_store: Arc<MockSnapshotStore>,
         business_client: Arc<MockBusinessLogic>,
         event_bus: Arc<MockEventBus>,
-    ) -> CommandHandlerService {
-        CommandHandlerService::new(event_store, snapshot_store, business_client, event_bus)
+    ) -> EntityService {
+        EntityService::new(event_store, snapshot_store, business_client, event_bus)
     }
 
     fn create_default_test_service() -> (
-        CommandHandlerService,
+        EntityService,
         Arc<MockEventStore>,
         Arc<MockSnapshotStore>,
         Arc<MockBusinessLogic>,
@@ -663,7 +663,7 @@ mod tests {
         snapshot_read_enabled: bool,
         snapshot_write_enabled: bool,
     ) -> (
-        CommandHandlerService,
+        EntityService,
         Arc<MockEventStore>,
         Arc<MockSnapshotStore>,
         Arc<MockBusinessLogic>,
@@ -674,7 +674,7 @@ mod tests {
         let business_client = Arc::new(MockBusinessLogic::new(vec!["orders".to_string()]));
         let event_bus = Arc::new(MockEventBus::new());
 
-        let service = CommandHandlerService::with_config(
+        let service = EntityService::with_config(
             event_store.clone(),
             snapshot_store.clone(),
             business_client.clone(),

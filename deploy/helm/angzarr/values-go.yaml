@@ -8,8 +8,8 @@ global:
 replicaCount: 1
 
 images:
-  command:
-    repository: angzarr-command
+  entity:
+    repository: angzarr-entity
     pullPolicy: Never
     tag: "latest"
   projector:
@@ -105,10 +105,10 @@ infrastructure:
     enabled: true
     replicas: 1
     port: 1316
-    commandHandlers:
-      customer: "angzarr-go-customer:50051"
-      transaction: "angzarr-go-transaction:50051"
-    streamService: "angzarr-go-stream:1315"
+    entities:
+      customer: "angzarr-entity-customer-go:50051"
+      transaction: "angzarr-entity-transaction-go:50051"
+    streamService: "angzarr-stream-go:1315"
     streamTimeoutSecs: 30
     resources:
       requests:
@@ -120,24 +120,24 @@ infrastructure:
 
 applications:
   business:
-    - name: go-customer
+    - name: entity-customer-go
       image:
-        repository: go-customer
+        repository: entity-customer-go
         tag: "latest"
         pullPolicy: Never
       domain: "customer"
       port: 50100
 
-    - name: go-transaction
+    - name: entity-transaction-go
       image:
-        repository: go-transaction
+        repository: entity-transaction-go
         tag: "latest"
         pullPolicy: Never
       domain: "transaction"
       port: 50101
 
   projectors:
-    - name: go-stream
+    - name: stream-go
       image:
         repository: angzarr-stream
         tag: "latest"
@@ -146,27 +146,27 @@ applications:
       topics:
         - "#"
 
-    - name: go-projector-receipt
+    - name: projector-receipt-go
       image:
-        repository: go-projector-receipt
+        repository: projector-receipt-go
         tag: "latest"
         pullPolicy: Never
       port: 50103
       topics:
         - "transaction.*"
 
-    - name: go-projector-log-customer
+    - name: projector-log-customer-go
       image:
-        repository: go-projector-log-customer
+        repository: projector-log-customer-go
         tag: "latest"
         pullPolicy: Never
       port: 50104
       topics:
         - "customer.*"
 
-    - name: go-projector-log-transaction
+    - name: projector-log-transaction-go
       image:
-        repository: go-projector-log-transaction
+        repository: projector-log-transaction-go
         tag: "latest"
         pullPolicy: Never
       port: 50105
@@ -174,9 +174,9 @@ applications:
         - "transaction.*"
 
   sagas:
-    - name: go-saga-loyalty
+    - name: saga-loyalty-go
       image:
-        repository: go-saga-loyalty
+        repository: saga-loyalty-go
         tag: "latest"
         pullPolicy: Never
       port: 50102
@@ -185,7 +185,7 @@ applications:
 
 service:
   type: NodePort
-  commandPort: 50051
+  entityPort: 50051
   queryPort: 50052
 
 logging:

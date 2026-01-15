@@ -18,8 +18,8 @@ image:
   tag: "dev"
 
 images:
-  command:
-    repository: localhost:5001/angzarr-command
+  entity:
+    repository: localhost:5001/angzarr-entity
     pullPolicy: Always
     tag: "dev"
   projector:
@@ -109,44 +109,44 @@ infrastructure:
 # Rust example applications with local registry
 applications:
   business:
-    - name: rs-customer
+    - name: entity-customer-rs
       image:
-        repository: localhost:5001/rs-customer
+        repository: localhost:5001/entity-customer-rs
         tag: "dev"
         pullPolicy: Always
       domain: "customer"
       port: 50052
 
-    - name: rs-transaction
+    - name: entity-transaction-rs
       image:
-        repository: localhost:5001/rs-transaction
+        repository: localhost:5001/entity-transaction-rs
         tag: "dev"
         pullPolicy: Always
       domain: "transaction"
       port: 50053
 
   projectors:
-    - name: rs-projector-receipt
+    - name: projector-receipt-rs
       image:
-        repository: localhost:5001/rs-projector-receipt
+        repository: localhost:5001/projector-receipt-rs
         tag: "dev"
         pullPolicy: Always
       port: 50055
       topics:
         - "transaction.*"
 
-    - name: rs-projector-log-customer
+    - name: projector-log-customer-rs
       image:
-        repository: localhost:5001/rs-projector-log-customer
+        repository: localhost:5001/projector-log-customer-rs
         tag: "dev"
         pullPolicy: Always
       port: 50056
       topics:
         - "customer.*"
 
-    - name: rs-projector-log-transaction
+    - name: projector-log-transaction-rs
       image:
-        repository: localhost:5001/rs-projector-log-transaction
+        repository: localhost:5001/projector-log-transaction-rs
         tag: "dev"
         pullPolicy: Always
       port: 50057
@@ -154,9 +154,9 @@ applications:
         - "transaction.*"
 
   sagas:
-    - name: rs-saga-loyalty
+    - name: saga-loyalty-rs
       image:
-        repository: localhost:5001/rs-saga-loyalty
+        repository: localhost:5001/saga-loyalty-rs
         tag: "dev"
         pullPolicy: Always
       port: 50054

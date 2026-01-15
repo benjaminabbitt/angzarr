@@ -1,71 +1,80 @@
+# syntax=docker/dockerfile:1.4
 # Java examples - multi-stage build with Maven
-# Build from this directory: docker build -t java-customer --target customer .
-# Build all: docker build -t java-examples .
+# Build: podman build -t java-customer --target customer -f examples/java/Containerfile .
+# Context must be repo root for proto access
+# Cache mounts persist Maven repository across builds
 
 # ============================================================================
 # Builder stage - compiles Java projects with Maven
 # ============================================================================
-FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+FROM docker.io/library/maven:3.9-eclipse-temurin-21-alpine AS builder
 
 WORKDIR /app
 
-# Proto files are already in relative path (../proto from each module)
+# Copy proto files from repo root
+COPY proto/ /app/proto/
 
 # ============================================================================
-# Build each service
+# Build each service with Maven cache mounts
 # ============================================================================
 FROM builder AS build-customer
-COPY proto/ /app/proto/
-COPY customer/pom.xml ./customer/
+COPY examples/java/customer/pom.xml ./customer/
 WORKDIR /app/customer
-RUN mvn dependency:go-offline -q || true
-COPY customer/src/ ./src/
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q || true
+COPY examples/java/customer/src/ ./src/
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
 
 FROM builder AS build-transaction
-COPY proto/ /app/proto/
-COPY transaction/pom.xml ./transaction/
+COPY examples/java/transaction/pom.xml ./transaction/
 WORKDIR /app/transaction
-RUN mvn dependency:go-offline -q || true
-COPY transaction/src/ ./src/
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q || true
+COPY examples/java/transaction/src/ ./src/
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
 
 FROM builder AS build-saga-loyalty
-COPY proto/ /app/proto/
-COPY saga-loyalty/pom.xml ./saga-loyalty/
+COPY examples/java/saga-loyalty/pom.xml ./saga-loyalty/
 WORKDIR /app/saga-loyalty
-RUN mvn dependency:go-offline -q || true
-COPY saga-loyalty/src/ ./src/
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q || true
+COPY examples/java/saga-loyalty/src/ ./src/
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
 
 FROM builder AS build-projector-receipt
-COPY proto/ /app/proto/
-COPY projector-receipt/pom.xml ./projector-receipt/
+COPY examples/java/projector-receipt/pom.xml ./projector-receipt/
 WORKDIR /app/projector-receipt
-RUN mvn dependency:go-offline -q || true
-COPY projector-receipt/src/ ./src/
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q || true
+COPY examples/java/projector-receipt/src/ ./src/
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
 
 FROM builder AS build-projector-log-customer
-COPY proto/ /app/proto/
-COPY projector-log-customer/pom.xml ./projector-log-customer/
+COPY examples/java/projector-log-customer/pom.xml ./projector-log-customer/
 WORKDIR /app/projector-log-customer
-RUN mvn dependency:go-offline -q || true
-COPY projector-log-customer/src/ ./src/
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q || true
+COPY examples/java/projector-log-customer/src/ ./src/
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
 
 FROM builder AS build-projector-log-transaction
-COPY proto/ /app/proto/
-COPY projector-log-transaction/pom.xml ./projector-log-transaction/
+COPY examples/java/projector-log-transaction/pom.xml ./projector-log-transaction/
 WORKDIR /app/projector-log-transaction
-RUN mvn dependency:go-offline -q || true
-COPY projector-log-transaction/src/ ./src/
-RUN mvn package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q || true
+COPY examples/java/projector-log-transaction/src/ ./src/
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
 
 # ============================================================================
 # Runtime base
 # ============================================================================
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM docker.io/library/eclipse-temurin:21-jre-alpine AS runtime
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 

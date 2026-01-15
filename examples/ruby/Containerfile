@@ -1,57 +1,65 @@
+# syntax=docker/dockerfile:1.4
 # Ruby examples - multi-stage build with Bundler
-# Build from this directory: docker build -t rb-customer --target customer .
-# Build all: docker build -t rb-examples .
+# Build: podman build -t rb-customer --target customer -f examples/ruby/Containerfile .
+# Context must be repo root for generated proto access
+# Cache mounts persist Bundler gems across builds
 
 # ============================================================================
 # Builder stage - installs dependencies with Bundler
 # ============================================================================
-FROM ruby:3.3-alpine AS builder
+FROM docker.io/library/ruby:3.3-alpine AS builder
 
 RUN apk add --no-cache build-base
 
 WORKDIR /app
 
-# Copy generated proto files
+# Copy generated proto files from repo root
 COPY generated/angzarr angzarr/proto/
 COPY generated/examples proto/
 
 # ============================================================================
-# Build each service
+# Build each service with Bundler cache mounts
 # ============================================================================
 FROM builder AS build-customer
-COPY customer/Gemfile customer/Gemfile.lock ./
-RUN bundle install --deployment --without development test
-COPY customer/*.rb ./
+COPY examples/ruby/customer/Gemfile examples/ruby/customer/Gemfile.lock ./
+RUN --mount=type=cache,target=/usr/local/bundle/cache \
+    bundle install --deployment --without development test
+COPY examples/ruby/customer/*.rb ./
 
 FROM builder AS build-transaction
-COPY transaction/Gemfile transaction/Gemfile.lock ./
-RUN bundle install --deployment --without development test
-COPY transaction/*.rb ./
+COPY examples/ruby/transaction/Gemfile examples/ruby/transaction/Gemfile.lock ./
+RUN --mount=type=cache,target=/usr/local/bundle/cache \
+    bundle install --deployment --without development test
+COPY examples/ruby/transaction/*.rb ./
 
 FROM builder AS build-saga-loyalty
-COPY saga-loyalty/Gemfile saga-loyalty/Gemfile.lock ./
-RUN bundle install --deployment --without development test
-COPY saga-loyalty/*.rb ./
+COPY examples/ruby/saga-loyalty/Gemfile examples/ruby/saga-loyalty/Gemfile.lock ./
+RUN --mount=type=cache,target=/usr/local/bundle/cache \
+    bundle install --deployment --without development test
+COPY examples/ruby/saga-loyalty/*.rb ./
 
 FROM builder AS build-projector-receipt
-COPY projector-receipt/Gemfile projector-receipt/Gemfile.lock ./
-RUN bundle install --deployment --without development test
-COPY projector-receipt/*.rb ./
+COPY examples/ruby/projector-receipt/Gemfile examples/ruby/projector-receipt/Gemfile.lock ./
+RUN --mount=type=cache,target=/usr/local/bundle/cache \
+    bundle install --deployment --without development test
+COPY examples/ruby/projector-receipt/*.rb ./
 
 FROM builder AS build-projector-log-customer
-COPY projector-log-customer/Gemfile projector-log-customer/Gemfile.lock ./
-RUN bundle install --deployment --without development test
-COPY projector-log-customer/*.rb ./
+COPY examples/ruby/projector-log-customer/Gemfile examples/ruby/projector-log-customer/Gemfile.lock ./
+RUN --mount=type=cache,target=/usr/local/bundle/cache \
+    bundle install --deployment --without development test
+COPY examples/ruby/projector-log-customer/*.rb ./
 
 FROM builder AS build-projector-log-transaction
-COPY projector-log-transaction/Gemfile projector-log-transaction/Gemfile.lock ./
-RUN bundle install --deployment --without development test
-COPY projector-log-transaction/*.rb ./
+COPY examples/ruby/projector-log-transaction/Gemfile examples/ruby/projector-log-transaction/Gemfile.lock ./
+RUN --mount=type=cache,target=/usr/local/bundle/cache \
+    bundle install --deployment --without development test
+COPY examples/ruby/projector-log-transaction/*.rb ./
 
 # ============================================================================
 # Runtime base
 # ============================================================================
-FROM ruby:3.3-alpine AS runtime
+FROM docker.io/library/ruby:3.3-alpine AS runtime
 WORKDIR /app
 
 # ============================================================================

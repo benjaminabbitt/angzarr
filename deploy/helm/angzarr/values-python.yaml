@@ -7,8 +7,8 @@ global:
 replicaCount: 1
 
 images:
-  command:
-    repository: angzarr-command
+  entity:
+    repository: angzarr-entity
     pullPolicy: Never
     tag: "latest"
   projector:
@@ -90,32 +90,32 @@ infrastructure:
     enabled: true
     replicas: 1
     port: 1316
-    commandHandlers:
-      customer: "angzarr-py-customer:50051"
-      transaction: "angzarr-py-transaction:50051"
-    streamService: "angzarr-py-stream:1315"
+    entities:
+      customer: "angzarr-entity-customer-py:50051"
+      transaction: "angzarr-entity-transaction-py:50051"
+    streamService: "angzarr-stream-py:1315"
     streamTimeoutSecs: 30
 
 applications:
   business:
-    - name: py-customer
+    - name: entity-customer-py
       image:
-        repository: py-customer
+        repository: entity-customer-py
         tag: "latest"
         pullPolicy: Never
       domain: "customer"
       port: 50100
 
-    - name: py-transaction
+    - name: entity-transaction-py
       image:
-        repository: py-transaction
+        repository: entity-transaction-py
         tag: "latest"
         pullPolicy: Never
       domain: "transaction"
       port: 50101
 
   projectors:
-    - name: py-stream
+    - name: stream-py
       image:
         repository: angzarr-stream
         tag: "latest"
@@ -124,27 +124,27 @@ applications:
       topics:
         - "#"
 
-    - name: py-projector-receipt
+    - name: projector-receipt-py
       image:
-        repository: py-projector-receipt
+        repository: projector-receipt-py
         tag: "latest"
         pullPolicy: Never
       port: 50103
       topics:
         - "transaction.*"
 
-    - name: py-projector-log-customer
+    - name: projector-log-customer-py
       image:
-        repository: py-projector-log-customer
+        repository: projector-log-customer-py
         tag: "latest"
         pullPolicy: Never
       port: 50104
       topics:
         - "customer.*"
 
-    - name: py-projector-log-transaction
+    - name: projector-log-transaction-py
       image:
-        repository: py-projector-log-transaction
+        repository: projector-log-transaction-py
         tag: "latest"
         pullPolicy: Never
       port: 50105
@@ -152,9 +152,9 @@ applications:
         - "transaction.*"
 
   sagas:
-    - name: py-saga-loyalty
+    - name: saga-loyalty-py
       image:
-        repository: py-saga-loyalty
+        repository: saga-loyalty-py
         tag: "latest"
         pullPolicy: Never
       port: 50102
@@ -163,7 +163,7 @@ applications:
 
 service:
   type: NodePort
-  commandPort: 50051
+  entityPort: 50051
   queryPort: 50052
 
 logging:

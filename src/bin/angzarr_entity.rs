@@ -1,11 +1,11 @@
-//! angzarr-command: Command-processing sidecar
+//! angzarr-entity: Entity sidecar
 //!
 //! Kubernetes sidecar for business logic services. Handles command processing,
 //! event storage, and event publishing.
 //!
 //! ## Architecture
 //! ```text
-//! [External Client] -> [angzarr-command] -> [Business Logic Service]
+//! [External Client] -> [angzarr-entity] -> [Business Logic Service]
 //!                            |
 //!                            v
 //!                      [Event Store] + [AMQP Publisher]
@@ -31,12 +31,11 @@ use angzarr::interfaces::BusinessLogicClient;
 use angzarr::proto::{
     business_coordinator_server::BusinessCoordinatorServer, event_query_server::EventQueryServer,
 };
-use angzarr::services::{CommandHandlerService, EventQueryService};
+use angzarr::services::{EntityService, EventQueryService};
 use angzarr::storage::init_storage;
 
-#[cfg(feature = "amqp")]
-use angzarr::bus::{AmqpConfig, AmqpEventBus};
-#[cfg(feature = "amqp")]
+use angzarr::bus::AmqpEventBus;
+use angzarr::config::MessagingType;
 use angzarr::interfaces::EventBus;
 
 #[tokio::main]
@@ -54,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         e
     })?;
 
-    info!("Starting angzarr-command sidecar");
+    info!("Starting angzarr-entity sidecar");
 
     let (event_store, snapshot_store) = init_storage(&config.storage).await?;
     info!("Storage initialized");
@@ -62,12 +61,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target = config
         .target
         .as_ref()
-        .ok_or("Command sidecar requires 'target' configuration")?;
+        .ok_or("Entity sidecar requires 'target' configuration")?;
 
     let domain = target
         .domain
         .as_ref()
-        .ok_or("Command sidecar requires 'target.domain' configuration")?;
+        .ok_or("Entity sidecar requires 'target.domain' configuration")?;
 
     info!(
         "Target business logic: {} (domain: {})",
@@ -79,28 +78,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let business_client: Arc<dyn BusinessLogicClient> =
         Arc::new(StaticBusinessLogicClient::new(addresses).await?);
 
-    #[cfg(feature = "amqp")]
-    let event_bus: Arc<dyn EventBus> = {
-        if let Some(amqp_config) = &config.amqp {
+    let event_bus: Arc<dyn EventBus> = match &config.messaging {
+        Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {
             info!(
                 "Connecting to AMQP for event publishing: {}",
-                amqp_config.url
+                messaging.amqp.url
             );
-            let amqp_bus_config = AmqpConfig::publisher(&amqp_config.url);
+            let amqp_bus_config =
+                angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
-        } else {
-            warn!("No AMQP config, using direct event bus");
+        }
+        _ => {
+            warn!("No AMQP messaging configured, using direct event bus");
             Arc::new(DirectEventBus::new())
         }
     };
 
-    #[cfg(not(feature = "amqp"))]
-    let event_bus: Arc<dyn angzarr::interfaces::EventBus> = {
-        warn!("AMQP feature not enabled, using direct event bus");
-        Arc::new(DirectEventBus::new())
-    };
-
-    let command_handler = CommandHandlerService::new(
+    let entity_service = EntityService::new(
         event_store.clone(),
         snapshot_store.clone(),
         business_client,
@@ -110,9 +104,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_query = EventQueryService::new(event_store, snapshot_store);
 
     let host = &config.server.host;
-    let addr = format!("{}:{}", host, config.server.command_handler_port).parse()?;
+    let addr = format!("{}:{}", host, config.server.entity_port).parse()?;
 
-    info!("Command sidecar listening on {}", addr);
+    info!("Entity sidecar listening on {}", addr);
 
     // Create health reporter
     let (mut health_reporter, health_service) = health_reporter();
@@ -122,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Server::builder()
         .add_service(health_service)
-        .add_service(BusinessCoordinatorServer::new(command_handler))
+        .add_service(BusinessCoordinatorServer::new(entity_service))
         .add_service(EventQueryServer::new(event_query))
         .serve(addr)
         .await?;

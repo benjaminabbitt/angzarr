@@ -68,54 +68,54 @@ applications:
   # Business logic aggregates
   business:
     # Rust customer aggregate
-    - name: rs-customer
+    - name: entity-customer-rs
       image:
-        repository: rs-customer
+        repository: entity-customer-rs
         tag: "latest"
         pullPolicy: Never
       domain: "customer"
       port: 50052
 
     # Rust transaction aggregate
-    - name: rs-transaction
+    - name: entity-transaction-rs
       image:
-        repository: rs-transaction
+        repository: entity-transaction-rs
         tag: "latest"
         pullPolicy: Never
       domain: "transaction"
       port: 50053
 
     # Go customer aggregate
-    - name: go-customer
+    - name: entity-customer-go
       image:
-        repository: go-customer
+        repository: entity-customer-go
         tag: "latest"
         pullPolicy: Never
       domain: "customer"
       port: 50052
 
     # Go transaction aggregate
-    - name: go-transaction
+    - name: entity-transaction-go
       image:
-        repository: go-transaction
+        repository: entity-transaction-go
         tag: "latest"
         pullPolicy: Never
       domain: "transaction"
       port: 50053
 
     # Python customer aggregate
-    - name: py-customer
+    - name: entity-customer-py
       image:
-        repository: py-customer
+        repository: entity-customer-py
         tag: "latest"
         pullPolicy: Never
       domain: "customer"
       port: 50052
 
     # Python transaction aggregate
-    - name: py-transaction
+    - name: entity-transaction-py
       image:
-        repository: py-transaction
+        repository: entity-transaction-py
         tag: "latest"
         pullPolicy: Never
       domain: "transaction"
@@ -124,9 +124,9 @@ applications:
   # Projector applications
   projectors:
     # Receipt projector (synchronous - returns projection in command response)
-    - name: rs-projector-receipt
+    - name: projector-receipt-rs
       image:
-        repository: rs-projector-receipt
+        repository: projector-receipt-rs
         tag: "latest"
         pullPolicy: Never
       port: 50055
@@ -134,27 +134,27 @@ applications:
         - "transaction.*"
 
     # Log projectors - customer domain
-    - name: rs-projector-log-customer
+    - name: projector-log-customer-rs
       image:
-        repository: rs-projector-log-customer
+        repository: projector-log-customer-rs
         tag: "latest"
         pullPolicy: Never
       port: 50056
       topics:
         - "customer.*"
 
-    - name: go-projector-log-customer
+    - name: projector-log-customer-go
       image:
-        repository: go-projector-log-customer
+        repository: projector-log-customer-go
         tag: "latest"
         pullPolicy: Never
       port: 50058
       topics:
         - "customer.*"
 
-    - name: py-projector-log-customer
+    - name: projector-log-customer-py
       image:
-        repository: py-projector-log-customer
+        repository: projector-log-customer-py
         tag: "latest"
         pullPolicy: Never
       port: 50060
@@ -162,27 +162,27 @@ applications:
         - "customer.*"
 
     # Log projectors - transaction domain
-    - name: rs-projector-log-transaction
+    - name: projector-log-transaction-rs
       image:
-        repository: rs-projector-log-transaction
+        repository: projector-log-transaction-rs
         tag: "latest"
         pullPolicy: Never
       port: 50057
       topics:
         - "transaction.*"
 
-    - name: go-projector-log-transaction
+    - name: projector-log-transaction-go
       image:
-        repository: go-projector-log-transaction
+        repository: projector-log-transaction-go
         tag: "latest"
         pullPolicy: Never
       port: 50059
       topics:
         - "transaction.*"
 
-    - name: py-projector-log-transaction
+    - name: projector-log-transaction-py
       image:
-        repository: py-projector-log-transaction
+        repository: projector-log-transaction-py
         tag: "latest"
         pullPolicy: Never
       port: 50061
@@ -192,27 +192,27 @@ applications:
   # Saga applications
   sagas:
     # Loyalty saga - subscribes to transactions, issues loyalty commands
-    - name: rs-saga-loyalty
+    - name: saga-loyalty-rs
       image:
-        repository: rs-saga-loyalty
+        repository: saga-loyalty-rs
         tag: "latest"
         pullPolicy: Never
       port: 50054
       topics:
         - "transaction.*"
 
-    - name: go-saga-loyalty
+    - name: saga-loyalty-go
       image:
-        repository: go-saga-loyalty
+        repository: saga-loyalty-go
         tag: "latest"
         pullPolicy: Never
       port: 50054
       topics:
         - "transaction.*"
 
-    - name: py-saga-loyalty
+    - name: saga-loyalty-py
       image:
-        repository: py-saga-loyalty
+        repository: saga-loyalty-py
         tag: "latest"
         pullPolicy: Never
       port: 50054

@@ -1,0 +1,88 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr-ruby-examples
+
+requires:
+  - path: ../../skaffold.yaml
+    activeProfiles:
+      - name: local
+
+build:
+  local:
+    push: true
+    useBuildkit: false
+  artifacts:
+    - image: localhost:5001/entity-customer-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: customer
+
+    - image: localhost:5001/entity-transaction-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: transaction
+
+    - image: localhost:5001/saga-loyalty-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: saga-loyalty
+
+    - image: localhost:5001/projector-receipt-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: projector-receipt
+
+    - image: localhost:5001/projector-log-customer-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: projector-log-customer
+
+    - image: localhost:5001/projector-log-transaction-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: projector-log-transaction
+
+deploy:
+  helm:
+    releases:
+      - name: angzarr
+        chartPath: ../../deploy/helm/angzarr
+        namespace: angzarr
+        createNamespace: true
+        valuesFiles:
+          - ../../deploy/helm/angzarr/values-ruby.yaml
+        setValues:
+          images.command.repository: localhost:5001/angzarr-entity
+          images.command.tag: latest
+          images.projector.repository: localhost:5001/angzarr-projector
+          images.projector.tag: latest
+          images.saga.repository: localhost:5001/angzarr-saga
+          images.saga.tag: latest
+          images.stream.repository: localhost:5001/angzarr-stream
+          images.stream.tag: latest
+          images.gateway.repository: localhost:5001/angzarr-gateway
+          images.gateway.tag: latest
+          applications.business[0].image.repository: localhost:5001/entity-customer-rb
+          applications.business[0].image.tag: latest
+          applications.business[1].image.repository: localhost:5001/entity-transaction-rb
+          applications.business[1].image.tag: latest
+          applications.projectors[1].image.repository: localhost:5001/projector-receipt-rb
+          applications.projectors[1].image.tag: latest
+          applications.projectors[2].image.repository: localhost:5001/projector-log-customer-rb
+          applications.projectors[2].image.tag: latest
+          applications.projectors[3].image.repository: localhost:5001/projector-log-transaction-rb
+          applications.projectors[3].image.tag: latest
+          applications.sagas[0].image.repository: localhost:5001/saga-loyalty-rb
+          applications.sagas[0].image.tag: latest
+
+profiles:
+  - name: dev
+    activation:
+      - command: dev

@@ -13,37 +13,37 @@ build:
     push: true
     useBuildkit: false
   artifacts:
-    - image: localhost:5001/py-customer
+    - image: localhost:5001/entity-customer-py
       context: .
       docker:
         dockerfile: Containerfile
         target: customer
 
-    - image: localhost:5001/py-transaction
+    - image: localhost:5001/entity-transaction-py
       context: .
       docker:
         dockerfile: Containerfile
         target: transaction
 
-    - image: localhost:5001/py-saga-loyalty
+    - image: localhost:5001/saga-loyalty-py
       context: .
       docker:
         dockerfile: Containerfile
         target: saga-loyalty
 
-    - image: localhost:5001/py-projector-receipt
+    - image: localhost:5001/projector-receipt-py
       context: .
       docker:
         dockerfile: Containerfile
         target: projector-receipt
 
-    - image: localhost:5001/py-projector-log-customer
+    - image: localhost:5001/projector-log-customer-py
       context: .
       docker:
         dockerfile: Containerfile
         target: projector-log-customer
 
-    - image: localhost:5001/py-projector-log-transaction
+    - image: localhost:5001/projector-log-transaction-py
       context: .
       docker:
         dockerfile: Containerfile
@@ -59,7 +59,7 @@ deploy:
         valuesFiles:
           - ../../deploy/helm/angzarr/values-python.yaml
         setValues:
-          images.command.repository: localhost:5001/angzarr-command
+          images.command.repository: localhost:5001/angzarr-entity
           images.command.tag: latest
           images.projector.repository: localhost:5001/angzarr-projector
           images.projector.tag: latest
@@ -69,17 +69,17 @@ deploy:
           images.stream.tag: latest
           images.gateway.repository: localhost:5001/angzarr-gateway
           images.gateway.tag: latest
-          applications.business[0].image.repository: localhost:5001/py-customer
+          applications.business[0].image.repository: localhost:5001/entity-customer-py
           applications.business[0].image.tag: latest
-          applications.business[1].image.repository: localhost:5001/py-transaction
+          applications.business[1].image.repository: localhost:5001/entity-transaction-py
           applications.business[1].image.tag: latest
-          applications.projectors[1].image.repository: localhost:5001/py-projector-receipt
+          applications.projectors[1].image.repository: localhost:5001/projector-receipt-py
           applications.projectors[1].image.tag: latest
-          applications.projectors[2].image.repository: localhost:5001/py-projector-log-customer
+          applications.projectors[2].image.repository: localhost:5001/projector-log-customer-py
           applications.projectors[2].image.tag: latest
-          applications.projectors[3].image.repository: localhost:5001/py-projector-log-transaction
+          applications.projectors[3].image.repository: localhost:5001/projector-log-transaction-py
           applications.projectors[3].image.tag: latest
-          applications.sagas[0].image.repository: localhost:5001/py-saga-loyalty
+          applications.sagas[0].image.repository: localhost:5001/saga-loyalty-py
           applications.sagas[0].image.tag: latest
 
 profiles:

@@ -6,12 +6,7 @@
 pub mod bus;
 pub mod clients;
 pub mod config;
-#[cfg(any(
-    feature = "mode-projector",
-    feature = "mode-saga",
-    feature = "mode-stream",
-    feature = "mode-gateway"
-))]
+pub mod discovery;
 pub mod handlers;
 pub mod interfaces;
 pub mod projectors;

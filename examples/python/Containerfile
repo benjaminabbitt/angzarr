@@ -1,58 +1,66 @@
+# syntax=docker/dockerfile:1.4
 # Python examples - multi-stage build with uv
-# Build from this directory: docker build -t py-customer --target customer .
-# Build all: docker build -t py-examples .
+# Build: podman build -t py-customer --target customer -f examples/python/Containerfile .
+# Context must be repo root for generated proto access
+# Cache mounts persist uv packages across builds
 
 # ============================================================================
 # Builder stage - installs dependencies with uv
 # ============================================================================
-FROM python:3.12-slim AS builder
+FROM docker.io/library/python:3.12-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Copy generated proto files
+# Copy generated proto files from repo root
 COPY generated/angzarr angzarr/proto/
 COPY generated/examples proto/
 RUN touch angzarr/__init__.py angzarr/proto/__init__.py proto/__init__.py
 
 # ============================================================================
-# Build each service
+# Build each service with uv cache mounts
 # ============================================================================
 FROM builder AS build-customer
-COPY customer/pyproject.toml .
-RUN uv sync --no-dev
-COPY customer/*.py ./
+COPY examples/python/customer/pyproject.toml .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
+COPY examples/python/customer/*.py ./
 
 FROM builder AS build-transaction
-COPY transaction/pyproject.toml .
-RUN uv sync --no-dev
-COPY transaction/*.py ./
+COPY examples/python/transaction/pyproject.toml .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
+COPY examples/python/transaction/*.py ./
 
 FROM builder AS build-saga-loyalty
-COPY saga-loyalty/pyproject.toml .
-RUN uv sync --no-dev
-COPY saga-loyalty/*.py ./
+COPY examples/python/saga-loyalty/pyproject.toml .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
+COPY examples/python/saga-loyalty/*.py ./
 
 FROM builder AS build-projector-receipt
-COPY projector-receipt/pyproject.toml .
-RUN uv sync --no-dev
-COPY projector-receipt/*.py ./
+COPY examples/python/projector-receipt/pyproject.toml .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
+COPY examples/python/projector-receipt/*.py ./
 
 FROM builder AS build-projector-log-customer
-COPY projector-log-customer/pyproject.toml .
-RUN uv sync --no-dev
-COPY projector-log-customer/*.py ./
+COPY examples/python/projector-log-customer/pyproject.toml .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
+COPY examples/python/projector-log-customer/*.py ./
 
 FROM builder AS build-projector-log-transaction
-COPY projector-log-transaction/pyproject.toml .
-RUN uv sync --no-dev
-COPY projector-log-transaction/*.py ./
+COPY examples/python/projector-log-transaction/pyproject.toml .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev
+COPY examples/python/projector-log-transaction/*.py ./
 
 # ============================================================================
 # Runtime base
 # ============================================================================
-FROM python:3.12-slim AS runtime
+FROM docker.io/library/python:3.12-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 

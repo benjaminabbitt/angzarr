@@ -40,6 +40,90 @@ run-rust:
 delete-rust:
     cd "{{TOP}}/examples/rust" && skaffold delete
 
+# Start Go examples with skaffold dev loop
+dev-go:
+    cd "{{TOP}}/examples/go" && skaffold dev
+
+# Build and deploy Go examples once with skaffold
+run-go:
+    cd "{{TOP}}/examples/go" && skaffold run
+
+# Delete Go skaffold deployment
+delete-go:
+    cd "{{TOP}}/examples/go" && skaffold delete
+
+# Start Python examples with skaffold dev loop
+dev-python:
+    cd "{{TOP}}/examples/python" && skaffold dev
+
+# Build and deploy Python examples once with skaffold
+run-python:
+    cd "{{TOP}}/examples/python" && skaffold run
+
+# Delete Python skaffold deployment
+delete-python:
+    cd "{{TOP}}/examples/python" && skaffold delete
+
+# Start TypeScript examples with skaffold dev loop
+dev-typescript:
+    cd "{{TOP}}/examples/typescript" && skaffold dev
+
+# Build and deploy TypeScript examples once with skaffold
+run-typescript:
+    cd "{{TOP}}/examples/typescript" && skaffold run
+
+# Delete TypeScript skaffold deployment
+delete-typescript:
+    cd "{{TOP}}/examples/typescript" && skaffold delete
+
+# Start Kotlin examples with skaffold dev loop
+dev-kotlin:
+    cd "{{TOP}}/examples/kotlin" && skaffold dev
+
+# Build and deploy Kotlin examples once with skaffold
+run-kotlin:
+    cd "{{TOP}}/examples/kotlin" && skaffold run
+
+# Delete Kotlin skaffold deployment
+delete-kotlin:
+    cd "{{TOP}}/examples/kotlin" && skaffold delete
+
+# Start Java examples with skaffold dev loop
+dev-java:
+    cd "{{TOP}}/examples/java" && skaffold dev
+
+# Build and deploy Java examples once with skaffold
+run-java:
+    cd "{{TOP}}/examples/java" && skaffold run
+
+# Delete Java skaffold deployment
+delete-java:
+    cd "{{TOP}}/examples/java" && skaffold delete
+
+# Start C# examples with skaffold dev loop
+dev-csharp:
+    cd "{{TOP}}/examples/csharp" && skaffold dev
+
+# Build and deploy C# examples once with skaffold
+run-csharp:
+    cd "{{TOP}}/examples/csharp" && skaffold run
+
+# Delete C# skaffold deployment
+delete-csharp:
+    cd "{{TOP}}/examples/csharp" && skaffold delete
+
+# Start Ruby examples with skaffold dev loop
+dev-ruby:
+    cd "{{TOP}}/examples/ruby" && skaffold dev
+
+# Build and deploy Ruby examples once with skaffold
+run-ruby:
+    cd "{{TOP}}/examples/ruby" && skaffold run
+
+# Delete Ruby skaffold deployment
+delete-ruby:
+    cd "{{TOP}}/examples/ruby" && skaffold delete
+
 # Aliases for backwards compatibility
 skaffold-rust: dev-rust
 skaffold-rust-run: run-rust
@@ -112,6 +196,27 @@ clean:
     just ruby clean || true
     just typescript clean || true
 
+# === Container Cache Management ===
+
+# Show podman disk usage
+cache-status:
+    @echo "=== Podman System Disk Usage ==="
+    podman system df
+    @echo ""
+    @echo "=== Example Images ==="
+    podman images --filter "reference=*entity-*" --filter "reference=*saga-*" --filter "reference=*projector-*"
+
+# Prune unused example images
+cache-prune:
+    @echo "Pruning dangling images..."
+    podman image prune -f
+    @echo ""
+    podman system df
+
+# Prune old images (older than 24h)
+cache-prune-old:
+    podman image prune -f --filter "until=24h"
+
 # Format all examples
 fmt:
     just rust fmt || true
@@ -151,83 +256,83 @@ helm-lint:
 
 # Build framework sidecar images (from root Containerfile)
 images-framework:
-    podman build --target angzarr-command -t docker.io/library/angzarr-command:{{IMAGE_TAG}} "{{TOP}}"
+    podman build --target angzarr-entity -t docker.io/library/angzarr-entity:{{IMAGE_TAG}} "{{TOP}}"
     podman build --target angzarr-projector -t docker.io/library/angzarr-projector:{{IMAGE_TAG}} "{{TOP}}"
     podman build --target angzarr-saga -t docker.io/library/angzarr-saga:{{IMAGE_TAG}} "{{TOP}}"
     podman build --target angzarr-stream -t docker.io/library/angzarr-stream:{{IMAGE_TAG}} "{{TOP}}"
     podman build --target angzarr-gateway -t docker.io/library/angzarr-gateway:{{IMAGE_TAG}} "{{TOP}}"
 
-# Build Rust example images
+# Build Rust example images (context must be repo root for Cargo.toml access)
 images-rust: images-framework
-    podman build --target customer -t docker.io/library/rs-customer:{{IMAGE_TAG}} -f rust/Containerfile "{{TOP}}/examples/rust"
-    podman build --target transaction -t docker.io/library/rs-transaction:{{IMAGE_TAG}} -f rust/Containerfile "{{TOP}}/examples/rust"
-    podman build --target saga-loyalty -t docker.io/library/rs-saga-loyalty:{{IMAGE_TAG}} -f rust/Containerfile "{{TOP}}/examples/rust"
-    podman build --target projector-receipt -t docker.io/library/rs-projector-receipt:{{IMAGE_TAG}} -f rust/Containerfile "{{TOP}}/examples/rust"
-    podman build --target projector-log-customer -t docker.io/library/rs-projector-log-customer:{{IMAGE_TAG}} -f rust/Containerfile "{{TOP}}/examples/rust"
-    podman build --target projector-log-transaction -t docker.io/library/rs-projector-log-transaction:{{IMAGE_TAG}} -f rust/Containerfile "{{TOP}}/examples/rust"
+    podman build --target customer -t docker.io/library/entity-customer-rs:{{IMAGE_TAG}} -f examples/rust/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-rs:{{IMAGE_TAG}} -f examples/rust/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-rs:{{IMAGE_TAG}} -f examples/rust/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-rs:{{IMAGE_TAG}} -f examples/rust/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-rs:{{IMAGE_TAG}} -f examples/rust/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-rs:{{IMAGE_TAG}} -f examples/rust/Containerfile "{{TOP}}"
 
-# Build Go example images
+# Build Go example images (context must be repo root for proto access)
 images-go: images-framework
-    podman build --target customer -t docker.io/library/go-customer:{{IMAGE_TAG}} -f go/Containerfile "{{TOP}}/examples/go"
-    podman build --target transaction -t docker.io/library/go-transaction:{{IMAGE_TAG}} -f go/Containerfile "{{TOP}}/examples/go"
-    podman build --target saga-loyalty -t docker.io/library/go-saga-loyalty:{{IMAGE_TAG}} -f go/Containerfile "{{TOP}}/examples/go"
-    podman build --target projector-receipt -t docker.io/library/go-projector-receipt:{{IMAGE_TAG}} -f go/Containerfile "{{TOP}}/examples/go"
-    podman build --target projector-log-customer -t docker.io/library/go-projector-log-customer:{{IMAGE_TAG}} -f go/Containerfile "{{TOP}}/examples/go"
-    podman build --target projector-log-transaction -t docker.io/library/go-projector-log-transaction:{{IMAGE_TAG}} -f go/Containerfile "{{TOP}}/examples/go"
+    podman build --target customer -t docker.io/library/entity-customer-go:{{IMAGE_TAG}} -f examples/go/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-go:{{IMAGE_TAG}} -f examples/go/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-go:{{IMAGE_TAG}} -f examples/go/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-go:{{IMAGE_TAG}} -f examples/go/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-go:{{IMAGE_TAG}} -f examples/go/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-go:{{IMAGE_TAG}} -f examples/go/Containerfile "{{TOP}}"
 
-# Build Python example images
+# Build Python example images (context must be repo root for generated proto access)
 images-python: images-framework
-    podman build --target customer -t docker.io/library/py-customer:{{IMAGE_TAG}} -f python/Containerfile "{{TOP}}/examples/python"
-    podman build --target transaction -t docker.io/library/py-transaction:{{IMAGE_TAG}} -f python/Containerfile "{{TOP}}/examples/python"
-    podman build --target saga-loyalty -t docker.io/library/py-saga-loyalty:{{IMAGE_TAG}} -f python/Containerfile "{{TOP}}/examples/python"
-    podman build --target projector-receipt -t docker.io/library/py-projector-receipt:{{IMAGE_TAG}} -f python/Containerfile "{{TOP}}/examples/python"
-    podman build --target projector-log-customer -t docker.io/library/py-projector-log-customer:{{IMAGE_TAG}} -f python/Containerfile "{{TOP}}/examples/python"
-    podman build --target projector-log-transaction -t docker.io/library/py-projector-log-transaction:{{IMAGE_TAG}} -f python/Containerfile "{{TOP}}/examples/python"
+    podman build --target customer -t docker.io/library/entity-customer-py:{{IMAGE_TAG}} -f examples/python/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-py:{{IMAGE_TAG}} -f examples/python/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-py:{{IMAGE_TAG}} -f examples/python/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-py:{{IMAGE_TAG}} -f examples/python/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-py:{{IMAGE_TAG}} -f examples/python/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-py:{{IMAGE_TAG}} -f examples/python/Containerfile "{{TOP}}"
 
-# Build TypeScript example images
+# Build TypeScript example images (context must be repo root for generated proto access)
 images-typescript: images-framework
-    podman build --target customer -t docker.io/library/ts-customer:{{IMAGE_TAG}} -f typescript/Containerfile "{{TOP}}/examples/typescript"
-    podman build --target transaction -t docker.io/library/ts-transaction:{{IMAGE_TAG}} -f typescript/Containerfile "{{TOP}}/examples/typescript"
-    podman build --target saga-loyalty -t docker.io/library/ts-saga-loyalty:{{IMAGE_TAG}} -f typescript/Containerfile "{{TOP}}/examples/typescript"
-    podman build --target projector-receipt -t docker.io/library/ts-projector-receipt:{{IMAGE_TAG}} -f typescript/Containerfile "{{TOP}}/examples/typescript"
-    podman build --target projector-log-customer -t docker.io/library/ts-projector-log-customer:{{IMAGE_TAG}} -f typescript/Containerfile "{{TOP}}/examples/typescript"
-    podman build --target projector-log-transaction -t docker.io/library/ts-projector-log-transaction:{{IMAGE_TAG}} -f typescript/Containerfile "{{TOP}}/examples/typescript"
+    podman build --target customer -t docker.io/library/entity-customer-ts:{{IMAGE_TAG}} -f examples/typescript/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-ts:{{IMAGE_TAG}} -f examples/typescript/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-ts:{{IMAGE_TAG}} -f examples/typescript/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-ts:{{IMAGE_TAG}} -f examples/typescript/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-ts:{{IMAGE_TAG}} -f examples/typescript/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-ts:{{IMAGE_TAG}} -f examples/typescript/Containerfile "{{TOP}}"
 
-# Build Kotlin example images
+# Build Kotlin example images (context must be repo root for proto access)
 images-kotlin: images-framework
-    podman build --target customer -t docker.io/library/kt-customer:{{IMAGE_TAG}} -f kotlin/Containerfile "{{TOP}}/examples/kotlin"
-    podman build --target transaction -t docker.io/library/kt-transaction:{{IMAGE_TAG}} -f kotlin/Containerfile "{{TOP}}/examples/kotlin"
-    podman build --target saga-loyalty -t docker.io/library/kt-saga-loyalty:{{IMAGE_TAG}} -f kotlin/Containerfile "{{TOP}}/examples/kotlin"
-    podman build --target projector-receipt -t docker.io/library/kt-projector-receipt:{{IMAGE_TAG}} -f kotlin/Containerfile "{{TOP}}/examples/kotlin"
-    podman build --target projector-log-customer -t docker.io/library/kt-projector-log-customer:{{IMAGE_TAG}} -f kotlin/Containerfile "{{TOP}}/examples/kotlin"
-    podman build --target projector-log-transaction -t docker.io/library/kt-projector-log-transaction:{{IMAGE_TAG}} -f kotlin/Containerfile "{{TOP}}/examples/kotlin"
+    podman build --target customer -t docker.io/library/entity-customer-kt:{{IMAGE_TAG}} -f examples/kotlin/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-kt:{{IMAGE_TAG}} -f examples/kotlin/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-kt:{{IMAGE_TAG}} -f examples/kotlin/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-kt:{{IMAGE_TAG}} -f examples/kotlin/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-kt:{{IMAGE_TAG}} -f examples/kotlin/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-kt:{{IMAGE_TAG}} -f examples/kotlin/Containerfile "{{TOP}}"
 
-# Build C# example images
+# Build C# example images (context must be repo root for proto access)
 images-csharp: images-framework
-    podman build --target customer -t docker.io/library/cs-customer:{{IMAGE_TAG}} -f csharp/Containerfile "{{TOP}}/examples/csharp"
-    podman build --target transaction -t docker.io/library/cs-transaction:{{IMAGE_TAG}} -f csharp/Containerfile "{{TOP}}/examples/csharp"
-    podman build --target saga-loyalty -t docker.io/library/cs-saga-loyalty:{{IMAGE_TAG}} -f csharp/Containerfile "{{TOP}}/examples/csharp"
-    podman build --target projector-receipt -t docker.io/library/cs-projector-receipt:{{IMAGE_TAG}} -f csharp/Containerfile "{{TOP}}/examples/csharp"
-    podman build --target projector-log-customer -t docker.io/library/cs-projector-log-customer:{{IMAGE_TAG}} -f csharp/Containerfile "{{TOP}}/examples/csharp"
-    podman build --target projector-log-transaction -t docker.io/library/cs-projector-log-transaction:{{IMAGE_TAG}} -f csharp/Containerfile "{{TOP}}/examples/csharp"
+    podman build --target customer -t docker.io/library/entity-customer-cs:{{IMAGE_TAG}} -f examples/csharp/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-cs:{{IMAGE_TAG}} -f examples/csharp/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-cs:{{IMAGE_TAG}} -f examples/csharp/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-cs:{{IMAGE_TAG}} -f examples/csharp/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-cs:{{IMAGE_TAG}} -f examples/csharp/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-cs:{{IMAGE_TAG}} -f examples/csharp/Containerfile "{{TOP}}"
 
-# Build Java example images
+# Build Java example images (context must be repo root for proto access)
 images-java: images-framework
-    podman build --target customer -t docker.io/library/java-customer:{{IMAGE_TAG}} -f java/Containerfile "{{TOP}}/examples/java"
-    podman build --target transaction -t docker.io/library/java-transaction:{{IMAGE_TAG}} -f java/Containerfile "{{TOP}}/examples/java"
-    podman build --target saga-loyalty -t docker.io/library/java-saga-loyalty:{{IMAGE_TAG}} -f java/Containerfile "{{TOP}}/examples/java"
-    podman build --target projector-receipt -t docker.io/library/java-projector-receipt:{{IMAGE_TAG}} -f java/Containerfile "{{TOP}}/examples/java"
-    podman build --target projector-log-customer -t docker.io/library/java-projector-log-customer:{{IMAGE_TAG}} -f java/Containerfile "{{TOP}}/examples/java"
-    podman build --target projector-log-transaction -t docker.io/library/java-projector-log-transaction:{{IMAGE_TAG}} -f java/Containerfile "{{TOP}}/examples/java"
+    podman build --target customer -t docker.io/library/entity-customer-java:{{IMAGE_TAG}} -f examples/java/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-java:{{IMAGE_TAG}} -f examples/java/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-java:{{IMAGE_TAG}} -f examples/java/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-java:{{IMAGE_TAG}} -f examples/java/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-java:{{IMAGE_TAG}} -f examples/java/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-java:{{IMAGE_TAG}} -f examples/java/Containerfile "{{TOP}}"
 
-# Build Ruby example images
+# Build Ruby example images (context must be repo root for generated proto access)
 images-ruby: images-framework
-    podman build --target customer -t docker.io/library/rb-customer:{{IMAGE_TAG}} -f ruby/Containerfile "{{TOP}}/examples/ruby"
-    podman build --target transaction -t docker.io/library/rb-transaction:{{IMAGE_TAG}} -f ruby/Containerfile "{{TOP}}/examples/ruby"
-    podman build --target saga-loyalty -t docker.io/library/rb-saga-loyalty:{{IMAGE_TAG}} -f ruby/Containerfile "{{TOP}}/examples/ruby"
-    podman build --target projector-receipt -t docker.io/library/rb-projector-receipt:{{IMAGE_TAG}} -f ruby/Containerfile "{{TOP}}/examples/ruby"
-    podman build --target projector-log-customer -t docker.io/library/rb-projector-log-customer:{{IMAGE_TAG}} -f ruby/Containerfile "{{TOP}}/examples/ruby"
-    podman build --target projector-log-transaction -t docker.io/library/rb-projector-log-transaction:{{IMAGE_TAG}} -f ruby/Containerfile "{{TOP}}/examples/ruby"
+    podman build --target customer -t docker.io/library/entity-customer-rb:{{IMAGE_TAG}} -f examples/ruby/Containerfile "{{TOP}}"
+    podman build --target transaction -t docker.io/library/entity-transaction-rb:{{IMAGE_TAG}} -f examples/ruby/Containerfile "{{TOP}}"
+    podman build --target saga-loyalty -t docker.io/library/saga-loyalty-rb:{{IMAGE_TAG}} -f examples/ruby/Containerfile "{{TOP}}"
+    podman build --target projector-receipt -t docker.io/library/projector-receipt-rb:{{IMAGE_TAG}} -f examples/ruby/Containerfile "{{TOP}}"
+    podman build --target projector-log-customer -t docker.io/library/projector-log-customer-rb:{{IMAGE_TAG}} -f examples/ruby/Containerfile "{{TOP}}"
+    podman build --target projector-log-transaction -t docker.io/library/projector-log-transaction-rb:{{IMAGE_TAG}} -f examples/ruby/Containerfile "{{TOP}}"
 
 # Build all images
 images-all: images-rust images-go images-python images-typescript images-kotlin images-csharp images-java images-ruby
@@ -238,171 +343,87 @@ images-all: images-rust images-go images-python images-typescript images-kotlin 
 
 # Load Rust images into kind cluster
 load-rust:
-    @for img in angzarr-command angzarr-projector angzarr-saga angzarr-stream angzarr-gateway rs-customer rs-transaction rs-saga-loyalty rs-projector-receipt rs-projector-log-customer rs-projector-log-transaction; do \
+    @for img in angzarr-entity angzarr-projector angzarr-saga angzarr-stream angzarr-gateway entity-customer-rs entity-transaction-rs saga-loyalty-rs projector-receipt-rs projector-log-customer-rs projector-log-transaction-rs; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load Go images into kind cluster
 load-go:
-    @for img in go-customer go-transaction go-saga-loyalty go-projector-receipt go-projector-log-customer go-projector-log-transaction; do \
+    @for img in entity-customer-go entity-transaction-go saga-loyalty-go projector-receipt-go projector-log-customer-go projector-log-transaction-go; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load Python images into kind cluster
 load-python:
-    @for img in py-customer py-transaction py-saga-loyalty py-projector-receipt py-projector-log-customer py-projector-log-transaction; do \
+    @for img in entity-customer-py entity-transaction-py saga-loyalty-py projector-receipt-py projector-log-customer-py projector-log-transaction-py; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load TypeScript images into kind cluster
 load-typescript:
-    @for img in ts-customer ts-transaction ts-saga-loyalty ts-projector-receipt ts-projector-log-customer ts-projector-log-transaction; do \
+    @for img in entity-customer-ts entity-transaction-ts saga-loyalty-ts projector-receipt-ts projector-log-customer-ts projector-log-transaction-ts; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load Kotlin images into kind cluster
 load-kotlin:
-    @for img in kt-customer kt-transaction kt-saga-loyalty kt-projector-receipt kt-projector-log-customer kt-projector-log-transaction; do \
+    @for img in entity-customer-kt entity-transaction-kt saga-loyalty-kt projector-receipt-kt projector-log-customer-kt projector-log-transaction-kt; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load C# images into kind cluster
 load-csharp:
-    @for img in cs-customer cs-transaction cs-saga-loyalty cs-projector-receipt cs-projector-log-customer cs-projector-log-transaction; do \
+    @for img in entity-customer-cs entity-transaction-cs saga-loyalty-cs projector-receipt-cs projector-log-customer-cs projector-log-transaction-cs; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load Java images into kind cluster
 load-java:
-    @for img in java-customer java-transaction java-saga-loyalty java-projector-receipt java-projector-log-customer java-projector-log-transaction; do \
+    @for img in entity-customer-java entity-transaction-java saga-loyalty-java projector-receipt-java projector-log-customer-java projector-log-transaction-java; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # Load Ruby images into kind cluster
 load-ruby:
-    @for img in rb-customer rb-transaction rb-saga-loyalty rb-projector-receipt rb-projector-log-customer rb-projector-log-transaction; do \
+    @for img in entity-customer-rb entity-transaction-rb saga-loyalty-rb projector-receipt-rb projector-log-customer-rb projector-log-transaction-rb; do \
         "{{TOP}}/scripts/kind-load-images.sh" angzarr "docker.io/library/$img:{{IMAGE_TAG}}"; \
     done
 
 # ============================================================================
-# Kubernetes Apply (per-language)
+# Kubernetes Deploy (per-language) - all use skaffold
 # ============================================================================
 
-# Deploy Rust examples via skaffold (recommended)
+# Deploy Rust examples via skaffold
 k8s-rust:
     cd "{{TOP}}/examples/rust" && skaffold run
 
-# Apply Go k8s manifests
+# Deploy Go examples via skaffold
 k8s-go:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/go-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/go-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/go-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/go-projectors.yaml"
+    cd "{{TOP}}/examples/go" && skaffold run
 
-# Apply Python k8s manifests
+# Deploy Python examples via skaffold
 k8s-python:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/py-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/py-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/py-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/py-projectors.yaml"
+    cd "{{TOP}}/examples/python" && skaffold run
 
-# Apply TypeScript k8s manifests
+# Deploy TypeScript examples via skaffold
 k8s-typescript:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/ts-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/ts-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/ts-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/ts-projectors.yaml"
+    cd "{{TOP}}/examples/typescript" && skaffold run
 
-# Apply Kotlin k8s manifests
+# Deploy Kotlin examples via skaffold
 k8s-kotlin:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/kt-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/kt-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/kt-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/kt-projectors.yaml"
+    cd "{{TOP}}/examples/kotlin" && skaffold run
 
-# Apply C# k8s manifests
+# Deploy C# examples via skaffold
 k8s-csharp:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/cs-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/cs-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/cs-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/cs-projectors.yaml"
+    cd "{{TOP}}/examples/csharp" && skaffold run
 
-# Apply Java k8s manifests
+# Deploy Java examples via skaffold
 k8s-java:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/java-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/java-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/java-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/java-projectors.yaml"
+    cd "{{TOP}}/examples/java" && skaffold run
 
-# Apply Ruby k8s manifests
+# Deploy Ruby examples via skaffold
 k8s-ruby:
-    kubectl apply -f "{{TOP}}/k8s/base/namespace.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/secrets.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/redis.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rabbitmq.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/mongodb.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-config.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-stream.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/angzarr-gateway.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rb-customer.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rb-transaction.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rb-saga-loyalty.yaml"
-    kubectl apply -f "{{TOP}}/k8s/base/rb-projectors.yaml"
+    cd "{{TOP}}/examples/ruby" && skaffold run
 
 # ============================================================================
 # Full-Stack Tests (unit + acceptance + integration)
@@ -466,69 +487,78 @@ full-test-all: full-test-rust full-test-go full-test-python
 # Integration Tests (framework + examples deployed to kind)
 # ============================================================================
 
-# Run integration tests with Rust examples via skaffold
+# Run integration tests with Rust examples via skaffold (incremental - keeps namespace)
 integration-rust:
     cd "{{TOP}}" && just kind-create-registry
-    -kubectl delete namespace angzarr --wait=true --timeout=60s
-    cd "{{TOP}}" && just secrets-init
     cd "{{TOP}}/examples/rust" && skaffold run
+    @echo "Waiting for services to be ready..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=rust ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with Go examples (reuses cluster)
-integration-go: _kind-reset images-go load-go k8s-go
+# Run integration tests with Rust examples (clean - deletes namespace first)
+integration-rust-clean:
+    -kubectl delete namespace angzarr --wait=true --timeout=60s
+    just integration-rust
+
+# Run integration tests with Go examples via skaffold (incremental)
+integration-go:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/go" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=go ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with Python examples (reuses cluster)
-integration-python: _kind-reset images-python load-python k8s-python
+# Run integration tests with Python examples via skaffold (incremental)
+integration-python:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/python" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=python ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with TypeScript examples (reuses cluster)
-integration-typescript: _kind-reset images-typescript load-typescript k8s-typescript
+# Run integration tests with TypeScript examples via skaffold (incremental)
+integration-typescript:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/typescript" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=typescript ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with Kotlin examples (reuses cluster)
-integration-kotlin: _kind-reset images-kotlin load-kotlin k8s-kotlin
+# Run integration tests with Kotlin examples via skaffold (incremental)
+integration-kotlin:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/kotlin" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=kotlin ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with C# examples (reuses cluster)
-integration-csharp: _kind-reset images-csharp load-csharp k8s-csharp
+# Run integration tests with C# examples via skaffold (incremental)
+integration-csharp:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/csharp" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=csharp ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with Java examples (reuses cluster)
-integration-java: _kind-reset images-java load-java k8s-java
+# Run integration tests with Java examples via skaffold (incremental)
+integration-java:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/java" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=java ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run integration tests with Ruby examples (reuses cluster)
-integration-ruby: _kind-reset images-ruby load-ruby k8s-ruby
+# Run integration tests with Ruby examples via skaffold (incremental)
+integration-ruby:
+    cd "{{TOP}}" && just kind-create-registry
+    cd "{{TOP}}/examples/ruby" && skaffold run
     @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app=angzarr -n angzarr --timeout=180s || true
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
     TEST_LANGUAGE=ruby ANGZARR_TEST_MODE=container cargo test --test acceptance --manifest-path "{{TOP}}/Cargo.toml"
 
 # Clean up kind cluster after integration tests
 integration-clean:
     cd "{{TOP}}" && just kind-delete
-
-# Internal: Ensure cluster exists and reset namespace (faster than full cluster reset)
-_kind-reset:
-    # Ensure cluster exists (idempotent)
-    cd "{{TOP}}" && just kind-create-registry
-    # Delete namespace to reset state (much faster than cluster recreate)
-    -kubectl delete namespace angzarr --wait=true --timeout=60s
-    # Reinitialize
-    cd "{{TOP}}" && just secrets-init
-    cd "{{TOP}}" && just images-load-infra
 
 # ============================================================================
 # Full-Stack Tests (unit + acceptance + integration)
@@ -556,79 +586,37 @@ full-stack-all: full-stack-rust full-stack-go full-stack-python
 # Kubernetes Undeploy (per-language)
 # ============================================================================
 
-# Undeploy Rust examples
+# Undeploy Rust examples via skaffold
 undeploy-rust:
-    helm uninstall angzarr -n angzarr --ignore-not-found || true
+    cd "{{TOP}}/examples/rust" && skaffold delete || true
 
-# Undeploy Go examples
+# Undeploy Go examples via skaffold
 undeploy-go:
-    kubectl delete -f "{{TOP}}/k8s/base/go-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/go-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/go-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/go-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/go" && skaffold delete || true
 
-# Undeploy Python examples
+# Undeploy Python examples via skaffold
 undeploy-python:
-    kubectl delete -f "{{TOP}}/k8s/base/py-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/py-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/py-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/py-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/python" && skaffold delete || true
 
-# Undeploy TypeScript examples
+# Undeploy TypeScript examples via skaffold
 undeploy-typescript:
-    kubectl delete -f "{{TOP}}/k8s/base/ts-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/ts-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/ts-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/ts-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/typescript" && skaffold delete || true
 
-# Undeploy Kotlin examples
+# Undeploy Kotlin examples via skaffold
 undeploy-kotlin:
-    kubectl delete -f "{{TOP}}/k8s/base/kt-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/kt-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/kt-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/kt-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/kotlin" && skaffold delete || true
 
-# Undeploy C# examples
+# Undeploy C# examples via skaffold
 undeploy-csharp:
-    kubectl delete -f "{{TOP}}/k8s/base/cs-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/cs-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/cs-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/cs-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/csharp" && skaffold delete || true
 
-# Undeploy Java examples
+# Undeploy Java examples via skaffold
 undeploy-java:
-    kubectl delete -f "{{TOP}}/k8s/base/java-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/java-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/java-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/java-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/java" && skaffold delete || true
 
-# Undeploy Ruby examples
+# Undeploy Ruby examples via skaffold
 undeploy-ruby:
-    kubectl delete -f "{{TOP}}/k8s/base/rb-projectors.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/rb-saga-loyalty.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/rb-transaction.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/rb-customer.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-gateway.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr-stream.yaml" --ignore-not-found
-    kubectl delete -f "{{TOP}}/k8s/base/angzarr.yaml" --ignore-not-found
+    cd "{{TOP}}/examples/ruby" && skaffold delete || true
 
 # Undeploy all language examples
 undeploy-all:

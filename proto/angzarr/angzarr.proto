@@ -47,7 +47,7 @@ message Projection {
   google.protobuf.Any projection = 4;
 }
 
-// Response from command handler - aggregate events + sync projector results
+// Response from entity - aggregate events + sync projector results
 message CommandResponse {
   EventBook events = 1;               // Events from the target aggregate
   repeated Projection projections = 2; // Synchronous projector results
@@ -117,7 +117,7 @@ message CommandBook {
 }
 
 message ContextualCommand {
-  // Passed from command handler to business, consists of everything that the business needs to execute/evaluate the command
+  // Passed from entity to business logic, consists of everything needed to execute/evaluate the command
   EventBook events = 1;
   CommandBook command = 2;
 }

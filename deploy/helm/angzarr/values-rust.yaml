@@ -8,27 +8,27 @@ global:
 
 replicaCount: 1
 
-# Angzarr sidecar images
+# Angzarr sidecar images (using local registry)
 images:
-  command:
-    repository: angzarr-command
-    pullPolicy: Never
+  entity:
+    repository: localhost:5001/angzarr-entity
+    pullPolicy: IfNotPresent
     tag: "latest"
   projector:
-    repository: angzarr-projector
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-projector
+    pullPolicy: IfNotPresent
     tag: "latest"
   saga:
-    repository: angzarr-saga
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-saga
+    pullPolicy: IfNotPresent
     tag: "latest"
   stream:
-    repository: angzarr-stream
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-stream
+    pullPolicy: IfNotPresent
     tag: "latest"
   gateway:
-    repository: angzarr-gateway
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-gateway
+    pullPolicy: IfNotPresent
     tag: "latest"
 
 # Minimal resources for local dev
@@ -48,26 +48,33 @@ applicationResources:
     memory: "128Mi"
     cpu: "100m"
 
-# MongoDB storage
+# MongoDB storage - using Bitnami subchart
 storage:
   type: mongodb
   mongodb:
-    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    # Bitnami subchart creates service named <release>-mongodb
+    # authSource required because user is created in angzarr db, not admin
+    # retryWrites=false required for standalone MongoDB (not replica set)
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017/?directConnection=true&authSource=angzarr&retryWrites=false"
     database: "angzarr"
 
-# AMQP event bus
+# AMQP event bus - using Bitnami subchart
 amqp:
   enabled: true
   url: "amqp://guest:guest@angzarr-rabbitmq:5672"
 
-# RabbitMQ subchart - use pre-loaded image
+# External secrets disabled - using manual sync via `just secrets-sync`
+externalSecrets:
+  enabled: false
+
+# RabbitMQ subchart - message bus for event distribution
+# Bitnami moved images to ECR: public.ecr.aws/bitnami/rabbitmq
 rabbitmq:
   enabled: true
   image:
-    registry: docker.io
-    repository: library/rabbitmq
-    tag: "3.13-management-alpine"
-    pullPolicy: Never
+    registry: public.ecr.aws
+    repository: bitnami/rabbitmq
+    tag: "4.0"
   auth:
     username: "guest"
     password: "guest"
@@ -81,14 +88,14 @@ rabbitmq:
       memory: "256Mi"
       cpu: "250m"
 
-# MongoDB subchart - use pre-loaded image
+# MongoDB subchart - event store persistence
+# Bitnami moved images to ECR: public.ecr.aws/bitnami/mongodb
 mongodb:
   enabled: true
   image:
-    registry: docker.io
-    repository: library/mongo
-    tag: "7"
-    pullPolicy: Never
+    registry: public.ecr.aws
+    repository: bitnami/mongodb
+    tag: "8.0"
   auth:
     rootUsername: "root"
     rootPassword: "rootpassword"
@@ -111,89 +118,85 @@ infrastructure:
   stream:
     enabled: false
 
-  # Gateway service - central, routes commands and streams events
+  # Gateway service - command proxy with streaming
+  # Uses K8s API to discover command handlers by label (app.kubernetes.io/component=business)
+  # and routes commands based on domain from angzarr.io/domain annotation
   gateway:
     enabled: true
-    replicas: 1
-    port: 1316
-    # Command handlers per domain (gateway routes based on URL path)
-    commandHandlers:
-      customer: "angzarr-rs-customer:50051"
-      transaction: "angzarr-rs-transaction:50051"
-    # Stream projector service
-    streamService: "angzarr-rs-stream:1315"
+    # NodePort for external access (kind maps hostPort:50051 -> nodePort:30051)
+    serviceType: NodePort
+    nodePort: 30051
+    # entityService: removed - K8s discovery handles routing to business services
+    # Use entities map for explicit routing if needed:
+    # entities:
+    #   customer: "angzarr-entity-customer-rs:50051"
+    #   transaction: "angzarr-entity-transaction-rs:50051"
+    streamService: "angzarr-stream-rs:1315"
     streamTimeoutSecs: 30
-    resources:
-      requests:
-        memory: "32Mi"
-        cpu: "25m"
-      limits:
-        memory: "128Mi"
-        cpu: "100m"
 
 # Business logic applications - each gets angzarr as sidecar
 applications:
   business:
-    - name: rs-customer
+    - name: entity-customer-rs
       image:
-        repository: rs-customer
+        repository: localhost:5001/entity-customer-rs
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       domain: "customer"
       port: 50100
 
-    - name: rs-transaction
+    - name: entity-transaction-rs
       image:
-        repository: rs-transaction
+        repository: localhost:5001/entity-transaction-rs
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       domain: "transaction"
       port: 50101
 
   projectors:
     # Stream projector - broadcasts events to clients by correlation ID
-    - name: rs-stream
+    - name: stream-rs
       image:
-        repository: angzarr-stream
+        repository: localhost:5001/angzarr-stream
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       port: 1315
       topics:
         - "#"  # Subscribe to all events
 
-    - name: rs-projector-receipt
+    - name: projector-receipt-rs
       image:
-        repository: rs-projector-receipt
+        repository: localhost:5001/projector-receipt-rs
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       port: 50103
       topics:
         - "transaction.*"
 
-    - name: rs-projector-log-customer
+    - name: projector-log-customer-rs
       image:
-        repository: rs-projector-log-customer
+        repository: localhost:5001/projector-log-customer-rs
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       port: 50104
       topics:
         - "customer.*"
 
-    - name: rs-projector-log-transaction
+    - name: projector-log-transaction-rs
       image:
-        repository: rs-projector-log-transaction
+        repository: localhost:5001/projector-log-transaction-rs
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       port: 50105
       topics:
         - "transaction.*"
 
   sagas:
-    - name: rs-saga-loyalty
+    - name: saga-loyalty-rs
       image:
-        repository: rs-saga-loyalty
+        repository: localhost:5001/saga-loyalty-rs
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       port: 50102
       topics:
         - "transaction.*"
@@ -201,8 +204,13 @@ applications:
 # Service configuration
 service:
   type: NodePort
-  commandPort: 50051
+  entityPort: 50051
   queryPort: 50052
+  # NodePort for local development entity access (kind maps hostPort:50052->30052)
+  # Entity sidecar hosts both BusinessCoordinator and EventQuery on entityPort
+  nodePort:
+    enabled: true
+    entity: 30052
 
 logging:
   level: info

@@ -15,7 +15,7 @@ Angzarr provides the infrastructure layer for event-sourced systems:
 
 - **[docs/](docs/)** — Architecture guides and pattern documentation
   - [CQRS and Event Sourcing Concepts](docs/cqrs-event-sourcing.md) — Background for newcomers
-  - [Command Handlers (Aggregates)](docs/command-handlers.md) — Processing commands, emitting events
+  - [Entities (Aggregates)](docs/entities.md) — Processing commands, emitting events
   - [Projectors](docs/projectors.md) — Building read models from event streams
   - [Sagas](docs/sagas.md) — Orchestrating workflows across aggregates
 
@@ -99,7 +99,7 @@ just k8s-logs
 
 ### 4. Create Your First Domain
 
-Create a command handler in your preferred language. Example in Python:
+Create a entity in your preferred language. Example in Python:
 
 ```python
 # examples/python/customer/customer_logic.py
@@ -145,7 +145,7 @@ For clients that need real-time event streaming, Angzarr provides two standalone
 
 ```
 ┌────────┐     ┌──────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Client │────▶│ angzarr-gateway│────▶│ angzarr-command │────▶│ Business Logic  │
+│ Client │────▶│ angzarr-gateway│────▶│ angzarr-entity │────▶│ Business Logic  │
 └────────┘     └──────────────┘     └─────────────────┘     └─────────────────┘
     ▲                 │                      │
     │                 │                      │ publishes events
@@ -174,7 +174,7 @@ For clients that need real-time event streaming, Angzarr provides two standalone
 - Receives commands via `CommandGateway.Execute`
 - Generates a deterministic correlation ID (UUIDv5 from command body) if not provided
 - Registers interest with angzarr-stream for that correlation ID
-- Forwards command to angzarr-command
+- Forwards command to angzarr-entity
 - Streams resulting events back to the client
 
 #### Usage
@@ -196,7 +196,7 @@ Configuration via environment variables:
 **angzarr-gateway:**
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `COMMAND_ADDRESS` | angzarr-command service address | Required |
+| `COMMAND_ADDRESS` | angzarr-entity service address | Required |
 | `STREAM_ADDRESS` | angzarr-stream service address | Required |
 | `GRPC_PORT` | Port for CommandGateway gRPC service | 1316 |
 | `STREAM_TIMEOUT_SECS` | Timeout for event stream | 30 |
@@ -225,7 +225,7 @@ CQRS/Event Sourcing systems are notoriously complex—event stores, snapshot opt
 
 ### What You Write
 
-**Command Handlers** — Pure functions that validate commands against current state and emit events:
+**Entities** — Pure functions that validate commands against current state and emit events:
 
 ```python
 def handle_create_customer(command, state):
@@ -277,9 +277,9 @@ Write business logic in your preferred language. All examples ship in Rust, Go, 
 
 ```
 examples/
-├── rust/customer/     # Rust command handler
-├── go/customer/       # Go command handler
-├── python/customer/   # Python command handler
+├── rust/customer/     # Rust entity
+├── go/customer/       # Go entity
+├── python/customer/   # Python entity
 ```
 
 ### Behavior-Driven Development
@@ -415,7 +415,7 @@ Log output is structured JSON in production, human-readable in development:
 ```
 2024-01-15T10:30:45.123Z  INFO angzarr: Starting angzarr server
 2024-01-15T10:30:45.456Z  INFO angzarr: Storage: sqlite at ./data/events.db
-2024-01-15T10:30:45.789Z  INFO angzarr: Command handler listening on 0.0.0.0:1313
+2024-01-15T10:30:45.789Z  INFO angzarr: Entity listening on 0.0.0.0:1313
 ```
 
 ### Inspecting gRPC Services
@@ -546,14 +546,14 @@ just redeploy
 
 | Command | Description |
 |---------|-------------|
-| `just grpc-list-command` | List gRPC services on command handler |
+| `just grpc-list-command` | List gRPC services on entity |
 | `just grpc-list-gateway` | List gRPC services on gateway |
 | `just grpc-list-stream` | List gRPC services on event stream |
 | `just grpc-describe-command` | Describe BusinessCoordinator service |
 | `just grpc-describe-gateway` | Describe CommandGateway service |
 | `just grpc-describe-stream` | Describe EventStream service |
 | `just grpc-query-events DOMAIN UUID` | Query events for an aggregate |
-| `just grpc-example-command DOMAIN UUID` | Send command via command handler |
+| `just grpc-example-command DOMAIN UUID` | Send command via entity |
 | `just grpc-example-gateway DOMAIN UUID` | Send command via gateway with streaming |
 | `just grpc-subscribe-stream CORRELATION_ID` | Subscribe to events by correlation ID |
 
@@ -563,7 +563,7 @@ The Kind cluster exposes these services to localhost via NodePort:
 
 | Port | Service |
 |------|---------|
-| 50051 | Angzarr command handler (gRPC) |
+| 50051 | Angzarr entity (gRPC) |
 | 50052 | Angzarr event query (gRPC) |
 | 50053 | Angzarr gateway (gRPC streaming) |
 | 50054 | Angzarr stream (gRPC event subscription) |
@@ -577,7 +577,7 @@ When using `just deploy-with-ingress`, gRPC services are also available via ngin
 
 | Host | Service |
 |------|---------|
-| command.angzarr.local:80 | Command handler |
+| command.angzarr.local:80 | Entity |
 | query.angzarr.local:80 | Event query |
 | gateway.angzarr.local:80 | Command gateway (streaming) |
 | stream.angzarr.local:80 | Event stream subscription |
@@ -599,7 +599,7 @@ grpcurl -plaintext stream.angzarr.local:80 angzarr.EventStream/Subscribe
 Features to reach parity with mature frameworks like Axon:
 
 ### Aggregate Framework
-- [ ] In-process aggregate hosting (command handlers co-located with framework)
+- [ ] In-process aggregate hosting (entitys co-located with framework)
 - [ ] Aggregate lifecycle management (creation, loading, snapshotting)
 - [ ] Aggregate annotations/macros for ergonomic handler definition
 

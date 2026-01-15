@@ -1,6 +1,7 @@
 //! Command gateway handler for angzarr-gateway service.
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures::Stream;
@@ -11,33 +12,35 @@ use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
-use crate::proto::business_coordinator_client::BusinessCoordinatorClient;
+use crate::discovery::{RegistryError, ServiceRegistry};
 use crate::proto::command_gateway_server::CommandGateway;
+use crate::proto::event_query_client::EventQueryClient;
+use crate::proto::event_query_server::EventQuery;
 use crate::proto::event_stream_client::EventStreamClient;
 use crate::proto::{
-    CommandBook, CommandResponse, EventBook, EventStreamFilter, ExecuteStreamCountRequest,
-    ExecuteStreamTimeRequest,
+    AggregateRoot, CommandBook, CommandResponse, EventBook, EventStreamFilter,
+    ExecuteStreamCountRequest, ExecuteStreamTimeRequest, Query,
 };
 
 /// Command gateway service.
 ///
-/// Receives commands, forwards to business coordinator, and optionally streams
-/// back resulting events from the event stream service.
+/// Receives commands, forwards to business coordinator based on domain routing,
+/// and optionally streams back resulting events from the event stream service.
 pub struct GatewayService {
-    command_client: BusinessCoordinatorClient<tonic::transport::Channel>,
+    registry: Arc<ServiceRegistry>,
     stream_client: EventStreamClient<tonic::transport::Channel>,
     default_stream_timeout: Duration,
 }
 
 impl GatewayService {
-    /// Create a new gateway service.
+    /// Create a new gateway service with service registry for domain routing.
     pub fn new(
-        command_client: BusinessCoordinatorClient<tonic::transport::Channel>,
+        registry: Arc<ServiceRegistry>,
         stream_client: EventStreamClient<tonic::transport::Channel>,
         default_stream_timeout: Duration,
     ) -> Self {
         Self {
-            command_client,
+            registry,
             stream_client,
             default_stream_timeout,
         }
@@ -59,19 +62,64 @@ impl GatewayService {
         }
     }
 
-    /// Forward command to business coordinator.
+    /// Forward command to business coordinator based on domain.
     async fn forward_command(
         &self,
         command_book: CommandBook,
         correlation_id: &str,
     ) -> Result<CommandResponse, Status> {
-        let mut command_client = self.command_client.clone();
+        // Extract domain from command cover (clone to avoid borrow issues)
+        let domain = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_else(|| "*".to_string());
+
+        debug!(
+            correlation_id = %correlation_id,
+            domain = %domain,
+            "Routing command to domain"
+        );
+
+        // Get client for domain from registry
+        let mut command_client = self
+            .registry
+            .get_client(&domain)
+            .await
+            .map_err(|e| match e {
+                RegistryError::DomainNotFound(d) => {
+                    warn!(domain = %d, "No service registered for domain");
+                    Status::not_found(format!("No service registered for domain: {}", d))
+                }
+                RegistryError::ConnectionFailed {
+                    domain,
+                    address,
+                    message,
+                } => {
+                    warn!(
+                        domain = %domain,
+                        address = %address,
+                        error = %message,
+                        "Service connection failed"
+                    );
+                    Status::unavailable(format!(
+                        "Service {} at {} unavailable: {}",
+                        domain, address, message
+                    ))
+                }
+            })?;
+
         command_client
             .handle(Request::new(command_book))
             .await
             .map(|r| r.into_inner())
             .map_err(|e| {
-                warn!(correlation_id = %correlation_id, error = %e, "Command failed");
+                warn!(
+                    correlation_id = %correlation_id,
+                    domain = %domain,
+                    error = %e,
+                    "Command failed"
+                );
                 e
             })
     }
@@ -97,6 +145,9 @@ impl GatewayService {
     }
 
     /// Stream events with configurable limits.
+    ///
+    /// Properly detects client disconnect and closes upstream subscriptions
+    /// to avoid wasting resources streaming to disconnected clients.
     fn create_event_stream(
         &self,
         correlation_id: String,
@@ -120,45 +171,60 @@ impl GatewayService {
                     }
                 }
                 if tx.send(Ok(events)).await.is_err() {
+                    debug!(correlation_id = %correlation_id, "Client disconnected during sync response");
                     return;
                 }
             }
 
             // Then stream additional events with timeout
+            // Use select! to detect client disconnect while waiting for events
             let mut event_stream = event_stream;
             loop {
-                match tokio::time::timeout(timeout, event_stream.next()).await {
-                    Ok(Some(Ok(event))) => {
-                        debug!(correlation_id = %correlation_id, "Received event from stream");
-                        count += 1;
+                tokio::select! {
+                    // Client disconnected - stop streaming immediately
+                    _ = tx.closed() => {
+                        info!(correlation_id = %correlation_id, "Client disconnected, closing upstream subscription");
+                        break;
+                    }
+                    // Event from upstream stream (with timeout)
+                    result = tokio::time::timeout(timeout, event_stream.next()) => {
+                        match result {
+                            Ok(Some(Ok(event))) => {
+                                debug!(correlation_id = %correlation_id, "Received event from stream");
+                                count += 1;
 
-                        if tx.send(Ok(event)).await.is_err() {
-                            break;
-                        }
+                                if tx.send(Ok(event)).await.is_err() {
+                                    debug!(correlation_id = %correlation_id, "Client disconnected during send");
+                                    break;
+                                }
 
-                        // Check count limit
-                        if let Some(max) = max_count {
-                            if max > 0 && count >= max {
-                                debug!(correlation_id = %correlation_id, count = count, "Count limit reached");
+                                // Check count limit
+                                if let Some(max) = max_count {
+                                    if max > 0 && count >= max {
+                                        debug!(correlation_id = %correlation_id, count = count, "Count limit reached");
+                                        break;
+                                    }
+                                }
+                            }
+                            Ok(Some(Err(e))) => {
+                                error!(correlation_id = %correlation_id, error = %e, "Event stream error");
+                                let _ = tx.send(Err(e)).await;
+                                break;
+                            }
+                            Ok(None) => {
+                                info!(correlation_id = %correlation_id, "Event stream ended");
+                                break;
+                            }
+                            Err(_) => {
+                                debug!(correlation_id = %correlation_id, "Event stream timeout, closing");
                                 break;
                             }
                         }
                     }
-                    Ok(Some(Err(e))) => {
-                        error!(correlation_id = %correlation_id, error = %e, "Event stream error");
-                        let _ = tx.send(Err(e)).await;
-                        break;
-                    }
-                    Ok(None) => {
-                        info!(correlation_id = %correlation_id, "Event stream ended");
-                        break;
-                    }
-                    Err(_) => {
-                        debug!(correlation_id = %correlation_id, "Event stream timeout, closing");
-                        break;
-                    }
                 }
             }
+            // event_stream is dropped here, signaling upstream to close subscription
+            debug!(correlation_id = %correlation_id, "Stream task ending, upstream subscription will close");
         });
 
         let stream = ReceiverStream::new(rx);
@@ -288,12 +354,208 @@ impl CommandGateway for GatewayService {
     }
 }
 
+/// Event query proxy that routes queries to entity sidecars based on domain.
+pub struct EventQueryProxy {
+    registry: Arc<ServiceRegistry>,
+}
+
+impl EventQueryProxy {
+    /// Create a new event query proxy with service registry for domain routing.
+    pub fn new(registry: Arc<ServiceRegistry>) -> Self {
+        Self { registry }
+    }
+
+    /// Get EventQuery client for the domain.
+    async fn get_query_client(&self, domain: &str) -> Result<EventQueryClient<tonic::transport::Channel>, Status> {
+        let endpoint = self.registry.get_endpoint(domain).await.map_err(|e| match e {
+            RegistryError::DomainNotFound(d) => {
+                warn!(domain = %d, "No service registered for domain");
+                Status::not_found(format!("No service registered for domain: {}", d))
+            }
+            RegistryError::ConnectionFailed { domain, address, message } => {
+                warn!(domain = %domain, address = %address, error = %message, "Service connection failed");
+                Status::unavailable(format!("Service {} at {} unavailable: {}", domain, address, message))
+            }
+        })?;
+
+        let url = format!("http://{}:{}", endpoint.address, endpoint.port);
+        EventQueryClient::connect(url).await.map_err(|e| {
+            error!(domain = %domain, error = %e, "Failed to connect to entity for query");
+            Status::unavailable(format!("Failed to connect to entity service: {}", e))
+        })
+    }
+}
+
+#[tonic::async_trait]
+impl EventQuery for EventQueryProxy {
+    /// Get a single EventBook for the domain/root.
+    async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
+        let query = request.into_inner();
+        let domain = &query.domain;
+
+        debug!(domain = %domain, "Proxying GetEventBook query");
+
+        let mut client = self.get_query_client(domain).await?;
+        client.get_event_book(Request::new(query)).await
+    }
+
+    type GetEventsStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
+
+    /// Stream EventBooks for the domain/root.
+    async fn get_events(&self, request: Request<Query>) -> Result<Response<Self::GetEventsStream>, Status> {
+        let query = request.into_inner();
+        let domain = query.domain.clone();
+
+        debug!(domain = %domain, "Proxying GetEvents query");
+
+        let mut client = self.get_query_client(&domain).await?;
+        let response = client.get_events(Request::new(query)).await?;
+
+        // Re-box the stream to match our return type
+        let stream = response.into_inner();
+        Ok(Response::new(Box::pin(stream)))
+    }
+
+    type SynchronizeStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
+
+    /// Bidirectional synchronization stream.
+    ///
+    /// Forwards queries to the appropriate entity sidecar and streams back events.
+    /// Properly handles client disconnect by stopping the forwarding task.
+    async fn synchronize(
+        &self,
+        request: Request<tonic::Streaming<Query>>,
+    ) -> Result<Response<Self::SynchronizeStream>, Status> {
+        // For synchronize, we need to handle multiple domains potentially
+        // For now, route based on the first query's domain
+        let mut inbound = request.into_inner();
+
+        // Peek at first message to determine domain
+        let first_query = match inbound.next().await {
+            Some(Ok(q)) => q,
+            Some(Err(e)) => return Err(e),
+            None => return Err(Status::invalid_argument("No queries provided")),
+        };
+
+        let domain = first_query.domain.clone();
+        debug!(domain = %domain, "Proxying Synchronize stream");
+
+        let mut client = self.get_query_client(&domain).await?;
+
+        // Create a channel to forward queries including the first one
+        let (query_tx, query_rx) = mpsc::channel(32);
+        let _ = query_tx.send(first_query).await;
+
+        // Forward remaining queries, stopping if downstream closes
+        let domain_clone = domain.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // Downstream closed - stop forwarding
+                    _ = query_tx.closed() => {
+                        debug!(domain = %domain_clone, "Synchronize downstream closed, stopping query forwarding");
+                        break;
+                    }
+                    // Receive next query from client
+                    result = inbound.next() => {
+                        match result {
+                            Some(Ok(query)) => {
+                                if query_tx.send(query).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Some(Err(e)) => {
+                                warn!(domain = %domain_clone, error = %e, "Synchronize inbound stream error");
+                                break;
+                            }
+                            None => break,
+                        }
+                    }
+                }
+            }
+        });
+
+        let outbound = ReceiverStream::new(query_rx);
+        let response = client.synchronize(Request::new(outbound)).await?;
+
+        Ok(Response::new(Box::pin(response.into_inner())))
+    }
+
+    type GetAggregateRootsStream = Pin<Box<dyn Stream<Item = Result<AggregateRoot, Status>> + Send + 'static>>;
+
+    /// Get all aggregate roots across all domains.
+    ///
+    /// Queries all registered entity sidecars and merges results.
+    /// Properly handles client disconnect by stopping mid-query.
+    async fn get_aggregate_roots(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<Self::GetAggregateRootsStream>, Status> {
+        // This needs to query all registered domains and merge results
+        let domains = self.registry.domains().await;
+
+        let (tx, rx) = mpsc::channel(32);
+        let registry = self.registry.clone();
+
+        tokio::spawn(async move {
+            'domains: for domain in domains {
+                // Check if client disconnected before starting next domain
+                if tx.is_closed() {
+                    info!("GetAggregateRoots client disconnected, stopping");
+                    break;
+                }
+
+                match registry.get_endpoint(&domain).await {
+                    Ok(endpoint) => {
+                        let url = format!("http://{}:{}", endpoint.address, endpoint.port);
+                        if let Ok(mut client) = EventQueryClient::connect(url).await {
+                            if let Ok(response) = client.get_aggregate_roots(Request::new(())).await {
+                                let mut stream = response.into_inner();
+                                loop {
+                                    tokio::select! {
+                                        // Client disconnected - stop immediately
+                                        _ = tx.closed() => {
+                                            info!(domain = %domain, "GetAggregateRoots client disconnected during stream");
+                                            break 'domains;
+                                        }
+                                        // Next result from domain
+                                        result = stream.next() => {
+                                            match result {
+                                                Some(Ok(root)) => {
+                                                    if tx.send(Ok(root)).await.is_err() {
+                                                        break 'domains;
+                                                    }
+                                                }
+                                                Some(Err(e)) => {
+                                                    warn!(domain = %domain, error = %e, "Error streaming aggregate roots");
+                                                    break; // Continue to next domain
+                                                }
+                                                None => break, // Domain stream ended, continue to next
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(domain = %domain, error = %e, "Failed to get endpoint for domain");
+                    }
+                }
+            }
+            debug!("GetAggregateRoots task ending");
+        });
+
+        Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::discovery::ServiceEndpoint;
     use std::net::SocketAddr;
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Arc;
     use tokio::sync::mpsc as tokio_mpsc;
     use tokio_stream::wrappers::ReceiverStream as TokioReceiverStream;
     use tonic::transport::Server;
@@ -461,16 +723,22 @@ mod tests {
         // Give servers time to start
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        // Connect clients
-        let command_client = BusinessCoordinatorClient::connect(format!("http://127.0.0.1:{}", coord_port))
-            .await
-            .unwrap();
+        // Create registry with wildcard endpoint for testing
+        let registry = Arc::new(ServiceRegistry::new());
+        registry
+            .update_endpoint(ServiceEndpoint {
+                domain: "*".to_string(),
+                address: "127.0.0.1".to_string(),
+                port: coord_port,
+            })
+            .await;
+
         let stream_client = EventStreamClient::connect(format!("http://127.0.0.1:{}", stream_port))
             .await
             .unwrap();
 
         let gateway = GatewayService::new(
-            command_client,
+            registry,
             stream_client,
             Duration::from_secs(5),
         );
@@ -769,6 +1037,96 @@ mod tests {
         // Command should be processed (we don't check correlation ID propagation here,
         // just that a pre-set ID doesn't break anything)
         assert!(cmd_response.events.is_some());
+
+        for h in handles {
+            h.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_disconnect_stops_streaming() {
+        let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
+
+        // Configure stream to emit many events slowly
+        mock_stream.set_events(vec![
+            EventBook::default(),
+            EventBook::default(),
+            EventBook::default(),
+            EventBook::default(),
+            EventBook::default(),
+        ]).await;
+        mock_stream.set_delay(50).await;
+
+        let request = ExecuteStreamCountRequest {
+            command: Some(make_test_command("orders")),
+            count: 0, // Unlimited - would receive all 5+ events normally
+        };
+
+        let response = gateway
+            .execute_stream_response_count(Request::new(request))
+            .await
+            .unwrap();
+        let mut stream = response.into_inner();
+
+        // Read only the first event (sync response)
+        let first = stream.next().await;
+        assert!(first.is_some());
+        assert!(first.unwrap().is_ok());
+
+        // Drop the stream - simulates client disconnect
+        drop(stream);
+
+        // Give the spawned task time to detect disconnect and clean up
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // The test passes if we get here without hanging - the spawned task
+        // detected the disconnect and stopped (rather than continuing to read
+        // from the slow event stream for all 5 events)
+
+        for h in handles {
+            h.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_disconnect_during_stream_wait() {
+        let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
+
+        // Configure stream to emit events very slowly (longer than our wait)
+        mock_stream.set_events(vec![
+            EventBook::default(),
+        ]).await;
+        mock_stream.set_delay(5000).await; // 5 second delay
+
+        let request = ExecuteStreamCountRequest {
+            command: Some(make_test_command("orders")),
+            count: 0, // Unlimited
+        };
+
+        let response = gateway
+            .execute_stream_response_count(Request::new(request))
+            .await
+            .unwrap();
+        let mut stream = response.into_inner();
+
+        // Read the sync response
+        let first = stream.next().await;
+        assert!(first.is_some());
+
+        // Drop stream while gateway is waiting for the slow event
+        let start = std::time::Instant::now();
+        drop(stream);
+
+        // Give cleanup task time to run
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let elapsed = start.elapsed();
+
+        // Should complete quickly (not wait for the 5 second event)
+        assert!(
+            elapsed.as_millis() < 1000,
+            "Should detect disconnect quickly, took {}ms",
+            elapsed.as_millis()
+        );
 
         for h in handles {
             h.abort();

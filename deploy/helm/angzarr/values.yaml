@@ -6,8 +6,8 @@ replicaCount: 1
 # Angzarr sidecar images (separate binaries per mode)
 # angzarr-standalone is for local development only, not deployed to K8s
 images:
-  command:
-    repository: angzarr-command
+  entity:
+    repository: angzarr-entity
     pullPolicy: IfNotPresent
     tag: "latest"
   projector:
@@ -54,7 +54,7 @@ securityContext:
 # Angzarr gRPC ports
 service:
   type: ClusterIP
-  commandPort: 1313
+  entityPort: 1313
   queryPort: 1314
 
 # Service discovery configuration
@@ -79,13 +79,13 @@ infrastructure:
         cpu: 100m
         memory: 128Mi
 
-  # Command gateway service - routes commands and streams back events
+  # Gateway service - routes commands to entities and streams back events
   gateway:
     enabled: false
     replicas: 1
     port: 1316
     # Address of command service to forward to
-    commandService: ""
+    entityService: ""
     # Address of stream service
     streamService: ""
     # Timeout for event stream (seconds)
@@ -120,13 +120,13 @@ resources:
 
 livenessProbe:
   tcpSocket:
-    port: command
+    port: entity
   initialDelaySeconds: 10
   periodSeconds: 10
 
 readinessProbe:
   tcpSocket:
-    port: command
+    port: entity
   initialDelaySeconds: 5
   periodSeconds: 5
 

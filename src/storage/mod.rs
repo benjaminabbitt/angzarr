@@ -2,27 +2,17 @@
 
 use std::sync::Arc;
 
-use tracing::{error, info};
+use tracing::info;
 
-use crate::config::StorageConfig;
+use crate::config::{StorageConfig, StorageType};
 use crate::interfaces::{EventStore, SnapshotStore};
 
+pub mod mongodb;
 pub mod schema;
 pub mod sqlite;
 
-#[cfg(feature = "redis")]
-pub mod redis;
-
-#[cfg(feature = "mongodb")]
-pub mod mongodb;
-
-pub use sqlite::{SqliteEventStore, SqliteSnapshotStore};
-
-#[cfg(feature = "redis")]
-pub use redis::RedisEventStore;
-
-#[cfg(feature = "mongodb")]
 pub use mongodb::{MongoEventStore, MongoSnapshotStore};
+pub use sqlite::{SqliteEventStore, SqliteSnapshotStore};
 
 /// Initialize storage based on configuration.
 ///
@@ -31,16 +21,19 @@ pub use mongodb::{MongoEventStore, MongoSnapshotStore};
 pub async fn init_storage(
     config: &StorageConfig,
 ) -> Result<(Arc<dyn EventStore>, Arc<dyn SnapshotStore>), Box<dyn std::error::Error>> {
-    info!("Storage: {} at {}", config.storage_type, config.path);
+    match config.storage_type {
+        StorageType::Sqlite => {
+            info!("Storage: sqlite at {}", config.sqlite.path);
 
-    match config.storage_type.as_str() {
-        "sqlite" => {
-            if let Some(parent) = std::path::Path::new(&config.path).parent() {
+            if let Some(parent) = std::path::Path::new(&config.sqlite.path).parent() {
                 std::fs::create_dir_all(parent)?;
             }
 
-            let pool =
-                sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=rwc", config.path)).await?;
+            let pool = sqlx::SqlitePool::connect(&format!(
+                "sqlite:{}?mode=rwc",
+                config.sqlite.path
+            ))
+            .await?;
 
             let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
             event_store.init().await?;
@@ -50,24 +43,20 @@ pub async fn init_storage(
 
             Ok((event_store, snapshot_store))
         }
-        #[cfg(feature = "mongodb")]
-        "mongodb" => {
-            let database_name = config.database.as_deref().unwrap_or("angzarr");
-            let client = ::mongodb::Client::with_uri_str(&config.path).await?;
+        StorageType::Mongodb => {
+            info!(
+                "Storage: mongodb at {} (db: {})",
+                config.mongodb.uri, config.mongodb.database
+            );
 
-            let event_store = Arc::new(MongoEventStore::new(&client, database_name).await?);
-            let snapshot_store = Arc::new(MongoSnapshotStore::new(&client, database_name).await?);
+            let client = ::mongodb::Client::with_uri_str(&config.mongodb.uri).await?;
+
+            let event_store =
+                Arc::new(MongoEventStore::new(&client, &config.mongodb.database).await?);
+            let snapshot_store =
+                Arc::new(MongoSnapshotStore::new(&client, &config.mongodb.database).await?);
 
             Ok((event_store, snapshot_store))
-        }
-        #[cfg(not(feature = "mongodb"))]
-        "mongodb" => {
-            error!("MongoDB storage requested but 'mongodb' feature is not enabled");
-            Err("MongoDB feature not enabled".into())
-        }
-        other => {
-            error!("Unknown storage type: {}", other);
-            Err(format!("Unknown storage type: {}", other).into())
         }
     }
 }

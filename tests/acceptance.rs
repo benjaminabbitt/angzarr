@@ -21,7 +21,7 @@ use angzarr::proto::{
     business_response, BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook,
     EventPage, Snapshot, Uuid as ProtoUuid,
 };
-use angzarr::services::CommandHandlerService;
+use angzarr::services::EntityService;
 use angzarr::storage::{SqliteEventStore, SqliteSnapshotStore};
 
 /// Stub business logic that records calls and returns configured events.
@@ -334,7 +334,7 @@ async fn when_send_command(world: &mut TestWorld, command_type: String, aggregat
         .await;
 
     // Create command handler with snapshot configuration
-    let handler = CommandHandlerService::with_config(
+    let handler = EntityService::with_config(
         world.event_store.clone(),
         world.snapshot_store.clone(),
         world.business_logic.clone(),
@@ -393,7 +393,7 @@ async fn when_record_events(
         }
     }
 
-    let handler = CommandHandlerService::new(
+    let handler = EntityService::new(
         world.event_store.clone(),
         world.snapshot_store.clone(),
         world.business_logic.clone(),
@@ -503,7 +503,7 @@ async fn when_send_placeholder_command(
     let root = world.parse_aggregate_id(&aggregate_id);
     world.current_aggregate = root;
 
-    let handler = CommandHandlerService::new(
+    let handler = EntityService::new(
         world.event_store.clone(),
         world.snapshot_store.clone(),
         world.placeholder_logic.clone(),
@@ -637,7 +637,7 @@ async fn when_send_command_with_snapshot(
         .await;
 
     // Create command handler with snapshot configuration
-    let handler = CommandHandlerService::with_config(
+    let handler = EntityService::with_config(
         world.event_store.clone(),
         world.snapshot_store.clone(),
         world.business_logic.clone(),

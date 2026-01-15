@@ -4,13 +4,13 @@ Feature: End-to-End Integration
   I want to process commands through business logic, sagas, and projectors
   So that the full event-driven workflow functions correctly
 
-  # All commands go through angzarr's BusinessCoordinator service.
-  # Angzarr routes to the appropriate business logic, projectors, and sagas.
-  # The gateway provides streaming command/event support.
+  # The gateway routes all commands to domain-specific sidecars.
+  # Each sidecar executes business logic, persists events, and publishes to AMQP.
+  # Projectors and sagas subscribe to events via their own sidecars.
 
   Background:
     Given the angzarr system is running at "localhost:50051"
-    And the streaming gateway is running at "localhost:50053"
+    And the streaming gateway is running at "localhost:50051"
 
   # Direct command scenarios
 
@@ -36,8 +36,9 @@ Feature: End-to-End Integration
     Then the command succeeds
     And the transaction aggregate has 2 events
     And the latest event type is "TransactionCompleted"
-    And a projection was returned from projector "receipt"
-    And the projection contains a Receipt with total 4500 cents
+    # Projection assertions skipped - projectors run async via AMQP, don't return in CommandResponse
+    # And a projection was returned from projector "receipt"
+    # And the projection contains a Receipt with total 4500 cents
 
   Scenario: Query events for an aggregate
     Given a new customer id

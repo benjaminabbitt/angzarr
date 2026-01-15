@@ -1,66 +1,80 @@
+# syntax=docker/dockerfile:1.4
 # Kotlin examples - multi-stage build with Gradle
-# Build from this directory: docker build -t kt-customer --target customer .
-# Build all: docker build -t kt-examples .
+# Build: podman build -t kt-customer --target customer -f examples/kotlin/Containerfile .
+# Context must be repo root for proto access
+# Cache mounts persist Gradle dependencies across builds
 
 # ============================================================================
 # Builder stage - compiles Kotlin projects with Gradle
 # ============================================================================
-FROM gradle:8.11-jdk21-alpine AS builder
+FROM docker.io/library/gradle:8.11-jdk21-alpine AS builder
 
 WORKDIR /app
 
-# Copy proto files
+# Copy proto files from repo root
 COPY proto/ /app/proto/
 
 # ============================================================================
-# Build each service
+# Build each service with Gradle cache mounts
 # ============================================================================
 FROM builder AS build-customer
-COPY customer/build.gradle.kts customer/settings.gradle.kts ./
-COPY customer/gradle/ ./gradle/
-RUN gradle dependencies --no-daemon || true
-COPY customer/src/ ./src/
-RUN gradle shadowJar --no-daemon
+COPY examples/kotlin/customer/build.gradle.kts examples/kotlin/customer/settings.gradle.kts ./
+COPY examples/kotlin/customer/gradle/ ./gradle/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle dependencies --no-daemon || true
+COPY examples/kotlin/customer/src/ ./src/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle shadowJar --no-daemon
 
 FROM builder AS build-transaction
-COPY transaction/build.gradle.kts transaction/settings.gradle.kts ./
-COPY transaction/gradle/ ./gradle/
-RUN gradle dependencies --no-daemon || true
-COPY transaction/src/ ./src/
-RUN gradle shadowJar --no-daemon
+COPY examples/kotlin/transaction/build.gradle.kts examples/kotlin/transaction/settings.gradle.kts ./
+COPY examples/kotlin/transaction/gradle/ ./gradle/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle dependencies --no-daemon || true
+COPY examples/kotlin/transaction/src/ ./src/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle shadowJar --no-daemon
 
 FROM builder AS build-saga-loyalty
-COPY saga-loyalty/build.gradle.kts saga-loyalty/settings.gradle.kts ./
-COPY saga-loyalty/gradle/ ./gradle/
-RUN gradle dependencies --no-daemon || true
-COPY saga-loyalty/src/ ./src/
-RUN gradle shadowJar --no-daemon
+COPY examples/kotlin/saga-loyalty/build.gradle.kts examples/kotlin/saga-loyalty/settings.gradle.kts ./
+COPY examples/kotlin/saga-loyalty/gradle/ ./gradle/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle dependencies --no-daemon || true
+COPY examples/kotlin/saga-loyalty/src/ ./src/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle shadowJar --no-daemon
 
 FROM builder AS build-projector-receipt
-COPY projector-receipt/build.gradle.kts projector-receipt/settings.gradle.kts ./
-COPY projector-receipt/gradle/ ./gradle/
-RUN gradle dependencies --no-daemon || true
-COPY projector-receipt/src/ ./src/
-RUN gradle shadowJar --no-daemon
+COPY examples/kotlin/projector-receipt/build.gradle.kts examples/kotlin/projector-receipt/settings.gradle.kts ./
+COPY examples/kotlin/projector-receipt/gradle/ ./gradle/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle dependencies --no-daemon || true
+COPY examples/kotlin/projector-receipt/src/ ./src/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle shadowJar --no-daemon
 
 FROM builder AS build-projector-log-customer
-COPY projector-log-customer/build.gradle.kts projector-log-customer/settings.gradle.kts ./
-COPY projector-log-customer/gradle/ ./gradle/
-RUN gradle dependencies --no-daemon || true
-COPY projector-log-customer/src/ ./src/
-RUN gradle shadowJar --no-daemon
+COPY examples/kotlin/projector-log-customer/build.gradle.kts examples/kotlin/projector-log-customer/settings.gradle.kts ./
+COPY examples/kotlin/projector-log-customer/gradle/ ./gradle/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle dependencies --no-daemon || true
+COPY examples/kotlin/projector-log-customer/src/ ./src/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle shadowJar --no-daemon
 
 FROM builder AS build-projector-log-transaction
-COPY projector-log-transaction/build.gradle.kts projector-log-transaction/settings.gradle.kts ./
-COPY projector-log-transaction/gradle/ ./gradle/
-RUN gradle dependencies --no-daemon || true
-COPY projector-log-transaction/src/ ./src/
-RUN gradle shadowJar --no-daemon
+COPY examples/kotlin/projector-log-transaction/build.gradle.kts examples/kotlin/projector-log-transaction/settings.gradle.kts ./
+COPY examples/kotlin/projector-log-transaction/gradle/ ./gradle/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle dependencies --no-daemon || true
+COPY examples/kotlin/projector-log-transaction/src/ ./src/
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle shadowJar --no-daemon
 
 # ============================================================================
 # Runtime base
 # ============================================================================
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM docker.io/library/eclipse-temurin:21-jre-alpine AS runtime
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 

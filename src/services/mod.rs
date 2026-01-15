@@ -1,13 +1,13 @@
 //! gRPC service implementations.
 
-pub mod command_handler;
+pub mod entity;
 pub mod event_book_repair;
 pub mod event_query;
 pub mod projector_coord;
 pub mod saga_compensation;
 pub mod saga_coord;
 
-pub use command_handler::CommandHandlerService;
+pub use entity::EntityService;
 pub use event_book_repair::{EventBookRepairer, RepairError};
 pub use event_query::EventQueryService;
 pub use projector_coord::{ProjectorCoordinatorService, ProjectorEndpoint};

@@ -4,10 +4,9 @@ metadata:
   name: angzarr-rust-examples
 
 requires:
-  # Require base angzarr config for infrastructure images
+  # Require base angzarr config for infrastructure images (build only, not deploy)
   - path: ../../skaffold.yaml
-    activeProfiles:
-      - name: local
+    configs: [angzarr-build]
 
 build:
   local:
@@ -15,37 +14,37 @@ build:
     useBuildkit: false
   artifacts:
     # Rust example services
-    - image: localhost:5001/rs-customer
+    - image: localhost:5001/entity-customer-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: customer
 
-    - image: localhost:5001/rs-transaction
+    - image: localhost:5001/entity-transaction-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: transaction
 
-    - image: localhost:5001/rs-saga-loyalty
+    - image: localhost:5001/saga-loyalty-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: saga-loyalty
 
-    - image: localhost:5001/rs-projector-receipt
+    - image: localhost:5001/projector-receipt-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: projector-receipt
 
-    - image: localhost:5001/rs-projector-log-customer
+    - image: localhost:5001/projector-log-customer-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: projector-log-customer
 
-    - image: localhost:5001/rs-projector-log-transaction
+    - image: localhost:5001/projector-log-transaction-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
@@ -60,31 +59,6 @@ deploy:
         createNamespace: true
         valuesFiles:
           - ../../deploy/helm/angzarr/values-rust.yaml
-        setValues:
-          # Override images to use registry-pushed versions
-          images.command.repository: localhost:5001/angzarr-command
-          images.command.tag: latest
-          images.projector.repository: localhost:5001/angzarr-projector
-          images.projector.tag: latest
-          images.saga.repository: localhost:5001/angzarr-saga
-          images.saga.tag: latest
-          images.stream.repository: localhost:5001/angzarr-stream
-          images.stream.tag: latest
-          images.gateway.repository: localhost:5001/angzarr-gateway
-          images.gateway.tag: latest
-          # Rust example images
-          applications.business[0].image.repository: localhost:5001/rs-customer
-          applications.business[0].image.tag: latest
-          applications.business[1].image.repository: localhost:5001/rs-transaction
-          applications.business[1].image.tag: latest
-          applications.projectors[1].image.repository: localhost:5001/rs-projector-receipt
-          applications.projectors[1].image.tag: latest
-          applications.projectors[2].image.repository: localhost:5001/rs-projector-log-customer
-          applications.projectors[2].image.tag: latest
-          applications.projectors[3].image.repository: localhost:5001/rs-projector-log-transaction
-          applications.projectors[3].image.tag: latest
-          applications.sagas[0].image.repository: localhost:5001/rs-saga-loyalty
-          applications.sagas[0].image.tag: latest
 
 profiles:
   - name: dev
@@ -97,7 +71,7 @@ profiles:
   - name: debug
     build:
       artifacts:
-        - image: localhost:5001/rs-customer
+        - image: localhost:5001/entity-customer-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile.dev

@@ -23,7 +23,7 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::config::Config;
+use angzarr::config::{Config, MessagingType};
 use angzarr::handlers::stream::{StreamEventHandler, StreamService};
 use angzarr::interfaces::EventBus;
 use angzarr::proto::event_stream_server::EventStreamServer;
@@ -47,10 +47,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting angzarr-stream service");
 
-    let amqp_config = config
-        .amqp
+    let messaging = config
+        .messaging
         .as_ref()
-        .ok_or("angzarr-stream requires 'amqp' configuration")?;
+        .filter(|m| m.messaging_type == MessagingType::Amqp)
+        .ok_or("angzarr-stream requires 'messaging.type: amqp' configuration")?;
+
+    let amqp_config = &messaging.amqp;
 
     info!("Subscribing to all AMQP events");
 

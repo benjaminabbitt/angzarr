@@ -9,7 +9,7 @@
 //! [AMQP Events] -> [angzarr-saga] -> [Saga Service]
 //!                        |                 |
 //!                        v                 v
-//!              [angzarr-command] <-- [Commands]
+//!              [angzarr-entity] <-- [Commands]
 //!                        |
 //!                        v
 //!                  [AMQP Events] -> [angzarr-stream] -> [Client]
@@ -17,15 +17,16 @@
 //!
 //! ## Configuration
 //! - TARGET_ADDRESS: Saga gRPC address (e.g., "localhost:50051")
-//! - COMMAND_ADDRESS: Command handler address for executing saga commands (e.g., "angzarr-command:1313")
+//! - COMMAND_ADDRESS: Command handler address for executing saga commands (e.g., "angzarr-entity:1313")
 //! - AMQP_URL: RabbitMQ connection string
 //! - AMQP_DOMAIN: Domain to subscribe to (or "#" for all)
 
+use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::config::Config;
+use angzarr::config::{Config, MessagingType};
 use angzarr::handlers::saga::SagaEventHandler;
 use angzarr::interfaces::EventBus;
 use angzarr::proto::business_coordinator_client::BusinessCoordinatorClient;
@@ -55,10 +56,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Target saga: {}", target.address);
 
-    let amqp_config = config
-        .amqp
+    let messaging = config
+        .messaging
         .as_ref()
-        .ok_or("Saga sidecar requires 'amqp' configuration")?;
+        .filter(|m| m.messaging_type == MessagingType::Amqp)
+        .ok_or("Saga sidecar requires 'messaging.type: amqp' configuration")?;
+
+    let amqp_config = &messaging.amqp;
 
     let domains = amqp_config
         .domains
@@ -68,25 +72,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Subscribing to AMQP events for domains: {:?}", domains);
 
-    // Connect to saga service
-    let saga_client = SagaCoordinatorClient::connect(format!("http://{}", target.address)).await?;
+    // Connect to saga service with retry
+    let saga_address = format!("http://{}", target.address);
+    let saga_client = {
+        let max_retries = 30;
+        let mut delay = Duration::from_millis(100);
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match SagaCoordinatorClient::connect(saga_address.clone()).await {
+                Ok(client) => {
+                    info!("Connected to saga at {}", target.address);
+                    break client;
+                }
+                Err(e) if attempt < max_retries => {
+                    warn!(
+                        "Failed to connect to saga (attempt {}/{}): {}. Retrying in {:?}...",
+                        attempt, max_retries, e, delay
+                    );
+                    tokio::time::sleep(delay).await;
+                    delay = std::cmp::min(delay * 2, Duration::from_secs(5));
+                }
+                Err(e) => {
+                    error!("Failed to connect to saga after {} attempts: {}", max_retries, e);
+                    return Err(e.into());
+                }
+            }
+        }
+    };
 
     // Connect to command handler if configured (for executing saga-produced commands)
     let command_handler = if let Ok(command_address) = std::env::var("COMMAND_ADDRESS") {
         info!("Connecting to command handler at {}", command_address);
-        match BusinessCoordinatorClient::connect(format!("http://{}", command_address)).await {
-            Ok(client) => {
-                info!("Connected to command handler for saga command execution");
-                Some(client)
+        let cmd_url = format!("http://{}", command_address);
+        let max_retries = 30;
+        let mut delay = Duration::from_millis(100);
+        let mut attempt = 0;
+        let client = loop {
+            attempt += 1;
+            match BusinessCoordinatorClient::connect(cmd_url.clone()).await {
+                Ok(client) => {
+                    info!("Connected to command handler for saga command execution");
+                    break client;
+                }
+                Err(e) if attempt < max_retries => {
+                    warn!(
+                        "Failed to connect to command handler (attempt {}/{}): {}. Retrying in {:?}...",
+                        attempt, max_retries, e, delay
+                    );
+                    tokio::time::sleep(delay).await;
+                    delay = std::cmp::min(delay * 2, Duration::from_secs(5));
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to connect to command handler after {} attempts: {}",
+                        max_retries, e
+                    );
+                    return Err(e.into());
+                }
             }
-            Err(e) => {
-                error!(
-                    "Failed to connect to command handler at {}: {}",
-                    command_address, e
-                );
-                return Err(e.into());
-            }
-        }
+        };
+        Some(client)
     } else {
         warn!("COMMAND_ADDRESS not set - saga-produced commands will not be executed");
         None

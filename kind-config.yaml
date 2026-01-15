@@ -2,8 +2,16 @@
 # Create cluster: kind create cluster --config kind-config.yaml --name angzarr
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+# Configure containerd to use local registry
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
 nodes:
   - role: control-plane
+    extraMounts:
+      - hostPath: .kind-registry-config
+        containerPath: /etc/containerd/certs.d
     kubeadmConfigPatches:
       - |
         kind: InitConfiguration

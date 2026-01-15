@@ -66,11 +66,7 @@ impl EventStore for MongoEventStore {
 
         let root_str = root.to_string();
 
-        // Start a session for transaction support
-        let mut session = self.database.client().start_session().await?;
-        session.start_transaction().await?;
-
-        // Get the next sequence number within the transaction
+        // Get the next sequence number (no transaction needed - unique index handles conflicts)
         let base_sequence = {
             let filter = doc! { "domain": domain, "root": &root_str };
             let options = FindOptions::builder()
@@ -78,14 +74,9 @@ impl EventStore for MongoEventStore {
                 .limit(1)
                 .build();
 
-            let mut cursor = self
-                .events
-                .find(filter)
-                .with_options(options)
-                .session(&mut session)
-                .await?;
+            let mut cursor = self.events.find(filter).with_options(options).await?;
 
-            if cursor.advance(&mut session).await? {
+            if cursor.advance().await? {
                 let doc = cursor.deserialize_current()?;
                 doc.get_i32("sequence").unwrap_or(0) as u32 + 1
             } else {
@@ -102,7 +93,6 @@ impl EventStore for MongoEventStore {
             let sequence = match &event.sequence {
                 Some(crate::proto::event_page::Sequence::Num(n)) => {
                     if *n < base_sequence {
-                        session.abort_transaction().await?;
                         return Err(StorageError::SequenceConflict {
                             expected: base_sequence,
                             actual: *n,
@@ -141,10 +131,23 @@ impl EventStore for MongoEventStore {
                 "synchronous": event.synchronous,
             };
 
-            self.events.insert_one(doc).session(&mut session).await?;
+            // Insert with unique index enforcing consistency
+            // Duplicate key error indicates concurrent write conflict
+            self.events.insert_one(doc).await.map_err(|e| {
+                if let mongodb::error::ErrorKind::Write(ref we) = *e.kind {
+                    if let mongodb::error::WriteFailure::WriteError(ref write_err) = we {
+                        if write_err.code == 11000 {
+                            // Duplicate key error - sequence conflict
+                            return StorageError::SequenceConflict {
+                                expected: sequence,
+                                actual: sequence,
+                            };
+                        }
+                    }
+                }
+                StorageError::from(e)
+            })?;
         }
-
-        session.commit_transaction().await?;
 
         Ok(())
     }
@@ -164,11 +167,25 @@ impl EventStore for MongoEventStore {
 
         let options = FindOptions::builder().sort(doc! { "sequence": 1 }).build();
 
+        tracing::info!(
+            domain = domain,
+            root = %root_str,
+            from = from,
+            collection = %self.events.name(),
+            database = %self.database.name(),
+            "MongoDB get_from query starting"
+        );
+
         let mut cursor = self.events.find(filter).with_options(options).await?;
 
+        tracing::info!("MongoDB cursor created");
+
         let mut events = Vec::new();
+        let mut doc_count = 0;
         while cursor.advance().await? {
+            doc_count += 1;
             let doc = cursor.deserialize_current()?;
+            tracing::info!(doc_count, "Processing document from cursor");
             let event_data =
                 doc.get_binary_generic("event_data")
                     .map_err(|_| StorageError::NotFound {
@@ -178,6 +195,14 @@ impl EventStore for MongoEventStore {
             let event = EventPage::decode(event_data.as_slice())?;
             events.push(event);
         }
+
+        tracing::info!(
+            domain = domain,
+            root = %root_str,
+            doc_count,
+            events_len = events.len(),
+            "MongoDB get_from completed"
+        );
 
         Ok(events)
     }
@@ -189,6 +214,12 @@ impl EventStore for MongoEventStore {
         from: u32,
         to: u32,
     ) -> Result<Vec<EventPage>> {
+        // If to is u32::MAX or would overflow i32, use unbounded upper query
+        // This prevents i32 overflow (u32::MAX as i32 = -1)
+        if to > i32::MAX as u32 {
+            return self.get_from(domain, root, from).await;
+        }
+
         let root_str = root.to_string();
 
         let filter = doc! {

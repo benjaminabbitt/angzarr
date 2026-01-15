@@ -1,21 +1,24 @@
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
-  name: angzarr
+  name: angzarr-build
 
 build:
   local:
     # Push to local registry instead of kind load (required for podman)
     push: true
-    # Disable buildkit (podman compatibility)
+    # Podman natively supports cache mounts without BuildKit
+    # Keep false for podman compatibility - cache mounts work directly
     useBuildkit: false
+    # Try to import base images from registry to avoid rebuilding
+    tryImportMissing: true
   artifacts:
     # Command sidecar - handles commands and event persistence
-    - image: localhost:5001/angzarr-command
+    - image: localhost:5001/angzarr-entity
       context: .
       docker:
         dockerfile: Containerfile
-        target: angzarr-command
+        target: angzarr-entity
 
     # Projector sidecar - handles event projections
     - image: localhost:5001/angzarr-projector
@@ -45,43 +48,5 @@ build:
         dockerfile: Containerfile
         target: angzarr-gateway
 
-deploy:
-  helm:
-    releases:
-      - name: angzarr
-        chartPath: deploy/helm/angzarr
-        namespace: angzarr
-        createNamespace: true
-        valuesFiles:
-          - deploy/helm/angzarr/values.yaml
-        setValues:
-          images.command.repository: localhost:5001/angzarr-command
-          images.command.tag: latest
-          images.projector.repository: localhost:5001/angzarr-projector
-          images.projector.tag: latest
-          images.saga.repository: localhost:5001/angzarr-saga
-          images.saga.tag: latest
-          images.stream.repository: localhost:5001/angzarr-stream
-          images.stream.tag: latest
-          images.gateway.repository: localhost:5001/angzarr-gateway
-          images.gateway.tag: latest
-
-profiles:
-  # Development profile - enables infrastructure services
-  - name: dev
-    activation:
-      - command: dev
-    patches:
-      - op: add
-        path: /deploy/helm/releases/0/setValues/infrastructure.stream.enabled
-        value: true
-      - op: add
-        path: /deploy/helm/releases/0/setValues/infrastructure.gateway.enabled
-        value: true
-
-  # Local values override
-  - name: local
-    patches:
-      - op: add
-        path: /deploy/helm/releases/0/valuesFiles/-
-        value: deploy/helm/angzarr/values-local.yaml
+# Deploy section removed - each language-specific skaffold defines its own deploy
+# See examples/rust/skaffold.yaml, examples/go/skaffold.yaml, etc.

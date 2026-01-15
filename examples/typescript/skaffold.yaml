@@ -13,37 +13,37 @@ build:
     push: true
     useBuildkit: false
   artifacts:
-    - image: localhost:5001/ts-customer
+    - image: localhost:5001/entity-customer-ts
       context: .
       docker:
         dockerfile: Containerfile
         target: customer
 
-    - image: localhost:5001/ts-transaction
+    - image: localhost:5001/entity-transaction-ts
       context: .
       docker:
         dockerfile: Containerfile
         target: transaction
 
-    - image: localhost:5001/ts-saga-loyalty
+    - image: localhost:5001/saga-loyalty-ts
       context: .
       docker:
         dockerfile: Containerfile
         target: saga-loyalty
 
-    - image: localhost:5001/ts-projector-receipt
+    - image: localhost:5001/projector-receipt-ts
       context: .
       docker:
         dockerfile: Containerfile
         target: projector-receipt
 
-    - image: localhost:5001/ts-projector-log-customer
+    - image: localhost:5001/projector-log-customer-ts
       context: .
       docker:
         dockerfile: Containerfile
         target: projector-log-customer
 
-    - image: localhost:5001/ts-projector-log-transaction
+    - image: localhost:5001/projector-log-transaction-ts
       context: .
       docker:
         dockerfile: Containerfile
@@ -59,7 +59,7 @@ deploy:
         valuesFiles:
           - ../../deploy/helm/angzarr/values-typescript.yaml
         setValues:
-          images.command.repository: localhost:5001/angzarr-command
+          images.command.repository: localhost:5001/angzarr-entity
           images.command.tag: latest
           images.projector.repository: localhost:5001/angzarr-projector
           images.projector.tag: latest
@@ -69,17 +69,17 @@ deploy:
           images.stream.tag: latest
           images.gateway.repository: localhost:5001/angzarr-gateway
           images.gateway.tag: latest
-          applications.business[0].image.repository: localhost:5001/ts-customer
+          applications.business[0].image.repository: localhost:5001/entity-customer-ts
           applications.business[0].image.tag: latest
-          applications.business[1].image.repository: localhost:5001/ts-transaction
+          applications.business[1].image.repository: localhost:5001/entity-transaction-ts
           applications.business[1].image.tag: latest
-          applications.projectors[1].image.repository: localhost:5001/ts-projector-receipt
+          applications.projectors[1].image.repository: localhost:5001/projector-receipt-ts
           applications.projectors[1].image.tag: latest
-          applications.projectors[2].image.repository: localhost:5001/ts-projector-log-customer
+          applications.projectors[2].image.repository: localhost:5001/projector-log-customer-ts
           applications.projectors[2].image.tag: latest
-          applications.projectors[3].image.repository: localhost:5001/ts-projector-log-transaction
+          applications.projectors[3].image.repository: localhost:5001/projector-log-transaction-ts
           applications.projectors[3].image.tag: latest
-          applications.sagas[0].image.repository: localhost:5001/ts-saga-loyalty
+          applications.sagas[0].image.repository: localhost:5001/saga-loyalty-ts
           applications.sagas[0].image.tag: latest
 
 profiles:

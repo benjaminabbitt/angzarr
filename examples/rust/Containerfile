@@ -1,13 +1,13 @@
-# Rust examples - multi-stage build with musl for static binaries
+# syntax=docker/dockerfile:1.4
+# Rust examples - multi-stage build with cargo-chef and musl for static binaries
 # Build: docker build -t angzarr-rust-examples -f examples/rust/Containerfile .
-# Build single: docker build --build-arg SERVICE=customer -t rs-customer -f examples/rust/Containerfile .
+# Build single: docker build --target customer -t rs-customer -f examples/rust/Containerfile .
+# Uses cargo-chef for dependency caching - rebuilds only when Cargo.toml changes
 
-ARG SERVICE
-
-# ============================================================================
-# Builder stage - compiles all Rust binaries as static musl binaries
-# ============================================================================
-FROM rust:1.85-alpine AS builder
+# =============================================================================
+# Stage 1: Chef - install cargo-chef with musl toolchain
+# =============================================================================
+FROM docker.io/library/rust:1.92-alpine AS chef
 
 RUN apk add --no-cache \
     musl-dev \
@@ -18,37 +18,77 @@ RUN apk add --no-cache \
     pkgconfig
 
 RUN rustup target add x86_64-unknown-linux-musl
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo install cargo-chef --locked
+
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
 ENV OPENSSL_DIR=/usr
 
 WORKDIR /app
 
-# Copy workspace manifests
-COPY Cargo.toml Cargo.lock ./
-COPY proto proto/
-COPY build.rs ./
-COPY src src/
+# =============================================================================
+# Stage 2: Planner - analyze dependencies
+# =============================================================================
+FROM chef AS planner
 
-# Copy rust examples
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY src/ ./src/
 COPY examples/rust examples/rust/
 
 # Create stub test files (required by Cargo.toml)
 RUN mkdir -p tests && \
-    echo "fn main() {}" > tests/acceptance.rs
+    echo "fn main() {}" > tests/acceptance.rs && \
+    echo "fn main() {}" > tests/container_integration.rs && \
+    echo "fn main() {}" > tests/mongodb_debug.rs
 
-# Build all example binaries
-RUN cargo build --release --target x86_64-unknown-linux-musl \
-    -p customer --bin customer-server && \
+RUN cargo chef prepare --recipe-path recipe.json
+
+# =============================================================================
+# Stage 3: Cacher - build dependencies only (heavily cached)
+# cargo-chef cooks the recipe with stub code to pre-build dependencies
+# =============================================================================
+FROM chef AS cacher
+
+COPY --from=planner /app/recipe.json recipe.json
+
+# Build dependencies with musl using chef's recipe
+# This creates target/ with compiled deps that will be reused in builder
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+
+# =============================================================================
+# Stage 4: Builder - compile ALL binaries in single stage (shared artifacts)
+# =============================================================================
+FROM chef AS builder
+
+# Copy only cached dependencies, not source files
+COPY --from=cacher /app/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
+
+# Copy fresh source from build context (not cacher's chef-modified files)
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY src/ ./src/
+COPY examples/rust examples/rust/
+
+RUN mkdir -p tests && \
+    echo "fn main() {}" > tests/acceptance.rs && \
+    echo "fn main() {}" > tests/container_integration.rs && \
+    echo "fn main() {}" > tests/mongodb_debug.rs
+
+# Build all example binaries in single invocation - cargo resolves all deps once
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
     cargo build --release --target x86_64-unknown-linux-musl \
-    -p transaction --bin transaction-server && \
-    cargo build --release --target x86_64-unknown-linux-musl \
-    -p saga-loyalty --bin saga-loyalty-server && \
-    cargo build --release --target x86_64-unknown-linux-musl \
-    -p projector-receipt --bin projector-receipt-server && \
-    cargo build --release --target x86_64-unknown-linux-musl \
-    -p projector-log-customer --bin projector-log-customer-server && \
-    cargo build --release --target x86_64-unknown-linux-musl \
+    -p customer --bin customer-server \
+    -p transaction --bin transaction-server \
+    -p saga-loyalty --bin saga-loyalty-server \
+    -p projector-receipt --bin projector-receipt-server \
+    -p projector-log-customer --bin projector-log-customer-server \
     -p projector-log-transaction --bin projector-log-transaction-server
 
 # ============================================================================
@@ -96,10 +136,4 @@ FROM runtime AS projector-log-transaction
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/projector-log-transaction-server ./server
 ENV PORT=50105
 EXPOSE 50105
-ENTRYPOINT ["./server"]
-
-# Default target (requires --build-arg SERVICE=xxx)
-FROM runtime AS default
-ARG SERVICE
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/${SERVICE}-server ./server
 ENTRYPOINT ["./server"]

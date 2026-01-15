@@ -44,7 +44,7 @@ use angzarr::proto::{
     saga_coordinator_server::SagaCoordinatorServer,
 };
 use angzarr::services::{
-    CommandHandlerService, EventQueryService, ProjectorCoordinatorService, SagaCoordinatorService,
+    EntityService, EventQueryService, ProjectorCoordinatorService, SagaCoordinatorService,
 };
 use angzarr::storage::init_storage;
 
@@ -108,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(StaticBusinessLogicClient::new(addresses).await?)
     };
 
-    let command_handler = CommandHandlerService::new(
+    let entity_service = EntityService::new(
         event_store.clone(),
         snapshot_store.clone(),
         business_client,
@@ -120,19 +120,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saga_coordinator = SagaCoordinatorService::new();
 
     let host = &config.server.host;
-    let command_handler_addr =
-        format!("{}:{}", host, config.server.command_handler_port).parse()?;
+    let entity_addr = format!("{}:{}", host, config.server.entity_port).parse()?;
     let event_query_addr = format!("{}:{}", host, config.server.event_query_port).parse()?;
 
-    info!("Command handler listening on {}", command_handler_addr);
+    info!("Entity service listening on {}", entity_addr);
     info!("Event query listening on {}", event_query_addr);
 
     // Create health reporters for each server
-    let (mut command_health_reporter, command_health_service) = health_reporter();
+    let (mut entity_health_reporter, entity_health_service) = health_reporter();
     let (mut query_health_reporter, query_health_service) = health_reporter();
 
     // Set all services as serving
-    command_health_reporter
+    entity_health_reporter
         .set_service_status("", tonic_health::ServingStatus::Serving)
         .await;
     query_health_reporter
@@ -141,11 +140,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tokio::try_join!(
         Server::builder()
-            .add_service(command_health_service)
-            .add_service(BusinessCoordinatorServer::new(command_handler))
+            .add_service(entity_health_service)
+            .add_service(BusinessCoordinatorServer::new(entity_service))
             .add_service(ProjectorCoordinatorServer::new(projector_coordinator))
             .add_service(SagaCoordinatorServer::new(saga_coordinator))
-            .serve(command_handler_addr),
+            .serve(entity_addr),
         Server::builder()
             .add_service(query_health_service)
             .add_service(EventQueryServer::new(event_query))

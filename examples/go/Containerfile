@@ -1,64 +1,84 @@
-# Go examples - multi-stage build
-# Build from this directory: docker build -t go-customer --target customer .
-# Build all: docker build -t go-examples .
+# syntax=docker/dockerfile:1.4
+# Go examples - multi-stage build with cache mounts
+# Build: podman build -t go-customer --target customer -f examples/go/Containerfile .
+# Context must be repo root for proto/generated access
+# Cache mounts persist go modules and build cache across builds
 
 # ============================================================================
 # Builder stage - compiles Go binaries
 # ============================================================================
-FROM golang:1.23-alpine AS builder
+FROM docker.io/library/golang:1.23-alpine AS builder
 
 RUN apk add --no-cache git protobuf-dev
 
 WORKDIR /app
 
-# Copy proto and generated files
+# Copy proto and generated files from repo root
 COPY proto proto/
 COPY generated generated/
 
 # ============================================================================
-# Build each service
+# Build each service with shared cache mounts
 # ============================================================================
 FROM builder AS build-customer
 WORKDIR /app/service
-COPY customer/go.mod customer/go.sum ./
-RUN go mod download
-COPY customer/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+COPY examples/go/customer/go.mod examples/go/customer/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY examples/go/customer/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o /server .
 
 FROM builder AS build-transaction
 WORKDIR /app/service
-COPY transaction/go.mod transaction/go.sum ./
-RUN go mod download
-COPY transaction/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+COPY examples/go/transaction/go.mod examples/go/transaction/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY examples/go/transaction/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o /server .
 
 FROM builder AS build-saga-loyalty
 WORKDIR /app/service
-COPY saga-loyalty/go.mod saga-loyalty/go.sum ./
-RUN go mod download
-COPY saga-loyalty/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+COPY examples/go/saga-loyalty/go.mod examples/go/saga-loyalty/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY examples/go/saga-loyalty/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o /server .
 
 FROM builder AS build-projector-receipt
 WORKDIR /app/service
-COPY projector-receipt/go.mod projector-receipt/go.sum ./
-RUN go mod download
-COPY projector-receipt/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+COPY examples/go/projector-receipt/go.mod examples/go/projector-receipt/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY examples/go/projector-receipt/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o /server .
 
 FROM builder AS build-projector-log-customer
 WORKDIR /app/service
-COPY projector-log-customer/go.mod projector-log-customer/go.sum ./
-RUN go mod download
-COPY projector-log-customer/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+COPY examples/go/projector-log-customer/go.mod examples/go/projector-log-customer/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY examples/go/projector-log-customer/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o /server .
 
 FROM builder AS build-projector-log-transaction
 WORKDIR /app/service
-COPY projector-log-transaction/go.mod projector-log-transaction/go.sum ./
-RUN go mod download
-COPY projector-log-transaction/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /server .
+COPY examples/go/projector-log-transaction/go.mod examples/go/projector-log-transaction/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY examples/go/projector-log-transaction/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o /server .
 
 # ============================================================================
 # Runtime base

@@ -1,18 +1,29 @@
+# syntax=docker/dockerfile:1.4
 # Multi-stage build for angzarr sidecars
-# Uses cargo-chef for dependency caching: only rebuilds app code on source changes
+# Uses cargo-chef for dependency caching and musl for static binaries
+# All binaries built in single stage to share compiled artifacts
 
 # =============================================================================
-# Stage 1: Chef - install cargo-chef
+# Stage 1: Chef - install cargo-chef with musl toolchain
 # =============================================================================
-FROM rust:1.92-slim AS chef
+FROM docker.io/library/rust:1.92-alpine AS chef
 
-RUN apt-get update && apt-get install -y \
-    protobuf-compiler \
-    libprotobuf-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    musl-dev \
+    protobuf-dev \
+    protoc \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig
 
-RUN cargo install cargo-chef --locked
+RUN rustup target add x86_64-unknown-linux-musl
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo install cargo-chef --locked
+
+ENV RUSTFLAGS="-C target-feature=+crt-static"
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_DIR=/usr
 
 WORKDIR /app
 
@@ -25,15 +36,15 @@ COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
 
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs
+RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main() {}" > tests/container_integration.rs && echo "fn main() {}" > tests/mongodb_debug.rs
 
 # Create stub workspace members (examples not needed for sidecars)
 RUN mkdir -p examples/rust/common/src && \
-    echo '[package]\nname = "common"\nversion = "0.1.0"\nedition = "2021"\n[lib]\npath = "src/lib.rs"' > examples/rust/common/Cargo.toml && \
+    echo -e '[package]\nname = "common"\nversion = "0.1.0"\nedition = "2021"\n[lib]\npath = "src/lib.rs"' > examples/rust/common/Cargo.toml && \
     echo "" > examples/rust/common/src/lib.rs && \
     for pkg in customer transaction saga-loyalty projector-receipt projector-log-customer projector-log-transaction; do \
         mkdir -p examples/rust/$pkg/src && \
-        echo "[package]\nname = \"$pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[[bin]]\nname = \"$pkg-server\"\npath = \"src/main.rs\"" > examples/rust/$pkg/Cargo.toml && \
+        echo -e "[package]\nname = \"$pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[[bin]]\nname = \"$pkg-server\"\npath = \"src/main.rs\"" > examples/rust/$pkg/Cargo.toml && \
         echo "fn main() {}" > examples/rust/$pkg/src/main.rs; \
     done
 
@@ -50,15 +61,17 @@ COPY --from=planner /app/examples ./examples/
 COPY proto/ ./proto/
 COPY build.rs ./
 RUN mkdir -p src && echo "" > src/lib.rs
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs
+RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main() {}" > tests/container_integration.rs && echo "fn main() {}" > tests/mongodb_debug.rs
 
-# Build dependencies for all feature combinations
-RUN cargo chef cook --release --recipe-path recipe.json
+# Build dependencies with musl
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
 
 # =============================================================================
-# Stage 4: Builder base - compile application code
+# Stage 4: Builder - compile ALL binaries in single stage (shared artifacts)
 # =============================================================================
-FROM chef AS builder-base
+FROM chef AS builder
 
 COPY --from=cacher /app/target target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
@@ -68,82 +81,57 @@ COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
 
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs
+RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main() {}" > tests/container_integration.rs && echo "fn main() {}" > tests/mongodb_debug.rs
 
-# Command sidecar
-FROM builder-base AS builder-command
-RUN cargo build --release --bin angzarr-command --features "mode-command,mongodb"
-
-# Projector sidecar
-FROM builder-base AS builder-projector
-RUN cargo build --release --bin angzarr-projector --features "mode-projector,mongodb"
-
-# Saga sidecar
-FROM builder-base AS builder-saga
-RUN cargo build --release --bin angzarr-saga --features "mode-saga,mongodb"
-
-# Stream service (central infrastructure)
-FROM builder-base AS builder-stream
-RUN cargo build --release --bin angzarr-stream --features "mode-stream"
-
-# Gateway service (central infrastructure)
-FROM builder-base AS builder-gateway
-RUN cargo build --release --bin angzarr-gateway --features "mode-gateway"
+# Build all binaries in single invocation - shares compilation across all targets
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    --bin angzarr-entity \
+    --bin angzarr-projector \
+    --bin angzarr-saga \
+    --bin angzarr-stream \
+    --bin angzarr-gateway
 
 # =============================================================================
-# Runtime base
+# Runtime base - distroless static image (no libc needed)
 # =============================================================================
-FROM debian:bookworm-slim AS runtime-base
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime-base
 
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN useradd -r -s /bin/false angzarr
-
-USER angzarr
+WORKDIR /app
+USER nonroot:nonroot
 
 ENV ANGZARR_LOG=info
 
 # =============================================================================
-# Final images
+# Final images - all copy from single builder stage
 # =============================================================================
 
-# Command sidecar image
-FROM runtime-base AS angzarr-command
-COPY --from=builder-command /app/target/release/angzarr-command /usr/local/bin/
+# Entity sidecar image
+FROM runtime-base AS angzarr-entity
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-entity ./server
 EXPOSE 1313 1314
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -x /usr/local/bin/angzarr-command || exit 1
-CMD ["angzarr-command"]
+ENTRYPOINT ["./server"]
 
 # Projector sidecar image
 FROM runtime-base AS angzarr-projector
-COPY --from=builder-projector /app/target/release/angzarr-projector /usr/local/bin/
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -x /usr/local/bin/angzarr-projector || exit 1
-CMD ["angzarr-projector"]
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-projector ./server
+ENTRYPOINT ["./server"]
 
 # Saga sidecar image
 FROM runtime-base AS angzarr-saga
-COPY --from=builder-saga /app/target/release/angzarr-saga /usr/local/bin/
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-saga ./server
 EXPOSE 1313 1314
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -x /usr/local/bin/angzarr-saga || exit 1
-CMD ["angzarr-saga"]
+ENTRYPOINT ["./server"]
 
 # Stream service image (central infrastructure)
 FROM runtime-base AS angzarr-stream
-COPY --from=builder-stream /app/target/release/angzarr-stream /usr/local/bin/
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-stream ./server
 EXPOSE 1315
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -x /usr/local/bin/angzarr-stream || exit 1
-CMD ["angzarr-stream"]
+ENTRYPOINT ["./server"]
 
 # Gateway service image (central infrastructure)
 FROM runtime-base AS angzarr-gateway
-COPY --from=builder-gateway /app/target/release/angzarr-gateway /usr/local/bin/
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-gateway ./server
 EXPOSE 1316
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -x /usr/local/bin/angzarr-gateway || exit 1
-CMD ["angzarr-gateway"]
+ENTRYPOINT ["./server"]

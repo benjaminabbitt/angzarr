@@ -7,8 +7,8 @@ global:
 replicaCount: 1
 
 images:
-  command:
-    repository: angzarr-command
+  entity:
+    repository: angzarr-entity
     pullPolicy: Never
     tag: "latest"
   projector:
@@ -90,32 +90,32 @@ infrastructure:
     enabled: true
     replicas: 1
     port: 1316
-    commandHandlers:
-      customer: "angzarr-ts-customer:50051"
-      transaction: "angzarr-ts-transaction:50051"
-    streamService: "angzarr-ts-stream:1315"
+    entities:
+      customer: "angzarr-entity-customer-ts:50051"
+      transaction: "angzarr-entity-transaction-ts:50051"
+    streamService: "angzarr-stream-ts:1315"
     streamTimeoutSecs: 30
 
 applications:
   business:
-    - name: ts-customer
+    - name: entity-customer-ts
       image:
-        repository: ts-customer
+        repository: entity-customer-ts
         tag: "latest"
         pullPolicy: Never
       domain: "customer"
       port: 50100
 
-    - name: ts-transaction
+    - name: entity-transaction-ts
       image:
-        repository: ts-transaction
+        repository: entity-transaction-ts
         tag: "latest"
         pullPolicy: Never
       domain: "transaction"
       port: 50101
 
   projectors:
-    - name: ts-stream
+    - name: stream-ts
       image:
         repository: angzarr-stream
         tag: "latest"
@@ -124,27 +124,27 @@ applications:
       topics:
         - "#"
 
-    - name: ts-projector-receipt
+    - name: projector-receipt-ts
       image:
-        repository: ts-projector-receipt
+        repository: projector-receipt-ts
         tag: "latest"
         pullPolicy: Never
       port: 50103
       topics:
         - "transaction.*"
 
-    - name: ts-projector-log-customer
+    - name: projector-log-customer-ts
       image:
-        repository: ts-projector-log-customer
+        repository: projector-log-customer-ts
         tag: "latest"
         pullPolicy: Never
       port: 50104
       topics:
         - "customer.*"
 
-    - name: ts-projector-log-transaction
+    - name: projector-log-transaction-ts
       image:
-        repository: ts-projector-log-transaction
+        repository: projector-log-transaction-ts
         tag: "latest"
         pullPolicy: Never
       port: 50105
@@ -152,9 +152,9 @@ applications:
         - "transaction.*"
 
   sagas:
-    - name: ts-saga-loyalty
+    - name: saga-loyalty-ts
       image:
-        repository: ts-saga-loyalty
+        repository: saga-loyalty-ts
         tag: "latest"
         pullPolicy: Never
       port: 50102
@@ -163,7 +163,7 @@ applications:
 
 service:
   type: NodePort
-  commandPort: 50051
+  entityPort: 50051
   queryPort: 50052
 
 logging:

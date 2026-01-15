@@ -3,12 +3,28 @@
 
 storage:
   type: sqlite
-  path: ./data/events.db
+  sqlite:
+    path: ./data/events.db
+  # Uncomment for MongoDB:
+  # type: mongodb
+  # mongodb:
+  #   uri: mongodb://localhost:27017
+  #   database: angzarr
 
 server:
-  command_handler_port: 1313
+  entity_port: 1313
   event_query_port: 1314
   host: 0.0.0.0
+
+# Messaging configuration (optional)
+# messaging:
+#   type: amqp  # or "direct" for in-process
+#   amqp:
+#     url: amqp://localhost:5672
+#     domain: customers  # Single domain (for entity mode)
+#     # domains:         # Multiple domains (for projector/saga modes)
+#     #   - customers
+#     #   - orders
 
 # Business logic services (optional - uses placeholder if empty)
 # business_logic:

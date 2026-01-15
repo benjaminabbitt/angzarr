@@ -61,10 +61,10 @@ spec:
             - name: DOMAIN
               value: {{ .domain | quote }}
             # Angzarr sidecar endpoints
-            - name: ANGZARR_COMMAND_HOST
+            - name: ANGZARR_ENTITY_HOST
               value: "localhost"
-            - name: ANGZARR_COMMAND_PORT
-              value: "{{ $.Values.service.commandPort }}"
+            - name: ANGZARR_ENTITY_PORT
+              value: "{{ $.Values.service.entityPort }}"
             - name: ANGZARR_QUERY_HOST
               value: "localhost"
             - name: ANGZARR_QUERY_PORT
@@ -94,15 +94,15 @@ spec:
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
 
-        # Sidecar: Angzarr command sidecar
+        # Sidecar: Angzarr entity sidecar
         - name: angzarr
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
-          image: "{{ $.Values.images.command.repository }}:{{ $.Values.images.command.tag | default $.Chart.AppVersion }}"
-          imagePullPolicy: {{ $.Values.images.command.pullPolicy }}
+          image: "{{ $.Values.images.entity.repository }}:{{ $.Values.images.entity.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.images.entity.pullPolicy }}
           ports:
-            - name: command
-              containerPort: {{ $.Values.service.commandPort }}
+            - name: entity
+              containerPort: {{ $.Values.service.entityPort }}
               protocol: TCP
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
@@ -117,8 +117,17 @@ spec:
             - name: TARGET_DOMAIN
               value: {{ .domain | quote }}
             {{- if $.Values.amqp.enabled }}
-            - name: AMQP_URL
+            - name: MESSAGING_TYPE
+              value: "amqp"
+            - name: MESSAGING_AMQP_URL
+              {{- if $.Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.amqp.existingSecret }}
+                  key: amqp-url
+              {{- else }}
               value: {{ $.Values.amqp.url }}
+              {{- end }}
             {{- end }}
           livenessProbe:
             {{- toYaml $.Values.livenessProbe | nindent 12 }}
@@ -223,8 +232,17 @@ spec:
               value: "{{ $.Values.service.queryPort }}"
             # AMQP for event subscription
             {{- if $.Values.amqp.enabled }}
-            - name: AMQP_URL
+            - name: MESSAGING_TYPE
+              value: "amqp"
+            - name: MESSAGING_AMQP_URL
+              {{- if $.Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.amqp.existingSecret }}
+                  key: amqp-url
+              {{- else }}
               value: {{ $.Values.amqp.url | quote }}
+              {{- end }}
             {{- end }}
             - name: EVENT_TOPICS
               value: {{ .topics | join "," | quote }}
@@ -257,11 +275,20 @@ spec:
             - name: TARGET_ADDRESS
               value: "localhost:{{ .port | default 50051 }}"
             {{- if $.Values.amqp.enabled }}
-            - name: AMQP_URL
+            - name: MESSAGING_TYPE
+              value: "amqp"
+            - name: MESSAGING_AMQP_URL
+              {{- if $.Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.amqp.existingSecret }}
+                  key: amqp-url
+              {{- else }}
               value: {{ $.Values.amqp.url }}
-            {{- end }}
-            - name: AMQP_DOMAIN
+              {{- end }}
+            - name: MESSAGING_AMQP_DOMAIN
               value: {{ .topics | first | default "#" | quote }}
+            {{- end }}
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
           volumeMounts:
@@ -351,18 +378,27 @@ spec:
             - name: GRPC_PORT
               value: "{{ .port | default 50051 }}"
             # Angzarr sidecar endpoints
-            - name: ANGZARR_COMMAND_HOST
+            - name: ANGZARR_ENTITY_HOST
               value: "localhost"
-            - name: ANGZARR_COMMAND_PORT
-              value: "{{ $.Values.service.commandPort }}"
+            - name: ANGZARR_ENTITY_PORT
+              value: "{{ $.Values.service.entityPort }}"
             - name: ANGZARR_QUERY_HOST
               value: "localhost"
             - name: ANGZARR_QUERY_PORT
               value: "{{ $.Values.service.queryPort }}"
             # AMQP for event subscription
             {{- if $.Values.amqp.enabled }}
-            - name: AMQP_URL
+            - name: MESSAGING_TYPE
+              value: "amqp"
+            - name: MESSAGING_AMQP_URL
+              {{- if $.Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.amqp.existingSecret }}
+                  key: amqp-url
+              {{- else }}
               value: {{ $.Values.amqp.url | quote }}
+              {{- end }}
             {{- end }}
             - name: EVENT_TOPICS
               value: {{ .topics | join "," | quote }}
@@ -384,8 +420,8 @@ spec:
           image: "{{ $.Values.images.saga.repository }}:{{ $.Values.images.saga.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.images.saga.pullPolicy }}
           ports:
-            - name: command
-              containerPort: {{ $.Values.service.commandPort }}
+            - name: entity
+              containerPort: {{ $.Values.service.entityPort }}
               protocol: TCP
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
@@ -398,15 +434,21 @@ spec:
             - name: TARGET_ADDRESS
               value: "localhost:{{ .port | default 50051 }}"
             {{- if $.Values.amqp.enabled }}
-            - name: AMQP_URL
+            - name: MESSAGING_TYPE
+              value: "amqp"
+            - name: MESSAGING_AMQP_URL
+              {{- if $.Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.amqp.existingSecret }}
+                  key: amqp-url
+              {{- else }}
               value: {{ $.Values.amqp.url }}
-            {{- end }}
-            - name: AMQP_DOMAIN
+              {{- end }}
+            - name: MESSAGING_AMQP_DOMAIN
               value: {{ .topics | first | default "#" | quote }}
-          livenessProbe:
-            {{- toYaml $.Values.livenessProbe | nindent 12 }}
-          readinessProbe:
-            {{- toYaml $.Values.readinessProbe | nindent 12 }}
+            {{- end }}
+          # NOTE: No liveness/readiness probes - saga sidecar is a pure consumer (no server ports)
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
           volumeMounts:
@@ -492,8 +534,17 @@ spec:
             - name: GRPC_PORT
               value: "{{ .Values.infrastructure.stream.port }}"
             {{- if .Values.amqp.enabled }}
-            - name: AMQP_URL
+            - name: MESSAGING_TYPE
+              value: "amqp"
+            - name: MESSAGING_AMQP_URL
+              {{- if .Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.amqp.existingSecret }}
+                  key: amqp-url
+              {{- else }}
               value: {{ .Values.amqp.url }}
+              {{- end }}
             {{- end }}
           resources:
             {{- toYaml .Values.infrastructure.stream.resources | nindent 12 }}
@@ -554,13 +605,19 @@ spec:
               value: {{ .Values.logging.level }}
             - name: GRPC_PORT
               value: "{{ .Values.infrastructure.gateway.port }}"
-            {{- if .Values.infrastructure.gateway.commandHandlers }}
-            # Domain-based routing: domain=address pairs
+            # Namespace for K8s service discovery (from downward API)
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if .Values.infrastructure.gateway.entities }}
+            # Domain-based routing: domain=address pairs (overrides K8s discovery)
             - name: COMMAND_HANDLERS
-              value: {{ range $domain, $addr := .Values.infrastructure.gateway.commandHandlers }}{{ $domain }}={{ $addr }},{{ end }}
-            {{- else if .Values.infrastructure.gateway.commandService }}
+              value: {{ range $domain, $addr := .Values.infrastructure.gateway.entities }}{{ $domain }}={{ $addr }},{{ end }}
+            {{- else if .Values.infrastructure.gateway.entityService }}
+            # Single command service (legacy, overrides K8s discovery)
             - name: COMMAND_ADDRESS
-              value: {{ .Values.infrastructure.gateway.commandService | quote }}
+              value: {{ .Values.infrastructure.gateway.entityService | quote }}
             {{- end }}
             - name: STREAM_ADDRESS
               value: {{ .Values.infrastructure.gateway.streamService | default (printf "%s-stream:%d" (include "angzarr.fullname" .) (.Values.infrastructure.stream.port | int)) | quote }}

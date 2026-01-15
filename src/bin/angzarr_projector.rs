@@ -24,11 +24,12 @@
 //! - AMQP_DOMAIN: Domain to subscribe to (or "#" for all)
 //! - STREAM_OUTPUT: Set to "true" to publish projector output to AMQP (default: false)
 
-use tracing::{error, info};
+use std::time::Duration;
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::config::Config;
+use angzarr::config::{Config, MessagingType};
 use angzarr::handlers::projector::ProjectorEventHandler;
 use angzarr::interfaces::EventBus;
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
@@ -57,10 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Target projector: {}", target.address);
 
-    let amqp_config = config
-        .amqp
+    let messaging = config
+        .messaging
         .as_ref()
-        .ok_or("Projector sidecar requires 'amqp' configuration")?;
+        .filter(|m| m.messaging_type == MessagingType::Amqp)
+        .ok_or("Projector sidecar requires 'messaging.type: amqp' configuration")?;
+
+    let amqp_config = &messaging.amqp;
 
     let domains = amqp_config
         .domains
@@ -75,9 +79,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false);
 
-    // Connect to projector service
-    let projector_client =
-        ProjectorCoordinatorClient::connect(format!("http://{}", target.address)).await?;
+    // Connect to projector service with retry
+    let projector_address = format!("http://{}", target.address);
+    let projector_client = {
+        let max_retries = 30;
+        let mut delay = Duration::from_millis(100);
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match ProjectorCoordinatorClient::connect(projector_address.clone()).await {
+                Ok(client) => {
+                    info!("Connected to projector at {}", target.address);
+                    break client;
+                }
+                Err(e) if attempt < max_retries => {
+                    warn!(
+                        "Failed to connect to projector (attempt {}/{}): {}. Retrying in {:?}...",
+                        attempt, max_retries, e, delay
+                    );
+                    tokio::time::sleep(delay).await;
+                    delay = std::cmp::min(delay * 2, Duration::from_secs(5));
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to connect to projector after {} attempts: {}",
+                        max_retries, e
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+    };
 
     // Create AMQP publisher if streaming is enabled
     let publisher = if stream_output {

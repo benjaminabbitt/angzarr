@@ -5,7 +5,7 @@ namespace: angzarr-ts
 # Angzarr infrastructure images
 angzarr:
   command:
-    image: angzarr-command:latest
+    image: angzarr-entity:latest
     port: 50051
   query:
     port: 50052

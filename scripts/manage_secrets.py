@@ -234,6 +234,80 @@ def cmd_check(args: argparse.Namespace, config: Config) -> int:
         return 1
 
 
+def cmd_sync(args: argparse.Namespace, config: Config) -> int:
+    """Sync secrets to target namespace in format expected by Bitnami charts."""
+    # Ensure source secrets exist
+    if not secret_exists(config.secret_name, config.secrets_namespace):
+        print(f"Source secrets not found in namespace '{config.secrets_namespace}'")
+        print("Run 'init' first to create secrets")
+        return 1
+
+    # Get source credentials
+    source_data = get_secret_data(config.secret_name, config.secrets_namespace)
+    if not source_data:
+        print("Failed to retrieve source secrets")
+        return 1
+
+    # Ensure target namespace exists
+    create_namespace(config.namespace)
+
+    # Create RabbitMQ secret (format expected by bitnami/rabbitmq)
+    rabbitmq_secret = {
+        "rabbitmq-password": source_data.get("rabbitmq-password", ""),
+        "rabbitmq-erlang-cookie": source_data.get("rabbitmq-erlang-cookie", ""),
+    }
+    create_secret(
+        "angzarr-rabbitmq-secret",
+        config.namespace,
+        rabbitmq_secret,
+        force=args.force,
+    )
+    print(f"Created RabbitMQ secret in namespace '{config.namespace}'")
+
+    # Create mongodb-credentials secret (format expected by k8s/base/mongodb.yaml)
+    mongodb_creds = {
+        "username": "angzarr",
+        "password": source_data.get("mongodb-password", ""),
+    }
+    create_secret(
+        "mongodb-credentials",
+        config.namespace,
+        mongodb_creds,
+        force=args.force,
+    )
+    print(f"Created MongoDB credentials in namespace '{config.namespace}'")
+
+    # Create rabbitmq-credentials secret (format expected by k8s/base/rabbitmq.yaml)
+    rabbitmq_creds = {
+        "username": "angzarr",
+        "password": source_data.get("rabbitmq-password", ""),
+    }
+    create_secret(
+        "rabbitmq-credentials",
+        config.namespace,
+        rabbitmq_creds,
+        force=args.force,
+    )
+    print(f"Created RabbitMQ credentials in namespace '{config.namespace}'")
+
+    # Create main angzarr secrets with connection URIs
+    mongodb_password = source_data.get("mongodb-password", "")
+    rabbitmq_password = source_data.get("rabbitmq-password", "")
+    angzarr_secret = {
+        "mongodb-uri": f"mongodb://angzarr:{mongodb_password}@mongodb-0.mongodb-headless:27017/angzarr?replicaSet=rs0&authSource=admin",
+        "amqp-url": f"amqp://angzarr:{rabbitmq_password}@rabbitmq:5672",
+    }
+    create_secret(
+        "angzarr-secrets",
+        config.namespace,
+        angzarr_secret,
+        force=args.force,
+    )
+    print(f"Created angzarr secrets in namespace '{config.namespace}'")
+
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Manage secrets for angzarr Kubernetes deployment"
@@ -271,6 +345,14 @@ def main() -> int:
     # check command
     subparsers.add_parser("check", help="Check if secrets exist")
 
+    # sync command
+    sync_parser = subparsers.add_parser(
+        "sync", help="Sync secrets to target namespace for Bitnami charts"
+    )
+    sync_parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing secrets"
+    )
+
     args = parser.parse_args()
 
     config = Config(
@@ -283,6 +365,7 @@ def main() -> int:
         "rotate": cmd_rotate,
         "show": cmd_show,
         "check": cmd_check,
+        "sync": cmd_sync,
     }
 
     return commands[args.command](args, config)

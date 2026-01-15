@@ -66,6 +66,8 @@ impl EventQueryTrait for EventQueryService {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
 
+        info!(domain = %domain, root = %root_uuid, "GetEventBook starting query");
+
         // Support range queries if bounds are specified
         let book = if query.lower_bound > 0 || query.upper_bound > 0 {
             let upper = if query.upper_bound == 0 {
@@ -73,15 +75,20 @@ impl EventQueryTrait for EventQueryService {
             } else {
                 query.upper_bound
             };
+            info!(domain = %domain, root = %root_uuid, lower = query.lower_bound, upper = upper, "GetEventBook range query");
             self.event_book_repo
                 .get_from_to(&domain, root_uuid, query.lower_bound, upper)
                 .await
         } else {
+            info!(domain = %domain, root = %root_uuid, "GetEventBook full query");
             self.event_book_repo.get(&domain, root_uuid).await
         }
-        .map_err(|e| Status::internal(e.to_string()))?;
+        .map_err(|e| {
+            error!(domain = %domain, root = %root_uuid, error = %e, "GetEventBook query failed");
+            Status::internal(e.to_string())
+        })?;
 
-        info!(domain = %domain, root = %root_uuid, pages = book.pages.len(), "GetEventBook");
+        info!(domain = %domain, root = %root_uuid, pages = book.pages.len(), "GetEventBook completed");
         Ok(Response::new(book))
     }
 

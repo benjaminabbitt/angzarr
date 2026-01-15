@@ -74,7 +74,7 @@ build-standalone:
 
 # Build command sidecar binary
 build-command:
-    cargo build --release --bin angzarr-command --features "mode-command,mongodb"
+    cargo build --release --bin angzarr-entity --features "mode-entity,mongodb"
 
 # Build projector sidecar binary
 build-projector:
@@ -102,7 +102,7 @@ build-infrastructure: build-stream build-gateway
 
 # Build command sidecar container image
 container-build-command:
-    podman build --target angzarr-command -t angzarr-command:latest .
+    podman build --target angzarr-entity -t angzarr-entity:latest .
 
 # Build projector sidecar container image
 container-build-projector:
@@ -156,6 +156,41 @@ helm-lint:
 # Clean build artifacts
 clean:
     cargo clean
+
+# === Container Cache Management ===
+
+# Show podman disk usage and cache status
+cache-status:
+    @echo "=== Podman System Disk Usage ==="
+    podman system df
+    @echo ""
+    @echo "=== Build Cache Volumes ==="
+    podman volume ls --filter name=buildah
+
+# Prune unused images (keeps cache mounts)
+cache-prune:
+    @echo "Pruning dangling images..."
+    podman image prune -f
+    @echo "Pruning stopped containers..."
+    podman container prune -f
+    @echo ""
+    podman system df
+
+# Prune old images (older than 24h)
+cache-prune-old:
+    @echo "Pruning images older than 24 hours..."
+    podman image prune -f --filter "until=24h"
+    @echo ""
+    podman system df
+
+# Aggressive prune - removes all unused images and build caches
+cache-prune-all:
+    @echo "WARNING: This will remove ALL unused images and build caches."
+    @echo "Press Ctrl+C within 5 seconds to cancel..."
+    @sleep 5
+    podman system prune -af --volumes
+    @echo ""
+    podman system df
 
 # Initialize the database
 init-db:
@@ -391,6 +426,10 @@ secrets-reveal:
 # Check if secrets exist
 secrets-check:
     uv run "{{TOP}}/scripts/manage_secrets.py" check
+
+# Sync secrets to target namespace (for Bitnami charts without ESO)
+secrets-sync *ARGS:
+    uv run "{{TOP}}/scripts/manage_secrets.py" sync {{ARGS}}
 
 # === External Secrets Operator ===
 

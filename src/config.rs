@@ -33,8 +33,8 @@ pub struct Config {
     pub server: ServerConfig,
     /// Saga compensation configuration.
     pub saga_compensation: SagaCompensationConfig,
-    /// AMQP configuration (for sidecar modes).
-    pub amqp: Option<AmqpConfig>,
+    /// Messaging configuration (for event bus).
+    pub messaging: Option<MessagingConfig>,
     /// Target service address (for sidecar modes).
     pub target: Option<TargetConfig>,
     /// Business logic service endpoints (standalone mode).
@@ -45,17 +45,26 @@ pub struct Config {
     pub sagas: Vec<SagaEndpoint>,
 }
 
-/// Storage configuration.
+/// Storage type discriminator.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageType {
+    #[default]
+    Sqlite,
+    Mongodb,
+}
+
+/// Storage configuration (discriminated union).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct StorageConfig {
-    /// Storage type: "sqlite" or "mongodb".
+    /// Storage type discriminator.
     #[serde(rename = "type")]
-    pub storage_type: String,
-    /// Path to database file (SQLite) or connection URI (MongoDB).
-    pub path: String,
-    /// Database name (MongoDB only).
-    pub database: Option<String>,
+    pub storage_type: StorageType,
+    /// SQLite-specific configuration.
+    pub sqlite: SqliteConfig,
+    /// MongoDB-specific configuration.
+    pub mongodb: MongodbConfig,
     /// Snapshot enable/disable flags for debugging and troubleshooting.
     pub snapshots_enable: SnapshotsEnableConfig,
 }
@@ -63,10 +72,45 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            storage_type: "sqlite".to_string(),
-            path: "./data/events.db".to_string(),
-            database: None,
+            storage_type: StorageType::Sqlite,
+            sqlite: SqliteConfig::default(),
+            mongodb: MongodbConfig::default(),
             snapshots_enable: SnapshotsEnableConfig::default(),
+        }
+    }
+}
+
+/// SQLite-specific configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SqliteConfig {
+    /// Path to the SQLite database file.
+    pub path: String,
+}
+
+impl Default for SqliteConfig {
+    fn default() -> Self {
+        Self {
+            path: "./data/events.db".to_string(),
+        }
+    }
+}
+
+/// MongoDB-specific configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct MongodbConfig {
+    /// MongoDB connection URI.
+    pub uri: String,
+    /// Database name.
+    pub database: String,
+}
+
+impl Default for MongodbConfig {
+    fn default() -> Self {
+        Self {
+            uri: "mongodb://localhost:27017".to_string(),
+            database: "angzarr".to_string(),
         }
     }
 }
@@ -102,8 +146,8 @@ impl Default for SnapshotsEnableConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
-    /// Port for command handler gRPC service.
-    pub command_handler_port: u16,
+    /// Port for entity gRPC service.
+    pub entity_port: u16,
     /// Port for event query gRPC service.
     pub event_query_port: u16,
     /// Host to bind to.
@@ -113,7 +157,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            command_handler_port: 1313,
+            entity_port: 1313,
             event_query_port: 1314,
             host: "0.0.0.0".to_string(),
         }
@@ -187,8 +231,40 @@ impl Default for SagaCompensationConfig {
     }
 }
 
-/// AMQP configuration for sidecar modes.
+/// Messaging type discriminator.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessagingType {
+    /// Direct in-process messaging (no external broker).
+    #[default]
+    Direct,
+    /// AMQP/RabbitMQ messaging.
+    Amqp,
+}
+
+/// Messaging configuration (discriminated union).
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct MessagingConfig {
+    /// Messaging type discriminator.
+    #[serde(rename = "type")]
+    pub messaging_type: MessagingType,
+    /// AMQP-specific configuration.
+    pub amqp: AmqpConfig,
+}
+
+impl Default for MessagingConfig {
+    fn default() -> Self {
+        Self {
+            messaging_type: MessagingType::Direct,
+            amqp: AmqpConfig::default(),
+        }
+    }
+}
+
+/// AMQP-specific configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct AmqpConfig {
     /// AMQP connection URL.
     pub url: String,
@@ -196,6 +272,16 @@ pub struct AmqpConfig {
     pub domain: Option<String>,
     /// Domains to subscribe to (for projector/saga modes).
     pub domains: Option<Vec<String>>,
+}
+
+impl Default for AmqpConfig {
+    fn default() -> Self {
+        Self {
+            url: "amqp://localhost:5672".to_string(),
+            domain: None,
+            domains: None,
+        }
+    }
 }
 
 /// Target service configuration for sidecar modes.
@@ -251,17 +337,26 @@ impl Config {
             };
         }
 
-        // Storage overrides
+        // Storage type override
         if let Ok(storage_type) = std::env::var("STORAGE_TYPE") {
-            self.storage.storage_type = storage_type;
+            self.storage.storage_type = match storage_type.to_lowercase().as_str() {
+                "mongodb" => StorageType::Mongodb,
+                _ => StorageType::Sqlite,
+            };
         }
 
-        if let Ok(path) = std::env::var("STORAGE_PATH") {
-            self.storage.path = path;
+        // SQLite config overrides
+        if let Ok(path) = std::env::var("STORAGE_SQLITE_PATH") {
+            self.storage.sqlite.path = path;
         }
 
-        if let Ok(database) = std::env::var("STORAGE_DATABASE") {
-            self.storage.database = Some(database);
+        // MongoDB config overrides
+        if let Ok(uri) = std::env::var("STORAGE_MONGODB_URI") {
+            self.storage.mongodb.uri = uri;
+        }
+
+        if let Ok(database) = std::env::var("STORAGE_MONGODB_DATABASE") {
+            self.storage.mongodb.database = database;
         }
 
         if let Ok(enabled) = std::env::var("STORAGE_SNAPSHOTS_ENABLE_READ") {
@@ -274,9 +369,9 @@ impl Config {
         }
 
         // Server overrides
-        if let Ok(port) = std::env::var("COMMAND_HANDLER_PORT") {
+        if let Ok(port) = std::env::var("ENTITY_PORT") {
             if let Ok(p) = port.parse() {
-                self.server.command_handler_port = p;
+                self.server.entity_port = p;
             }
         }
 
@@ -290,22 +385,40 @@ impl Config {
             self.server.host = host;
         }
 
-        // AMQP overrides
-        if let Ok(url) = std::env::var("AMQP_URL") {
-            if self.amqp.is_none() {
-                self.amqp = Some(AmqpConfig {
-                    url: url.clone(),
-                    domain: None,
-                    domains: None,
+        // Messaging type override
+        if let Ok(messaging_type) = std::env::var("MESSAGING_TYPE") {
+            let msg_type = match messaging_type.to_lowercase().as_str() {
+                "amqp" => MessagingType::Amqp,
+                _ => MessagingType::Direct,
+            };
+            if let Some(ref mut messaging) = self.messaging {
+                messaging.messaging_type = msg_type;
+            } else {
+                self.messaging = Some(MessagingConfig {
+                    messaging_type: msg_type,
+                    amqp: AmqpConfig::default(),
                 });
-            } else if let Some(ref mut amqp) = self.amqp {
-                amqp.url = url;
             }
         }
 
-        if let Ok(domain) = std::env::var("AMQP_DOMAIN") {
-            if let Some(ref mut amqp) = self.amqp {
-                amqp.domain = Some(domain);
+        // AMQP config overrides
+        if let Ok(url) = std::env::var("MESSAGING_AMQP_URL") {
+            if let Some(ref mut messaging) = self.messaging {
+                messaging.amqp.url = url;
+            } else {
+                self.messaging = Some(MessagingConfig {
+                    messaging_type: MessagingType::Amqp,
+                    amqp: AmqpConfig {
+                        url,
+                        ..Default::default()
+                    },
+                });
+            }
+        }
+
+        if let Ok(domain) = std::env::var("MESSAGING_AMQP_DOMAIN") {
+            if let Some(ref mut messaging) = self.messaging {
+                messaging.amqp.domain = Some(domain);
             }
         }
 
@@ -356,9 +469,9 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.storage.storage_type, "sqlite");
-        assert_eq!(config.storage.path, "./data/events.db");
-        assert_eq!(config.server.command_handler_port, 1313);
+        assert_eq!(config.storage.storage_type, StorageType::Sqlite);
+        assert_eq!(config.storage.sqlite.path, "./data/events.db");
+        assert_eq!(config.server.entity_port, 1313);
         assert_eq!(config.server.event_query_port, 1314);
     }
 
@@ -367,10 +480,11 @@ mod tests {
         let yaml = r#"
 storage:
   type: sqlite
-  path: /tmp/test.db
+  sqlite:
+    path: /tmp/test.db
 
 server:
-  command_handler_port: 8080
+  entity_port: 8080
   event_query_port: 8081
   host: localhost
 
@@ -391,8 +505,8 @@ sagas:
 "#;
 
         let config: Config = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.storage.path, "/tmp/test.db");
-        assert_eq!(config.server.command_handler_port, 8080);
+        assert_eq!(config.storage.sqlite.path, "/tmp/test.db");
+        assert_eq!(config.server.entity_port, 8080);
         assert_eq!(config.business_logic.len(), 2);
         assert_eq!(config.business_logic[0].domain, "orders");
         assert_eq!(config.projectors.len(), 1);
@@ -405,17 +519,18 @@ sagas:
         let yaml = r#"
 storage:
   type: sqlite
-  path: /tmp/from_file.db
+  sqlite:
+    path: /tmp/from_file.db
 server:
-  command_handler_port: 9000
+  entity_port: 9000
 "#;
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(yaml.as_bytes()).unwrap();
 
         let config = Config::from_file(file.path().to_str().unwrap()).unwrap();
 
-        assert_eq!(config.storage.path, "/tmp/from_file.db");
-        assert_eq!(config.server.command_handler_port, 9000);
+        assert_eq!(config.storage.sqlite.path, "/tmp/from_file.db");
+        assert_eq!(config.server.entity_port, 9000);
     }
 
     #[test]
@@ -471,8 +586,10 @@ server:
     #[test]
     fn test_storage_config_default() {
         let storage = StorageConfig::default();
-        assert_eq!(storage.storage_type, "sqlite");
-        assert_eq!(storage.path, "./data/events.db");
+        assert_eq!(storage.storage_type, StorageType::Sqlite);
+        assert_eq!(storage.sqlite.path, "./data/events.db");
+        assert_eq!(storage.mongodb.uri, "mongodb://localhost:27017");
+        assert_eq!(storage.mongodb.database, "angzarr");
         assert!(storage.snapshots_enable.read);
         assert!(storage.snapshots_enable.write);
     }
@@ -533,7 +650,7 @@ server:
     #[test]
     fn test_server_config_default() {
         let server = ServerConfig::default();
-        assert_eq!(server.command_handler_port, 1313);
+        assert_eq!(server.entity_port, 1313);
         assert_eq!(server.event_query_port, 1314);
         assert_eq!(server.host, "0.0.0.0");
     }
@@ -566,25 +683,42 @@ server:
     }
 
     #[test]
-    fn test_apply_env_overrides_storage_path() {
+    fn test_apply_env_overrides_storage_sqlite_path() {
         let mut config = Config::default();
-        std::env::set_var("STORAGE_PATH", "/custom/path.db");
+        std::env::set_var("STORAGE_SQLITE_PATH", "/custom/path.db");
 
         config.apply_env_overrides();
 
-        assert_eq!(config.storage.path, "/custom/path.db");
-        std::env::remove_var("STORAGE_PATH");
+        assert_eq!(config.storage.sqlite.path, "/custom/path.db");
+        std::env::remove_var("STORAGE_SQLITE_PATH");
     }
 
     #[test]
-    fn test_apply_env_overrides_command_handler_port() {
+    fn test_apply_env_overrides_storage_mongodb() {
         let mut config = Config::default();
-        std::env::set_var("COMMAND_HANDLER_PORT", "9999");
+        std::env::set_var("STORAGE_TYPE", "mongodb");
+        std::env::set_var("STORAGE_MONGODB_URI", "mongodb://myhost:27017");
+        std::env::set_var("STORAGE_MONGODB_DATABASE", "mydb");
 
         config.apply_env_overrides();
 
-        assert_eq!(config.server.command_handler_port, 9999);
-        std::env::remove_var("COMMAND_HANDLER_PORT");
+        assert_eq!(config.storage.storage_type, StorageType::Mongodb);
+        assert_eq!(config.storage.mongodb.uri, "mongodb://myhost:27017");
+        assert_eq!(config.storage.mongodb.database, "mydb");
+        std::env::remove_var("STORAGE_TYPE");
+        std::env::remove_var("STORAGE_MONGODB_URI");
+        std::env::remove_var("STORAGE_MONGODB_DATABASE");
+    }
+
+    #[test]
+    fn test_apply_env_overrides_entity_port() {
+        let mut config = Config::default();
+        std::env::set_var("ENTITY_PORT", "9999");
+
+        config.apply_env_overrides();
+
+        assert_eq!(config.server.entity_port, 9999);
+        std::env::remove_var("ENTITY_PORT");
     }
 
     #[test]
@@ -612,12 +746,12 @@ server:
     #[test]
     fn test_apply_env_overrides_invalid_port_ignored() {
         let mut config = Config::default();
-        let original_port = config.server.command_handler_port;
-        std::env::set_var("COMMAND_HANDLER_PORT", "not_a_number");
+        let original_port = config.server.entity_port;
+        std::env::set_var("ENTITY_PORT", "not_a_number");
 
         config.apply_env_overrides();
 
-        assert_eq!(config.server.command_handler_port, original_port);
-        std::env::remove_var("COMMAND_HANDLER_PORT");
+        assert_eq!(config.server.entity_port, original_port);
+        std::env::remove_var("ENTITY_PORT");
     }
 }
