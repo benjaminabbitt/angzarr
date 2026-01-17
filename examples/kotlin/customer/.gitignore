@@ -1,6 +1,0 @@
-# Copied feature files directory
-/src/test/resources/features/
-
-# Gradle build output
-/build/
-/.gradle/

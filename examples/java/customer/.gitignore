@@ -1,5 +1,0 @@
-# Copied feature files directory
-/src/test/resources/features/
-
-# Maven build output
-/target/

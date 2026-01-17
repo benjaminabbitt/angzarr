@@ -1,6 +1,0 @@
-apiVersion: v2
-name: angzarr-elixir-examples
-description: Elixir example services for Angzarr CQRS/ES framework
-type: application
-version: 0.1.0
-appVersion: "0.1.0"

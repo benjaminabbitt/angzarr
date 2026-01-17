@@ -1,55 +1,0 @@
-	
-	~Scenario: No projection for incomplete transaction                            [90m# features/projector-receipt.feature:5[0m
-	‰  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-001"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
-	Ë  [32mWhen [0m[32mI project the events[0m                                                   [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()[0m
-	Ò  [32mThen [0m[32mno projection is generated[0m                                             [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.noProjectionIsGenerated()[0m
-	
-
-	
-xScenario: Generate receipt for completed transaction                   [90m# features/projector-receipt.feature:10[0m
-	
-š  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-001"[0m[32m and items:[0m [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEventWithItems(java.lang.String,io.cucumber.datatable.DataTable)[0m
-	
-:    | product_id | name   | quantity | unit_price_cents |
-	
-:    | SKU-001    | Widget | 2        | 1000             |
-	
-„  [32mAnd [0m[32ma TransactionCompleted event with total [0m[32m[1m2000[0m[32m and payment [0m[32m[1m"card"[0m  [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)[0m
-	
-Ä  [32mWhen [0m[32mI project the events[0m                                            [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()[0m
-	
-Ð  [32mThen [0m[32ma Receipt projection is generated[0m                               [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()[0m
-	
-å  [32mAnd [0m[32mthe receipt has customer_id [0m[32m[1m"cust-001"[0m                           [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasCustomerId(java.lang.String)[0m
-	
-Ý  [32mAnd [0m[32mthe receipt has final_total_cents [0m[32m[1m2000[0m                           [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasFinalTotalCents(int)[0m
-	
-è  [32mAnd [0m[32mthe receipt has payment_method [0m[32m[1m"card"[0m                            [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasPaymentMethod(java.lang.String)[0m
-	
-	Scenario: Receipt includes discount                                           [90m# features/projector-receipt.feature:21[0m
-	‰  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-002"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
-	è  [32mAnd [0m[32ma DiscountApplied event with [0m[32m[1m200[0m[32m cents discount[0m                         [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.discountAppliedEvent(int)[0m
-	‹  [32mAnd [0m[32ma TransactionCompleted event with total [0m[32m[1m1800[0m[32m and payment [0m[32m[1m"cash"[0m         [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)[0m
-	Ë  [32mWhen [0m[32mI project the events[0m                                                   [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()[0m
-	×  [32mThen [0m[32ma Receipt projection is generated[0m                                      [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()[0m
-	â  [32mAnd [0m[32mthe receipt has subtotal_cents [0m[32m[1m2000[0m                                     [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasSubtotalCents(int)[0m
-	â  [32mAnd [0m[32mthe receipt has discount_cents [0m[32m[1m200[0m                                      [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasDiscountCents(int)[0m
-	ä  [32mAnd [0m[32mthe receipt has final_total_cents [0m[32m[1m1800[0m                                  [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasFinalTotalCents(int)[0m
-	
-	‰Scenario: Receipt includes loyalty points earned                                        [90m# features/projector-receipt.feature:31[0m
-	“  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-003"[0m[32m and subtotal [0m[32m[1m5000[0m           [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
-	Â  [32mAnd [0m[32ma TransactionCompleted event with total [0m[32m[1m5000[0m[32m and payment [0m[32m[1m"card"[0m[32m earning [0m[32m[1m50[0m[32m points[0m [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEventWithPoints(int,java.lang.String,int)[0m
-	Õ  [32mWhen [0m[32mI project the events[0m                                                             [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()[0m
-	á  [32mThen [0m[32ma Receipt projection is generated[0m                                                [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()[0m
-	ò  [32mAnd [0m[32mthe receipt has loyalty_points_earned [0m[32m[1m50[0m                                          [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptHasLoyaltyPointsEarned(int)[0m
-	
-	xScenario: Receipt has formatted text                                   [90m# features/projector-receipt.feature:38[0m
-	š  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-004"[0m[32m and items:[0m [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCreatedEventWithItems(java.lang.String,io.cucumber.datatable.DataTable)[0m
-	:    | product_id | name   | quantity | unit_price_cents |
-	:    | SKU-001    | Widget | 1        | 1000             |
-	„  [32mAnd [0m[32ma TransactionCompleted event with total [0m[32m[1m1000[0m[32m and payment [0m[32m[1m"card"[0m  [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)[0m
-	Ä  [32mWhen [0m[32mI project the events[0m                                            [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.projectTheEvents()[0m
-	Ð  [32mThen [0m[32ma Receipt projection is generated[0m                               [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptProjectionIsGenerated()[0m
-	í  [32mAnd [0m[32mthe receipt formatted_text contains [0m[32m[1m"RECEIPT"[0m                    [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptFormattedTextContains(java.lang.String)[0m
-	í  [32mAnd [0m[32mthe receipt formatted_text contains [0m[32m[1m"Widget"[0m                     [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptFormattedTextContains(java.lang.String)[0m
-	í  [32mAnd [0m[32mthe receipt formatted_text contains [0m[32m[1m"Thank you"[0m                  [90m# void dev.angzarr.examples.projector.cucumber.ReceiptProjectorStepDefinitions.receiptFormattedTextContains(java.lang.String)[0m

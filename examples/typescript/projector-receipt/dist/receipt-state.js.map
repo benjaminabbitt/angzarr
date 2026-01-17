@@ -1,1 +1,0 @@
-{"version":3,"file":"receipt-state.js","sourceRoot":"","sources":["../src/receipt-state.ts"],"names":[],"mappings":"AAsBA,MAAM,UAAU,iBAAiB;IAC/B,OAAO;QACL,UAAU,EAAE,EAAE;QACd,KAAK,EAAE,EAAE;QACT,aAAa,EAAE,CAAC;QAChB,aAAa,EAAE,CAAC;QAChB,eAAe,EAAE,CAAC;QAClB,aAAa,EAAE,EAAE;QACjB,mBAAmB,EAAE,CAAC;QACtB,WAAW,EAAE,IAAI;QACjB,WAAW,EAAE,KAAK;KACnB,CAAC;AACJ,CAAC"}
