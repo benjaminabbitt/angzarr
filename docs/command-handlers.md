@@ -350,6 +350,66 @@ Rebuild:
 
 ---
 
+## State Object Strategies
+
+State objects can be managed two ways, each with trade-offs:
+
+### Option 1: Protobuf State (Recommended)
+
+Define state as a protobuf message and return it in `EventBook.snapshot_state`:
+
+```protobuf
+message CustomerState {
+  string name = 1;
+  string email = 2;
+  int32 loyalty_points = 3;
+}
+```
+
+**Benefits:**
+- Angzarr persists snapshots automatically
+- State is loaded from snapshot on subsequent commands—no full replay
+- Works across languages (same protobuf definition)
+- Efficient for high-volume aggregates
+
+**Trade-offs:**
+- Requires protobuf knowledge
+- State schema must be defined upfront
+- State changes require proto regeneration
+
+### Option 2: Language-Native State
+
+Define state as a native struct/class and rebuild from events on every command:
+
+```python
+@dataclass
+class CustomerState:
+    name: str = ""
+    email: str = ""
+    loyalty_points: int = 0
+```
+
+**Benefits:**
+- Simpler—no protobuf templating
+- State evolves with code changes naturally
+- Good for prototyping and low-volume aggregates
+
+**Trade-offs:**
+- Full event replay on every command (no snapshots)
+- State not visible to Angzarr—cannot be tracked or inspected
+- Performance degrades as event count grows
+
+### Recommendation
+
+Use protobuf state for production aggregates. The snapshot optimization matters at scale, and cross-language consistency reduces bugs when multiple services interact with the same domain.
+
+Use language-native state for:
+- Early prototyping before schema solidifies
+- Low-volume aggregates where replay cost is negligible
+- Internal/temporary aggregates that don't need inspection
+
+---
+
 ## Example Implementations
 
 ### Customer Domain

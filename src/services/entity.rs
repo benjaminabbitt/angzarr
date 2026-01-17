@@ -3,18 +3,20 @@
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
-use tracing::warn;
 
-use crate::interfaces::event_store::StorageError;
 use crate::interfaces::{BusinessError, BusinessLogicClient, EventBus, EventStore, SnapshotStore};
 use crate::proto::{
-    business_coordinator_server::BusinessCoordinator, business_response, CommandBook,
-    CommandResponse, EventBook,
+    business_coordinator_server::BusinessCoordinator, CommandBook, CommandResponse,
 };
 use crate::repository::EventBookRepository;
 
-/// Maximum number of retries for auto_resequence on sequence conflicts.
-const MAX_RESEQUENCE_RETRIES: u32 = 3;
+use super::response_builder::{
+    extract_events_from_response, generate_correlation_id, publish_and_build_response,
+};
+use super::sequence_validator::{
+    handle_storage_error, validate_sequence, SequenceValidationResult, StorageErrorOutcome,
+};
+use super::snapshot_handler::{persist_snapshot_from_event_book, persist_snapshot_if_present};
 
 /// Entity service.
 ///
@@ -108,20 +110,8 @@ impl BusinessCoordinator for EntityService {
             )));
         }
 
-        // Generate correlation ID if not provided using UUIDv5
-        // Uses command body hash for deterministic but unique IDs
-        let correlation_id = if command_book.correlation_id.is_empty() {
-            use prost::Message;
-            let mut buf = Vec::new();
-            command_book.encode(&mut buf).map_err(|e| {
-                Status::internal(format!("Failed to encode command for correlation ID: {e}"))
-            })?;
-            // Create angzarr namespace from DNS namespace
-            let angzarr_ns = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev");
-            uuid::Uuid::new_v5(&angzarr_ns, &buf).to_string()
-        } else {
-            command_book.correlation_id.clone()
-        };
+        // Generate correlation ID if not provided
+        let correlation_id = generate_correlation_id(&command_book)?;
 
         // Retry loop for auto_resequence
         let mut attempt = 0;
@@ -134,7 +124,6 @@ impl BusinessCoordinator for EntityService {
             })?;
 
             // 1. Quick sequence check (avoids loading full events if stale)
-            // Skip pre-validation when auto_resequence is enabled - rely on write-time validation
             if !auto_resequence {
                 let expected_sequence = first_page.sequence;
 
@@ -146,11 +135,13 @@ impl BusinessCoordinator for EntityService {
                     .map_err(|e| Status::internal(format!("Failed to get sequence: {e}")))?;
 
                 // Validate sequence before loading full events
-                if expected_sequence != next_sequence {
-                    return Err(Status::failed_precondition(format!(
-                        "Sequence mismatch: command expects {}, aggregate at {}",
-                        expected_sequence, next_sequence
-                    )));
+                match validate_sequence(expected_sequence, next_sequence, auto_resequence) {
+                    SequenceValidationResult::Valid => {}
+                    SequenceValidationResult::Mismatch { expected, actual } => {
+                        return Err(super::sequence_validator::sequence_mismatch_error(
+                            expected, actual,
+                        ));
+                    }
                 }
             }
 
@@ -160,7 +151,6 @@ impl BusinessCoordinator for EntityService {
                 .get(&domain, root_uuid)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
-
 
             // Create contextual command
             let contextual_command = crate::proto::ContextualCommand {
@@ -188,104 +178,28 @@ impl BusinessCoordinator for EntityService {
                 })?;
 
             // Extract events from BusinessResponse
-            let mut new_events = match response.result {
-                Some(business_response::Result::Events(events)) => events,
-                Some(business_response::Result::Revocation(revocation)) => {
-                    // Business logic explicitly requested framework handling
-                    // TODO: Implement proper revocation handling in saga_compensation module
-                    return Err(Status::failed_precondition(format!(
-                        "Command revoked: {}",
-                        revocation.reason
-                    )));
-                }
-                None => {
-                    // Empty response - return empty EventBook
-                    EventBook {
-                        cover: None,
-                        pages: vec![],
-                        snapshot: None,
-                        correlation_id: String::new(),
-                        snapshot_state: None,
-                    }
-                }
-            };
-
-            // Propagate correlation ID from command to events
-            new_events.correlation_id = correlation_id.clone();
+            let new_events = extract_events_from_response(response, correlation_id.clone())?;
 
             // Persist new events - may fail with sequence conflict
             match self.event_book_repo.put(&new_events).await {
                 Ok(()) => {
                     // Success - store snapshot and publish
-                    // Store snapshot if business logic provided state and writing is enabled
-                    // Snapshot sequence is the sequence of the last event (business logic provides explicit sequences)
-                    if self.snapshot_write_enabled {
-                        if let Some(ref state) = new_events.snapshot_state {
-                            // Get sequence from last event page - business logic must provide explicit Sequence::Num
-                            let snapshot_sequence = new_events
-                                .pages
-                                .last()
-                                .and_then(|p| match &p.sequence {
-                                    Some(crate::proto::event_page::Sequence::Num(n)) => Some(*n + 1),
-                                    _ => None,
-                                })
-                                .unwrap_or(0);
-                            let snapshot = crate::proto::Snapshot {
-                                sequence: snapshot_sequence,
-                                state: Some(state.clone()),
-                            };
-                            self.snapshot_store
-                                .put(&domain, root_uuid, snapshot)
-                                .await
-                                .map_err(|e| {
-                                    Status::internal(format!("Failed to persist snapshot: {e}"))
-                                })?;
-                        }
-                    }
+                    persist_snapshot_if_present(
+                        &self.snapshot_store,
+                        &new_events,
+                        &domain,
+                        root_uuid,
+                        self.snapshot_write_enabled,
+                    )
+                    .await?;
 
-                    // Wrap in Arc for immutable distribution
-                    let new_events = Arc::new(new_events);
-
-                    // Notify event bus (projectors, sagas)
-                    let publish_result = self
-                        .event_bus
-                        .publish(Arc::clone(&new_events))
-                        .await
-                        .map_err(|e| Status::internal(format!("Failed to publish events: {e}")))?;
-
-                    return Ok(Response::new(CommandResponse {
-                        events: Some(
-                            Arc::try_unwrap(new_events).unwrap_or_else(|arc| (*arc).clone()),
-                        ),
-                        projections: publish_result.projections,
-                    }));
-                }
-                Err(StorageError::SequenceConflict { expected, actual }) => {
-                    // Sequence conflict - retry if auto_resequence is enabled
-                    if auto_resequence && attempt < MAX_RESEQUENCE_RETRIES {
-                        warn!(
-                            domain = %domain,
-                            root = %root_uuid,
-                            attempt = attempt,
-                            expected = expected,
-                            actual = actual,
-                            "Sequence conflict, retrying with fresh state"
-                        );
-                        continue;
-                    } else if auto_resequence {
-                        return Err(Status::aborted(format!(
-                            "Sequence conflict after {} retries: expected {}, got {}",
-                            MAX_RESEQUENCE_RETRIES, expected, actual
-                        )));
-                    } else {
-                        return Err(Status::aborted(format!(
-                            "Sequence conflict: expected {}, got {} (auto_resequence disabled)",
-                            expected, actual
-                        )));
-                    }
+                    return publish_and_build_response(&self.event_bus, new_events).await;
                 }
                 Err(e) => {
-                    return Err(Status::internal(format!("Failed to persist events: {e}")));
+                    match handle_storage_error(e, &domain, root_uuid, attempt, auto_resequence) {
+                        StorageErrorOutcome::Retry => continue,
+                        StorageErrorOutcome::Abort(status) => return Err(status),
+                    }
                 }
             }
         }
@@ -293,7 +207,7 @@ impl BusinessCoordinator for EntityService {
 
     async fn record(
         &self,
-        request: Request<EventBook>,
+        request: Request<crate::proto::EventBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let event_book = request.into_inner();
 
@@ -304,60 +218,22 @@ impl BusinessCoordinator for EntityService {
             .map_err(|e| Status::internal(format!("Failed to persist events: {e}")))?;
 
         // Store snapshot if business logic provided state and writing is enabled
-        // Compute sequence from the last event in the book
-        if self.snapshot_write_enabled {
-            if let Some(ref state) = event_book.snapshot_state {
-                if let Some(ref cover) = event_book.cover {
-                    if let Some(ref root) = cover.root {
-                        let root_uuid = uuid::Uuid::from_slice(&root.value)
-                            .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
+        persist_snapshot_from_event_book(
+            &self.snapshot_store,
+            &event_book,
+            self.snapshot_write_enabled,
+        )
+        .await?;
 
-                        // Compute sequence from last event page
-                        let snapshot_sequence = event_book
-                            .pages
-                            .last()
-                            .and_then(|p| match &p.sequence {
-                                Some(crate::proto::event_page::Sequence::Num(n)) => Some(*n + 1),
-                                _ => None,
-                            })
-                            .unwrap_or(0);
-
-                        let snapshot = crate::proto::Snapshot {
-                            sequence: snapshot_sequence,
-                            state: Some(state.clone()),
-                        };
-                        self.snapshot_store
-                            .put(&cover.domain, root_uuid, snapshot)
-                            .await
-                            .map_err(|e| {
-                                Status::internal(format!("Failed to persist snapshot: {e}"))
-                            })?;
-                    }
-                }
-            }
-        }
-
-        // Wrap in Arc for immutable distribution
-        let event_book = Arc::new(event_book);
-
-        // Notify event bus
-        let publish_result = self
-            .event_bus
-            .publish(Arc::clone(&event_book))
-            .await
-            .map_err(|e| Status::internal(format!("Failed to publish events: {e}")))?;
-
-        Ok(Response::new(CommandResponse {
-            events: Some(Arc::try_unwrap(event_book).unwrap_or_else(|arc| (*arc).clone())),
-            projections: publish_result.projections,
-        }))
+        // Publish events and build response
+        publish_and_build_response(&self.event_bus, event_book).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+    use crate::proto::{CommandPage, Cover, EventBook, EventPage, Uuid as ProtoUuid};
     use crate::test_utils::{MockBusinessLogic, MockEventBus, MockEventStore, MockSnapshotStore};
     use prost_types::Any;
 
@@ -564,14 +440,14 @@ mod tests {
         let (service, _, _, _, event_bus) = create_default_test_service();
         let root = uuid::Uuid::new_v4();
 
-        let event_book = crate::proto::EventBook {
+        let event_book = EventBook {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
             }),
-            pages: vec![crate::proto::EventPage {
+            pages: vec![EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(0)),
                 event: Some(Any {
                     type_url: "test.OrderCreated".to_string(),
@@ -599,7 +475,7 @@ mod tests {
         event_bus.set_fail_on_publish(true).await;
 
         let root = uuid::Uuid::new_v4();
-        let event_book = crate::proto::EventBook {
+        let event_book = EventBook {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: Some(ProtoUuid {
@@ -658,14 +534,14 @@ mod tests {
         let (service, _, snapshot_store, _, _) = create_default_test_service();
 
         let root = uuid::Uuid::new_v4();
-        let event_book = crate::proto::EventBook {
+        let event_book = EventBook {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
             }),
-            pages: vec![crate::proto::EventPage {
+            pages: vec![EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(0)),
                 event: Some(Any {
                     type_url: "test.OrderCreated".to_string(),
@@ -752,14 +628,14 @@ mod tests {
             create_test_service_with_snapshot_config(true, false);
 
         let root = uuid::Uuid::new_v4();
-        let event_book = crate::proto::EventBook {
+        let event_book = EventBook {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
             }),
-            pages: vec![crate::proto::EventPage {
+            pages: vec![EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(0)),
                 event: Some(Any {
                     type_url: "test.OrderCreated".to_string(),

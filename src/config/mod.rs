@@ -2,9 +2,25 @@
 //!
 //! Supports YAML file and environment variable overrides.
 
+mod business;
+mod messaging;
+mod server;
+mod storage;
+
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
+
+// Re-export all public types for backwards compatibility
+pub use business::{
+    BusinessLogicEndpoint, ProjectorEndpoint, SagaCompensationConfig, SagaEndpoint,
+};
+pub use messaging::{AmqpConfig, MessagingConfig, MessagingType};
+pub use server::{ServerConfig, TargetConfig};
+pub use storage::{
+    EventStoreDbConfig, MongodbConfig, PostgresConfig, SnapshotsEnableConfig, StorageConfig,
+    StorageType,
+};
 
 /// Angzarr operation mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -43,274 +59,6 @@ pub struct Config {
     pub projectors: Vec<ProjectorEndpoint>,
     /// Saga endpoints (standalone mode).
     pub sagas: Vec<SagaEndpoint>,
-}
-
-/// Storage type discriminator.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum StorageType {
-    #[default]
-    Mongodb,
-    Postgres,
-    Eventstoredb,
-}
-
-/// Storage configuration (discriminated union).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct StorageConfig {
-    /// Storage type discriminator.
-    #[serde(rename = "type")]
-    pub storage_type: StorageType,
-    /// MongoDB-specific configuration.
-    pub mongodb: MongodbConfig,
-    /// PostgreSQL-specific configuration.
-    pub postgres: PostgresConfig,
-    /// EventStoreDB-specific configuration.
-    pub eventstoredb: EventStoreDbConfig,
-    /// Snapshot enable/disable flags for debugging and troubleshooting.
-    pub snapshots_enable: SnapshotsEnableConfig,
-}
-
-impl Default for StorageConfig {
-    fn default() -> Self {
-        Self {
-            storage_type: StorageType::Mongodb,
-            mongodb: MongodbConfig::default(),
-            postgres: PostgresConfig::default(),
-            eventstoredb: EventStoreDbConfig::default(),
-            snapshots_enable: SnapshotsEnableConfig::default(),
-        }
-    }
-}
-
-/// MongoDB-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct MongodbConfig {
-    /// MongoDB connection URI.
-    pub uri: String,
-    /// Database name.
-    pub database: String,
-}
-
-impl Default for MongodbConfig {
-    fn default() -> Self {
-        Self {
-            uri: "mongodb://localhost:27017".to_string(),
-            database: "angzarr".to_string(),
-        }
-    }
-}
-
-/// PostgreSQL-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct PostgresConfig {
-    /// PostgreSQL connection URI.
-    pub uri: String,
-}
-
-impl Default for PostgresConfig {
-    fn default() -> Self {
-        Self {
-            uri: "postgres://localhost:5432/angzarr".to_string(),
-        }
-    }
-}
-
-/// EventStoreDB-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct EventStoreDbConfig {
-    /// EventStoreDB connection string.
-    pub connection_string: String,
-}
-
-impl Default for EventStoreDbConfig {
-    fn default() -> Self {
-        Self {
-            connection_string: "esdb://localhost:2113?tls=false".to_string(),
-        }
-    }
-}
-
-/// Snapshot enable/disable configuration.
-///
-/// These flags are useful for debugging and troubleshooting snapshot-related issues.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct SnapshotsEnableConfig {
-    /// Enable reading snapshots when loading aggregate state.
-    /// When false, always replays all events from the beginning.
-    /// Useful for debugging to verify event replay produces correct state.
-    /// Default: true
-    pub read: bool,
-    /// Enable writing snapshots after processing commands.
-    /// When false, no snapshots are stored (pure event sourcing).
-    /// Useful for troubleshooting snapshot persistence issues.
-    /// Default: true
-    pub write: bool,
-}
-
-impl Default for SnapshotsEnableConfig {
-    fn default() -> Self {
-        Self {
-            read: true,
-            write: true,
-        }
-    }
-}
-
-/// Server configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct ServerConfig {
-    /// Port for entity gRPC service.
-    pub entity_port: u16,
-    /// Port for event query gRPC service.
-    pub event_query_port: u16,
-    /// Host to bind to.
-    pub host: String,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            entity_port: 1313,
-            event_query_port: 1314,
-            host: "0.0.0.0".to_string(),
-        }
-    }
-}
-
-/// Business logic service endpoint.
-#[derive(Debug, Clone, Deserialize)]
-pub struct BusinessLogicEndpoint {
-    /// Domain this service handles.
-    pub domain: String,
-    /// gRPC address.
-    pub address: String,
-}
-
-/// Projector endpoint.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct ProjectorEndpoint {
-    /// Name of the projector.
-    pub name: String,
-    /// gRPC address.
-    pub address: String,
-    /// If true, wait for response before continuing.
-    pub synchronous: bool,
-}
-
-/// Saga endpoint.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct SagaEndpoint {
-    /// Name of the saga.
-    pub name: String,
-    /// gRPC address.
-    pub address: String,
-    /// If true, wait for response before continuing.
-    pub synchronous: bool,
-}
-
-/// Saga compensation configuration.
-///
-/// Controls how saga command rejections are handled.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct SagaCompensationConfig {
-    /// Domain for fallback events when business logic cannot handle revocation.
-    /// Default: "angzarr.saga-failures"
-    pub fallback_domain: String,
-    /// Dead letter queue URL (AMQP). None = DLQ disabled.
-    pub dead_letter_queue_url: Option<String>,
-    /// Webhook URL for escalation alerts. None = log only.
-    pub escalation_webhook_url: Option<String>,
-    /// Emit SagaCompensationFailed event on fallback (empty response or gRPC error).
-    pub fallback_emit_system_revocation: bool,
-    /// Send to DLQ on fallback.
-    pub fallback_send_to_dlq: bool,
-    /// Trigger escalation on fallback.
-    pub fallback_escalate: bool,
-}
-
-impl Default for SagaCompensationConfig {
-    fn default() -> Self {
-        Self {
-            fallback_domain: "angzarr.saga-failures".to_string(),
-            dead_letter_queue_url: None,
-            escalation_webhook_url: None,
-            fallback_emit_system_revocation: true,
-            fallback_send_to_dlq: false,
-            fallback_escalate: false,
-        }
-    }
-}
-
-/// Messaging type discriminator.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MessagingType {
-    /// Direct in-process messaging (no external broker).
-    #[default]
-    Direct,
-    /// AMQP/RabbitMQ messaging.
-    Amqp,
-}
-
-/// Messaging configuration (discriminated union).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct MessagingConfig {
-    /// Messaging type discriminator.
-    #[serde(rename = "type")]
-    pub messaging_type: MessagingType,
-    /// AMQP-specific configuration.
-    pub amqp: AmqpConfig,
-}
-
-impl Default for MessagingConfig {
-    fn default() -> Self {
-        Self {
-            messaging_type: MessagingType::Direct,
-            amqp: AmqpConfig::default(),
-        }
-    }
-}
-
-/// AMQP-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct AmqpConfig {
-    /// AMQP connection URL.
-    pub url: String,
-    /// Domain to subscribe to (for aggregate mode, this is the command queue).
-    pub domain: Option<String>,
-    /// Domains to subscribe to (for projector/saga modes).
-    pub domains: Option<Vec<String>>,
-}
-
-impl Default for AmqpConfig {
-    fn default() -> Self {
-        Self {
-            url: "amqp://localhost:5672".to_string(),
-            domain: None,
-            domains: None,
-        }
-    }
-}
-
-/// Target service configuration for sidecar modes.
-#[derive(Debug, Clone, Deserialize)]
-pub struct TargetConfig {
-    /// gRPC address of the target service.
-    pub address: String,
-    /// Domain handled by this service (for aggregate mode).
-    pub domain: Option<String>,
 }
 
 impl Config {
@@ -604,23 +352,6 @@ server:
     }
 
     #[test]
-    fn test_storage_config_default() {
-        let storage = StorageConfig::default();
-        assert_eq!(storage.storage_type, StorageType::Mongodb);
-        assert_eq!(storage.mongodb.uri, "mongodb://localhost:27017");
-        assert_eq!(storage.mongodb.database, "angzarr");
-        assert!(storage.snapshots_enable.read);
-        assert!(storage.snapshots_enable.write);
-    }
-
-    #[test]
-    fn test_snapshots_enable_config_default() {
-        let config = SnapshotsEnableConfig::default();
-        assert!(config.read);
-        assert!(config.write);
-    }
-
-    #[test]
     fn test_apply_env_overrides_snapshots_read_disabled() {
         let mut config = Config::default();
         std::env::set_var("STORAGE_SNAPSHOTS_ENABLE_READ", "false");
@@ -664,41 +395,6 @@ server:
 
         assert!(config.storage.snapshots_enable.write);
         std::env::remove_var("STORAGE_SNAPSHOTS_ENABLE_WRITE");
-    }
-
-    #[test]
-    fn test_server_config_default() {
-        let server = ServerConfig::default();
-        assert_eq!(server.entity_port, 1313);
-        assert_eq!(server.event_query_port, 1314);
-        assert_eq!(server.host, "0.0.0.0");
-    }
-
-    #[test]
-    fn test_projector_endpoint_default() {
-        let endpoint = ProjectorEndpoint::default();
-        assert_eq!(endpoint.name, "");
-        assert_eq!(endpoint.address, "");
-        assert!(!endpoint.synchronous);
-    }
-
-    #[test]
-    fn test_saga_endpoint_default() {
-        let endpoint = SagaEndpoint::default();
-        assert_eq!(endpoint.name, "");
-        assert_eq!(endpoint.address, "");
-        assert!(!endpoint.synchronous);
-    }
-
-    #[test]
-    fn test_saga_compensation_config_default() {
-        let config = SagaCompensationConfig::default();
-        assert_eq!(config.fallback_domain, "angzarr.saga-failures");
-        assert!(config.dead_letter_queue_url.is_none());
-        assert!(config.escalation_webhook_url.is_none());
-        assert!(config.fallback_emit_system_revocation);
-        assert!(!config.fallback_send_to_dlq);
-        assert!(!config.fallback_escalate);
     }
 
     #[test]

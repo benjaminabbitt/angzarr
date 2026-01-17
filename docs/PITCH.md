@@ -6,6 +6,18 @@ The symbol ⍼ ([U+237C](https://en.wikipedia.org/wiki/Angzarr)) has existed in 
 
 ---
 
+## Origin
+
+In my history as a consultant software engineer and architect, I've encountered many business logic problems where traceability/audit and the ability to handle burst traffic (high load variability) are critical. The CQRS/ES pattern addresses these concerns elegantly—but I was forewarned, and have seen evolved event architectures fail in... interesting... ways.
+
+The pattern's appeal is clear: complete audit history, temporal queries, natural separation of concerns. The implementation reality is less rosy. Teams start with clean intentions, then infrastructure complexity creeps in. Business logic becomes entangled with persistence concerns. Schema evolution becomes an afterthought. The original architectural benefits get buried under accidental complexity.
+
+I was inspired to create a framework—not a library—for building CQRS/ES applications that handles much of the implementation complexity. The distinction matters: libraries are imported into your code, while frameworks provide the execution environment your code runs within.
+
+The advent of managed runtimes like Kubernetes, GCP Cloud Run, and AWS Lambda provided the path forward. These platforms enable control to be intercepted before and after user-provided business logic. Event histories (snapshots and events) can be loaded, business logic executes in isolation, and resulting events are captured, stored, and forwarded—all without the business logic needing to know how any of it works.
+
+---
+
 ## The Problem
 
 CQRS and Event Sourcing deliver real architectural benefits: full audit history, temporal queries, independent read/write scaling, and natural alignment with domain-driven design. The implementation cost, however, remains steep.

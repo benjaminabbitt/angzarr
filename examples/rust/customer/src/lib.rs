@@ -2,19 +2,22 @@
 //!
 //! Handles customer lifecycle and loyalty points management.
 
+mod handlers;
+mod state;
+
 use async_trait::async_trait;
-use prost::Message;
 
 use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{
-    business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
-    EventBook, EventPage,
+    business_response, BusinessResponse, CommandBook, ContextualCommand, EventBook,
 };
 use common::next_sequence;
-use common::proto::{
-    AddLoyaltyPoints, CreateCustomer, CustomerCreated, CustomerState, LoyaltyPointsAdded,
-    LoyaltyPointsRedeemed, RedeemLoyaltyPoints,
+use common::proto::CustomerState;
+
+pub use handlers::{
+    handle_add_loyalty_points, handle_create_customer, handle_redeem_loyalty_points,
 };
+pub use state::rebuild_state;
 
 pub mod errmsg {
     pub const CUSTOMER_EXISTS: &str = "Customer already exists";
@@ -40,224 +43,6 @@ impl CustomerLogic {
             domain: Self::DOMAIN.to_string(),
         }
     }
-
-    /// Rebuild customer state from events.
-    fn rebuild_state(&self, event_book: Option<&EventBook>) -> CustomerState {
-        let mut state = CustomerState::default();
-
-        let Some(book) = event_book else {
-            return state;
-        };
-
-        // Start from snapshot if present
-        if let Some(snapshot) = &book.snapshot {
-            if let Some(snapshot_state) = &snapshot.state {
-                if let Ok(s) = CustomerState::decode(snapshot_state.value.as_slice()) {
-                    state = s;
-                }
-            }
-        }
-
-        // Apply events
-        for page in &book.pages {
-            let Some(event) = &page.event else {
-                continue;
-            };
-
-            if event.type_url.ends_with("CustomerCreated") {
-                if let Ok(e) = CustomerCreated::decode(event.value.as_slice()) {
-                    state.name = e.name;
-                    state.email = e.email;
-                }
-            } else if event.type_url.ends_with("LoyaltyPointsAdded") {
-                if let Ok(e) = LoyaltyPointsAdded::decode(event.value.as_slice()) {
-                    state.loyalty_points = e.new_balance;
-                    state.lifetime_points += e.points;
-                }
-            } else if event.type_url.ends_with("LoyaltyPointsRedeemed") {
-                if let Ok(e) = LoyaltyPointsRedeemed::decode(event.value.as_slice()) {
-                    state.loyalty_points = e.new_balance;
-                }
-            }
-        }
-
-        state
-    }
-
-    fn handle_create_customer(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &CustomerState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        if !state.name.is_empty() {
-            return Err(BusinessError::Rejected(errmsg::CUSTOMER_EXISTS.to_string()));
-        }
-
-        let cmd = CreateCustomer::decode(command_data)
-            .map_err(|e| BusinessError::Rejected(e.to_string()))?;
-
-        if cmd.name.is_empty() {
-            return Err(BusinessError::Rejected(errmsg::NAME_REQUIRED.to_string()));
-        }
-        if cmd.email.is_empty() {
-            return Err(BusinessError::Rejected(errmsg::EMAIL_REQUIRED.to_string()));
-        }
-
-        let event = CustomerCreated {
-            name: cmd.name.clone(),
-            email: cmd.email.clone(),
-            created_at: Some(now()),
-        };
-
-        // New state after applying event
-        let new_state = CustomerState {
-            name: cmd.name,
-            email: cmd.email,
-            loyalty_points: 0,
-            lifetime_points: 0,
-        };
-
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.CustomerCreated".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-                synchronous: false,
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.CustomerState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
-    }
-
-    fn handle_add_loyalty_points(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &CustomerState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        if state.name.is_empty() {
-            return Err(BusinessError::Rejected(
-                errmsg::CUSTOMER_NOT_FOUND.to_string(),
-            ));
-        }
-
-        let cmd = AddLoyaltyPoints::decode(command_data)
-            .map_err(|e| BusinessError::Rejected(e.to_string()))?;
-
-        if cmd.points <= 0 {
-            return Err(BusinessError::Rejected(errmsg::POINTS_POSITIVE.to_string()));
-        }
-
-        let new_balance = state.loyalty_points + cmd.points;
-
-        let event = LoyaltyPointsAdded {
-            points: cmd.points,
-            new_balance,
-            reason: cmd.reason,
-        };
-
-        // New state after applying event
-        let new_state = CustomerState {
-            name: state.name.clone(),
-            email: state.email.clone(),
-            loyalty_points: new_balance,
-            lifetime_points: state.lifetime_points + cmd.points,
-        };
-
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.LoyaltyPointsAdded".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-                synchronous: false,
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.CustomerState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
-    }
-
-    fn handle_redeem_loyalty_points(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &CustomerState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        if state.name.is_empty() {
-            return Err(BusinessError::Rejected(
-                errmsg::CUSTOMER_NOT_FOUND.to_string(),
-            ));
-        }
-
-        let cmd = RedeemLoyaltyPoints::decode(command_data)
-            .map_err(|e| BusinessError::Rejected(e.to_string()))?;
-
-        if cmd.points <= 0 {
-            return Err(BusinessError::Rejected(errmsg::POINTS_POSITIVE.to_string()));
-        }
-        if cmd.points > state.loyalty_points {
-            return Err(BusinessError::Rejected(format!(
-                "{}: have {}, need {}",
-                errmsg::INSUFFICIENT_POINTS,
-                state.loyalty_points,
-                cmd.points
-            )));
-        }
-
-        let new_balance = state.loyalty_points - cmd.points;
-
-        let event = LoyaltyPointsRedeemed {
-            points: cmd.points,
-            new_balance,
-            redemption_type: cmd.redemption_type,
-        };
-
-        // New state after applying event (lifetime_points unchanged on redemption)
-        let new_state = CustomerState {
-            name: state.name.clone(),
-            email: state.email.clone(),
-            loyalty_points: new_balance,
-            lifetime_points: state.lifetime_points,
-        };
-
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.LoyaltyPointsRedeemed".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-                synchronous: false,
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.CustomerState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
-    }
 }
 
 impl Default for CustomerLogic {
@@ -270,7 +55,7 @@ impl Default for CustomerLogic {
 impl CustomerLogic {
     /// Public access to rebuild_state for testing.
     pub fn rebuild_state_public(&self, event_book: Option<&EventBook>) -> CustomerState {
-        self.rebuild_state(event_book)
+        rebuild_state(event_book)
     }
 
     /// Public access to handle_create_customer for testing.
@@ -285,7 +70,7 @@ impl CustomerLogic {
             .first()
             .and_then(|p| p.command.as_ref())
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_create_customer(command_book, &command_any.value, state, next_seq)
+        handle_create_customer(command_book, &command_any.value, state, next_seq)
     }
 
     /// Public access to handle_add_loyalty_points for testing.
@@ -300,7 +85,7 @@ impl CustomerLogic {
             .first()
             .and_then(|p| p.command.as_ref())
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_add_loyalty_points(command_book, &command_any.value, state, next_seq)
+        handle_add_loyalty_points(command_book, &command_any.value, state, next_seq)
     }
 
     /// Public access to handle_redeem_loyalty_points for testing.
@@ -315,7 +100,7 @@ impl CustomerLogic {
             .first()
             .and_then(|p| p.command.as_ref())
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_redeem_loyalty_points(command_book, &command_any.value, state, next_seq)
+        handle_redeem_loyalty_points(command_book, &command_any.value, state, next_seq)
     }
 }
 
@@ -325,7 +110,7 @@ impl BusinessLogicClient for CustomerLogic {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
-        let state = self.rebuild_state(prior_events);
+        let state = rebuild_state(prior_events);
         let next_seq = next_sequence(prior_events);
 
         let Some(cb) = command_book else {
@@ -345,11 +130,11 @@ impl BusinessLogicClient for CustomerLogic {
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
 
         let events = if command_any.type_url.ends_with("CreateCustomer") {
-            self.handle_create_customer(cb, &command_any.value, &state, next_seq)?
+            handle_create_customer(cb, &command_any.value, &state, next_seq)?
         } else if command_any.type_url.ends_with("AddLoyaltyPoints") {
-            self.handle_add_loyalty_points(cb, &command_any.value, &state, next_seq)?
+            handle_add_loyalty_points(cb, &command_any.value, &state, next_seq)?
         } else if command_any.type_url.ends_with("RedeemLoyaltyPoints") {
-            self.handle_redeem_loyalty_points(cb, &command_any.value, &state, next_seq)?
+            handle_redeem_loyalty_points(cb, &command_any.value, &state, next_seq)?
         } else {
             return Err(BusinessError::Rejected(format!(
                 "{}: {}",
@@ -372,7 +157,8 @@ impl BusinessLogicClient for CustomerLogic {
     }
 }
 
-fn now() -> prost_types::Timestamp {
+/// Get the current timestamp.
+pub(crate) fn now() -> prost_types::Timestamp {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap();
@@ -385,7 +171,11 @@ fn now() -> prost_types::Timestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use angzarr::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+    use angzarr::proto::{event_page::Sequence, CommandPage, Cover, EventPage, Uuid as ProtoUuid};
+    use common::proto::{
+        AddLoyaltyPoints, CreateCustomer, CustomerCreated, LoyaltyPointsAdded, RedeemLoyaltyPoints,
+    };
+    use prost::Message;
 
     fn make_command_book(domain: &str, root: &[u8], type_url: &str, value: Vec<u8>) -> CommandBook {
         CommandBook {

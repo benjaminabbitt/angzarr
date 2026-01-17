@@ -42,7 +42,7 @@ func (s *server) Handle(ctx context.Context, req *angzarr.ContextualCommand) (*a
 		return nil, status.Error(codes.InvalidArgument, "Command page has no command")
 	}
 
-	state := s.logic.RebuildState(priorEvents)
+	state := logic.RebuildState(priorEvents)
 	seq := logic.NextSequence(priorEvents)
 	typeURL := cmdPage.Command.TypeUrl
 

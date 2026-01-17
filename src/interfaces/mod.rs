@@ -16,7 +16,7 @@ pub mod saga;
 pub mod snapshot_store;
 
 pub use business_client::{BusinessError, BusinessLogicClient};
-pub use event_bus::{BusError, EventBus, EventHandler};
+pub use event_bus::{BusError, EventBus, EventHandler, PublishResult};
 pub use event_store::{EventStore, StorageError};
 pub use projector::{Projector, ProjectorError};
 pub use saga::{Saga, SagaError};

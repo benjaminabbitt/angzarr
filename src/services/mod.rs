@@ -4,8 +4,11 @@ pub mod entity;
 pub mod event_book_repair;
 pub mod event_query;
 pub mod projector_coord;
+pub mod response_builder;
 pub mod saga_compensation;
 pub mod saga_coord;
+pub mod sequence_validator;
+pub mod snapshot_handler;
 
 pub use entity::EntityService;
 pub use event_book_repair::{EventBookRepairer, RepairError};

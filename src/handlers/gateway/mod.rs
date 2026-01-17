@@ -1,25 +1,33 @@
 //! Command gateway handler for angzarr-gateway service.
+//!
+//! The gateway service receives commands, forwards them to business coordinators
+//! based on domain routing, and optionally streams back resulting events.
+
+mod command_router;
+mod stream_handler;
+
+pub use command_router::{map_registry_error, CommandRouter};
+pub use stream_handler::StreamHandler;
 
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::Stream;
-use prost::Message;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
-use crate::discovery::{RegistryError, ServiceRegistry};
+use crate::discovery::ServiceRegistry;
 use crate::proto::command_gateway_server::CommandGateway;
 use crate::proto::event_query_client::EventQueryClient;
 use crate::proto::event_query_server::EventQuery;
 use crate::proto::event_stream_client::EventStreamClient;
 use crate::proto::{
-    AggregateRoot, CommandBook, CommandResponse, EventBook, EventStreamFilter,
-    ExecuteStreamCountRequest, ExecuteStreamTimeRequest, Query,
+    AggregateRoot, CommandBook, CommandResponse, EventBook, ExecuteStreamCountRequest,
+    ExecuteStreamTimeRequest, Query,
 };
 
 /// Command gateway service.
@@ -27,9 +35,8 @@ use crate::proto::{
 /// Receives commands, forwards to business coordinator based on domain routing,
 /// and optionally streams back resulting events from the event stream service.
 pub struct GatewayService {
-    registry: Arc<ServiceRegistry>,
-    stream_client: EventStreamClient<tonic::transport::Channel>,
-    default_stream_timeout: Duration,
+    command_router: CommandRouter,
+    stream_handler: StreamHandler,
 }
 
 impl GatewayService {
@@ -40,195 +47,9 @@ impl GatewayService {
         default_stream_timeout: Duration,
     ) -> Self {
         Self {
-            registry,
-            stream_client,
-            default_stream_timeout,
+            command_router: CommandRouter::new(registry),
+            stream_handler: StreamHandler::new(stream_client, default_stream_timeout),
         }
-    }
-
-    /// Generate or use existing correlation ID.
-    fn ensure_correlation_id(command_book: &mut CommandBook) -> Result<String, Status> {
-        if command_book.correlation_id.is_empty() {
-            let mut buf = Vec::new();
-            command_book
-                .encode(&mut buf)
-                .map_err(|e| Status::internal(format!("Failed to encode command: {e}")))?;
-            let angzarr_ns = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev");
-            let generated = uuid::Uuid::new_v5(&angzarr_ns, &buf).to_string();
-            command_book.correlation_id = generated.clone();
-            Ok(generated)
-        } else {
-            Ok(command_book.correlation_id.clone())
-        }
-    }
-
-    /// Forward command to business coordinator based on domain.
-    async fn forward_command(
-        &self,
-        command_book: CommandBook,
-        correlation_id: &str,
-    ) -> Result<CommandResponse, Status> {
-        // Extract domain from command cover (clone to avoid borrow issues)
-        let domain = command_book
-            .cover
-            .as_ref()
-            .map(|c| c.domain.clone())
-            .unwrap_or_else(|| "*".to_string());
-
-        debug!(
-            correlation_id = %correlation_id,
-            domain = %domain,
-            "Routing command to domain"
-        );
-
-        // Get client for domain from registry
-        let mut command_client = self
-            .registry
-            .get_client(&domain)
-            .await
-            .map_err(|e| match e {
-                RegistryError::DomainNotFound(d) => {
-                    warn!(domain = %d, "No service registered for domain");
-                    Status::not_found(format!("No service registered for domain: {}", d))
-                }
-                RegistryError::ConnectionFailed {
-                    domain,
-                    address,
-                    message,
-                } => {
-                    warn!(
-                        domain = %domain,
-                        address = %address,
-                        error = %message,
-                        "Service connection failed"
-                    );
-                    Status::unavailable(format!(
-                        "Service {} at {} unavailable: {}",
-                        domain, address, message
-                    ))
-                }
-            })?;
-
-        command_client
-            .handle(Request::new(command_book))
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| {
-                warn!(
-                    correlation_id = %correlation_id,
-                    domain = %domain,
-                    error = %e,
-                    "Command failed"
-                );
-                e
-            })
-    }
-
-    /// Subscribe to event stream for correlation ID.
-    async fn subscribe_to_stream(
-        &self,
-        correlation_id: &str,
-    ) -> Result<tonic::Streaming<EventBook>, Status> {
-        let filter = EventStreamFilter {
-            correlation_id: correlation_id.to_string(),
-        };
-
-        let mut stream_client = self.stream_client.clone();
-        stream_client
-            .subscribe(Request::new(filter))
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| {
-                error!(error = %e, "Failed to subscribe to event stream");
-                Status::unavailable(format!("Event stream unavailable: {e}"))
-            })
-    }
-
-    /// Stream events with configurable limits.
-    ///
-    /// Properly detects client disconnect and closes upstream subscriptions
-    /// to avoid wasting resources streaming to disconnected clients.
-    fn create_event_stream(
-        &self,
-        correlation_id: String,
-        sync_response: CommandResponse,
-        event_stream: tonic::Streaming<EventBook>,
-        max_count: Option<u32>,
-        timeout: Duration,
-    ) -> Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>> {
-        let (tx, rx) = mpsc::channel(32);
-
-        tokio::spawn(async move {
-            let mut count = 0u32;
-
-            // First, send the immediate response events
-            if let Some(events) = sync_response.events {
-                count += 1;
-                if let Some(max) = max_count {
-                    if max > 0 && count >= max {
-                        let _ = tx.send(Ok(events)).await;
-                        return;
-                    }
-                }
-                if tx.send(Ok(events)).await.is_err() {
-                    debug!(correlation_id = %correlation_id, "Client disconnected during sync response");
-                    return;
-                }
-            }
-
-            // Then stream additional events with timeout
-            // Use select! to detect client disconnect while waiting for events
-            let mut event_stream = event_stream;
-            loop {
-                tokio::select! {
-                    // Client disconnected - stop streaming immediately
-                    _ = tx.closed() => {
-                        info!(correlation_id = %correlation_id, "Client disconnected, closing upstream subscription");
-                        break;
-                    }
-                    // Event from upstream stream (with timeout)
-                    result = tokio::time::timeout(timeout, event_stream.next()) => {
-                        match result {
-                            Ok(Some(Ok(event))) => {
-                                debug!(correlation_id = %correlation_id, "Received event from stream");
-                                count += 1;
-
-                                if tx.send(Ok(event)).await.is_err() {
-                                    debug!(correlation_id = %correlation_id, "Client disconnected during send");
-                                    break;
-                                }
-
-                                // Check count limit
-                                if let Some(max) = max_count {
-                                    if max > 0 && count >= max {
-                                        debug!(correlation_id = %correlation_id, count = count, "Count limit reached");
-                                        break;
-                                    }
-                                }
-                            }
-                            Ok(Some(Err(e))) => {
-                                error!(correlation_id = %correlation_id, error = %e, "Event stream error");
-                                let _ = tx.send(Err(e)).await;
-                                break;
-                            }
-                            Ok(None) => {
-                                info!(correlation_id = %correlation_id, "Event stream ended");
-                                break;
-                            }
-                            Err(_) => {
-                                debug!(correlation_id = %correlation_id, "Event stream timeout, closing");
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            // event_stream is dropped here, signaling upstream to close subscription
-            debug!(correlation_id = %correlation_id, "Stream task ending, upstream subscription will close");
-        });
-
-        let stream = ReceiverStream::new(rx);
-        Box::pin(stream)
     }
 }
 
@@ -240,11 +61,14 @@ impl CommandGateway for GatewayService {
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let mut command_book = request.into_inner();
-        let correlation_id = Self::ensure_correlation_id(&mut command_book)?;
+        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
         debug!(correlation_id = %correlation_id, "Executing command (unary)");
 
-        let response = self.forward_command(command_book, &correlation_id).await?;
+        let response = self
+            .command_router
+            .forward_command(command_book, &correlation_id)
+            .await?;
         Ok(Response::new(response))
     }
 
@@ -257,23 +81,26 @@ impl CommandGateway for GatewayService {
         request: Request<CommandBook>,
     ) -> Result<Response<Self::ExecuteStreamStream>, Status> {
         let mut command_book = request.into_inner();
-        let correlation_id = Self::ensure_correlation_id(&mut command_book)?;
+        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
         debug!(correlation_id = %correlation_id, "Executing command (stream)");
 
         // Subscribe BEFORE sending command
-        let event_stream = self.subscribe_to_stream(&correlation_id).await?;
+        let event_stream = self.stream_handler.subscribe(&correlation_id).await?;
 
         // Forward command
-        let sync_response = self.forward_command(command_book, &correlation_id).await?;
+        let sync_response = self
+            .command_router
+            .forward_command(command_book, &correlation_id)
+            .await?;
 
         // Create stream with default timeout, no count limit
-        let stream = self.create_event_stream(
+        let stream = self.stream_handler.create_event_stream(
             correlation_id,
             sync_response,
             event_stream,
             None,
-            self.default_stream_timeout,
+            self.stream_handler.default_timeout(),
         );
 
         Ok(Response::new(stream))
@@ -293,24 +120,27 @@ impl CommandGateway for GatewayService {
             .ok_or_else(|| Status::invalid_argument("command is required"))?;
         let count = req.count as u32;
 
-        let correlation_id = Self::ensure_correlation_id(&mut command_book)?;
+        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
         debug!(correlation_id = %correlation_id, count = count, "Executing command (count-limited stream)");
 
         // Subscribe BEFORE sending command
-        let event_stream = self.subscribe_to_stream(&correlation_id).await?;
+        let event_stream = self.stream_handler.subscribe(&correlation_id).await?;
 
         // Forward command
-        let sync_response = self.forward_command(command_book, &correlation_id).await?;
+        let sync_response = self
+            .command_router
+            .forward_command(command_book, &correlation_id)
+            .await?;
 
         // Create stream with count limit
         let max_count = if count == 0 { None } else { Some(count) };
-        let stream = self.create_event_stream(
+        let stream = self.stream_handler.create_event_stream(
             correlation_id,
             sync_response,
             event_stream,
             max_count,
-            self.default_stream_timeout,
+            self.stream_handler.default_timeout(),
         );
 
         Ok(Response::new(stream))
@@ -330,20 +160,28 @@ impl CommandGateway for GatewayService {
             .ok_or_else(|| Status::invalid_argument("command is required"))?;
         let timeout_ms = req.timeout_ms as u64;
 
-        let correlation_id = Self::ensure_correlation_id(&mut command_book)?;
+        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
         debug!(correlation_id = %correlation_id, timeout_ms = timeout_ms, "Executing command (time-limited stream)");
 
         // Subscribe BEFORE sending command
-        let event_stream = self.subscribe_to_stream(&correlation_id).await?;
+        let event_stream = self.stream_handler.subscribe(&correlation_id).await?;
 
         // Forward command
-        let sync_response = self.forward_command(command_book, &correlation_id).await?;
+        let sync_response = self
+            .command_router
+            .forward_command(command_book, &correlation_id)
+            .await?;
 
         // Create stream with custom timeout
         let timeout = Duration::from_millis(timeout_ms);
-        let stream =
-            self.create_event_stream(correlation_id, sync_response, event_stream, None, timeout);
+        let stream = self.stream_handler.create_event_stream(
+            correlation_id,
+            sync_response,
+            event_stream,
+            None,
+            timeout,
+        );
 
         Ok(Response::new(stream))
     }
@@ -365,16 +203,11 @@ impl EventQueryProxy {
         &self,
         domain: &str,
     ) -> Result<EventQueryClient<tonic::transport::Channel>, Status> {
-        let endpoint = self.registry.get_endpoint(domain).await.map_err(|e| match e {
-            RegistryError::DomainNotFound(d) => {
-                warn!(domain = %d, "No service registered for domain");
-                Status::not_found(format!("No service registered for domain: {}", d))
-            }
-            RegistryError::ConnectionFailed { domain, address, message } => {
-                warn!(domain = %domain, address = %address, error = %message, "Service connection failed");
-                Status::unavailable(format!("Service {} at {} unavailable: {}", domain, address, message))
-            }
-        })?;
+        let endpoint = self
+            .registry
+            .get_endpoint(domain)
+            .await
+            .map_err(map_registry_error)?;
 
         let url = format!("http://{}:{}", endpoint.address, endpoint.port);
         EventQueryClient::connect(url).await.map_err(|e| {
@@ -665,7 +498,7 @@ mod tests {
 
         async fn subscribe(
             &self,
-            request: Request<EventStreamFilter>,
+            request: Request<crate::proto::EventStreamFilter>,
         ) -> Result<Response<Self::SubscribeStream>, Status> {
             let filter = request.into_inner();
             if filter.correlation_id.is_empty() {
