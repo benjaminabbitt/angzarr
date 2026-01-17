@@ -1,4 +1,4 @@
-{{- /* Services for business logic applications */}}
+{{- /* Services for aggregate (business logic) applications */}}
 {{- range .Values.applications.business }}
 ---
 apiVersion: v1
@@ -8,21 +8,19 @@ metadata:
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
-    app.kubernetes.io/component: business
+    app.kubernetes.io/component: aggregate
     angzarr.io/domain: {{ .domain }}
   annotations:
     # DNS: {{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local
     angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
-    # Domain for gateway routing
-    angzarr.io/domain: {{ .domain | quote }}
 spec:
   type: ClusterIP
   ports:
-    # Angzarr sidecar entity (external access)
-    - port: {{ $.Values.service.entityPort }}
+    # Angzarr sidecar aggregate coordinator (external access)
+    - port: {{ $.Values.service.aggregatePort }}
       targetPort: entity
       protocol: TCP
-      name: command
+      name: grpc
     # Angzarr sidecar event query (external access)
     - port: {{ $.Values.service.queryPort }}
       targetPort: query
@@ -30,12 +28,12 @@ spec:
       name: query
     # Business logic gRPC (internal only)
     - port: {{ .port }}
-      targetPort: grpc
+      targetPort: business
       protocol: TCP
-      name: grpc
+      name: business
   selector:
     {{- include "angzarr.selectorLabels" $ | nindent 4 }}
-    app.kubernetes.io/component: business
+    app.kubernetes.io/component: aggregate
     angzarr.io/app: {{ .name }}
 {{- end }}
 
@@ -50,12 +48,15 @@ metadata:
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: projector
+    {{- if .domain }}
+    angzarr.io/domain: {{ .domain }}
+    {{- end }}
   annotations:
     angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
 spec:
   type: ClusterIP
   ports:
-    # Projector gRPC service
+    # Projector coordinator gRPC service
     - port: {{ .port | default 50051 }}
       targetPort: grpc
       protocol: TCP
@@ -77,12 +78,18 @@ metadata:
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
     app.kubernetes.io/component: saga
+    {{- if .sourceDomain }}
+    angzarr.io/source-domain: {{ .sourceDomain }}
+    {{- end }}
+    {{- if .domain }}
+    angzarr.io/domain: {{ .domain }}
+    {{- end }}
   annotations:
     angzarr.io/dns-name: "{{ include "angzarr.fullname" $ }}-{{ .name }}.{{ $.Release.Namespace }}.svc.cluster.local"
 spec:
   type: ClusterIP
   ports:
-    # Saga gRPC service
+    # Saga coordinator gRPC service
     - port: {{ .port | default 50051 }}
       targetPort: grpc
       protocol: TCP
@@ -107,7 +114,7 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-    - port: {{ .Values.service.entityPort }}
+    - port: {{ .Values.service.aggregatePort }}
       targetPort: entity
       protocol: TCP
       name: command
@@ -172,27 +179,117 @@ spec:
     angzarr.io/service: gateway
 {{- end }}
 
-{{- /* NodePort service for local development entity access (EventQuery via entity sidecar) */}}
+{{- /* NodePort service for local development aggregate access */}}
 {{- if .Values.service.nodePort.enabled }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "angzarr.fullname" . }}-entity-nodeport
+  name: {{ include "angzarr.fullname" . }}-aggregate-nodeport
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "angzarr.labels" . | nindent 4 }}
-    app.kubernetes.io/component: entity-access
+    app.kubernetes.io/component: aggregate-access
 spec:
   type: NodePort
   ports:
-    # Entity sidecar exposes both BusinessCoordinator and EventQuery on same port
-    - port: {{ .Values.service.entityPort }}
+    # Aggregate sidecar exposes AggregateCoordinator and EventQuery
+    - port: {{ .Values.service.aggregatePort }}
       targetPort: entity
       protocol: TCP
-      name: entity
-      nodePort: {{ .Values.service.nodePort.entity }}
+      name: grpc
+      nodePort: {{ .Values.service.nodePort.aggregate }}
   selector:
     {{- include "angzarr.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: business
+    app.kubernetes.io/component: aggregate
+{{- end }}
+
+{{- /* Debug NodePort services for individual aggregate applications */}}
+{{- range $index, $app := .Values.applications.business }}
+{{- if and $app.debug $app.debug.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ $app.name }}-debug
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: aggregate-debug
+    angzarr.io/app: {{ $app.name }}
+spec:
+  type: NodePort
+  ports:
+    - port: {{ $.Values.service.aggregatePort }}
+      targetPort: entity
+      protocol: TCP
+      name: grpc
+      {{- if $app.debug.nodePort }}
+      nodePort: {{ $app.debug.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: aggregate
+    angzarr.io/app: {{ $app.name }}
+{{- end }}
+{{- end }}
+
+{{- /* Debug NodePort services for individual projector applications */}}
+{{- range $index, $app := .Values.applications.projectors }}
+{{- if and $app.debug $app.debug.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ $app.name }}-debug
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: projector-debug
+    angzarr.io/app: {{ $app.name }}
+spec:
+  type: NodePort
+  ports:
+    - port: {{ $app.port | default 50051 }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+      {{- if $app.debug.nodePort }}
+      nodePort: {{ $app.debug.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: projector
+    angzarr.io/app: {{ $app.name }}
+{{- end }}
+{{- end }}
+
+{{- /* Debug NodePort services for individual saga applications */}}
+{{- range $index, $app := .Values.applications.sagas }}
+{{- if and $app.debug $app.debug.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ $app.name }}-debug
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: saga-debug
+    angzarr.io/app: {{ $app.name }}
+spec:
+  type: NodePort
+  ports:
+    - port: {{ $app.port | default 50051 }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+      {{- if $app.debug.nodePort }}
+      nodePort: {{ $app.debug.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "angzarr.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: saga
+    angzarr.io/app: {{ $app.name }}
+{{- end }}
 {{- end }}

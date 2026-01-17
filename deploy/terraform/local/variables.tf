@@ -11,9 +11,9 @@ variable "kubeconfig_context" {
 }
 
 variable "namespace" {
-  description = "Kubernetes namespace for evented"
+  description = "Kubernetes namespace for angzarr"
   type        = string
-  default     = "evented"
+  default     = "angzarr"
 }
 
 variable "replicas" {
@@ -22,14 +22,14 @@ variable "replicas" {
   default     = 1
 }
 
-variable "evented_image_repository" {
-  description = "Evented sidecar Docker image repository"
+variable "angzarr_image_repository" {
+  description = "Angzarr sidecar Docker image repository"
   type        = string
-  default     = "evented"
+  default     = "angzarr"
 }
 
-variable "evented_image_tag" {
-  description = "Evented sidecar Docker image tag"
+variable "angzarr_image_tag" {
+  description = "Angzarr sidecar Docker image tag"
   type        = string
   default     = "latest"
 }
@@ -105,9 +105,10 @@ variable "business_applications" {
 }
 
 variable "projector_applications" {
-  description = "List of projector applications (evented runs as sidecar)"
+  description = "List of projector applications (angzarr runs as sidecar)"
   type = list(object({
     name   = string
+    domain = optional(string)  # Domain this projector handles (for K8s service discovery)
     topics = list(string)
     image = object({
       repository = string
@@ -126,10 +127,12 @@ variable "projector_applications" {
 }
 
 variable "saga_applications" {
-  description = "List of saga applications (evented runs as sidecar)"
+  description = "List of saga applications (angzarr runs as sidecar)"
   type = list(object({
-    name   = string
-    topics = list(string)
+    name         = string
+    sourceDomain = optional(string)  # Events this saga listens to (for K8s service discovery)
+    domain       = optional(string)  # Commands this saga sends to
+    topics       = list(string)
     image = object({
       repository = string
       tag        = string

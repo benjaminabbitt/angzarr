@@ -30,7 +30,7 @@ provider "helm" {
 }
 
 # Create namespace
-resource "kubernetes_namespace" "evented" {
+resource "kubernetes_namespace" "angzarr" {
   metadata {
     name = var.namespace
     labels = {
@@ -48,7 +48,7 @@ resource "helm_release" "rabbitmq" {
   repository = "https://charts.bitnami.com/bitnami"
   chart      = "rabbitmq"
   version    = var.rabbitmq_chart_version
-  namespace  = kubernetes_namespace.evented.metadata[0].name
+  namespace  = kubernetes_namespace.angzarr.metadata[0].name
 
   values = [
     yamlencode({
@@ -83,7 +83,7 @@ resource "helm_release" "redis" {
   repository = "https://charts.bitnami.com/bitnami"
   chart      = "redis"
   version    = var.redis_chart_version
-  namespace  = kubernetes_namespace.evented.metadata[0].name
+  namespace  = kubernetes_namespace.angzarr.metadata[0].name
 
   values = [
     yamlencode({
@@ -112,20 +112,20 @@ resource "helm_release" "redis" {
   wait = true
 }
 
-# Deploy evented with applications
-resource "helm_release" "evented" {
-  name      = "evented"
-  chart     = "${path.module}/../../helm/evented"
-  namespace = kubernetes_namespace.evented.metadata[0].name
+# Deploy angzarr with applications
+resource "helm_release" "angzarr" {
+  name      = "angzarr"
+  chart     = "${path.module}/../../helm/angzarr"
+  namespace = kubernetes_namespace.angzarr.metadata[0].name
 
   values = [
     yamlencode({
       replicaCount = var.replicas
 
-      # Evented sidecar image
+      # Angzarr sidecar image
       image = {
-        repository = var.evented_image_repository
-        tag        = var.evented_image_tag
+        repository = var.angzarr_image_repository
+        tag        = var.angzarr_image_tag
         pullPolicy = "IfNotPresent"
       }
 

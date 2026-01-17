@@ -9,7 +9,7 @@ metadata:
   name: {{ include "angzarr.fullname" $ }}-{{ .name }}
   labels:
     {{- include "angzarr.labels" $ | nindent 4 }}
-    app.kubernetes.io/component: business
+    app.kubernetes.io/component: aggregate
     angzarr.io/domain: {{ .domain }}
   {{- if $.Values.reloader.enabled }}
   annotations:
@@ -22,7 +22,7 @@ spec:
   selector:
     matchLabels:
       {{- include "angzarr.selectorLabels" $ | nindent 6 }}
-      app.kubernetes.io/component: business
+      app.kubernetes.io/component: aggregate
       angzarr.io/app: {{ .name }}
   template:
     metadata:
@@ -35,7 +35,7 @@ spec:
         {{- end }}
       labels:
         {{- include "angzarr.labels" $ | nindent 8 }}
-        app.kubernetes.io/component: business
+        app.kubernetes.io/component: aggregate
         angzarr.io/app: {{ .name }}
         angzarr.io/domain: {{ .domain }}
     spec:
@@ -106,21 +106,16 @@ spec:
               containerPort: {{ .port }}
               protocol: TCP
           env:
+            # Business logic application port (sidecar calls this)
             - name: PORT
-              value: "{{ .port }}"
-            - name: GRPC_PORT
               value: "{{ .port }}"
             - name: DOMAIN
               value: {{ .domain | quote }}
-            # Angzarr sidecar endpoints
-            - name: ANGZARR_ENTITY_HOST
+            # Angzarr sidecar endpoint (consolidated on single port)
+            - name: ANGZARR_HOST
               value: "localhost"
-            - name: ANGZARR_ENTITY_PORT
-              value: "{{ $.Values.service.entityPort }}"
-            - name: ANGZARR_QUERY_HOST
-              value: "localhost"
-            - name: ANGZARR_QUERY_PORT
-              value: "{{ $.Values.service.queryPort }}"
+            - name: ANGZARR_PORT
+              value: "{{ $.Values.service.aggregatePort }}"
             {{- if eq .type "python" }}
             - name: BUSINESS_LOGIC_TYPE
               value: "python"
@@ -150,11 +145,11 @@ spec:
         - name: angzarr
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
-          image: "{{ $.Values.images.entity.repository }}:{{ $.Values.images.entity.tag | default $.Chart.AppVersion }}"
-          imagePullPolicy: {{ $.Values.images.entity.pullPolicy }}
+          image: "{{ $.Values.images.aggregate.repository }}:{{ $.Values.images.aggregate.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.images.aggregate.pullPolicy }}
           ports:
             - name: entity
-              containerPort: {{ $.Values.service.entityPort }}
+              containerPort: {{ $.Values.service.aggregatePort }}
               protocol: TCP
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
@@ -287,14 +282,13 @@ spec:
               protocol: TCP
           env:
             # gRPC port this projector listens on
+            # Projector application port
             - name: PORT
               value: "{{ .port | default 50051 }}"
-            - name: GRPC_PORT
-              value: "{{ .port | default 50051 }}"
-            # Angzarr sidecar endpoints
-            - name: ANGZARR_QUERY_HOST
+            # Angzarr sidecar endpoint (consolidated on single port)
+            - name: ANGZARR_HOST
               value: "localhost"
-            - name: ANGZARR_QUERY_PORT
+            - name: ANGZARR_PORT
               value: "{{ $.Values.service.queryPort }}"
             # AMQP for event subscription
             {{- if $.Values.amqp.enabled }}
@@ -456,20 +450,14 @@ spec:
               containerPort: {{ .port | default 50051 }}
               protocol: TCP
           env:
-            # gRPC port this saga listens on
+            # Saga application port
             - name: PORT
               value: "{{ .port | default 50051 }}"
-            - name: GRPC_PORT
-              value: "{{ .port | default 50051 }}"
-            # Angzarr sidecar endpoints
-            - name: ANGZARR_ENTITY_HOST
+            # Angzarr sidecar endpoint (consolidated on single port)
+            - name: ANGZARR_HOST
               value: "localhost"
-            - name: ANGZARR_ENTITY_PORT
-              value: "{{ $.Values.service.entityPort }}"
-            - name: ANGZARR_QUERY_HOST
-              value: "localhost"
-            - name: ANGZARR_QUERY_PORT
-              value: "{{ $.Values.service.queryPort }}"
+            - name: ANGZARR_PORT
+              value: "{{ $.Values.service.aggregatePort }}"
             # AMQP for event subscription
             {{- if $.Values.amqp.enabled }}
             - name: MESSAGING_TYPE
@@ -505,7 +493,7 @@ spec:
           imagePullPolicy: {{ $.Values.images.saga.pullPolicy }}
           ports:
             - name: entity
-              containerPort: {{ $.Values.service.entityPort }}
+              containerPort: {{ $.Values.service.aggregatePort }}
               protocol: TCP
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
@@ -608,9 +596,8 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            - name: PORT
-              value: "{{ .port | default 50051 }}"
-            - name: GRPC_PORT
+            # Standard Angzarr port - used across all languages/containers
+            - name: ANGZARR_PORT
               value: "{{ .Values.infrastructure.stream.port }}"
             {{- if .Values.amqp.enabled }}
             - name: MESSAGING_TYPE
@@ -682,9 +669,8 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            - name: PORT
-              value: "{{ .port | default 50051 }}"
-            - name: GRPC_PORT
+            # Standard Angzarr port - used across all languages/containers
+            - name: ANGZARR_PORT
               value: "{{ .Values.infrastructure.gateway.port }}"
             # Namespace for K8s service discovery (from downward API)
             - name: NAMESPACE

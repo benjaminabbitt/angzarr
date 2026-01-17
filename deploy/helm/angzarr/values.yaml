@@ -5,8 +5,8 @@ replicaCount: 1
 
 # Angzarr sidecar images (separate binaries per mode)
 images:
-  entity:
-    repository: angzarr-entity
+  aggregate:
+    repository: angzarr-aggregate
     pullPolicy: IfNotPresent
     tag: "latest"
   projector:
@@ -53,12 +53,12 @@ securityContext:
 # Angzarr gRPC ports
 service:
   type: ClusterIP
-  entityPort: 1313
+  aggregatePort: 1313
   queryPort: 1314
   # NodePort for local development access
   nodePort:
     enabled: false
-    entity: 30051
+    aggregate: 30051
 
 # Service discovery configuration
 serviceDiscovery:
@@ -233,6 +233,10 @@ applications:
   #   # go:
   #   #   library: /app/libbusiness.so
   #   resources: {}
+  #   # Debug access - expose this application's sidecar via NodePort
+  #   debug:
+  #     enabled: false
+  #     nodePort: null  # Auto-assign if not specified
 
   # Projector applications - subscribe to events, build read models
   # Angzarr sidecar subscribes to AMQP and calls projector via gRPC
@@ -243,11 +247,17 @@ applications:
   #     tag: "latest"
   #   # Port the projector gRPC server listens on
   #   port: 50051
+  #   # Domain this projector handles (optional, for K8s service discovery)
+  #   domain: "orders"
   #   # Event topics/domains to subscribe to (AMQP routing keys)
   #   topics:
   #     - "orders.*"
   #     - "discounts.DiscountApplied"
   #   resources: {}
+  #   # Debug access - expose this projector via NodePort
+  #   debug:
+  #     enabled: false
+  #     nodePort: null
 
   # Saga applications - subscribe to events, orchestrate transactions
   # Angzarr sidecar subscribes to AMQP and calls saga via gRPC
@@ -258,12 +268,20 @@ applications:
   #     tag: "latest"
   #   # Port the saga gRPC server listens on
   #   port: 50051
+  #   # Source domain - events this saga listens to (for K8s service discovery)
+  #   sourceDomain: "order"
+  #   # Target domain - commands this saga sends to (optional)
+  #   domain: "fulfillment"
   #   # Event topics/domains to subscribe to (AMQP routing keys)
   #   topics:
   #     - "orders.OrderCreated"
   #     - "payments.PaymentCompleted"
   #     - "inventory.ItemReserved"
   #   resources: {}
+  #   # Debug access - expose this saga via NodePort
+  #   debug:
+  #     enabled: false
+  #     nodePort: null
 
 # Default resources for application containers
 applicationResources:
@@ -285,6 +303,18 @@ extraVolumeMounts: []
 logging:
   level: info
   format: json
+
+# Debug configuration - exposes services via NodePort for development/debugging
+# WARNING: Do not enable in production
+debug:
+  # Enable debug access for MongoDB (external test connections)
+  mongodb:
+    enabled: false
+    nodePort: 30017
+  # Enable debug access for RabbitMQ management UI
+  rabbitmq:
+    enabled: false
+    nodePort: 30672
 
 # Stakater Reloader configuration
 # Automatically restarts pods when ConfigMaps/Secrets change
