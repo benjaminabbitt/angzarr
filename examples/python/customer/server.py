@@ -14,7 +14,7 @@ from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
 
 from state import next_sequence, rebuild_state
-from customer_logic import (
+from handlers import (
     CommandRejectedError,
     handle_create_customer,
     handle_add_loyalty_points,

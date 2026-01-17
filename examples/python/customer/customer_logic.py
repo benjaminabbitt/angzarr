@@ -1,162 +1,19 @@
-"""Customer bounded context business logic.
+"""Customer bounded context FFI entry points.
 
-Contains command handlers for customer lifecycle and loyalty points management.
+Contains the legacy class-based interface for Python FFI.
 """
 
-from datetime import datetime, timezone
-
 import structlog
-from google.protobuf.any_pb2 import Any
-from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import angzarr_pb2 as angzarr
-from proto import domains_pb2 as domains
 
 from state import next_sequence, rebuild_state
-
-
-class CommandRejectedError(Exception):
-    """Command was rejected due to business rule violation."""
-
-
-def handle_create_customer(
-    command_book: angzarr.CommandBook,
-    command_any: Any,
-    state: domains.CustomerState,
-    seq: int,
-    log: structlog.BoundLogger,
-) -> angzarr.EventBook:
-    """Handle CreateCustomer command."""
-    if state.name:
-        raise CommandRejectedError("Customer already exists")
-
-    cmd = domains.CreateCustomer()
-    command_any.Unpack(cmd)
-
-    if not cmd.name:
-        raise CommandRejectedError("Customer name is required")
-    if not cmd.email:
-        raise CommandRejectedError("Customer email is required")
-
-    log.info("creating_customer", name=cmd.name, email=cmd.email)
-
-    event = domains.CustomerCreated(
-        name=cmd.name,
-        email=cmd.email,
-        created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
-    )
-
-    event_any = Any()
-    event_any.Pack(event, type_url_prefix="type.examples/")
-
-    return angzarr.EventBook(
-        cover=command_book.cover,
-        pages=[
-            angzarr.EventPage(
-                num=seq,
-                event=event_any,
-                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
-            )
-        ],
-    )
-
-
-def handle_add_loyalty_points(
-    command_book: angzarr.CommandBook,
-    command_any: Any,
-    state: domains.CustomerState,
-    seq: int,
-    log: structlog.BoundLogger,
-) -> angzarr.EventBook:
-    """Handle AddLoyaltyPoints command."""
-    if not state.name:
-        raise CommandRejectedError("Customer does not exist")
-
-    cmd = domains.AddLoyaltyPoints()
-    command_any.Unpack(cmd)
-
-    if cmd.points <= 0:
-        raise CommandRejectedError("Points must be positive")
-
-    new_balance = state.loyalty_points + cmd.points
-
-    log.info(
-        "adding_loyalty_points",
-        points=cmd.points,
-        new_balance=new_balance,
-        reason=cmd.reason,
-    )
-
-    event = domains.LoyaltyPointsAdded(
-        points=cmd.points,
-        new_balance=new_balance,
-        reason=cmd.reason,
-    )
-
-    event_any = Any()
-    event_any.Pack(event, type_url_prefix="type.examples/")
-
-    return angzarr.EventBook(
-        cover=command_book.cover,
-        pages=[
-            angzarr.EventPage(
-                num=seq,
-                event=event_any,
-                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
-            )
-        ],
-    )
-
-
-def handle_redeem_loyalty_points(
-    command_book: angzarr.CommandBook,
-    command_any: Any,
-    state: domains.CustomerState,
-    seq: int,
-    log: structlog.BoundLogger,
-) -> angzarr.EventBook:
-    """Handle RedeemLoyaltyPoints command."""
-    if not state.name:
-        raise CommandRejectedError("Customer does not exist")
-
-    cmd = domains.RedeemLoyaltyPoints()
-    command_any.Unpack(cmd)
-
-    if cmd.points <= 0:
-        raise CommandRejectedError("Points must be positive")
-    if cmd.points > state.loyalty_points:
-        raise CommandRejectedError(
-            f"Insufficient points: have {state.loyalty_points}, need {cmd.points}"
-        )
-
-    new_balance = state.loyalty_points - cmd.points
-
-    log.info(
-        "redeeming_loyalty_points",
-        points=cmd.points,
-        new_balance=new_balance,
-        redemption_type=cmd.redemption_type,
-    )
-
-    event = domains.LoyaltyPointsRedeemed(
-        points=cmd.points,
-        new_balance=new_balance,
-        redemption_type=cmd.redemption_type,
-    )
-
-    event_any = Any()
-    event_any.Pack(event, type_url_prefix="type.examples/")
-
-    return angzarr.EventBook(
-        cover=command_book.cover,
-        pages=[
-            angzarr.EventPage(
-                num=seq,
-                event=event_any,
-                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
-            )
-        ],
-    )
+from handlers import (
+    CommandRejectedError,
+    handle_create_customer,
+    handle_add_loyalty_points,
+    handle_redeem_loyalty_points,
+)
 
 
 class CustomerLogic:

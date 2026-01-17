@@ -14,7 +14,7 @@ from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
 
 from state import rebuild_state, next_sequence
-from inventory_logic import (
+from handlers import (
     CommandRejectedError,
     handle_initialize_stock,
     handle_receive_stock,

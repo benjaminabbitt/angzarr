@@ -10,7 +10,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
 from state import rebuild_state, next_sequence
-from cart_logic import (
+from handlers import (
     CommandRejectedError,
     handle_create_cart,
     handle_add_item,

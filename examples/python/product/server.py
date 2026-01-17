@@ -12,7 +12,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
-from product_logic import (
+from handlers import (
     CommandRejectedError,
     handle_create_product,
     handle_discontinue,
