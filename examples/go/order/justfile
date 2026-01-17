@@ -1,0 +1,52 @@
+# Order Business Logic - Go gRPC Server
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+proto:
+    mkdir -p proto/angzarr proto/examples
+    cp -r "{{TOP}}/generated/go/angzarr/"* proto/angzarr/ 2>/dev/null || true
+    cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
+
+build: proto
+    go mod tidy
+    go build -o order .
+
+run: build
+    ./order
+
+run-port port:
+    PORT={{port}} ./order
+
+clean:
+    rm -f order
+    rm -rf proto/angzarr/*.go proto/examples/*.go
+
+# Copy feature files from shared location
+copy-features:
+    rm -rf features
+    cp -r {{TOP}}/examples/features .
+
+# Run unit tests (no infrastructure required)
+unit: proto
+    go test -v ./logic/...
+
+# Run acceptance tests (requires Kind cluster)
+acceptance: proto copy-features
+    ANGZARR_TEST_MODE=container go test -v ./acceptance/...
+
+# Run all tests
+test: unit acceptance
+
+# Run unit tests only
+test-unit: unit
+
+fmt:
+    go fmt ./...
+
+lint:
+    golangci-lint run

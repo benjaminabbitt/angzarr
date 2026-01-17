@@ -10,6 +10,7 @@ public class ReceiptProjector : IReceiptProjector
 {
     private readonly Serilog.ILogger _logger;
     private const string ProjectorName = "receipt";
+    private const int PointsPerDollar = 10;
 
     public ReceiptProjector(Serilog.ILogger logger)
     {
@@ -25,25 +26,26 @@ public class ReceiptProjector : IReceiptProjector
         if (!state.Completed)
             return null;
 
-        var transactionId = eventBook.Cover?.Root != null
+        var orderId = eventBook.Cover?.Root != null
             ? Convert.ToHexString(eventBook.Cover.Root.Value.ToByteArray()).ToLower()
             : "";
 
-        var shortId = transactionId.Length > 16 ? transactionId[..16] : transactionId;
+        var shortId = orderId.Length > 16 ? orderId[..16] : orderId;
+        var loyaltyPointsEarned = (state.FinalTotalCents / 100) * PointsPerDollar;
 
         _logger.Information("generated_receipt {@Data}",
-            new { transaction_id = shortId, total_cents = state.FinalTotalCents, payment_method = state.PaymentMethod });
+            new { order_id = shortId, total_cents = state.FinalTotalCents, payment_method = state.PaymentMethod });
 
         var receipt = new Receipt
         {
-            TransactionId = transactionId,
+            OrderId = orderId,
             CustomerId = state.CustomerId,
             SubtotalCents = state.SubtotalCents,
             DiscountCents = state.DiscountCents,
             FinalTotalCents = state.FinalTotalCents,
             PaymentMethod = state.PaymentMethod,
-            LoyaltyPointsEarned = state.LoyaltyPointsEarned,
-            FormattedText = FormatReceipt(transactionId, state)
+            LoyaltyPointsEarned = loyaltyPointsEarned,
+            FormattedText = FormatReceipt(orderId, state, loyaltyPointsEarned)
         };
         receipt.Items.AddRange(state.Items);
 
@@ -63,69 +65,71 @@ public class ReceiptProjector : IReceiptProjector
         List<LineItem> Items,
         int SubtotalCents,
         int DiscountCents,
-        string DiscountType,
+        int LoyaltyPointsUsed,
         int FinalTotalCents,
         string PaymentMethod,
-        int LoyaltyPointsEarned,
         bool Completed);
 
     private ProjectionState RebuildState(EventBook eventBook)
     {
-        var state = new ProjectionState("", new List<LineItem>(), 0, 0, "", 0, "", 0, false);
+        var state = new ProjectionState("", new List<LineItem>(), 0, 0, 0, 0, "", false);
 
         foreach (var page in eventBook.Pages)
         {
             if (page.Event == null) continue;
             var typeUrl = page.Event.TypeUrl;
 
-            if (typeUrl.EndsWith("TransactionCreated"))
+            if (typeUrl.EndsWith("OrderCreated"))
             {
-                var evt = page.Event.Unpack<TransactionCreated>();
+                var evt = page.Event.Unpack<OrderCreated>();
                 state = state with
                 {
                     CustomerId = evt.CustomerId,
                     Items = evt.Items.ToList(),
-                    SubtotalCents = evt.SubtotalCents
-                };
-            }
-            else if (typeUrl.EndsWith("DiscountApplied"))
-            {
-                var evt = page.Event.Unpack<DiscountApplied>();
-                state = state with
-                {
-                    DiscountType = evt.DiscountType,
+                    SubtotalCents = evt.SubtotalCents,
                     DiscountCents = evt.DiscountCents
                 };
             }
-            else if (typeUrl.EndsWith("TransactionCompleted"))
+            else if (typeUrl.EndsWith("LoyaltyDiscountApplied"))
             {
-                var evt = page.Event.Unpack<TransactionCompleted>();
+                var evt = page.Event.Unpack<LoyaltyDiscountApplied>();
                 state = state with
                 {
-                    FinalTotalCents = evt.FinalTotalCents,
-                    PaymentMethod = evt.PaymentMethod,
-                    LoyaltyPointsEarned = evt.LoyaltyPointsEarned,
-                    Completed = true
+                    LoyaltyPointsUsed = evt.PointsUsed,
+                    DiscountCents = state.DiscountCents + evt.DiscountCents
                 };
+            }
+            else if (typeUrl.EndsWith("PaymentSubmitted"))
+            {
+                var evt = page.Event.Unpack<PaymentSubmitted>();
+                state = state with
+                {
+                    PaymentMethod = evt.PaymentMethod,
+                    FinalTotalCents = evt.AmountCents
+                };
+            }
+            else if (typeUrl.EndsWith("OrderCompleted"))
+            {
+                state = state with { Completed = true };
             }
         }
 
         return state;
     }
 
-    private static string FormatReceipt(string transactionId, ProjectionState state)
+    private static string FormatReceipt(string orderId, ProjectionState state, int loyaltyPointsEarned)
     {
         var sb = new StringBuilder();
         var line = new string('═', 40);
         var thinLine = new string('─', 40);
 
-        var shortTxId = transactionId.Length > 16 ? transactionId[..16] : transactionId;
+        var shortOrderId = orderId.Length > 16 ? orderId[..16] : orderId;
         var shortCustId = state.CustomerId.Length > 16 ? state.CustomerId[..16] : state.CustomerId;
 
         sb.AppendLine(line);
         sb.AppendLine("           RECEIPT");
         sb.AppendLine(line);
-        sb.AppendLine($"Transaction: {shortTxId}...");
+        sb.AppendLine($"Order: {shortOrderId}...");
         sb.AppendLine($"Customer: {(string.IsNullOrEmpty(shortCustId) ? "N/A" : shortCustId + "...")}");
         sb.AppendLine(thinLine);
 
@@ -139,13 +143,16 @@ public class ReceiptProjector : IReceiptProjector
         sb.AppendLine($"Subtotal:              ${state.SubtotalCents / 100.0:F2}");
 
         if (state.DiscountCents > 0)
-            sb.AppendLine($"Discount ({state.DiscountType}):       -${state.DiscountCents / 100.0:F2}");
+        {
+            var discountType = state.LoyaltyPointsUsed > 0 ? "loyalty" : "coupon";
+            sb.AppendLine($"Discount ({discountType}):       -${state.DiscountCents / 100.0:F2}");
+        }
 
         sb.AppendLine(thinLine);
         sb.AppendLine($"TOTAL:                 ${state.FinalTotalCents / 100.0:F2}");
         sb.AppendLine($"Payment: {state.PaymentMethod}");
         sb.AppendLine(thinLine);
-        sb.AppendLine($"Loyalty Points Earned: {state.LoyaltyPointsEarned}");
+        sb.AppendLine($"Loyalty Points Earned: {loyaltyPointsEarned}");
         sb.AppendLine(line);
         sb.AppendLine("     Thank you for your purchase!");
         sb.Append(line);

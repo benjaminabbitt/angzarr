@@ -84,8 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Connecting to AMQP for event publishing: {}",
                 messaging.amqp.url
             );
-            let amqp_bus_config =
-                angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
+            let amqp_bus_config = angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
         }
         _ => {

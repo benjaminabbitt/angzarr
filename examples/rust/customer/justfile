@@ -24,9 +24,24 @@ run: build
 run-port port:
     PORT={{port}} cargo run -p customer --bin customer-server
 
-# Run tests
-test:
-    cargo test -p customer
+# Copy feature files from shared location
+copy-features:
+    rm -rf tests/features
+    cp -r {{TOP}}/examples/features tests/
+
+# Run unit tests (no infrastructure required)
+unit:
+    cargo test -p customer --lib
+
+# Run acceptance tests (requires Kind cluster)
+acceptance: copy-features
+    cargo test -p customer --test acceptance
+
+# Run all tests (unit + acceptance)
+test: unit acceptance
+
+# Run unit tests only (alias for CI without cluster)
+test-unit: unit
 
 # Clean build artifacts
 clean:

@@ -103,3 +103,4 @@ lint:
 # Lint Helm chart
 helm-lint:
     helm lint helm
+

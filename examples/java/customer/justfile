@@ -1,12 +1,15 @@
 # Customer Business Logic - Java
 
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
 # Build the project
 build:
     mvn compile -q
-
-# Run tests
-test:
-    mvn test
 
 # Run the server
 run:
@@ -27,3 +30,23 @@ proto:
 # Build fat JAR
 jar:
     mvn package -DskipTests -q
+
+# Copy feature files from shared location
+copy-features:
+    rm -rf src/test/resources/features
+    mkdir -p src/test/resources
+    cp -r {{TOP}}/examples/features src/test/resources/
+
+# Run unit tests (no infrastructure required)
+unit:
+    mvn test -Dtest=*Test -DfailIfNoTests=false
+
+# Run acceptance tests (requires Kind cluster)
+acceptance: copy-features
+    ANGZARR_TEST_MODE=container mvn test -Dtest=*IT -DfailIfNoTests=false
+
+# Run all tests
+test: unit acceptance
+
+# Run unit tests only
+test-unit: unit

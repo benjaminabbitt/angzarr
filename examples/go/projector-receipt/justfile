@@ -30,9 +30,24 @@ run-port port:
 # Full rebuild
 rebuild: proto build
 
-# Run tests
-test: proto
+# Copy feature files from shared location
+copy-features:
+    rm -rf features
+    cp -r {{TOP}}/examples/features .
+
+# Run unit tests (no infrastructure required)
+unit: proto
     go test -v ./...
+
+# Run acceptance tests (requires Kind cluster)
+acceptance: proto copy-features
+    ANGZARR_TEST_MODE=container go test -v ./acceptance/...
+
+# Run all tests
+test: unit acceptance
+
+# Run unit tests only
+test-unit: unit
 
 # Clean build artifacts
 clean:

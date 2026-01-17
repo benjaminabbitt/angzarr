@@ -1,0 +1,158 @@
+# syntax=docker/dockerfile:1.4
+# Elixir examples - multi-stage build with Mix
+# Build: podman build -t ex-customer --target customer -f examples/elixir/Containerfile .
+# Context must be repo root for generated proto access
+
+# ============================================================================
+# Builder stage - compiles Elixir applications
+# ============================================================================
+FROM docker.io/hexpm/elixir:1.15.7-erlang-26.2-alpine-3.18.4 AS builder
+
+RUN apk add --no-cache build-base git
+
+ENV MIX_ENV=prod
+
+WORKDIR /app
+
+# Install hex and rebar
+RUN mix local.hex --force && mix local.rebar --force
+
+# Copy generated proto files
+COPY generated/angzarr proto/angzarr/
+COPY generated/examples proto/examples/
+
+# ============================================================================
+# Build each service
+# ============================================================================
+FROM builder AS build-customer
+COPY examples/elixir/customer/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/customer/lib ./lib/
+RUN mix release
+
+FROM builder AS build-product
+COPY examples/elixir/product/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/product/lib ./lib/
+RUN mix release
+
+FROM builder AS build-cart
+COPY examples/elixir/cart/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/cart/lib ./lib/
+RUN mix release
+
+FROM builder AS build-order
+COPY examples/elixir/order/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/order/lib ./lib/
+RUN mix release
+
+FROM builder AS build-inventory
+COPY examples/elixir/inventory/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/inventory/lib ./lib/
+RUN mix release
+
+FROM builder AS build-fulfillment
+COPY examples/elixir/fulfillment/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/fulfillment/lib ./lib/
+RUN mix release
+
+FROM builder AS build-saga-fulfillment
+COPY examples/elixir/saga-fulfillment/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/saga-fulfillment/lib ./lib/
+RUN mix release
+
+FROM builder AS build-saga-loyalty-earn
+COPY examples/elixir/saga-loyalty-earn/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/saga-loyalty-earn/lib ./lib/
+RUN mix release
+
+FROM builder AS build-saga-cancellation
+COPY examples/elixir/saga-cancellation/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/saga-cancellation/lib ./lib/
+RUN mix release
+
+FROM builder AS build-projector-receipt
+COPY examples/elixir/projector-receipt/mix.exs ./
+RUN mix deps.get --only prod && mix deps.compile
+COPY examples/elixir/projector-receipt/lib ./lib/
+RUN mix release
+
+# ============================================================================
+# Runtime base
+# ============================================================================
+FROM docker.io/hexpm/elixir:1.15.7-erlang-26.2-alpine-3.18.4 AS runtime
+
+RUN apk add --no-cache libstdc++ openssl ncurses-libs
+
+WORKDIR /app
+ENV MIX_ENV=prod
+
+# ============================================================================
+# Service-specific images
+# ============================================================================
+FROM runtime AS customer
+COPY --from=build-customer /app/_build/prod/rel/customer ./
+ENV PORT=50900
+EXPOSE 50900
+CMD ["bin/customer", "start"]
+
+FROM runtime AS product
+COPY --from=build-product /app/_build/prod/rel/product ./
+ENV PORT=50901
+EXPOSE 50901
+CMD ["bin/product", "start"]
+
+FROM runtime AS cart
+COPY --from=build-cart /app/_build/prod/rel/cart ./
+ENV PORT=50902
+EXPOSE 50902
+CMD ["bin/cart", "start"]
+
+FROM runtime AS order
+COPY --from=build-order /app/_build/prod/rel/order ./
+ENV PORT=50903
+EXPOSE 50903
+CMD ["bin/order", "start"]
+
+FROM runtime AS inventory
+COPY --from=build-inventory /app/_build/prod/rel/inventory ./
+ENV PORT=50904
+EXPOSE 50904
+CMD ["bin/inventory", "start"]
+
+FROM runtime AS fulfillment
+COPY --from=build-fulfillment /app/_build/prod/rel/fulfillment ./
+ENV PORT=50905
+EXPOSE 50905
+CMD ["bin/fulfillment", "start"]
+
+FROM runtime AS saga-fulfillment
+COPY --from=build-saga-fulfillment /app/_build/prod/rel/saga_fulfillment ./
+ENV PORT=50907
+EXPOSE 50907
+CMD ["bin/saga_fulfillment", "start"]
+
+FROM runtime AS saga-loyalty-earn
+COPY --from=build-saga-loyalty-earn /app/_build/prod/rel/saga_loyalty_earn ./
+ENV PORT=50908
+EXPOSE 50908
+CMD ["bin/saga_loyalty_earn", "start"]
+
+FROM runtime AS saga-cancellation
+COPY --from=build-saga-cancellation /app/_build/prod/rel/saga_cancellation ./
+ENV PORT=50909
+EXPOSE 50909
+CMD ["bin/saga_cancellation", "start"]
+
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /app/_build/prod/rel/projector_receipt ./
+ENV PORT=50910
+EXPOSE 50910
+CMD ["bin/projector_receipt", "start"]

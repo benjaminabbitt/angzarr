@@ -1,0 +1,215 @@
+# C++ example applications for local development
+
+global:
+  security:
+    allowInsecureImages: true
+
+replicaCount: 1
+
+images:
+  entity:
+    repository: angzarr-entity
+    pullPolicy: Never
+    tag: "latest"
+  projector:
+    repository: angzarr-projector
+    pullPolicy: Never
+    tag: "latest"
+  saga:
+    repository: angzarr-saga
+    pullPolicy: Never
+    tag: "latest"
+  stream:
+    repository: angzarr-stream
+    pullPolicy: Never
+    tag: "latest"
+  gateway:
+    repository: angzarr-gateway
+    pullPolicy: Never
+    tag: "latest"
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+rabbitmq:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/rabbitmq
+    tag: "3.13-management-alpine"
+    pullPolicy: Never
+  auth:
+    username: "guest"
+    password: "guest"
+  persistence:
+    size: 1Gi
+
+mongodb:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/mongo
+    tag: "7"
+    pullPolicy: Never
+  auth:
+    rootUsername: "root"
+    rootPassword: "rootpassword"
+    usernames: ["angzarr"]
+    passwords: ["angzarr"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+
+infrastructure:
+  stream:
+    enabled: false
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 1316
+    entities:
+      customer: "angzarr-entity-customer-cpp:50051"
+      product: "angzarr-entity-product-cpp:50051"
+      cart: "angzarr-entity-cart-cpp:50051"
+      order: "angzarr-entity-order-cpp:50051"
+      inventory: "angzarr-entity-inventory-cpp:50051"
+      fulfillment: "angzarr-entity-fulfillment-cpp:50051"
+    streamService: "angzarr-stream-cpp:1315"
+    streamTimeoutSecs: 30
+
+applications:
+  business:
+    - name: entity-customer-cpp
+      image:
+        repository: entity-customer-cpp
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 51000
+
+    - name: entity-product-cpp
+      image:
+        repository: entity-product-cpp
+        tag: "latest"
+        pullPolicy: Never
+      domain: "product"
+      port: 51001
+
+    - name: entity-cart-cpp
+      image:
+        repository: entity-cart-cpp
+        tag: "latest"
+        pullPolicy: Never
+      domain: "cart"
+      port: 51002
+
+    - name: entity-order-cpp
+      image:
+        repository: entity-order-cpp
+        tag: "latest"
+        pullPolicy: Never
+      domain: "order"
+      port: 51003
+
+    - name: entity-inventory-cpp
+      image:
+        repository: entity-inventory-cpp
+        tag: "latest"
+        pullPolicy: Never
+      domain: "inventory"
+      port: 51004
+
+    - name: entity-fulfillment-cpp
+      image:
+        repository: entity-fulfillment-cpp
+        tag: "latest"
+        pullPolicy: Never
+      domain: "fulfillment"
+      port: 51005
+
+  projectors:
+    - name: stream-cpp
+      image:
+        repository: angzarr-stream
+        tag: "latest"
+        pullPolicy: Never
+      port: 1315
+      topics:
+        - "#"
+
+    - name: projector-receipt-cpp
+      image:
+        repository: projector-receipt-cpp
+        tag: "latest"
+        pullPolicy: Never
+      port: 51010
+      topics:
+        - "order.*"
+
+  sagas:
+    - name: saga-fulfillment-cpp
+      image:
+        repository: saga-fulfillment-cpp
+        tag: "latest"
+        pullPolicy: Never
+      port: 51007
+      topics:
+        - "order.*"
+
+    - name: saga-loyalty-earn-cpp
+      image:
+        repository: saga-loyalty-earn-cpp
+        tag: "latest"
+        pullPolicy: Never
+      port: 51008
+      topics:
+        - "fulfillment.*"
+
+    - name: saga-cancellation-cpp
+      image:
+        repository: saga-cancellation-cpp
+        tag: "latest"
+        pullPolicy: Never
+      port: 51009
+      topics:
+        - "order.*"
+
+service:
+  type: NodePort
+  entityPort: 50051
+  queryPort: 50052
+
+logging:
+  level: info
+
+autoscaling:
+  enabled: false
+
+reloader:
+  enabled: false
+
+serviceDiscovery:
+  headless: false

@@ -37,14 +37,17 @@ pub enum StorageError {
 
     #[error("MongoDB error: {0}")]
     Mongo(#[from] mongodb::error::Error),
+
+    #[error("EventStoreDB error: {0}")]
+    EventStoreDb(String),
 }
 
 /// Interface for event persistence.
 ///
 /// Implementations:
-/// - `SqliteEventStore` (now): Direct SQLite access via sea-query
-/// - `PostgresEventStore` (future): Direct Postgres access
-/// - `SidecarEventStoreClient` (future): gRPC to storage sidecar
+/// - `MongoEventStore`: MongoDB storage
+/// - `PostgresEventStore`: PostgreSQL storage
+/// - `EventStoreDbEventStore`: EventStoreDB storage
 #[async_trait]
 pub trait EventStore: Send + Sync {
     /// Store events for an aggregate root.

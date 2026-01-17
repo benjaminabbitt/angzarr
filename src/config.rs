@@ -50,8 +50,9 @@ pub struct Config {
 #[serde(rename_all = "lowercase")]
 pub enum StorageType {
     #[default]
-    Sqlite,
     Mongodb,
+    Postgres,
+    Eventstoredb,
 }
 
 /// Storage configuration (discriminated union).
@@ -61,10 +62,12 @@ pub struct StorageConfig {
     /// Storage type discriminator.
     #[serde(rename = "type")]
     pub storage_type: StorageType,
-    /// SQLite-specific configuration.
-    pub sqlite: SqliteConfig,
     /// MongoDB-specific configuration.
     pub mongodb: MongodbConfig,
+    /// PostgreSQL-specific configuration.
+    pub postgres: PostgresConfig,
+    /// EventStoreDB-specific configuration.
+    pub eventstoredb: EventStoreDbConfig,
     /// Snapshot enable/disable flags for debugging and troubleshooting.
     pub snapshots_enable: SnapshotsEnableConfig,
 }
@@ -72,26 +75,11 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            storage_type: StorageType::Sqlite,
-            sqlite: SqliteConfig::default(),
+            storage_type: StorageType::Mongodb,
             mongodb: MongodbConfig::default(),
+            postgres: PostgresConfig::default(),
+            eventstoredb: EventStoreDbConfig::default(),
             snapshots_enable: SnapshotsEnableConfig::default(),
-        }
-    }
-}
-
-/// SQLite-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct SqliteConfig {
-    /// Path to the SQLite database file.
-    pub path: String,
-}
-
-impl Default for SqliteConfig {
-    fn default() -> Self {
-        Self {
-            path: "./data/events.db".to_string(),
         }
     }
 }
@@ -111,6 +99,38 @@ impl Default for MongodbConfig {
         Self {
             uri: "mongodb://localhost:27017".to_string(),
             database: "angzarr".to_string(),
+        }
+    }
+}
+
+/// PostgreSQL-specific configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PostgresConfig {
+    /// PostgreSQL connection URI.
+    pub uri: String,
+}
+
+impl Default for PostgresConfig {
+    fn default() -> Self {
+        Self {
+            uri: "postgres://localhost:5432/angzarr".to_string(),
+        }
+    }
+}
+
+/// EventStoreDB-specific configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct EventStoreDbConfig {
+    /// EventStoreDB connection string.
+    pub connection_string: String,
+}
+
+impl Default for EventStoreDbConfig {
+    fn default() -> Self {
+        Self {
+            connection_string: "esdb://localhost:2113?tls=false".to_string(),
         }
     }
 }
@@ -340,14 +360,10 @@ impl Config {
         // Storage type override
         if let Ok(storage_type) = std::env::var("STORAGE_TYPE") {
             self.storage.storage_type = match storage_type.to_lowercase().as_str() {
-                "mongodb" => StorageType::Mongodb,
-                _ => StorageType::Sqlite,
+                "postgres" => StorageType::Postgres,
+                "eventstoredb" => StorageType::Eventstoredb,
+                _ => StorageType::Mongodb,
             };
-        }
-
-        // SQLite config overrides
-        if let Ok(path) = std::env::var("STORAGE_SQLITE_PATH") {
-            self.storage.sqlite.path = path;
         }
 
         // MongoDB config overrides
@@ -469,8 +485,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.storage.storage_type, StorageType::Sqlite);
-        assert_eq!(config.storage.sqlite.path, "./data/events.db");
+        assert_eq!(config.storage.storage_type, StorageType::Mongodb);
+        assert_eq!(config.storage.mongodb.uri, "mongodb://localhost:27017");
         assert_eq!(config.server.entity_port, 1313);
         assert_eq!(config.server.event_query_port, 1314);
     }
@@ -479,9 +495,10 @@ mod tests {
     fn test_parse_yaml() {
         let yaml = r#"
 storage:
-  type: sqlite
-  sqlite:
-    path: /tmp/test.db
+  type: mongodb
+  mongodb:
+    uri: mongodb://custom:27017
+    database: testdb
 
 server:
   entity_port: 8080
@@ -505,7 +522,8 @@ sagas:
 "#;
 
         let config: Config = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.storage.sqlite.path, "/tmp/test.db");
+        assert_eq!(config.storage.mongodb.uri, "mongodb://custom:27017");
+        assert_eq!(config.storage.mongodb.database, "testdb");
         assert_eq!(config.server.entity_port, 8080);
         assert_eq!(config.business_logic.len(), 2);
         assert_eq!(config.business_logic[0].domain, "orders");
@@ -518,9 +536,10 @@ sagas:
     fn test_from_file_valid() {
         let yaml = r#"
 storage:
-  type: sqlite
-  sqlite:
-    path: /tmp/from_file.db
+  type: mongodb
+  mongodb:
+    uri: mongodb://file_test:27017
+    database: from_file_db
 server:
   entity_port: 9000
 "#;
@@ -529,7 +548,8 @@ server:
 
         let config = Config::from_file(file.path().to_str().unwrap()).unwrap();
 
-        assert_eq!(config.storage.sqlite.path, "/tmp/from_file.db");
+        assert_eq!(config.storage.mongodb.uri, "mongodb://file_test:27017");
+        assert_eq!(config.storage.mongodb.database, "from_file_db");
         assert_eq!(config.server.entity_port, 9000);
     }
 
@@ -586,8 +606,7 @@ server:
     #[test]
     fn test_storage_config_default() {
         let storage = StorageConfig::default();
-        assert_eq!(storage.storage_type, StorageType::Sqlite);
-        assert_eq!(storage.sqlite.path, "./data/events.db");
+        assert_eq!(storage.storage_type, StorageType::Mongodb);
         assert_eq!(storage.mongodb.uri, "mongodb://localhost:27017");
         assert_eq!(storage.mongodb.database, "angzarr");
         assert!(storage.snapshots_enable.read);
@@ -680,17 +699,6 @@ server:
         assert!(config.fallback_emit_system_revocation);
         assert!(!config.fallback_send_to_dlq);
         assert!(!config.fallback_escalate);
-    }
-
-    #[test]
-    fn test_apply_env_overrides_storage_sqlite_path() {
-        let mut config = Config::default();
-        std::env::set_var("STORAGE_SQLITE_PATH", "/custom/path.db");
-
-        config.apply_env_overrides();
-
-        assert_eq!(config.storage.sqlite.path, "/custom/path.db");
-        std::env::remove_var("STORAGE_SQLITE_PATH");
     }
 
     #[test]

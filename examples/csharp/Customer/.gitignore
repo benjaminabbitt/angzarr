@@ -1,0 +1,6 @@
+# Copied feature files directory
+/features/
+
+# .NET build output
+/bin/
+/obj/

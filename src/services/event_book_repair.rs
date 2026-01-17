@@ -338,17 +338,12 @@ mod tests {
         use crate::proto::event_query_server::EventQueryServer;
         use crate::proto::Snapshot;
         use crate::services::EventQueryService;
-        use crate::storage::{SqliteEventStore, SqliteSnapshotStore};
+        use crate::test_utils::{MockEventStore, MockSnapshotStore};
         use prost_types::Timestamp;
-        use sqlx::SqlitePool;
         use std::net::SocketAddr;
         use std::sync::Arc;
         use tokio::net::TcpListener;
         use tonic::transport::Server;
-
-        async fn test_pool() -> SqlitePool {
-            SqlitePool::connect("sqlite::memory:").await.unwrap()
-        }
 
         fn test_event(sequence: u32, event_type: &str) -> EventPage {
             EventPage {
@@ -385,15 +380,15 @@ mod tests {
         }
 
         async fn start_event_query_server(
-            event_store: Arc<SqliteEventStore>,
-            snapshot_store: Arc<SqliteSnapshotStore>,
+            event_store: Arc<MockEventStore>,
+            snapshot_store: Arc<MockSnapshotStore>,
         ) -> SocketAddr {
             start_event_query_server_with_options(event_store, snapshot_store, false).await
         }
 
         async fn start_event_query_server_with_options(
-            event_store: Arc<SqliteEventStore>,
-            snapshot_store: Arc<SqliteSnapshotStore>,
+            event_store: Arc<MockEventStore>,
+            snapshot_store: Arc<MockSnapshotStore>,
             enable_snapshots: bool,
         ) -> SocketAddr {
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -416,11 +411,8 @@ mod tests {
 
         #[tokio::test]
         async fn test_repairer_fetches_complete_event_book() {
-            let pool = test_pool().await;
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            event_store.init().await.unwrap();
-            snapshot_store.init().await.unwrap();
+            let event_store = Arc::new(MockEventStore::new());
+            let snapshot_store = Arc::new(MockSnapshotStore::new());
 
             let domain = "orders";
             let root = Uuid::new_v4();
@@ -456,11 +448,8 @@ mod tests {
 
         #[tokio::test]
         async fn test_repairer_passes_through_complete_book() {
-            let pool = test_pool().await;
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            event_store.init().await.unwrap();
-            snapshot_store.init().await.unwrap();
+            let event_store = Arc::new(MockEventStore::new());
+            let snapshot_store = Arc::new(MockSnapshotStore::new());
 
             let addr = start_event_query_server(event_store, snapshot_store).await;
 
@@ -481,11 +470,8 @@ mod tests {
 
         #[tokio::test]
         async fn test_repairer_with_snapshot_in_storage() {
-            let pool = test_pool().await;
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            event_store.init().await.unwrap();
-            snapshot_store.init().await.unwrap();
+            let event_store = Arc::new(MockEventStore::new());
+            let snapshot_store = Arc::new(MockSnapshotStore::new());
 
             let domain = "orders";
             let root = Uuid::new_v4();
@@ -533,11 +519,8 @@ mod tests {
 
         #[tokio::test]
         async fn test_repairer_empty_aggregate_returns_empty() {
-            let pool = test_pool().await;
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            event_store.init().await.unwrap();
-            snapshot_store.init().await.unwrap();
+            let event_store = Arc::new(MockEventStore::new());
+            let snapshot_store = Arc::new(MockSnapshotStore::new());
 
             let addr = start_event_query_server(event_store, snapshot_store).await;
 

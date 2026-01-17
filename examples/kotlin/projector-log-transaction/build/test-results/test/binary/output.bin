@@ -1,50 +1,0 @@
-
-	
-
-	|Scenario: Log CustomerCreated event                                             [90m# features/projector-log.feature:8[0m
-
-	ë  [32mGiven [0m[32ma CustomerCreated event with name [0m[32m[1m"Alice"[0m[32m and email [0m[32m[1m"alice@example.com"[0m [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.customerCreatedEvent(java.lang.String,java.lang.String)[0m
-
-	Ã  [32mWhen [0m[32mI process the log projector[0m                                              [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.processLogProjector()[0m
-
-	“  [32mThen [0m[32mthe event is logged successfully[0m                                         [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.eventIsLoggedSuccessfully()[0m
-
-
-
-tScenario: Log LoyaltyPointsAdded event                                 [90m# features/projector-log.feature:13[0m
-
-Ò  [32mGiven [0m[32ma LoyaltyPointsAdded event with [0m[32m[1m100[0m[32m points and new_balance [0m[32m[1m100[0m [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.loyaltyPointsAddedEvent(int,int)[0m
-
-√  [32mWhen [0m[32mI process the log projector[0m                                     [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.processLogProjector()[0m
-
-…  [32mThen [0m[32mthe event is logged successfully[0m                                [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.eventIsLoggedSuccessfully()[0m
-
-
-
-{Scenario: Log TransactionCreated event                                        [90m# features/projector-log.feature:18[0m
-
-Ö  [32mGiven [0m[32ma TransactionCreated event with customer [0m[32m[1m"cust-001"[0m[32m and subtotal [0m[32m[1m2000[0m [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.transactionCreatedEvent(java.lang.String,int)[0m
-
-   [32mWhen [0m[32mI process the log projector[0m                                            [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.processLogProjector()[0m
-
-–  [32mThen [0m[32mthe event is logged successfully[0m                                       [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.eventIsLoggedSuccessfully()[0m
-
-
-
-uScenario: Log TransactionCompleted event                                [90m# features/projector-log.feature:23[0m
-
-Å  [32mGiven [0m[32ma TransactionCompleted event with total [0m[32m[1m2000[0m[32m and payment [0m[32m[1m"card"[0m [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.transactionCompletedEvent(int,java.lang.String)[0m
-
-ƒ  [32mWhen [0m[32mI process the log projector[0m                                      [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.processLogProjector()[0m
-
-   [32mThen [0m[32mthe event is logged successfully[0m                                 [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.eventIsLoggedSuccessfully()[0m
-
-
-
-\Scenario: Handle unknown event type gracefully [90m# features/projector-log.feature:28[0m
-
-®  [32mGiven [0m[32man unknown event type[0m                  [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.unknownEventType()[0m
-
-´  [32mWhen [0m[32mI process the log projector[0m             [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.processLogProjector()[0m
-
-Æ  [32mThen [0m[32mthe event is logged as unknown[0m          [90m# void dev.angzarr.examples.projector.cucumber.LogProjectorStepDefinitions.eventIsLoggedAsUnknown()[0m

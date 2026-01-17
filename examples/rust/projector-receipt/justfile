@@ -8,17 +8,12 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-# Copy generated proto files
-proto:
-    mkdir -p src/proto
-    cp "{{TOP}}/generated/rust/examples/examples.rs" src/proto/examples.rs
-
 # Build the server
-build: proto
+build:
     cargo build -p projector-receipt --bin projector-receipt-server
 
 # Build release
-build-release: proto
+build-release:
     cargo build -p projector-receipt --bin projector-receipt-server --release
 
 # Run the server
@@ -29,9 +24,24 @@ run: build
 run-port port:
     PORT={{port}} cargo run -p projector-receipt --bin projector-receipt-server
 
-# Run tests
-test:
-    cargo test -p projector-receipt
+# Copy feature files from shared location
+copy-features:
+    rm -rf tests/features
+    cp -r {{TOP}}/examples/features tests/
+
+# Run unit tests (no infrastructure required)
+unit:
+    cargo test -p projector-receipt --lib
+
+# Run acceptance tests (requires Kind cluster)
+acceptance: copy-features
+    cargo test -p projector-receipt --test acceptance
+
+# Run all tests (unit + acceptance)
+test: unit acceptance
+
+# Run unit tests only (alias for CI without cluster)
+test-unit: unit
 
 # Clean build artifacts
 clean:

@@ -92,7 +92,11 @@ infrastructure:
     port: 1316
     entities:
       customer: "angzarr-entity-customer-rb:50051"
-      transaction: "angzarr-entity-transaction-rb:50051"
+      product: "angzarr-entity-product-rb:50051"
+      cart: "angzarr-entity-cart-rb:50051"
+      order: "angzarr-entity-order-rb:50051"
+      inventory: "angzarr-entity-inventory-rb:50051"
+      fulfillment: "angzarr-entity-fulfillment-rb:50051"
     streamService: "angzarr-stream-rb:1315"
     streamTimeoutSecs: 30
 
@@ -106,13 +110,45 @@ applications:
       domain: "customer"
       port: 50800
 
-    - name: entity-transaction-rb
+    - name: entity-product-rb
       image:
-        repository: entity-transaction-rb
+        repository: entity-product-rb
         tag: "latest"
         pullPolicy: Never
-      domain: "transaction"
+      domain: "product"
       port: 50801
+
+    - name: entity-cart-rb
+      image:
+        repository: entity-cart-rb
+        tag: "latest"
+        pullPolicy: Never
+      domain: "cart"
+      port: 50802
+
+    - name: entity-order-rb
+      image:
+        repository: entity-order-rb
+        tag: "latest"
+        pullPolicy: Never
+      domain: "order"
+      port: 50803
+
+    - name: entity-inventory-rb
+      image:
+        repository: entity-inventory-rb
+        tag: "latest"
+        pullPolicy: Never
+      domain: "inventory"
+      port: 50804
+
+    - name: entity-fulfillment-rb
+      image:
+        repository: entity-fulfillment-rb
+        tag: "latest"
+        pullPolicy: Never
+      domain: "fulfillment"
+      port: 50805
 
   projectors:
     - name: stream-rb
@@ -129,37 +165,37 @@ applications:
         repository: projector-receipt-rb
         tag: "latest"
         pullPolicy: Never
-      port: 50803
+      port: 50810
       topics:
-        - "transaction.*"
-
-    - name: projector-log-customer-rb
-      image:
-        repository: projector-log-customer-rb
-        tag: "latest"
-        pullPolicy: Never
-      port: 50804
-      topics:
-        - "customer.*"
-
-    - name: projector-log-transaction-rb
-      image:
-        repository: projector-log-transaction-rb
-        tag: "latest"
-        pullPolicy: Never
-      port: 50805
-      topics:
-        - "transaction.*"
+        - "order.*"
 
   sagas:
-    - name: saga-loyalty-rb
+    - name: saga-fulfillment-rb
       image:
-        repository: saga-loyalty-rb
+        repository: saga-fulfillment-rb
         tag: "latest"
         pullPolicy: Never
-      port: 50802
+      port: 50807
       topics:
-        - "transaction.*"
+        - "order.*"
+
+    - name: saga-loyalty-earn-rb
+      image:
+        repository: saga-loyalty-earn-rb
+        tag: "latest"
+        pullPolicy: Never
+      port: 50808
+      topics:
+        - "fulfillment.*"
+
+    - name: saga-cancellation-rb
+      image:
+        repository: saga-cancellation-rb
+        tag: "latest"
+        pullPolicy: Never
+      port: 50809
+      topics:
+        - "order.*"
 
 service:
   type: NodePort

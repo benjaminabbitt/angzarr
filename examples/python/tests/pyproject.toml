@@ -1,0 +1,16 @@
+[project]
+name = "angzarr-python-integration-tests"
+version = "0.1.0"
+description = "Integration tests for angzarr Python examples"
+requires-python = ">=3.11"
+dependencies = [
+    "grpcio>=1.60.0",
+    "protobuf>=4.25.0",
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v"

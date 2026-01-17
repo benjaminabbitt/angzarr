@@ -1,0 +1,84 @@
+# C++ example services for Angzarr
+
+namespace: angzarr-cpp
+
+# Angzarr infrastructure images
+angzarr:
+  command:
+    image: angzarr-entity:latest
+    port: 50051
+  query:
+    port: 50052
+  stream:
+    image: angzarr-stream:latest
+    port: 1315
+  gateway:
+    image: angzarr-gateway:latest
+    port: 1316
+    streamTimeoutSecs: 30
+
+# Business logic services
+services:
+  customer:
+    image: cpp-customer:latest
+    port: 51000
+    domain: customer
+  product:
+    image: cpp-product:latest
+    port: 51001
+    domain: product
+  cart:
+    image: cpp-cart:latest
+    port: 51002
+    domain: cart
+  order:
+    image: cpp-order:latest
+    port: 51003
+    domain: order
+  inventory:
+    image: cpp-inventory:latest
+    port: 51004
+    domain: inventory
+  fulfillment:
+    image: cpp-fulfillment:latest
+    port: 51005
+    domain: fulfillment
+
+# Projector services
+projectors:
+  receipt:
+    image: cpp-projector-receipt:latest
+    port: 51010
+
+# Saga services
+sagas:
+  fulfillment:
+    image: cpp-saga-fulfillment:latest
+    port: 51007
+  loyaltyEarn:
+    image: cpp-saga-loyalty-earn:latest
+    port: 51008
+  cancellation:
+    image: cpp-saga-cancellation:latest
+    port: 51009
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    command: command.cpp.angzarr.local
+    query: query.cpp.angzarr.local
+    gateway: gateway.cpp.angzarr.local
+
+# Secrets (values should be provided via --set or external secrets)
+secrets:
+  mongodbUri: ""
+  amqpUrl: ""
+
+# Logging
+logging:
+  level: info

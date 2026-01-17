@@ -1,13 +1,22 @@
 # syntax=docker/dockerfile:1.4
-# Kotlin examples - multi-stage build with Gradle
+# Kotlin examples - optimized multi-stage build with jlink minimal JRE
 # Build: podman build -t kt-customer --target customer -f examples/kotlin/Containerfile .
+# Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
 # Context must be repo root for proto access
-# Cache mounts persist Gradle dependencies across builds
+#
+# Optimizations:
+# 1. Shared deps-fetcher stage (all build.gradle.kts deps resolved together)
+# 2. jlink for minimal custom JRE (~40MB vs ~200MB full JRE)
+# 3. Named cache IDs for Gradle persistence
+# 4. Distroless runtime
+# 5. Multi-arch support (amd64 + arm64)
+
+ARG JAVA_VERSION=21
 
 # ============================================================================
-# Builder stage - compiles Kotlin projects with Gradle
+# Base builder - common SDK
 # ============================================================================
-FROM docker.io/library/gradle:8.11-jdk21-alpine AS builder
+FROM docker.io/library/gradle:8.11-jdk${JAVA_VERSION}-alpine AS builder
 
 WORKDIR /app
 
@@ -15,104 +24,188 @@ WORKDIR /app
 COPY proto/ /app/proto/
 
 # ============================================================================
-# Build each service with Gradle cache mounts
+# Deps fetcher - resolves ALL project dependencies once
 # ============================================================================
-FROM builder AS build-customer
-COPY examples/kotlin/customer/build.gradle.kts examples/kotlin/customer/settings.gradle.kts ./
-COPY examples/kotlin/customer/gradle/ ./gradle/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle dependencies --no-daemon || true
-COPY examples/kotlin/customer/src/ ./src/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle shadowJar --no-daemon
+FROM builder AS deps-fetcher
 
-FROM builder AS build-transaction
-COPY examples/kotlin/transaction/build.gradle.kts examples/kotlin/transaction/settings.gradle.kts ./
-COPY examples/kotlin/transaction/gradle/ ./gradle/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle dependencies --no-daemon || true
-COPY examples/kotlin/transaction/src/ ./src/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle shadowJar --no-daemon
+# Copy all build.gradle.kts and settings files
+COPY examples/kotlin/customer/build.gradle.kts examples/kotlin/customer/settings.gradle.kts /deps/customer/
+COPY examples/kotlin/customer/gradle/ /deps/customer/gradle/
+COPY examples/kotlin/product/build.gradle.kts examples/kotlin/product/settings.gradle.kts /deps/product/
+COPY examples/kotlin/product/gradle/ /deps/product/gradle/
+COPY examples/kotlin/cart/build.gradle.kts examples/kotlin/cart/settings.gradle.kts /deps/cart/
+COPY examples/kotlin/cart/gradle/ /deps/cart/gradle/
+COPY examples/kotlin/order/build.gradle.kts examples/kotlin/order/settings.gradle.kts /deps/order/
+COPY examples/kotlin/order/gradle/ /deps/order/gradle/
+COPY examples/kotlin/inventory/build.gradle.kts examples/kotlin/inventory/settings.gradle.kts /deps/inventory/
+COPY examples/kotlin/inventory/gradle/ /deps/inventory/gradle/
+COPY examples/kotlin/fulfillment/build.gradle.kts examples/kotlin/fulfillment/settings.gradle.kts /deps/fulfillment/
+COPY examples/kotlin/fulfillment/gradle/ /deps/fulfillment/gradle/
+COPY examples/kotlin/saga-fulfillment/build.gradle.kts examples/kotlin/saga-fulfillment/settings.gradle.kts /deps/saga-fulfillment/
+COPY examples/kotlin/saga-fulfillment/gradle/ /deps/saga-fulfillment/gradle/
+COPY examples/kotlin/saga-loyalty-earn/build.gradle.kts examples/kotlin/saga-loyalty-earn/settings.gradle.kts /deps/saga-loyalty-earn/
+COPY examples/kotlin/saga-loyalty-earn/gradle/ /deps/saga-loyalty-earn/gradle/
+COPY examples/kotlin/saga-cancellation/build.gradle.kts examples/kotlin/saga-cancellation/settings.gradle.kts /deps/saga-cancellation/
+COPY examples/kotlin/saga-cancellation/gradle/ /deps/saga-cancellation/gradle/
+COPY examples/kotlin/projector-receipt/build.gradle.kts examples/kotlin/projector-receipt/settings.gradle.kts /deps/projector-receipt/
+COPY examples/kotlin/projector-receipt/gradle/ /deps/projector-receipt/gradle/
 
-FROM builder AS build-saga-loyalty
-COPY examples/kotlin/saga-loyalty/build.gradle.kts examples/kotlin/saga-loyalty/settings.gradle.kts ./
-COPY examples/kotlin/saga-loyalty/gradle/ ./gradle/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle dependencies --no-daemon || true
-COPY examples/kotlin/saga-loyalty/src/ ./src/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle shadowJar --no-daemon
-
-FROM builder AS build-projector-receipt
-COPY examples/kotlin/projector-receipt/build.gradle.kts examples/kotlin/projector-receipt/settings.gradle.kts ./
-COPY examples/kotlin/projector-receipt/gradle/ ./gradle/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle dependencies --no-daemon || true
-COPY examples/kotlin/projector-receipt/src/ ./src/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle shadowJar --no-daemon
-
-FROM builder AS build-projector-log-customer
-COPY examples/kotlin/projector-log-customer/build.gradle.kts examples/kotlin/projector-log-customer/settings.gradle.kts ./
-COPY examples/kotlin/projector-log-customer/gradle/ ./gradle/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle dependencies --no-daemon || true
-COPY examples/kotlin/projector-log-customer/src/ ./src/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle shadowJar --no-daemon
-
-FROM builder AS build-projector-log-transaction
-COPY examples/kotlin/projector-log-transaction/build.gradle.kts examples/kotlin/projector-log-transaction/settings.gradle.kts ./
-COPY examples/kotlin/projector-log-transaction/gradle/ ./gradle/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle dependencies --no-daemon || true
-COPY examples/kotlin/projector-log-transaction/src/ ./src/
-RUN --mount=type=cache,target=/home/gradle/.gradle \
-    gradle shadowJar --no-daemon
+# Resolve all dependencies in one layer with persistent cache
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    for dir in /deps/*/; do \
+        cd "$dir" && gradle dependencies --no-daemon 2>/dev/null || true; \
+    done
 
 # ============================================================================
-# Runtime base
+# Create minimal JRE with jlink
 # ============================================================================
-FROM docker.io/library/eclipse-temurin:21-jre-alpine AS runtime
-RUN apk --no-cache add ca-certificates
+FROM builder AS jlink
+
+RUN jlink \
+    --add-modules java.base,java.logging,java.naming,java.net.http,java.security.jgss,java.sql,jdk.unsupported \
+    --strip-debug \
+    --no-header-files \
+    --no-man-pages \
+    --compress=2 \
+    --output /jre-minimal
+
+# ============================================================================
+# Service builds - each builds a shadow JAR
+# ============================================================================
+FROM deps-fetcher AS build-customer
+WORKDIR /build
+COPY examples/kotlin/customer/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-product
+WORKDIR /build
+COPY examples/kotlin/product/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-cart
+WORKDIR /build
+COPY examples/kotlin/cart/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-order
+WORKDIR /build
+COPY examples/kotlin/order/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-inventory
+WORKDIR /build
+COPY examples/kotlin/inventory/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-fulfillment
+WORKDIR /build
+COPY examples/kotlin/fulfillment/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-saga-fulfillment
+WORKDIR /build
+COPY examples/kotlin/saga-fulfillment/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-saga-loyalty-earn
+WORKDIR /build
+COPY examples/kotlin/saga-loyalty-earn/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-saga-cancellation
+WORKDIR /build
+COPY examples/kotlin/saga-cancellation/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+FROM deps-fetcher AS build-projector-receipt
+WORKDIR /build
+COPY examples/kotlin/projector-receipt/ ./
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle,sharing=locked \
+    gradle shadowJar --no-daemon
+
+# ============================================================================
+# Runtime base - distroless with custom minimal JRE
+# ============================================================================
+FROM gcr.io/distroless/base-debian12:nonroot AS runtime
+COPY --from=jlink /jre-minimal /jre
+ENV PATH="/jre/bin:$PATH"
 WORKDIR /app
+USER nonroot:nonroot
 
 # ============================================================================
-# Service-specific images
+# Domain Aggregates
 # ============================================================================
 FROM runtime AS customer
-COPY --from=build-customer /app/build/libs/*-all.jar ./server.jar
+COPY --from=build-customer --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
 ENV PORT=50500
 EXPOSE 50500
-CMD ["java", "-jar", "server.jar"]
+ENTRYPOINT ["java", "-jar", "server.jar"]
 
-FROM runtime AS transaction
-COPY --from=build-transaction /app/build/libs/*-all.jar ./server.jar
+FROM runtime AS product
+COPY --from=build-product --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
 ENV PORT=50501
 EXPOSE 50501
-CMD ["java", "-jar", "server.jar"]
+ENTRYPOINT ["java", "-jar", "server.jar"]
 
-FROM runtime AS saga-loyalty
-COPY --from=build-saga-loyalty /app/build/libs/*-all.jar ./server.jar
+FROM runtime AS cart
+COPY --from=build-cart --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
 ENV PORT=50502
 EXPOSE 50502
-CMD ["java", "-jar", "server.jar"]
+ENTRYPOINT ["java", "-jar", "server.jar"]
 
-FROM runtime AS projector-receipt
-COPY --from=build-projector-receipt /app/build/libs/*-all.jar ./server.jar
+FROM runtime AS order
+COPY --from=build-order --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
 ENV PORT=50503
 EXPOSE 50503
-CMD ["java", "-jar", "server.jar"]
+ENTRYPOINT ["java", "-jar", "server.jar"]
 
-FROM runtime AS projector-log-customer
-COPY --from=build-projector-log-customer /app/build/libs/*-all.jar ./server.jar
+FROM runtime AS inventory
+COPY --from=build-inventory --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
 ENV PORT=50504
 EXPOSE 50504
-CMD ["java", "-jar", "server.jar"]
+ENTRYPOINT ["java", "-jar", "server.jar"]
 
-FROM runtime AS projector-log-transaction
-COPY --from=build-projector-log-transaction /app/build/libs/*-all.jar ./server.jar
+FROM runtime AS fulfillment
+COPY --from=build-fulfillment --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
 ENV PORT=50505
 EXPOSE 50505
-CMD ["java", "-jar", "server.jar"]
+ENTRYPOINT ["java", "-jar", "server.jar"]
+
+# ============================================================================
+# Sagas
+# ============================================================================
+FROM runtime AS saga-fulfillment
+COPY --from=build-saga-fulfillment --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
+ENV PORT=50510
+EXPOSE 50510
+ENTRYPOINT ["java", "-jar", "server.jar"]
+
+FROM runtime AS saga-loyalty-earn
+COPY --from=build-saga-loyalty-earn --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
+ENV PORT=50511
+EXPOSE 50511
+ENTRYPOINT ["java", "-jar", "server.jar"]
+
+FROM runtime AS saga-cancellation
+COPY --from=build-saga-cancellation --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
+ENV PORT=50512
+EXPOSE 50512
+ENTRYPOINT ["java", "-jar", "server.jar"]
+
+# ============================================================================
+# Projectors
+# ============================================================================
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt --chown=nonroot:nonroot /build/build/libs/*-all.jar ./server.jar
+ENV PORT=50520
+EXPOSE 50520
+ENTRYPOINT ["java", "-jar", "server.jar"]

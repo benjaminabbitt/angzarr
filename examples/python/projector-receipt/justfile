@@ -34,9 +34,24 @@ debug: setup
 run-port port:
     PORT={{port}} uv run python server.py
 
-# Run tests
-test: setup
-    uv run pytest -v
+# Copy feature files from shared location
+copy-features:
+    rm -rf features
+    cp -r {{TOP}}/examples/features .
+
+# Run unit tests (no infrastructure required)
+unit: setup
+    uv run pytest -v --ignore=features/ --ignore=acceptance/
+
+# Run acceptance tests (requires Kind cluster)
+acceptance: setup copy-features
+    ANGZARR_TEST_MODE=container uv run pytest -v features/
+
+# Run all tests
+test: unit acceptance
+
+# Run unit tests only
+test-unit: unit
 
 # Clean
 clean:

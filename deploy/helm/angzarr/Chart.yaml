@@ -21,3 +21,9 @@ dependencies:
     version: "16.x.x"
     repository: "https://charts.bitnami.com/bitnami"
     condition: mongodb.enabled
+  - name: postgresql
+    version: "16.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  # EventStoreDB: Use local chart in deploy/helm/eventstore
+  # Install separately: helm install eventstore ../eventstore

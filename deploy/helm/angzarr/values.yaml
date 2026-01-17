@@ -4,7 +4,6 @@
 replicaCount: 1
 
 # Angzarr sidecar images (separate binaries per mode)
-# angzarr-standalone is for local development only, not deployed to K8s
 images:
   entity:
     repository: angzarr-entity
@@ -56,6 +55,10 @@ service:
   type: ClusterIP
   entityPort: 1313
   queryPort: 1314
+  # NodePort for local development access
+  nodePort:
+    enabled: false
+    entity: 30051
 
 # Service discovery configuration
 serviceDiscovery:
@@ -142,13 +145,8 @@ affinity: {}
 
 # Storage configuration for angzarr
 storage:
-  # sqlite or mongodb
+  # Options: mongodb, postgres, eventstoredb
   type: mongodb
-  sqlite:
-    persistence:
-      enabled: true
-      size: 1Gi
-      storageClass: ""
   mongodb:
     # Connection URI (credentials should be set via --set or secretRef)
     uri: "mongodb://mongodb:27017"
@@ -158,6 +156,17 @@ storage:
     secretKeys:
       username: "username"
       password: "password"
+  postgres:
+    # Connection URI (credentials should be set via --set or secretRef)
+    uri: "postgres://postgresql:5432/angzarr"
+    # Use existing secret for credentials
+    existingSecret: ""
+    secretKeys:
+      username: "username"
+      password: "password"
+  eventstoredb:
+    # EventStoreDB connection string
+    connectionString: "esdb://eventstore:2113?tls=false"
 
 # AMQP/RabbitMQ configuration for event bus
 amqp:
@@ -186,6 +195,22 @@ mongodb:
     databases: ["angzarr"]
   persistence:
     size: 8Gi
+
+# PostgreSQL subchart configuration (Bitnami)
+postgresql:
+  enabled: false
+  auth:
+    # Required: set via --set or values file, never commit credentials
+    postgresPassword: ""
+    username: "angzarr"
+    password: ""  # Set via --set postgresql.auth.password=<password>
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 8Gi
+
+# EventStoreDB: Deploy separately using deploy/helm/eventstore
+# Example: helm install eventstore ./deploy/helm/eventstore -n angzarr
 
 # Main application containers - angzarr runs as sidecar to these
 # Each application type gets angzarr infrastructure
@@ -286,4 +311,6 @@ externalSecrets:
   mongodb:
     secretName: "angzarr-secrets"
   rabbitmq:
+    secretName: "angzarr-secrets"
+  postgresql:
     secretName: "angzarr-secrets"

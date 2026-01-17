@@ -1,0 +1,30 @@
+# PostgreSQL storage values for angzarr
+# Uses PostgreSQL instead of MongoDB for event storage
+
+# PostgreSQL storage
+storage:
+  type: postgres
+  postgres:
+    uri: "postgres://angzarr:angzarr@angzarr-postgresql:5432/angzarr"
+
+# Disable MongoDB (default), enable PostgreSQL
+mongodb:
+  enabled: false
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "postgres"
+    username: "angzarr"
+    password: "angzarr"
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"

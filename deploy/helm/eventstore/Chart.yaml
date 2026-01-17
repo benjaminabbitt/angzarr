@@ -1,0 +1,12 @@
+apiVersion: v2
+name: eventstore
+description: EventStoreDB for Angzarr event storage
+type: application
+version: 0.1.0
+appVersion: "24.10"
+keywords:
+  - eventstore
+  - event-sourcing
+  - database
+maintainers:
+  - name: Benjamin Abbitt

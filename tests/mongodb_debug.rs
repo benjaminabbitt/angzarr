@@ -84,7 +84,12 @@ async fn test_mongodb_roundtrip() {
         );
     }
 
-    assert_eq!(retrieved.len(), 2, "Expected 2 events, got {}", retrieved.len());
+    assert_eq!(
+        retrieved.len(),
+        2,
+        "Expected 2 events, got {}",
+        retrieved.len()
+    );
 
     // Also test get_from
     println!("Testing get_from(0)...");

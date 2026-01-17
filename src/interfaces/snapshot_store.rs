@@ -13,9 +13,9 @@ use crate::proto::Snapshot;
 /// the snapshot sequence onwards.
 ///
 /// Implementations:
-/// - `SqliteSnapshotStore` (now): Direct SQLite access
-/// - `PostgresSnapshotStore` (future): Direct Postgres access
-/// - `SidecarSnapshotStoreClient` (future): gRPC to storage sidecar
+/// - `MongoSnapshotStore`: MongoDB storage
+/// - `PostgresSnapshotStore`: PostgreSQL storage
+/// - `EventStoreDbSnapshotStore`: EventStoreDB storage
 #[async_trait]
 pub trait SnapshotStore: Send + Sync {
     /// Retrieve the latest snapshot for an aggregate.

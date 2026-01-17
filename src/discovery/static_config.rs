@@ -43,7 +43,10 @@ pub async fn load_from_env(registry: Arc<ServiceRegistry>) -> Result<(), String>
 }
 
 /// Parse COMMAND_HANDLERS format: "domain1=addr1:port1,domain2=addr2:port2"
-async fn parse_command_handlers(handlers: &str, registry: Arc<ServiceRegistry>) -> Result<(), String> {
+async fn parse_command_handlers(
+    handlers: &str,
+    registry: Arc<ServiceRegistry>,
+) -> Result<(), String> {
     let mut count = 0;
 
     for pair in handlers.split(',') {
@@ -61,9 +64,8 @@ async fn parse_command_handlers(handlers: &str, registry: Arc<ServiceRegistry>) 
         let domain = parts[0].trim().to_string();
         let addr_str = parts[1].trim();
 
-        let (address, port) = parse_address(addr_str).map_err(|e| {
-            format!("Invalid address for domain '{}': {}", domain, e)
-        })?;
+        let (address, port) = parse_address(addr_str)
+            .map_err(|e| format!("Invalid address for domain '{}': {}", domain, e))?;
 
         info!(
             domain = %domain,
@@ -130,7 +132,8 @@ mod tests {
 
     #[test]
     fn test_parse_address_with_hostname_and_port() {
-        let (host, port) = parse_address("angzarr-customer.angzarr.svc.cluster.local:50051").unwrap();
+        let (host, port) =
+            parse_address("angzarr-customer.angzarr.svc.cluster.local:50051").unwrap();
         assert_eq!(host, "angzarr-customer.angzarr.svc.cluster.local");
         assert_eq!(port, 50051);
     }
@@ -146,7 +149,9 @@ mod tests {
         let registry = Arc::new(ServiceRegistry::new());
         let handlers = "customer=localhost:50051,transaction=localhost:50052";
 
-        parse_command_handlers(handlers, registry.clone()).await.unwrap();
+        parse_command_handlers(handlers, registry.clone())
+            .await
+            .unwrap();
 
         assert!(registry.has_domain("customer").await);
         assert!(registry.has_domain("transaction").await);
@@ -158,7 +163,9 @@ mod tests {
         let registry = Arc::new(ServiceRegistry::new());
         let handlers = " customer = localhost:50051 , transaction = localhost:50052 ";
 
-        parse_command_handlers(handlers, registry.clone()).await.unwrap();
+        parse_command_handlers(handlers, registry.clone())
+            .await
+            .unwrap();
 
         assert!(registry.has_domain("customer").await);
         assert!(registry.has_domain("transaction").await);

@@ -11,9 +11,9 @@ Feature: Customer Business Logic
     And the event has name "Alice"
     And the event has email "alice@example.com"
 
-  Scenario: Cannot create customer twice
+  Scenario: Cannot create customer with same email
     Given a CustomerCreated event with name "Bob" and email "bob@example.com"
-    When I handle a CreateCustomer command with name "Bob2" and email "bob2@example.com"
+    When I handle a CreateCustomer command with name "Robert" and email "bob@example.com"
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "already exists"
 

@@ -12,11 +12,13 @@ data:
 
     storage:
       type: {{ .Values.storage.type }}
-      sqlite:
-        path: /app/data/events.db
       mongodb:
         uri: {{ .Values.storage.mongodb.uri | default "mongodb://localhost:27017" | quote }}
         database: {{ .Values.storage.mongodb.database | default "angzarr" | quote }}
+      postgres:
+        uri: {{ .Values.storage.postgres.uri | default "postgres://localhost:5432/angzarr" | quote }}
+      eventstoredb:
+        connection_string: {{ .Values.storage.eventstoredb.connectionString | default "esdb://localhost:2113?tls=false" | quote }}
 
     server:
       entity_port: {{ .Values.service.entityPort }}

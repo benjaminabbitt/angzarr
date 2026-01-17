@@ -95,10 +95,8 @@ impl K8sServiceDiscovery {
 
             let watcher = watcher::watcher(
                 services,
-                watcher::Config::default().labels(&format!(
-                    "{}={}",
-                    COMPONENT_LABEL, COMPONENT_VALUE
-                )),
+                watcher::Config::default()
+                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_VALUE)),
             );
 
             info!("Starting K8s service watcher");

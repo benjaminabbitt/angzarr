@@ -29,6 +29,8 @@ pub struct MockEventStore {
     events: RwLock<HashMap<(String, Uuid), Vec<EventPage>>>,
     fail_on_add: RwLock<bool>,
     fail_on_get: RwLock<bool>,
+    /// Override for get_next_sequence. When set, returns this value instead of events.len().
+    next_sequence_override: RwLock<Option<u32>>,
 }
 
 impl MockEventStore {
@@ -42,6 +44,17 @@ impl MockEventStore {
 
     pub async fn set_fail_on_get(&self, fail: bool) {
         *self.fail_on_get.write().await = fail;
+    }
+
+    /// Set the next sequence value to return from get_next_sequence.
+    /// When set, overrides the computed value (events.len()).
+    pub async fn set_next_sequence(&self, seq: u32) {
+        *self.next_sequence_override.write().await = Some(seq);
+    }
+
+    /// Clear the next sequence override, reverting to computed value.
+    pub async fn clear_next_sequence_override(&self) {
+        *self.next_sequence_override.write().await = None;
     }
 }
 
@@ -118,6 +131,10 @@ impl EventStore for MockEventStore {
     }
 
     async fn get_next_sequence(&self, domain: &str, root: Uuid) -> StorageResult<u32> {
+        // Return override if set, otherwise compute from events
+        if let Some(seq) = *self.next_sequence_override.read().await {
+            return Ok(seq);
+        }
         let events = self.get(domain, root).await?;
         Ok(events.len() as u32)
     }

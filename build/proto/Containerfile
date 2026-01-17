@@ -1,7 +1,7 @@
 # Protobuf generation container
 # Generates proto files for Rust, Python, Go, and Ruby
 
-FROM golang:1.23-bookworm AS base
+FROM docker.io/library/golang:1.23-bookworm AS base
 
 # Install protoc and base dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

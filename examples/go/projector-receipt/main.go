@@ -1,5 +1,5 @@
 // Package main provides the Receipt Projector - Go Implementation.
-// Generates human-readable receipts when transactions complete.
+// Generates human-readable receipts when orders complete.
 package main
 
 import (
@@ -43,35 +43,35 @@ func (s *server) HandleSync(ctx context.Context, req *angzarr.EventBook) (*angza
 	return project(req), nil
 }
 
-// project rebuilds transaction state and generates a receipt if completed.
+// project rebuilds order state and generates a receipt if completed.
 func project(eventBook *angzarr.EventBook) *angzarr.Projection {
 	if eventBook == nil || len(eventBook.Pages) == 0 {
 		return nil
 	}
 
-	// Rebuild transaction state from all events
+	// Rebuild order state from all events
 	state := projectorLogic.RebuildState(eventBook)
 
-	// Only generate receipt if transaction completed
+	// Only generate receipt if order completed
 	if !state.IsComplete() {
 		return nil
 	}
 
-	transactionID := ""
+	orderID := ""
 	if eventBook.Cover != nil && eventBook.Cover.Root != nil {
-		transactionID = hex.EncodeToString(eventBook.Cover.Root.Value)
+		orderID = hex.EncodeToString(eventBook.Cover.Root.Value)
 	}
 
-	shortID := transactionID
+	shortID := orderID
 	if len(shortID) > 16 {
 		shortID = shortID[:16]
 	}
 
 	// Generate receipt using logic package
-	receipt := projectorLogic.GenerateReceipt(transactionID, state)
+	receipt := projectorLogic.GenerateReceipt(orderID, state)
 
 	logger.Info("generated receipt",
-		zap.String("transaction_id", shortID),
+		zap.String("order_id", shortID),
 		zap.Int32("total_cents", state.FinalTotalCents),
 		zap.String("payment_method", state.PaymentMethod))
 
@@ -111,7 +111,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "50055"
+		port = "50210"
 	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
@@ -132,7 +132,7 @@ func main() {
 	logger.Info("projector server started",
 		zap.String("name", ProjectorName),
 		zap.String("port", port),
-		zap.String("listens_to", "transaction domain"))
+		zap.String("listens_to", "order domain"))
 
 	if err := s.Serve(lis); err != nil {
 		logger.Fatal("failed to serve", zap.Error(err))

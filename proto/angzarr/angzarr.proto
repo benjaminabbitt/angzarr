@@ -102,6 +102,9 @@ message SagaCompensationFailed {
 }
 
 message CommandPage {
+  // Expected sequence number for this command's events.
+  // Must match the aggregate's current next sequence (i.e., events.len()).
+  // For new aggregates, use 0.
   uint32 sequence = 1;
   bool synchronous = 2;
   google.protobuf.Any command = 3;
@@ -112,7 +115,10 @@ message CommandBook {
   repeated CommandPage pages = 2;
   string correlation_id = 3;
   SagaCommandOrigin saga_origin = 4;  // Tracks origin for compensation flow
-  bool auto_resequence = 5;           // Retry on sequence conflicts
+  // Skip sequence pre-validation and rely on write-time conflict detection.
+  // Use sparingly: intended for saga-generated commands where the outcome
+  // is predetermined by events that have already occurred.
+  bool auto_resequence = 5;
   bool fact = 6;                      // Business logic should try hard to succeed
 }
 

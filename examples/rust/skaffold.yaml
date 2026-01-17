@@ -13,42 +13,61 @@ build:
     push: true
     useBuildkit: false
   artifacts:
-    # Rust example services
+    # Domain Aggregates
     - image: localhost:5001/entity-customer-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: customer
 
-    - image: localhost:5001/entity-transaction-rs
+    - image: localhost:5001/entity-product-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: transaction
+        target: product
 
-    - image: localhost:5001/saga-loyalty-rs
+    - image: localhost:5001/entity-inventory-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-loyalty
+        target: inventory
 
-    - image: localhost:5001/projector-receipt-rs
+    - image: localhost:5001/entity-order-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: projector-receipt
+        target: order
 
-    - image: localhost:5001/projector-log-customer-rs
+    - image: localhost:5001/entity-cart-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: projector-log-customer
+        target: cart
 
-    - image: localhost:5001/projector-log-transaction-rs
+    - image: localhost:5001/entity-fulfillment-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: projector-log-transaction
+        target: fulfillment
+
+    # Sagas
+    - image: localhost:5001/saga-loyalty-earn-rs
+      context: ../..
+      docker:
+        dockerfile: examples/rust/Containerfile
+        target: saga-loyalty-earn
+
+    - image: localhost:5001/saga-fulfillment-rs
+      context: ../..
+      docker:
+        dockerfile: examples/rust/Containerfile
+        target: saga-fulfillment
+
+    - image: localhost:5001/saga-cancellation-rs
+      context: ../..
+      docker:
+        dockerfile: examples/rust/Containerfile
+        target: saga-cancellation
 
 deploy:
   helm:
@@ -59,6 +78,27 @@ deploy:
         createNamespace: true
         valuesFiles:
           - ../../deploy/helm/angzarr/values-rust.yaml
+        setValueTemplates:
+          # Business entity images
+          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_customer_rs}}"
+          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_customer_rs}}"
+          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_product_rs}}"
+          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_product_rs}}"
+          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_inventory_rs}}"
+          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_inventory_rs}}"
+          applications.business[3].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_order_rs}}"
+          applications.business[3].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_order_rs}}"
+          applications.business[4].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_cart_rs}}"
+          applications.business[4].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_cart_rs}}"
+          applications.business[5].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_fulfillment_rs}}"
+          applications.business[5].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_fulfillment_rs}}"
+          # Saga images
+          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_loyalty_earn_rs}}"
+          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_loyalty_earn_rs}}"
+          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_fulfillment_rs}}"
+          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_fulfillment_rs}}"
+          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_cancellation_rs}}"
+          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_cancellation_rs}}"
 
 profiles:
   - name: dev
@@ -67,12 +107,3 @@ profiles:
     build:
       local:
         push: true
-
-  - name: debug
-    build:
-      artifacts:
-        - image: localhost:5001/entity-customer-rs
-          context: ../..
-          docker:
-            dockerfile: examples/rust/Containerfile.dev
-            target: customer

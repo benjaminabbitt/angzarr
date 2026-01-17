@@ -3,11 +3,15 @@ members = [
     ".",
     "examples/rust/common",
     "examples/rust/customer",
-    "examples/rust/transaction",
-    "examples/rust/saga-loyalty",
+    "examples/rust/product",
+    "examples/rust/inventory",
+    "examples/rust/order",
+    "examples/rust/cart",
+    "examples/rust/fulfillment",
+    "examples/rust/saga-loyalty-earn",
+    "examples/rust/saga-fulfillment",
+    "examples/rust/saga-cancellation",
     "examples/rust/projector-receipt",
-    "examples/rust/projector-log-customer",
-    "examples/rust/projector-log-transaction",
 ]
 resolver = "2"
 
@@ -35,8 +39,11 @@ tokio = { version = "1", features = ["full"] }
 
 # Storage - Query builder approach (like jOOQ)
 sea-query = "0.32"
-sea-query-binder = { version = "0.7", features = ["sqlx-sqlite"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sea-query-binder = { version = "0.7", features = ["sqlx-sqlite", "sqlx-postgres"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres"] }
+
+# EventStoreDB
+eventstore = "3"
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -96,12 +103,20 @@ futures = "0.3"
 common = { path = "examples/rust/common" }
 
 [[test]]
-name = "acceptance"
+name = "container_integration"
 harness = false
 
 [[test]]
-name = "container_integration"
-harness = false
+name = "gateway_integration"
+path = "tests/integration/gateway_test.rs"
+
+[[test]]
+name = "streaming_integration"
+path = "tests/integration/streaming_test.rs"
+
+[[test]]
+name = "query_integration"
+path = "tests/integration/query_test.rs"
 
 [[test]]
 name = "mongodb_debug"

@@ -9,7 +9,8 @@ Angzarr provides the infrastructure layer for event-sourced systems:
 - Snapshot optimization for aggregate replay
 - gRPC event distribution
 - Projector and saga coordination
-- Multi-language support (Python, Go, Rust, and more)
+
+Business logic runs as external gRPC services, so teams can use whatever language fits their needs.
 
 ## Documentation
 
@@ -271,16 +272,11 @@ class LoyaltyPointsSaga:
 - Command routing to the correct business logic service
 - Projection coordination and event delivery guarantees
 
-### Multi-Language Support
+### Language Agnostic
 
-Write business logic in your preferred language. All examples ship in Rust, Go, and Python with identical semantics:
+Since Angzarr communicates via gRPC, each component can be written in whatever language makes sense. Data scientists might write projectors in Python while backend engineers implement entities in Go or Java—they interoperate seamlessly.
 
-```
-examples/
-├── rust/customer/     # Rust entity
-├── go/customer/       # Go entity
-├── python/customer/   # Python entity
-```
+The `examples/` directory provides working implementations in several languages with all the gRPC/protobuf boilerplate handled. Copy an example, write your business logic, and deploy. If you find the examples can be improved, contributions are welcome.
 
 ### Behavior-Driven Development
 

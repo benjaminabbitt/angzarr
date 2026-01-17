@@ -1,0 +1,32 @@
+# Business Logic - Kotlin
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+build:
+    ./gradlew build -x test
+
+run:
+    ./gradlew run
+
+clean:
+    ./gradlew clean
+
+copy-features:
+    rm -rf src/test/resources/features
+    mkdir -p src/test/resources
+    cp -r {{TOP}}/examples/features src/test/resources/
+
+unit:
+    ./gradlew test --tests '*Test'
+
+acceptance: copy-features
+    ANGZARR_TEST_MODE=container ./gradlew test --tests '*IT'
+
+test: unit acceptance
+
+test-unit: unit

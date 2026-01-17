@@ -10,15 +10,15 @@ import (
 
 // ReceiptProjectorLogic provides business logic operations for the receipt projector.
 type ReceiptProjectorLogic interface {
-	// RebuildState reconstructs transaction state from an event book.
-	RebuildState(eventBook *angzarr.EventBook) *TransactionState
+	// RebuildState reconstructs order state from an event book.
+	RebuildState(eventBook *angzarr.EventBook) *OrderState
 
-	// GenerateReceipt creates a receipt from completed transaction state.
-	// Returns nil if transaction is not completed.
-	GenerateReceipt(transactionID string, state *TransactionState) *examples.Receipt
+	// GenerateReceipt creates a receipt from completed order state.
+	// Returns nil if order is not completed.
+	GenerateReceipt(orderID string, state *OrderState) *examples.Receipt
 
 	// FormatReceipt generates the human-readable receipt text.
-	FormatReceipt(transactionID string, state *TransactionState) string
+	FormatReceipt(orderID string, state *OrderState) string
 }
 
 // DefaultReceiptProjectorLogic is the default implementation of ReceiptProjectorLogic.
@@ -29,9 +29,9 @@ func NewReceiptProjectorLogic() ReceiptProjectorLogic {
 	return &DefaultReceiptProjectorLogic{}
 }
 
-// RebuildState reconstructs transaction state from events.
-func (l *DefaultReceiptProjectorLogic) RebuildState(eventBook *angzarr.EventBook) *TransactionState {
-	state := EmptyTransactionState()
+// RebuildState reconstructs order state from events.
+func (l *DefaultReceiptProjectorLogic) RebuildState(eventBook *angzarr.EventBook) *OrderState {
+	state := EmptyOrderState()
 
 	if eventBook == nil || len(eventBook.Pages) == 0 {
 		return state
@@ -44,26 +44,32 @@ func (l *DefaultReceiptProjectorLogic) RebuildState(eventBook *angzarr.EventBook
 		}
 
 		switch {
-		case page.Event.MessageIs(&examples.TransactionCreated{}):
-			var event examples.TransactionCreated
+		case page.Event.MessageIs(&examples.OrderCreated{}):
+			var event examples.OrderCreated
 			if err := page.Event.UnmarshalTo(&event); err == nil {
 				state.CustomerID = event.CustomerId
 				state.Items = event.Items
 				state.SubtotalCents = event.SubtotalCents
 			}
 
-		case page.Event.MessageIs(&examples.DiscountApplied{}):
-			var event examples.DiscountApplied
+		case page.Event.MessageIs(&examples.LoyaltyDiscountApplied{}):
+			var event examples.LoyaltyDiscountApplied
 			if err := page.Event.UnmarshalTo(&event); err == nil {
-				state.DiscountType = event.DiscountType
+				state.LoyaltyPointsUsed = event.PointsUsed
 				state.DiscountCents = event.DiscountCents
 			}
 
-		case page.Event.MessageIs(&examples.TransactionCompleted{}):
-			var event examples.TransactionCompleted
+		case page.Event.MessageIs(&examples.PaymentSubmitted{}):
+			var event examples.PaymentSubmitted
+			if err := page.Event.UnmarshalTo(&event); err == nil {
+				state.PaymentMethod = event.PaymentMethod
+			}
+
+		case page.Event.MessageIs(&examples.OrderCompleted{}):
+			var event examples.OrderCompleted
 			if err := page.Event.UnmarshalTo(&event); err == nil {
 				state.FinalTotalCents = event.FinalTotalCents
-				state.PaymentMethod = event.PaymentMethod
+				state.PaymentReference = event.PaymentReference
 				state.LoyaltyPointsEarned = event.LoyaltyPointsEarned
 				state.Completed = true
 			}
@@ -73,16 +79,16 @@ func (l *DefaultReceiptProjectorLogic) RebuildState(eventBook *angzarr.EventBook
 	return state
 }
 
-// GenerateReceipt creates a receipt from completed transaction state.
-func (l *DefaultReceiptProjectorLogic) GenerateReceipt(transactionID string, state *TransactionState) *examples.Receipt {
+// GenerateReceipt creates a receipt from completed order state.
+func (l *DefaultReceiptProjectorLogic) GenerateReceipt(orderID string, state *OrderState) *examples.Receipt {
 	if !state.IsComplete() {
 		return nil
 	}
 
-	receiptText := l.FormatReceipt(transactionID, state)
+	receiptText := l.FormatReceipt(orderID, state)
 
 	return &examples.Receipt{
-		TransactionId:       transactionID,
+		OrderId:             orderID,
 		CustomerId:          state.CustomerID,
 		Items:               state.Items,
 		SubtotalCents:       state.SubtotalCents,
@@ -95,12 +101,12 @@ func (l *DefaultReceiptProjectorLogic) GenerateReceipt(transactionID string, sta
 }
 
 // FormatReceipt generates the human-readable receipt text.
-func (l *DefaultReceiptProjectorLogic) FormatReceipt(transactionID string, state *TransactionState) string {
+func (l *DefaultReceiptProjectorLogic) FormatReceipt(orderID string, state *OrderState) string {
 	var lines []string
 
-	shortTxID := transactionID
-	if len(shortTxID) > 16 {
-		shortTxID = shortTxID[:16]
+	shortOrderID := orderID
+	if len(shortOrderID) > 16 {
+		shortOrderID = shortOrderID[:16]
 	}
 
 	shortCustID := state.CustomerID
@@ -111,7 +117,7 @@ func (l *DefaultReceiptProjectorLogic) FormatReceipt(transactionID string, state
 	lines = append(lines, strings.Repeat("═", 40))
 	lines = append(lines, "           RECEIPT")
 	lines = append(lines, strings.Repeat("═", 40))
-	lines = append(lines, fmt.Sprintf("Transaction: %s...", shortTxID))
+	lines = append(lines, fmt.Sprintf("Order: %s...", shortOrderID))
 	if state.CustomerID != "" {
 		lines = append(lines, fmt.Sprintf("Customer: %s...", shortCustID))
 	} else {
@@ -133,9 +139,9 @@ func (l *DefaultReceiptProjectorLogic) FormatReceipt(transactionID string, state
 	lines = append(lines, fmt.Sprintf("Subtotal:              $%.2f", float64(state.SubtotalCents)/100))
 
 	if state.DiscountCents > 0 {
-		lines = append(lines, fmt.Sprintf("Discount (%s):       -$%.2f",
-			state.DiscountType,
+		lines = append(lines, fmt.Sprintf("Loyalty Discount:     -$%.2f",
 			float64(state.DiscountCents)/100))
+		lines = append(lines, fmt.Sprintf("  (Used %d points)", state.LoyaltyPointsUsed))
 	}
 
 	lines = append(lines, strings.Repeat("─", 40))

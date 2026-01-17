@@ -1,1 +1,0 @@
-../../../../features/projector-receipt.feature

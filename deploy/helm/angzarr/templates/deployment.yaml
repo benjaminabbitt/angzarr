@@ -46,6 +46,56 @@ spec:
       serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
       securityContext:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if eq $.Values.storage.type "mongodb" }}
+        # Wait for MongoDB to be ready with proper connectivity check
+        - name: wait-for-mongodb
+          image: "{{ $.Values.mongodb.image.registry }}/{{ $.Values.mongodb.image.repository }}:{{ $.Values.mongodb.image.tag }}"
+          command:
+            - bash
+            - -c
+            - |
+              echo "Waiting for MongoDB to be ready..."
+              MAX_ATTEMPTS=60
+              ATTEMPT=0
+              until mongosh --quiet \
+                --host "{{ $.Release.Name }}-mongodb-headless" \
+                --username "{{ index $.Values.mongodb.auth.usernames 0 }}" \
+                --password "{{ index $.Values.mongodb.auth.passwords 0 }}" \
+                --authenticationDatabase "{{ index $.Values.mongodb.auth.databases 0 }}" \
+                --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null | grep -q 1; do
+                ATTEMPT=$((ATTEMPT + 1))
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                  echo "Timeout waiting for MongoDB"
+                  exit 1
+                fi
+                echo "MongoDB not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
+                sleep 2
+              done
+              echo "MongoDB is ready"
+        {{- end }}
+        {{- if $.Values.amqp.enabled }}
+        # Wait for RabbitMQ to be ready - check management API for status
+        - name: wait-for-rabbitmq
+          image: curlimages/curl:8.5.0
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ to be ready..."
+              MAX_ATTEMPTS=60
+              ATTEMPT=0
+              until curl -sf -u guest:guest http://{{ $.Release.Name }}-rabbitmq:15672/api/healthchecks/node 2>/dev/null | grep -q '"status":"ok"'; do
+                ATTEMPT=$((ATTEMPT + 1))
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                  echo "Timeout waiting for RabbitMQ"
+                  exit 1
+                fi
+                echo "RabbitMQ not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
+                sleep 2
+              done
+              echo "RabbitMQ is ready"
+        {{- end }}
       containers:
         # Main container: Business logic application
         - name: {{ .name }}
@@ -56,6 +106,8 @@ spec:
               containerPort: {{ .port }}
               protocol: TCP
           env:
+            - name: PORT
+              value: "{{ .port }}"
             - name: GRPC_PORT
               value: "{{ .port }}"
             - name: DOMAIN
@@ -139,21 +191,10 @@ spec:
             - name: config
               mountPath: /app/config
               readOnly: true
-            {{- if eq $.Values.storage.type "sqlite" }}
-            - name: data
-              mountPath: /app/data
-            {{- end }}
       volumes:
         - name: config
           configMap:
             name: {{ include "angzarr.fullname" $ }}-config
-        - name: data
-          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "angzarr.fullname" $ }}-{{ .name }}-data
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -212,6 +253,29 @@ spec:
       serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
       securityContext:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if $.Values.amqp.enabled }}
+        # Wait for RabbitMQ to be ready (projectors subscribe to events via AMQP)
+        - name: wait-for-rabbitmq
+          image: curlimages/curl:8.5.0
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ to be ready..."
+              MAX_ATTEMPTS=60
+              ATTEMPT=0
+              until curl -sf -u guest:guest http://{{ $.Release.Name }}-rabbitmq:15672/api/healthchecks/node 2>/dev/null | grep -q '"status":"ok"'; do
+                ATTEMPT=$((ATTEMPT + 1))
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                  echo "Timeout waiting for RabbitMQ"
+                  exit 1
+                fi
+                echo "RabbitMQ not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
+                sleep 2
+              done
+              echo "RabbitMQ is ready"
+        {{- end }}
       containers:
         # Main container: Projector application
         - name: {{ .name }}
@@ -223,6 +287,8 @@ spec:
               protocol: TCP
           env:
             # gRPC port this projector listens on
+            - name: PORT
+              value: "{{ .port | default 50051 }}"
             - name: GRPC_PORT
               value: "{{ .port | default 50051 }}"
             # Angzarr sidecar endpoints
@@ -299,13 +365,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "angzarr.fullname" $ }}-config
-        - name: data
-          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "angzarr.fullname" $ }}-shared-data
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -364,6 +423,29 @@ spec:
       serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
       securityContext:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if $.Values.amqp.enabled }}
+        # Wait for RabbitMQ to be ready (sagas subscribe to events via AMQP)
+        - name: wait-for-rabbitmq
+          image: curlimages/curl:8.5.0
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ to be ready..."
+              MAX_ATTEMPTS=60
+              ATTEMPT=0
+              until curl -sf -u guest:guest http://{{ $.Release.Name }}-rabbitmq:15672/api/healthchecks/node 2>/dev/null | grep -q '"status":"ok"'; do
+                ATTEMPT=$((ATTEMPT + 1))
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                  echo "Timeout waiting for RabbitMQ"
+                  exit 1
+                fi
+                echo "RabbitMQ not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
+                sleep 2
+              done
+              echo "RabbitMQ is ready"
+        {{- end }}
       containers:
         # Main container: Saga application
         - name: {{ .name }}
@@ -375,6 +457,8 @@ spec:
               protocol: TCP
           env:
             # gRPC port this saga listens on
+            - name: PORT
+              value: "{{ .port | default 50051 }}"
             - name: GRPC_PORT
               value: "{{ .port | default 50051 }}"
             # Angzarr sidecar endpoints
@@ -459,13 +543,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "angzarr.fullname" $ }}-config
-        - name: data
-          {{- if and (eq $.Values.storage.type "sqlite") $.Values.storage.sqlite.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "angzarr.fullname" $ }}-shared-data
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -531,6 +608,8 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
+            - name: PORT
+              value: "{{ .port | default 50051 }}"
             - name: GRPC_PORT
               value: "{{ .Values.infrastructure.stream.port }}"
             {{- if .Values.amqp.enabled }}
@@ -603,6 +682,8 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
+            - name: PORT
+              value: "{{ .port | default 50051 }}"
             - name: GRPC_PORT
               value: "{{ .Values.infrastructure.gateway.port }}"
             # Namespace for K8s service discovery (from downward API)

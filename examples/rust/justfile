@@ -1,146 +1,103 @@
-# Rust example gRPC servers
-# Container: podman build -t angzarr-dev-rust -f examples/rust/Containerfile.dev .
-# Run:       podman run --rm -v .:/app:Z -w /app/examples/rust angzarr-dev-rust just test
+# Rust example gRPC servers for angzarr e-commerce domain
+# Services: customer, product, inventory, order, cart, fulfillment
+# Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
+IMAGE_TAG := "latest"
+REGISTRY_PORT := "5001"
 
 # Show available commands
 default:
     @just --list
 
-# Build dev container
-container-build:
-    cd {{TOP}} && podman build -t angzarr-dev-rust -f examples/rust/Containerfile.dev .
+# ============================================================================
+# Build / Test / Clean (workspace-level)
+# ============================================================================
 
-# Run tests in container
-container-test:
-    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/rust angzarr-dev-rust just test
+# Build all Rust example crates
+build:
+    cargo build --workspace
 
-# === Build ===
+# Run unit tests (inline lib tests, no cluster required)
+test:
+    cargo test --workspace --lib
 
-# Build all Rust example servers
-build: build-customer build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+# Run integration tests (deploys to Kind cluster, runs technical tests)
+integration: setup
+    skaffold run
+    @echo "Waiting for RabbitMQ..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=rabbitmq -n angzarr --timeout=120s || true
+    @echo "Waiting for MongoDB..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n angzarr --timeout=120s || true
+    @echo "Waiting for services to be ready..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
+    TEST_LANGUAGE=rust cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
 
-# Build customer server
-build-customer:
-    cd customer && just build
+# Run acceptance tests (deploys to Kind cluster, runs BDD cucumber tests)
+acceptance: setup
+    skaffold run
+    @echo "Waiting for RabbitMQ..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=rabbitmq -n angzarr --timeout=120s || true
+    @echo "Waiting for MongoDB..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n angzarr --timeout=120s || true
+    @echo "Waiting for services to be ready..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
+    cargo test --workspace --test acceptance
 
-# Build transaction server
-build-transaction:
-    cd transaction && just build
-
-# Build saga-loyalty server
-build-saga-loyalty:
-    cd saga-loyalty && just build
-
-# Build projector-receipt server
-build-projector-receipt:
-    cd projector-receipt && just build
-
-# Build projector-log-customer server
-build-projector-log-customer:
-    cd projector-log-customer && just build
-
-# Build projector-log-transaction server
-build-projector-log-transaction:
-    cd projector-log-transaction && just build
-
-# === Test ===
-
-# Test all Rust examples
-test: test-customer test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
-
-# Test customer
-test-customer:
-    cd customer && just test
-
-# Test transaction
-test-transaction:
-    cd transaction && just test
-
-# Test saga-loyalty
-test-saga-loyalty:
-    cd saga-loyalty && just test
-
-# Test projector-receipt
-test-projector-receipt:
-    cd projector-receipt && just test
-
-# Test projector-log-customer
-test-projector-log-customer:
-    cd projector-log-customer && just test
-
-# Test projector-log-transaction
-test-projector-log-transaction:
-    cd projector-log-transaction && just test
-
-# === Clean ===
-
-# Clean all Rust examples
+# Clean build artifacts
 clean:
-    cd common && just clean || true
-    cd customer && just clean || true
-    cd transaction && just clean || true
-    cd saga-loyalty && just clean || true
-    cd projector-receipt && just clean || true
-    cd projector-log-customer && just clean || true
-    cd projector-log-transaction && just clean || true
+    cargo clean
 
-# === Format ===
-
-# Format all Rust examples
+# Format all code
 fmt:
-    cd customer && cargo fmt
-    cd transaction && cargo fmt
-    cd saga-loyalty && cargo fmt
-    cd projector-receipt && cargo fmt
-    cd projector-log-customer && cargo fmt
-    cd projector-log-transaction && cargo fmt
+    cargo fmt --all
 
-# === Lint ===
-
-# Lint all Rust examples
+# Lint all code
 lint:
-    cd customer && cargo clippy -- -D warnings
-    cd transaction && cargo clippy -- -D warnings
-    cd saga-loyalty && cargo clippy -- -D warnings
-    cd projector-receipt && cargo clippy -- -D warnings
-    cd projector-log-customer && cargo clippy -- -D warnings
-    cd projector-log-transaction && cargo clippy -- -D warnings
+    cargo clippy --workspace -- -D warnings
 
 # Lint Helm chart
 helm-lint:
     helm lint helm
 
-# === Run ===
+# ============================================================================
+# Container Images
+# ============================================================================
 
-# Run customer server (default port 50052)
-run-customer:
-    cd customer && just run
+# Build all Rust example images (uses multi-stage Containerfile)
+images:
+    podman build --target builder -f Containerfile "{{TOP}}"
+    podman build --target customer -t localhost:{{REGISTRY_PORT}}/entity-customer-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target product -t localhost:{{REGISTRY_PORT}}/entity-product-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target inventory -t localhost:{{REGISTRY_PORT}}/entity-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target order -t localhost:{{REGISTRY_PORT}}/entity-order-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target cart -t localhost:{{REGISTRY_PORT}}/entity-cart-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target fulfillment -t localhost:{{REGISTRY_PORT}}/entity-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target saga-loyalty-earn -t localhost:{{REGISTRY_PORT}}/saga-loyalty-earn-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target saga-fulfillment -t localhost:{{REGISTRY_PORT}}/saga-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target saga-cancellation -t localhost:{{REGISTRY_PORT}}/saga-cancellation-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
 
-# Run transaction server (default port 50053)
-run-transaction:
-    cd transaction && just run
+# Build a single service image
+image SERVICE:
+    podman build --target {{SERVICE}} -t localhost:{{REGISTRY_PORT}}/entity-{{SERVICE}}-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
 
-# Run saga-loyalty server (default port 50054)
-run-saga-loyalty:
-    cd saga-loyalty && just run
+# Push all images to local registry
+push:
+    podman push localhost:{{REGISTRY_PORT}}/entity-customer-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/entity-product-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/entity-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/entity-order-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/entity-cart-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/entity-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/saga-loyalty-earn-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/saga-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/saga-cancellation-rs:{{IMAGE_TAG}} --tls-verify=false
 
-# Run projector-receipt server (default port 50055)
-run-projector-receipt:
-    cd projector-receipt && just run
-
-# Run projector-log-customer server (default port 50056)
-run-projector-log-customer:
-    cd projector-log-customer && just run
-
-# Run projector-log-transaction server (default port 50057)
-run-projector-log-transaction:
-    cd projector-log-transaction && just run
-
-# === Skaffold Development (recommended workflow) ===
+# ============================================================================
+# Skaffold Development (recommended workflow)
+# ============================================================================
 
 # One-time setup: configure Podman and Skaffold for local registry
 setup:
@@ -168,16 +125,53 @@ build-images:
 delete:
     skaffold delete
 
-# Debug mode (with debugger support)
-debug: setup
-    cd "{{TOP}}" && just secrets-init
-    skaffold debug
+# ============================================================================
+# Run Individual Services (local development without K8s)
+# ============================================================================
 
-# Aliases for backwards compatibility
+# Run customer server (port 50055)
+run-customer:
+    cargo run -p customer --bin customer-server
+
+# Run product server (port 50053)
+run-product:
+    cargo run -p product --bin product-server
+
+# Run inventory server (port 50054)
+run-inventory:
+    cargo run -p inventory --bin inventory-server
+
+# Run order server (port 50056)
+run-order:
+    cargo run -p order --bin order-server
+
+# Run cart server (port 50057)
+run-cart:
+    cargo run -p cart --bin cart-server
+
+# Run fulfillment server (port 50058)
+run-fulfillment:
+    cargo run -p fulfillment --bin fulfillment-server
+
+# Run saga-loyalty-earn server (port 50060)
+run-saga-loyalty-earn:
+    cargo run -p saga-loyalty-earn --bin saga-loyalty-earn-server
+
+# Run saga-fulfillment server (port 50061)
+run-saga-fulfillment:
+    cargo run -p saga-fulfillment --bin saga-fulfillment-server
+
+# Run saga-cancellation server (port 50062)
+run-saga-cancellation:
+    cargo run -p saga-cancellation --bin saga-cancellation-server
+
+# ============================================================================
+# Aliases (backwards compatibility)
+# ============================================================================
+
 skaffold-init: setup
 skaffold-setup: setup
 skaffold-dev: dev
 skaffold-run: run
 skaffold-build: build-images
 skaffold-delete: delete
-skaffold-debug: debug

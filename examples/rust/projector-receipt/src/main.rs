@@ -1,82 +1,106 @@
-//! Receipt Projector gRPC server.
+//! Receipt projector gRPC server.
 //!
-//! Generates human-readable receipts when transactions complete.
+//! Generates Receipt projections from completed order events.
 
 use std::env;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use tonic::{transport::Server, Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use angzarr::interfaces::projector::Projector as ProjectorTrait;
 use angzarr::proto::projector_coordinator_server::{
     ProjectorCoordinator, ProjectorCoordinatorServer,
 };
 use angzarr::proto::{EventBook, Projection};
-use projector_receipt::ReceiptProjector;
+use projector_receipt::{logmsg, ReceiptProjectorLogic};
 
 const PROJECTOR_NAME: &str = "receipt";
 
 /// gRPC service implementation wrapping the projector logic.
-struct ReceiptService {
-    projector: ReceiptProjector,
+struct ReceiptProjectorService {
+    logic: ReceiptProjectorLogic,
 }
 
-impl ReceiptService {
+impl ReceiptProjectorService {
     fn new() -> Self {
         Self {
-            projector: ReceiptProjector::new(),
+            logic: ReceiptProjectorLogic::new(),
         }
     }
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for ReceiptService {
-    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
-        let event_book = Arc::new(request.into_inner());
-        let _ = self.projector.project(&event_book).await;
-        Ok(Response::new(()))
-    }
-
+impl ProjectorCoordinator for ReceiptProjectorService {
     async fn handle_sync(
         &self,
         request: Request<EventBook>,
     ) -> Result<Response<Projection>, Status> {
-        let event_book = Arc::new(request.into_inner());
+        let event_book = request.into_inner();
 
-        match self.projector.project(&event_book).await {
-            Ok(Some(projection)) => Ok(Response::new(projection)),
-            Ok(None) => Err(Status::not_found("No projection generated")),
-            Err(e) => Err(Status::internal(e.to_string())),
+        let projection = self.logic.project(&event_book).unwrap_or_else(|| {
+            // Return empty projection if order not completed
+            Projection {
+                cover: event_book.cover,
+                projector: PROJECTOR_NAME.to_string(),
+                sequence: 0,
+                projection: None,
+            }
+        });
+
+        if projection.projection.is_some() {
+            let order_id = projection
+                .cover
+                .as_ref()
+                .and_then(|c| c.root.as_ref())
+                .map(|r| hex::encode(&r.value))
+                .unwrap_or_default();
+
+            let short_id = if order_id.len() > 16 {
+                &order_id[..16]
+            } else {
+                &order_id
+            };
+
+            info!(
+                message = logmsg::GENERATED_RECEIPT,
+                order_id = %short_id,
+                sequence = projection.sequence
+            );
         }
+
+        Ok(Response::new(projection))
+    }
+
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
+        let event_book = request.into_inner();
+        // Fire and forget - just project if possible
+        let _ = self.logic.project(&event_book);
+        Ok(Response::new(()))
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
     FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .json()
         .init();
 
-    let port = env::var("PORT").unwrap_or_else(|_| "50055".to_string());
+    let port = env::var("PORT").unwrap_or_else(|_| "50410".to_string());
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
-    let service = ReceiptService::new();
+    let service = ReceiptProjectorService::new();
 
-    // Create gRPC health service
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<ProjectorCoordinatorServer<ReceiptService>>()
+        .set_serving::<ProjectorCoordinatorServer<ReceiptProjectorService>>()
         .await;
 
     info!(
         projector = PROJECTOR_NAME,
         port = %port,
-        listens_to = "transaction domain",
+        listens_to = "order domain",
         "server_started"
     );
 

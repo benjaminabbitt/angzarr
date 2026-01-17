@@ -16,11 +16,12 @@ import java.util.List;
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 /**
- * Default implementation of receipt projector.
+ * Default implementation of receipt projector for Order domain.
  */
 public class DefaultReceiptProjector implements ReceiptProjector {
     private static final Logger logger = LoggerFactory.getLogger(DefaultReceiptProjector.class);
     private static final String PROJECTOR_NAME = "receipt";
+    private static final int POINTS_PER_DOLLAR = 10;
 
     @Override
     public Projection project(EventBook eventBook) {
@@ -28,37 +29,38 @@ public class DefaultReceiptProjector implements ReceiptProjector {
             return null;
         }
 
-        TransactionProjectionState state = rebuildState(eventBook);
+        OrderProjectionState state = rebuildState(eventBook);
 
         if (!state.completed) {
             return null;
         }
 
-        String transactionId = "";
+        String orderId = "";
         if (eventBook.hasCover() && eventBook.getCover().hasRoot()) {
-            transactionId = HexFormat.of().formatHex(
+            orderId = HexFormat.of().formatHex(
                 eventBook.getCover().getRoot().getValue().toByteArray()
             );
         }
 
-        String shortId = transactionId.length() > 16 ? transactionId.substring(0, 16) : transactionId;
+        String shortId = orderId.length() > 16 ? orderId.substring(0, 16) : orderId;
 
-        String receiptText = formatReceipt(transactionId, state);
+        int loyaltyPointsEarned = (state.finalTotalCents / 100) * POINTS_PER_DOLLAR;
+        String receiptText = formatReceipt(orderId, state, loyaltyPointsEarned);
 
         logger.info("generated_receipt",
-            kv("transaction_id", shortId),
+            kv("order_id", shortId),
             kv("total_cents", state.finalTotalCents),
             kv("payment_method", state.paymentMethod));
 
         Receipt receipt = Receipt.newBuilder()
-            .setTransactionId(transactionId)
+            .setOrderId(orderId)
             .setCustomerId(state.customerId)
             .addAllItems(state.items)
             .setSubtotalCents(state.subtotalCents)
             .setDiscountCents(state.discountCents)
             .setFinalTotalCents(state.finalTotalCents)
             .setPaymentMethod(state.paymentMethod)
-            .setLoyaltyPointsEarned(state.loyaltyPointsEarned)
+            .setLoyaltyPointsEarned(loyaltyPointsEarned)
             .setFormattedText(receiptText)
             .build();
 
@@ -78,8 +80,8 @@ public class DefaultReceiptProjector implements ReceiptProjector {
             .build();
     }
 
-    private TransactionProjectionState rebuildState(EventBook eventBook) {
-        TransactionProjectionState state = new TransactionProjectionState();
+    private OrderProjectionState rebuildState(EventBook eventBook) {
+        OrderProjectionState state = new OrderProjectionState();
 
         for (EventPage page : eventBook.getPagesList()) {
             if (!page.hasEvent()) {
@@ -90,20 +92,21 @@ public class DefaultReceiptProjector implements ReceiptProjector {
             String typeUrl = event.getTypeUrl();
 
             try {
-                if (typeUrl.endsWith("TransactionCreated")) {
-                    TransactionCreated created = event.unpack(TransactionCreated.class);
+                if (typeUrl.endsWith("OrderCreated")) {
+                    OrderCreated created = event.unpack(OrderCreated.class);
                     state.customerId = created.getCustomerId();
                     state.items = new ArrayList<>(created.getItemsList());
                     state.subtotalCents = created.getSubtotalCents();
-                } else if (typeUrl.endsWith("DiscountApplied")) {
-                    DiscountApplied applied = event.unpack(DiscountApplied.class);
-                    state.discountType = applied.getDiscountType();
-                    state.discountCents = applied.getDiscountCents();
-                } else if (typeUrl.endsWith("TransactionCompleted")) {
-                    TransactionCompleted completed = event.unpack(TransactionCompleted.class);
-                    state.finalTotalCents = completed.getFinalTotalCents();
-                    state.paymentMethod = completed.getPaymentMethod();
-                    state.loyaltyPointsEarned = completed.getLoyaltyPointsEarned();
+                    state.discountCents = created.getDiscountCents();
+                } else if (typeUrl.endsWith("LoyaltyDiscountApplied")) {
+                    LoyaltyDiscountApplied applied = event.unpack(LoyaltyDiscountApplied.class);
+                    state.loyaltyPointsUsed = applied.getPointsUsed();
+                    state.discountCents += applied.getDiscountCents();
+                } else if (typeUrl.endsWith("PaymentSubmitted")) {
+                    PaymentSubmitted submitted = event.unpack(PaymentSubmitted.class);
+                    state.paymentMethod = submitted.getPaymentMethod();
+                    state.finalTotalCents = submitted.getAmountCents();
+                } else if (typeUrl.endsWith("OrderCompleted")) {
                     state.completed = true;
                 }
             } catch (InvalidProtocolBufferException e) {
@@ -114,18 +117,18 @@ public class DefaultReceiptProjector implements ReceiptProjector {
         return state;
     }
 
-    private String formatReceipt(String transactionId, TransactionProjectionState state) {
+    private String formatReceipt(String orderId, OrderProjectionState state, int loyaltyPointsEarned) {
         StringBuilder sb = new StringBuilder();
         String line = "═".repeat(40);
         String thinLine = "─".repeat(40);
 
-        String shortTxId = transactionId.length() > 16 ? transactionId.substring(0, 16) : transactionId;
+        String shortOrderId = orderId.length() > 16 ? orderId.substring(0, 16) : orderId;
         String shortCustId = state.customerId.length() > 16 ? state.customerId.substring(0, 16) : state.customerId;
 
         sb.append(line).append("\n");
         sb.append("           RECEIPT\n");
         sb.append(line).append("\n");
-        sb.append("Transaction: ").append(shortTxId).append("...\n");
+        sb.append("Order: ").append(shortOrderId).append("...\n");
         sb.append("Customer: ").append(shortCustId.isEmpty() ? "N/A" : shortCustId + "...").append("\n");
         sb.append(thinLine).append("\n");
 
@@ -142,15 +145,16 @@ public class DefaultReceiptProjector implements ReceiptProjector {
         sb.append(String.format("Subtotal:              $%.2f%n", state.subtotalCents / 100.0));
 
         if (state.discountCents > 0) {
+            String discountType = state.loyaltyPointsUsed > 0 ? "loyalty" : "coupon";
             sb.append(String.format("Discount (%s):       -$%.2f%n",
-                state.discountType, state.discountCents / 100.0));
+                discountType, state.discountCents / 100.0));
         }
 
         sb.append(thinLine).append("\n");
         sb.append(String.format("TOTAL:                 $%.2f%n", state.finalTotalCents / 100.0));
         sb.append("Payment: ").append(state.paymentMethod).append("\n");
         sb.append(thinLine).append("\n");
-        sb.append("Loyalty Points Earned: ").append(state.loyaltyPointsEarned).append("\n");
+        sb.append("Loyalty Points Earned: ").append(loyaltyPointsEarned).append("\n");
         sb.append(line).append("\n");
         sb.append("     Thank you for your purchase!\n");
         sb.append(line);
@@ -158,15 +162,14 @@ public class DefaultReceiptProjector implements ReceiptProjector {
         return sb.toString();
     }
 
-    private static class TransactionProjectionState {
+    private static class OrderProjectionState {
         String customerId = "";
         List<LineItem> items = new ArrayList<>();
         int subtotalCents = 0;
         int discountCents = 0;
-        String discountType = "";
+        int loyaltyPointsUsed = 0;
         int finalTotalCents = 0;
         String paymentMethod = "";
-        int loyaltyPointsEarned = 0;
         boolean completed = false;
     }
 }

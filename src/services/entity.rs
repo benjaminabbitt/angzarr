@@ -21,6 +21,7 @@ const MAX_RESEQUENCE_RETRIES: u32 = 3;
 /// Receives commands, loads prior state, calls business logic,
 /// persists new events, and notifies projectors/sagas.
 pub struct EntityService {
+    event_store: Arc<dyn EventStore>,
     event_book_repo: Arc<EventBookRepository>,
     snapshot_store: Arc<dyn SnapshotStore>,
     business_client: Arc<dyn BusinessLogicClient>,
@@ -38,6 +39,7 @@ impl EntityService {
         event_bus: Arc<dyn EventBus>,
     ) -> Self {
         Self {
+            event_store: Arc::clone(&event_store),
             event_book_repo: Arc::new(EventBookRepository::new(
                 event_store,
                 Arc::clone(&snapshot_store),
@@ -59,6 +61,7 @@ impl EntityService {
         snapshot_write_enabled: bool,
     ) -> Self {
         Self {
+            event_store: Arc::clone(&event_store),
             event_book_repo: Arc::new(EventBookRepository::with_config(
                 event_store,
                 Arc::clone(&snapshot_store),
@@ -125,15 +128,39 @@ impl BusinessCoordinator for EntityService {
         loop {
             attempt += 1;
 
-            // Load prior state (reload on retry to get fresh state)
+            // Validate CommandBook has pages
+            let first_page = command_book.pages.first().ok_or_else(|| {
+                Status::invalid_argument("CommandBook must have at least one page")
+            })?;
+
+            // 1. Quick sequence check (avoids loading full events if stale)
+            // Skip pre-validation when auto_resequence is enabled - rely on write-time validation
+            if !auto_resequence {
+                let expected_sequence = first_page.sequence;
+
+                // Query current aggregate sequence (lightweight operation)
+                let next_sequence = self
+                    .event_store
+                    .get_next_sequence(&domain, root_uuid)
+                    .await
+                    .map_err(|e| Status::internal(format!("Failed to get sequence: {e}")))?;
+
+                // Validate sequence before loading full events
+                if expected_sequence != next_sequence {
+                    return Err(Status::failed_precondition(format!(
+                        "Sequence mismatch: command expects {}, aggregate at {}",
+                        expected_sequence, next_sequence
+                    )));
+                }
+            }
+
+            // 2. Load prior state (only after sequence validation passes)
             let prior_events = self
                 .event_book_repo
                 .get(&domain, root_uuid)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
 
-            // Track prior event count for snapshot sequence calculation
-            let prior_event_count = prior_events.pages.len() as u32;
 
             // Create contextual command
             let contextual_command = crate::proto::ContextualCommand {
@@ -191,11 +218,18 @@ impl BusinessCoordinator for EntityService {
                 Ok(()) => {
                     // Success - store snapshot and publish
                     // Store snapshot if business logic provided state and writing is enabled
-                    // Framework computes sequence: prior events + new events
+                    // Snapshot sequence is the sequence of the last event (business logic provides explicit sequences)
                     if self.snapshot_write_enabled {
                         if let Some(ref state) = new_events.snapshot_state {
-                            let snapshot_sequence =
-                                prior_event_count + new_events.pages.len() as u32;
+                            // Get sequence from last event page - business logic must provide explicit Sequence::Num
+                            let snapshot_sequence = new_events
+                                .pages
+                                .last()
+                                .and_then(|p| match &p.sequence {
+                                    Some(crate::proto::event_page::Sequence::Num(n)) => Some(*n + 1),
+                                    _ => None,
+                                })
+                                .unwrap_or(0);
                             let snapshot = crate::proto::Snapshot {
                                 sequence: snapshot_sequence,
                                 state: Some(state.clone()),
@@ -772,5 +806,148 @@ mod tests {
             "Snapshot should be stored when write is enabled"
         );
         assert_eq!(stored.unwrap().sequence, 1);
+    }
+
+    // ========== Sequence Validation Tests ==========
+
+    fn make_command_book_with_sequence(
+        domain: &str,
+        root_bytes: Vec<u8>,
+        sequence: u32,
+        auto_resequence: bool,
+    ) -> CommandBook {
+        CommandBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid { value: root_bytes }),
+            }),
+            pages: vec![CommandPage {
+                sequence,
+                command: Some(Any {
+                    type_url: "test.CreateOrder".to_string(),
+                    value: vec![],
+                }),
+                synchronous: false,
+            }],
+            correlation_id: String::new(),
+            saga_origin: None,
+            auto_resequence,
+            fact: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_handle_command_sequence_match_succeeds() {
+        let (service, event_store, _, _, _) = create_default_test_service();
+
+        // Set aggregate at sequence 5
+        event_store.set_next_sequence(5).await;
+
+        let root = uuid::Uuid::new_v4();
+        // Command expects sequence 5 (matches aggregate state)
+        let command = make_command_book_with_sequence("orders", root.as_bytes().to_vec(), 5, false);
+
+        let response = service.handle(Request::new(command)).await;
+        assert!(
+            response.is_ok(),
+            "Command with matching sequence should succeed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_command_sequence_mismatch_fails_without_auto_resequence() {
+        let (service, event_store, _, _, _) = create_default_test_service();
+
+        // Set aggregate at sequence 5
+        event_store.set_next_sequence(5).await;
+
+        let root = uuid::Uuid::new_v4();
+        // Command expects sequence 0, but aggregate is at 5
+        let command = make_command_book_with_sequence("orders", root.as_bytes().to_vec(), 0, false);
+
+        let response = service.handle(Request::new(command)).await;
+        assert!(
+            response.is_err(),
+            "Command with mismatched sequence should fail"
+        );
+
+        let status = response.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+        assert!(
+            status.message().contains("Sequence mismatch"),
+            "Error should mention sequence mismatch: {}",
+            status.message()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_command_sequence_mismatch_with_auto_resequence_skips_prevalidation() {
+        let (service, event_store, _, _, _) = create_default_test_service();
+
+        // Set aggregate at sequence 5 via override
+        event_store.set_next_sequence(5).await;
+
+        let root = uuid::Uuid::new_v4();
+        // Command expects sequence 0, but auto_resequence is enabled
+        // Pre-validation is SKIPPED when auto_resequence is true
+        // (write-time validation handles conflicts instead)
+        let command = make_command_book_with_sequence("orders", root.as_bytes().to_vec(), 0, true);
+
+        let response = service.handle(Request::new(command)).await;
+        // With auto_resequence=true, pre-validation is skipped, so this should succeed
+        // (MockEventStore doesn't actually validate sequences on write)
+        assert!(
+            response.is_ok(),
+            "Command with auto_resequence should skip pre-validation: {:?}",
+            response.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_command_missing_pages_fails() {
+        let (service, _, _, _, _) = create_default_test_service();
+
+        let root = uuid::Uuid::new_v4();
+        // CommandBook with no pages
+        let command = CommandBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+            }),
+            pages: vec![], // No pages
+            correlation_id: String::new(),
+            saga_origin: None,
+            auto_resequence: false,
+            fact: false,
+        };
+
+        let response = service.handle(Request::new(command)).await;
+        assert!(response.is_err());
+
+        let status = response.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(
+            status.message().contains("at least one page"),
+            "Error should mention missing pages: {}",
+            status.message()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_command_new_aggregate_sequence_zero_succeeds() {
+        let (service, _, _, _, _) = create_default_test_service();
+
+        // New aggregate - no events (next_sequence = 0)
+        let root = uuid::Uuid::new_v4();
+        // Command expects sequence 0 (new aggregate)
+        let command = make_command_book_with_sequence("orders", root.as_bytes().to_vec(), 0, false);
+
+        let response = service.handle(Request::new(command)).await;
+        assert!(
+            response.is_ok(),
+            "First command to new aggregate should succeed with sequence=0"
+        );
     }
 }

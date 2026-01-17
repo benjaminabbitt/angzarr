@@ -1,0 +1,43 @@
+# Cart Business Logic - Rust gRPC Server
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+build:
+    cargo build -p cart --bin cart-server
+
+build-release:
+    cargo build -p cart --bin cart-server --release
+
+run: build
+    cargo run -p cart --bin cart-server
+
+run-port port:
+    PORT={{port}} cargo run -p cart --bin cart-server
+
+copy-features:
+    rm -rf tests/features
+    cp -r {{TOP}}/examples/features tests/
+
+unit:
+    cargo test -p cart --lib
+
+acceptance: copy-features
+    cargo test -p cart --test acceptance
+
+test: unit acceptance
+
+test-unit: unit
+
+clean:
+    cargo clean -p cart
+
+check:
+    cargo check -p cart
+
+lint:
+    cargo clippy -p cart -- -D warnings

@@ -4,25 +4,26 @@ package logic
 
 import "projector-receipt/proto/examples"
 
-// TransactionState holds the rebuilt state from transaction events.
-type TransactionState struct {
+// OrderState holds the rebuilt state from order events.
+type OrderState struct {
 	CustomerID          string
 	Items               []*examples.LineItem
 	SubtotalCents       int32
 	DiscountCents       int32
-	DiscountType        string
+	LoyaltyPointsUsed   int32
 	FinalTotalCents     int32
 	PaymentMethod       string
+	PaymentReference    string
 	LoyaltyPointsEarned int32
 	Completed           bool
 }
 
-// EmptyTransactionState returns an empty transaction state for new projections.
-func EmptyTransactionState() *TransactionState {
-	return &TransactionState{}
+// EmptyOrderState returns an empty order state for new projections.
+func EmptyOrderState() *OrderState {
+	return &OrderState{}
 }
 
-// IsComplete returns true if the transaction has been completed.
-func (s *TransactionState) IsComplete() bool {
+// IsComplete returns true if the order has been completed.
+func (s *OrderState) IsComplete() bool {
 	return s.Completed
 }

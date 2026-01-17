@@ -321,12 +321,9 @@ mod tests {
         handler.handle(book).await.unwrap();
 
         // Verify event is received
-        let received = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            stream.next(),
-        )
-        .await
-        .expect("Should receive event");
+        let received = tokio::time::timeout(tokio::time::Duration::from_millis(100), stream.next())
+            .await
+            .expect("Should receive event");
 
         assert!(received.is_some());
         let event_book = received.unwrap().unwrap();
@@ -414,19 +411,15 @@ mod tests {
         handler.handle(book).await.unwrap();
 
         // Both subscribers should receive the event
-        let received1 = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            stream1.next(),
-        )
-        .await
-        .expect("Subscriber 1 should receive event");
+        let received1 =
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), stream1.next())
+                .await
+                .expect("Subscriber 1 should receive event");
 
-        let received2 = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            stream2.next(),
-        )
-        .await
-        .expect("Subscriber 2 should receive event");
+        let received2 =
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), stream2.next())
+                .await
+                .expect("Subscriber 2 should receive event");
 
         assert!(received1.is_some());
         assert!(received2.is_some());

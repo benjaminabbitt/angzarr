@@ -20,11 +20,11 @@ var app = builder.Build();
 app.MapGrpcService<ReceiptProjectorService>();
 app.MapGrpcHealthChecksService();
 
-var port = Environment.GetEnvironmentVariable("PORT") ?? "50055";
+var port = Environment.GetEnvironmentVariable("PORT") ?? "50610";
 app.Urls.Add($"http://0.0.0.0:{port}");
 
 Log.Information("Projector server started {@Data}",
-    new { name = "receipt", port, listens_to = "transaction domain" });
+    new { name = "receipt", port, listens_to = "order domain" });
 
 try
 {

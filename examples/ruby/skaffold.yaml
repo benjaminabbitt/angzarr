@@ -19,35 +19,59 @@ build:
         dockerfile: Containerfile
         target: customer
 
-    - image: localhost:5001/entity-transaction-rb
+    - image: localhost:5001/entity-product-rb
       context: .
       docker:
         dockerfile: Containerfile
-        target: transaction
+        target: product
 
-    - image: localhost:5001/saga-loyalty-rb
+    - image: localhost:5001/entity-cart-rb
       context: .
       docker:
         dockerfile: Containerfile
-        target: saga-loyalty
+        target: cart
+
+    - image: localhost:5001/entity-order-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: order
+
+    - image: localhost:5001/entity-inventory-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: inventory
+
+    - image: localhost:5001/entity-fulfillment-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: fulfillment
+
+    - image: localhost:5001/saga-fulfillment-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: saga-fulfillment
+
+    - image: localhost:5001/saga-loyalty-earn-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: saga-loyalty-earn
+
+    - image: localhost:5001/saga-cancellation-rb
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: saga-cancellation
 
     - image: localhost:5001/projector-receipt-rb
       context: .
       docker:
         dockerfile: Containerfile
         target: projector-receipt
-
-    - image: localhost:5001/projector-log-customer-rb
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: projector-log-customer
-
-    - image: localhost:5001/projector-log-transaction-rb
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: projector-log-transaction
 
 deploy:
   helm:
@@ -71,16 +95,24 @@ deploy:
           images.gateway.tag: latest
           applications.business[0].image.repository: localhost:5001/entity-customer-rb
           applications.business[0].image.tag: latest
-          applications.business[1].image.repository: localhost:5001/entity-transaction-rb
+          applications.business[1].image.repository: localhost:5001/entity-product-rb
           applications.business[1].image.tag: latest
-          applications.projectors[1].image.repository: localhost:5001/projector-receipt-rb
-          applications.projectors[1].image.tag: latest
-          applications.projectors[2].image.repository: localhost:5001/projector-log-customer-rb
-          applications.projectors[2].image.tag: latest
-          applications.projectors[3].image.repository: localhost:5001/projector-log-transaction-rb
-          applications.projectors[3].image.tag: latest
-          applications.sagas[0].image.repository: localhost:5001/saga-loyalty-rb
+          applications.business[2].image.repository: localhost:5001/entity-cart-rb
+          applications.business[2].image.tag: latest
+          applications.business[3].image.repository: localhost:5001/entity-order-rb
+          applications.business[3].image.tag: latest
+          applications.business[4].image.repository: localhost:5001/entity-inventory-rb
+          applications.business[4].image.tag: latest
+          applications.business[5].image.repository: localhost:5001/entity-fulfillment-rb
+          applications.business[5].image.tag: latest
+          applications.projectors[0].image.repository: localhost:5001/projector-receipt-rb
+          applications.projectors[0].image.tag: latest
+          applications.sagas[0].image.repository: localhost:5001/saga-fulfillment-rb
           applications.sagas[0].image.tag: latest
+          applications.sagas[1].image.repository: localhost:5001/saga-loyalty-earn-rb
+          applications.sagas[1].image.tag: latest
+          applications.sagas[2].image.repository: localhost:5001/saga-cancellation-rb
+          applications.sagas[2].image.tag: latest
 
 profiles:
   - name: dev

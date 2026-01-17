@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .json()
         .init();
 
-    let port = env::var("PORT").unwrap_or_else(|_| "50052".to_string());
+    let port = env::var("PORT").unwrap_or_else(|_| "50055".to_string());
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
     let service = CustomerService::new();

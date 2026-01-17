@@ -33,11 +33,20 @@ __pycache__/
 # Generated proto files
 /generated/
 
-# Python examples - generated protos
+# Example proto copies (canonical source: proto/)
+examples/go/proto/
+examples/python/proto/
+examples/csharp/proto/
+examples/kotlin/proto/
+examples/typescript/proto/
+examples/ruby/proto/
+examples/java/proto/
+
+# Python examples - generated protos (per-service)
 examples/python/*/angzarr/
 examples/python/*/proto/
 
-# Go examples - generated protos
+# Go examples - generated protos (per-service)
 examples/go/*/proto/
 
 # Terraform

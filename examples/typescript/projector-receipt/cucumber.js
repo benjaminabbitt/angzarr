@@ -1,5 +1,5 @@
 export default {
-  import: ['features/step_definitions/*.ts'],
+  import: ['tsx', 'features/step_definitions/*.ts'],
   paths: ['features/*.feature'],
-  loader: ['tsx'],
+  
 };

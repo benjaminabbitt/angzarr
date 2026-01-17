@@ -23,6 +23,22 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-receipt/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/transaction/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/cart/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/cart/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/fulfillment/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/fulfillment/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/inventory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/inventory/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/order/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/order/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/product/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/product/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-cancellation/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-cancellation/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-fulfillment/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-fulfillment/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty-earn/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty-earn/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/examples/rust/customer/target" />

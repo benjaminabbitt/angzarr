@@ -1,0 +1,215 @@
+# Elixir example applications for local development
+
+global:
+  security:
+    allowInsecureImages: true
+
+replicaCount: 1
+
+images:
+  entity:
+    repository: angzarr-entity
+    pullPolicy: Never
+    tag: "latest"
+  projector:
+    repository: angzarr-projector
+    pullPolicy: Never
+    tag: "latest"
+  saga:
+    repository: angzarr-saga
+    pullPolicy: Never
+    tag: "latest"
+  stream:
+    repository: angzarr-stream
+    pullPolicy: Never
+    tag: "latest"
+  gateway:
+    repository: angzarr-gateway
+    pullPolicy: Never
+    tag: "latest"
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+rabbitmq:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/rabbitmq
+    tag: "3.13-management-alpine"
+    pullPolicy: Never
+  auth:
+    username: "guest"
+    password: "guest"
+  persistence:
+    size: 1Gi
+
+mongodb:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/mongo
+    tag: "7"
+    pullPolicy: Never
+  auth:
+    rootUsername: "root"
+    rootPassword: "rootpassword"
+    usernames: ["angzarr"]
+    passwords: ["angzarr"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+
+infrastructure:
+  stream:
+    enabled: false
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 1316
+    entities:
+      customer: "angzarr-entity-customer-ex:50051"
+      product: "angzarr-entity-product-ex:50051"
+      cart: "angzarr-entity-cart-ex:50051"
+      order: "angzarr-entity-order-ex:50051"
+      inventory: "angzarr-entity-inventory-ex:50051"
+      fulfillment: "angzarr-entity-fulfillment-ex:50051"
+    streamService: "angzarr-stream-ex:1315"
+    streamTimeoutSecs: 30
+
+applications:
+  business:
+    - name: entity-customer-ex
+      image:
+        repository: entity-customer-ex
+        tag: "latest"
+        pullPolicy: Never
+      domain: "customer"
+      port: 50900
+
+    - name: entity-product-ex
+      image:
+        repository: entity-product-ex
+        tag: "latest"
+        pullPolicy: Never
+      domain: "product"
+      port: 50901
+
+    - name: entity-cart-ex
+      image:
+        repository: entity-cart-ex
+        tag: "latest"
+        pullPolicy: Never
+      domain: "cart"
+      port: 50902
+
+    - name: entity-order-ex
+      image:
+        repository: entity-order-ex
+        tag: "latest"
+        pullPolicy: Never
+      domain: "order"
+      port: 50903
+
+    - name: entity-inventory-ex
+      image:
+        repository: entity-inventory-ex
+        tag: "latest"
+        pullPolicy: Never
+      domain: "inventory"
+      port: 50904
+
+    - name: entity-fulfillment-ex
+      image:
+        repository: entity-fulfillment-ex
+        tag: "latest"
+        pullPolicy: Never
+      domain: "fulfillment"
+      port: 50905
+
+  projectors:
+    - name: stream-ex
+      image:
+        repository: angzarr-stream
+        tag: "latest"
+        pullPolicy: Never
+      port: 1315
+      topics:
+        - "#"
+
+    - name: projector-receipt-ex
+      image:
+        repository: projector-receipt-ex
+        tag: "latest"
+        pullPolicy: Never
+      port: 50910
+      topics:
+        - "order.*"
+
+  sagas:
+    - name: saga-fulfillment-ex
+      image:
+        repository: saga-fulfillment-ex
+        tag: "latest"
+        pullPolicy: Never
+      port: 50907
+      topics:
+        - "order.*"
+
+    - name: saga-loyalty-earn-ex
+      image:
+        repository: saga-loyalty-earn-ex
+        tag: "latest"
+        pullPolicy: Never
+      port: 50908
+      topics:
+        - "fulfillment.*"
+
+    - name: saga-cancellation-ex
+      image:
+        repository: saga-cancellation-ex
+        tag: "latest"
+        pullPolicy: Never
+      port: 50909
+      topics:
+        - "order.*"
+
+service:
+  type: NodePort
+  entityPort: 50051
+  queryPort: 50052
+
+logging:
+  level: info
+
+autoscaling:
+  enabled: false
+
+reloader:
+  enabled: false
+
+serviceDiscovery:
+  headless: false

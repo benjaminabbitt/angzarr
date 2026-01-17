@@ -1,0 +1,84 @@
+# Elixir example services for Angzarr
+
+namespace: angzarr-ex
+
+# Angzarr infrastructure images
+angzarr:
+  command:
+    image: angzarr-entity:latest
+    port: 50051
+  query:
+    port: 50052
+  stream:
+    image: angzarr-stream:latest
+    port: 1315
+  gateway:
+    image: angzarr-gateway:latest
+    port: 1316
+    streamTimeoutSecs: 30
+
+# Business logic services
+services:
+  customer:
+    image: ex-customer:latest
+    port: 50900
+    domain: customer
+  product:
+    image: ex-product:latest
+    port: 50901
+    domain: product
+  cart:
+    image: ex-cart:latest
+    port: 50902
+    domain: cart
+  order:
+    image: ex-order:latest
+    port: 50903
+    domain: order
+  inventory:
+    image: ex-inventory:latest
+    port: 50904
+    domain: inventory
+  fulfillment:
+    image: ex-fulfillment:latest
+    port: 50905
+    domain: fulfillment
+
+# Projector services
+projectors:
+  receipt:
+    image: ex-projector-receipt:latest
+    port: 50910
+
+# Saga services
+sagas:
+  fulfillment:
+    image: ex-saga-fulfillment:latest
+    port: 50907
+  loyaltyEarn:
+    image: ex-saga-loyalty-earn:latest
+    port: 50908
+  cancellation:
+    image: ex-saga-cancellation:latest
+    port: 50909
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    command: command.ex.angzarr.local
+    query: query.ex.angzarr.local
+    gateway: gateway.ex.angzarr.local
+
+# Secrets (values should be provided via --set or external secrets)
+secrets:
+  mongodbUri: ""
+  amqpUrl: ""
+
+# Logging
+logging:
+  level: info

@@ -1,13 +1,22 @@
 # syntax=docker/dockerfile:1.4
-# Ruby examples - multi-stage build with Bundler
+# Ruby examples - optimized multi-stage build with shared gems
 # Build: podman build -t rb-customer --target customer -f examples/ruby/Containerfile .
+# Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
 # Context must be repo root for generated proto access
-# Cache mounts persist Bundler gems across builds
+#
+# Optimizations:
+# 1. Shared gems stage (grpc, google-protobuf installed once)
+# 2. Native extension stripping (smaller .so files)
+# 3. Named cache IDs for Bundler persistence
+# 4. Multi-stage to exclude build-base from runtime
+# 5. Multi-arch support (amd64 + arm64)
+
+ARG RUBY_VERSION=3.3
 
 # ============================================================================
-# Builder stage - installs dependencies with Bundler
+# Base builder - common tooling
 # ============================================================================
-FROM docker.io/library/ruby:3.3-alpine AS builder
+FROM docker.io/library/ruby:${RUBY_VERSION}-alpine AS builder
 
 RUN apk add --no-cache build-base
 
@@ -18,85 +27,187 @@ COPY generated/angzarr angzarr/proto/
 COPY generated/examples proto/
 
 # ============================================================================
-# Build each service with Bundler cache mounts
+# Shared gems - install heavy native gems once
 # ============================================================================
-FROM builder AS build-customer
-COPY examples/ruby/customer/Gemfile examples/ruby/customer/Gemfile.lock ./
-RUN --mount=type=cache,target=/usr/local/bundle/cache \
+FROM builder AS shared-gems
+
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    gem install grpc google-protobuf --no-document
+
+# Strip debug symbols from native extensions
+RUN find /usr/local/bundle -name "*.so" -exec strip --strip-debug {} \; 2>/dev/null || true
+
+# ============================================================================
+# Service builds - each installs service-specific gems
+# ============================================================================
+FROM shared-gems AS build-customer
+WORKDIR /service
+COPY examples/ruby/customer/Gemfile examples/ruby/customer/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
     bundle install --deployment --without development test
 COPY examples/ruby/customer/*.rb ./
+COPY examples/ruby/customer/lib ./lib/
 
-FROM builder AS build-transaction
-COPY examples/ruby/transaction/Gemfile examples/ruby/transaction/Gemfile.lock ./
-RUN --mount=type=cache,target=/usr/local/bundle/cache \
+FROM shared-gems AS build-product
+WORKDIR /service
+COPY examples/ruby/product/Gemfile examples/ruby/product/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
     bundle install --deployment --without development test
-COPY examples/ruby/transaction/*.rb ./
+COPY examples/ruby/product/*.rb ./
+COPY examples/ruby/product/lib ./lib/
 
-FROM builder AS build-saga-loyalty
-COPY examples/ruby/saga-loyalty/Gemfile examples/ruby/saga-loyalty/Gemfile.lock ./
-RUN --mount=type=cache,target=/usr/local/bundle/cache \
+FROM shared-gems AS build-cart
+WORKDIR /service
+COPY examples/ruby/cart/Gemfile examples/ruby/cart/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
     bundle install --deployment --without development test
-COPY examples/ruby/saga-loyalty/*.rb ./
+COPY examples/ruby/cart/*.rb ./
+COPY examples/ruby/cart/lib ./lib/
 
-FROM builder AS build-projector-receipt
-COPY examples/ruby/projector-receipt/Gemfile examples/ruby/projector-receipt/Gemfile.lock ./
-RUN --mount=type=cache,target=/usr/local/bundle/cache \
+FROM shared-gems AS build-order
+WORKDIR /service
+COPY examples/ruby/order/Gemfile examples/ruby/order/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install --deployment --without development test
+COPY examples/ruby/order/*.rb ./
+COPY examples/ruby/order/lib ./lib/
+
+FROM shared-gems AS build-inventory
+WORKDIR /service
+COPY examples/ruby/inventory/Gemfile examples/ruby/inventory/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install --deployment --without development test
+COPY examples/ruby/inventory/*.rb ./
+COPY examples/ruby/inventory/lib ./lib/
+
+FROM shared-gems AS build-fulfillment
+WORKDIR /service
+COPY examples/ruby/fulfillment/Gemfile examples/ruby/fulfillment/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install --deployment --without development test
+COPY examples/ruby/fulfillment/*.rb ./
+COPY examples/ruby/fulfillment/lib ./lib/
+
+FROM shared-gems AS build-saga-fulfillment
+WORKDIR /service
+COPY examples/ruby/saga-fulfillment/Gemfile examples/ruby/saga-fulfillment/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install --deployment --without development test
+COPY examples/ruby/saga-fulfillment/*.rb ./
+
+FROM shared-gems AS build-saga-loyalty-earn
+WORKDIR /service
+COPY examples/ruby/saga-loyalty-earn/Gemfile examples/ruby/saga-loyalty-earn/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install --deployment --without development test
+COPY examples/ruby/saga-loyalty-earn/*.rb ./
+
+FROM shared-gems AS build-saga-cancellation
+WORKDIR /service
+COPY examples/ruby/saga-cancellation/Gemfile examples/ruby/saga-cancellation/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
+    bundle install --deployment --without development test
+COPY examples/ruby/saga-cancellation/*.rb ./
+
+FROM shared-gems AS build-projector-receipt
+WORKDIR /service
+COPY examples/ruby/projector-receipt/Gemfile examples/ruby/projector-receipt/Gemfile.lock* ./
+RUN --mount=type=cache,id=bundle-cache,target=/usr/local/bundle/cache,sharing=locked \
     bundle install --deployment --without development test
 COPY examples/ruby/projector-receipt/*.rb ./
-
-FROM builder AS build-projector-log-customer
-COPY examples/ruby/projector-log-customer/Gemfile examples/ruby/projector-log-customer/Gemfile.lock ./
-RUN --mount=type=cache,target=/usr/local/bundle/cache \
-    bundle install --deployment --without development test
-COPY examples/ruby/projector-log-customer/*.rb ./
-
-FROM builder AS build-projector-log-transaction
-COPY examples/ruby/projector-log-transaction/Gemfile examples/ruby/projector-log-transaction/Gemfile.lock ./
-RUN --mount=type=cache,target=/usr/local/bundle/cache \
-    bundle install --deployment --without development test
-COPY examples/ruby/projector-log-transaction/*.rb ./
+COPY examples/ruby/projector-receipt/lib ./lib/
 
 # ============================================================================
-# Runtime base
+# Runtime base - minimal Ruby alpine (no build-base)
 # ============================================================================
-FROM docker.io/library/ruby:3.3-alpine AS runtime
+FROM docker.io/library/ruby:${RUBY_VERSION}-alpine AS runtime
 WORKDIR /app
 
 # ============================================================================
-# Service-specific images
+# Domain Aggregates
 # ============================================================================
 FROM runtime AS customer
-COPY --from=build-customer /app ./
+COPY --from=build-customer /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
 ENV PORT=50800
 EXPOSE 50800
 CMD ["bundle", "exec", "ruby", "server.rb"]
 
-FROM runtime AS transaction
-COPY --from=build-transaction /app ./
+FROM runtime AS product
+COPY --from=build-product /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
 ENV PORT=50801
 EXPOSE 50801
 CMD ["bundle", "exec", "ruby", "server.rb"]
 
-FROM runtime AS saga-loyalty
-COPY --from=build-saga-loyalty /app ./
+FROM runtime AS cart
+COPY --from=build-cart /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
 ENV PORT=50802
 EXPOSE 50802
 CMD ["bundle", "exec", "ruby", "server.rb"]
 
-FROM runtime AS projector-receipt
-COPY --from=build-projector-receipt /app ./
+FROM runtime AS order
+COPY --from=build-order /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
 ENV PORT=50803
 EXPOSE 50803
 CMD ["bundle", "exec", "ruby", "server.rb"]
 
-FROM runtime AS projector-log-customer
-COPY --from=build-projector-log-customer /app ./
+FROM runtime AS inventory
+COPY --from=build-inventory /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
 ENV PORT=50804
 EXPOSE 50804
 CMD ["bundle", "exec", "ruby", "server.rb"]
 
-FROM runtime AS projector-log-transaction
-COPY --from=build-projector-log-transaction /app ./
+FROM runtime AS fulfillment
+COPY --from=build-fulfillment /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
 ENV PORT=50805
 EXPOSE 50805
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+# ============================================================================
+# Sagas
+# ============================================================================
+FROM runtime AS saga-fulfillment
+COPY --from=build-saga-fulfillment /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
+ENV PORT=50810
+EXPOSE 50810
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS saga-loyalty-earn
+COPY --from=build-saga-loyalty-earn /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
+ENV PORT=50811
+EXPOSE 50811
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+FROM runtime AS saga-cancellation
+COPY --from=build-saga-cancellation /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
+ENV PORT=50812
+EXPOSE 50812
+CMD ["bundle", "exec", "ruby", "server.rb"]
+
+# ============================================================================
+# Projectors
+# ============================================================================
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt /service ./
+COPY --from=builder /app/angzarr ./angzarr
+COPY --from=builder /app/proto ./proto
+ENV PORT=50820
+EXPOSE 50820
 CMD ["bundle", "exec", "ruby", "server.rb"]

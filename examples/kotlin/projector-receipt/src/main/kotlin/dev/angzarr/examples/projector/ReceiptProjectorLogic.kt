@@ -10,12 +10,12 @@ import examples.Domains.*
  */
 interface ReceiptProjectorLogic {
     fun buildState(eventBook: EventBook): ReceiptState
-    fun formatReceipt(state: ReceiptState, transactionId: String): String
+    fun formatReceipt(state: ReceiptState, orderId: String): String
     fun createProjection(eventBook: EventBook, projectorName: String): Projection?
 }
 
 /**
- * Default implementation of receipt projector logic.
+ * Default implementation of receipt projector logic for Order domain.
  */
 class DefaultReceiptProjectorLogic : ReceiptProjectorLogic {
 
@@ -32,24 +32,32 @@ class DefaultReceiptProjectorLogic : ReceiptProjectorLogic {
 
     private fun applyEvent(state: ReceiptState, event: Any): ReceiptState {
         return when {
-            event.`is`(TransactionCreated::class.java) -> {
-                val e = event.unpack(TransactionCreated::class.java)
+            event.`is`(OrderCreated::class.java) -> {
+                val e = event.unpack(OrderCreated::class.java)
                 state.copy(
                     customerId = e.customerId,
                     items = e.itemsList,
-                    subtotalCents = e.subtotalCents
+                    subtotalCents = e.subtotalCents,
+                    discountCents = e.discountCents
                 )
             }
-            event.`is`(DiscountApplied::class.java) -> {
-                val e = event.unpack(DiscountApplied::class.java)
-                state.copy(discountCents = e.discountCents)
-            }
-            event.`is`(TransactionCompleted::class.java) -> {
-                val e = event.unpack(TransactionCompleted::class.java)
+            event.`is`(LoyaltyDiscountApplied::class.java) -> {
+                val e = event.unpack(LoyaltyDiscountApplied::class.java)
                 state.copy(
-                    finalTotalCents = e.finalTotalCents,
+                    loyaltyPointsUsed = e.pointsUsed,
+                    discountCents = state.discountCents + e.discountCents
+                )
+            }
+            event.`is`(PaymentSubmitted::class.java) -> {
+                val e = event.unpack(PaymentSubmitted::class.java)
+                state.copy(
                     paymentMethod = e.paymentMethod,
-                    loyaltyPointsEarned = e.loyaltyPointsEarned,
+                    finalTotalCents = e.amountCents
+                )
+            }
+            event.`is`(OrderCompleted::class.java) -> {
+                val e = event.unpack(OrderCompleted::class.java)
+                state.copy(
                     completedAt = e.completedAt,
                     isCompleted = true
                 )
@@ -58,33 +66,44 @@ class DefaultReceiptProjectorLogic : ReceiptProjectorLogic {
         }
     }
 
-    override fun formatReceipt(state: ReceiptState, transactionId: String): String {
+    override fun formatReceipt(state: ReceiptState, orderId: String): String {
         val sb = StringBuilder()
-        sb.appendLine("=".repeat(40))
-        sb.appendLine("         RECEIPT")
-        sb.appendLine("=".repeat(40))
-        sb.appendLine()
+        val line = "═".repeat(40)
+        val thinLine = "─".repeat(40)
+
+        val shortOrderId = if (orderId.length > 16) orderId.take(16) else orderId
+        val shortCustId = if (state.customerId.length > 16) state.customerId.take(16) else state.customerId
+
+        sb.appendLine(line)
+        sb.appendLine("           RECEIPT")
+        sb.appendLine(line)
+        sb.appendLine("Order: $shortOrderId...")
+        sb.appendLine("Customer: ${if (shortCustId.isEmpty()) "N/A" else "$shortCustId..."}")
+        sb.appendLine(thinLine)
 
         for (item in state.items) {
-            val total = item.quantity * item.unitPriceCents
-            sb.appendLine(item.name)
-            sb.appendLine("  ${item.quantity} x $${item.unitPriceCents / 100.0} = $${total / 100.0}")
+            val lineTotal = item.quantity * item.unitPriceCents
+            sb.appendLine("${item.quantity} x ${item.name} @ $${String.format("%.2f", item.unitPriceCents / 100.0)} = $${String.format("%.2f", lineTotal / 100.0)}")
         }
 
-        sb.appendLine("-".repeat(40))
-        sb.appendLine("Subtotal: $${state.subtotalCents / 100.0}")
+        sb.appendLine(thinLine)
+        sb.appendLine("Subtotal:              $${String.format("%.2f", state.subtotalCents / 100.0)}")
+
         if (state.discountCents > 0) {
-            sb.appendLine("Discount: -$${state.discountCents / 100.0}")
+            val discountType = if (state.loyaltyPointsUsed > 0) "loyalty" else "coupon"
+            sb.appendLine("Discount ($discountType):       -$${String.format("%.2f", state.discountCents / 100.0)}")
         }
-        sb.appendLine("Total: $${state.finalTotalCents / 100.0}")
-        sb.appendLine()
+
+        sb.appendLine(thinLine)
+        sb.appendLine("TOTAL:                 $${String.format("%.2f", state.finalTotalCents / 100.0)}")
         sb.appendLine("Payment: ${state.paymentMethod}")
-        if (state.loyaltyPointsEarned > 0) {
-            sb.appendLine("Loyalty Points Earned: ${state.loyaltyPointsEarned}")
-        }
-        sb.appendLine("=".repeat(40))
-        sb.appendLine("       Thank you!")
-        sb.appendLine("=".repeat(40))
+        sb.appendLine(thinLine)
+
+        val loyaltyPointsEarned = (state.finalTotalCents / 100) * ReceiptState.POINTS_PER_DOLLAR
+        sb.appendLine("Loyalty Points Earned: $loyaltyPointsEarned")
+        sb.appendLine(line)
+        sb.appendLine("     Thank you for your purchase!")
+        sb.append(line)
 
         return sb.toString()
     }
@@ -93,20 +112,21 @@ class DefaultReceiptProjectorLogic : ReceiptProjectorLogic {
         val state = buildState(eventBook)
         if (!state.isCompleted) return null
 
-        val transactionId = eventBook.cover?.root?.value?.toByteArray()
+        val orderId = eventBook.cover?.root?.value?.toByteArray()
             ?.joinToString("") { "%02x".format(it) } ?: ""
 
+        val loyaltyPointsEarned = (state.finalTotalCents / 100) * ReceiptState.POINTS_PER_DOLLAR
+
         val receipt = Receipt.newBuilder()
-            .setTransactionId(transactionId)
+            .setOrderId(orderId)
             .setCustomerId(state.customerId)
             .addAllItems(state.items)
             .setSubtotalCents(state.subtotalCents)
             .setDiscountCents(state.discountCents)
             .setFinalTotalCents(state.finalTotalCents)
             .setPaymentMethod(state.paymentMethod)
-            .setLoyaltyPointsEarned(state.loyaltyPointsEarned)
-            .setCompletedAt(state.completedAt)
-            .setFormattedText(formatReceipt(state, transactionId))
+            .setLoyaltyPointsEarned(loyaltyPointsEarned)
+            .setFormattedText(formatReceipt(state, orderId))
             .build()
 
         return Projection.newBuilder()

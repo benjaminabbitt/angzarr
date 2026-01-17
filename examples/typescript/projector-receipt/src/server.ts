@@ -1,7 +1,7 @@
 /**
  * Receipt Projector - TypeScript Implementation
  *
- * Generates Receipt projections from transaction events.
+ * Generates Receipt projections from order events.
  */
 
 import * as grpc from '@grpc/grpc-js';
@@ -32,9 +32,10 @@ const packageDefinition = protoLoader.loadSync(
 
 const grpcProto = grpc.loadPackageDefinition(packageDefinition) as any;
 
-let TransactionCreated: protobuf.Type;
-let DiscountApplied: protobuf.Type;
-let TransactionCompleted: protobuf.Type;
+let OrderCreated: protobuf.Type;
+let LoyaltyDiscountApplied: protobuf.Type;
+let PaymentSubmitted: protobuf.Type;
+let OrderCompleted: protobuf.Type;
 let Receipt: protobuf.Type;
 
 async function loadProtoTypes() {
@@ -43,9 +44,10 @@ async function loadProtoTypes() {
     path.join(PROTO_PATH, 'examples/domains.proto'),
   ]);
 
-  TransactionCreated = root.lookupType('examples.TransactionCreated');
-  DiscountApplied = root.lookupType('examples.DiscountApplied');
-  TransactionCompleted = root.lookupType('examples.TransactionCompleted');
+  OrderCreated = root.lookupType('examples.OrderCreated');
+  LoyaltyDiscountApplied = root.lookupType('examples.LoyaltyDiscountApplied');
+  PaymentSubmitted = root.lookupType('examples.PaymentSubmitted');
+  OrderCompleted = root.lookupType('examples.OrderCompleted');
   Receipt = root.lookupType('examples.Receipt');
 }
 
@@ -110,6 +112,7 @@ interface ReceiptState {
   items: any[];
   subtotalCents: number;
   discountCents: number;
+  loyaltyPointsUsed: number;
   finalTotalCents: number;
   paymentMethod: string;
   loyaltyPointsEarned: number;
@@ -123,6 +126,7 @@ function buildReceiptState(eventBook: any): ReceiptState {
     items: [],
     subtotalCents: 0,
     discountCents: 0,
+    loyaltyPointsUsed: 0,
     finalTotalCents: 0,
     paymentMethod: '',
     loyaltyPointsEarned: 0,
@@ -138,21 +142,26 @@ function buildReceiptState(eventBook: any): ReceiptState {
     const typeUrl = page.event.type_url || '';
 
     try {
-      if (typeUrl.endsWith('TransactionCreated')) {
-        const event = TransactionCreated.decode(page.event.value) as any;
+      if (typeUrl.endsWith('OrderCreated')) {
+        const event = OrderCreated.decode(page.event.value) as any;
         state.customerId = event.customerId;
         state.items = event.items || [];
         state.subtotalCents = event.subtotalCents;
-      } else if (typeUrl.endsWith('DiscountApplied')) {
-        const event = DiscountApplied.decode(page.event.value) as any;
-        state.discountCents = event.discountCents;
-      } else if (typeUrl.endsWith('TransactionCompleted')) {
-        const event = TransactionCompleted.decode(page.event.value) as any;
-        state.finalTotalCents = event.finalTotalCents;
+        state.discountCents = event.discountCents || 0;
+      } else if (typeUrl.endsWith('LoyaltyDiscountApplied')) {
+        const event = LoyaltyDiscountApplied.decode(page.event.value) as any;
+        state.discountCents += event.discountCents;
+        state.loyaltyPointsUsed = event.pointsUsed;
+      } else if (typeUrl.endsWith('PaymentSubmitted')) {
+        const event = PaymentSubmitted.decode(page.event.value) as any;
         state.paymentMethod = event.paymentMethod;
-        state.loyaltyPointsEarned = event.loyaltyPointsEarned;
+        state.finalTotalCents = event.amountCents;
+      } else if (typeUrl.endsWith('OrderCompleted')) {
+        const event = OrderCompleted.decode(page.event.value) as any;
         state.completedAt = event.completedAt;
         state.isCompleted = true;
+        const pointsPerDollar = 10;
+        state.loyaltyPointsEarned = Math.floor(state.finalTotalCents / 100) * pointsPerDollar;
       }
     } catch (e) {
       logger.warn({ err: e, typeUrl }, 'failed to decode event');
@@ -164,7 +173,6 @@ function buildReceiptState(eventBook: any): ReceiptState {
 
 const projectorService = {
   Handle(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>) {
-    // Async handler - fire and forget
     callback(null, {});
   },
 
@@ -173,16 +181,15 @@ const projectorService = {
       const eventBook = call.request;
       const state = buildReceiptState(eventBook);
 
-      // Only generate receipt for completed transactions
       if (!state.isCompleted) {
         callback(null, null);
         return;
       }
 
-      const transactionId = uuidToHex(eventBook.cover?.root);
+      const orderId = uuidToHex(eventBook.cover?.root);
 
       const receipt = {
-        transactionId: transactionId,
+        orderId: orderId,
         customerId: state.customerId,
         items: state.items,
         subtotalCents: state.subtotalCents,
@@ -194,7 +201,7 @@ const projectorService = {
         formattedText: formatReceipt(state),
       };
 
-      logger.info({ transactionId, total: state.finalTotalCents }, 'generated receipt');
+      logger.info({ orderId, total: state.finalTotalCents }, 'generated receipt');
 
       const projection = {
         cover: eventBook.cover,
@@ -214,7 +221,7 @@ const projectorService = {
 async function main() {
   await loadProtoTypes();
 
-  const port = process.env.PORT || '50055';
+  const port = process.env.PORT || '50410';
   const server = new grpc.Server();
 
   server.addService(grpcProto.angzarr.ProjectorCoordinator.service, projectorService);
@@ -227,7 +234,7 @@ async function main() {
       logger.fatal({ err }, 'failed to bind server');
       process.exit(1);
     }
-    logger.info({ projector: PROJECTOR_NAME, port: boundPort, listens_to: 'transaction domain' }, 'projector server started');
+    logger.info({ projector: PROJECTOR_NAME, port: boundPort, listens_to: 'order domain' }, 'projector server started');
   });
 }
 

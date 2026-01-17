@@ -18,7 +18,7 @@ private val logger = LoggerFactory.getLogger("ReceiptProjector")
 private const val PROJECTOR_NAME = "receipt"
 
 /**
- * gRPC service adapter for receipt projector.
+ * gRPC service adapter for receipt projector (Order domain).
  */
 class ReceiptProjectorService(
     private val logic: ReceiptProjectorLogic
@@ -32,10 +32,11 @@ class ReceiptProjectorService(
         val projection = logic.createProjection(request, PROJECTOR_NAME)
 
         if (projection != null) {
-            val transactionId = request.cover?.root?.value?.toByteArray()
+            val orderId = request.cover?.root?.value?.toByteArray()
                 ?.joinToString("") { "%02x".format(it) }?.take(16) ?: ""
             val state = logic.buildState(request)
-            logger.info("generated_receipt transaction={} total={}", transactionId, state.finalTotalCents)
+            logger.info("generated_receipt order_id={} total_cents={} payment_method={}",
+                orderId, state.finalTotalCents, state.paymentMethod)
         }
 
         return projection ?: Projection.getDefaultInstance()
@@ -43,7 +44,7 @@ class ReceiptProjectorService(
 }
 
 fun main() {
-    val port = System.getenv("PORT")?.toIntOrNull() ?: 50055
+    val port = System.getenv("PORT")?.toIntOrNull() ?: 50510
 
     val logic: ReceiptProjectorLogic = DefaultReceiptProjectorLogic()
     val service = ReceiptProjectorService(logic)

@@ -52,10 +52,10 @@ applicationResources:
 storage:
   type: mongodb
   mongodb:
-    # Bitnami subchart creates service named <release>-mongodb
-    # authSource required because user is created in angzarr db, not admin
-    # retryWrites=false required for standalone MongoDB (not replica set)
-    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017/?directConnection=true&authSource=angzarr&retryWrites=false"
+    # Bitnami replica set creates headless service: <release>-mongodb-headless
+    # replicaSet=rs0 (Bitnami default replica set name)
+    # retryWrites=true now works with replica set
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb-headless:27017/?authSource=angzarr&replicaSet=rs0"
     database: "angzarr"
 
 # AMQP event bus - using Bitnami subchart
@@ -89,6 +89,7 @@ rabbitmq:
       cpu: "250m"
 
 # MongoDB subchart - event store persistence
+# Using single-node replica set for transaction support and better restart behavior
 # Bitnami moved images to ECR: public.ecr.aws/bitnami/mongodb
 mongodb:
   enabled: true
@@ -96,12 +97,16 @@ mongodb:
     registry: public.ecr.aws
     repository: bitnami/mongodb
     tag: "8.0"
+  # Single-node replica set enables transactions and fixes lock file issues
+  architecture: replicaset
+  replicaCount: 1
   auth:
     rootUsername: "root"
     rootPassword: "rootpassword"
     usernames: ["angzarr"]
     passwords: ["angzarr"]
     databases: ["angzarr"]
+    replicaSetKey: "angzarrReplicaSetKey"
   persistence:
     size: 2Gi
   resources:
@@ -126,32 +131,60 @@ infrastructure:
     # NodePort for external access (kind maps hostPort:50051 -> nodePort:30051)
     serviceType: NodePort
     nodePort: 30051
-    # entityService: removed - K8s discovery handles routing to business services
-    # Use entities map for explicit routing if needed:
-    # entities:
-    #   customer: "angzarr-entity-customer-rs:50051"
-    #   transaction: "angzarr-entity-transaction-rs:50051"
     streamService: "angzarr-stream-rs:1315"
     streamTimeoutSecs: 30
 
 # Business logic applications - each gets angzarr as sidecar
 applications:
   business:
+    # E-commerce Domain Aggregates
     - name: entity-customer-rs
       image:
         repository: localhost:5001/entity-customer-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "customer"
-      port: 50100
+      port: 50055
 
-    - name: entity-transaction-rs
+    - name: entity-product-rs
       image:
-        repository: localhost:5001/entity-transaction-rs
+        repository: localhost:5001/entity-product-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "transaction"
-      port: 50101
+      domain: "product"
+      port: 50053
+
+    - name: entity-inventory-rs
+      image:
+        repository: localhost:5001/entity-inventory-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50054
+
+    - name: entity-order-rs
+      image:
+        repository: localhost:5001/entity-order-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "order"
+      port: 50056
+
+    - name: entity-cart-rs
+      image:
+        repository: localhost:5001/entity-cart-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "cart"
+      port: 50057
+
+    - name: entity-fulfillment-rs
+      image:
+        repository: localhost:5001/entity-fulfillment-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "fulfillment"
+      port: 50058
 
   projectors:
     # Stream projector - broadcasts events to clients by correlation ID
@@ -164,42 +197,36 @@ applications:
       topics:
         - "#"  # Subscribe to all events
 
-    - name: projector-receipt-rs
-      image:
-        repository: localhost:5001/projector-receipt-rs
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      port: 50103
-      topics:
-        - "transaction.*"
-
-    - name: projector-log-customer-rs
-      image:
-        repository: localhost:5001/projector-log-customer-rs
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      port: 50104
-      topics:
-        - "customer.*"
-
-    - name: projector-log-transaction-rs
-      image:
-        repository: localhost:5001/projector-log-transaction-rs
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      port: 50105
-      topics:
-        - "transaction.*"
-
   sagas:
-    - name: saga-loyalty-rs
+    # Loyalty Earn Saga - awards points when orders complete
+    - name: saga-loyalty-earn-rs
       image:
-        repository: localhost:5001/saga-loyalty-rs
+        repository: localhost:5001/saga-loyalty-earn-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50102
+      port: 50060
       topics:
-        - "transaction.*"
+        - "order.*"
+
+    # Fulfillment Saga - creates shipments when orders complete
+    - name: saga-fulfillment-rs
+      image:
+        repository: localhost:5001/saga-fulfillment-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      port: 50061
+      topics:
+        - "order.*"
+
+    # Cancellation Saga - handles compensation when orders are cancelled
+    - name: saga-cancellation-rs
+      image:
+        repository: localhost:5001/saga-cancellation-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      port: 50062
+      topics:
+        - "order.*"
 
 # Service configuration
 service:

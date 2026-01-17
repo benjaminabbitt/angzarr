@@ -94,7 +94,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     delay = std::cmp::min(delay * 2, Duration::from_secs(5));
                 }
                 Err(e) => {
-                    error!("Failed to connect to saga after {} attempts: {}", max_retries, e);
+                    error!(
+                        "Failed to connect to saga after {} attempts: {}",
+                        max_retries, e
+                    );
                     return Err(e.into());
                 }
             }

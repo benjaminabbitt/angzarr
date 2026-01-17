@@ -7,12 +7,14 @@ use tracing::info;
 use crate::config::{StorageConfig, StorageType};
 use crate::interfaces::{EventStore, SnapshotStore};
 
+pub mod eventstoredb;
 pub mod mongodb;
+pub mod postgres;
 pub mod schema;
-pub mod sqlite;
 
+pub use eventstoredb::{EventStoreDbEventStore, EventStoreDbSnapshotStore};
 pub use mongodb::{MongoEventStore, MongoSnapshotStore};
-pub use sqlite::{SqliteEventStore, SqliteSnapshotStore};
+pub use postgres::{PostgresEventStore, PostgresSnapshotStore};
 
 /// Initialize storage based on configuration.
 ///
@@ -22,27 +24,6 @@ pub async fn init_storage(
     config: &StorageConfig,
 ) -> Result<(Arc<dyn EventStore>, Arc<dyn SnapshotStore>), Box<dyn std::error::Error>> {
     match config.storage_type {
-        StorageType::Sqlite => {
-            info!("Storage: sqlite at {}", config.sqlite.path);
-
-            if let Some(parent) = std::path::Path::new(&config.sqlite.path).parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-
-            let pool = sqlx::SqlitePool::connect(&format!(
-                "sqlite:{}?mode=rwc",
-                config.sqlite.path
-            ))
-            .await?;
-
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            event_store.init().await?;
-
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            snapshot_store.init().await?;
-
-            Ok((event_store, snapshot_store))
-        }
         StorageType::Mongodb => {
             info!(
                 "Storage: mongodb at {} (db: {})",
@@ -55,6 +36,34 @@ pub async fn init_storage(
                 Arc::new(MongoEventStore::new(&client, &config.mongodb.database).await?);
             let snapshot_store =
                 Arc::new(MongoSnapshotStore::new(&client, &config.mongodb.database).await?);
+
+            Ok((event_store, snapshot_store))
+        }
+        StorageType::Postgres => {
+            info!("Storage: postgres at {}", config.postgres.uri);
+
+            let pool = sqlx::PgPool::connect(&config.postgres.uri).await?;
+
+            let event_store = Arc::new(PostgresEventStore::new(pool.clone()));
+            event_store.init().await?;
+
+            let snapshot_store = Arc::new(PostgresSnapshotStore::new(pool));
+            snapshot_store.init().await?;
+
+            Ok((event_store, snapshot_store))
+        }
+        StorageType::Eventstoredb => {
+            info!(
+                "Storage: eventstoredb at {}",
+                config.eventstoredb.connection_string
+            );
+
+            let event_store = Arc::new(
+                EventStoreDbEventStore::new(&config.eventstoredb.connection_string).await?,
+            );
+            let snapshot_store = Arc::new(
+                EventStoreDbSnapshotStore::new(&config.eventstoredb.connection_string).await?,
+            );
 
             Ok((event_store, snapshot_store))
         }

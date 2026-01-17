@@ -1,0 +1,34 @@
+# Business Logic - Elixir
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+deps:
+    mix deps.get
+
+build: deps
+    mix compile
+
+run: build
+    mix run --no-halt
+
+clean:
+    rm -rf _build deps
+
+copy-features:
+    rm -rf features
+    cp -r {{TOP}}/examples/features .
+
+unit: deps
+    mix test --exclude acceptance
+
+acceptance: deps copy-features
+    ANGZARR_TEST_MODE=container mix test --only acceptance
+
+test: unit acceptance
+
+test-unit: unit

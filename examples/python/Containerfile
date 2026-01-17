@@ -1,104 +1,222 @@
 # syntax=docker/dockerfile:1.4
-# Python examples - multi-stage build with uv
+# Python examples - optimized multi-stage build with distroless runtime
 # Build: podman build -t py-customer --target customer -f examples/python/Containerfile .
+# Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
 # Context must be repo root for generated proto access
-# Cache mounts persist uv packages across builds
+#
+# Optimizations:
+# 1. Single shared venv with all common deps (grpcio, protobuf, structlog)
+# 2. Distroless runtime - minimal attack surface (~50MB vs ~150MB)
+# 3. Named cache IDs for uv persistence
+# 4. Pre-compiled Python bytecode
+# 5. Multi-arch support (amd64 + arm64)
+
+ARG PYTHON_VERSION=3.12
 
 # ============================================================================
-# Builder stage - installs dependencies with uv
+# Base builder - common tooling and settings
 # ============================================================================
-FROM docker.io/library/python:3.12-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.6 AS uv-binary
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+FROM docker.io/library/python:${PYTHON_VERSION}-slim AS base
+
+# Install uv for fast package management
+COPY --from=uv-binary /uv /usr/local/bin/uv
+
+# Optimize Python
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Copy generated proto files from repo root
-COPY generated/angzarr angzarr/proto/
-COPY generated/examples proto/
-RUN touch angzarr/__init__.py angzarr/proto/__init__.py proto/__init__.py
+# ============================================================================
+# Proto files layer - copy generated proto (changes occasionally)
+# ============================================================================
+FROM base AS with-protos
+
+# Copy generated proto files
+COPY examples/python/generated/angzarr angzarr/
+COPY examples/python/generated/examples examples_proto/
+RUN touch angzarr/__init__.py examples_proto/__init__.py
 
 # ============================================================================
-# Build each service with uv cache mounts
+# Shared venv - single virtual environment with ALL common dependencies
+# This is the key optimization - install expensive deps once, copy to all services
 # ============================================================================
-FROM builder AS build-customer
-COPY examples/python/customer/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+FROM with-protos AS shared-venv
+
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
+    uv venv /shared-venv && \
+    uv pip install --python /shared-venv \
+    "grpcio>=1.60.0" \
+    "grpcio-tools>=1.60.0" \
+    "grpcio-health-checking>=1.60.0" \
+    "protobuf>=4.25.0" \
+    "structlog>=24.0.0"
+
+# Pre-compile bytecode for shared deps
+RUN /shared-venv/bin/python -m compileall -q /shared-venv 2>/dev/null || true
+
+# ============================================================================
+# Service builds - copy shared venv, add service-specific deps if needed
+# ============================================================================
+FROM shared-venv AS build-customer
+WORKDIR /service
+RUN cp -r /shared-venv .venv
 COPY examples/python/customer/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
 
-FROM builder AS build-transaction
-COPY examples/python/transaction/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
-COPY examples/python/transaction/*.py ./
+FROM shared-venv AS build-product
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/product/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
 
-FROM builder AS build-saga-loyalty
-COPY examples/python/saga-loyalty/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
-COPY examples/python/saga-loyalty/*.py ./
+FROM shared-venv AS build-cart
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/cart/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
 
-FROM builder AS build-projector-receipt
-COPY examples/python/projector-receipt/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+FROM shared-venv AS build-order
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/order/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-inventory
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/inventory/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-fulfillment
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/fulfillment/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-saga-fulfillment
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/saga-fulfillment/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-saga-loyalty-earn
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/saga-loyalty-earn/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-saga-cancellation
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/saga-cancellation/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+# projector-receipt needs pymongo
+FROM shared-venv AS build-projector-receipt
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
+    uv pip install --python .venv pymongo
 COPY examples/python/projector-receipt/*.py ./
-
-FROM builder AS build-projector-log-customer
-COPY examples/python/projector-log-customer/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
-COPY examples/python/projector-log-customer/*.py ./
-
-FROM builder AS build-projector-log-transaction
-COPY examples/python/projector-log-transaction/pyproject.toml .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
-COPY examples/python/projector-log-transaction/*.py ./
+RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
 
 # ============================================================================
-# Runtime base
+# Runtime base - distroless Python (minimal, secure)
 # ============================================================================
-FROM docker.io/library/python:3.12-slim AS runtime
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+FROM gcr.io/distroless/python3-debian12:nonroot AS runtime
 WORKDIR /app
+USER nonroot:nonroot
 
 # ============================================================================
-# Service-specific images
+# Domain Aggregates
 # ============================================================================
 FROM runtime AS customer
-COPY --from=build-customer /app ./
-ENV PORT=50300
+COPY --from=build-customer --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50300 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50300
-CMD ["uv", "run", "python", "server.py"]
+CMD ["server.py"]
 
-FROM runtime AS transaction
-COPY --from=build-transaction /app ./
-ENV PORT=50301
+FROM runtime AS product
+COPY --from=build-product --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50301 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50301
-CMD ["uv", "run", "python", "server.py"]
+CMD ["server.py"]
 
-FROM runtime AS saga-loyalty
-COPY --from=build-saga-loyalty /app ./
-ENV PORT=50302
+FROM runtime AS cart
+COPY --from=build-cart --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50302 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50302
-CMD ["uv", "run", "python", "server.py"]
+CMD ["server.py"]
 
-FROM runtime AS projector-receipt
-COPY --from=build-projector-receipt /app ./
-ENV PORT=50303
+FROM runtime AS order
+COPY --from=build-order --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50303 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50303
-CMD ["uv", "run", "python", "server.py"]
+CMD ["server.py"]
 
-FROM runtime AS projector-log-customer
-COPY --from=build-projector-log-customer /app ./
-ENV PORT=50304
+FROM runtime AS inventory
+COPY --from=build-inventory --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50304 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50304
-CMD ["uv", "run", "python", "server.py"]
+CMD ["server.py"]
 
-FROM runtime AS projector-log-transaction
-COPY --from=build-projector-log-transaction /app ./
-ENV PORT=50305
+FROM runtime AS fulfillment
+COPY --from=build-fulfillment --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50305 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50305
-CMD ["uv", "run", "python", "server.py"]
+CMD ["server.py"]
+
+# ============================================================================
+# Sagas
+# ============================================================================
+FROM runtime AS saga-fulfillment
+COPY --from=build-saga-fulfillment --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50310 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+EXPOSE 50310
+CMD ["server.py"]
+
+FROM runtime AS saga-loyalty-earn
+COPY --from=build-saga-loyalty-earn --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50311 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+EXPOSE 50311
+CMD ["server.py"]
+
+FROM runtime AS saga-cancellation
+COPY --from=build-saga-cancellation --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50312 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+EXPOSE 50312
+CMD ["server.py"]
+
+# ============================================================================
+# Projectors
+# ============================================================================
+FROM runtime AS projector-receipt
+COPY --from=build-projector-receipt --chown=nonroot:nonroot /service ./
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50320 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+EXPOSE 50320
+CMD ["server.py"]

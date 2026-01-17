@@ -107,3 +107,19 @@ lint:
 # Lint Helm chart
 helm-lint:
     helm lint helm
+
+# ============================================================================
+# Integration Tests (deployed to Kind cluster)
+# ============================================================================
+
+# Setup integration tests
+setup-integration:
+    cd tests && uv sync
+
+# Run container integration tests (requires running cluster)
+integration: setup-integration
+    cd tests && ANGZARR_TEST_MODE=container uv run pytest test_container_integration.py -v
+
+# Run integration tests with custom gateway address
+integration-custom GATEWAY: setup-integration
+    cd tests && ANGZARR_TEST_MODE=container ANGZARR_GATEWAY={{GATEWAY}} uv run pytest test_container_integration.py -v

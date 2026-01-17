@@ -6,11 +6,11 @@
 //! ## Features
 //! - In-process event bus (DirectEventBus) - no RabbitMQ required
 //! - Direct gRPC connections to projectors and sagas
-//! - SQLite or MongoDB storage
+//! - MongoDB, PostgreSQL, or EventStoreDB storage
 //!
 //! ## Configuration
 //! Set via environment variables or config file (ANGZARR_CONFIG):
-//! - STORAGE_TYPE: "sqlite" or "mongodb"
+//! - STORAGE_TYPE: "mongodb", "postgres", or "eventstoredb"
 //! - STORAGE_PATH: Database path/URI
 //! - COMMAND_HANDLER_PORT: gRPC port for commands (default: 1313)
 //! - EVENT_QUERY_PORT: gRPC port for queries (default: 1314)

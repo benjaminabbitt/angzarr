@@ -1,0 +1,52 @@
+# EventStoreDB Helm chart values
+
+replicaCount: 1
+
+image:
+  repository: eventstore/eventstore
+  pullPolicy: IfNotPresent
+  tag: "24.10-bookworm-slim"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  # HTTP/gRPC port
+  port: 2113
+  # TCP port (legacy, optional)
+  tcpPort: 1113
+
+# EventStoreDB configuration
+config:
+  # Run insecure (no TLS) - for development only
+  insecure: true
+  # Enable projections
+  runProjections: "All"
+  # Enable Atom pub over HTTP
+  enableAtomPubOverHttp: true
+
+persistence:
+  enabled: true
+  size: 8Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

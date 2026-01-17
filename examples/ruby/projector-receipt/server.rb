@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # Receipt Projector Service - Ruby Implementation
-# Generates receipt projections from transaction events.
+# Generates receipt projections from order events.
 
 require 'grpc'
 require 'grpc/health/checker'
@@ -23,16 +23,18 @@ class ReceiptProjectorService < Angzarr::ProjectorCoordinator::Service
     receipt_data = ReceiptProjectorLogic.project(event_book)
     return nil unless receipt_data
 
-    transaction_id = event_book.cover&.id
-    formatted_text = ReceiptProjectorLogic.format_receipt(receipt_data, transaction_id: transaction_id)
+    order_id = extract_order_id(event_book)
+    formatted_text = ReceiptProjectorLogic.format_receipt(receipt_data, order_id: order_id)
 
-    log_info('generated receipt',
-             customer_id: receipt_data.customer_id,
-             item_count: receipt_data.items.size,
-             total: receipt_data.final_total_cents)
+    short_order_id = order_id.length > 16 ? order_id[0...16] : order_id
+
+    log_info('generated_receipt',
+             order_id: short_order_id,
+             total_cents: receipt_data.final_total_cents,
+             payment_method: receipt_data.payment_method)
 
     receipt = Examples::Receipt.new(
-      transaction_id: transaction_id || '',
+      order_id: order_id,
       customer_id: receipt_data.customer_id,
       items: receipt_data.items,
       subtotal_cents: receipt_data.subtotal_cents,
@@ -40,7 +42,6 @@ class ReceiptProjectorService < Angzarr::ProjectorCoordinator::Service
       final_total_cents: receipt_data.final_total_cents,
       payment_method: receipt_data.payment_method,
       loyalty_points_earned: receipt_data.loyalty_points_earned,
-      completed_at: receipt_data.completed_at,
       formatted_text: formatted_text
     )
 
@@ -53,11 +54,17 @@ class ReceiptProjectorService < Angzarr::ProjectorCoordinator::Service
   end
 
   def handle_async(event_book, _call)
-    log_info('async receipt projection', pages: event_book.pages.size)
+    log_info('async_receipt_projection', pages: event_book.pages.size)
     Angzarr::ProjectorAsyncResponse.new
   end
 
   private
+
+  def extract_order_id(event_book)
+    return '' unless event_book.cover&.root&.value
+
+    event_book.cover.root.value.unpack1('H*')
+  end
 
   def log_info(message, **fields)
     puts JSON.generate({ level: 'info', message: message, domain: DOMAIN, **fields, timestamp: Time.now.iso8601 })
@@ -65,7 +72,7 @@ class ReceiptProjectorService < Angzarr::ProjectorCoordinator::Service
 end
 
 def main
-  port = ENV.fetch('PORT', '50074')
+  port = ENV.fetch('PORT', '50810')
 
   server = GRPC::RpcServer.new
   server.add_http2_port("0.0.0.0:#{port}", :this_port_is_insecure)
@@ -76,7 +83,7 @@ def main
   health_checker.add_status('', Grpc::Health::V1::HealthCheckResponse::ServingStatus::SERVING)
   server.handle(health_checker)
 
-  puts JSON.generate({ level: 'info', message: 'projector server started', domain: DOMAIN, port: port, timestamp: Time.now.iso8601 })
+  puts JSON.generate({ level: 'info', message: 'projector_server_started', domain: DOMAIN, port: port, listens_to: 'order domain', timestamp: Time.now.iso8601 })
 
   server.run_till_terminated
 end

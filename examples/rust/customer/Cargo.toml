@@ -25,7 +25,9 @@ tracing-subscriber = { version = "0.3", features = ["json"] }
 [dev-dependencies]
 cucumber = "0.21"
 futures = "0.3"
+uuid = { version = "1", features = ["v4", "v5"] }
+tokio-stream = "0.1"
 
 [[test]]
-name = "cucumber"
+name = "acceptance"
 harness = false

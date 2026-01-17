@@ -1,0 +1,7 @@
+# Copied feature files directory
+/features/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/

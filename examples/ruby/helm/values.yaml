@@ -21,30 +21,46 @@ angzarr:
 services:
   customer:
     image: rb-customer:latest
-    port: 50700
+    port: 50800
     domain: customer
-  transaction:
-    image: rb-transaction:latest
-    port: 50701
-    domain: transaction
+  product:
+    image: rb-product:latest
+    port: 50801
+    domain: product
+  cart:
+    image: rb-cart:latest
+    port: 50802
+    domain: cart
+  order:
+    image: rb-order:latest
+    port: 50803
+    domain: order
+  inventory:
+    image: rb-inventory:latest
+    port: 50804
+    domain: inventory
+  fulfillment:
+    image: rb-fulfillment:latest
+    port: 50805
+    domain: fulfillment
 
 # Projector services
 projectors:
   receipt:
     image: rb-projector-receipt:latest
-    port: 50703
-  logCustomer:
-    image: rb-projector-log-customer:latest
-    port: 50704
-  logTransaction:
-    image: rb-projector-log-transaction:latest
-    port: 50705
+    port: 50810
 
 # Saga services
 sagas:
-  loyalty:
-    image: rb-saga-loyalty:latest
-    port: 50702
+  fulfillment:
+    image: rb-saga-fulfillment:latest
+    port: 50807
+  loyaltyEarn:
+    image: rb-saga-loyalty-earn:latest
+    port: 50808
+  cancellation:
+    image: rb-saga-cancellation:latest
+    port: 50809
 
 # Ingress configuration
 ingress:

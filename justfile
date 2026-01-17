@@ -126,9 +126,17 @@ container-build-sidecars: container-build-command container-build-projector cont
 # Build all infrastructure container images
 container-build-infrastructure: container-build-stream container-build-gateway
 
-# Run tests
+# Run unit tests (no infrastructure required)
 test:
-    cargo test
+    cargo test --lib
+
+# Run integration tests (deploys Kind cluster, runs Rust example integration tests)
+integration:
+    cd "{{TOP}}/examples/rust" && just integration
+
+# Run acceptance tests (deploys Kind cluster, runs Rust example BDD tests)
+acceptance:
+    cd "{{TOP}}/examples/rust" && just acceptance
 
 # Run the standalone server (local development)
 run:
@@ -196,25 +204,6 @@ cache-prune-all:
 init-db:
     mkdir -p data
     touch data/events.db
-
-# === Integration Tests ===
-
-# Run integration tests (starts kind cluster and deploys)
-integration-test: deploy
-    @echo "Waiting for all services to be ready via gRPC health checks..."
-    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
-        localhost:50051 localhost:50052 localhost:50053 localhost:50054
-    @echo "All services healthy:"
-    @kubectl get pods -n angzarr
-    ANGZARR_TEST_MODE=container cargo test --test acceptance
-
-# Run container integration tests without starting services (assumes already running)
-container-integration-test:
-    ANGZARR_TEST_MODE=container cargo test --test acceptance
-
-# Run acceptance tests (in-memory, no containers needed)
-acceptance-test:
-    cargo test --test acceptance
 
 # === Kubernetes/Helm ===
 

@@ -15,6 +15,66 @@ A **command handler** processes commands for a domain, validates business rules 
 
 ---
 
+## Entity Identity
+
+Each entity within a domain is identified by `Cover.root`, a UUID. This UUID is computed deterministically from the domain's **business key** using a hash function.
+
+### Hash Computation
+
+The root UUID is derived from:
+```
+hash("angzarr" + domain + business_key)
+```
+
+| Domain | Business Key | Example |
+|--------|--------------|---------|
+| Customer | email | `hash("angzarr" + "customer" + "alice@example.com")` |
+| Product | SKU | `hash("angzarr" + "product" + "SKU-12345")` |
+| Order | order ID | `hash("angzarr" + "order" + "ord-abc-123")` |
+| Inventory | product ID | `hash("angzarr" + "inventory" + "prod-xyz")` |
+
+### Implementation
+
+Use UUID v5 (SHA-1 namespace-based) for deterministic generation:
+
+```rust
+use uuid::Uuid;
+
+/// Compute a deterministic root UUID from domain and business key.
+pub fn compute_root(domain: &str, business_key: &str) -> Uuid {
+    let seed = format!("angzarr{}{}", domain, business_key);
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, seed.as_bytes())
+}
+
+// Domain-specific helpers
+pub fn customer_root(email: &str) -> Uuid {
+    compute_root("customer", email)
+}
+
+pub fn product_root(sku: &str) -> Uuid {
+    compute_root("product", sku)
+}
+```
+
+### Why Deterministic UUIDs?
+
+1. **Idempotent commands**: Sending the same command twice targets the same entity
+2. **Natural deduplication**: Same business key → same root → Angzarr prevents duplicate creation
+3. **No external lookups**: No need to query "does customer with email X exist?"—the hash collision handles it
+4. **Consistent across services**: Any service can compute the root from the business key
+
+### Duplicate Detection
+
+When a client sends `CreateCustomer` with email `alice@example.com`:
+
+1. Business logic computes `root = hash("angzarr" + "customer" + "alice@example.com")`
+2. Command is sent with `Cover { domain: "customer", root: <computed> }`
+3. If entity already exists (prior events for this root), command is rejected
+
+This means duplicate detection happens at the Angzarr level—business logic only needs to check "does this root have events?" rather than querying across all customers.
+
+---
+
 ## Component Responsibilities
 
 ### What Angzarr Provides
@@ -182,6 +242,75 @@ flowchart TD
   }
 }
 ```
+
+---
+
+## Event Sequencing
+
+**Business logic is responsible for assigning explicit sequence numbers to new events.**
+
+Each event has a `sequence` field that must be set to `Sequence::Num(n)` where `n` is the next available sequence number. The framework provides prior events with their sequences, so business logic can compute the next sequence.
+
+### Why Explicit Sequences?
+
+1. **Idempotency**: Business logic can detect duplicate commands by checking if expected sequences already exist
+2. **Correctness**: No counting or off-by-one errors—sequences flow directly from data
+3. **Simplicity**: Framework doesn't need to track or compute sequences
+4. **Visibility**: Sequences are explicit in the data, not hidden in framework state
+
+### Computing Next Sequence
+
+Use the `common::next_sequence()` helper to get the next available sequence:
+
+```rust
+use common::next_sequence;
+
+fn handle(&self, cmd: ContextualCommand) -> Result<BusinessResponse> {
+    let prior_events = cmd.events.as_ref();
+    let state = self.rebuild_state(prior_events);
+    let next_seq = next_sequence(prior_events);  // e.g., returns 0, 1, 5, etc.
+
+    // Create event with explicit sequence
+    let pages = vec![EventPage {
+        sequence: Some(Sequence::Num(next_seq)),
+        event: Some(...),
+        ...
+    }];
+}
+```
+
+The `next_sequence()` function:
+- Returns 0 if no prior events exist
+- Returns `last_event.sequence + 1` if events exist
+- Falls back to `snapshot.sequence + 1` if only snapshot exists
+
+### Multiple Events
+
+When emitting multiple events from a single command, increment the sequence for each:
+
+```rust
+let mut seq = next_seq;
+let mut pages = vec![];
+
+pages.push(EventPage {
+    sequence: Some(Sequence::Num(seq)),
+    event: Some(first_event),
+    ...
+});
+seq += 1;
+
+if should_emit_alert {
+    pages.push(EventPage {
+        sequence: Some(Sequence::Num(seq)),
+        event: Some(alert_event),
+        ...
+    });
+}
+```
+
+### Snapshot Sequence
+
+The framework uses the last event's sequence to compute the snapshot sequence. If business logic provides `snapshot_state`, the framework stores a snapshot at `last_event.sequence + 1`.
 
 ---
 

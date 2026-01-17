@@ -445,15 +445,10 @@ mod tests {
         assert_eq!(book_new.snapshot.is_some(), book_config.snapshot.is_some());
     }
 
-    mod sqlite_integration {
+    mod mock_integration {
         use super::*;
-        use crate::storage::{SqliteEventStore, SqliteSnapshotStore};
+        use crate::test_utils::{MockEventStore, MockSnapshotStore};
         use prost_types::Timestamp;
-        use sqlx::SqlitePool;
-
-        async fn test_pool() -> SqlitePool {
-            SqlitePool::connect("sqlite::memory:").await.unwrap()
-        }
 
         fn test_event(sequence: u32, event_type: &str) -> EventPage {
             EventPage {
@@ -495,24 +490,20 @@ mod tests {
             }
         }
 
-        async fn setup_shared() -> (
+        fn setup_shared() -> (
             EventBookRepository,
-            Arc<SqliteEventStore>,
-            Arc<SqliteSnapshotStore>,
+            Arc<MockEventStore>,
+            Arc<MockSnapshotStore>,
         ) {
-            let pool = test_pool().await;
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            event_store.init().await.unwrap();
-            snapshot_store.init().await.unwrap();
-
+            let event_store = Arc::new(MockEventStore::new());
+            let snapshot_store = Arc::new(MockSnapshotStore::new());
             let repo = EventBookRepository::new(event_store.clone(), snapshot_store.clone());
             (repo, event_store, snapshot_store)
         }
 
         #[tokio::test]
         async fn test_get_empty_aggregate() {
-            let (repo, _, _) = setup_shared().await;
+            let (repo, _, _) = setup_shared();
 
             let domain = "test_domain";
             let root = Uuid::new_v4();
@@ -527,7 +518,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_put_and_get_events() {
-            let (repo, _, _) = setup_shared().await;
+            let (repo, _, _) = setup_shared();
 
             let domain = "test_domain";
             let root = Uuid::new_v4();
@@ -550,7 +541,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_get_with_snapshot_loads_from_snapshot_sequence() {
-            let (repo, event_store, snapshot_store) = setup_shared().await;
+            let (repo, event_store, snapshot_store) = setup_shared();
 
             let domain = "test_domain";
             let root = Uuid::new_v4();
@@ -582,19 +573,13 @@ mod tests {
             assert!(book.snapshot.is_some());
             assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
             assert_eq!(book.pages.len(), 2);
-            assert_eq!(
-                book.pages[0].sequence,
-                Some(event_page::Sequence::Num(3))
-            );
-            assert_eq!(
-                book.pages[1].sequence,
-                Some(event_page::Sequence::Num(4))
-            );
+            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(3)));
+            assert_eq!(book.pages[1].sequence, Some(event_page::Sequence::Num(4)));
         }
 
         #[tokio::test]
         async fn test_get_from_to_range() {
-            let (repo, event_store, _) = setup_shared().await;
+            let (repo, event_store, _) = setup_shared();
 
             let domain = "test_domain";
             let root = Uuid::new_v4();
@@ -619,19 +604,13 @@ mod tests {
 
             assert!(book.snapshot.is_none());
             assert_eq!(book.pages.len(), 3);
-            assert_eq!(
-                book.pages[0].sequence,
-                Some(event_page::Sequence::Num(1))
-            );
-            assert_eq!(
-                book.pages[2].sequence,
-                Some(event_page::Sequence::Num(3))
-            );
+            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(1)));
+            assert_eq!(book.pages[2].sequence, Some(event_page::Sequence::Num(3)));
         }
 
         #[tokio::test]
         async fn test_multiple_puts_append_events() {
-            let (repo, _, _) = setup_shared().await;
+            let (repo, _, _) = setup_shared();
 
             let domain = "test_domain";
             let root = Uuid::new_v4();
@@ -648,14 +627,13 @@ mod tests {
 
         #[tokio::test]
         async fn test_get_with_snapshot_read_disabled_ignores_snapshot() {
-            let pool = test_pool().await;
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-            let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-            event_store.init().await.unwrap();
-            snapshot_store.init().await.unwrap();
-
-            let repo =
-                EventBookRepository::with_config(event_store.clone(), snapshot_store.clone(), false);
+            let event_store = Arc::new(MockEventStore::new());
+            let snapshot_store = Arc::new(MockSnapshotStore::new());
+            let repo = EventBookRepository::with_config(
+                event_store.clone(),
+                snapshot_store.clone(),
+                false,
+            );
 
             let domain = "test_domain";
             let root = Uuid::new_v4();
@@ -686,14 +664,8 @@ mod tests {
 
             assert!(book.snapshot.is_none());
             assert_eq!(book.pages.len(), 5);
-            assert_eq!(
-                book.pages[0].sequence,
-                Some(event_page::Sequence::Num(0))
-            );
-            assert_eq!(
-                book.pages[4].sequence,
-                Some(event_page::Sequence::Num(4))
-            );
+            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(0)));
+            assert_eq!(book.pages[4].sequence, Some(event_page::Sequence::Num(4)));
         }
     }
 }

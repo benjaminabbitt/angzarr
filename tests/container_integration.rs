@@ -25,9 +25,7 @@ mod examples_proto {
     include!(concat!(env!("OUT_DIR"), "/examples.rs"));
 }
 
-use examples_proto::{
-    CompleteTransaction, CreateCustomer, CreateTransaction, CustomerCreated, LineItem, Receipt,
-};
+use examples_proto::{CreateCustomer, CustomerCreated};
 
 /// Container test world - connects to running gRPC services.
 ///
@@ -47,8 +45,6 @@ pub struct ContainerWorld {
 
     /// Current customer aggregate ID
     current_customer_id: Option<Uuid>,
-    /// Current transaction aggregate ID
-    current_transaction_id: Option<Uuid>,
     /// Named customer IDs for multi-customer scenarios
     named_customers: HashMap<String, Uuid>,
 
@@ -70,7 +66,6 @@ impl std::fmt::Debug for ContainerWorld {
         f.debug_struct("ContainerWorld")
             .field("gateway_endpoint", &self.gateway_endpoint)
             .field("current_customer_id", &self.current_customer_id)
-            .field("current_transaction_id", &self.current_transaction_id)
             .finish()
     }
 }
@@ -83,7 +78,6 @@ impl ContainerWorld {
             gateway_client: None,
             query_client: None,
             current_customer_id: None,
-            current_transaction_id: None,
             named_customers: HashMap::new(),
             last_response: None,
             last_error: None,
@@ -195,11 +189,6 @@ async fn given_named_customer_id(world: &mut ContainerWorld, name: String) {
     world.current_customer_id = Some(id);
 }
 
-#[given("a new transaction id for the customer")]
-async fn given_new_transaction_id(world: &mut ContainerWorld) {
-    world.current_transaction_id = Some(Uuid::new_v4());
-}
-
 // =============================================================================
 // Command Steps (via Gateway)
 // =============================================================================
@@ -211,12 +200,8 @@ async fn when_create_customer(world: &mut ContainerWorld, name: String, email: S
         .expect("No customer ID set - call 'Given a new customer id' first");
 
     let command = CreateCustomer { name, email };
-    let command_book = world.make_command_book(
-        "customer",
-        customer_id,
-        command,
-        "examples.CreateCustomer",
-    );
+    let command_book =
+        world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
     let client = world.get_gateway_client().await;
     match client.execute(command_book).await {
@@ -234,78 +219,6 @@ async fn when_create_customer(world: &mut ContainerWorld, name: String, email: S
 #[given(expr = "I send a CreateCustomer command with name {string} and email {string}")]
 async fn given_create_customer(world: &mut ContainerWorld, name: String, email: String) {
     when_create_customer(world, name, email).await;
-}
-
-#[when("I send a CreateTransaction command with items:")]
-async fn when_create_transaction(world: &mut ContainerWorld, step: &cucumber::gherkin::Step) {
-    let transaction_id = world
-        .current_transaction_id
-        .expect("No transaction ID set - call 'Given a new transaction id' first");
-    let customer_id = world
-        .current_customer_id
-        .expect("No customer ID set");
-
-    let mut items = Vec::new();
-    if let Some(table) = &step.table {
-        for row in table.rows.iter().skip(1) {
-            items.push(LineItem {
-                product_id: row[0].clone(),
-                name: row[1].clone(),
-                quantity: row[2].parse().unwrap_or(1),
-                unit_price_cents: row[3].parse().unwrap_or(0),
-            });
-        }
-    }
-
-    let command = CreateTransaction {
-        customer_id: customer_id.to_string(),
-        items,
-    };
-    let command_book = world.make_command_book(
-        "transaction",
-        transaction_id,
-        command,
-        "examples.CreateTransaction",
-    );
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
-}
-
-#[when(expr = "I send a CompleteTransaction command with payment method {string}")]
-async fn when_complete_transaction(world: &mut ContainerWorld, payment_method: String) {
-    let transaction_id = world
-        .current_transaction_id
-        .expect("No transaction ID set");
-
-    let command = CompleteTransaction { payment_method };
-    let command_book = world.make_command_book(
-        "transaction",
-        transaction_id,
-        command,
-        "examples.CompleteTransaction",
-    );
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
 }
 
 // =============================================================================
@@ -368,23 +281,12 @@ async fn then_customer_has_multiple_events(world: &mut ContainerWorld, count: us
     then_customer_has_events(world, count).await;
 }
 
-#[then(expr = "the transaction aggregate has {int} event")]
-async fn then_transaction_has_event(world: &mut ContainerWorld, count: usize) {
-    then_aggregate_has_events(world, "transaction", count).await;
-}
-
-#[then(expr = "the transaction aggregate has {int} events")]
-async fn then_transaction_has_events(world: &mut ContainerWorld, count: usize) {
-    then_transaction_has_event(world, count).await;
-}
-
 async fn then_aggregate_has_events(world: &mut ContainerWorld, domain: &str, expected: usize) {
     // Small delay to ensure write is committed and visible
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let root = match domain {
         "customer" => world.current_customer_id,
-        "transaction" => world.current_transaction_id,
         _ => panic!("Unknown domain: {}", domain),
     }
     .expect("No aggregate ID set");
@@ -419,10 +321,7 @@ async fn then_latest_event_type(world: &mut ContainerWorld, expected_type: Strin
         .last_response
         .as_ref()
         .expect("No command response available");
-    let events = response
-        .events
-        .as_ref()
-        .expect("No events in response");
+    let events = response.events.as_ref().expect("No events in response");
 
     assert!(!events.pages.is_empty(), "No events in response");
 
@@ -462,34 +361,6 @@ async fn then_projection_returned(world: &mut ContainerWorld, projector_name: St
     );
 }
 
-#[then(expr = "the projection contains a Receipt with total {int} cents")]
-async fn then_receipt_total(world: &mut ContainerWorld, expected_cents: i32) {
-    let response = world
-        .last_response
-        .as_ref()
-        .expect("No command response available");
-
-    let receipt_projection = response
-        .projections
-        .iter()
-        .find(|p| p.projector == "receipt")
-        .expect("No receipt projection found");
-
-    let projection_any = receipt_projection
-        .projection
-        .as_ref()
-        .expect("Projection has no payload");
-
-    let receipt = Receipt::decode(projection_any.value.as_slice())
-        .expect("Failed to decode Receipt");
-
-    assert_eq!(
-        receipt.final_total_cents, expected_cents,
-        "Expected receipt total of {} cents, got {}",
-        expected_cents, receipt.final_total_cents
-    );
-}
-
 #[then(expr = "I receive {int} event")]
 async fn then_receive_event(world: &mut ContainerWorld, count: usize) {
     then_receive_events(world, count).await;
@@ -513,7 +384,11 @@ async fn then_receive_events(world: &mut ContainerWorld, count: usize) {
 }
 
 #[then(expr = "the event at sequence {int} has type {string}")]
-async fn then_event_at_sequence(world: &mut ContainerWorld, sequence: usize, expected_type: String) {
+async fn then_event_at_sequence(
+    world: &mut ContainerWorld,
+    sequence: usize,
+    expected_type: String,
+) {
     let event_book = &world.queried_events[0];
     let event = &event_book.pages[sequence];
     let event_any = event.event.as_ref().expect("Event has no payload");
@@ -534,17 +409,11 @@ async fn then_event_at_sequence(world: &mut ContainerWorld, sequence: usize, exp
 
 #[when(expr = "I send a CreateCustomer command via gateway with name {string} and email {string}")]
 async fn when_create_customer_via_gateway(world: &mut ContainerWorld, name: String, email: String) {
-    let customer_id = world
-        .current_customer_id
-        .expect("No customer ID set");
+    let customer_id = world.current_customer_id.expect("No customer ID set");
 
     let command = CreateCustomer { name, email };
-    let command_book = world.make_command_book(
-        "customer",
-        customer_id,
-        command,
-        "examples.CreateCustomer",
-    );
+    let command_book =
+        world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
     // Store correlation ID for later verification
     let correlation_id = command_book.correlation_id.clone();
@@ -572,11 +441,17 @@ async fn when_create_customer_via_gateway(world: &mut ContainerWorld, name: Stri
 }
 
 #[given(expr = "I send a CreateCustomer command via gateway with name {string} and email {string}")]
-async fn given_create_customer_via_gateway(world: &mut ContainerWorld, name: String, email: String) {
+async fn given_create_customer_via_gateway(
+    world: &mut ContainerWorld,
+    name: String,
+    email: String,
+) {
     when_create_customer_via_gateway(world, name, email).await;
 }
 
-#[when(expr = "I send a CreateCustomer command via gateway for {string} with name {string} and email {string}")]
+#[when(
+    expr = "I send a CreateCustomer command via gateway for {string} with name {string} and email {string}"
+)]
 async fn when_create_customer_via_gateway_named(
     world: &mut ContainerWorld,
     customer_name: String,
@@ -593,103 +468,6 @@ async fn when_create_customer_via_gateway_named(
     when_create_customer_via_gateway(world, name, email).await;
 }
 
-#[when("I send a CreateTransaction command via gateway with items:")]
-async fn when_create_transaction_via_gateway(
-    world: &mut ContainerWorld,
-    step: &cucumber::gherkin::Step,
-) {
-    let transaction_id = world
-        .current_transaction_id
-        .expect("No transaction ID set");
-    let customer_id = world
-        .current_customer_id
-        .expect("No customer ID set");
-
-    let mut items = Vec::new();
-    if let Some(table) = &step.table {
-        for row in table.rows.iter().skip(1) {
-            items.push(LineItem {
-                product_id: row[0].clone(),
-                name: row[1].clone(),
-                quantity: row[2].parse().unwrap_or(1),
-                unit_price_cents: row[3].parse().unwrap_or(0),
-            });
-        }
-    }
-
-    let command = CreateTransaction {
-        customer_id: customer_id.to_string(),
-        items,
-    };
-    let command_book = world.make_command_book(
-        "transaction",
-        transaction_id,
-        command,
-        "examples.CreateTransaction",
-    );
-
-    let correlation_id = command_book.correlation_id.clone();
-    world.correlation_ids.write().await.push(correlation_id);
-
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 5,
-    };
-
-    let client = world.get_gateway_client().await;
-    match client.execute_stream_response_count(request).await {
-        Ok(response) => {
-            let mut stream = response.into_inner();
-            let events = world.streamed_events.clone();
-            while let Ok(Some(event_book)) = stream.message().await {
-                events.write().await.push(event_book);
-            }
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-        }
-    }
-}
-
-#[when(expr = "I send a CompleteTransaction command via gateway with payment method {string}")]
-async fn when_complete_transaction_via_gateway(world: &mut ContainerWorld, payment_method: String) {
-    let transaction_id = world
-        .current_transaction_id
-        .expect("No transaction ID set");
-
-    let command = CompleteTransaction { payment_method };
-    let command_book = world.make_command_book(
-        "transaction",
-        transaction_id,
-        command,
-        "examples.CompleteTransaction",
-    );
-
-    let correlation_id = command_book.correlation_id.clone();
-    world.correlation_ids.write().await.push(correlation_id);
-
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 5,
-    };
-
-    let client = world.get_gateway_client().await;
-    match client.execute_stream_response_count(request).await {
-        Ok(response) => {
-            let mut stream = response.into_inner();
-            let events = world.streamed_events.clone();
-            while let Ok(Some(event_book)) = stream.message().await {
-                events.write().await.push(event_book);
-            }
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-        }
-    }
-}
-
 #[when("I subscribe to events with a non-matching correlation ID")]
 async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
     // Create a command with a random correlation ID that won't match any events
@@ -698,12 +476,8 @@ async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
         name: "NonMatching".to_string(),
         email: "none@test.com".to_string(),
     };
-    let mut command_book = world.make_command_book(
-        "customer",
-        customer_id,
-        command,
-        "examples.CreateCustomer",
-    );
+    let mut command_book =
+        world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
     command_book.correlation_id = "non-matching-correlation-id".to_string();
 
     let request = ExecuteStreamCountRequest {

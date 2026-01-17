@@ -10,6 +10,7 @@ use angzarr::proto::{
     business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
     EventBook, EventPage,
 };
+use common::next_sequence;
 use common::proto::{
     AddLoyaltyPoints, CreateCustomer, CustomerCreated, CustomerState, LoyaltyPointsAdded,
     LoyaltyPointsRedeemed, RedeemLoyaltyPoints,
@@ -88,6 +89,7 @@ impl CustomerLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &CustomerState,
+        next_seq: u32,
     ) -> Result<EventBook> {
         if !state.name.is_empty() {
             return Err(BusinessError::Rejected(errmsg::CUSTOMER_EXISTS.to_string()));
@@ -121,7 +123,7 @@ impl CustomerLogic {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Force(true)),
+                sequence: Some(Sequence::Num(next_seq)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.CustomerCreated".to_string(),
                     value: event.encode_to_vec(),
@@ -142,6 +144,7 @@ impl CustomerLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &CustomerState,
+        next_seq: u32,
     ) -> Result<EventBook> {
         if state.name.is_empty() {
             return Err(BusinessError::Rejected(
@@ -176,7 +179,7 @@ impl CustomerLogic {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Force(true)),
+                sequence: Some(Sequence::Num(next_seq)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.LoyaltyPointsAdded".to_string(),
                     value: event.encode_to_vec(),
@@ -197,6 +200,7 @@ impl CustomerLogic {
         command_book: &CommandBook,
         command_data: &[u8],
         state: &CustomerState,
+        next_seq: u32,
     ) -> Result<EventBook> {
         if state.name.is_empty() {
             return Err(BusinessError::Rejected(
@@ -239,7 +243,7 @@ impl CustomerLogic {
             cover: command_book.cover.clone(),
             snapshot: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Force(true)),
+                sequence: Some(Sequence::Num(next_seq)),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.LoyaltyPointsRedeemed".to_string(),
                     value: event.encode_to_vec(),
@@ -274,13 +278,14 @@ impl CustomerLogic {
         &self,
         command_book: &CommandBook,
         state: &CustomerState,
+        next_seq: u32,
     ) -> Result<EventBook> {
         let command_any = command_book
             .pages
             .first()
             .and_then(|p| p.command.as_ref())
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_create_customer(command_book, &command_any.value, state)
+        self.handle_create_customer(command_book, &command_any.value, state, next_seq)
     }
 
     /// Public access to handle_add_loyalty_points for testing.
@@ -288,13 +293,14 @@ impl CustomerLogic {
         &self,
         command_book: &CommandBook,
         state: &CustomerState,
+        next_seq: u32,
     ) -> Result<EventBook> {
         let command_any = command_book
             .pages
             .first()
             .and_then(|p| p.command.as_ref())
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_add_loyalty_points(command_book, &command_any.value, state)
+        self.handle_add_loyalty_points(command_book, &command_any.value, state, next_seq)
     }
 
     /// Public access to handle_redeem_loyalty_points for testing.
@@ -302,13 +308,14 @@ impl CustomerLogic {
         &self,
         command_book: &CommandBook,
         state: &CustomerState,
+        next_seq: u32,
     ) -> Result<EventBook> {
         let command_any = command_book
             .pages
             .first()
             .and_then(|p| p.command.as_ref())
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_redeem_loyalty_points(command_book, &command_any.value, state)
+        self.handle_redeem_loyalty_points(command_book, &command_any.value, state, next_seq)
     }
 }
 
@@ -319,6 +326,7 @@ impl BusinessLogicClient for CustomerLogic {
         let prior_events = cmd.events.as_ref();
 
         let state = self.rebuild_state(prior_events);
+        let next_seq = next_sequence(prior_events);
 
         let Some(cb) = command_book else {
             return Err(BusinessError::Rejected(
@@ -337,11 +345,11 @@ impl BusinessLogicClient for CustomerLogic {
             .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
 
         let events = if command_any.type_url.ends_with("CreateCustomer") {
-            self.handle_create_customer(cb, &command_any.value, &state)?
+            self.handle_create_customer(cb, &command_any.value, &state, next_seq)?
         } else if command_any.type_url.ends_with("AddLoyaltyPoints") {
-            self.handle_add_loyalty_points(cb, &command_any.value, &state)?
+            self.handle_add_loyalty_points(cb, &command_any.value, &state, next_seq)?
         } else if command_any.type_url.ends_with("RedeemLoyaltyPoints") {
-            self.handle_redeem_loyalty_points(cb, &command_any.value, &state)?
+            self.handle_redeem_loyalty_points(cb, &command_any.value, &state, next_seq)?
         } else {
             return Err(BusinessError::Rejected(format!(
                 "{}: {}",

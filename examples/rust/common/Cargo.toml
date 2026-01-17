@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+angzarr = { path = "../../.." }
 chrono = "0.4"
 prost = "0.13"
 prost-types = "0.13"
+uuid = { version = "1", features = ["v5"] }

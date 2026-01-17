@@ -1,11 +1,39 @@
-//! Common event logging utilities for projectors.
+//! Common utilities for Angzarr example implementations.
 
+use angzarr::proto::{event_page::Sequence, EventBook};
 use prost::Message;
 
+pub mod identity;
 pub mod proto;
+
+/// Get the next sequence number for new events based on prior EventBook state.
+///
+/// Examines the EventBook to find the highest existing sequence:
+/// - If pages exist, uses the last page's sequence + 1
+/// - If only snapshot exists, uses snapshot.sequence + 1
+/// - If empty/None, returns 0
+pub fn next_sequence(event_book: Option<&EventBook>) -> u32 {
+    let Some(book) = event_book else {
+        return 0;
+    };
+
+    // Check last event page first (most recent)
+    if let Some(last_page) = book.pages.last() {
+        if let Some(Sequence::Num(n)) = &last_page.sequence {
+            return n + 1;
+        }
+    }
+
+    // Fall back to snapshot sequence
+    if let Some(snapshot) = &book.snapshot {
+        return snapshot.sequence + 1;
+    }
+
+    0
+}
 use proto::{
-    CustomerCreated, DiscountApplied, LoyaltyPointsAdded, LoyaltyPointsRedeemed,
-    TransactionCancelled, TransactionCompleted, TransactionCreated,
+    CustomerCreated, LoyaltyDiscountApplied, LoyaltyPointsAdded, LoyaltyPointsRedeemed,
+    OrderCancelled, OrderCompleted, OrderCreated,
 };
 
 // ANSI color codes
@@ -87,8 +115,8 @@ pub fn print_event_details(event_type: &str, data: &[u8]) {
                 println!("  {DIM}type:{RESET}        {}", event.redemption_type);
             }
         }
-        "TransactionCreated" => {
-            if let Ok(event) = TransactionCreated::decode(data) {
+        "OrderCreated" => {
+            if let Ok(event) = OrderCreated::decode(data) {
                 let cust_id = &event.customer_id[..16.min(event.customer_id.len())];
                 println!("  {DIM}customer:{RESET} {}...", cust_id);
                 println!("  {DIM}items:{RESET}");
@@ -108,21 +136,17 @@ pub fn print_event_details(event_type: &str, data: &[u8]) {
                 );
             }
         }
-        "DiscountApplied" => {
-            if let Ok(event) = DiscountApplied::decode(data) {
-                println!("  {DIM}type:{RESET}     {}", event.discount_type);
-                println!("  {DIM}value:{RESET}    {}", event.value);
+        "LoyaltyDiscountApplied" => {
+            if let Ok(event) = LoyaltyDiscountApplied::decode(data) {
+                println!("  {DIM}points:{RESET}   {}", event.points_used);
                 println!(
                     "  {DIM}discount:{RESET} -${:.2}",
                     event.discount_cents as f64 / 100.0
                 );
-                if !event.coupon_code.is_empty() {
-                    println!("  {DIM}coupon:{RESET}   {}", event.coupon_code);
-                }
             }
         }
-        "TransactionCompleted" => {
-            if let Ok(event) = TransactionCompleted::decode(data) {
+        "OrderCompleted" => {
+            if let Ok(event) = OrderCompleted::decode(data) {
                 println!(
                     "  {DIM}total:{RESET}    ${:.2}",
                     event.final_total_cents as f64 / 100.0
@@ -134,8 +158,8 @@ pub fn print_event_details(event_type: &str, data: &[u8]) {
                 );
             }
         }
-        "TransactionCancelled" => {
-            if let Ok(event) = TransactionCancelled::decode(data) {
+        "OrderCancelled" => {
+            if let Ok(event) = OrderCancelled::decode(data) {
                 println!("  {DIM}reason:{RESET} {}", event.reason);
             }
         }

@@ -342,13 +342,8 @@ impl CommandGateway for GatewayService {
 
         // Create stream with custom timeout
         let timeout = Duration::from_millis(timeout_ms);
-        let stream = self.create_event_stream(
-            correlation_id,
-            sync_response,
-            event_stream,
-            None,
-            timeout,
-        );
+        let stream =
+            self.create_event_stream(correlation_id, sync_response, event_stream, None, timeout);
 
         Ok(Response::new(stream))
     }
@@ -366,7 +361,10 @@ impl EventQueryProxy {
     }
 
     /// Get EventQuery client for the domain.
-    async fn get_query_client(&self, domain: &str) -> Result<EventQueryClient<tonic::transport::Channel>, Status> {
+    async fn get_query_client(
+        &self,
+        domain: &str,
+    ) -> Result<EventQueryClient<tonic::transport::Channel>, Status> {
         let endpoint = self.registry.get_endpoint(domain).await.map_err(|e| match e {
             RegistryError::DomainNotFound(d) => {
                 warn!(domain = %d, "No service registered for domain");
@@ -402,7 +400,10 @@ impl EventQuery for EventQueryProxy {
     type GetEventsStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
 
     /// Stream EventBooks for the domain/root.
-    async fn get_events(&self, request: Request<Query>) -> Result<Response<Self::GetEventsStream>, Status> {
+    async fn get_events(
+        &self,
+        request: Request<Query>,
+    ) -> Result<Response<Self::GetEventsStream>, Status> {
         let query = request.into_inner();
         let domain = query.domain.clone();
 
@@ -416,7 +417,8 @@ impl EventQuery for EventQueryProxy {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    type SynchronizeStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
+    type SynchronizeStream =
+        Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
 
     /// Bidirectional synchronization stream.
     ///
@@ -481,7 +483,8 @@ impl EventQuery for EventQueryProxy {
         Ok(Response::new(Box::pin(response.into_inner())))
     }
 
-    type GetAggregateRootsStream = Pin<Box<dyn Stream<Item = Result<AggregateRoot, Status>> + Send + 'static>>;
+    type GetAggregateRootsStream =
+        Pin<Box<dyn Stream<Item = Result<AggregateRoot, Status>> + Send + 'static>>;
 
     /// Get all aggregate roots across all domains.
     ///
@@ -509,7 +512,8 @@ impl EventQuery for EventQueryProxy {
                     Ok(endpoint) => {
                         let url = format!("http://{}:{}", endpoint.address, endpoint.port);
                         if let Ok(mut client) = EventQueryClient::connect(url).await {
-                            if let Ok(response) = client.get_aggregate_roots(Request::new(())).await {
+                            if let Ok(response) = client.get_aggregate_roots(Request::new(())).await
+                            {
                                 let mut stream = response.into_inner();
                                 loop {
                                     tokio::select! {
@@ -560,7 +564,9 @@ mod tests {
     use tokio_stream::wrappers::ReceiverStream as TokioReceiverStream;
     use tonic::transport::Server;
 
-    use crate::proto::business_coordinator_server::{BusinessCoordinator, BusinessCoordinatorServer};
+    use crate::proto::business_coordinator_server::{
+        BusinessCoordinator, BusinessCoordinatorServer,
+    };
     use crate::proto::event_stream_server::{EventStream, EventStreamServer};
     use crate::proto::{Cover, EventPage, Uuid as ProtoUuid};
 
@@ -592,8 +598,12 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             let cmd = request.into_inner();
 
-            let events = self.response_events.read().await.clone().unwrap_or_else(|| {
-                EventBook {
+            let events = self
+                .response_events
+                .read()
+                .await
+                .clone()
+                .unwrap_or_else(|| EventBook {
                     cover: cmd.cover.clone(),
                     pages: vec![EventPage {
                         sequence: Some(crate::proto::event_page::Sequence::Num(0)),
@@ -607,8 +617,7 @@ mod tests {
                     snapshot: None,
                     correlation_id: cmd.correlation_id.clone(),
                     snapshot_state: None,
-                }
-            });
+                });
 
             Ok(Response::new(CommandResponse {
                 events: Some(events),
@@ -685,7 +694,12 @@ mod tests {
     }
 
     /// Helper to start mock servers and return gateway service.
-    async fn setup_test_gateway() -> (GatewayService, Arc<MockBusinessCoordinator>, Arc<MockEventStream>, Vec<tokio::task::JoinHandle<()>>) {
+    async fn setup_test_gateway() -> (
+        GatewayService,
+        Arc<MockBusinessCoordinator>,
+        Arc<MockEventStream>,
+        Vec<tokio::task::JoinHandle<()>>,
+    ) {
         let mock_coordinator = Arc::new(MockBusinessCoordinator::new());
         let mock_stream = Arc::new(MockEventStream::new());
 
@@ -706,7 +720,9 @@ mod tests {
         let coord_handle = tokio::spawn(async move {
             Server::builder()
                 .add_service(BusinessCoordinatorServer::new(coord_clone.as_ref().clone()))
-                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(coord_listener))
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
+                    coord_listener,
+                ))
                 .await
                 .ok();
         });
@@ -715,7 +731,9 @@ mod tests {
         let stream_handle = tokio::spawn(async move {
             Server::builder()
                 .add_service(EventStreamServer::new(stream_clone.as_ref().clone()))
-                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(stream_listener))
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
+                    stream_listener,
+                ))
                 .await
                 .ok();
         });
@@ -737,13 +755,14 @@ mod tests {
             .await
             .unwrap();
 
-        let gateway = GatewayService::new(
-            registry,
-            stream_client,
-            Duration::from_secs(5),
-        );
+        let gateway = GatewayService::new(registry, stream_client, Duration::from_secs(5));
 
-        (gateway, mock_coordinator, mock_stream, vec![coord_handle, stream_handle])
+        (
+            gateway,
+            mock_coordinator,
+            mock_stream,
+            vec![coord_handle, stream_handle],
+        )
     }
 
     fn make_test_command(domain: &str) -> CommandBook {
@@ -823,22 +842,24 @@ mod tests {
         let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
 
         // Configure stream to emit 2 additional events
-        mock_stream.set_events(vec![
-            EventBook {
-                cover: None,
-                pages: vec![],
-                snapshot: None,
-                correlation_id: String::new(),
-                snapshot_state: None,
-            },
-            EventBook {
-                cover: None,
-                pages: vec![],
-                snapshot: None,
-                correlation_id: String::new(),
-                snapshot_state: None,
-            },
-        ]).await;
+        mock_stream
+            .set_events(vec![
+                EventBook {
+                    cover: None,
+                    pages: vec![],
+                    snapshot: None,
+                    correlation_id: String::new(),
+                    snapshot_state: None,
+                },
+                EventBook {
+                    cover: None,
+                    pages: vec![],
+                    snapshot: None,
+                    correlation_id: String::new(),
+                    snapshot_state: None,
+                },
+            ])
+            .await;
 
         let command = make_test_command("orders");
         let response = gateway.execute_stream(Request::new(command)).await.unwrap();
@@ -865,13 +886,15 @@ mod tests {
         let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
 
         // Configure stream to emit 5 events
-        mock_stream.set_events(vec![
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-        ]).await;
+        mock_stream
+            .set_events(vec![
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+            ])
+            .await;
 
         let request = ExecuteStreamCountRequest {
             command: Some(make_test_command("orders")),
@@ -903,11 +926,13 @@ mod tests {
         let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
 
         // Configure stream to emit 3 events with short delay
-        mock_stream.set_events(vec![
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-        ]).await;
+        mock_stream
+            .set_events(vec![
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+            ])
+            .await;
         mock_stream.set_delay(5).await;
 
         let request = ExecuteStreamCountRequest {
@@ -942,11 +967,13 @@ mod tests {
         // Configure stream to emit events slowly (300ms each)
         // With a 100ms timeout, we should get only the sync response
         // before timing out waiting for the first stream event
-        mock_stream.set_events(vec![
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-        ]).await;
+        mock_stream
+            .set_events(vec![
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+            ])
+            .await;
         mock_stream.set_delay(300).await;
 
         let request = ExecuteStreamTimeRequest {
@@ -969,9 +996,17 @@ mod tests {
         let elapsed = start.elapsed();
 
         // Should timeout quickly (100ms + overhead), not wait for all events
-        assert!(elapsed.as_millis() < 500, "Should timeout quickly, took {}ms", elapsed.as_millis());
+        assert!(
+            elapsed.as_millis() < 500,
+            "Should timeout quickly, took {}ms",
+            elapsed.as_millis()
+        );
         // Should have only the sync response (1), stream events take too long
-        assert_eq!(count, 1, "Expected only sync response, got {} events", count);
+        assert_eq!(
+            count, 1,
+            "Expected only sync response, got {} events",
+            count
+        );
 
         for h in handles {
             h.abort();
@@ -1048,13 +1083,15 @@ mod tests {
         let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
 
         // Configure stream to emit many events slowly
-        mock_stream.set_events(vec![
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-            EventBook::default(),
-        ]).await;
+        mock_stream
+            .set_events(vec![
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+                EventBook::default(),
+            ])
+            .await;
         mock_stream.set_delay(50).await;
 
         let request = ExecuteStreamCountRequest {
@@ -1093,9 +1130,7 @@ mod tests {
         let (gateway, _mock_coord, mock_stream, handles) = setup_test_gateway().await;
 
         // Configure stream to emit events very slowly (longer than our wait)
-        mock_stream.set_events(vec![
-            EventBook::default(),
-        ]).await;
+        mock_stream.set_events(vec![EventBook::default()]).await;
         mock_stream.set_delay(5000).await; // 5 second delay
 
         let request = ExecuteStreamCountRequest {

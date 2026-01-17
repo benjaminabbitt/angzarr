@@ -1,0 +1,97 @@
+# Build stage
+FROM docker.io/library/gcc:14 AS builder
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libgrpc++-dev \
+    libprotobuf-dev \
+    protobuf-compiler-grpc \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy proto files
+COPY proto/ /build/proto/
+
+# Copy source
+COPY examples/cpp/ /build/examples/cpp/
+
+WORKDIR /build/examples/cpp
+
+# Build all services
+RUN cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --parallel
+
+# Runtime stage
+FROM docker.io/library/debian:bookworm-slim AS runtime-base
+
+RUN apt-get update && apt-get install -y \
+    libgrpc++1.51 \
+    libprotobuf32 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Individual service images
+FROM runtime-base AS customer
+COPY --from=builder /build/examples/cpp/build/customer/customer /usr/local/bin/customer
+ENV PORT=51000
+EXPOSE 51000
+CMD ["customer"]
+
+FROM runtime-base AS product
+COPY --from=builder /build/examples/cpp/build/product/product /usr/local/bin/product
+ENV PORT=51001
+EXPOSE 51001
+CMD ["product"]
+
+FROM runtime-base AS cart
+COPY --from=builder /build/examples/cpp/build/cart/cart /usr/local/bin/cart
+ENV PORT=51002
+EXPOSE 51002
+CMD ["cart"]
+
+FROM runtime-base AS order
+COPY --from=builder /build/examples/cpp/build/order/order /usr/local/bin/order
+ENV PORT=51003
+EXPOSE 51003
+CMD ["order"]
+
+FROM runtime-base AS inventory
+COPY --from=builder /build/examples/cpp/build/inventory/inventory /usr/local/bin/inventory
+ENV PORT=51004
+EXPOSE 51004
+CMD ["inventory"]
+
+FROM runtime-base AS fulfillment
+COPY --from=builder /build/examples/cpp/build/fulfillment/fulfillment /usr/local/bin/fulfillment
+ENV PORT=51005
+EXPOSE 51005
+CMD ["fulfillment"]
+
+FROM runtime-base AS saga-fulfillment
+COPY --from=builder /build/examples/cpp/build/saga-fulfillment/saga-fulfillment /usr/local/bin/saga-fulfillment
+ENV PORT=51007
+EXPOSE 51007
+CMD ["saga-fulfillment"]
+
+FROM runtime-base AS saga-loyalty-earn
+COPY --from=builder /build/examples/cpp/build/saga-loyalty-earn/saga-loyalty-earn /usr/local/bin/saga-loyalty-earn
+ENV PORT=51008
+EXPOSE 51008
+CMD ["saga-loyalty-earn"]
+
+FROM runtime-base AS saga-cancellation
+COPY --from=builder /build/examples/cpp/build/saga-cancellation/saga-cancellation /usr/local/bin/saga-cancellation
+ENV PORT=51009
+EXPOSE 51009
+CMD ["saga-cancellation"]
+
+FROM runtime-base AS projector-receipt
+COPY --from=builder /build/examples/cpp/build/projector-receipt/projector-receipt /usr/local/bin/projector-receipt
+ENV PORT=51010
+EXPOSE 51010
+CMD ["projector-receipt"]

@@ -1,0 +1,88 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: angzarr-cpp-examples
+
+build:
+  local:
+    push: true
+  artifacts:
+    - image: cpp-customer
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: customer
+    - image: cpp-product
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: product
+    - image: cpp-cart
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: cart
+    - image: cpp-order
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: order
+    - image: cpp-inventory
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: inventory
+    - image: cpp-fulfillment
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: fulfillment
+    - image: cpp-saga-fulfillment
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: saga-fulfillment
+    - image: cpp-saga-loyalty-earn
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: saga-loyalty-earn
+    - image: cpp-saga-cancellation
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: saga-cancellation
+    - image: cpp-projector-receipt
+      context: ../..
+      docker:
+        dockerfile: examples/cpp/Containerfile
+        target: projector-receipt
+
+deploy:
+  helm:
+    releases:
+      - name: angzarr-cpp
+        chartPath: helm
+        valuesFiles:
+          - helm/values.yaml
+        setValueTemplates:
+          customer.image.repository: "{{.IMAGE_REPO_cpp_customer}}"
+          customer.image.tag: "{{.IMAGE_TAG_cpp_customer}}@{{.IMAGE_DIGEST_cpp_customer}}"
+          product.image.repository: "{{.IMAGE_REPO_cpp_product}}"
+          product.image.tag: "{{.IMAGE_TAG_cpp_product}}@{{.IMAGE_DIGEST_cpp_product}}"
+          cart.image.repository: "{{.IMAGE_REPO_cpp_cart}}"
+          cart.image.tag: "{{.IMAGE_TAG_cpp_cart}}@{{.IMAGE_DIGEST_cpp_cart}}"
+          order.image.repository: "{{.IMAGE_REPO_cpp_order}}"
+          order.image.tag: "{{.IMAGE_TAG_cpp_order}}@{{.IMAGE_DIGEST_cpp_order}}"
+          inventory.image.repository: "{{.IMAGE_REPO_cpp_inventory}}"
+          inventory.image.tag: "{{.IMAGE_TAG_cpp_inventory}}@{{.IMAGE_DIGEST_cpp_inventory}}"
+          fulfillment.image.repository: "{{.IMAGE_REPO_cpp_fulfillment}}"
+          fulfillment.image.tag: "{{.IMAGE_TAG_cpp_fulfillment}}@{{.IMAGE_DIGEST_cpp_fulfillment}}"
+          sagaFulfillment.image.repository: "{{.IMAGE_REPO_cpp_saga_fulfillment}}"
+          sagaFulfillment.image.tag: "{{.IMAGE_TAG_cpp_saga_fulfillment}}@{{.IMAGE_DIGEST_cpp_saga_fulfillment}}"
+          sagaLoyaltyEarn.image.repository: "{{.IMAGE_REPO_cpp_saga_loyalty_earn}}"
+          sagaLoyaltyEarn.image.tag: "{{.IMAGE_TAG_cpp_saga_loyalty_earn}}@{{.IMAGE_DIGEST_cpp_saga_loyalty_earn}}"
+          sagaCancellation.image.repository: "{{.IMAGE_REPO_cpp_saga_cancellation}}"
+          sagaCancellation.image.tag: "{{.IMAGE_TAG_cpp_saga_cancellation}}@{{.IMAGE_DIGEST_cpp_saga_cancellation}}"
+          projectorReceipt.image.repository: "{{.IMAGE_REPO_cpp_projector_receipt}}"
+          projectorReceipt.image.tag: "{{.IMAGE_TAG_cpp_projector_receipt}}@{{.IMAGE_DIGEST_cpp_projector_receipt}}"

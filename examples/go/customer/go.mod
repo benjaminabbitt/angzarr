@@ -6,6 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/cucumber/godog v0.14.1
+	github.com/google/uuid v1.6.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.10

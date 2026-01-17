@@ -42,7 +42,7 @@ RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main
 RUN mkdir -p examples/rust/common/src && \
     echo -e '[package]\nname = "common"\nversion = "0.1.0"\nedition = "2021"\n[lib]\npath = "src/lib.rs"' > examples/rust/common/Cargo.toml && \
     echo "" > examples/rust/common/src/lib.rs && \
-    for pkg in customer transaction saga-loyalty projector-receipt projector-log-customer projector-log-transaction; do \
+    for pkg in customer product inventory order cart fulfillment saga-loyalty-earn saga-fulfillment saga-cancellation projector-receipt; do \
         mkdir -p examples/rust/$pkg/src && \
         echo -e "[package]\nname = \"$pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[[bin]]\nname = \"$pkg-server\"\npath = \"src/main.rs\"" > examples/rust/$pkg/Cargo.toml && \
         echo "fn main() {}" > examples/rust/$pkg/src/main.rs; \

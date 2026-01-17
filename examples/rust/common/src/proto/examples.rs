@@ -69,43 +69,258 @@ pub struct CustomerState {
     pub lifetime_points: i32,
 }
 // =============================================================================
-// Transaction Domain - manages purchases and discounts
+// Product Domain - manages product catalog and pricing
+// =============================================================================
+
+/// Commands
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateProduct {
+    #[prost(string, tag = "1")]
+    pub sku: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(int32, tag = "4")]
+    pub price_cents: i32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateProduct {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub description: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SetPrice {
+    #[prost(int32, tag = "1")]
+    pub price_cents: i32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Discontinue {
+    #[prost(string, tag = "1")]
+    pub reason: ::prost::alloc::string::String,
+}
+/// Events
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ProductCreated {
+    #[prost(string, tag = "1")]
+    pub sku: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(int32, tag = "4")]
+    pub price_cents: i32,
+    #[prost(message, optional, tag = "5")]
+    pub created_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ProductUpdated {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub updated_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PriceSet {
+    #[prost(int32, tag = "1")]
+    pub price_cents: i32,
+    #[prost(int32, tag = "2")]
+    pub previous_price_cents: i32,
+    #[prost(message, optional, tag = "3")]
+    pub set_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ProductDiscontinued {
+    #[prost(string, tag = "1")]
+    pub reason: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub discontinued_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+/// State (for snapshots)
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ProductState {
+    #[prost(string, tag = "1")]
+    pub sku: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(int32, tag = "4")]
+    pub price_cents: i32,
+    /// "active", "discontinued"
+    #[prost(string, tag = "5")]
+    pub status: ::prost::alloc::string::String,
+}
+// =============================================================================
+// Inventory Domain - manages stock levels and reservations
+// =============================================================================
+
+/// Commands
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InitializeStock {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub quantity: i32,
+    /// triggers LowStockAlert when available < threshold
+    #[prost(int32, tag = "3")]
+    pub low_stock_threshold: i32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReceiveStock {
+    #[prost(int32, tag = "1")]
+    pub quantity: i32,
+    /// e.g., purchase order number
+    #[prost(string, tag = "2")]
+    pub reference: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReserveStock {
+    #[prost(int32, tag = "1")]
+    pub quantity: i32,
+    #[prost(string, tag = "2")]
+    pub order_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReleaseReservation {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CommitReservation {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+}
+/// Events
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StockInitialized {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub quantity: i32,
+    #[prost(int32, tag = "3")]
+    pub low_stock_threshold: i32,
+    #[prost(message, optional, tag = "4")]
+    pub initialized_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StockReceived {
+    #[prost(int32, tag = "1")]
+    pub quantity: i32,
+    #[prost(int32, tag = "2")]
+    pub new_on_hand: i32,
+    #[prost(string, tag = "3")]
+    pub reference: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub received_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StockReserved {
+    #[prost(int32, tag = "1")]
+    pub quantity: i32,
+    #[prost(string, tag = "2")]
+    pub order_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub new_available: i32,
+    #[prost(message, optional, tag = "4")]
+    pub reserved_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReservationReleased {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub quantity: i32,
+    #[prost(int32, tag = "3")]
+    pub new_available: i32,
+    #[prost(message, optional, tag = "4")]
+    pub released_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReservationCommitted {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub quantity: i32,
+    #[prost(int32, tag = "3")]
+    pub new_on_hand: i32,
+    #[prost(message, optional, tag = "4")]
+    pub committed_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LowStockAlert {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub available: i32,
+    #[prost(int32, tag = "3")]
+    pub threshold: i32,
+    #[prost(message, optional, tag = "4")]
+    pub alerted_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+/// State (for snapshots)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryState {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub on_hand: i32,
+    #[prost(int32, tag = "3")]
+    pub reserved: i32,
+    #[prost(int32, tag = "4")]
+    pub low_stock_threshold: i32,
+    /// order_id -> quantity
+    #[prost(map = "string, int32", tag = "5")]
+    pub reservations: ::std::collections::HashMap<::prost::alloc::string::String, i32>,
+}
+// =============================================================================
+// Order Domain - manages customer orders and payment
 // =============================================================================
 
 /// Commands
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateTransaction {
-    /// UUID as string
+pub struct CreateOrder {
     #[prost(string, tag = "1")]
     pub customer_id: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
     pub items: ::prost::alloc::vec::Vec<LineItem>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ApplyDiscount {
-    /// "percentage", "fixed", "coupon"
-    #[prost(string, tag = "1")]
-    pub discount_type: ::prost::alloc::string::String,
-    /// percentage (0-100) or cents
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ApplyLoyaltyDiscount {
+    /// loyalty points to use
+    #[prost(int32, tag = "1")]
+    pub points: i32,
+    /// value of discount in cents
     #[prost(int32, tag = "2")]
-    pub value: i32,
-    /// optional coupon code
-    #[prost(string, tag = "3")]
-    pub coupon_code: ::prost::alloc::string::String,
+    pub discount_cents: i32,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CompleteTransaction {
+pub struct SubmitPayment {
+    /// "card", "cash", etc.
     #[prost(string, tag = "1")]
     pub payment_method: ::prost::alloc::string::String,
+    /// payment amount (must match total after discount)
+    #[prost(int32, tag = "2")]
+    pub amount_cents: i32,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CancelTransaction {
+pub struct ConfirmPayment {
+    /// external payment reference
+    #[prost(string, tag = "1")]
+    pub payment_reference: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CancelOrder {
     #[prost(string, tag = "1")]
     pub reason: ::prost::alloc::string::String,
 }
 /// Events
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionCreated {
+pub struct OrderCreated {
     #[prost(string, tag = "1")]
     pub customer_id: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
@@ -115,35 +330,46 @@ pub struct TransactionCreated {
     #[prost(message, optional, tag = "4")]
     pub created_at: ::core::option::Option<super::google::protobuf::Timestamp>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct DiscountApplied {
-    #[prost(string, tag = "1")]
-    pub discount_type: ::prost::alloc::string::String,
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LoyaltyDiscountApplied {
+    #[prost(int32, tag = "1")]
+    pub points_used: i32,
     #[prost(int32, tag = "2")]
-    pub value: i32,
-    #[prost(int32, tag = "3")]
     pub discount_cents: i32,
-    #[prost(string, tag = "4")]
-    pub coupon_code: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub applied_at: ::core::option::Option<super::google::protobuf::Timestamp>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TransactionCompleted {
+pub struct PaymentSubmitted {
+    #[prost(string, tag = "1")]
+    pub payment_method: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub amount_cents: i32,
+    #[prost(message, optional, tag = "3")]
+    pub submitted_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OrderCompleted {
     #[prost(int32, tag = "1")]
     pub final_total_cents: i32,
     #[prost(string, tag = "2")]
     pub payment_method: ::prost::alloc::string::String,
-    /// Points to award customer
-    #[prost(int32, tag = "3")]
+    #[prost(string, tag = "3")]
+    pub payment_reference: ::prost::alloc::string::String,
+    /// Points to award customer (1 point per $1)
+    #[prost(int32, tag = "4")]
     pub loyalty_points_earned: i32,
-    #[prost(message, optional, tag = "4")]
+    #[prost(message, optional, tag = "5")]
     pub completed_at: ::core::option::Option<super::google::protobuf::Timestamp>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TransactionCancelled {
+pub struct OrderCancelled {
     #[prost(string, tag = "1")]
     pub reason: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub cancelled_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+    #[prost(int32, tag = "3")]
+    pub loyalty_points_used: i32,
 }
 /// Shared types
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -159,7 +385,7 @@ pub struct LineItem {
 }
 /// State (for snapshots)
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionState {
+pub struct OrderState {
     #[prost(string, tag = "1")]
     pub customer_id: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
@@ -168,21 +394,268 @@ pub struct TransactionState {
     pub subtotal_cents: i32,
     #[prost(int32, tag = "4")]
     pub discount_cents: i32,
-    #[prost(string, tag = "5")]
-    pub discount_type: ::prost::alloc::string::String,
-    /// "pending", "completed", "cancelled"
+    #[prost(int32, tag = "5")]
+    pub loyalty_points_used: i32,
+    #[prost(string, tag = "6")]
+    pub payment_method: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub payment_reference: ::prost::alloc::string::String,
+    /// "pending", "payment_submitted", "completed", "cancelled"
+    #[prost(string, tag = "8")]
+    pub status: ::prost::alloc::string::String,
+}
+// =============================================================================
+// Cart Domain - manages shopping cart lifecycle
+// =============================================================================
+
+/// Commands
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateCart {
+    #[prost(string, tag = "1")]
+    pub customer_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AddItem {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub quantity: i32,
+    #[prost(int32, tag = "4")]
+    pub unit_price_cents: i32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateQuantity {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub new_quantity: i32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RemoveItem {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ApplyCoupon {
+    #[prost(string, tag = "1")]
+    pub code: ::prost::alloc::string::String,
+    /// "percentage", "fixed"
+    #[prost(string, tag = "2")]
+    pub coupon_type: ::prost::alloc::string::String,
+    /// percentage (0-100) or cents
+    #[prost(int32, tag = "3")]
+    pub value: i32,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ClearCart {}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Checkout {}
+/// Events
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CartCreated {
+    #[prost(string, tag = "1")]
+    pub customer_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub created_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ItemAdded {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub quantity: i32,
+    #[prost(int32, tag = "4")]
+    pub unit_price_cents: i32,
+    #[prost(int32, tag = "5")]
+    pub new_subtotal: i32,
+    #[prost(message, optional, tag = "6")]
+    pub added_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QuantityUpdated {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub old_quantity: i32,
+    #[prost(int32, tag = "3")]
+    pub new_quantity: i32,
+    #[prost(int32, tag = "4")]
+    pub new_subtotal: i32,
+    #[prost(message, optional, tag = "5")]
+    pub updated_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ItemRemoved {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub quantity: i32,
+    #[prost(int32, tag = "3")]
+    pub new_subtotal: i32,
+    #[prost(message, optional, tag = "4")]
+    pub removed_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CouponApplied {
+    #[prost(string, tag = "1")]
+    pub coupon_code: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub coupon_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub value: i32,
+    #[prost(int32, tag = "4")]
+    pub discount_cents: i32,
+    #[prost(message, optional, tag = "5")]
+    pub applied_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CartCleared {
+    #[prost(int32, tag = "1")]
+    pub new_subtotal: i32,
+    #[prost(message, optional, tag = "2")]
+    pub cleared_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CartCheckedOut {
+    #[prost(int32, tag = "1")]
+    pub final_subtotal: i32,
+    #[prost(int32, tag = "2")]
+    pub discount_cents: i32,
+    #[prost(message, optional, tag = "3")]
+    pub checked_out_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+/// State (for snapshots)
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CartItem {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub quantity: i32,
+    #[prost(int32, tag = "4")]
+    pub unit_price_cents: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CartState {
+    #[prost(string, tag = "1")]
+    pub customer_id: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub items: ::prost::alloc::vec::Vec<CartItem>,
+    #[prost(int32, tag = "3")]
+    pub subtotal_cents: i32,
+    #[prost(string, tag = "4")]
+    pub coupon_code: ::prost::alloc::string::String,
+    #[prost(int32, tag = "5")]
+    pub discount_cents: i32,
+    /// "active", "checked_out"
     #[prost(string, tag = "6")]
     pub status: ::prost::alloc::string::String,
+}
+// =============================================================================
+// Fulfillment Domain - manages shipment lifecycle
+// =============================================================================
+
+/// Commands
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateShipment {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MarkPicked {
+    #[prost(string, tag = "1")]
+    pub picker_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MarkPacked {
+    #[prost(string, tag = "1")]
+    pub packer_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Ship {
+    #[prost(string, tag = "1")]
+    pub carrier: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub tracking_number: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RecordDelivery {
+    #[prost(string, tag = "1")]
+    pub signature: ::prost::alloc::string::String,
+}
+/// Events
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ShipmentCreated {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub created_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ItemsPicked {
+    #[prost(string, tag = "1")]
+    pub picker_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub picked_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ItemsPacked {
+    #[prost(string, tag = "1")]
+    pub packer_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub packed_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Shipped {
+    #[prost(string, tag = "1")]
+    pub carrier: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub tracking_number: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub shipped_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Delivered {
+    #[prost(string, tag = "1")]
+    pub signature: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub delivered_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+}
+/// State (for snapshots)
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FulfillmentState {
+    #[prost(string, tag = "1")]
+    pub order_id: ::prost::alloc::string::String,
+    /// "pending", "picking", "packing", "shipped", "delivered"
+    #[prost(string, tag = "2")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub tracking_number: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub carrier: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub picker_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub packer_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub signature: ::prost::alloc::string::String,
 }
 // =============================================================================
 // Projections
 // =============================================================================
 
-/// Receipt projection generated when a transaction completes
+/// Receipt projection generated when an order completes
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Receipt {
     #[prost(string, tag = "1")]
-    pub transaction_id: ::prost::alloc::string::String,
+    pub order_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub customer_id: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "3")]
