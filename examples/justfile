@@ -9,11 +9,6 @@ TOP := `git rev-parse --show-toplevel`
 mod rust "rust/justfile"
 mod go "go/justfile"
 mod python "python/justfile"
-mod csharp "csharp/justfile"
-mod java "java/justfile"
-mod kotlin "kotlin/justfile"
-mod ruby "ruby/justfile"
-mod typescript "typescript/justfile"
 
 # Show available commands
 default:
@@ -27,20 +22,8 @@ default:
 proto-copy:
     @mkdir -p "{{TOP}}/examples/go/proto"
     @mkdir -p "{{TOP}}/examples/python/proto"
-    @mkdir -p "{{TOP}}/examples/csharp/proto"
-    @mkdir -p "{{TOP}}/examples/kotlin/proto"
-    @mkdir -p "{{TOP}}/examples/typescript/proto"
-    @mkdir -p "{{TOP}}/examples/ruby/proto"
-    @mkdir -p "{{TOP}}/examples/java/proto/angzarr"
-    @mkdir -p "{{TOP}}/examples/java/proto/examples"
     cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/go/proto/"
     cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/python/proto/"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/csharp/proto/"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/kotlin/proto/"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/typescript/proto/"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/ruby/proto/"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/java/proto/examples/"
-    cp "{{TOP}}/proto/angzarr/angzarr.proto" "{{TOP}}/examples/java/proto/angzarr/"
 
 # Generate protos (required before building non-Rust examples)
 proto: proto-copy
@@ -71,11 +54,6 @@ clean:
     just rust clean || true
     just go clean || true
     just python clean || true
-    just csharp clean || true
-    just java clean || true
-    just kotlin clean || true
-    just ruby clean || true
-    just typescript clean || true
 
 # Format all examples
 fmt:
@@ -94,11 +72,6 @@ helm-lint:
     just rust helm-lint || true
     just go helm-lint || true
     just python helm-lint || true
-    just csharp helm-lint || true
-    just java helm-lint || true
-    just kotlin helm-lint || true
-    just ruby helm-lint || true
-    just typescript helm-lint || true
 
 # ============================================================================
 # Container Cache Management

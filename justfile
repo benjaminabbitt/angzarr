@@ -46,13 +46,6 @@ proto-go: proto-container-build
         -v "{{TOP}}/generated:/workspace/generated" \
         angzarr-proto:latest --go
 
-# Generate only Ruby protos
-proto-ruby: proto-container-build
-    podman run --rm \
-        -v "{{TOP}}/proto:/workspace/proto:ro" \
-        -v "{{TOP}}/generated:/workspace/generated" \
-        angzarr-proto:latest --ruby
-
 # Clean generated proto files
 proto-clean:
     rm -rf "{{TOP}}/generated"

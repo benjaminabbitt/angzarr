@@ -17,11 +17,6 @@ on:
           - rust
           - go
           - python
-          - csharp
-          - java
-          - typescript
-          - kotlin
-          - ruby
 
 env:
   CARGO_TERM_COLOR: always
@@ -64,16 +59,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [rust, go, python, csharp, java, typescript, kotlin, ruby]
+        language: [rust, go, python]
         exclude:
           - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'rust' && 'rust' || '' }}
           - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'go' && 'go' || '' }}
           - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'python' && 'python' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'csharp' && 'csharp' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'java' && 'java' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'typescript' && 'typescript' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'kotlin' && 'kotlin' || '' }}
-          - language: ${{ github.event.inputs.language != 'all' && github.event.inputs.language != 'ruby' && 'ruby' || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -121,39 +111,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Set up .NET
-        if: matrix.language == 'csharp'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Set up Java
-        if: matrix.language == 'java'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Set up Node.js
-        if: matrix.language == 'typescript'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Set up Kotlin/Gradle
-        if: matrix.language == 'kotlin'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Set up Ruby
-        if: matrix.language == 'ruby'
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
-          bundler-cache: true
 
       # Create Kind cluster
       - name: Create Kind cluster
