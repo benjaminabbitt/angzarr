@@ -3,71 +3,78 @@ kind: Config
 metadata:
   name: angzarr-rust-examples
 
+# Require framework images - provides IMAGE_TAG_* template variables for deploy
+# Framework images are cached aggressively - only rebuilt when src/proto/Cargo changes
 requires:
-  # Require base angzarr config for infrastructure images (build only, not deploy)
   - path: ../../skaffold.yaml
     configs: [angzarr-build]
 
 build:
+  # Use content-based sha256 tags for all images
+  # New content = new tag = K8s pulls (even with IfNotPresent)
+  tagPolicy:
+    sha256: {}
   local:
     push: true
     useBuildkit: false
+    # Build example images in parallel
+    concurrency: 0
   artifacts:
-    # Domain Aggregates
-    - image: localhost:5001/entity-customer-rs
+    # Domain Aggregates (dev targets - fast native builds)
+    - image: localhost:5001/aggregate-customer-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: customer
+        target: customer-dev
 
-    - image: localhost:5001/entity-product-rs
+    - image: localhost:5001/aggregate-product-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: product
+        target: product-dev
 
-    - image: localhost:5001/entity-inventory-rs
+    - image: localhost:5001/aggregate-inventory-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: inventory
+        target: inventory-dev
 
-    - image: localhost:5001/entity-order-rs
+    - image: localhost:5001/aggregate-order-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: order
+        target: order-dev
 
-    - image: localhost:5001/entity-cart-rs
+    - image: localhost:5001/aggregate-cart-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: cart
+        target: cart-dev
 
-    - image: localhost:5001/entity-fulfillment-rs
+    - image: localhost:5001/aggregate-fulfillment-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: fulfillment
+        target: fulfillment-dev
 
-    # Sagas
+    # Sagas (dev targets)
     - image: localhost:5001/saga-loyalty-earn-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-loyalty-earn
+        target: saga-loyalty-earn-dev
 
     - image: localhost:5001/saga-fulfillment-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-fulfillment
+        target: saga-fulfillment-dev
 
     - image: localhost:5001/saga-cancellation-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-cancellation
+        target: saga-cancellation-dev
 
 deploy:
   helm:
@@ -79,19 +86,30 @@ deploy:
         valuesFiles:
           - ../../deploy/helm/angzarr/values-rust.yaml
         setValueTemplates:
-          # Business entity images
-          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_customer_rs}}"
-          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_customer_rs}}"
-          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_product_rs}}"
-          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_product_rs}}"
-          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_inventory_rs}}"
-          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_inventory_rs}}"
-          applications.business[3].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_order_rs}}"
-          applications.business[3].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_order_rs}}"
-          applications.business[4].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_cart_rs}}"
-          applications.business[4].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_cart_rs}}"
-          applications.business[5].image.repository: "{{.IMAGE_REPO_localhost_5001_entity_fulfillment_rs}}"
-          applications.business[5].image.tag: "{{.IMAGE_TAG_localhost_5001_entity_fulfillment_rs}}"
+          # Framework sidecar images (from required angzarr-build config)
+          images.aggregate.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_aggregate}}"
+          images.aggregate.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_aggregate}}"
+          images.projector.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_projector}}"
+          images.projector.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_projector}}"
+          images.saga.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_saga}}"
+          images.saga.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_saga}}"
+          images.stream.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_stream}}"
+          images.stream.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_stream}}"
+          images.gateway.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_gateway}}"
+          images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
+          # Business aggregate images
+          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_customer_rs}}"
+          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_customer_rs}}"
+          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_product_rs}}"
+          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_product_rs}}"
+          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_inventory_rs}}"
+          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_inventory_rs}}"
+          applications.business[3].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_order_rs}}"
+          applications.business[3].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_order_rs}}"
+          applications.business[4].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_cart_rs}}"
+          applications.business[4].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_cart_rs}}"
+          applications.business[5].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_fulfillment_rs}}"
+          applications.business[5].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_fulfillment_rs}}"
           # Saga images
           applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_loyalty_earn_rs}}"
           applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_loyalty_earn_rs}}"
@@ -101,9 +119,60 @@ deploy:
           applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_cancellation_rs}}"
 
 profiles:
-  - name: dev
-    activation:
-      - command: dev
+  # Release profile - slow musl builds, minimal images
+  - name: release
     build:
-      local:
-        push: true
+      artifacts:
+        - image: localhost:5001/aggregate-customer-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: customer
+
+        - image: localhost:5001/aggregate-product-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: product
+
+        - image: localhost:5001/aggregate-inventory-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: inventory
+
+        - image: localhost:5001/aggregate-order-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: order
+
+        - image: localhost:5001/aggregate-cart-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: cart
+
+        - image: localhost:5001/aggregate-fulfillment-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: fulfillment
+
+        - image: localhost:5001/saga-loyalty-earn-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: saga-loyalty-earn
+
+        - image: localhost:5001/saga-fulfillment-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: saga-fulfillment
+
+        - image: localhost:5001/saga-cancellation-rs
+          context: ../..
+          docker:
+            dockerfile: examples/rust/Containerfile
+            target: saga-cancellation

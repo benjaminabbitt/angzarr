@@ -4,49 +4,75 @@ metadata:
   name: angzarr-build
 
 build:
+  tagPolicy:
+    sha256: {}
   local:
-    # Push to local registry instead of kind load (required for podman)
     push: true
-    # Podman natively supports cache mounts without BuildKit
-    # Keep false for podman compatibility - cache mounts work directly
     useBuildkit: false
-    # Try to import base images from registry to avoid rebuilding
-    tryImportMissing: true
+    concurrency: 1
   artifacts:
-    # Command sidecar - handles commands and event persistence
-    - image: localhost:5001/angzarr-entity
+    # Dev targets (default) - fast native builds
+    - image: localhost:5001/angzarr-aggregate
       context: .
       docker:
         dockerfile: Containerfile
-        target: angzarr-entity
+        target: angzarr-aggregate-dev
 
-    # Projector sidecar - handles event projections
     - image: localhost:5001/angzarr-projector
       context: .
       docker:
         dockerfile: Containerfile
-        target: angzarr-projector
+        target: angzarr-projector-dev
 
-    # Saga sidecar - handles saga orchestration
     - image: localhost:5001/angzarr-saga
       context: .
       docker:
         dockerfile: Containerfile
-        target: angzarr-saga
+        target: angzarr-saga-dev
 
-    # Stream service - broadcasts events to subscribers
     - image: localhost:5001/angzarr-stream
       context: .
       docker:
         dockerfile: Containerfile
-        target: angzarr-stream
+        target: angzarr-stream-dev
 
-    # Gateway service - routes commands and streams events
     - image: localhost:5001/angzarr-gateway
       context: .
       docker:
         dockerfile: Containerfile
-        target: angzarr-gateway
+        target: angzarr-gateway-dev
 
-# Deploy section removed - each language-specific skaffold defines its own deploy
-# See examples/rust/skaffold.yaml, examples/go/skaffold.yaml, etc.
+profiles:
+  # Release profile - slow musl builds, minimal images
+  - name: release
+    build:
+      artifacts:
+        - image: localhost:5001/angzarr-aggregate
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-aggregate
+
+        - image: localhost:5001/angzarr-projector
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-projector
+
+        - image: localhost:5001/angzarr-saga
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-saga
+
+        - image: localhost:5001/angzarr-stream
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-stream
+
+        - image: localhost:5001/angzarr-gateway
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-gateway

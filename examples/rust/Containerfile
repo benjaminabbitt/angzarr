@@ -1,23 +1,52 @@
 # syntax=docker/dockerfile:1.4
-# Rust examples - optimized multi-stage build with cargo-chef and optional UPX
-# Build dev:  podman build --target customer -t rs-customer -f examples/rust/Containerfile .
-# Build prod: podman build --build-arg PROFILE=release --build-arg COMPRESS=true --target customer -t rs-customer -f examples/rust/Containerfile .
+# Rust example images - unified dev/release build
 #
-# Optimizations:
-# 1. cargo-chef for aggressive dependency caching
-# 2. Single compilation step for all 9 binaries (shared deps)
-# 3. Optional UPX compression (COMPRESS=true for prod, false for dev)
-# 4. Scratch runtime - absolute minimal image (~2-3MB compressed)
-# 5. MUSL static binaries (no libc dependency)
-# 6. Fast dev builds by default (container-dev profile)
-
-ARG COMPRESS=false
-ARG PROFILE=container-dev
+# Dev (fast):     podman build --target customer-dev -t aggregate-customer-rs -f examples/rust/Containerfile .
+# Release (slow): podman build --target customer -t aggregate-customer-rs -f examples/rust/Containerfile .
+#
+# Dev uses native glibc target + debian runtime (no cross-compilation)
+# Release uses musl static target + scratch runtime (smallest images)
 
 # =============================================================================
-# Stage 1: Chef - install cargo-chef with musl toolchain
+# Dev builder - native glibc (fast compilation)
 # =============================================================================
-FROM docker.io/library/rust:1.92-alpine AS chef
+FROM docker.io/library/rust:1.92-bookworm AS builder-dev
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    libprotobuf-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY proto/ ./proto/
+COPY src/ ./src/
+COPY examples/rust examples/rust/
+
+RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
+    echo "fn main() {}" > tests/container_integration.rs && \
+    echo "fn main() {}" > tests/mongodb_debug.rs
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --profile container-dev \
+    -p customer --bin customer-server \
+    -p product --bin product-server \
+    -p inventory@0.1.0 --bin inventory-server \
+    -p order --bin order-server \
+    -p cart --bin cart-server \
+    -p fulfillment --bin fulfillment-server \
+    -p saga-loyalty-earn --bin saga-loyalty-earn-server \
+    -p saga-fulfillment --bin saga-fulfillment-server \
+    -p saga-cancellation --bin saga-cancellation-server && \
+    cp target/container-dev/*-server /tmp/
+
+# =============================================================================
+# Release builder - musl static (small images)
+# =============================================================================
+FROM docker.io/library/rust:1.92-alpine AS builder-release
 
 RUN apk add --no-cache \
     musl-dev \
@@ -28,73 +57,25 @@ RUN apk add --no-cache \
     pkgconfig
 
 RUN rustup target add x86_64-unknown-linux-musl
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    cargo install cargo-chef sccache --locked
 
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
 ENV OPENSSL_DIR=/usr
-ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_DIR=/sccache
 
 WORKDIR /app
 
-# =============================================================================
-# Stage 2: Planner - analyze dependencies
-# =============================================================================
-FROM chef AS planner
-
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
 COPY examples/rust examples/rust/
 
-# Create stub test files (required by Cargo.toml)
-RUN mkdir -p tests && \
-    echo "fn main() {}" > tests/acceptance.rs && \
+RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
     echo "fn main() {}" > tests/container_integration.rs && \
     echo "fn main() {}" > tests/mongodb_debug.rs
 
-RUN cargo chef prepare --recipe-path recipe.json
-
-# =============================================================================
-# Stage 3: Cacher - build dependencies only (heavily cached)
-# =============================================================================
-FROM chef AS cacher
-ARG PROFILE
-
-COPY --from=planner /app/recipe.json recipe.json
-
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/sccache \
-    cargo chef cook --profile ${PROFILE} --target x86_64-unknown-linux-musl --recipe-path recipe.json
-
-# =============================================================================
-# Stage 4: Builder - compile ALL binaries in single invocation
-# =============================================================================
-FROM chef AS builder
-ARG PROFILE
-
-COPY --from=cacher /app/target target
-COPY --from=cacher /usr/local/cargo /usr/local/cargo
-
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto/ ./proto/
-COPY src/ ./src/
-COPY examples/rust examples/rust/
-
-RUN mkdir -p tests && \
-    echo "fn main() {}" > tests/acceptance.rs && \
-    echo "fn main() {}" > tests/container_integration.rs && \
-    echo "fn main() {}" > tests/mongodb_debug.rs
-
-# Build all 9 binaries in single invocation - maximum cache reuse
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/sccache \
-    cargo build --profile ${PROFILE} --target x86_64-unknown-linux-musl \
+    cargo build --release --target x86_64-unknown-linux-musl \
     -p customer --bin customer-server \
     -p product --bin product-server \
     -p inventory@0.1.0 --bin inventory-server \
@@ -103,129 +84,135 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     -p fulfillment --bin fulfillment-server \
     -p saga-loyalty-earn --bin saga-loyalty-earn-server \
     -p saga-fulfillment --bin saga-fulfillment-server \
-    -p saga-cancellation --bin saga-cancellation-server
-
-# Export profile for compress stages (release outputs to release/, others to profile name)
-ENV BUILD_PROFILE=${PROFILE}
-RUN if [ "$PROFILE" = "release" ]; then \
-      ln -s /app/target/x86_64-unknown-linux-musl/release /app/target/x86_64-unknown-linux-musl/output; \
-    else \
-      ln -s /app/target/x86_64-unknown-linux-musl/${PROFILE} /app/target/x86_64-unknown-linux-musl/output; \
-    fi
+    -p saga-cancellation --bin saga-cancellation-server && \
+    cp target/x86_64-unknown-linux-musl/release/*-server /tmp/
 
 # =============================================================================
-# Stage 5: UPX compression (conditional)
+# Runtime bases
 # =============================================================================
-FROM alpine:3.21 AS upx-base
-RUN apk add --no-cache upx
-
-FROM upx-base AS compress-customer
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/customer-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-product
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/product-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-inventory
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/inventory-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-order
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/order-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-cart
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/cart-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-fulfillment
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/fulfillment-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-saga-loyalty-earn
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/saga-loyalty-earn-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-saga-fulfillment
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/saga-fulfillment-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-saga-cancellation
-ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/saga-cancellation-server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-# ============================================================================
-# Runtime base - scratch (absolute minimal, static binary only)
-# ============================================================================
-FROM scratch AS runtime
+FROM docker.io/library/debian:bookworm-slim AS runtime-dev-base
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# ============================================================================
-# Domain Aggregates
-# ============================================================================
-FROM runtime AS customer
-COPY --from=compress-customer /server ./server
+FROM scratch AS runtime-release-base
+WORKDIR /app
+
+# =============================================================================
+# Dev images - Domain Aggregates
+# =============================================================================
+FROM runtime-dev-base AS customer-dev
+COPY --from=builder-dev /tmp/customer-server ./server
 ENV PORT=50055
 EXPOSE 50055
 ENTRYPOINT ["./server"]
 
-FROM runtime AS product
-COPY --from=compress-product /server ./server
+FROM runtime-dev-base AS product-dev
+COPY --from=builder-dev /tmp/product-server ./server
 ENV PORT=50053
 EXPOSE 50053
 ENTRYPOINT ["./server"]
 
-FROM runtime AS inventory
-COPY --from=compress-inventory /server ./server
+FROM runtime-dev-base AS inventory-dev
+COPY --from=builder-dev /tmp/inventory-server ./server
 ENV PORT=50054
 EXPOSE 50054
 ENTRYPOINT ["./server"]
 
-FROM runtime AS order
-COPY --from=compress-order /server ./server
+FROM runtime-dev-base AS order-dev
+COPY --from=builder-dev /tmp/order-server ./server
 ENV PORT=50056
 EXPOSE 50056
 ENTRYPOINT ["./server"]
 
-FROM runtime AS cart
-COPY --from=compress-cart /server ./server
+FROM runtime-dev-base AS cart-dev
+COPY --from=builder-dev /tmp/cart-server ./server
 ENV PORT=50057
 EXPOSE 50057
 ENTRYPOINT ["./server"]
 
-FROM runtime AS fulfillment
-COPY --from=compress-fulfillment /server ./server
+FROM runtime-dev-base AS fulfillment-dev
+COPY --from=builder-dev /tmp/fulfillment-server ./server
 ENV PORT=50058
 EXPOSE 50058
 ENTRYPOINT ["./server"]
 
-# ============================================================================
-# Sagas
-# ============================================================================
-FROM runtime AS saga-loyalty-earn
-COPY --from=compress-saga-loyalty-earn /server ./server
+# =============================================================================
+# Dev images - Sagas
+# =============================================================================
+FROM runtime-dev-base AS saga-loyalty-earn-dev
+COPY --from=builder-dev /tmp/saga-loyalty-earn-server ./server
 ENV PORT=50060
 EXPOSE 50060
 ENTRYPOINT ["./server"]
 
-FROM runtime AS saga-fulfillment
-COPY --from=compress-saga-fulfillment /server ./server
+FROM runtime-dev-base AS saga-fulfillment-dev
+COPY --from=builder-dev /tmp/saga-fulfillment-server ./server
 ENV PORT=50061
 EXPOSE 50061
 ENTRYPOINT ["./server"]
 
-FROM runtime AS saga-cancellation
-COPY --from=compress-saga-cancellation /server ./server
+FROM runtime-dev-base AS saga-cancellation-dev
+COPY --from=builder-dev /tmp/saga-cancellation-server ./server
+ENV PORT=50062
+EXPOSE 50062
+ENTRYPOINT ["./server"]
+
+# =============================================================================
+# Release images - Domain Aggregates
+# =============================================================================
+FROM runtime-release-base AS customer
+COPY --from=builder-release /tmp/customer-server ./server
+ENV PORT=50055
+EXPOSE 50055
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS product
+COPY --from=builder-release /tmp/product-server ./server
+ENV PORT=50053
+EXPOSE 50053
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS inventory
+COPY --from=builder-release /tmp/inventory-server ./server
+ENV PORT=50054
+EXPOSE 50054
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS order
+COPY --from=builder-release /tmp/order-server ./server
+ENV PORT=50056
+EXPOSE 50056
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS cart
+COPY --from=builder-release /tmp/cart-server ./server
+ENV PORT=50057
+EXPOSE 50057
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS fulfillment
+COPY --from=builder-release /tmp/fulfillment-server ./server
+ENV PORT=50058
+EXPOSE 50058
+ENTRYPOINT ["./server"]
+
+# =============================================================================
+# Release images - Sagas
+# =============================================================================
+FROM runtime-release-base AS saga-loyalty-earn
+COPY --from=builder-release /tmp/saga-loyalty-earn-server ./server
+ENV PORT=50060
+EXPOSE 50060
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS saga-fulfillment
+COPY --from=builder-release /tmp/saga-fulfillment-server ./server
+ENV PORT=50061
+EXPOSE 50061
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS saga-cancellation
+COPY --from=builder-release /tmp/saga-cancellation-server ./server
 ENV PORT=50062
 EXPOSE 50062
 ENTRYPOINT ["./server"]
