@@ -25,6 +25,10 @@ images:
     repository: angzarr-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
+  log:
+    repository: angzarr-log
+    pullPolicy: IfNotPresent
+    tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -135,6 +139,19 @@ infrastructure:
       requests:
         cpu: 100m
         memory: 128Mi
+
+  # Log service - prints events to stdout for debugging
+  log:
+    enabled: false
+    replicas: 1
+    port: 50051           # Projector gRPC (receives events from sidecar)
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
 
 ingress:
   enabled: false

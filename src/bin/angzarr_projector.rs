@@ -30,7 +30,7 @@ use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
 
 use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, MessagingType};
 use angzarr::config::Config;
-use angzarr::handlers::projector::ProjectorEventHandler;
+use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 
 #[tokio::main]

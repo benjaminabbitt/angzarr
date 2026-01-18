@@ -38,6 +38,17 @@ output "messaging_secret" {
   value       = module.messaging.secret_name
 }
 
+# Redis - cache/session
+output "redis_host" {
+  description = "Redis host"
+  value       = module.redis.host
+}
+
+output "redis_secret" {
+  description = "Redis credentials secret name"
+  value       = module.redis.secret_name
+}
+
 output "mesh_enabled" {
   description = "Whether service mesh is enabled"
   value       = var.enable_mesh

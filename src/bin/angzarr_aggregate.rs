@@ -31,16 +31,16 @@
 
 use std::sync::Arc;
 
-use tonic::transport::Server;
+use tonic::transport::{Channel, Server};
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{AmqpEventBus, EventBus, MessagingType, MockEventBus};
-use angzarr::clients::{BusinessLogicClient, StaticBusinessLogicClient};
 use angzarr::config::Config;
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::proto::{
-    aggregate_coordinator_server::AggregateCoordinatorServer, event_query_server::EventQueryServer,
+    aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
+    event_query_server::EventQueryServer,
 };
 use angzarr::services::{AggregateService, EventQueryService};
 use angzarr::storage::init_storage;
@@ -74,10 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         target.address, domain
     );
 
-    let mut addresses = std::collections::HashMap::new();
-    addresses.insert(domain.clone(), format!("http://{}", target.address));
-    let business_client: Arc<dyn BusinessLogicClient> =
-        Arc::new(StaticBusinessLogicClient::new(addresses).await?);
+    let channel = Channel::from_shared(format!("http://{}", target.address))?
+        .connect()
+        .await?;
+    let business_client = AggregateClient::new(channel);
 
     let event_bus: Arc<dyn EventBus> = match &config.messaging {
         Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {

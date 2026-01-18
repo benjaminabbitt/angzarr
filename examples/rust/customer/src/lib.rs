@@ -5,13 +5,11 @@
 mod handlers;
 mod state;
 
-use async_trait::async_trait;
-
-use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{
     business_response, BusinessResponse, CommandBook, ContextualCommand, EventBook,
 };
 use common::next_sequence;
+use common::{AggregateLogic, BusinessError, Result};
 use common::proto::CustomerState;
 
 pub use handlers::{
@@ -104,9 +102,9 @@ impl CustomerLogic {
     }
 }
 
-#[async_trait]
-impl BusinessLogicClient for CustomerLogic {
-    async fn handle(&self, _domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse> {
+#[tonic::async_trait]
+impl AggregateLogic for CustomerLogic {
+    async fn handle(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, tonic::Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -116,7 +114,7 @@ impl BusinessLogicClient for CustomerLogic {
         let Some(cb) = command_book else {
             return Err(BusinessError::Rejected(
                 errmsg::NO_COMMAND_PAGES.to_string(),
-            ));
+            ).into());
         };
 
         let command_page = cb
@@ -140,20 +138,12 @@ impl BusinessLogicClient for CustomerLogic {
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )));
+            )).into());
         };
 
         Ok(BusinessResponse {
             result: Some(business_response::Result::Events(events)),
         })
-    }
-
-    fn has_domain(&self, domain: &str) -> bool {
-        domain == self.domain
-    }
-
-    fn domains(&self) -> Vec<String> {
-        vec![self.domain.clone()]
     }
 }
 
@@ -227,7 +217,7 @@ mod tests {
             events: None,
         };
 
-        let response = logic.handle("customer", ctx).await.unwrap();
+        let response = logic.handle(ctx).await.unwrap();
         let result = extract_events(response);
         assert_eq!(result.pages.len(), 1);
 
@@ -283,7 +273,7 @@ mod tests {
             events: Some(prior),
         };
 
-        let result = logic.handle("customer", ctx).await;
+        let result = logic.handle(ctx).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
@@ -333,7 +323,7 @@ mod tests {
             events: Some(prior),
         };
 
-        let response = logic.handle("customer", ctx).await.unwrap();
+        let response = logic.handle(ctx).await.unwrap();
         let result = extract_events(response);
         assert_eq!(result.pages.len(), 1);
 
@@ -365,7 +355,7 @@ mod tests {
             events: None,
         };
 
-        let result = logic.handle("customer", ctx).await;
+        let result = logic.handle(ctx).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
@@ -431,7 +421,7 @@ mod tests {
             events: Some(prior),
         };
 
-        let result = logic.handle("customer", ctx).await;
+        let result = logic.handle(ctx).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Insufficient"));
     }

@@ -11,7 +11,6 @@ use tonic::{Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use angzarr::clients::BusinessLogicClient;
 use angzarr::proto::aggregate_server::{Aggregate, AggregateServer};
 use angzarr::proto::saga_server::{Saga as SagaService, SagaServer};
 use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, EventBook, SagaResponse};
@@ -33,32 +32,36 @@ pub fn get_port(default: &str) -> String {
 // Aggregate Support
 // ============================================================================
 
-/// Wrapper that adapts a BusinessLogicClient to the Aggregate gRPC service.
+/// Trait for aggregate business logic implementations.
+///
+/// Business logic receives contextual commands (prior events + new command)
+/// and returns a response with new events or rejection.
+#[tonic::async_trait]
+pub trait AggregateLogic: Send + Sync {
+    /// Handle a contextual command and return a business response.
+    async fn handle(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
+}
+
+/// Wrapper that adapts an AggregateLogic to the Aggregate gRPC service.
 pub struct AggregateWrapper<T> {
-    domain: String,
     logic: T,
 }
 
 impl<T> AggregateWrapper<T> {
-    pub fn new(domain: impl Into<String>, logic: T) -> Self {
-        Self {
-            domain: domain.into(),
-            logic,
-        }
+    pub fn new(logic: T) -> Self {
+        Self { logic }
     }
 }
 
 #[tonic::async_trait]
-impl<T: BusinessLogicClient + 'static> Aggregate for AggregateWrapper<T> {
+impl<T: AggregateLogic + 'static> Aggregate for AggregateWrapper<T> {
     async fn handle(
         &self,
         request: Request<ContextualCommand>,
     ) -> Result<Response<BusinessResponse>, Status> {
         let cmd = request.into_inner();
-        match self.logic.handle(&self.domain, cmd).await {
-            Ok(response) => Ok(Response::new(response)),
-            Err(e) => Err(Status::failed_precondition(e.to_string())),
-        }
+        let response = self.logic.handle(cmd).await?;
+        Ok(Response::new(response))
     }
 }
 
@@ -68,7 +71,7 @@ impl<T: BusinessLogicClient + 'static> Aggregate for AggregateWrapper<T> {
 /// ```ignore
 /// run_aggregate_server("cart", "50057", CartLogic::new()).await
 /// ```
-pub async fn run_aggregate_server<T: BusinessLogicClient + 'static>(
+pub async fn run_aggregate_server<T: AggregateLogic + 'static>(
     domain: &str,
     default_port: &str,
     logic: T,
@@ -78,7 +81,7 @@ pub async fn run_aggregate_server<T: BusinessLogicClient + 'static>(
     let port = get_port(default_port);
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
-    let service = AggregateWrapper::new(domain, logic);
+    let service = AggregateWrapper::new(logic);
 
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter

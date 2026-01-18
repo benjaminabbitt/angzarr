@@ -27,7 +27,7 @@ use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
 
 use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, MessagingType};
 use angzarr::config::Config;
-use angzarr::handlers::saga::SagaEventHandler;
+use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::saga_coordinator_client::SagaCoordinatorClient;
 

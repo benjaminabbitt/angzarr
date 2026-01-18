@@ -1,10 +1,7 @@
-//! BusinessLogicClient implementation for CartLogic.
+//! AggregateLogic implementation for CartLogic.
 
-use async_trait::async_trait;
-
-use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{business_response, BusinessResponse, ContextualCommand};
-use common::next_sequence;
+use common::{next_sequence, AggregateLogic, BusinessError};
 
 use crate::handlers::{
     handle_add_item, handle_apply_coupon, handle_checkout, handle_clear_cart, handle_create_cart,
@@ -13,9 +10,9 @@ use crate::handlers::{
 use crate::state::rebuild_state;
 use crate::{errmsg, CartLogic};
 
-#[async_trait]
-impl BusinessLogicClient for CartLogic {
-    async fn handle(&self, _domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse> {
+#[tonic::async_trait]
+impl AggregateLogic for CartLogic {
+    async fn handle(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, tonic::Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -25,7 +22,7 @@ impl BusinessLogicClient for CartLogic {
         let Some(cb) = command_book else {
             return Err(BusinessError::Rejected(
                 errmsg::NO_COMMAND_PAGES.to_string(),
-            ));
+            ).into());
         };
 
         let command_page = cb
@@ -57,19 +54,11 @@ impl BusinessLogicClient for CartLogic {
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )));
+            )).into());
         };
 
         Ok(BusinessResponse {
             result: Some(business_response::Result::Events(events)),
         })
-    }
-
-    fn has_domain(&self, domain: &str) -> bool {
-        domain == self.domain
-    }
-
-    fn domains(&self) -> Vec<String> {
-        vec![self.domain.clone()]
     }
 }

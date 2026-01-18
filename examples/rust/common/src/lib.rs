@@ -1,14 +1,38 @@
 //! Common utilities for Angzarr example implementations.
 
 use angzarr::proto::{event_page::Sequence, EventBook};
+use tonic::Status;
 
 pub mod identity;
 pub mod proto;
 pub mod server;
 
 pub use server::{
-    init_tracing, run_aggregate_server, run_saga_server, AggregateWrapper, SagaLogic, SagaWrapper,
+    init_tracing, run_aggregate_server, run_saga_server, AggregateLogic, AggregateWrapper,
+    SagaLogic, SagaWrapper,
 };
+
+// ============================================================================
+// Error Types for Business Logic
+// ============================================================================
+
+/// Result type for business logic operations.
+pub type Result<T> = std::result::Result<T, BusinessError>;
+
+/// Errors that can occur during business logic operations.
+#[derive(Debug, thiserror::Error)]
+pub enum BusinessError {
+    #[error("Business logic rejected command: {0}")]
+    Rejected(String),
+}
+
+impl From<BusinessError> for Status {
+    fn from(err: BusinessError) -> Self {
+        match err {
+            BusinessError::Rejected(msg) => Status::failed_precondition(msg),
+        }
+    }
+}
 
 /// Get the next sequence number for new events based on prior EventBook state.
 ///

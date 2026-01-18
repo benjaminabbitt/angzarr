@@ -184,6 +184,22 @@ def generate_credentials(env_override: bool = True) -> dict[str, str]:
         credentials["kafka-password"] = generate_password()
         print("Generated Kafka password")
 
+    # Redis password
+    if env_override and os.environ.get("REDIS_PASSWORD"):
+        credentials["redis-password"] = os.environ["REDIS_PASSWORD"]
+        print("Using REDIS_PASSWORD from environment")
+    else:
+        credentials["redis-password"] = generate_password()
+        print("Generated Redis password")
+
+    # EventStoreDB password
+    if env_override and os.environ.get("EVENTSTOREDB_PASSWORD"):
+        credentials["eventstoredb-password"] = os.environ["EVENTSTOREDB_PASSWORD"]
+        print("Using EVENTSTOREDB_PASSWORD from environment")
+    else:
+        credentials["eventstoredb-password"] = generate_password()
+        print("Generated EventStoreDB password")
+
     return credentials
 
 
@@ -314,12 +330,41 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     )
     print(f"Created RabbitMQ credentials in namespace '{config.namespace}'")
 
+    # Create Redis credentials secret
+    redis_creds = {
+        "password": source_data.get("redis-password", ""),
+    }
+    create_secret(
+        "redis-credentials",
+        config.namespace,
+        redis_creds,
+        force=args.force,
+    )
+    print(f"Created Redis credentials in namespace '{config.namespace}'")
+
+    # Create EventStoreDB credentials secret
+    eventstoredb_creds = {
+        "username": "admin",
+        "password": source_data.get("eventstoredb-password", ""),
+    }
+    create_secret(
+        "eventstoredb-credentials",
+        config.namespace,
+        eventstoredb_creds,
+        force=args.force,
+    )
+    print(f"Created EventStoreDB credentials in namespace '{config.namespace}'")
+
     # Create main angzarr secrets with connection URIs
     mongodb_password = source_data.get("mongodb-password", "")
     rabbitmq_password = source_data.get("rabbitmq-password", "")
+    redis_password = source_data.get("redis-password", "")
+    eventstoredb_password = source_data.get("eventstoredb-password", "")
     angzarr_secret = {
         "mongodb-uri": f"mongodb://angzarr:{mongodb_password}@mongodb-0.mongodb-headless:27017/angzarr?replicaSet=rs0&authSource=admin",
         "amqp-url": f"amqp://angzarr:{rabbitmq_password}@rabbitmq:5672",
+        "redis-uri": f"redis://:{redis_password}@angzarr-redis-master:6379",
+        "eventstoredb-connection-string": f"esdb://admin:{eventstoredb_password}@angzarr-eventstoredb:2113?tls=false",
     }
     create_secret(
         "angzarr-secrets",

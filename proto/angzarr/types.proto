@@ -32,6 +32,8 @@ message EventPage {
   google.protobuf.Any event = 4;
 }
 
+// Snapshot of aggregate state at a given sequence number.
+// State must be a protobuf Message to serialize into Any.
 message Snapshot {
   uint32 sequence = 2;
   google.protobuf.Any state = 3;
@@ -42,7 +44,9 @@ message EventBook {
   Snapshot snapshot = 2;                    // Framework-populated when loading (has sequence)
   repeated EventPage pages = 3;
   string correlation_id = 4;
-  google.protobuf.Any snapshot_state = 5;   // Business logic sets this; framework computes sequence
+  // Business logic sets this; framework computes sequence.
+  // State must be a protobuf Message for serialization into Any.
+  google.protobuf.Any snapshot_state = 5;
 }
 
 message SyncEventBook {

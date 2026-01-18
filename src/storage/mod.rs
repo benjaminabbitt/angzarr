@@ -4,7 +4,7 @@
 //! - `EventStore` trait: Event persistence
 //! - `SnapshotStore` trait: Snapshot optimization
 //! - Storage configuration types
-//! - Implementations: MongoDB, PostgreSQL, EventStoreDB
+//! - Implementations: MongoDB, PostgreSQL, Redis
 
 use std::sync::Arc;
 
@@ -16,8 +16,6 @@ use uuid::Uuid;
 use crate::proto::{EventPage, Snapshot};
 
 // Implementation modules
-#[cfg(feature = "eventstoredb")]
-pub mod eventstoredb;
 pub mod mock;
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
@@ -29,8 +27,6 @@ pub mod redis;
 pub mod schema;
 
 // Re-exports
-#[cfg(feature = "eventstoredb")]
-pub use eventstoredb::{EventStoreDbEventStore, EventStoreDbSnapshotStore};
 pub use mock::{MockEventStore, MockSnapshotStore};
 #[cfg(feature = "mongodb")]
 pub use mongodb::{MongoEventStore, MongoSnapshotStore};
@@ -76,10 +72,6 @@ pub enum StorageError {
     #[error("MongoDB error: {0}")]
     Mongo(#[from] ::mongodb::error::Error),
 
-    #[cfg(feature = "eventstoredb")]
-    #[error("EventStoreDB error: {0}")]
-    EventStoreDb(String),
-
     #[cfg(feature = "redis")]
     #[error("Redis error: {0}")]
     Redis(#[from] ::redis::RedisError),
@@ -90,7 +82,7 @@ pub enum StorageError {
 /// Implementations:
 /// - `MongoEventStore`: MongoDB storage
 /// - `PostgresEventStore`: PostgreSQL storage
-/// - `EventStoreDbEventStore`: EventStoreDB storage
+/// - `RedisEventStore`: Redis storage
 /// - `MockEventStore`: In-memory mock for testing
 #[async_trait]
 pub trait EventStore: Send + Sync {
@@ -131,10 +123,18 @@ pub trait EventStore: Send + Sync {
 /// When loading an aggregate, if a snapshot exists, events are loaded from
 /// the snapshot sequence onwards.
 ///
-/// Implementations:
+/// # Requirements
+///
+/// For snapshotting to work, aggregate state must be protobuf serializable.
+/// The state is stored as `google.protobuf.Any`, requiring:
+/// - State type must be a protobuf `Message`
+/// - State must implement `prost::Name` for type URL resolution
+///
+/// # Implementations
+///
 /// - `MongoSnapshotStore`: MongoDB storage
 /// - `PostgresSnapshotStore`: PostgreSQL storage
-/// - `EventStoreDbSnapshotStore`: EventStoreDB storage
+/// - `RedisSnapshotStore`: Redis storage
 /// - `MockSnapshotStore`: In-memory mock for testing
 #[async_trait]
 pub trait SnapshotStore: Send + Sync {
@@ -163,7 +163,7 @@ pub enum StorageType {
     #[default]
     Mongodb,
     Postgres,
-    Eventstoredb,
+    Redis,
 }
 
 /// Storage configuration (discriminated union).
@@ -177,8 +177,8 @@ pub struct StorageConfig {
     pub mongodb: MongodbConfig,
     /// PostgreSQL-specific configuration.
     pub postgres: PostgresConfig,
-    /// EventStoreDB-specific configuration.
-    pub eventstoredb: EventStoreDbConfig,
+    /// Redis-specific configuration.
+    pub redis: RedisConfig,
     /// Snapshot enable/disable flags for debugging and troubleshooting.
     pub snapshots_enable: SnapshotsEnableConfig,
 }
@@ -189,7 +189,7 @@ impl Default for StorageConfig {
             storage_type: StorageType::Mongodb,
             mongodb: MongodbConfig::default(),
             postgres: PostgresConfig::default(),
-            eventstoredb: EventStoreDbConfig::default(),
+            redis: RedisConfig::default(),
             snapshots_enable: SnapshotsEnableConfig::default(),
         }
     }
@@ -230,18 +230,18 @@ impl Default for PostgresConfig {
     }
 }
 
-/// EventStoreDB-specific configuration.
+/// Redis-specific configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
-pub struct EventStoreDbConfig {
-    /// EventStoreDB connection string.
-    pub connection_string: String,
+pub struct RedisConfig {
+    /// Redis connection URI.
+    pub uri: String,
 }
 
-impl Default for EventStoreDbConfig {
+impl Default for RedisConfig {
     fn default() -> Self {
         Self {
-            connection_string: "esdb://localhost:2113?tls=false".to_string(),
+            uri: "redis://localhost:6379".to_string(),
         }
     }
 }
@@ -285,7 +285,7 @@ impl Default for SnapshotsEnableConfig {
 /// Requires the corresponding feature to be enabled:
 /// - MongoDB: `--features mongodb` (included in default)
 /// - PostgreSQL: `--features postgres`
-/// - EventStoreDB: `--features eventstoredb`
+/// - Redis: `--features redis`
 pub async fn init_storage(
     config: &StorageConfig,
 ) -> std::result::Result<(Arc<dyn EventStore>, Arc<dyn SnapshotStore>), Box<dyn std::error::Error>>
@@ -335,27 +335,25 @@ pub async fn init_storage(
                 Err("PostgreSQL support requires the 'postgres' feature. Rebuild with --features postgres".into())
             }
         }
-        StorageType::Eventstoredb => {
-            #[cfg(feature = "eventstoredb")]
+        StorageType::Redis => {
+            #[cfg(feature = "redis")]
             {
-                info!(
-                    "Storage: eventstoredb at {}",
-                    config.eventstoredb.connection_string
-                );
+                info!("Storage: redis at {}", config.redis.uri);
 
-                let event_store = Arc::new(
-                    EventStoreDbEventStore::new(&config.eventstoredb.connection_string).await?,
-                );
-                let snapshot_store = Arc::new(
-                    EventStoreDbSnapshotStore::new(&config.eventstoredb.connection_string).await?,
-                );
+                let event_store =
+                    Arc::new(redis::RedisEventStore::new(&config.redis.uri, None).await?);
+                let snapshot_store =
+                    Arc::new(redis::RedisSnapshotStore::new(&config.redis.uri, None).await?);
 
                 Ok((event_store, snapshot_store))
             }
 
-            #[cfg(not(feature = "eventstoredb"))]
+            #[cfg(not(feature = "redis"))]
             {
-                Err("EventStoreDB support requires the 'eventstoredb' feature. Rebuild with --features eventstoredb".into())
+                Err(
+                    "Redis support requires the 'redis' feature. Rebuild with --features redis"
+                        .into(),
+                )
             }
         }
     }

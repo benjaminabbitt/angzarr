@@ -51,6 +51,7 @@ locals {
   db_admin_password = data.kubernetes_secret.angzarr_secrets.data["postgres-admin-password"]
   db_password       = data.kubernetes_secret.angzarr_secrets.data["postgres-password"]
   mq_password       = data.kubernetes_secret.angzarr_secrets.data["rabbitmq-password"]
+  redis_password    = data.kubernetes_secret.angzarr_secrets.data["redis-password"]
 }
 
 # Namespace for angzarr workloads
@@ -142,6 +143,34 @@ module "messaging" {
     limits = {
       memory = "256Mi"
       cpu    = "250m"
+    }
+  }
+
+  metrics_enabled = false
+}
+
+# Redis - cache/session storage
+module "redis" {
+  source = "../../modules/redis"
+
+  managed      = false
+  release_name = "angzarr-redis"
+  namespace    = kubernetes_namespace.angzarr.metadata[0].name
+  password     = local.redis_password
+
+  auth_enabled        = true
+  replica_count       = 0
+  persistence_enabled = true
+  persistence_size    = "1Gi"
+
+  resources = {
+    requests = {
+      memory = "64Mi"
+      cpu    = "25m"
+    }
+    limits = {
+      memory = "128Mi"
+      cpu    = "100m"
     }
   }
 

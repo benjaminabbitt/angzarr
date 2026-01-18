@@ -71,10 +71,9 @@ kafka = ["dep:rdkafka"]
 mongodb = ["dep:mongodb"]
 postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder"]
 redis = ["dep:redis"]
-eventstoredb = ["dep:eventstore"]
 
 # All features for development
-full = ["amqp", "kafka", "mongodb", "postgres", "redis", "eventstoredb"]
+full = ["amqp", "kafka", "mongodb", "postgres", "redis"]
 
 [dependencies]
 # gRPC
@@ -91,9 +90,6 @@ tokio = { version = "1", features = ["full"] }
 sea-query = { version = "0.32", optional = true }
 sea-query-binder = { version = "0.7", features = ["sqlx-postgres"], optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
-
-# EventStoreDB (optional)
-eventstore = { version = "3", optional = true }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -188,8 +184,16 @@ name = "query_integration"
 path = "tests/integration/query_test.rs"
 
 [[test]]
-name = "mongodb_debug"
+name = "storage_mongodb"
 required-features = ["mongodb"]
+
+[[test]]
+name = "storage_redis"
+required-features = ["redis"]
+
+[[test]]
+name = "storage_postgres"
+required-features = ["postgres"]
 
 # === Build Profiles ===
 

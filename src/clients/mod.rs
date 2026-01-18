@@ -1,79 +1,9 @@
-//! Business logic clients.
+//! Client configuration types.
 //!
-//! This module contains:
-//! - `BusinessLogicClient` trait: Communication with business logic services
-//! - Client configuration types
-//! - Implementations: Static, Mock
+//! This module contains service endpoint configuration used across
+//! the system for business logic, projectors, and sagas.
 
-use async_trait::async_trait;
 use serde::Deserialize;
-
-use crate::proto::{BusinessResponse, ContextualCommand};
-
-// Implementation modules
-pub mod mock;
-pub mod static_client;
-
-// Re-exports
-pub use mock::MockBusinessLogic;
-pub use static_client::StaticBusinessLogicClient;
-
-// ============================================================================
-// Traits
-// ============================================================================
-
-/// Result type for business logic operations.
-pub type Result<T> = std::result::Result<T, BusinessError>;
-
-/// Errors that can occur during business logic operations.
-#[derive(Debug, thiserror::Error)]
-pub enum BusinessError {
-    #[error("Domain not found: {0}")]
-    DomainNotFound(String),
-
-    #[error("Connection failed to {domain}: {message}")]
-    Connection { domain: String, message: String },
-
-    #[error("Business logic rejected command: {0}")]
-    Rejected(String),
-
-    #[error("Timeout waiting for {domain}")]
-    Timeout { domain: String },
-
-    #[error("gRPC error: {0}")]
-    Grpc(Box<tonic::Status>),
-}
-
-impl From<tonic::Status> for BusinessError {
-    fn from(status: tonic::Status) -> Self {
-        BusinessError::Grpc(Box::new(status))
-    }
-}
-
-/// Interface for calling business logic services.
-///
-/// Business logic services implement the domain-specific command handling.
-/// They receive a ContextualCommand (prior events + new command) and
-/// return a BusinessResponse containing either events to persist or
-/// a RevocationResponse with handling instructions.
-///
-/// Implementations:
-/// - `StaticBusinessLogicClient`: Hardcoded addresses per domain
-/// - `MockBusinessLogic`: In-memory mock for testing
-#[async_trait]
-pub trait BusinessLogicClient: Send + Sync {
-    /// Handle a contextual command.
-    ///
-    /// Routes to the appropriate business logic service based on domain,
-    /// sends the command, and returns the BusinessResponse.
-    async fn handle(&self, domain: &str, cmd: ContextualCommand) -> Result<BusinessResponse>;
-
-    /// Check if a domain is registered.
-    fn has_domain(&self, domain: &str) -> bool;
-
-    /// List all registered domains.
-    fn domains(&self) -> Vec<String>;
-}
 
 // ============================================================================
 // Configuration
@@ -91,13 +21,13 @@ pub struct ServiceEndpoint {
     pub address: String,
 }
 
-/// Business logic service endpoint (alias for backwards compatibility).
+/// Business logic service endpoint.
 pub type BusinessLogicEndpoint = ServiceEndpoint;
 
-/// Projector endpoint (alias for backwards compatibility).
+/// Projector endpoint.
 pub type ProjectorEndpoint = ServiceEndpoint;
 
-/// Saga endpoint (alias for backwards compatibility).
+/// Saga endpoint.
 pub type SagaEndpoint = ServiceEndpoint;
 
 /// Saga compensation configuration.

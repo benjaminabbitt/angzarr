@@ -1,6 +1,6 @@
 //! Handler for SubmitPayment command.
 
-use angzarr::clients::{BusinessError, Result};
+use common::{BusinessError, Result};
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{OrderState, PaymentSubmitted, SubmitPayment};
 use prost::Message;

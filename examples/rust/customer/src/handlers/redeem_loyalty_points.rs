@@ -1,6 +1,6 @@
 //! Handler for RedeemLoyaltyPoints command.
 
-use angzarr::clients::{BusinessError, Result};
+use common::{BusinessError, Result};
 use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
 use common::proto::{CustomerState, LoyaltyPointsRedeemed, RedeemLoyaltyPoints};
 use prost::Message;

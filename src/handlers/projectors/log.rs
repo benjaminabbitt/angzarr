@@ -10,8 +10,8 @@ use prost_reflect::{DescriptorPool, DynamicMessage};
 use tonic::{Request, Response, Status};
 use tracing::info;
 
-use crate::proto::projector_server::Projector;
-use crate::proto::{EventBook, Projection};
+use crate::proto::projector_coordinator_server::ProjectorCoordinator;
+use crate::proto::{EventBook, Projection, SyncEventBook};
 
 // ANSI color codes for terminal output
 const BLUE: &str = "\x1b[94m";
@@ -160,13 +160,21 @@ impl Default for LogService {
 }
 
 #[tonic::async_trait]
-impl Projector for LogService {
-    async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
+impl ProjectorCoordinator for LogService {
+    async fn handle_sync(
+        &self,
+        request: Request<SyncEventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        if let Some(book) = request.into_inner().events {
+            self.handle(&book);
+        }
+        Ok(Response::new(Projection::default()))
+    }
+
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         let book = request.into_inner();
         self.handle(&book);
-
-        // Log projector doesn't produce projection output
-        Ok(Response::new(Projection::default()))
+        Ok(Response::new(()))
     }
 }
 
@@ -182,8 +190,15 @@ impl std::ops::Deref for LogServiceHandle {
 }
 
 #[tonic::async_trait]
-impl Projector for LogServiceHandle {
-    async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
-        Projector::handle(&*self.0, request).await
+impl ProjectorCoordinator for LogServiceHandle {
+    async fn handle_sync(
+        &self,
+        request: Request<SyncEventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        ProjectorCoordinator::handle_sync(&*self.0, request).await
+    }
+
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
+        ProjectorCoordinator::handle(&*self.0, request).await
     }
 }

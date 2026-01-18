@@ -25,8 +25,8 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::info;
 
-use angzarr::handlers::log::{LogService, LogServiceHandle};
-use angzarr::proto::projector_server::ProjectorServer;
+use angzarr::handlers::projectors::log::{LogService, LogServiceHandle};
+use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
 use angzarr::utils::bootstrap::init_tracing;
 
 const DEFAULT_PORT: u16 = 50051;
@@ -49,14 +49,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Health reporter
     let (mut health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<ProjectorServer<LogServiceHandle>>()
+        .set_serving::<ProjectorCoordinatorServer<LogServiceHandle>>()
         .await;
 
     info!(port = %port, "angzarr-log started");
 
     Server::builder()
         .add_service(health_service)
-        .add_service(ProjectorServer::new(projector_service))
+        .add_service(ProjectorCoordinatorServer::new(projector_service))
         .serve(addr)
         .await?;
 

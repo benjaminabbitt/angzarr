@@ -36,7 +36,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-stream \
-    --bin angzarr-gateway && \
+    --bin angzarr-gateway \
+    --bin angzarr-log && \
     cp target/container-dev/angzarr-* /tmp/
 
 # =============================================================================
@@ -76,7 +77,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-stream \
-    --bin angzarr-gateway && \
+    --bin angzarr-gateway \
+    --bin angzarr-log && \
     cp target/x86_64-unknown-linux-musl/release/angzarr-* /tmp/
 
 # =============================================================================
@@ -123,6 +125,11 @@ COPY --from=builder-dev /tmp/angzarr-gateway ./server
 EXPOSE 1316
 ENTRYPOINT ["./server"]
 
+FROM runtime-dev-base AS angzarr-log-dev
+COPY --from=builder-dev /tmp/angzarr-log ./server
+EXPOSE 50051
+ENTRYPOINT ["./server"]
+
 # =============================================================================
 # Release images (slow builds, minimal runtime)
 # =============================================================================
@@ -148,4 +155,9 @@ ENTRYPOINT ["./server"]
 FROM runtime-release-base AS angzarr-gateway
 COPY --from=builder-release /tmp/angzarr-gateway ./server
 EXPOSE 1316
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS angzarr-log
+COPY --from=builder-release /tmp/angzarr-log ./server
+EXPOSE 50051
 ENTRYPOINT ["./server"]
