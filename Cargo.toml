@@ -176,7 +176,7 @@ codegen-units = 512
 [profile.container-dev]
 inherits = "dev"
 opt-level = 0
-debug = 0              # No debug info = smaller binaries
+debug = true           # Full debug info for debugging in containers
 incremental = false    # Pointless in containers
 codegen-units = 256    # Max parallelism
 
