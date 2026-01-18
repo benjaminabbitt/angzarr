@@ -2,6 +2,11 @@
 # Multi-stage build for angzarr sidecars
 # Uses cargo-chef for dependency caching and musl for static binaries
 # All binaries built in single stage to share compiled artifacts
+#
+# Build dev:  podman build --target angzarr-aggregate -t angzarr-aggregate .
+# Build prod: podman build --build-arg PROFILE=release --target angzarr-aggregate -t angzarr-aggregate .
+
+ARG PROFILE=container-dev
 
 # =============================================================================
 # Stage 1: Chef - install cargo-chef and sccache with musl toolchain
@@ -61,6 +66,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 3: Cacher - build dependencies only (heavily cached)
 # =============================================================================
 FROM chef AS cacher
+ARG PROFILE
 
 COPY --from=planner /app/recipe.json recipe.json
 COPY --from=planner /app/Cargo.toml /app/Cargo.lock ./
@@ -74,12 +80,13 @@ RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/sccache,sharing=locked \
-    cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+    cargo chef cook --profile ${PROFILE} --target x86_64-unknown-linux-musl --recipe-path recipe.json
 
 # =============================================================================
 # Stage 4: Builder - compile ALL binaries in single stage (shared artifacts)
 # =============================================================================
 FROM chef AS builder
+ARG PROFILE
 
 COPY --from=cacher /app/target target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
@@ -95,12 +102,19 @@ RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/sccache,sharing=locked \
-    cargo build --release --target x86_64-unknown-linux-musl \
+    cargo build --profile ${PROFILE} --target x86_64-unknown-linux-musl \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-stream \
     --bin angzarr-gateway
+
+# Create symlink for output path (release outputs to release/, others to profile name)
+RUN if [ "$PROFILE" = "release" ]; then \
+      ln -s /app/target/x86_64-unknown-linux-musl/release /app/target/x86_64-unknown-linux-musl/output; \
+    else \
+      ln -s /app/target/x86_64-unknown-linux-musl/${PROFILE} /app/target/x86_64-unknown-linux-musl/output; \
+    fi
 
 # =============================================================================
 # Runtime base - distroless static image (no libc needed)
@@ -118,29 +132,29 @@ ENV ANGZARR_LOG=info
 
 # Aggregate sidecar image
 FROM runtime-base AS angzarr-aggregate
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-aggregate ./server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/angzarr-aggregate ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
 # Projector sidecar image
 FROM runtime-base AS angzarr-projector
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-projector ./server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/angzarr-projector ./server
 ENTRYPOINT ["./server"]
 
 # Saga sidecar image
 FROM runtime-base AS angzarr-saga
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-saga ./server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/angzarr-saga ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
 # Stream service image (central infrastructure)
 FROM runtime-base AS angzarr-stream
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-stream ./server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/angzarr-stream ./server
 EXPOSE 1315
 ENTRYPOINT ["./server"]
 
 # Gateway service image (central infrastructure)
 FROM runtime-base AS angzarr-gateway
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-gateway ./server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/angzarr-gateway ./server
 EXPOSE 1316
 ENTRYPOINT ["./server"]

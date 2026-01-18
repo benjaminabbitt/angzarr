@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.4
 # Rust examples - optimized multi-stage build with cargo-chef and optional UPX
-# Build dev: podman build --target customer -t rs-customer -f examples/rust/Containerfile .
-# Build prod: podman build --build-arg COMPRESS=true --target customer -t rs-customer -f examples/rust/Containerfile .
-# Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
+# Build dev:  podman build --target customer -t rs-customer -f examples/rust/Containerfile .
+# Build prod: podman build --build-arg PROFILE=release --build-arg COMPRESS=true --target customer -t rs-customer -f examples/rust/Containerfile .
 #
 # Optimizations:
 # 1. cargo-chef for aggressive dependency caching
@@ -10,9 +9,10 @@
 # 3. Optional UPX compression (COMPRESS=true for prod, false for dev)
 # 4. Scratch runtime - absolute minimal image (~2-3MB compressed)
 # 5. MUSL static binaries (no libc dependency)
-# 6. Multi-arch support (amd64 + arm64)
+# 6. Fast dev builds by default (container-dev profile)
 
 ARG COMPRESS=false
+ARG PROFILE=container-dev
 
 # =============================================================================
 # Stage 1: Chef - install cargo-chef with musl toolchain
@@ -62,18 +62,20 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 3: Cacher - build dependencies only (heavily cached)
 # =============================================================================
 FROM chef AS cacher
+ARG PROFILE
 
 COPY --from=planner /app/recipe.json recipe.json
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/sccache \
-    cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+    cargo chef cook --profile ${PROFILE} --target x86_64-unknown-linux-musl --recipe-path recipe.json
 
 # =============================================================================
 # Stage 4: Builder - compile ALL binaries in single invocation
 # =============================================================================
 FROM chef AS builder
+ARG PROFILE
 
 COPY --from=cacher /app/target target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
@@ -92,7 +94,7 @@ RUN mkdir -p tests && \
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/sccache \
-    cargo build --release --target x86_64-unknown-linux-musl \
+    cargo build --profile ${PROFILE} --target x86_64-unknown-linux-musl \
     -p customer --bin customer-server \
     -p product --bin product-server \
     -p inventory@0.1.0 --bin inventory-server \
@@ -103,6 +105,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     -p saga-fulfillment --bin saga-fulfillment-server \
     -p saga-cancellation --bin saga-cancellation-server
 
+# Export profile for compress stages (release outputs to release/, others to profile name)
+ENV BUILD_PROFILE=${PROFILE}
+RUN if [ "$PROFILE" = "release" ]; then \
+      ln -s /app/target/x86_64-unknown-linux-musl/release /app/target/x86_64-unknown-linux-musl/output; \
+    else \
+      ln -s /app/target/x86_64-unknown-linux-musl/${PROFILE} /app/target/x86_64-unknown-linux-musl/output; \
+    fi
+
 # =============================================================================
 # Stage 5: UPX compression (conditional)
 # =============================================================================
@@ -111,47 +121,47 @@ RUN apk add --no-cache upx
 
 FROM upx-base AS compress-customer
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/customer-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/customer-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-product
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/product-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/product-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-inventory
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/inventory-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/inventory-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-order
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/order-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/order-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-cart
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/cart-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/cart-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-fulfillment
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/fulfillment-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/fulfillment-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-saga-loyalty-earn
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/saga-loyalty-earn-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/saga-loyalty-earn-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-saga-fulfillment
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/saga-fulfillment-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/saga-fulfillment-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-saga-cancellation
 ARG COMPRESS
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/saga-cancellation-server /server
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/output/saga-cancellation-server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 # ============================================================================

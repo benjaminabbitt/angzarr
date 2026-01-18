@@ -170,6 +170,16 @@ debug = 0           # Skip debug info generation
 incremental = true
 codegen-units = 512
 
+# Container dev profile - fast compilation for container builds
+# No incremental (Docker doesn't preserve target dir between builds)
+# Usage: cargo build --profile container-dev
+[profile.container-dev]
+inherits = "dev"
+opt-level = 0
+debug = 0              # No debug info = smaller binaries
+incremental = false    # Pointless in containers
+codegen-units = 256    # Max parallelism
+
 # Release profile - slow compilation, fast runtime (for production)
 [profile.release]
 opt-level = 3
