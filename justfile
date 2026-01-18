@@ -10,7 +10,7 @@ export RUSTC_WRAPPER := `command -v sccache || true`
 
 # Import justfile modules
 mod examples "examples/justfile"
-mod terraform "deploy/terraform/justfile"
+mod tofu "deploy/tofu/justfile"
 mod grpc "scripts/grpc.justfile"
 
 # Default recipe - show available commands
@@ -288,34 +288,34 @@ registry-clean-dry:
 # === Infrastructure Shortcuts (Backing Services Only) ===
 # These targets deploy ONLY backing services (databases, messaging).
 # Application services are deployed via Skaffold in examples/ directories.
-# For terraform primitives, use: just terraform <command>
+# For OpenTofu primitives, use: just tofu <command>
 
 # Deploy local backing services (PostgreSQL, RabbitMQ via Helm charts)
 infra-local: secrets-init
-    just terraform init local
-    just terraform apply-auto local
+    just tofu init local
+    just tofu apply-auto local
 
 # Destroy local infrastructure
 infra-local-destroy:
-    just terraform destroy-auto local
+    just tofu destroy-auto local
 
 # Deploy staging infrastructure
 infra-staging:
-    just terraform init staging
-    just terraform apply staging
+    just tofu init staging
+    just tofu apply staging
 
 # Destroy staging infrastructure
 infra-staging-destroy:
-    just terraform destroy staging
+    just tofu destroy staging
 
 # Deploy production infrastructure
 infra-prod:
-    just terraform init prod
-    just terraform apply prod
+    just tofu init prod
+    just tofu apply prod
 
 # Destroy production infrastructure (requires confirmation)
 infra-prod-destroy:
-    just terraform destroy prod
+    just tofu destroy prod
 
 # Port forward evented service
 k8s-port-forward:
@@ -458,9 +458,9 @@ images-load-ingress: images-pull-ingress
 # Full deployment: create cluster, build, and deploy via skaffold (recommended)
 deploy: kind-create-registry infra-local secrets-init
     cd "{{TOP}}/examples/rust" && skaffold run
-    @echo "Waiting for core services via gRPC health..."
+    @echo "Waiting for gateway via gRPC health..."
     @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
-        localhost:50051 localhost:50052 || true
+        localhost:1350 || true
     @kubectl get pods -n angzarr
 
 # Delete deployment
@@ -512,7 +512,7 @@ fresh-deploy: proto-rust cache-clear
     @echo "=== Fresh Deploy ==="
     cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold run --cache-artifacts=false --force
     @echo "Waiting for services..."
-    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:50051 || true
+    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:1350 || true
     @kubectl get pods -n angzarr
 
 # Quick redeploy: rebuild with cache, force helm upgrade
@@ -624,25 +624,20 @@ ingress-status:
 # Full deployment with ingress controller
 deploy-with-ingress: kind-create-registry infra-local images-load-ingress ingress-install secrets-init
     cd "{{TOP}}/examples/rust" && skaffold run
-    @echo "Waiting for all services via gRPC health..."
+    @echo "Waiting for gateway via gRPC health..."
     @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
-        localhost:50051 localhost:50052 localhost:50053 localhost:50054
+        localhost:1350 localhost:1340
     @kubectl get pods -n angzarr
     @echo ""
-    @echo "Services available:"
-    @echo "  Command (NodePort): localhost:50051"
-    @echo "  Query (NodePort):   localhost:50052"
-    @echo "  Gateway (NodePort): localhost:50053"
-    @echo "  Stream (NodePort):  localhost:50054"
+    @echo "Services available (via NodePort):"
+    @echo "  Gateway: localhost:1350  (commands + queries)"
+    @echo "  Stream:  localhost:1340  (event streaming)"
     @echo ""
-    @echo "Ingress endpoints (add to /etc/hosts: 127.0.0.1 command.angzarr.local gateway.angzarr.local query.angzarr.local stream.angzarr.local angzarr.local):"
-    @echo "  Command: command.angzarr.local:80"
+    @echo "Ingress endpoints (add to /etc/hosts: 127.0.0.1 gateway.angzarr.local stream.angzarr.local):"
     @echo "  Gateway: gateway.angzarr.local:80"
-    @echo "  Query:   query.angzarr.local:80"
     @echo "  Stream:  stream.angzarr.local:80"
     @echo ""
     @echo "Example grpcurl commands:"
-    @echo "  just grpc list-command"
-    @echo "  just grpc list-gateway"
-    @echo "  just grpc list-stream"
+    @echo "  just grpc list"
+    @echo "  just grpc send-command customer <uuid>"
     @echo "  just grpc query-events customer <uuid>"

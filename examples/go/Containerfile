@@ -48,7 +48,6 @@ COPY examples/go/transaction/go.mod examples/go/transaction/go.sum /deps/transac
 COPY examples/go/saga-fulfillment/go.mod examples/go/saga-fulfillment/go.sum /deps/saga-fulfillment/
 COPY examples/go/saga-loyalty-earn/go.mod examples/go/saga-loyalty-earn/go.sum /deps/saga-loyalty-earn/
 COPY examples/go/saga-cancellation/go.mod examples/go/saga-cancellation/go.sum /deps/saga-cancellation/
-COPY examples/go/projector-receipt/go.mod examples/go/projector-receipt/go.sum /deps/projector-receipt/
 
 # Download ALL dependencies in one layer with persistent cache
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
@@ -147,13 +146,6 @@ RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
-FROM cache-warmer AS build-projector-receipt
-WORKDIR /build
-COPY examples/go/projector-receipt/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
 # ============================================================================
 # UPX compression stages (conditional - only used when COMPRESS=true)
 # ============================================================================
@@ -208,11 +200,6 @@ RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 FROM upx-base AS compress-saga-cancellation
 ARG COMPRESS
 COPY --from=build-saga-cancellation /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-projector-receipt
-ARG COMPRESS
-COPY --from=build-projector-receipt /server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 # ============================================================================
@@ -289,11 +276,3 @@ ENV PORT=50212
 EXPOSE 50212
 ENTRYPOINT ["./server"]
 
-# ============================================================================
-# Projectors
-# ============================================================================
-FROM runtime AS projector-receipt
-COPY --from=compress-projector-receipt /server ./server
-ENV PORT=50220
-EXPOSE 50220
-ENTRYPOINT ["./server"]

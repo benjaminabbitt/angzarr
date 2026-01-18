@@ -4,12 +4,8 @@
 //! - ReleaseReservation command (to inventory)
 //! - AddLoyaltyPoints command (to customer, if points were used)
 
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use prost::Message;
 
-use angzarr::interfaces::saga::{Result, Saga};
 use angzarr::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid as ProtoUuid};
 use common::proto::{AddLoyaltyPoints, OrderCancelled, ReleaseReservation};
 
@@ -19,15 +15,11 @@ pub const INVENTORY_DOMAIN: &str = "inventory";
 pub const CUSTOMER_DOMAIN: &str = "customer";
 
 /// Order Cancellation Saga implementation.
-pub struct CancellationSaga {
-    name: String,
-}
+pub struct CancellationSaga;
 
 impl CancellationSaga {
     pub fn new() -> Self {
-        Self {
-            name: SAGA_NAME.to_string(),
-        }
+        Self
     }
 
     fn process_event(
@@ -71,7 +63,6 @@ impl CancellationSaga {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                synchronous: false,
                 command: Some(release_any),
             }],
             correlation_id: correlation_id.to_string(),
@@ -99,7 +90,6 @@ impl CancellationSaga {
                 }),
                 pages: vec![CommandPage {
                     sequence: 0,
-                    synchronous: false,
                     command: Some(points_any),
                 }],
                 correlation_id: correlation_id.to_string(),
@@ -111,30 +101,13 @@ impl CancellationSaga {
 
         commands
     }
-}
 
-impl Default for CancellationSaga {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl Saga for CancellationSaga {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn domains(&self) -> Vec<String> {
-        vec![SOURCE_DOMAIN.to_string()]
-    }
-
-    async fn handle(&self, book: &Arc<EventBook>) -> Result<Vec<CommandBook>> {
+    /// Handle an event book, producing commands for any relevant events.
+    pub fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
         let source_root = book.cover.as_ref().and_then(|c| c.root.as_ref());
         let correlation_id = &book.correlation_id;
 
-        let commands: Vec<CommandBook> = book
-            .pages
+        book.pages
             .iter()
             .flat_map(|page| {
                 page.event
@@ -142,23 +115,12 @@ impl Saga for CancellationSaga {
                     .map(|e| self.process_event(e, source_root, correlation_id))
                     .unwrap_or_default()
             })
-            .collect();
-
-        Ok(commands)
-    }
-
-    fn is_synchronous(&self) -> bool {
-        false
+            .collect()
     }
 }
 
-impl CancellationSaga {
-    pub fn process_event_public(
-        &self,
-        event: &prost_types::Any,
-        source_root: Option<&ProtoUuid>,
-        correlation_id: &str,
-    ) -> Vec<CommandBook> {
-        self.process_event(event, source_root, correlation_id)
+impl Default for CancellationSaga {
+    fn default() -> Self {
+        Self::new()
     }
 }

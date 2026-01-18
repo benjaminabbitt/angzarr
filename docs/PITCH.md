@@ -16,6 +16,38 @@ I was inspired to create a framework—not a library—for building CQRS/ES appl
 
 The advent of managed runtimes like Kubernetes, GCP Cloud Run, and AWS Lambda provided the path forward. These platforms enable control to be intercepted before and after user-provided business logic. Event histories (snapshots and events) can be loaded, business logic executes in isolation, and resulting events are captured, stored, and forwarded—all without the business logic needing to know how any of it works.
 
+The payoff: business logic becomes remarkably small. A command handler receives state and a command, validates business rules, and returns events. No database connections. No message bus configuration. No retry logic. No serialization code. Just pure domain logic. The infrastructure complexity doesn't disappear; it moves to the framework where it belongs.
+
+See for yourself—the customer aggregate (create customer, add/redeem loyalty points) is one of the simpler examples:
+
+| Language | LOC | Implementation |
+|----------|-----|----------------|
+| Go | 173 | [examples/go/customer/logic/](../examples/go/customer/logic/) |
+| Python | 209 | [examples/python/customer/](../examples/python/customer/) |
+| Rust | 468 | [examples/rust/customer/src/](../examples/rust/customer/src/) |
+
+*LOC counted via [scripts/render_docs.py](../scripts/render_docs.py) — non-blank, non-comment lines in business logic files.*
+
+The Angzarr project uses Gherkin feature files to specify business behavior—these are *not* a requirement for your applications. We use them to keep business rules consistent across all example implementations (Go, Python, Rust) and to provide executable specification that runs on every commit:
+
+| Domain | Scenarios | Feature File |
+|--------|-----------|--------------|
+| Cart | 27 | [cart.feature](../examples/features/cart.feature) |
+| Customer | 15 | [customer.feature](../examples/features/customer.feature) |
+| Fulfillment | 19 | [fulfillment.feature](../examples/features/fulfillment.feature) |
+| Inventory | 19 | [inventory.feature](../examples/features/inventory.feature) |
+| Order | 22 | [order.feature](../examples/features/order.feature) |
+| Product | 18 | [product.feature](../examples/features/product.feature) |
+| Saga Cancellation | 5 | [saga_cancellation.feature](../examples/features/saga_cancellation.feature) |
+| Saga Fulfillment | 4 | [saga_fulfillment.feature](../examples/features/saga_fulfillment.feature) |
+| Saga Loyalty Earn | 4 | [saga_loyalty_earn.feature](../examples/features/saga_loyalty_earn.feature) |
+
+Your acceptance testing strategy is your own. Use whatever works for your team—unit tests, integration tests, property-based testing, or yes, Cucumber/Gherkin if that fits your workflow.
+
+The complexity that remains is inherent to distributed systems: synchronous versus asynchronous operations. When should a command wait for projections to update before responding? When should a saga fire-and-forget versus block for completion? These are domain decisions that no framework can make for you. Angzarr provides the mechanisms—synchronous projectors, blocking saga coordination—but choosing when to use them requires understanding your consistency requirements.
+
+Raw performance for single operations will also be poor compared to direct database writes. The gRPC roundtrip, event history loading, and persistence overhead add latency that a simple INSERT cannot match. The framework pays for itself in throughput under load (burst handling, independent scaling) and in reduced development time—not in single-request latency benchmarks.
+
 ---
 
 ## The Problem
@@ -226,15 +258,7 @@ func (s *ProductAggregate) processCommand(state *ProductState, cmd *anypb.Any) (
         if state != nil {
             return nil, errors.New("product already exists")
         }
-        return []*angzarr.EventPage{{
-            Sequence: &angzarr.EventPage_Num{Num: 1},
-            CreatedAt: timestamppb.Now(),
-            Event: mustAny(&inventory.ProductCreated{
-                Sku:             create.Sku,
-                Name:            create.Name,
-                InitialQuantity: create.InitialQuantity,
-            }),
-        }}, nil
+        return []*angzarr.EventPage, nil
 
     case "type.googleapis.com/inventory.AdjustInventory":
         // ... handle adjustment
@@ -257,19 +281,19 @@ Angzarr uses coordinators to route messages between external clients and your bu
 ```protobuf
 service BusinessCoordinator {
   // Route commands to appropriate BusinessLogic, persist resulting events
-  rpc Handle(CommandBook) returns (SynchronousProcessingResponse);
+  rpc Handle(CommandBook) returns (CommandResponse);
 
   // Record events directly (for integration/migration scenarios)
-  rpc Record(EventBook) returns (SynchronousProcessingResponse);
+  rpc Record(EventBook) returns (CommandResponse);
 }
 
-message SynchronousProcessingResponse {
-  repeated EventBook books = 1;
-  repeated Projection projections = 2;
+message CommandResponse {
+  EventBook events = 1;              // Events from the command
+  repeated Projection projections = 2; // Sync projector results (full cascade)
 }
 ```
 
-The `SynchronousProcessingResponse` enables request-response patterns where callers need immediate confirmation of state changes and resulting projections—useful for APIs that must return updated read models.
+The `CommandResponse` enables request-response patterns where callers need immediate confirmation of state changes and resulting projections—useful for APIs that must return updated read models.
 
 ---
 
@@ -304,21 +328,158 @@ Synchronous projections enable CQRS patterns where commands must return updated 
 
 Long-running business processes span multiple aggregates and external systems. Angzarr's saga coordinator manages state and compensation without requiring your saga logic to handle persistence or delivery guarantees.
 
-Sagas receive EventBooks (triggering events from any aggregate), execute business logic, and can emit commands to other aggregates or external systems:
+Sagas receive EventBooks (triggering events from any aggregate), execute business logic, and emit commands to other aggregates:
 
 ```protobuf
+message SagaResponse {
+  repeated CommandBook commands = 1;  // Commands to execute on other aggregates
+}
+
 service Saga {
-  rpc Handle(EventBook) returns (google.protobuf.Empty);                    // Async
-  rpc HandleSync(EventBook) returns (SynchronousProcessingResponse);        // Sync
+  rpc Handle(EventBook) returns (google.protobuf.Empty);      // Async
+  rpc HandleSync(EventBook) returns (SagaResponse);            // Sync
 }
 
 service SagaCoordinator {
-  rpc Handle(EventBook) returns (google.protobuf.Empty);                    // Route to sagas
-  rpc HandleSync(EventBook) returns (SynchronousProcessingResponse);        // Sync pipeline
+  rpc Handle(EventBook) returns (google.protobuf.Empty);      // Route to sagas
+  rpc HandleSync(EventBook) returns (SagaResponse);            // Sync pipeline
 }
 ```
 
-The `SynchronousProcessingResponse` from saga processing includes both the EventBooks produced by saga-triggered commands and any resulting projections—enabling complex orchestrations to complete within a single request-response cycle when required.
+When synchronous, the `SagaResponse` returns commands that the framework executes before returning to the caller—enabling complex orchestrations to complete within a single request-response cycle.
+
+---
+
+## Synchronous Operation Patterns
+
+Angzarr provides two distinct mechanisms for getting results back to callers. Choose based on your consistency and observability needs.
+
+### Sync Mode
+
+Synchronous processing is controlled via the `SyncMode` enum on commands and events:
+
+```protobuf
+enum SyncMode {
+  SYNC_MODE_NONE = 0;     // Async: fire and forget (default)
+  SYNC_MODE_SIMPLE = 1;   // Sync projectors only, no saga cascade
+  SYNC_MODE_CASCADE = 2;  // Full sync: projectors + saga cascade (expensive)
+}
+
+message CommandPage {
+  uint32 sequence = 1;
+  SyncMode sync_mode = 2;
+  google.protobuf.Any command = 3;
+}
+```
+
+| Mode | Projectors | Sagas | Use Case |
+|------|------------|-------|----------|
+| `NONE` | Async | Async | Fire-and-forget, eventual consistency |
+| `SIMPLE` | Sync | Async | Read-after-write for single aggregate |
+| `CASCADE` | Sync | Sync (recursive) | Full transactional consistency across aggregates |
+
+### The Cascade Flow (SYNC_MODE_CASCADE)
+
+When `sync_mode = CASCADE`, the framework orchestrates the full cascade before returning:
+
+```
+Client
+  │
+  ▼
+BusinessCoordinator.Handle(CommandBook)
+  │
+  ├─► BusinessLogic.Handle() → events
+  │
+  ├─► Persist events
+  │
+  ├─► SagaCoordinator.HandleSync(events)
+  │     │
+  │     └─► Saga.HandleSync() → SagaResponse(commands)
+  │           │
+  │           └─► [Recursive: each command goes through BusinessCoordinator]
+  │
+  ├─► ProjectorCoordinator.HandleSync(all events from cascade)
+  │     │
+  │     └─► Projector.HandleSync() → Projection
+  │
+  ▼
+CommandResponse { events, projections[] }
+```
+
+The key insight: saga-returned commands are executed recursively through the same sync path, and projectors see the *entire* cascade—not just the initial command's events.
+
+**Warning: `SYNC_MODE_CASCADE` is expensive and should be avoided when possible.** Each step adds latency: aggregate hydration, business logic execution, event persistence, saga evaluation, and projector updates—multiplied by every aggregate touched. A saga fanning out to ten aggregates takes roughly ten times longer than a single-aggregate command. `SYNC_MODE_NONE` with eventual consistency is the better default.
+
+That said, cascade mode exists because it will be necessary at times. Some workflows genuinely require atomic consistency guarantees before returning to the caller. When you need it, you need it—just understand the cost.
+
+### SYNC_MODE_SIMPLE: Read-After-Write Without Cascade
+
+For most read-after-write scenarios, `SYNC_MODE_SIMPLE` is sufficient—projectors run synchronously for the immediate command's events, but sagas fire asynchronously:
+
+```
+Client
+  │
+  ▼
+BusinessCoordinator.Handle(CommandBook)  [sync_mode = SIMPLE]
+  │
+  ├─► BusinessLogic.Handle() → events
+  │
+  ├─► Persist events
+  │
+  ├─► SagaCoordinator.Handle(events)      ← Async, returns immediately
+  │
+  ├─► ProjectorCoordinator.HandleSync(events)  ← Sync, waits
+  │     │
+  │     └─► Projector.HandleSync() → Projection
+  │
+  ▼
+CommandResponse { events, projections[] }
+```
+
+**Use when:**
+- REST/GraphQL APIs need to return the updated state for *this* aggregate
+- UI requires immediate feedback after user action
+- Saga effects can be eventually consistent
+
+**Trade-off:** Sagas run asynchronously—the caller won't see saga-triggered events in the response. If a saga fails, compensation happens out-of-band.
+
+### Gateway Streaming: Observing Effects in Real-Time
+
+When you need to observe events as they happen rather than waiting for completion, use the gateway's streaming interface:
+
+```protobuf
+service CommandGateway {
+  // Send command, stream events as they occur
+  rpc ExecuteStream(CommandBook) returns (stream EventBook) {}
+
+  // Stream until N events received
+  rpc ExecuteStreamResponseCount(ExecuteStreamCountRequest) returns (stream EventBook) {}
+
+  // Stream for specified duration
+  rpc ExecuteStreamResponseTime(ExecuteStreamTimeRequest) returns (stream EventBook) {}
+}
+```
+
+Events are correlated via `correlation_id` on both `CommandBook` and `EventBook`, allowing clients to track causally-related events across aggregate boundaries.
+
+**Use when:**
+- Building reactive UIs that update progressively as events cascade
+- Debugging or tracing command effects through the system
+- Long-running workflows where you want incremental feedback
+- Fire-and-observe patterns where the client doesn't need to block
+
+**Trade-off:** Client must handle streaming; must decide when "done" (count, timeout, or explicit signal).
+
+### Choosing the Right Mode
+
+| Requirement | NONE | SIMPLE | CASCADE | Gateway Stream |
+|-------------|------|--------|---------|----------------|
+| Return updated read model | No | Yes (this aggregate) | Yes (full cascade) | No (raw events) |
+| See saga effects | No | No (async) | Yes (sync) | Yes (as they occur) |
+| Latency | Minimal | + projectors | + full cascade | Minimal |
+| Connection model | Request-response | Request-response | Request-response | Long-lived stream |
+
+**Recommendation:** Start with `SYNC_MODE_NONE` (eventual consistency). Move to `SIMPLE` when you need read-after-write. Reserve `CASCADE` for workflows that genuinely require atomic cross-aggregate consistency. Use gateway streaming for debugging or reactive UIs.
 
 ---
 

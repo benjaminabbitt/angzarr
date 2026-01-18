@@ -13,13 +13,13 @@ build:
     push: true
     useBuildkit: false
   artifacts:
-    - image: localhost:5001/entity-customer-go
+    - image: localhost:5001/aggregate-customer-go
       context: .
       docker:
         dockerfile: Containerfile
         target: customer
 
-    - image: localhost:5001/entity-transaction-go
+    - image: localhost:5001/aggregate-transaction-go
       context: .
       docker:
         dockerfile: Containerfile
@@ -30,12 +30,6 @@ build:
       docker:
         dockerfile: Containerfile
         target: saga-loyalty
-
-    - image: localhost:5001/projector-receipt-go
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: projector-receipt
 
     - image: localhost:5001/projector-log-customer-go
       context: .
@@ -69,12 +63,10 @@ deploy:
           images.stream.tag: latest
           images.gateway.repository: localhost:5001/angzarr-gateway
           images.gateway.tag: latest
-          applications.business[0].image.repository: localhost:5001/entity-customer-go
+          applications.business[0].image.repository: localhost:5001/aggregate-customer-go
           applications.business[0].image.tag: latest
-          applications.business[1].image.repository: localhost:5001/entity-transaction-go
+          applications.business[1].image.repository: localhost:5001/aggregate-transaction-go
           applications.business[1].image.tag: latest
-          applications.projectors[1].image.repository: localhost:5001/projector-receipt-go
-          applications.projectors[1].image.tag: latest
           applications.projectors[2].image.repository: localhost:5001/projector-log-customer-go
           applications.projectors[2].image.tag: latest
           applications.projectors[3].image.repository: localhost:5001/projector-log-transaction-go

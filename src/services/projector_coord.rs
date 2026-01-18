@@ -6,24 +6,23 @@
 
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
 
-use crate::bus::ProjectorConfig;
+use crate::clients::ServiceEndpoint;
+use crate::grpc::connect_channel;
 use crate::proto::{
     projector_client::ProjectorClient, projector_coordinator_server::ProjectorCoordinator,
-    EventBook, Projection,
+    EventBook, Projection, SyncEventBook,
 };
-use crate::services::event_book_repair::{self, EventBookRepairer};
-
-/// Re-export for backwards compatibility.
-pub type ProjectorEndpoint = ProjectorConfig;
+use crate::services::event_book_repair::EventBookRepairer;
+use crate::services::repairable::RepairableCoordinator;
 
 /// Connected projector client.
 struct ProjectorConnection {
-    config: ProjectorConfig,
+    config: ServiceEndpoint,
     client: ProjectorClient<Channel>,
 }
 
@@ -34,7 +33,7 @@ struct ProjectorConnection {
 /// the EventQuery service if needed.
 pub struct ProjectorCoordinatorService {
     projectors: Arc<RwLock<Vec<ProjectorConnection>>>,
-    repairer: Option<Arc<Mutex<EventBookRepairer>>>,
+    repairer: RepairableCoordinator,
 }
 
 impl ProjectorCoordinatorService {
@@ -42,7 +41,7 @@ impl ProjectorCoordinatorService {
     pub fn new() -> Self {
         Self {
             projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: None,
+            repairer: RepairableCoordinator::new(),
         }
     }
 
@@ -51,18 +50,9 @@ impl ProjectorCoordinatorService {
     /// The repairer will fetch missing events from the EventQuery service
     /// at the given address when incomplete EventBooks are received.
     pub async fn with_repair(event_query_address: &str) -> Result<Self, String> {
-        let repairer = EventBookRepairer::connect(event_query_address)
-            .await
-            .map_err(|e| format!("Failed to connect to EventQuery service: {}", e))?;
-
-        info!(
-            address = %event_query_address,
-            "Connected to EventQuery service for EventBook repair"
-        );
-
         Ok(Self {
             projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: Some(Arc::new(Mutex::new(repairer))),
+            repairer: RepairableCoordinator::with_repair(event_query_address).await?,
         })
     }
 
@@ -70,18 +60,13 @@ impl ProjectorCoordinatorService {
     pub fn with_repairer(repairer: EventBookRepairer) -> Self {
         Self {
             projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: Some(Arc::new(Mutex::new(repairer))),
+            repairer: RepairableCoordinator::with_repairer(repairer),
         }
     }
 
     /// Register a projector endpoint.
-    pub async fn add_projector(&self, config: ProjectorConfig) -> Result<(), String> {
-        let channel = Channel::from_shared(format!("http://{}", config.address))
-            .map_err(|e| e.to_string())?
-            .connect()
-            .await
-            .map_err(|e| e.to_string())?;
-
+    pub async fn add_projector(&self, config: ServiceEndpoint) -> Result<(), String> {
+        let channel = connect_channel(&config.address).await?;
         let client = ProjectorClient::new(channel);
 
         info!(
@@ -97,32 +82,6 @@ impl ProjectorCoordinatorService {
 
         Ok(())
     }
-
-    /// Repair an EventBook if incomplete.
-    ///
-    /// If a repairer is configured and the EventBook is incomplete,
-    /// fetches the complete history from the EventQuery service.
-    async fn repair_event_book(&self, event_book: EventBook) -> Result<EventBook, Status> {
-        // Check if repair is needed
-        if event_book_repair::is_complete(&event_book) {
-            return Ok(event_book);
-        }
-
-        // No repairer configured - log warning and pass through
-        let Some(ref repairer) = self.repairer else {
-            warn!(
-                "Received incomplete EventBook but no repairer configured, passing through as-is"
-            );
-            return Ok(event_book);
-        };
-
-        // Repair the EventBook
-        let mut repairer = repairer.lock().await;
-        repairer.repair(event_book).await.map_err(|e| {
-            error!(error = %e, "Failed to repair EventBook");
-            Status::internal(format!("Failed to repair EventBook: {}", e))
-        })
-    }
 }
 
 impl Default for ProjectorCoordinatorService {
@@ -136,19 +95,21 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
     /// Handle events synchronously, returning a projection.
     async fn handle_sync(
         &self,
-        request: Request<EventBook>,
+        request: Request<SyncEventBook>,
     ) -> Result<Response<Projection>, Status> {
-        let event_book = request.into_inner();
+        let sync_request = request.into_inner();
+        let event_book = sync_request
+            .events
+            .ok_or_else(|| Status::invalid_argument("SyncEventBook must have events"))?;
 
         // Repair EventBook if incomplete
-        let event_book = self.repair_event_book(event_book).await?;
+        let event_book = self.repairer.repair_event_book(event_book).await?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
             let projectors = self.projectors.read().await;
             projectors
                 .iter()
-                .filter(|conn| conn.config.synchronous)
                 .map(|conn| (conn.config.clone(), conn.client.clone()))
                 .collect()
         };
@@ -156,7 +117,7 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         // Return the first successful projection
         if let Some((config, mut client)) = connections.into_iter().next() {
             let req = Request::new(event_book.clone());
-            match client.handle_sync(req).await {
+            match client.handle(req).await {
                 Ok(response) => {
                     info!(projector.name = %config.name, "Synchronous projection completed");
                     return Ok(response);
@@ -186,7 +147,7 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         let event_book = request.into_inner();
 
         // Repair EventBook if incomplete
-        let event_book = self.repair_event_book(event_book).await?;
+        let event_book = self.repairer.repair_event_book(event_book).await?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -199,18 +160,10 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
 
         for (config, mut client) in connections {
             let req = Request::new(event_book.clone());
-
-            if config.synchronous {
-                match client.handle_sync(req).await {
-                    Ok(_) => info!(projector.name = %config.name, "Projection completed"),
-                    Err(e) => error!(projector.name = %config.name, error = %e, "Projector failed"),
-                }
-            } else {
-                match client.handle(req).await {
-                    Ok(_) => info!(projector.name = %config.name, "Async projection queued"),
-                    Err(e) => {
-                        warn!(projector.name = %config.name, error = %e, "Failed to queue projection")
-                    }
+            match client.handle(req).await {
+                Ok(_) => info!(projector.name = %config.name, "Async projection queued"),
+                Err(e) => {
+                    warn!(projector.name = %config.name, error = %e, "Failed to queue projection")
                 }
             }
         }
@@ -222,6 +175,7 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clients::ServiceEndpoint;
     use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
     use prost_types::Any;
 
@@ -251,7 +205,6 @@ mod tests {
                     value: vec![],
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             snapshot: None,
             correlation_id: String::new(),
@@ -272,7 +225,6 @@ mod tests {
                     value: vec![],
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             snapshot: None,
             correlation_id: String::new(),
@@ -284,7 +236,6 @@ mod tests {
     async fn test_new_creates_empty_coordinator() {
         let coordinator = ProjectorCoordinatorService::new();
         assert!(coordinator.projectors.read().await.is_empty());
-        assert!(coordinator.repairer.is_none());
     }
 
     #[tokio::test]
@@ -297,8 +248,12 @@ mod tests {
     async fn test_handle_sync_with_no_projectors_returns_empty_projection() {
         let coordinator = ProjectorCoordinatorService::new();
         let event_book = make_event_book();
+        let sync_request = SyncEventBook {
+            events: Some(event_book),
+            sync_mode: crate::proto::SyncMode::Simple.into(),
+        };
 
-        let response = coordinator.handle_sync(Request::new(event_book)).await;
+        let response = coordinator.handle_sync(Request::new(sync_request)).await;
 
         assert!(response.is_ok());
         let projection = response.unwrap().into_inner();
@@ -319,10 +274,9 @@ mod tests {
     #[tokio::test]
     async fn test_add_projector_invalid_address() {
         let coordinator = ProjectorCoordinatorService::new();
-        let config = ProjectorConfig {
+        let config = ServiceEndpoint {
             name: "test".to_string(),
             address: "".to_string(), // Invalid
-            synchronous: false,
         };
 
         let result = coordinator.add_projector(config).await;
@@ -335,7 +289,7 @@ mod tests {
         let coordinator = ProjectorCoordinatorService::new();
         let event_book = make_complete_event_book();
 
-        let result = coordinator.repair_event_book(event_book.clone()).await;
+        let result = coordinator.repairer.repair_event_book(event_book.clone()).await;
 
         assert!(result.is_ok());
         let repaired = result.unwrap();
@@ -348,7 +302,7 @@ mod tests {
         let event_book = make_incomplete_event_book();
 
         // Without a repairer, incomplete books pass through with a warning
-        let result = coordinator.repair_event_book(event_book.clone()).await;
+        let result = coordinator.repairer.repair_event_book(event_book.clone()).await;
 
         assert!(result.is_ok());
         let passed = result.unwrap();

@@ -1,15 +1,37 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Only rerun if proto files change
-    println!("cargo:rerun-if-changed=proto/angzarr/angzarr.proto");
-    println!("cargo:rerun-if-changed=proto/examples/domains.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/types.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/aggregate.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/projector.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/saga.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/query.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/gateway.proto");
+    println!("cargo:rerun-if-changed=proto/examples/customer.proto");
+    println!("cargo:rerun-if-changed=proto/examples/product.proto");
+    println!("cargo:rerun-if-changed=proto/examples/inventory.proto");
+    println!("cargo:rerun-if-changed=proto/examples/order.proto");
+    println!("cargo:rerun-if-changed=proto/examples/cart.proto");
+    println!("cargo:rerun-if-changed=proto/examples/fulfillment.proto");
+    println!("cargo:rerun-if-changed=proto/examples/projections.proto");
 
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
         .compile_protos(
             &[
-                "proto/angzarr/angzarr.proto",
-                "proto/examples/domains.proto",
+                "proto/angzarr/types.proto",
+                "proto/angzarr/aggregate.proto",
+                "proto/angzarr/projector.proto",
+                "proto/angzarr/saga.proto",
+                "proto/angzarr/query.proto",
+                "proto/angzarr/gateway.proto",
+                "proto/examples/customer.proto",
+                "proto/examples/product.proto",
+                "proto/examples/inventory.proto",
+                "proto/examples/order.proto",
+                "proto/examples/cart.proto",
+                "proto/examples/fulfillment.proto",
+                "proto/examples/projections.proto",
             ],
             &["proto"],
         )?;

@@ -19,7 +19,21 @@ use common::proto::{
     StockReserved,
 };
 
-const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr port - standard across all languages/containers
+const DEFAULT_ANGZARR_PORT: u16 = 1350;
+
+/// Get gateway endpoint from environment or default
+fn get_gateway_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+    format!("http://{}:{}", host, port)
+}
 
 #[derive(World)]
 #[world(init = Self::new)]
@@ -48,8 +62,7 @@ impl std::fmt::Debug for InventoryAcceptanceWorld {
 impl InventoryAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string()),
+            gateway_endpoint: get_gateway_endpoint(),
             gateway_client: None,
             query_client: None,
             current_inventory_id: None,
@@ -113,7 +126,6 @@ impl InventoryAcceptanceWorld {
             cover: Some(self.build_cover()),
             pages: vec![CommandPage {
                 sequence: self.current_sequence,
-                synchronous: false,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),

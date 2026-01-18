@@ -1,6 +1,13 @@
 # Rust example gRPC servers for angzarr e-commerce domain
 # Services: customer, product, inventory, order, cart, fulfillment
 # Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
+#
+# Deployment Model:
+#   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm (see root justfile)
+#   - Application services: Deployed via Skaffold (this justfile)
+#
+# For integration/acceptance tests, run from root: `just integration` or `just acceptance`
+# This ensures backing services are deployed first via Terraform.
 
 set shell := ["bash", "-c"]
 
@@ -24,26 +31,22 @@ build:
 test:
     cargo test --workspace --lib
 
-# Run integration tests (deploys to Kind cluster, runs technical tests)
-integration: setup
+# Run integration tests (assumes backing services already deployed via root `just infra-local`)
+# Deploy application services via Skaffold, then run technical tests
+integration:
     skaffold run
-    @echo "Waiting for RabbitMQ..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=rabbitmq -n angzarr --timeout=120s || true
-    @echo "Waiting for MongoDB..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n angzarr --timeout=120s || true
-    @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
+    @echo "Waiting for application services to be ready..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
+    ANGZARR_PORT=1350 \
     TEST_LANGUAGE=rust cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run acceptance tests (deploys to Kind cluster, runs BDD cucumber tests)
-acceptance: setup
+# Run acceptance tests (assumes backing services already deployed via root `just infra-local`)
+# Deploy application services via Skaffold, then run BDD cucumber tests
+acceptance:
     skaffold run
-    @echo "Waiting for RabbitMQ..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=rabbitmq -n angzarr --timeout=120s || true
-    @echo "Waiting for MongoDB..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n angzarr --timeout=120s || true
-    @echo "Waiting for services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=angzarr -n angzarr --timeout=300s || true
+    @echo "Waiting for application services to be ready..."
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
+    ANGZARR_PORT=1350 \
     cargo test --workspace --test acceptance
 
 # Clean build artifacts
@@ -69,12 +72,12 @@ helm-lint:
 # Build all Rust example images (uses multi-stage Containerfile)
 images:
     podman build --target builder -f Containerfile "{{TOP}}"
-    podman build --target customer -t localhost:{{REGISTRY_PORT}}/entity-customer-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target product -t localhost:{{REGISTRY_PORT}}/entity-product-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target inventory -t localhost:{{REGISTRY_PORT}}/entity-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target order -t localhost:{{REGISTRY_PORT}}/entity-order-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target cart -t localhost:{{REGISTRY_PORT}}/entity-cart-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target fulfillment -t localhost:{{REGISTRY_PORT}}/entity-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target customer -t localhost:{{REGISTRY_PORT}}/aggregate-customer-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target product -t localhost:{{REGISTRY_PORT}}/aggregate-product-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target inventory -t localhost:{{REGISTRY_PORT}}/aggregate-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target order -t localhost:{{REGISTRY_PORT}}/aggregate-order-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target cart -t localhost:{{REGISTRY_PORT}}/aggregate-cart-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target fulfillment -t localhost:{{REGISTRY_PORT}}/aggregate-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
     podman build --target saga-loyalty-earn -t localhost:{{REGISTRY_PORT}}/saga-loyalty-earn-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
     podman build --target saga-fulfillment -t localhost:{{REGISTRY_PORT}}/saga-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
     podman build --target saga-cancellation -t localhost:{{REGISTRY_PORT}}/saga-cancellation-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
@@ -85,12 +88,12 @@ image SERVICE:
 
 # Push all images to local registry
 push:
-    podman push localhost:{{REGISTRY_PORT}}/entity-customer-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/entity-product-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/entity-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/entity-order-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/entity-cart-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/entity-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/aggregate-customer-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/aggregate-product-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/aggregate-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/aggregate-order-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/aggregate-cart-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/aggregate-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
     podman push localhost:{{REGISTRY_PORT}}/saga-loyalty-earn-rs:{{IMAGE_TAG}} --tls-verify=false
     podman push localhost:{{REGISTRY_PORT}}/saga-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
     podman push localhost:{{REGISTRY_PORT}}/saga-cancellation-rs:{{IMAGE_TAG}} --tls-verify=false
@@ -98,6 +101,15 @@ push:
 # ============================================================================
 # Skaffold Development (recommended workflow)
 # ============================================================================
+#
+# UNIFIED WORKFLOW:
+#   just dev    - watch mode, rebuilds on file change (framework + business)
+#   just run    - build and deploy once
+#
+# All 14 images (5 framework + 9 business) are built with sha256 tags.
+# Skaffold caches aggressively - only changed images are rebuilt.
+#
+# With lefthook: commits automatically trigger deployment (see lefthook.yml)
 
 # One-time setup: configure Podman and Skaffold for local registry
 setup:
@@ -108,13 +120,20 @@ setup:
     uv run "{{TOP}}/scripts/kind-with-registry.py"
 
 # Start skaffold dev loop (watches files, rebuilds on change)
+# Builds all 14 images (framework + business) via 'requires' directive
 dev: setup
     cd "{{TOP}}" && just secrets-init
+    @echo "=== Skaffold Dev Mode ==="
+    @echo "Building all images (5 framework + 9 business) with sha256 tags"
+    @echo "Only changed images will be rebuilt (skaffold caching)"
+    @echo ""
     skaffold dev
 
 # Build and deploy once
 run: setup
     cd "{{TOP}}" && just secrets-init
+    @echo "=== Skaffold Deploy ==="
+    @echo "Building all images with sha256 tags"
     skaffold run
 
 # Build images only (no deploy)

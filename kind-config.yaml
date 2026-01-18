@@ -37,21 +37,22 @@ nodes:
       - containerPort: 443
         hostPort: 8443
         protocol: TCP
-      # Angzarr command handler (NodePort fallback)
-      - containerPort: 30051
-        hostPort: 50051
+      # =============================================================================
+      # Angzarr Port Scheme (10-port ranges per component)
+      # x0: sidecar gRPC      x5: business gRPC
+      # x1: sidecar debug     x6: business debug
+      # =============================================================================
+      # Gateway (1350-1359) - primary entry point
+      - containerPort: 31350
+        hostPort: 1350
         protocol: TCP
-      # Angzarr event query (NodePort fallback)
-      - containerPort: 30052
-        hostPort: 50052
+      # Stream (1340-1349)
+      - containerPort: 31340
+        hostPort: 1340
         protocol: TCP
-      # Angzarr gateway (NodePort fallback)
-      - containerPort: 30053
-        hostPort: 50053
-        protocol: TCP
-      # Angzarr stream (NodePort fallback)
-      - containerPort: 30054
-        hostPort: 50054
+      # Aggregate sidecar (1310-1319)
+      - containerPort: 31310
+        hostPort: 1310
         protocol: TCP
       # RabbitMQ AMQP
       - containerPort: 30672

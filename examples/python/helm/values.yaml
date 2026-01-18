@@ -30,9 +30,6 @@ services:
 
 # Projector services
 projectors:
-  receipt:
-    image: py-projector-receipt:latest
-    port: 50200
   logCustomer:
     image: py-projector-log-customer:latest
     port: 50201

@@ -18,7 +18,21 @@ use common::proto::{
     Ship, ShipmentCreated, Shipped,
 };
 
-const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr port - standard across all languages/containers
+const DEFAULT_ANGZARR_PORT: u16 = 1350;
+
+/// Get gateway endpoint from environment or default
+fn get_gateway_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+    format!("http://{}:{}", host, port)
+}
 
 #[derive(World)]
 #[world(init = Self::new)]
@@ -27,6 +41,7 @@ pub struct FulfillmentAcceptanceWorld {
     gateway_client: Option<CommandGatewayClient<Channel>>,
     query_client: Option<EventQueryClient<Channel>>,
     current_fulfillment_id: Option<Uuid>,
+    current_sequence: u32,
     last_response: Option<CommandResponse>,
     last_error: Option<String>,
 }
@@ -43,11 +58,11 @@ impl std::fmt::Debug for FulfillmentAcceptanceWorld {
 impl FulfillmentAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string()),
+            gateway_endpoint: get_gateway_endpoint(),
             gateway_client: None,
             query_client: None,
             current_fulfillment_id: None,
+            current_sequence: 0,
             last_response: None,
             last_error: None,
         }
@@ -95,8 +110,7 @@ impl FulfillmentAcceptanceWorld {
         CommandBook {
             cover: Some(self.build_cover()),
             pages: vec![CommandPage {
-                sequence: 0,
-                synchronous: false,
+                sequence: self.current_sequence,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),
@@ -126,6 +140,7 @@ impl FulfillmentAcceptanceWorld {
 #[given("no prior events for the fulfillment aggregate")]
 async fn no_prior_events(world: &mut FulfillmentAcceptanceWorld) {
     world.current_fulfillment_id = Some(Uuid::new_v4());
+    world.current_sequence = 0;
     world.last_response = None;
     world.last_error = None;
 }
@@ -134,6 +149,7 @@ async fn no_prior_events(world: &mut FulfillmentAcceptanceWorld) {
 async fn shipment_created_event(world: &mut FulfillmentAcceptanceWorld, order_id: String) {
     if world.current_fulfillment_id.is_none() {
         world.current_fulfillment_id = Some(Uuid::new_v4());
+        world.current_sequence = 0;
     }
 
     let command = CreateShipment { order_id };
@@ -144,12 +160,13 @@ async fn shipment_created_event(world: &mut FulfillmentAcceptanceWorld, order_id
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
-            world.last_error = Some(status.message().to_string());
+            panic!("Given step failed: ShipmentCreated - {}", status.message());
         }
     }
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
 #[given("an ItemsPicked event")]
@@ -160,8 +177,11 @@ async fn items_picked_event(world: &mut FulfillmentAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.MarkPicked");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: ItemsPicked - {}", e.message()),
+    }
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
 #[given("an ItemsPacked event")]
@@ -172,8 +192,11 @@ async fn items_packed_event(world: &mut FulfillmentAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.MarkPacked");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: ItemsPacked - {}", e.message()),
+    }
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
 #[given("a Shipped event")]
@@ -185,8 +208,11 @@ async fn shipped_event(world: &mut FulfillmentAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.Ship");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: Shipped - {}", e.message()),
+    }
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
 #[given("a Delivered event")]
@@ -197,8 +223,11 @@ async fn delivered_event(world: &mut FulfillmentAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.RecordDelivery");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: Delivered - {}", e.message()),
+    }
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
 // =============================================================================

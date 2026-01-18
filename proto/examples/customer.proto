@@ -1,0 +1,57 @@
+syntax = "proto3";
+package examples;
+option go_package = "github.com/angzarr/angzarr/proto/examples;examples";
+option java_package = "dev.angzarr.examples";
+option java_multiple_files = true;
+option csharp_namespace = "Angzarr.Examples";
+option ruby_package = "Angzarr::Examples";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Customer Domain - manages customer profiles and loyalty points
+// =============================================================================
+
+// Commands
+message CreateCustomer {
+  string name = 1;
+  string email = 2;
+}
+
+message AddLoyaltyPoints {
+  int32 points = 1;
+  string reason = 2;  // e.g., "transaction:uuid" or "promotion:welcome"
+}
+
+message RedeemLoyaltyPoints {
+  int32 points = 1;
+  string redemption_type = 2;  // e.g., "discount", "reward"
+}
+
+// Events
+message CustomerCreated {
+  string name = 1;
+  string email = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message LoyaltyPointsAdded {
+  int32 points = 1;
+  int32 new_balance = 2;
+  string reason = 3;
+  int32 new_lifetime_points = 4;  // Total lifetime points after this event (fact)
+}
+
+message LoyaltyPointsRedeemed {
+  int32 points = 1;
+  int32 new_balance = 2;
+  string redemption_type = 3;
+}
+
+// State (for snapshots)
+message CustomerState {
+  string name = 1;
+  string email = 2;
+  int32 loyalty_points = 3;
+  int32 lifetime_points = 4;
+}

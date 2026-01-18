@@ -6,8 +6,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
-    /// Port for entity gRPC service.
-    pub entity_port: u16,
+    /// Port for aggregate gRPC service.
+    pub aggregate_port: u16,
     /// Port for event query gRPC service.
     pub event_query_port: u16,
     /// Host to bind to.
@@ -17,7 +17,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            entity_port: 1313,
+            aggregate_port: 1313,
             event_query_port: 1314,
             host: "0.0.0.0".to_string(),
         }
@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn test_server_config_default() {
         let server = ServerConfig::default();
-        assert_eq!(server.entity_port, 1313);
+        assert_eq!(server.aggregate_port, 1313);
         assert_eq!(server.event_query_port, 1314);
         assert_eq!(server.host, "0.0.0.0");
     }

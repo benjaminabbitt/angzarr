@@ -28,10 +28,9 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::config::{Config, MessagingType};
+use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, MessagingType};
+use angzarr::config::Config;
 use angzarr::handlers::projector::ProjectorEventHandler;
-use angzarr::interfaces::EventBus;
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 
 #[tokio::main]

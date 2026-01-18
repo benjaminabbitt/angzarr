@@ -7,7 +7,7 @@ import structlog
 
 from angzarr import angzarr_pb2 as angzarr
 
-from state import next_sequence, rebuild_state
+from handlers.state import next_sequence, rebuild_state
 from handlers import (
     CommandRejectedError,
     handle_create_customer,

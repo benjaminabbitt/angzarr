@@ -6,7 +6,7 @@ use std::sync::Arc;
 use prost_types::Any;
 use uuid::Uuid;
 
-use angzarr::interfaces::EventStore;
+use angzarr::storage::EventStore;
 use angzarr::proto::{event_page, EventPage};
 use angzarr::storage::MongoEventStore;
 
@@ -23,11 +23,11 @@ fn make_test_event(seq: u32, event_type: &str) -> EventPage {
             type_url: format!("type.example/{}", event_type),
             value: vec![1, 2, 3, seq as u8],
         }),
-        synchronous: false,
     }
 }
 
 #[tokio::test]
+#[ignore = "requires running MongoDB instance"]
 async fn test_mongodb_roundtrip() {
     println!("Connecting to MongoDB at: {}", mongodb_uri());
 
@@ -108,12 +108,17 @@ async fn test_mongodb_roundtrip() {
     println!("get_from(1) returned {} events", from_one.len());
     assert_eq!(from_one.len(), 1);
 
-    // Clean up
-    client.database(database_name).drop().await.ok();
+    // Clean up - propagate cleanup errors to fail the test if cleanup fails
+    client
+        .database(database_name)
+        .drop()
+        .await
+        .expect("Failed to drop test database");
     println!("Test completed successfully!");
 }
 
 #[tokio::test]
+#[ignore] // Reads from production database - run manually with --ignored
 async fn test_mongodb_read_existing_data() {
     // This test reads from the deployed angzarr database to see if we can read existing events
     println!("Connecting to MongoDB at: {}", mongodb_uri());

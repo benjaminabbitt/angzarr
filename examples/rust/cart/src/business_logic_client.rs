@@ -2,9 +2,8 @@
 
 use async_trait::async_trait;
 
-use angzarr::interfaces::business_client::{BusinessError, Result};
-use angzarr::proto::{business_response, BusinessResponse};
-use angzarr::{BusinessLogicClient, ContextualCommand};
+use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
+use angzarr::proto::{business_response, BusinessResponse, ContextualCommand};
 use common::next_sequence;
 
 use crate::handlers::{

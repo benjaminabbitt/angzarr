@@ -25,6 +25,7 @@ pub fn next_sequence(event_book: Option<&EventBook>) -> u32 {
     }
 
     // Fall back to snapshot sequence
+    // snapshot.sequence is the last event sequence used to create the snapshot
     if let Some(snapshot) = &book.snapshot {
         return snapshot.sequence + 1;
     }
@@ -75,7 +76,7 @@ pub fn event_color(event_type: &str) -> &'static str {
 pub fn log_event(domain: &str, root_id: &str, sequence: u32, type_url: &str, data: &[u8]) {
     let event_type = type_url.rsplit('.').next().unwrap_or(type_url);
 
-    // Standardized event identifier: bounded_ctx:entity_id:sequence (10-digit zero-padded)
+    // Standardized event identifier: bounded_ctx:aggregate_id:sequence (10-digit zero-padded)
     let event_id = format!("{}:{}:{:010}", domain, root_id, sequence);
 
     // Header

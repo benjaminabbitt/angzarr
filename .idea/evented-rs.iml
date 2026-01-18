@@ -39,6 +39,10 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-fulfillment/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty-earn/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-loyalty-earn/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-accounting/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-web/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/accounting/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/web/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/examples/rust/customer/target" />

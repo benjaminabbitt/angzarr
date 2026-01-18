@@ -18,8 +18,8 @@ image:
   tag: "dev"
 
 images:
-  entity:
-    repository: localhost:5001/angzarr-entity
+  aggregate:
+    repository: localhost:5001/angzarr-aggregate
     pullPolicy: Always
     tag: "dev"
   projector:
@@ -162,6 +162,11 @@ applications:
       port: 50054
       topics:
         - "transaction.*"
+
+# Enable remote debugging with gdb (adds SYS_PTRACE capability)
+# Debug ports are calculated: grpc_port + 1
+debug:
+  enabled: true
 
 logging:
   level: debug

@@ -37,7 +37,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	angzarr.RegisterBusinessLogicServer(s, &server{logic: logic.NewCartLogic()})
+	angzarr.RegisterAggregateServer(s, &server{logic: logic.NewCartLogic()})
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(s, healthServer)

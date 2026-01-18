@@ -180,6 +180,13 @@ debug = true           # Full debug info for debugging in containers
 incremental = false    # Pointless in containers
 codegen-units = 256    # Max parallelism
 
+# Test profile - fast compilation for running tests
+# Usage: cargo test (automatically used)
+[profile.test]
+opt-level = 0
+debug = 2           # Full debug info for test failures
+incremental = true
+
 # Release profile - slow compilation, fast runtime (for production)
 [profile.release]
 opt-level = 3

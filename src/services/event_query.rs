@@ -5,8 +5,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{error, info};
 
-use crate::interfaces::EventStore;
-use crate::interfaces::SnapshotStore;
+use crate::storage::EventStore;
+use crate::storage::SnapshotStore;
 use crate::proto::{
     event_query_server::EventQuery as EventQueryTrait, AggregateRoot, EventBook, Query,
     Uuid as ProtoUuid,
@@ -250,7 +250,7 @@ impl EventQueryTrait for EventQueryService {
 mod tests {
     use super::*;
     use crate::proto::{event_page, EventPage};
-    use crate::test_utils::{MockEventStore, MockSnapshotStore};
+    use crate::storage::mock::{MockEventStore, MockSnapshotStore};
     use prost_types::Any;
     use tokio_stream::StreamExt;
 
@@ -307,7 +307,6 @@ mod tests {
                 value: vec![],
             }),
             created_at: None,
-            synchronous: false,
         }];
         event_store.add("orders", root, events).await.unwrap();
 
@@ -379,7 +378,6 @@ mod tests {
                     value: vec![],
                 }),
                 created_at: None,
-                synchronous: false,
             }];
             event_store.add("orders", root, events).await.unwrap();
         }
@@ -438,7 +436,6 @@ mod tests {
                 value: vec![],
             }),
             created_at: None,
-            synchronous: false,
         }];
         event_store.add("orders", root, events).await.unwrap();
 

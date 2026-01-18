@@ -18,7 +18,21 @@ use common::proto::{
     SetPrice, UpdateProduct,
 };
 
-const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr port - standard across all languages/containers
+const DEFAULT_ANGZARR_PORT: u16 = 1350;
+
+/// Get gateway endpoint from environment or default
+fn get_gateway_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+    format!("http://{}:{}", host, port)
+}
 
 #[derive(World)]
 #[world(init = Self::new)]
@@ -27,6 +41,7 @@ pub struct ProductAcceptanceWorld {
     gateway_client: Option<CommandGatewayClient<Channel>>,
     query_client: Option<EventQueryClient<Channel>>,
     current_product_id: Option<Uuid>,
+    current_sequence: u32,
     last_response: Option<CommandResponse>,
     last_error: Option<String>,
 }
@@ -43,11 +58,11 @@ impl std::fmt::Debug for ProductAcceptanceWorld {
 impl ProductAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string()),
+            gateway_endpoint: get_gateway_endpoint(),
             gateway_client: None,
             query_client: None,
             current_product_id: None,
+            current_sequence: 0,
             last_response: None,
             last_error: None,
         }
@@ -95,8 +110,7 @@ impl ProductAcceptanceWorld {
         CommandBook {
             cover: Some(self.build_cover()),
             pages: vec![CommandPage {
-                sequence: 0,
-                synchronous: false,
+                sequence: self.current_sequence,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),
@@ -126,6 +140,7 @@ impl ProductAcceptanceWorld {
 #[given("no prior events for the product aggregate")]
 async fn no_prior_events(world: &mut ProductAcceptanceWorld) {
     world.current_product_id = Some(Uuid::new_v4());
+    world.current_sequence = 0;
     world.last_response = None;
     world.last_error = None;
 }
@@ -139,6 +154,7 @@ async fn product_created_event(
 ) {
     if world.current_product_id.is_none() {
         world.current_product_id = Some(Uuid::new_v4());
+        world.current_sequence = 0;
     }
 
     let command = CreateProduct {
@@ -154,9 +170,10 @@ async fn product_created_event(
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
-            world.last_error = Some(status.message().to_string());
+            panic!("Given step failed: ProductCreated - {}", status.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -170,7 +187,10 @@ async fn product_discontinued_event(world: &mut ProductAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.Discontinue");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(status) => panic!("Given step failed: ProductDiscontinued - {}", status.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -180,7 +200,10 @@ async fn price_set_event(world: &mut ProductAcceptanceWorld, price_cents: i32) {
     let command_book = world.build_command_book(command, "examples.SetPrice");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(status) => panic!("Given step failed: PriceSet - {}", status.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -194,7 +217,10 @@ async fn product_updated_event(
     let command_book = world.build_command_book(command, "examples.UpdateProduct");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(status) => panic!("Given step failed: ProductUpdated - {}", status.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 

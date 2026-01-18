@@ -6,7 +6,7 @@ mod business_logic_client;
 pub mod handlers;
 pub mod state;
 
-use angzarr::interfaces::business_client::{BusinessError, Result};
+use angzarr::clients::{BusinessError, Result};
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::CartState;
 

@@ -48,52 +48,27 @@ spec:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       initContainers:
         {{- if eq $.Values.storage.type "mongodb" }}
-        # Wait for MongoDB to be ready with proper connectivity check
+        # Wait for MongoDB (deployed by Terraform)
         - name: wait-for-mongodb
-          image: "{{ $.Values.mongodb.image.registry }}/{{ $.Values.mongodb.image.repository }}:{{ $.Values.mongodb.image.tag }}"
-          command:
-            - bash
-            - -c
-            - |
-              echo "Waiting for MongoDB to be ready..."
-              MAX_ATTEMPTS=60
-              ATTEMPT=0
-              until mongosh --quiet \
-                --host "{{ $.Release.Name }}-mongodb-headless" \
-                --username "{{ index $.Values.mongodb.auth.usernames 0 }}" \
-                --password "{{ index $.Values.mongodb.auth.passwords 0 }}" \
-                --authenticationDatabase "{{ index $.Values.mongodb.auth.databases 0 }}" \
-                --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null | grep -q 1; do
-                ATTEMPT=$((ATTEMPT + 1))
-                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                  echo "Timeout waiting for MongoDB"
-                  exit 1
-                fi
-                echo "MongoDB not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
-                sleep 2
-              done
-              echo "MongoDB is ready"
-        {{- end }}
-        {{- if $.Values.amqp.enabled }}
-        # Wait for RabbitMQ to be ready - check management API for status
-        - name: wait-for-rabbitmq
-          image: curlimages/curl:8.5.0
+          image: busybox:1.36
           command:
             - sh
             - -c
             - |
-              echo "Waiting for RabbitMQ to be ready..."
-              MAX_ATTEMPTS=60
-              ATTEMPT=0
-              until curl -sf -u guest:guest http://{{ $.Release.Name }}-rabbitmq:15672/api/healthchecks/node 2>/dev/null | grep -q '"status":"ok"'; do
-                ATTEMPT=$((ATTEMPT + 1))
-                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                  echo "Timeout waiting for RabbitMQ"
-                  exit 1
-                fi
-                echo "RabbitMQ not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
-                sleep 2
-              done
+              echo "Waiting for MongoDB..."
+              until nc -z angzarr-db-mongodb 27017 2>/dev/null; do sleep 2; done
+              echo "MongoDB is ready"
+        {{- end }}
+        {{- if $.Values.amqp.enabled }}
+        # Wait for RabbitMQ (deployed by Terraform)
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ..."
+              until nc -z angzarr-mq-rabbitmq 5672 2>/dev/null; do sleep 2; done
               echo "RabbitMQ is ready"
         {{- end }}
       containers:
@@ -105,6 +80,11 @@ spec:
             - name: grpc
               containerPort: {{ .port }}
               protocol: TCP
+            {{- if $.Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add .port 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             # Business logic application port (sidecar calls this)
             - name: PORT
@@ -139,12 +119,12 @@ spec:
             {{- toYaml $.Values.applicationResources | nindent 12 }}
             {{- end }}
           securityContext:
-            {{- toYaml $.Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
         # Sidecar: Angzarr entity sidecar
         - name: angzarr
           securityContext:
-            {{- toYaml $.Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
           image: "{{ $.Values.images.aggregate.repository }}:{{ $.Values.images.aggregate.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.images.aggregate.pullPolicy }}
           ports:
@@ -154,24 +134,54 @@ spec:
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
+            {{- if $.Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add $.Values.service.aggregatePort 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: ANGZARR_LOG
               value: {{ $.Values.logging.level }}
-            - name: ANGZARR_CONFIG
-              value: /app/config/config.yaml
-            - name: TARGET_ADDRESS
+            # Namespace for K8s service discovery
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Server ports (ANGZARR__ prefix with __ separator)
+            - name: ANGZARR__SERVER__AGGREGATE_PORT
+              value: "{{ $.Values.service.aggregatePort }}"
+            - name: ANGZARR__SERVER__EVENT_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # Target configuration
+            - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .port }}"
-            - name: TARGET_DOMAIN
+            - name: ANGZARR__TARGET__DOMAIN
               value: {{ .domain | quote }}
+            # Storage configuration - override from secret if provided
+            {{- if $.Values.storage.existingSecret }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: uri
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: database
+            {{- end }}
+            # AMQP configuration
             {{- if $.Values.amqp.enabled }}
-            - name: MESSAGING_TYPE
+            - name: ANGZARR__MESSAGING__TYPE
               value: "amqp"
-            - name: MESSAGING_AMQP_URL
+            - name: ANGZARR__MESSAGING__AMQP__URL
               {{- if $.Values.amqp.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.amqp.existingSecret }}
-                  key: amqp-url
+                  key: uri
               {{- else }}
               value: {{ $.Values.amqp.url }}
               {{- end }}
@@ -182,14 +192,6 @@ spec:
             {{- toYaml $.Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: {{ include "angzarr.fullname" $ }}-config
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -250,25 +252,15 @@ spec:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       initContainers:
         {{- if $.Values.amqp.enabled }}
-        # Wait for RabbitMQ to be ready (projectors subscribe to events via AMQP)
+        # Wait for RabbitMQ (deployed by Terraform)
         - name: wait-for-rabbitmq
-          image: curlimages/curl:8.5.0
+          image: busybox:1.36
           command:
             - sh
             - -c
             - |
-              echo "Waiting for RabbitMQ to be ready..."
-              MAX_ATTEMPTS=60
-              ATTEMPT=0
-              until curl -sf -u guest:guest http://{{ $.Release.Name }}-rabbitmq:15672/api/healthchecks/node 2>/dev/null | grep -q '"status":"ok"'; do
-                ATTEMPT=$((ATTEMPT + 1))
-                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                  echo "Timeout waiting for RabbitMQ"
-                  exit 1
-                fi
-                echo "RabbitMQ not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
-                sleep 2
-              done
+              echo "Waiting for RabbitMQ..."
+              until nc -z angzarr-mq-rabbitmq 5672 2>/dev/null; do sleep 2; done
               echo "RabbitMQ is ready"
         {{- end }}
       containers:
@@ -280,6 +272,11 @@ spec:
             - name: grpc
               containerPort: {{ .port | default 50051 }}
               protocol: TCP
+            {{- if $.Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add (.port | default 50051) 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             # gRPC port this projector listens on
             # Projector application port
@@ -299,7 +296,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.amqp.existingSecret }}
-                  key: amqp-url
+                  key: uri
               {{- else }}
               value: {{ $.Values.amqp.url | quote }}
               {{- end }}
@@ -315,50 +312,73 @@ spec:
             {{- toYaml $.Values.applicationResources | nindent 12 }}
             {{- end }}
           securityContext:
-            {{- toYaml $.Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
         # Sidecar: Angzarr projector sidecar
+        # Uses environment variables for configuration (no config file)
         - name: angzarr
           securityContext:
-            {{- toYaml $.Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
           image: "{{ $.Values.images.projector.repository }}:{{ $.Values.images.projector.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.images.projector.pullPolicy }}
           ports:
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
+            {{- if $.Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add $.Values.service.queryPort 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: ANGZARR_LOG
               value: {{ $.Values.logging.level }}
-            - name: ANGZARR_CONFIG
-              value: /app/config/config.yaml
-            - name: TARGET_ADDRESS
+            # Server ports (ANGZARR__ prefix with __ separator)
+            - name: ANGZARR__SERVER__EVENT_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # Projector sidecar target address
+            - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .port | default 50051 }}"
+            # Storage configuration - from secret if provided
+            {{- if $.Values.storage.existingSecret }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: uri
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: database
+            {{- else }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              value: {{ $.Values.storage.mongodb.uri | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              value: {{ $.Values.storage.mongodb.database | quote }}
+            {{- end }}
+            # Messaging configuration
             {{- if $.Values.amqp.enabled }}
-            - name: MESSAGING_TYPE
+            - name: ANGZARR__MESSAGING__TYPE
               value: "amqp"
-            - name: MESSAGING_AMQP_URL
+            - name: ANGZARR__MESSAGING__AMQP__URL
               {{- if $.Values.amqp.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.amqp.existingSecret }}
-                  key: amqp-url
+                  key: uri
               {{- else }}
               value: {{ $.Values.amqp.url }}
               {{- end }}
-            - name: MESSAGING_AMQP_DOMAIN
+            - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: {{ .topics | first | default "#" | quote }}
             {{- end }}
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: {{ include "angzarr.fullname" $ }}-config
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -419,25 +439,15 @@ spec:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       initContainers:
         {{- if $.Values.amqp.enabled }}
-        # Wait for RabbitMQ to be ready (sagas subscribe to events via AMQP)
+        # Wait for RabbitMQ (deployed by Terraform)
         - name: wait-for-rabbitmq
-          image: curlimages/curl:8.5.0
+          image: busybox:1.36
           command:
             - sh
             - -c
             - |
-              echo "Waiting for RabbitMQ to be ready..."
-              MAX_ATTEMPTS=60
-              ATTEMPT=0
-              until curl -sf -u guest:guest http://{{ $.Release.Name }}-rabbitmq:15672/api/healthchecks/node 2>/dev/null | grep -q '"status":"ok"'; do
-                ATTEMPT=$((ATTEMPT + 1))
-                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                  echo "Timeout waiting for RabbitMQ"
-                  exit 1
-                fi
-                echo "RabbitMQ not ready (attempt $ATTEMPT/$MAX_ATTEMPTS), waiting..."
-                sleep 2
-              done
+              echo "Waiting for RabbitMQ..."
+              until nc -z angzarr-mq-rabbitmq 5672 2>/dev/null; do sleep 2; done
               echo "RabbitMQ is ready"
         {{- end }}
       containers:
@@ -449,6 +459,11 @@ spec:
             - name: grpc
               containerPort: {{ .port | default 50051 }}
               protocol: TCP
+            {{- if $.Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add (.port | default 50051) 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             # Saga application port
             - name: PORT
@@ -467,7 +482,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.amqp.existingSecret }}
-                  key: amqp-url
+                  key: uri
               {{- else }}
               value: {{ $.Values.amqp.url | quote }}
               {{- end }}
@@ -483,12 +498,13 @@ spec:
             {{- toYaml $.Values.applicationResources | nindent 12 }}
             {{- end }}
           securityContext:
-            {{- toYaml $.Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
         # Sidecar: Angzarr saga sidecar
+        # Uses environment variables for configuration (no config file)
         - name: angzarr
           securityContext:
-            {{- toYaml $.Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
           image: "{{ $.Values.images.saga.repository }}:{{ $.Values.images.saga.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.images.saga.pullPolicy }}
           ports:
@@ -498,39 +514,63 @@ spec:
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
+            {{- if $.Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add $.Values.service.aggregatePort 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: ANGZARR_LOG
               value: {{ $.Values.logging.level }}
-            - name: ANGZARR_CONFIG
-              value: /app/config/config.yaml
-            - name: TARGET_ADDRESS
+            # Server ports (ANGZARR__ prefix with __ separator)
+            - name: ANGZARR__SERVER__AGGREGATE_PORT
+              value: "{{ $.Values.service.aggregatePort }}"
+            - name: ANGZARR__SERVER__EVENT_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            # Saga sidecar target address
+            - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .port | default 50051 }}"
+            # Storage configuration - from secret if provided
+            {{- if $.Values.storage.existingSecret }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: uri
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: database
+            {{- else }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              value: {{ $.Values.storage.mongodb.uri | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              value: {{ $.Values.storage.mongodb.database | quote }}
+            {{- end }}
+            # Messaging configuration
             {{- if $.Values.amqp.enabled }}
-            - name: MESSAGING_TYPE
+            - name: ANGZARR__MESSAGING__TYPE
               value: "amqp"
-            - name: MESSAGING_AMQP_URL
+            - name: ANGZARR__MESSAGING__AMQP__URL
               {{- if $.Values.amqp.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $.Values.amqp.existingSecret }}
-                  key: amqp-url
+                  key: uri
               {{- else }}
               value: {{ $.Values.amqp.url }}
               {{- end }}
-            - name: MESSAGING_AMQP_DOMAIN
+            - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: {{ .topics | first | default "#" | quote }}
             {{- end }}
           # NOTE: No liveness/readiness probes - saga sidecar is a pure consumer (no server ports)
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: {{ include "angzarr.fullname" $ }}-config
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -547,7 +587,7 @@ spec:
 
 {{- /* Central infrastructure services */}}
 
-{{- /* Event Stream service */}}
+{{- /* Event Stream service - infrastructure projector with sidecar */}}
 {{- if .Values.infrastructure.stream.enabled }}
 ---
 apiVersion: apps/v1
@@ -583,37 +623,71 @@ spec:
       serviceAccountName: {{ include "angzarr.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if .Values.amqp.enabled }}
+        # Wait for RabbitMQ (deployed by Terraform)
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ..."
+              until nc -z angzarr-mq-rabbitmq 5672 2>/dev/null; do sleep 2; done
+              echo "RabbitMQ is ready"
+        {{- end }}
       containers:
+        # Stream projector - receives events from sidecar, exposes EventStream for gateway
         - name: stream
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" . | nindent 12 }}
           image: "{{ .Values.images.stream.repository }}:{{ .Values.images.stream.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.images.stream.pullPolicy }}
           ports:
+            # Projector gRPC (receives events from sidecar) + EventStream gRPC (for gateway)
             - name: grpc
-              containerPort: {{ .Values.infrastructure.stream.port }}
+              containerPort: {{ .Values.infrastructure.stream.projectorPort | default 50051 }}
               protocol: TCP
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Standard Angzarr port - used across all languages/containers
+            # Port for Projector + EventStream gRPC services
             - name: ANGZARR_PORT
-              value: "{{ .Values.infrastructure.stream.port }}"
+              value: "{{ .Values.infrastructure.stream.projectorPort | default 50051 }}"
+          resources:
+            {{- toYaml .Values.infrastructure.stream.resources | nindent 12 }}
+
+        # Projector sidecar - subscribes to all AMQP events and forwards to stream
+        - name: angzarr
+          securityContext:
+            {{- include "angzarr.containerSecurityContext" . | nindent 12 }}
+          image: "{{ .Values.images.projector.repository }}:{{ .Values.images.projector.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.images.projector.pullPolicy }}
+          env:
+            - name: ANGZARR_LOG
+              value: {{ .Values.logging.level }}
+            # Target: stream projector container
+            - name: ANGZARR__TARGET__ADDRESS
+              value: "localhost:{{ .Values.infrastructure.stream.projectorPort | default 50051 }}"
+            # Subscribe to ALL events (stream forwards by correlation ID)
             {{- if .Values.amqp.enabled }}
-            - name: MESSAGING_TYPE
+            - name: ANGZARR__MESSAGING__TYPE
               value: "amqp"
-            - name: MESSAGING_AMQP_URL
+            - name: ANGZARR__MESSAGING__AMQP__URL
               {{- if .Values.amqp.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.amqp.existingSecret }}
-                  key: amqp-url
+                  key: uri
               {{- else }}
               value: {{ .Values.amqp.url }}
               {{- end }}
+            # Subscribe to all domains
+            - name: ANGZARR__MESSAGING__AMQP__DOMAIN
+              value: "#"
             {{- end }}
           resources:
-            {{- toYaml .Values.infrastructure.stream.resources | nindent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -659,13 +733,18 @@ spec:
       containers:
         - name: gateway
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- include "angzarr.containerSecurityContext" . | nindent 12 }}
           image: "{{ .Values.images.gateway.repository }}:{{ .Values.images.gateway.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.images.gateway.pullPolicy }}
           ports:
             - name: grpc
               containerPort: {{ .Values.infrastructure.gateway.port }}
               protocol: TCP
+            {{- if .Values.debug.enabled }}
+            - name: debug
+              containerPort: {{ add .Values.infrastructure.gateway.port 1 }}
+              protocol: TCP
+            {{- end }}
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}

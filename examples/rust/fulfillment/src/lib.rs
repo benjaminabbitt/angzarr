@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use prost::Message;
 
-use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
+use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{
     business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
     EventBook, EventPage,
@@ -137,7 +137,6 @@ impl FulfillmentLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -191,7 +190,6 @@ impl FulfillmentLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -245,7 +243,6 @@ impl FulfillmentLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -299,7 +296,6 @@ impl FulfillmentLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -358,7 +354,6 @@ impl FulfillmentLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {

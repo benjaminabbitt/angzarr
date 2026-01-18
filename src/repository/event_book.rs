@@ -6,8 +6,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::interfaces::event_store::{EventStore, Result, StorageError};
-use crate::interfaces::SnapshotStore;
+use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
 
 /// Extract domain and root UUID from an EventBook.
@@ -65,9 +64,11 @@ impl EventBookRepository {
         };
 
         // Determine starting sequence
-        let from_sequence = snapshot.as_ref().map(|s| s.sequence).unwrap_or(0);
+        // Snapshot sequence is the last event sequence used to create the snapshot,
+        // so we start loading from snapshot.sequence + 1 to avoid double-applying events
+        let from_sequence = snapshot.as_ref().map(|s| s.sequence + 1).unwrap_or(0);
 
-        // Load events from snapshot onwards (or from beginning if no snapshot)
+        // Load events after snapshot (or from beginning if no snapshot)
         let events = self
             .event_store
             .get_from(domain, root, from_sequence)
@@ -126,7 +127,7 @@ impl EventBookRepository {
 mod tests {
     use super::*;
     use crate::proto::{event_page, EventPage, Snapshot};
-    use crate::test_utils::{MockEventStore, MockSnapshotStore};
+    use crate::storage::mock::{MockEventStore, MockSnapshotStore};
     use prost_types::Any;
 
     fn make_event(seq: u32) -> EventPage {
@@ -137,7 +138,6 @@ mod tests {
                 value: vec![],
             }),
             created_at: None,
-            synchronous: false,
         }
     }
 
@@ -210,8 +210,8 @@ mod tests {
 
         let book = repo.get("orders", root).await.unwrap();
 
-        // Should only have events from sequence 3 onwards
-        assert_eq!(book.pages.len(), 2); // Events 3 and 4
+        // Should only have events AFTER snapshot (snapshot contains seq 3, so load from 4)
+        assert_eq!(book.pages.len(), 1); // Only event 4
         assert!(book.snapshot.is_some());
         assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
     }
@@ -403,8 +403,8 @@ mod tests {
 
         let book = repo.get("orders", root).await.unwrap();
 
-        // With snapshot reading enabled, should load from snapshot sequence
-        assert_eq!(book.pages.len(), 2); // Events 3 and 4
+        // With snapshot reading enabled, should load from snapshot sequence + 1
+        assert_eq!(book.pages.len(), 1); // Only event 4 (snapshot contains through seq 3)
         assert!(book.snapshot.is_some());
         assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
     }
@@ -447,7 +447,7 @@ mod tests {
 
     mod mock_integration {
         use super::*;
-        use crate::test_utils::{MockEventStore, MockSnapshotStore};
+        use crate::storage::mock::{MockEventStore, MockSnapshotStore};
         use prost_types::Timestamp;
 
         fn test_event(sequence: u32, event_type: &str) -> EventPage {
@@ -461,7 +461,6 @@ mod tests {
                     type_url: format!("type.googleapis.com/{}", event_type),
                     value: vec![1, 2, 3, sequence as u8],
                 }),
-                synchronous: false,
             }
         }
 
@@ -546,7 +545,7 @@ mod tests {
             let domain = "test_domain";
             let root = Uuid::new_v4();
 
-            use crate::interfaces::EventStore;
+            use crate::storage::EventStore;
             event_store
                 .add(
                     domain,
@@ -562,7 +561,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            use crate::interfaces::SnapshotStore;
+            use crate::storage::SnapshotStore;
             snapshot_store
                 .put(domain, root, test_snapshot(3))
                 .await
@@ -572,9 +571,9 @@ mod tests {
 
             assert!(book.snapshot.is_some());
             assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
-            assert_eq!(book.pages.len(), 2);
-            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(3)));
-            assert_eq!(book.pages[1].sequence, Some(event_page::Sequence::Num(4)));
+            // Snapshot contains state through seq 3, so only events 4+ are loaded
+            assert_eq!(book.pages.len(), 1);
+            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(4)));
         }
 
         #[tokio::test]
@@ -584,7 +583,7 @@ mod tests {
             let domain = "test_domain";
             let root = Uuid::new_v4();
 
-            use crate::interfaces::EventStore;
+            use crate::storage::EventStore;
             event_store
                 .add(
                     domain,
@@ -638,7 +637,7 @@ mod tests {
             let domain = "test_domain";
             let root = Uuid::new_v4();
 
-            use crate::interfaces::EventStore;
+            use crate::storage::EventStore;
             event_store
                 .add(
                     domain,
@@ -654,7 +653,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            use crate::interfaces::SnapshotStore;
+            use crate::storage::SnapshotStore;
             snapshot_store
                 .put(domain, root, test_snapshot(3))
                 .await

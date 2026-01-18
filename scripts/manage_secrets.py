@@ -128,6 +128,22 @@ def generate_credentials(env_override: bool = True) -> dict[str, str]:
     """
     credentials = {}
 
+    # PostgreSQL admin password
+    if env_override and os.environ.get("POSTGRES_ADMIN_PASSWORD"):
+        credentials["postgres-admin-password"] = os.environ["POSTGRES_ADMIN_PASSWORD"]
+        print("Using POSTGRES_ADMIN_PASSWORD from environment")
+    else:
+        credentials["postgres-admin-password"] = generate_password()
+        print("Generated PostgreSQL admin password")
+
+    # PostgreSQL user password
+    if env_override and os.environ.get("POSTGRES_PASSWORD"):
+        credentials["postgres-password"] = os.environ["POSTGRES_PASSWORD"]
+        print("Using POSTGRES_PASSWORD from environment")
+    else:
+        credentials["postgres-password"] = generate_password()
+        print("Generated PostgreSQL user password")
+
     # MongoDB root password
     if env_override and os.environ.get("MONGODB_ROOT_PASSWORD"):
         credentials["mongodb-root-password"] = os.environ["MONGODB_ROOT_PASSWORD"]
@@ -159,6 +175,14 @@ def generate_credentials(env_override: bool = True) -> dict[str, str]:
     else:
         credentials["rabbitmq-erlang-cookie"] = generate_erlang_cookie()
         print("Generated RabbitMQ Erlang cookie")
+
+    # Kafka password (for SASL auth)
+    if env_override and os.environ.get("KAFKA_PASSWORD"):
+        credentials["kafka-password"] = os.environ["KAFKA_PASSWORD"]
+        print("Using KAFKA_PASSWORD from environment")
+    else:
+        credentials["kafka-password"] = generate_password()
+        print("Generated Kafka password")
 
     return credentials
 

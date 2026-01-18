@@ -347,6 +347,41 @@ cd examples/python/projector-receipt && uv run pytest features/
 
 ---
 
+## Infrastructure Projectors
+
+In addition to business logic projectors, Angzarr includes infrastructure projectors that are part of the core framework:
+
+### Stream Projector (angzarr-stream)
+
+The stream projector enables real-time event streaming to clients via the gateway. Unlike business logic projectors that build read models, the stream projector's "projection" is an in-memory registry of active subscriptions.
+
+**Architecture:**
+```
+[angzarr-projector sidecar] --(Projector gRPC)--> [angzarr-stream]
+                                                        |
+                                                        v
+                                              (correlation ID match)
+                                                        |
+                                                        v
+                                              [EventStream gRPC] --> [angzarr-gateway]
+```
+
+**Behavior:**
+- Implements the `Projector` gRPC interface to receive events from the projector sidecar
+- Exposes `EventStream` gRPC interface for gateway subscriptions
+- Maintains correlation ID → subscriber registry
+- Forwards events only to subscribers who registered interest in that correlation ID
+- Drops events with no matching subscribers (no storage/buffering)
+
+**Configuration:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Port for gRPC services | 50051 |
+
+The stream projector is core infrastructure, not a business logic example. It runs alongside a projector sidecar that handles AMQP subscription and event routing.
+
+---
+
 ## Next Steps
 
 - [Sagas](sagas.md) — Orchestrate workflows across aggregates

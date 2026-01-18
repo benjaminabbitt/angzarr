@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use prost::Message;
 
-use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
+use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{
     business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
     EventBook, EventPage,
@@ -80,18 +80,23 @@ impl InventoryLogic {
                 }
             } else if event.type_url.ends_with("StockReserved") {
                 if let Ok(e) = StockReserved::decode(event.value.as_slice()) {
-                    state.reserved += e.quantity;
+                    // Use facts (absolute values) for idempotent state reconstruction
+                    state.on_hand = e.new_on_hand;
+                    state.reserved = e.new_reserved;
                     state.reservations.insert(e.order_id, e.quantity);
                 }
             } else if event.type_url.ends_with("ReservationReleased") {
                 if let Ok(e) = ReservationReleased::decode(event.value.as_slice()) {
-                    state.reserved -= e.quantity;
+                    // Use facts (absolute values) for idempotent state reconstruction
+                    state.on_hand = e.new_on_hand;
+                    state.reserved = e.new_reserved;
                     state.reservations.remove(&e.order_id);
                 }
             } else if event.type_url.ends_with("ReservationCommitted") {
                 if let Ok(e) = ReservationCommitted::decode(event.value.as_slice()) {
+                    // Use facts (absolute values) for idempotent state reconstruction
                     state.on_hand = e.new_on_hand;
-                    state.reserved -= e.quantity;
+                    state.reserved = e.new_reserved;
                     state.reservations.remove(&e.order_id);
                 }
             }
@@ -151,7 +156,6 @@ impl InventoryLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -208,7 +212,6 @@ impl InventoryLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -243,12 +246,15 @@ impl InventoryLogic {
         }
 
         let new_available = available - cmd.quantity;
+        let new_reserved = state.reserved + cmd.quantity;
 
         let event = StockReserved {
             quantity: cmd.quantity,
             order_id: cmd.order_id.clone(),
             new_available,
             reserved_at: Some(now()),
+            new_reserved,           // Fact: total reserved after this event
+            new_on_hand: state.on_hand, // Fact: on_hand unchanged by reserve
         };
 
         let mut new_reservations = state.reservations.clone();
@@ -257,7 +263,7 @@ impl InventoryLogic {
         let new_state = InventoryState {
             product_id: state.product_id.clone(),
             on_hand: state.on_hand,
-            reserved: state.reserved + cmd.quantity,
+            reserved: new_reserved,
             low_stock_threshold: state.low_stock_threshold,
             reservations: new_reservations,
         };
@@ -271,7 +277,6 @@ impl InventoryLogic {
                 value: event.encode_to_vec(),
             }),
             created_at: Some(now()),
-            synchronous: false,
         }];
         seq += 1;
 
@@ -290,7 +295,6 @@ impl InventoryLogic {
                     value: alert.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             });
         }
 
@@ -327,12 +331,15 @@ impl InventoryLogic {
             .ok_or_else(|| BusinessError::Rejected(errmsg::RESERVATION_NOT_FOUND.to_string()))?;
 
         let new_available = self.available(state) + quantity;
+        let new_reserved = state.reserved - quantity;
 
         let event = ReservationReleased {
             order_id: cmd.order_id.clone(),
             quantity,
             new_available,
             released_at: Some(now()),
+            new_reserved,           // Fact: total reserved after this event
+            new_on_hand: state.on_hand, // Fact: on_hand unchanged by release
         };
 
         let mut new_reservations = state.reservations.clone();
@@ -341,7 +348,7 @@ impl InventoryLogic {
         let new_state = InventoryState {
             product_id: state.product_id.clone(),
             on_hand: state.on_hand,
-            reserved: state.reserved - quantity,
+            reserved: new_reserved,
             low_stock_threshold: state.low_stock_threshold,
             reservations: new_reservations,
         };
@@ -356,7 +363,6 @@ impl InventoryLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -387,12 +393,14 @@ impl InventoryLogic {
             .ok_or_else(|| BusinessError::Rejected(errmsg::RESERVATION_NOT_FOUND.to_string()))?;
 
         let new_on_hand = state.on_hand - quantity;
+        let new_reserved = state.reserved - quantity;
 
         let event = ReservationCommitted {
             order_id: cmd.order_id.clone(),
             quantity,
             new_on_hand,
             committed_at: Some(now()),
+            new_reserved,           // Fact: total reserved after this event
         };
 
         let mut new_reservations = state.reservations.clone();
@@ -401,7 +409,7 @@ impl InventoryLogic {
         let new_state = InventoryState {
             product_id: state.product_id.clone(),
             on_hand: new_on_hand,
-            reserved: state.reserved - quantity,
+            reserved: new_reserved,
             low_stock_threshold: state.low_stock_threshold,
             reservations: new_reservations,
         };
@@ -416,7 +424,6 @@ impl InventoryLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -592,7 +599,6 @@ mod tests {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                synchronous: false,
                 command: Some(prost_types::Any {
                     type_url: type_url.to_string(),
                     value,
@@ -671,7 +677,6 @@ mod tests {
                     .encode_to_vec(),
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: None,

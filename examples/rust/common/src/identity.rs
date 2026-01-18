@@ -1,7 +1,7 @@
-//! Entity identity computation for Angzarr domains.
+//! Aggregate identity computation for Angzarr domains.
 //!
 //! Provides deterministic UUID generation from business keys, ensuring consistent
-//! entity identification across services.
+//! aggregate identification across services.
 
 use uuid::Uuid;
 
@@ -18,42 +18,42 @@ pub fn compute_root(domain: &str, business_key: &str) -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_OID, seed.as_bytes())
 }
 
-/// Compute root UUID for a customer entity.
+/// Compute root UUID for a customer aggregate.
 ///
 /// Business key: email address
 pub fn customer_root(email: &str) -> Uuid {
     compute_root("customer", email)
 }
 
-/// Compute root UUID for a product entity.
+/// Compute root UUID for a product aggregate.
 ///
 /// Business key: SKU
 pub fn product_root(sku: &str) -> Uuid {
     compute_root("product", sku)
 }
 
-/// Compute root UUID for an order entity.
+/// Compute root UUID for an order aggregate.
 ///
 /// Business key: order ID (typically a generated identifier)
 pub fn order_root(order_id: &str) -> Uuid {
     compute_root("order", order_id)
 }
 
-/// Compute root UUID for an inventory entity.
+/// Compute root UUID for an inventory aggregate.
 ///
 /// Business key: product ID
 pub fn inventory_root(product_id: &str) -> Uuid {
     compute_root("inventory", product_id)
 }
 
-/// Compute root UUID for a cart entity.
+/// Compute root UUID for a cart aggregate.
 ///
 /// Business key: customer ID (one cart per customer)
 pub fn cart_root(customer_id: &str) -> Uuid {
     compute_root("cart", customer_id)
 }
 
-/// Compute root UUID for a fulfillment entity.
+/// Compute root UUID for a fulfillment aggregate.
 ///
 /// Business key: order ID
 pub fn fulfillment_root(order_id: &str) -> Uuid {

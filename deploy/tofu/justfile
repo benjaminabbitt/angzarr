@@ -1,0 +1,49 @@
+# OpenTofu infrastructure commands for angzarr
+# Deploys backing services: databases (PostgreSQL/MongoDB) and messaging (RabbitMQ/Kafka)
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+TF_DIR := TOP + "/deploy/tofu"
+
+# Show available commands
+default:
+    @just --list
+
+# === OpenTofu Primitives ===
+
+# Initialize OpenTofu for an environment (local, staging, prod)
+init ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu init
+
+# Plan OpenTofu changes for an environment
+plan ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu plan
+
+# Apply OpenTofu changes for an environment
+apply ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu apply
+
+# Apply OpenTofu changes (auto-approve) for an environment
+apply-auto ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu apply -auto-approve
+
+# Destroy OpenTofu resources for an environment
+destroy ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu destroy
+
+# Destroy OpenTofu resources (auto-approve) for an environment
+destroy-auto ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu destroy -auto-approve
+
+# Show OpenTofu outputs for an environment
+output ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu output
+
+# Validate OpenTofu configuration for an environment
+validate ENV:
+    cd "{{TF_DIR}}/environments/{{ENV}}" && tofu validate
+
+# Format all OpenTofu files
+fmt:
+    tofu fmt -recursive "{{TF_DIR}}"

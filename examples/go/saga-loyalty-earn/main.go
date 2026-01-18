@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	"saga-loyalty-earn/logic"
 	"saga-loyalty-earn/proto/angzarr"
@@ -25,15 +24,7 @@ type server struct {
 	angzarr.UnimplementedSagaServer
 }
 
-func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*emptypb.Empty, error) {
-	// For async processing, we need order context to know customer and points
-	// In practice, this would be passed via correlation or looked up
-	// For now, this is a placeholder
-	return &emptypb.Empty{}, nil
-}
-
-func (s *server) HandleSync(ctx context.Context, req *angzarr.EventBook) (*angzarr.SagaResponse, error) {
-	// Loyalty earn is typically async, but sync method available for testing
+func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*angzarr.SagaResponse, error) {
 	// Customer ID and points would come from saga context/correlation
 	return &angzarr.SagaResponse{Commands: nil}, nil
 }

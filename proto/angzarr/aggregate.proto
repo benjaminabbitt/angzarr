@@ -1,0 +1,22 @@
+syntax = "proto3";
+package angzarr;
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_package = "dev.angzarr";
+option java_multiple_files = true;
+
+import "angzarr/types.proto";
+
+// Aggregate: business logic that processes commands and emits events
+// Also known as Command Handler in CQRS terminology
+// Business logic doesn't care about sync - coordinator decides
+service Aggregate {
+  rpc Handle (ContextualCommand) returns (BusinessResponse);
+}
+
+// AggregateCoordinator: orchestrates command processing for aggregates
+service AggregateCoordinator {
+  // Async processing - fire and forget
+  rpc Handle (CommandBook) returns (CommandResponse);
+  // Sync processing - waits for completion based on sync_mode
+  rpc HandleSync (SyncCommandBook) returns (CommandResponse);
+}

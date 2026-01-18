@@ -1,6 +1,15 @@
 # Go examples - gRPC servers
 # Container: podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
 # Run:       podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
+#
+# Deployment Model:
+#   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm from root justfile
+#   - Application services: Deployed via Skaffold
+#
+# For cluster deployment:
+#   1. From repo root: `just kind-create-registry` - Create Kind cluster
+#   2. From repo root: `just infra-local` - Deploy backing services via Terraform
+#   3. Use `skaffold dev` or `skaffold run` in this directory for application services
 
 set shell := ["bash", "-c"]
 
@@ -19,7 +28,7 @@ container-test:
     cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
 
 # Build all Go examples
-build: build-customer build-transaction build-saga-loyalty build-projector-receipt build-projector-log-customer build-projector-log-transaction
+build: build-customer build-transaction build-saga-loyalty build-projector-log-customer build-projector-log-transaction
 
 # Build customer bounded context
 build-customer:
@@ -33,10 +42,6 @@ build-transaction:
 build-saga-loyalty:
     cd saga-loyalty && just build
 
-# Build projector-receipt
-build-projector-receipt:
-    cd projector-receipt && just build
-
 # Build projector-log-customer
 build-projector-log-customer:
     cd projector-log-customer && just build
@@ -46,7 +51,7 @@ build-projector-log-transaction:
     cd projector-log-transaction && just build
 
 # Test all Go examples
-test: test-customer test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+test: test-customer test-transaction test-saga-loyalty test-projector-log-customer test-projector-log-transaction
 
 # Test customer
 test-customer: build-customer
@@ -59,10 +64,6 @@ test-transaction: build-transaction
 # Test saga-loyalty
 test-saga-loyalty: build-saga-loyalty
     cd saga-loyalty && just test || true
-
-# Test projector-receipt
-test-projector-receipt: build-projector-receipt
-    cd projector-receipt && just test || true
 
 # Test projector-log-customer
 test-projector-log-customer: build-projector-log-customer
@@ -78,7 +79,6 @@ clean:
     cd customer && just clean || true
     cd transaction && just clean || true
     cd saga-loyalty && just clean || true
-    cd projector-receipt && just clean || true
     cd projector-log-customer && just clean || true
     cd projector-log-transaction && just clean || true
 
@@ -87,7 +87,6 @@ fmt:
     cd customer && go fmt ./...
     cd transaction && go fmt ./...
     cd saga-loyalty && go fmt ./...
-    cd projector-receipt && go fmt ./...
     cd projector-log-customer && go fmt ./...
     cd projector-log-transaction && go fmt ./...
 
@@ -96,7 +95,6 @@ lint:
     cd customer && go vet ./...
     cd transaction && go vet ./...
     cd saga-loyalty && go vet ./...
-    cd projector-receipt && go vet ./...
     cd projector-log-customer && go vet ./...
     cd projector-log-transaction && go vet ./...
 

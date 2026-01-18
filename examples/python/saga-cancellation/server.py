@@ -10,7 +10,6 @@ import grpc
 import structlog
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from google.protobuf.any_pb2 import Any
-from google.protobuf import empty_pb2
 
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
@@ -64,7 +63,7 @@ def process_events(event_book: angzarr.EventBook) -> list[angzarr.CommandBook]:
 
         release_book = angzarr.CommandBook(
             cover=angzarr.Cover(domain="inventory", root=event_book.cover.root),
-            pages=[angzarr.CommandPage(sequence=0, synchronous=False, command=release_any)],
+            pages=[angzarr.CommandPage(sequence=0, sync_mode=angzarr.SYNC_MODE_NONE, command=release_any)],
             correlation_id=event_book.correlation_id,
         )
 
@@ -82,7 +81,7 @@ def process_events(event_book: angzarr.EventBook) -> list[angzarr.CommandBook]:
             # Note: In a real system, we'd need customer ID from context
             add_points_book = angzarr.CommandBook(
                 cover=angzarr.Cover(domain="customer"),
-                pages=[angzarr.CommandPage(sequence=0, synchronous=False, command=add_points_any)],
+                pages=[angzarr.CommandPage(sequence=0, sync_mode=angzarr.SYNC_MODE_NONE, command=add_points_any)],
                 correlation_id=event_book.correlation_id,
             )
 
@@ -95,14 +94,10 @@ class SagaServicer(angzarr_pb2_grpc.SagaServicer):
     def __init__(self) -> None:
         self.log = logger.bind(saga=SAGA_NAME)
 
-    def Handle(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> empty_pb2.Empty:
+    def Handle(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> angzarr.SagaResponse:
         commands = process_events(request)
         if commands:
             self.log.info("processed_cancellation", compensation_commands=len(commands))
-        return empty_pb2.Empty()
-
-    def HandleSync(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> angzarr.SagaResponse:
-        commands = process_events(request)
         return angzarr.SagaResponse(commands=commands)
 
 

@@ -1,0 +1,74 @@
+syntax = "proto3";
+package examples;
+option go_package = "github.com/angzarr/angzarr/proto/examples;examples";
+option java_package = "dev.angzarr.examples";
+option java_multiple_files = true;
+option csharp_namespace = "Angzarr.Examples";
+option ruby_package = "Angzarr::Examples";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Fulfillment Domain - manages shipment lifecycle
+// =============================================================================
+
+// Commands
+message CreateShipment {
+  string order_id = 1;
+}
+
+message MarkPicked {
+  string picker_id = 1;
+}
+
+message MarkPacked {
+  string packer_id = 1;
+}
+
+message Ship {
+  string carrier = 1;
+  string tracking_number = 2;
+}
+
+message RecordDelivery {
+  string signature = 1;
+}
+
+// Events
+message ShipmentCreated {
+  string order_id = 1;
+  string status = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message ItemsPicked {
+  string picker_id = 1;
+  google.protobuf.Timestamp picked_at = 2;
+}
+
+message ItemsPacked {
+  string packer_id = 1;
+  google.protobuf.Timestamp packed_at = 2;
+}
+
+message Shipped {
+  string carrier = 1;
+  string tracking_number = 2;
+  google.protobuf.Timestamp shipped_at = 3;
+}
+
+message Delivered {
+  string signature = 1;
+  google.protobuf.Timestamp delivered_at = 2;
+}
+
+// State (for snapshots)
+message FulfillmentState {
+  string order_id = 1;
+  string status = 2;  // "pending", "picking", "packing", "shipped", "delivered"
+  string tracking_number = 3;
+  string carrier = 4;
+  string picker_id = 5;
+  string packer_id = 6;
+  string signature = 7;
+}

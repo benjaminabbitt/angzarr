@@ -1,0 +1,26 @@
+syntax = "proto3";
+package angzarr;
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_package = "dev.angzarr";
+option java_multiple_files = true;
+
+import "angzarr/types.proto";
+
+// Event stream service - streams events to registered subscribers
+service EventStream {
+  // Subscribe to events matching correlation ID (required)
+  // Returns INVALID_ARGUMENT if correlation_id is empty
+  rpc Subscribe (EventStreamFilter) returns (stream EventBook);
+}
+
+// Gateway service - send command and receive resulting events
+service CommandGateway {
+  // Async processing - fire and forget
+  rpc Execute (CommandBook) returns (CommandResponse);
+
+  // Sync processing - waits for projectors/sagas based on sync_mode
+  rpc ExecuteSync (SyncCommandBook) returns (CommandResponse);
+
+  // Stream events until client disconnects
+  rpc ExecuteStream (CommandBook) returns (stream EventBook);
+}

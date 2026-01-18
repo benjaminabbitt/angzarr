@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use prost::Message;
 
-use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
+use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{
     business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
     EventBook, EventPage,
@@ -140,7 +140,6 @@ impl ProductLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -190,7 +189,6 @@ impl ProductLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -249,7 +247,6 @@ impl ProductLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -303,7 +300,6 @@ impl ProductLogic {
                     value: event.encode_to_vec(),
                 }),
                 created_at: Some(now()),
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: Some(prost_types::Any {
@@ -468,7 +464,6 @@ mod tests {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                synchronous: false,
                 command: Some(prost_types::Any {
                     type_url: type_url.to_string(),
                     value,
@@ -547,7 +542,6 @@ mod tests {
                     .encode_to_vec(),
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: None,
@@ -601,7 +595,6 @@ mod tests {
                     .encode_to_vec(),
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: None,
@@ -655,7 +648,6 @@ mod tests {
                     .encode_to_vec(),
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: None,

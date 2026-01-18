@@ -12,18 +12,5 @@ keywords:
   - grpc
 maintainers:
   - name: Benjamin Abbitt
-dependencies:
-  - name: rabbitmq
-    version: "15.x.x"
-    repository: "https://charts.bitnami.com/bitnami"
-    condition: rabbitmq.enabled
-  - name: mongodb
-    version: "16.x.x"
-    repository: "https://charts.bitnami.com/bitnami"
-    condition: mongodb.enabled
-  - name: postgresql
-    version: "16.x.x"
-    repository: "https://charts.bitnami.com/bitnami"
-    condition: postgresql.enabled
-  # EventStoreDB: Use local chart in deploy/helm/eventstore
-  # Install separately: helm install eventstore ../eventstore
+# Backing services (MongoDB, PostgreSQL, RabbitMQ) are deployed via Terraform.
+# This chart only deploys angzarr application services.

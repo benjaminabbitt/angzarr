@@ -84,7 +84,6 @@ mod tests {
                     value,
                 }),
                 created_at: None,
-                synchronous: false,
             })
             .collect();
 

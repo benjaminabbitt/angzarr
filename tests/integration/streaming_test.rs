@@ -6,10 +6,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
-use common::{
-    build_command_book, create_gateway_client, extract_event_type, should_run_integration_tests,
-    ExecuteStreamCountRequest,
-};
+use common::{build_command_book, create_gateway_client, extract_event_type};
 use uuid::Uuid;
 
 // Examples proto types
@@ -22,11 +19,6 @@ use examples_proto::CreateCustomer;
 
 #[tokio::test]
 async fn test_execute_stream_returns_events() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -39,12 +31,7 @@ async fn test_execute_stream_returns_events() {
 
     let correlation_id = command_book.correlation_id.clone();
 
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 5, // Expect up to 5 events
-    };
-
-    let response = client.execute_stream_response_count(request).await;
+    let response = client.execute_stream(command_book).await;
     assert!(
         response.is_ok(),
         "Stream request failed: {:?}",
@@ -54,9 +41,16 @@ async fn test_execute_stream_returns_events() {
     let mut stream = response.unwrap().into_inner();
     let mut events = Vec::new();
 
-    while let Ok(Some(event_book)) = stream.message().await {
-        events.push(event_book);
-    }
+    // Collect events with timeout
+    let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
+        while let Ok(Some(event_book)) = stream.message().await {
+            events.push(event_book);
+            if events.len() >= 5 {
+                break;
+            }
+        }
+    });
+    let _ = timeout.await;
 
     assert!(
         !events.is_empty(),
@@ -74,11 +68,6 @@ async fn test_execute_stream_returns_events() {
 
 #[tokio::test]
 async fn test_stream_includes_expected_event_types() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -89,27 +78,26 @@ async fn test_stream_includes_expected_event_types() {
     let command_book =
         build_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 5,
-    };
-
-    let response = client.execute_stream_response_count(request).await;
+    let response = client.execute_stream(command_book).await;
     assert!(response.is_ok());
 
     let mut stream = response.unwrap().into_inner();
     let mut found_customer_created = false;
 
-    while let Ok(Some(event_book)) = stream.message().await {
-        for page in &event_book.pages {
-            if let Some(event_any) = &page.event {
-                let event_type = extract_event_type(event_any);
-                if event_type.contains("CustomerCreated") {
-                    found_customer_created = true;
+    let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
+        while let Ok(Some(event_book)) = stream.message().await {
+            for page in &event_book.pages {
+                if let Some(event_any) = &page.event {
+                    let event_type = extract_event_type(event_any);
+                    if event_type.contains("CustomerCreated") {
+                        found_customer_created = true;
+                        return;
+                    }
                 }
             }
         }
-    }
+    });
+    let _ = timeout.await;
 
     assert!(
         found_customer_created,
@@ -118,57 +106,26 @@ async fn test_stream_includes_expected_event_types() {
 }
 
 #[tokio::test]
-async fn test_stream_closes_after_count() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
+async fn test_execute_returns_immediate_response() {
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
     let command = CreateCustomer {
-        name: "Count Test".to_string(),
-        email: "count@example.com".to_string(),
+        name: "Unary Test".to_string(),
+        email: "unary@example.com".to_string(),
     };
     let command_book =
         build_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 1, // Only expect 1 event
-    };
-
-    let response = client.execute_stream_response_count(request).await;
+    let response = client.execute(command_book).await;
     assert!(response.is_ok());
 
-    let mut stream = response.unwrap().into_inner();
-    let mut event_count = 0;
-
-    // Stream should close after receiving count events
-    let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
-        while let Ok(Some(_)) = stream.message().await {
-            event_count += 1;
-        }
-    });
-
-    let _ = timeout.await;
-
-    // We should have received at least 1 event and the stream should have closed
-    assert!(
-        event_count >= 1,
-        "Expected at least 1 event, got {}",
-        event_count
-    );
+    let cmd_response = response.unwrap().into_inner();
+    assert!(cmd_response.events.is_some(), "Expected events in response");
 }
 
 #[tokio::test]
 async fn test_multiple_customers_isolated_streams() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut client = create_gateway_client().await;
     let customer_id_1 = Uuid::new_v4();
     let customer_id_2 = Uuid::new_v4();
@@ -186,19 +143,20 @@ async fn test_multiple_customers_isolated_streams() {
     );
     let correlation_id_1 = command_book1.correlation_id.clone();
 
-    let request1 = ExecuteStreamCountRequest {
-        command: Some(command_book1),
-        count: 5,
-    };
-
-    let response1 = client.execute_stream_response_count(request1).await;
+    let response1 = client.execute_stream(command_book1).await;
     assert!(response1.is_ok());
 
     let mut stream1 = response1.unwrap().into_inner();
     let mut events1 = Vec::new();
-    while let Ok(Some(event_book)) = stream1.message().await {
-        events1.push(event_book);
-    }
+    let timeout1 = tokio::time::timeout(tokio::time::Duration::from_secs(2), async {
+        while let Ok(Some(event_book)) = stream1.message().await {
+            events1.push(event_book);
+            if events1.len() >= 5 {
+                break;
+            }
+        }
+    });
+    let _ = timeout1.await;
 
     // Create second customer
     let command2 = CreateCustomer {
@@ -213,19 +171,20 @@ async fn test_multiple_customers_isolated_streams() {
     );
     let correlation_id_2 = command_book2.correlation_id.clone();
 
-    let request2 = ExecuteStreamCountRequest {
-        command: Some(command_book2),
-        count: 5,
-    };
-
-    let response2 = client.execute_stream_response_count(request2).await;
+    let response2 = client.execute_stream(command_book2).await;
     assert!(response2.is_ok());
 
     let mut stream2 = response2.unwrap().into_inner();
     let mut events2 = Vec::new();
-    while let Ok(Some(event_book)) = stream2.message().await {
-        events2.push(event_book);
-    }
+    let timeout2 = tokio::time::timeout(tokio::time::Duration::from_secs(2), async {
+        while let Ok(Some(event_book)) = stream2.message().await {
+            events2.push(event_book);
+            if events2.len() >= 5 {
+                break;
+            }
+        }
+    });
+    let _ = timeout2.await;
 
     // Verify events are isolated by correlation ID
     for event in &events1 {

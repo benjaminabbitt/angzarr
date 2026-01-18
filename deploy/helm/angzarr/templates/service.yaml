@@ -137,12 +137,15 @@ metadata:
   annotations:
     angzarr.io/dns-name: "{{ include "angzarr.fullname" . }}-stream.{{ .Release.Namespace }}.svc.cluster.local"
 spec:
-  type: ClusterIP
+  type: {{ .Values.infrastructure.stream.serviceType | default "ClusterIP" }}
   ports:
     - port: {{ .Values.infrastructure.stream.port }}
       targetPort: grpc
       protocol: TCP
       name: grpc
+      {{- if and (eq (.Values.infrastructure.stream.serviceType | default "ClusterIP") "NodePort") .Values.infrastructure.stream.nodePort }}
+      nodePort: {{ .Values.infrastructure.stream.nodePort }}
+      {{- end }}
   selector:
     {{- include "angzarr.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: infrastructure

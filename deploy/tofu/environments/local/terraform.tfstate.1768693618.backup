@@ -1,0 +1,553 @@
+{
+  "version": 4,
+  "terraform_version": "1.14.3",
+  "serial": 39,
+  "lineage": "f2e0ffcb-a8ab-c99d-81ed-b53972ed4dfe",
+  "outputs": {
+    "database_host": {
+      "value": "angzarr-db-postgresql.angzarr.svc.cluster.local",
+      "type": "string"
+    },
+    "database_secret": {
+      "value": "angzarr-db-credentials",
+      "type": "string"
+    },
+    "mesh_enabled": {
+      "value": false,
+      "type": "bool"
+    },
+    "messaging_host": {
+      "value": "angzarr-mq.angzarr.svc.cluster.local",
+      "type": "string"
+    },
+    "messaging_secret": {
+      "value": "angzarr-mq-credentials",
+      "type": "string"
+    },
+    "namespace": {
+      "value": "angzarr",
+      "type": "string"
+    },
+    "secrets_source": {
+      "value": "kubernetes_secret/angzarr-secrets/angzarr-secrets",
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "mode": "data",
+      "type": "kubernetes_secret",
+      "name": "angzarr_secrets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "binary_data": null,
+            "data": {
+              "kafka-password": "uD7UYzJoG9Q7z1O4wAQjVrMiRdo6SM1V",
+              "mongodb-password": "D8NTs0mMgkLFLqTVeMuC50tlKVGPbQqH",
+              "mongodb-root-password": "nVbxBrAJsQznkzv9Zj5sXUJ74Wj9bBIx",
+              "postgres-admin-password": "1BhD1fBwm4aKkw0pJvCOW06fSwyJBBnP",
+              "postgres-password": "a9TadVdKuW73KymzfV8NrQurjsmTr997",
+              "rabbitmq-erlang-cookie": "LqutvqYhhDIEiABrEOnOJJcUqwKiZvxcDPHRPmzz4M4=",
+              "rabbitmq-password": "aeHe2qPQTOiCw6P2Mpt6NVUDsleEAuyy"
+            },
+            "id": "angzarr-secrets/angzarr-secrets",
+            "immutable": false,
+            "metadata": [
+              {
+                "annotations": {
+                  "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"data\":{\"kafka-password\":\"dUQ3VVl6Sm9HOVE3ejFPNHdBUWpWck1pUmRvNlNNMVY=\",\"mongodb-password\":\"RDhOVHMwbU1na0xGTHFUVmVNdUM1MHRsS1ZHUGJRcUg=\",\"mongodb-root-password\":\"blZieEJyQUpzUXpua3p2OVpqNXNYVUo3NFdqOWJCSXg=\",\"postgres-admin-password\":\"MUJoRDFmQndtNGFLa3cwcEp2Q09XMDZmU3d5SkJCblA=\",\"postgres-password\":\"YTlUYWRWZEt1VzczS3ltemZWOE5yUXVyanNtVHI5OTc=\",\"rabbitmq-erlang-cookie\":\"THF1dHZxWWhoRElFaUFCckVPbk9KSmNVcXdLaVp2eGNEUEhSUG16ejRNND0=\",\"rabbitmq-password\":\"YWVIZTJxUFFUT2lDdzZQMk1wdDZOVlVEc2xlRUF1eXk=\"},\"kind\":\"Secret\",\"metadata\":{\"annotations\":{},\"creationTimestamp\":null,\"name\":\"angzarr-secrets\",\"namespace\":\"angzarr-secrets\"}}\n"
+                },
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "angzarr-secrets",
+                "namespace": "angzarr-secrets",
+                "resource_version": "97023",
+                "uid": "13b3457d-c354-4c55-bb0b-45771b0a5405"
+              }
+            ],
+            "type": "Opaque"
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "binary_data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              }
+            ]
+          ],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "kubernetes_namespace",
+      "name": "angzarr",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "angzarr",
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "angzarr",
+                "resource_version": "97075",
+                "uid": "bf93009e-2a0f-49aa-b3aa-04e645c879b5"
+              }
+            ],
+            "timeouts": null,
+            "wait_for_default_service_account": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Namespace",
+            "name": "angzarr"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "module": "module.database",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "mongodb",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": []
+    },
+    {
+      "module": "module.database",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "postgresql",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 1,
+          "attributes": {
+            "atomic": false,
+            "chart": "postgresql",
+            "cleanup_on_fail": false,
+            "create_namespace": false,
+            "dependency_update": false,
+            "description": "Install complete",
+            "devel": null,
+            "disable_crd_hooks": false,
+            "disable_openapi_validation": false,
+            "disable_webhooks": false,
+            "force_update": false,
+            "id": "angzarr-db",
+            "keyring": null,
+            "lint": false,
+            "manifest": null,
+            "max_history": 0,
+            "metadata": [
+              {
+                "app_version": "18.1.0",
+                "chart": "postgresql",
+                "first_deployed": 1768692685,
+                "last_deployed": 1768692685,
+                "name": "angzarr-db",
+                "namespace": "angzarr",
+                "notes": "\nCHART NAME: postgresql\nCHART VERSION: 18.2.0\nAPP VERSION: 18.1.0\n\n⚠ WARNING: Since August 28th, 2025, only a limited subset of images/charts are available for free.\n    Subscribe to Bitnami Secure Images to receive continued support and security updates.\n    More info at https://bitnami.com and https://github.com/bitnami/containers/issues/83267\n\n** Please be patient while the chart is being deployed **\n\nPostgreSQL can be accessed via port 5432 on the following DNS names from within your cluster:\n\n    angzarr-db-postgresql.angzarr.svc.cluster.local - Read/Write connection\n\nTo get the password for \"postgres\" run:\n\n    export POSTGRES_ADMIN_PASSWORD=$(kubectl get secret --namespace angzarr angzarr-db-postgresql -o jsonpath=\"{.data.postgres-password}\" | base64 -d)\n\nTo get the password for \"angzarr\" run:\n\n    export POSTGRES_PASSWORD=$(kubectl get secret --namespace angzarr angzarr-db-postgresql -o jsonpath=\"{.data.password}\" | base64 -d)\n\nTo connect to your database run the following command:\n\n    kubectl run angzarr-db-postgresql-client --rm --tty -i --restart='Never' --namespace angzarr --image registry-1.docker.io/bitnami/postgresql:latest --env=\"PGPASSWORD=$POSTGRES_PASSWORD\" \\\n      --command -- psql --host angzarr-db-postgresql -U angzarr -d postgres -p 5432\n\n    \u003e NOTE: If you access the container using bash, make sure that you execute \"/opt/bitnami/scripts/postgresql/entrypoint.sh /bin/bash\" in order to avoid the error \"psql: local user with ID 1001} does not exist\"\n\nTo connect to your database from outside the cluster execute the following commands:\n\n    kubectl port-forward --namespace angzarr svc/angzarr-db-postgresql 5432:5432 \u0026\n    PGPASSWORD=\"$POSTGRES_PASSWORD\" psql --host 127.0.0.1 -U angzarr -d postgres -p 5432\n\nWARNING: The configured password will be ignored on new installation in case when previous PostgreSQL release was deleted through the helm command. In that case, old PVC will have an old password, and setting it through helm won't take effect. Deleting persistent volumes (PVs) will solve the issue.\nWARNING: Rolling tag detected (bitnami/postgresql:latest), please note that it is strongly recommended to avoid using rolling tags in a production environment.\n+info https://techdocs.broadcom.com/us/en/vmware-tanzu/application-catalog/tanzu-application-catalog/services/tac-doc/apps-tutorials-understand-rolling-tags-containers-index.html\nWARNING: Rolling tag detected (bitnami/os-shell:latest), please note that it is strongly recommended to avoid using rolling tags in a production environment.\n+info https://techdocs.broadcom.com/us/en/vmware-tanzu/application-catalog/tanzu-application-catalog/services/tac-doc/apps-tutorials-understand-rolling-tags-containers-index.html\n\nWARNING: There are \"resources\" sections in the chart not set. Using \"resourcesPreset\" is not recommended for production. For production installations, please set the following values according to your workload needs:\n  - primary.resources\n  - readReplicas.resources\n+info https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/\n",
+                "revision": 1,
+                "values": "{\"auth\":{\"password\":\"testpassword\",\"postgresPassword\":\"testpassword\",\"username\":\"angzarr\"}}",
+                "version": "18.2.0"
+              }
+            ],
+            "name": "angzarr-db",
+            "namespace": "angzarr",
+            "pass_credentials": false,
+            "postrender": [],
+            "recreate_pods": false,
+            "render_subchart_notes": true,
+            "replace": false,
+            "repository": null,
+            "repository_ca_file": null,
+            "repository_cert_file": null,
+            "repository_key_file": null,
+            "repository_password": null,
+            "repository_username": null,
+            "reset_values": false,
+            "reuse_values": false,
+            "set": [],
+            "set_list": [],
+            "set_sensitive": [],
+            "skip_crds": false,
+            "status": "deployed",
+            "timeout": 300,
+            "upgrade_install": null,
+            "values": null,
+            "verify": false,
+            "version": "18.2.0",
+            "wait": true,
+            "wait_for_jobs": false
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "repository_password"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ==",
+          "dependencies": [
+            "data.kubernetes_secret.angzarr_secrets",
+            "kubernetes_namespace.angzarr"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.database",
+      "mode": "managed",
+      "type": "kubernetes_secret",
+      "name": "database_credentials",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "binary_data": null,
+            "binary_data_wo": null,
+            "binary_data_wo_revision": null,
+            "data": {
+              "database": "angzarr",
+              "host": "angzarr-db-postgresql.angzarr.svc.cluster.local",
+              "password": "a9TadVdKuW73KymzfV8NrQurjsmTr997",
+              "port": "5432",
+              "uri": "postgres://angzarr:a9TadVdKuW73KymzfV8NrQurjsmTr997@angzarr-db-postgresql.angzarr.svc.cluster.local:5432/angzarr",
+              "username": "angzarr"
+            },
+            "data_wo": null,
+            "data_wo_revision": null,
+            "id": "angzarr/angzarr-db-credentials",
+            "immutable": false,
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "angzarr-db-credentials",
+                "namespace": "angzarr",
+                "resource_version": "97987",
+                "uid": "79f0efc1-3424-4e5a-b922-af59eef7effc"
+              }
+            ],
+            "timeouts": null,
+            "type": "Opaque",
+            "wait_for_service_account_token": true
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "binary_data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "password",
+                  "type": "string"
+                }
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "uri",
+                  "type": "string"
+                }
+              }
+            ]
+          ],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Secret",
+            "name": "angzarr-db-credentials",
+            "namespace": "angzarr"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.kubernetes_secret.angzarr_secrets",
+            "kubernetes_namespace.angzarr"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.messaging",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "kafka",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": []
+    },
+    {
+      "module": "module.messaging",
+      "mode": "managed",
+      "type": "helm_release",
+      "name": "rabbitmq",
+      "provider": "provider[\"registry.terraform.io/hashicorp/helm\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "status": "tainted",
+          "schema_version": 1,
+          "attributes": {
+            "atomic": false,
+            "chart": "rabbitmq",
+            "cleanup_on_fail": false,
+            "create_namespace": false,
+            "dependency_update": false,
+            "description": null,
+            "devel": null,
+            "disable_crd_hooks": false,
+            "disable_openapi_validation": false,
+            "disable_webhooks": false,
+            "force_update": false,
+            "id": "angzarr-mq",
+            "keyring": null,
+            "lint": false,
+            "manifest": null,
+            "max_history": 0,
+            "metadata": [
+              {
+                "app_version": "4.1.3",
+                "chart": "rabbitmq",
+                "first_deployed": 1768693244,
+                "last_deployed": 1768693244,
+                "name": "angzarr-mq",
+                "namespace": "angzarr",
+                "notes": "CHART NAME: rabbitmq\nCHART VERSION: 16.0.14\nAPP VERSION: 4.1.3\n\n⚠ WARNING: Since August 28th, 2025, only a limited subset of images/charts are available for free.\n    Subscribe to Bitnami Secure Images to receive continued support and security updates.\n    More info at https://bitnami.com and https://github.com/bitnami/containers/issues/83267** Please be patient while the chart is being deployed **\n\nCredentials:\n    echo \"Username      : angzarr\"\n    echo \"Password      : $(kubectl get secret --namespace angzarr angzarr-mq-rabbitmq -o jsonpath=\"{.data.rabbitmq-password}\" | base64 -d)\"\n    echo \"ErLang Cookie : $(kubectl get secret --namespace angzarr angzarr-mq-rabbitmq -o jsonpath=\"{.data.rabbitmq-erlang-cookie}\" | base64 -d)\"\n\nNote that the credentials are saved in persistent volume claims and will not be changed upon upgrade or reinstallation unless the persistent volume claim has been deleted. If this is not the first installation of this chart, the credentials may not be valid.\nThis is applicable when no passwords are set and therefore the random password is autogenerated. In case of using a fixed password, you should specify it when upgrading.\nMore information about the credentials may be found at https://docs.bitnami.com/general/how-to/troubleshoot-helm-chart-issues/#credential-errors-while-upgrading-chart-releases.\n\nRabbitMQ can be accessed within the cluster on port 5672 at angzarr-mq-rabbitmq.angzarr.svc.cluster.local\n\nTo access for outside the cluster, perform the following steps:\n\nTo Access the RabbitMQ AMQP port:\n\n    echo \"URL : amqp://127.0.0.1:5672/\"\n    kubectl port-forward --namespace angzarr svc/angzarr-mq-rabbitmq 5672:5672\n\nTo Access the RabbitMQ Management interface:\n\n    echo \"URL : http://127.0.0.1:15672/\"\n    kubectl port-forward --namespace angzarr svc/angzarr-mq-rabbitmq 15672:15672\n",
+                "revision": 1,
+                "values": "{\"auth\":{\"password\":\"aeHe2qPQTOiCw6P2Mpt6NVUDsleEAuyy\",\"username\":\"angzarr\"},\"metrics\":{\"enabled\":false},\"persistence\":{\"enabled\":true,\"size\":\"1Gi\"},\"resources\":{\"limits\":{\"cpu\":\"250m\",\"memory\":\"256Mi\"},\"requests\":{\"cpu\":\"50m\",\"memory\":\"128Mi\"}},\"service\":{\"ports\":{\"amqp\":5672}}}",
+                "version": "16.0.14"
+              }
+            ],
+            "name": "angzarr-mq",
+            "namespace": "angzarr",
+            "pass_credentials": false,
+            "postrender": [],
+            "recreate_pods": false,
+            "render_subchart_notes": true,
+            "replace": false,
+            "repository": "oci://registry-1.docker.io/bitnamicharts",
+            "repository_ca_file": null,
+            "repository_cert_file": null,
+            "repository_key_file": null,
+            "repository_password": null,
+            "repository_username": null,
+            "reset_values": false,
+            "reuse_values": false,
+            "set": [],
+            "set_list": [],
+            "set_sensitive": [],
+            "skip_crds": false,
+            "status": "failed",
+            "timeout": 300,
+            "upgrade_install": null,
+            "values": [
+              "\"auth\":\n  \"password\": \"aeHe2qPQTOiCw6P2Mpt6NVUDsleEAuyy\"\n  \"username\": \"angzarr\"\n\"metrics\":\n  \"enabled\": false\n\"persistence\":\n  \"enabled\": true\n  \"size\": \"1Gi\"\n\"resources\":\n  \"limits\":\n    \"cpu\": \"250m\"\n    \"memory\": \"256Mi\"\n  \"requests\":\n    \"cpu\": \"50m\"\n    \"memory\": \"128Mi\"\n\"service\":\n  \"ports\":\n    \"amqp\": 5672\n"
+            ],
+            "verify": false,
+            "version": "16.0.14",
+            "wait": true,
+            "wait_for_jobs": false
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "repository_password"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "values"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": 0,
+                  "type": "number"
+                }
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ==",
+          "dependencies": [
+            "data.kubernetes_secret.angzarr_secrets",
+            "kubernetes_namespace.angzarr"
+          ]
+        }
+      ]
+    },
+    {
+      "module": "module.messaging",
+      "mode": "managed",
+      "type": "kubernetes_secret",
+      "name": "messaging_credentials",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "binary_data": null,
+            "binary_data_wo": null,
+            "binary_data_wo_revision": null,
+            "data": {
+              "host": "angzarr-mq.angzarr.svc.cluster.local",
+              "password": "aeHe2qPQTOiCw6P2Mpt6NVUDsleEAuyy",
+              "port": "5672",
+              "uri": "amqp://angzarr:aeHe2qPQTOiCw6P2Mpt6NVUDsleEAuyy@angzarr-mq.angzarr.svc.cluster.local:5672",
+              "username": "angzarr"
+            },
+            "data_wo": null,
+            "data_wo_revision": null,
+            "id": "angzarr/angzarr-mq-credentials",
+            "immutable": false,
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "angzarr-mq-credentials",
+                "namespace": "angzarr",
+                "resource_version": "97986",
+                "uid": "fcfea4dc-3868-443c-b82f-b698be3a8470"
+              }
+            ],
+            "timeouts": null,
+            "type": "Opaque",
+            "wait_for_service_account_token": true
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "binary_data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "password",
+                  "type": "string"
+                }
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "data"
+              },
+              {
+                "type": "index",
+                "value": {
+                  "value": "uri",
+                  "type": "string"
+                }
+              }
+            ]
+          ],
+          "identity_schema_version": 1,
+          "identity": {
+            "api_version": "v1",
+            "kind": "Secret",
+            "name": "angzarr-mq-credentials",
+            "namespace": "angzarr"
+          },
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.kubernetes_secret.angzarr_secrets",
+            "kubernetes_namespace.angzarr"
+          ]
+        }
+      ]
+    }
+  ],
+  "check_results": [
+    {
+      "object_kind": "var",
+      "config_addr": "module.messaging.var.type",
+      "status": "pass",
+      "objects": [
+        {
+          "object_addr": "module.messaging.var.type",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "object_kind": "var",
+      "config_addr": "module.database.var.type",
+      "status": "pass",
+      "objects": [
+        {
+          "object_addr": "module.database.var.type",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "object_kind": "var",
+      "config_addr": "module.mesh.var.type",
+      "status": "pass",
+      "objects": null
+    }
+  ]
+}

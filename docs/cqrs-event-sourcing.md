@@ -43,7 +43,7 @@ This guide introduces the patterns underlying Angzarr. If you're already familia
 
 | Term | Definition |
 |------|------------|
-| **Command Handler** | Service that processes commands for a domain. Validates against current state, emits events. Called "Aggregate" in DDD terminology. |
+| **Aggregate** | Service that processes commands for a domain. Validates against current state, emits events. Also called Command Handler in CQRS terminology. |
 | **Projector** | Service that subscribes to events and builds read models (projections). Can be synchronous or asynchronous. |
 | **Saga** | Service that subscribes to events and emits commands to other aggregates. Orchestrates multi-step workflows. |
 | **Projection** | A read model built by a projector. Optimized for queries, denormalized. |
@@ -70,6 +70,49 @@ Angzarr uses book/page metaphors for event containers:
 | **Cover** | Metadata: domain name + aggregate root ID. |
 | **Page** | Single event with sequence number, timestamp, type URL, and payload. |
 | **CommandBook** | Container for commands. Similar structure to EventBook. |
+
+---
+
+## Terminology Comparison
+
+Different communities use different terms for the same concepts. This table maps terminology across Domain-Driven Design (DDD), CQRS/Event Sourcing, and Angzarr:
+
+| Concept | DDD | CQRS/ES | Angzarr | Description |
+|---------|-----|---------|---------|-------------|
+| State Container | **Aggregate** | Aggregate | Aggregate | Domain object cluster with consistency boundary; also called Command Handler |
+| State Identifier | **Aggregate Root** | Entity | Cover.root (UUID) | Unique identity for aggregate instance |
+| Domain Boundary | **Bounded Context** | Domain | Cover.domain | Logical separation where terms have specific meaning |
+| Write Operation | **Command** | Command | CommandBook/CommandPage | Intent to change state; imperative mood |
+| State Change | **Domain Event** | Event | EventBook/EventPage | Immutable fact that happened; past tense |
+| Command Processing | **Aggregate Method** | Command Handler | Aggregate (BusinessLogic) | Validates commands, produces events |
+| Read Model | — | Projection | Projector output | Denormalized query-optimized view |
+| Process Manager | — | Saga | Saga | Long-running workflow coordinator |
+| Event Distribution | — | Event Bus | AMQP Bus | Event distribution mechanism |
+| Event Persistence | **Repository** | Event Store | EventStore trait | Append-only event storage |
+| Current State | **Entity State** | Aggregate State | Snapshot | Materialized state at point in time |
+| State Version | — | Sequence | EventPage.sequence | Ordering of events within aggregate |
+| Saga Side Effect | — | Saga Command | SagaOrigin | Command issued by saga to other aggregates |
+| Application Layer | **Application Service** | Coordinator | BusinessCoordinator | Orchestrates use cases, handles infrastructure |
+| Immutable Data | **Value Object** | — | Protobuf message | Identity-less, immutable data |
+
+### Key Insight
+
+Angzarr prefers single-word terms to keep technical vocabulary terse. We use **Aggregate** rather than "Command Handler" for the service that processes commands and emits events.
+
+- **Angzarr term**: Aggregate (implemented as `BusinessLogic` gRPC service)
+- **Also known as**: Command Handler (CQRS), Aggregate Root methods (DDD)
+
+### Canonical References
+
+**Domain-Driven Design:**
+- [Domain-Driven Design Reference](https://www.domainlanguage.com/ddd/reference/) — Eric Evans' free summary (PDF)
+- [Domain-Driven Design](https://www.amazon.com/Domain-Driven-Design-Tackling-Complexity-Software/dp/0321125215) — Eric Evans (2003), the original "Blue Book"
+- [Implementing Domain-Driven Design](https://www.amazon.com/Implementing-Domain-Driven-Design-Vaughn-Vernon/dp/0321834577) — Vaughn Vernon (2013), the practical "Red Book"
+
+**CQRS/Event Sourcing:**
+- [CQRS Documents](https://cqrs.files.wordpress.com/2010/11/cqrs_documents.pdf) — Greg Young's foundational paper (PDF)
+- [Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) — Martin Fowler's pattern description
+- [Versioning in an Event Sourced System](https://leanpub.com/esversioning) — Greg Young (free ebook)
 
 ---
 
@@ -142,6 +185,50 @@ rebuild_state(events, snapshot):
         state = apply(state, event)
     return state
 ```
+
+### Idempotent State Reconstruction
+
+**Critical**: Events must contain absolute state values (facts), not deltas (changes).
+
+This ensures state reconstruction is idempotent—applying the same event twice produces the same result. This matters for:
+- Replay from snapshots (no double-counting)
+- Projection rebuilds
+- Recovery scenarios
+
+**Wrong (deltas):**
+
+```
+StockReserved { quantity: 20 }  // Delta: "reserve 20 more"
+// Applying twice: reserved += 20 → 40 (incorrect)
+```
+
+```rust
+// BAD: Using deltas
+fn apply(state: &mut State, event: StockReserved) {
+    state.reserved += event.quantity;  // Double-apply = wrong state
+}
+```
+
+**Correct (facts):**
+
+```
+StockReserved { quantity: 20, new_reserved: 40, new_on_hand: 100 }
+// Applying twice: reserved = 40 → 40 (correct)
+```
+
+```rust
+// GOOD: Using facts (absolute values)
+fn apply(state: &mut State, event: StockReserved) {
+    state.reserved = event.new_reserved;  // Idempotent
+    state.on_hand = event.new_on_hand;
+}
+```
+
+**Event Design Rules:**
+
+1. Every event that modifies state includes `new_<field>` with the absolute value after the event
+2. `rebuild_state` uses assignment (`=`), never increment/decrement (`+=`/`-=`)
+3. Maps/collections: use set/remove operations (idempotent), not add (not idempotent)
 
 ---
 

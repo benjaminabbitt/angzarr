@@ -12,7 +12,7 @@ storage:
   #   database: angzarr
 
 server:
-  entity_port: 1313
+  aggregate_port: 1313
   event_query_port: 1314
   host: 0.0.0.0
 
@@ -21,7 +21,7 @@ server:
 #   type: amqp  # or "direct" for in-process
 #   amqp:
 #     url: amqp://localhost:5672
-#     domain: customers  # Single domain (for entity mode)
+#     domain: customers  # Single domain (for aggregate mode)
 #     # domains:         # Multiple domains (for projector/saga modes)
 #     #   - customers
 #     #   - orders

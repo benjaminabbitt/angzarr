@@ -25,7 +25,7 @@ const Domain = "inventory"
 var logger *zap.Logger
 
 type server struct {
-	angzarr.UnimplementedBusinessLogicServer
+	angzarr.UnimplementedAggregateServer
 	logic logic.InventoryLogic
 }
 
@@ -173,7 +173,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	angzarr.RegisterBusinessLogicServer(s, &server{logic: logic.NewInventoryLogic()})
+	angzarr.RegisterAggregateServer(s, &server{logic: logic.NewInventoryLogic()})
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(s, healthServer)

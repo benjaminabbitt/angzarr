@@ -1,6 +1,6 @@
 //! Handler for CancelOrder command.
 
-use angzarr::interfaces::business_client::{BusinessError, Result};
+use angzarr::clients::{BusinessError, Result};
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CancelOrder, OrderCancelled, OrderState};
 use prost::Message;

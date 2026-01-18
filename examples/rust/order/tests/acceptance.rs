@@ -19,7 +19,21 @@ use common::proto::{
     SubmitPayment,
 };
 
-const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr port - standard across all languages/containers
+const DEFAULT_ANGZARR_PORT: u16 = 1350;
+
+/// Get gateway endpoint from environment or default
+fn get_gateway_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+    format!("http://{}:{}", host, port)
+}
 
 #[derive(World)]
 #[world(init = Self::new)]
@@ -28,6 +42,7 @@ pub struct OrderAcceptanceWorld {
     gateway_client: Option<CommandGatewayClient<Channel>>,
     query_client: Option<EventQueryClient<Channel>>,
     current_order_id: Option<Uuid>,
+    current_sequence: u32,
     current_subtotal: i32,
     current_discount: i32,
     last_response: Option<CommandResponse>,
@@ -46,11 +61,11 @@ impl std::fmt::Debug for OrderAcceptanceWorld {
 impl OrderAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string()),
+            gateway_endpoint: get_gateway_endpoint(),
             gateway_client: None,
             query_client: None,
             current_order_id: None,
+            current_sequence: 0,
             current_subtotal: 0,
             current_discount: 0,
             last_response: None,
@@ -100,8 +115,7 @@ impl OrderAcceptanceWorld {
         CommandBook {
             cover: Some(self.build_cover()),
             pages: vec![CommandPage {
-                sequence: 0,
-                synchronous: false,
+                sequence: self.current_sequence,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),
@@ -149,6 +163,7 @@ impl OrderAcceptanceWorld {
 #[given("no prior events for the order aggregate")]
 async fn no_prior_events(world: &mut OrderAcceptanceWorld) {
     world.current_order_id = Some(Uuid::new_v4());
+    world.current_sequence = 0;
     world.current_subtotal = 0;
     world.current_discount = 0;
     world.last_response = None;
@@ -159,6 +174,7 @@ async fn no_prior_events(world: &mut OrderAcceptanceWorld) {
 async fn order_created_event(world: &mut OrderAcceptanceWorld, customer_id: String, subtotal: i32) {
     if world.current_order_id.is_none() {
         world.current_order_id = Some(Uuid::new_v4());
+        world.current_sequence = 0;
     }
     world.current_subtotal = subtotal;
 
@@ -179,9 +195,10 @@ async fn order_created_event(world: &mut OrderAcceptanceWorld, customer_id: Stri
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
-            world.last_error = Some(status.message().to_string());
+            panic!("Given step failed: OrderCreated - {}", status.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -198,7 +215,10 @@ async fn loyalty_discount_applied_event(world: &mut OrderAcceptanceWorld, points
     let command_book = world.build_command_book(command, "examples.ApplyLoyaltyDiscount");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: LoyaltyDiscountApplied - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -212,7 +232,10 @@ async fn payment_submitted_event(world: &mut OrderAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.SubmitPayment");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: PaymentSubmitted - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -224,7 +247,10 @@ async fn order_completed_event(world: &mut OrderAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.ConfirmPayment");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: OrderCompleted - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -236,7 +262,10 @@ async fn order_cancelled_event(world: &mut OrderAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.CancelOrder");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: OrderCancelled - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 

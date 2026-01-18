@@ -2,12 +2,8 @@
 //!
 //! Listens to OrderCompleted events and generates AddLoyaltyPoints commands.
 
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use prost::Message;
 
-use angzarr::interfaces::saga::{Result, Saga};
 use angzarr::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid as ProtoUuid};
 use common::proto::{AddLoyaltyPoints, OrderCompleted};
 
@@ -16,15 +12,11 @@ pub const SOURCE_DOMAIN: &str = "order";
 pub const TARGET_DOMAIN: &str = "customer";
 
 /// Loyalty Earn Saga implementation.
-pub struct LoyaltyEarnSaga {
-    name: String,
-}
+pub struct LoyaltyEarnSaga;
 
 impl LoyaltyEarnSaga {
     pub fn new() -> Self {
-        Self {
-            name: SAGA_NAME.to_string(),
-        }
+        Self
     }
 
     /// Process a single event page and generate a command if applicable.
@@ -64,7 +56,6 @@ impl LoyaltyEarnSaga {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                synchronous: false,
                 command: Some(cmd_any),
             }],
             correlation_id: correlation_id.to_string(),
@@ -72,6 +63,21 @@ impl LoyaltyEarnSaga {
             auto_resequence: false,
             fact: false,
         })
+    }
+
+    /// Handle an event book, producing commands for any relevant events.
+    pub fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
+        let source_root = book.cover.as_ref().and_then(|c| c.root.as_ref());
+        let correlation_id = &book.correlation_id;
+
+        book.pages
+            .iter()
+            .filter_map(|page| {
+                page.event
+                    .as_ref()
+                    .and_then(|e| self.process_event(e, source_root, correlation_id))
+            })
+            .collect()
     }
 }
 
@@ -81,65 +87,10 @@ impl Default for LoyaltyEarnSaga {
     }
 }
 
-#[async_trait]
-impl Saga for LoyaltyEarnSaga {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn domains(&self) -> Vec<String> {
-        vec![SOURCE_DOMAIN.to_string()]
-    }
-
-    async fn handle(&self, book: &Arc<EventBook>) -> Result<Vec<CommandBook>> {
-        let source_root = book.cover.as_ref().and_then(|c| c.root.as_ref());
-        let correlation_id = &book.correlation_id;
-
-        let commands: Vec<CommandBook> = book
-            .pages
-            .iter()
-            .filter_map(|page| {
-                page.event
-                    .as_ref()
-                    .and_then(|e| self.process_event(e, source_root, correlation_id))
-            })
-            .collect();
-
-        Ok(commands)
-    }
-
-    fn is_synchronous(&self) -> bool {
-        false // Loyalty points can be awarded asynchronously
-    }
-}
-
-// Public test methods for cucumber tests
-impl LoyaltyEarnSaga {
-    pub fn process_event_public(
-        &self,
-        event: &prost_types::Any,
-        source_root: Option<&ProtoUuid>,
-        correlation_id: &str,
-    ) -> Option<CommandBook> {
-        self.process_event(event, source_root, correlation_id)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_saga_name() {
-        let saga = LoyaltyEarnSaga::new();
-        assert_eq!(saga.name(), SAGA_NAME);
-    }
-
-    #[test]
-    fn test_saga_domains() {
-        let saga = LoyaltyEarnSaga::new();
-        assert_eq!(saga.domains(), vec![SOURCE_DOMAIN.to_string()]);
-    }
+    use angzarr::proto::EventPage;
 
     #[test]
     fn test_process_order_completed() {
@@ -162,10 +113,25 @@ mod tests {
             value: vec![1, 2, 3, 4],
         };
 
-        let cmd = saga
-            .process_event_public(&event_any, Some(&root), "CORR-001")
-            .expect("Should generate command");
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: SOURCE_DOMAIN.to_string(),
+                root: Some(root),
+            }),
+            snapshot: None,
+            pages: vec![EventPage {
+                created_at: None,
+                sequence: 1,
+                event: Some(event_any),
+            }],
+            correlation_id: "CORR-001".to_string(),
+            snapshot_state: None,
+        };
 
+        let commands = saga.handle(&book);
+        assert_eq!(commands.len(), 1);
+
+        let cmd = &commands[0];
         assert_eq!(cmd.cover.as_ref().unwrap().domain, TARGET_DOMAIN);
         assert_eq!(cmd.correlation_id, "CORR-001");
 
@@ -192,7 +158,22 @@ mod tests {
             value: event.encode_to_vec(),
         };
 
-        let cmd = saga.process_event_public(&event_any, None, "CORR-002");
-        assert!(cmd.is_none());
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: SOURCE_DOMAIN.to_string(),
+                root: None,
+            }),
+            snapshot: None,
+            pages: vec![EventPage {
+                created_at: None,
+                sequence: 1,
+                event: Some(event_any),
+            }],
+            correlation_id: "CORR-002".to_string(),
+            snapshot_state: None,
+        };
+
+        let commands = saga.handle(&book);
+        assert!(commands.is_empty());
     }
 }

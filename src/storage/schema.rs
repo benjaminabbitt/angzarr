@@ -19,8 +19,6 @@ pub enum Events {
     CreatedAt,
     #[iden = "event_data"]
     EventData,
-    #[iden = "synchronous"]
-    Synchronous,
 }
 
 /// Snapshots table schema.

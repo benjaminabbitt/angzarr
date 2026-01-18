@@ -45,7 +45,6 @@ pub fn make_event_book(
                 value: event_value,
             }),
             created_at: Some(now()),
-            synchronous: false,
         }],
         correlation_id: String::new(),
         snapshot_state: Some(prost_types::Any {

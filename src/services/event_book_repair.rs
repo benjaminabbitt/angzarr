@@ -199,7 +199,6 @@ mod tests {
                 value: vec![],
             }),
             created_at: None,
-            synchronous: false,
         }
     }
 
@@ -334,11 +333,11 @@ mod tests {
 
     mod grpc_integration {
         use super::*;
-        use crate::interfaces::EventStore;
+        use crate::storage::EventStore;
         use crate::proto::event_query_server::EventQueryServer;
         use crate::proto::Snapshot;
         use crate::services::EventQueryService;
-        use crate::test_utils::{MockEventStore, MockSnapshotStore};
+        use crate::storage::mock::{MockEventStore, MockSnapshotStore};
         use prost_types::Timestamp;
         use std::net::SocketAddr;
         use std::sync::Arc;
@@ -356,7 +355,6 @@ mod tests {
                     type_url: format!("type.googleapis.com/{}", event_type),
                     value: vec![1, 2, 3, sequence as u8],
                 }),
-                synchronous: false,
             }
         }
 
@@ -480,7 +478,7 @@ mod tests {
                 .collect();
             event_store.add(domain, root, events).await.unwrap();
 
-            use crate::interfaces::SnapshotStore;
+            use crate::storage::SnapshotStore;
             snapshot_store
                 .put(
                     domain,
@@ -513,8 +511,8 @@ mod tests {
             assert!(is_complete(&repaired));
             assert!(repaired.snapshot.is_some());
             assert_eq!(repaired.snapshot.as_ref().unwrap().sequence, 5);
-            assert_eq!(repaired.pages.len(), 5);
-            assert_eq!(repaired.pages[0].sequence, Some(Sequence::Num(5)));
+            assert_eq!(repaired.pages.len(), 4); // Events 6,7,8,9 (after snapshot at 5)
+            assert_eq!(repaired.pages[0].sequence, Some(Sequence::Num(6)));
         }
 
         #[tokio::test]

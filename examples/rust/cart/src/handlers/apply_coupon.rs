@@ -2,7 +2,7 @@
 
 use prost::Message;
 
-use angzarr::interfaces::business_client::{BusinessError, Result};
+use angzarr::clients::{BusinessError, Result};
 use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
 use common::proto::{ApplyCoupon, CartState, CouponApplied};
 
@@ -72,7 +72,6 @@ pub fn handle_apply_coupon(
                 value: event.encode_to_vec(),
             }),
             created_at: Some(now()),
-            synchronous: false,
         }],
         correlation_id: String::new(),
         snapshot_state: Some(prost_types::Any {

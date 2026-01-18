@@ -30,9 +30,6 @@ services:
 
 # Projector services
 projectors:
-  receipt:
-    image: go-projector-receipt:latest
-    port: 50200
   logCustomer:
     image: go-projector-log-customer:latest
     port: 50201

@@ -11,7 +11,7 @@ import (
 )
 
 type server struct {
-	angzarr.UnimplementedBusinessLogicServer
+	angzarr.UnimplementedAggregateServer
 	logic logic.CartLogic
 }
 

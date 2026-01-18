@@ -15,9 +15,9 @@ A **command handler** processes commands for a domain, validates business rules 
 
 ---
 
-## Entity Identity
+## Aggregate Identity
 
-Each entity within a domain is identified by `Cover.root`, a UUID. This UUID is computed deterministically from the domain's **business key** using a hash function.
+Each aggregate within a domain is identified by `Cover.root`, a UUID. This UUID is computed deterministically from the domain's **business key** using a hash function.
 
 ### Hash Computation
 
@@ -58,7 +58,7 @@ pub fn product_root(sku: &str) -> Uuid {
 
 ### Why Deterministic UUIDs?
 
-1. **Idempotent commands**: Sending the same command twice targets the same entity
+1. **Idempotent commands**: Sending the same command twice targets the same aggregate
 2. **Natural deduplication**: Same business key → same root → Angzarr prevents duplicate creation
 3. **No external lookups**: No need to query "does customer with email X exist?"—the hash collision handles it
 4. **Consistent across services**: Any service can compute the root from the business key
@@ -69,7 +69,7 @@ When a client sends `CreateCustomer` with email `alice@example.com`:
 
 1. Business logic computes `root = hash("angzarr" + "customer" + "alice@example.com")`
 2. Command is sent with `Cover { domain: "customer", root: <computed> }`
-3. If entity already exists (prior events for this root), command is rejected
+3. If aggregate already exists (prior events for this root), command is rejected
 
 This means duplicate detection happens at the Angzarr level—business logic only needs to check "does this root have events?" rather than querying across all customers.
 

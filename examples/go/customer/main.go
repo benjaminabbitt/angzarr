@@ -27,7 +27,7 @@ var logger *zap.Logger
 
 // server implements the BusinessLogic gRPC service.
 type server struct {
-	angzarr.UnimplementedBusinessLogicServer
+	angzarr.UnimplementedAggregateServer
 	logic logic.CustomerLogic
 }
 
@@ -135,7 +135,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	angzarr.RegisterBusinessLogicServer(s, &server{
+	angzarr.RegisterAggregateServer(s, &server{
 		logic: logic.NewCustomerLogic(),
 	})
 

@@ -1,25 +1,11 @@
 //! Service discovery for angzarr.
 //!
-//! Provides mechanisms to discover services:
-//! - Unified K8s label-based discovery (recommended, requires service mesh)
-//! - Kubernetes API-based discovery (in-cluster)
-//! - DNS SRV record-based discovery (K8s headless services)
-//! - Static configuration from environment variables (local development)
+//! Uses K8s label-based discovery with service mesh for L7 gRPC load balancing.
+//! Services are discovered by watching K8s Service resources with labels:
+//! - `app.kubernetes.io/component`: aggregate, projector, or saga
+//! - `angzarr.io/domain`: target domain
+//! - `angzarr.io/source-domain`: source domain (sagas only)
 
-pub mod coordinator_registry;
 pub mod k8s;
-pub mod registry;
-pub mod srv;
-pub mod static_config;
-pub mod unified;
 
-// New unified discovery (recommended)
-pub use unified::{DiscoveredService, DiscoveryError, ServiceDiscovery};
-
-// Legacy exports (kept for backwards compatibility during transition)
-pub use coordinator_registry::{
-    load_projector_registry_from_env, load_saga_registry_from_env, CoordinatorEndpoint,
-    CoordinatorError, ProjectorRegistry, SagaRegistry,
-};
-pub use registry::{RegistryError, ServiceEndpoint, ServiceRegistry};
-pub use srv::{SrvEndpoint, SrvError, SrvResolver};
+pub use k8s::{DiscoveredService, DiscoveryError, ServiceDiscovery};

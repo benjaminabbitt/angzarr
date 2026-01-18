@@ -8,40 +8,54 @@ use uuid::Uuid;
 
 pub use angzarr::proto::{
     command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, EventBook, ExecuteStreamCountRequest, Query,
-    Uuid as ProtoUuid,
+    CommandBook, CommandPage, CommandResponse, Cover, EventBook, Query, Uuid as ProtoUuid,
 };
 
-/// Default gateway endpoint for Kind cluster
-pub const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr gateway port - exposed via NodePort 31350 -> hostPort 1350
+pub const DEFAULT_ANGZARR_PORT: u16 = 1350;
 
-/// Default query endpoint (proxied through gateway)
-pub const DEFAULT_QUERY_ENDPOINT: &str = "http://localhost:50051";
+/// Builds the gateway endpoint URL from environment or default.
+/// Uses ANGZARR_PORT as the standard env var.
+fn get_gateway_endpoint() -> String {
+    // Check for explicit endpoint first (full URL)
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+
+    // Otherwise build from host and port
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+
+    format!("http://{}:{}", host, port)
+}
 
 /// Creates a CommandGatewayClient connected to the gateway.
+/// Gateway consolidates all gRPC services on ANGZARR_PORT.
 pub async fn create_gateway_client() -> CommandGatewayClient<Channel> {
-    let endpoint = std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-        .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string());
+    let endpoint = get_gateway_endpoint();
 
-    let channel = Channel::from_shared(endpoint)
+    let channel = Channel::from_shared(endpoint.clone())
         .expect("Invalid gateway endpoint")
         .connect()
         .await
-        .expect("Failed to connect to gateway");
+        .unwrap_or_else(|e| panic!("Failed to connect to gateway at {}: {}", endpoint, e));
 
     CommandGatewayClient::new(channel)
 }
 
 /// Creates an EventQueryClient connected to the query service.
+/// Gateway consolidates all gRPC services on ANGZARR_PORT.
 pub async fn create_query_client() -> EventQueryClient<Channel> {
-    let endpoint = std::env::var("ANGZARR_QUERY_ENDPOINT")
-        .unwrap_or_else(|_| DEFAULT_QUERY_ENDPOINT.to_string());
+    let endpoint = get_gateway_endpoint();
 
-    let channel = Channel::from_shared(endpoint)
+    let channel = Channel::from_shared(endpoint.clone())
         .expect("Invalid query endpoint")
         .connect()
         .await
-        .expect("Failed to connect to query service");
+        .unwrap_or_else(|e| panic!("Failed to connect to query service at {}: {}", endpoint, e));
 
     EventQueryClient::new(channel)
 }
@@ -53,6 +67,39 @@ pub fn build_command_book(
     command: impl Message,
     type_url: &str,
 ) -> CommandBook {
+    build_command_book_with_options(domain, root, command, type_url, 0, false)
+}
+
+/// Builds a CommandBook with specific sequence number.
+pub fn build_command_book_at_sequence(
+    domain: &str,
+    root: Uuid,
+    command: impl Message,
+    type_url: &str,
+    sequence: u32,
+) -> CommandBook {
+    build_command_book_with_options(domain, root, command, type_url, sequence, false)
+}
+
+/// Builds a CommandBook with auto_resequence enabled.
+pub fn build_command_book_auto_resequence(
+    domain: &str,
+    root: Uuid,
+    command: impl Message,
+    type_url: &str,
+) -> CommandBook {
+    build_command_book_with_options(domain, root, command, type_url, 0, true)
+}
+
+/// Builds a CommandBook with full configuration options.
+pub fn build_command_book_with_options(
+    domain: &str,
+    root: Uuid,
+    command: impl Message,
+    type_url: &str,
+    sequence: u32,
+    auto_resequence: bool,
+) -> CommandBook {
     let correlation_id = Uuid::new_v4().to_string();
     CommandBook {
         cover: Some(Cover {
@@ -62,8 +109,7 @@ pub fn build_command_book(
             }),
         }),
         pages: vec![CommandPage {
-            sequence: 0,
-            synchronous: false,
+            sequence,
             command: Some(prost_types::Any {
                 type_url: format!("type.googleapis.com/{}", type_url),
                 value: command.encode_to_vec(),
@@ -71,8 +117,18 @@ pub fn build_command_book(
         }],
         correlation_id,
         saga_origin: None,
-        auto_resequence: false,
+        auto_resequence,
         fact: false,
+    }
+}
+
+/// Extracts the sequence number from an event page.
+/// Returns 0 for Force sequences (which indicate "use next available").
+pub fn extract_sequence(page: &angzarr::proto::EventPage) -> u32 {
+    match &page.sequence {
+        Some(angzarr::proto::event_page::Sequence::Num(n)) => *n,
+        Some(angzarr::proto::event_page::Sequence::Force(_)) => 0,
+        None => 0,
     }
 }
 
@@ -96,23 +152,4 @@ pub fn extract_event_type(event: &prost_types::Any) -> String {
         .next()
         .unwrap_or(&event.type_url)
         .to_string()
-}
-
-/// Checks if integration tests should run.
-/// Returns true if ANGZARR_TEST_MODE=container.
-pub fn should_run_integration_tests() -> bool {
-    std::env::var("ANGZARR_TEST_MODE")
-        .map(|v| v.to_lowercase() == "container")
-        .unwrap_or(false)
-}
-
-/// Macro to skip test if not in container mode.
-#[macro_export]
-macro_rules! skip_if_not_container {
-    () => {
-        if !$crate::integration::should_run_integration_tests() {
-            eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-            return;
-        }
-    };
 }

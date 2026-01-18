@@ -1,0 +1,46 @@
+# Lefthook configuration for angzarr
+# https://github.com/evilmartians/lefthook
+#
+# Post-commit hooks trigger skaffold deployment after commits.
+# This ensures deployed code matches committed code.
+#
+# All images use sha256 content-based tags:
+#   - New content = new tag = K8s pulls fresh image
+#   - Same content = same tag = skaffold cache hit (no rebuild)
+#
+# Setup: lefthook install
+# Bypass: git commit --no-verify (or LEFTHOOK=0 git commit)
+
+post-commit:
+  parallel: false
+  commands:
+    # Deploy all images after commits that touch relevant files
+    # Skaffold caches unchanged images - only rebuilds what changed
+    deploy:
+      run: |
+        echo "=== Post-commit: Building and deploying ==="
+        cd examples/rust && skaffold run 2>&1 | tail -30
+        echo "=== Deployment complete ==="
+      # Only run if code/config files changed
+      only:
+        - "src/**"
+        - "proto/**"
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - "Containerfile"
+        - "examples/rust/**"
+        - "deploy/helm/**"
+
+# Pre-commit hooks for code quality (optional - uncomment to enable)
+# pre-commit:
+#   parallel: true
+#   commands:
+#     rust-fmt:
+#       glob: "*.rs"
+#       run: cargo fmt --check
+#     rust-clippy:
+#       glob: "*.rs"
+#       run: cargo clippy -- -D warnings
+#     helm-lint:
+#       glob: "deploy/helm/**"
+#       run: helm lint deploy/helm/angzarr

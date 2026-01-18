@@ -37,8 +37,9 @@ pub fn rebuild_state(event_book: Option<&EventBook>) -> CustomerState {
             }
         } else if event.type_url.ends_with("LoyaltyPointsAdded") {
             if let Ok(e) = LoyaltyPointsAdded::decode(event.value.as_slice()) {
+                // Use facts (absolute values) for idempotent state reconstruction
                 state.loyalty_points = e.new_balance;
-                state.lifetime_points += e.points;
+                state.lifetime_points = e.new_lifetime_points;
             }
         } else if event.type_url.ends_with("LoyaltyPointsRedeemed") {
             if let Ok(e) = LoyaltyPointsRedeemed::decode(event.value.as_slice()) {

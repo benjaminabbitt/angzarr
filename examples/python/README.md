@@ -15,7 +15,6 @@ python/
 ├── saga-loyalty/     # Loyalty saga
 ├── projector-log-customer/
 ├── projector-log-transaction/
-├── projector-receipt/
 └── k8s/              # Language-specific K8s config
 ```
 

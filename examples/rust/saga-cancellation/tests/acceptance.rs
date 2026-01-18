@@ -6,9 +6,9 @@ use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
 
-use angzarr::proto::{CommandBook, Uuid as ProtoUuid};
+use angzarr::proto::{event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid as ProtoUuid};
 use common::proto::{OrderCancelled, OrderCreated, ReleaseReservation};
-use saga_cancellation::CancellationSaga;
+use saga_cancellation::{CancellationSaga, SOURCE_DOMAIN};
 
 #[derive(Debug, Default, World)]
 pub struct SagaWorld {
@@ -102,10 +102,25 @@ async fn set_correlation_id(world: &mut SagaWorld, correlation_id: String) {
 async fn process_saga(world: &mut SagaWorld) {
     let saga = world.saga();
     let event = world.current_event.as_ref().expect("No event set");
-    let root = world.current_root.as_ref();
 
-    let commands = saga.process_event_public(event, root, &world.current_correlation_id);
-    world.generated_commands = commands;
+    // Build EventBook from the current event
+    let event_book = EventBook {
+        cover: Some(Cover {
+            domain: SOURCE_DOMAIN.to_string(),
+            root: world.current_root.clone(),
+        }),
+        pages: vec![EventPage {
+            sequence: Some(Sequence::Num(1)),
+            created_at: None,
+            event: Some(event.clone()),
+        }],
+        correlation_id: world.current_correlation_id.clone(),
+        snapshot: None,
+        snapshot_state: None,
+    };
+
+    // Use the public handle() interface
+    world.generated_commands = saga.handle(&event_book);
 }
 
 // =============================================================================

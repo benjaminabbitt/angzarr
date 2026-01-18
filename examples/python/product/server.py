@@ -19,7 +19,7 @@ from handlers import (
     handle_set_price,
     handle_update_product,
 )
-from state import next_sequence, rebuild_state
+from handlers.state import next_sequence, rebuild_state
 
 structlog.configure(
     processors=[
@@ -37,7 +37,7 @@ logger = structlog.get_logger()
 DOMAIN = "product"
 
 
-class BusinessLogicServicer(angzarr_pb2_grpc.BusinessLogicServicer):
+class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
     def __init__(self) -> None:
         self.log = logger.bind(domain=DOMAIN, service="business_logic")
 
@@ -83,7 +83,7 @@ def serve() -> None:
     port = os.environ.get("PORT", "50301")
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    angzarr_pb2_grpc.add_BusinessLogicServicer_to_server(BusinessLogicServicer(), server)
+    angzarr_pb2_grpc.add_AggregateServicer_to_server(AggregateServicer(), server)
 
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)

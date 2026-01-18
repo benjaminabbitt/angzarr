@@ -9,8 +9,8 @@ use tonic::{transport::Server, Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use angzarr::interfaces::business_client::BusinessLogicClient;
-use angzarr::proto::business_logic_server::{BusinessLogic, BusinessLogicServer};
+use angzarr::clients::BusinessLogicClient;
+use angzarr::proto::aggregate_server::{Aggregate, AggregateServer};
 use angzarr::proto::{BusinessResponse, ContextualCommand};
 use product::ProductLogic;
 
@@ -30,7 +30,7 @@ impl ProductService {
 }
 
 #[tonic::async_trait]
-impl BusinessLogic for ProductService {
+impl Aggregate for ProductService {
     async fn handle(
         &self,
         request: Request<ContextualCommand>,
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create gRPC health service
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<BusinessLogicServer<ProductService>>()
+        .set_serving::<AggregateServer<ProductService>>()
         .await;
 
     info!(
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Server::builder()
         .add_service(health_service)
-        .add_service(BusinessLogicServer::new(service))
+        .add_service(AggregateServer::new(service))
         .serve(addr)
         .await?;
 

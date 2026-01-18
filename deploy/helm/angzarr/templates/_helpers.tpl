@@ -58,3 +58,21 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Container security context with optional debug capabilities
+runAsNonRoot is hardcoded - never allow running as root
+*/}}
+{{- define "angzarr.containerSecurityContext" -}}
+runAsNonRoot: true
+runAsUser: {{ .Values.securityContext.runAsUser }}
+readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+  {{- if .Values.debug.enabled }}
+  add:
+    - SYS_PTRACE
+  {{- end }}
+{{- end }}

@@ -1,6 +1,6 @@
 //! Handler for AddLoyaltyPoints command.
 
-use angzarr::interfaces::business_client::{BusinessError, Result};
+use angzarr::clients::{BusinessError, Result};
 use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
 use common::proto::{AddLoyaltyPoints, CustomerState, LoyaltyPointsAdded};
 use prost::Message;
@@ -32,11 +32,13 @@ pub fn handle_add_loyalty_points(
     }
 
     let new_balance = state.loyalty_points + cmd.points;
+    let new_lifetime_points = state.lifetime_points + cmd.points;
 
     let event = LoyaltyPointsAdded {
         points: cmd.points,
         new_balance,
         reason: cmd.reason,
+        new_lifetime_points, // Fact: total lifetime points after this event
     };
 
     // New state after applying event
@@ -44,7 +46,7 @@ pub fn handle_add_loyalty_points(
         name: state.name.clone(),
         email: state.email.clone(),
         loyalty_points: new_balance,
-        lifetime_points: state.lifetime_points + cmd.points,
+        lifetime_points: new_lifetime_points,
     };
 
     Ok(EventBook {
@@ -57,7 +59,6 @@ pub fn handle_add_loyalty_points(
                 value: event.encode_to_vec(),
             }),
             created_at: Some(now()),
-            synchronous: false,
         }],
         correlation_id: String::new(),
         snapshot_state: Some(prost_types::Any {

@@ -36,20 +36,15 @@ use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use angzarr::bus::DirectEventBus;
-use angzarr::clients::StaticBusinessLogicClient;
+use angzarr::bus::{AmqpEventBus, EventBus, MessagingType, MockEventBus};
+use angzarr::clients::{BusinessLogicClient, StaticBusinessLogicClient};
 use angzarr::config::Config;
 use angzarr::discovery::ServiceDiscovery;
-use angzarr::interfaces::BusinessLogicClient;
 use angzarr::proto::{
     aggregate_coordinator_server::AggregateCoordinatorServer, event_query_server::EventQueryServer,
 };
 use angzarr::services::{AggregateService, EventQueryService};
 use angzarr::storage::init_storage;
-
-use angzarr::bus::AmqpEventBus;
-use angzarr::config::MessagingType;
-use angzarr::interfaces::EventBus;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -101,8 +96,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
         }
         _ => {
-            warn!("No AMQP messaging configured, using direct event bus");
-            Arc::new(DirectEventBus::new())
+            warn!("No AMQP messaging configured, using mock event bus (events not published)");
+            Arc::new(MockEventBus::new())
         }
     };
 

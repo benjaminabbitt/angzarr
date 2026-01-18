@@ -7,7 +7,7 @@ mod state;
 
 use async_trait::async_trait;
 
-use angzarr::interfaces::business_client::{BusinessError, BusinessLogicClient, Result};
+use angzarr::clients::{BusinessError, BusinessLogicClient, Result};
 use angzarr::proto::{
     business_response, BusinessResponse, CommandBook, ContextualCommand, EventBook,
 };
@@ -187,7 +187,6 @@ mod tests {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                synchronous: false,
                 command: Some(prost_types::Any {
                     type_url: type_url.to_string(),
                     value,
@@ -262,7 +261,6 @@ mod tests {
                     .encode_to_vec(),
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: None,
@@ -313,7 +311,6 @@ mod tests {
                     .encode_to_vec(),
                 }),
                 created_at: None,
-                synchronous: false,
             }],
             correlation_id: String::new(),
             snapshot_state: None,
@@ -397,7 +394,6 @@ mod tests {
                         .encode_to_vec(),
                     }),
                     created_at: None,
-                    synchronous: false,
                 },
                 EventPage {
                     sequence: Some(Sequence::Num(1)),
@@ -411,7 +407,6 @@ mod tests {
                         .encode_to_vec(),
                     }),
                     created_at: None,
-                    synchronous: false,
                 },
             ],
             correlation_id: String::new(),

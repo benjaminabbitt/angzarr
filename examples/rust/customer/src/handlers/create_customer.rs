@@ -1,6 +1,6 @@
 //! Handler for CreateCustomer command.
 
-use angzarr::interfaces::business_client::{BusinessError, Result};
+use angzarr::clients::{BusinessError, Result};
 use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
 use common::proto::{CreateCustomer, CustomerCreated, CustomerState};
 use prost::Message;
@@ -56,7 +56,6 @@ pub fn handle_create_customer(
                 value: event.encode_to_vec(),
             }),
             created_at: Some(now()),
-            synchronous: false,
         }],
         correlation_id: String::new(),
         snapshot_state: Some(prost_types::Any {

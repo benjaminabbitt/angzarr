@@ -53,6 +53,11 @@ mongodb:
     usernames: ["angzarr"]
     passwords: ["angzarr"]
     databases: ["angzarr"]
+  # NodePort for external test access (mongodb_debug.rs expects port 30017)
+  service:
+    type: NodePort
+    nodePorts:
+      mongodb: 30017
   persistence:
     size: 2Gi
   resources:

@@ -27,6 +27,35 @@ content: |-
     - Version events when schema evolves
     - Keep events small and focused on single facts
 
+    ## Idempotent State Reconstruction
+
+    **Critical**: Events must contain absolute state values (facts), not deltas (changes).
+
+    This ensures state reconstruction is idempotent — applying the same event twice produces the same result.
+
+    **Wrong (deltas):**
+    ```
+    StockReserved { quantity: 20 }  // Delta: "reserve 20 more"
+    // Applying twice: reserved += 20 → 40 (incorrect)
+    ```
+
+    **Correct (facts):**
+    ```
+    StockReserved { quantity: 20, new_reserved: 40, new_on_hand: 100 }
+    // Applying twice: reserved = 40 → 40 (correct)
+    ```
+
+    **Benefits:**
+    - Safe replay from snapshots (no double-counting)
+    - Events become self-describing (contain resulting state)
+    - Easier debugging (see state at any point)
+    - Projection rebuilds are deterministic
+
+    **Implementation:**
+    - Every event that modifies numeric state includes `new_<field>` with absolute value
+    - `rebuild_state` uses assignment (`=`), never increment/decrement (`+=`/`-=`)
+    - Maps/collections: use set/remove operations (idempotent), not add (not idempotent)
+
     ## Event Structure
 
     ```

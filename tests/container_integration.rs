@@ -15,8 +15,7 @@ use uuid::Uuid;
 // Proto imports - generated from angzarr.proto and domains.proto
 use angzarr::proto::{
     command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, EventBook, ExecuteStreamCountRequest, Query,
-    Uuid as ProtoUuid,
+    CommandBook, CommandPage, CommandResponse, Cover, EventBook, Query, Uuid as ProtoUuid,
 };
 
 // Examples proto types
@@ -128,7 +127,6 @@ impl ContainerWorld {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                synchronous: false,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),
@@ -419,19 +417,18 @@ async fn when_create_customer_via_gateway(world: &mut ContainerWorld, name: Stri
     let correlation_id = command_book.correlation_id.clone();
     world.correlation_ids.write().await.push(correlation_id);
 
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 5, // Expect up to 5 events
-    };
-
     let client = world.get_gateway_client().await;
-    match client.execute_stream_response_count(request).await {
+    match client.execute_stream(command_book).await {
         Ok(response) => {
             let mut stream = response.into_inner();
             let events = world.streamed_events.clone();
-            while let Ok(Some(event_book)) = stream.message().await {
-                events.write().await.push(event_book);
-            }
+            // Collect events with timeout
+            let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
+                while let Ok(Some(event_book)) = stream.message().await {
+                    events.write().await.push(event_book);
+                }
+            });
+            let _ = timeout.await;
             world.last_error = None;
         }
         Err(status) => {
@@ -480,14 +477,9 @@ async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
         world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
     command_book.correlation_id = "non-matching-correlation-id".to_string();
 
-    let request = ExecuteStreamCountRequest {
-        command: Some(command_book),
-        count: 1, // Expect at most 1 event
-    };
-
     // This should timeout or return empty
     let client = world.get_gateway_client().await;
-    let _ = client.execute_stream_response_count(request).await;
+    let _ = client.execute_stream(command_book).await;
 }
 
 #[then(expr = "I receive at least {int} event from the stream")]

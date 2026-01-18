@@ -1,0 +1,91 @@
+syntax = "proto3";
+package examples;
+option go_package = "github.com/angzarr/angzarr/proto/examples;examples";
+option java_package = "dev.angzarr.examples";
+option java_multiple_files = true;
+option csharp_namespace = "Angzarr.Examples";
+option ruby_package = "Angzarr::Examples";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Order Domain - manages customer orders and payment
+// =============================================================================
+
+// Commands
+message CreateOrder {
+  string customer_id = 1;
+  repeated LineItem items = 2;
+}
+
+message ApplyLoyaltyDiscount {
+  int32 points = 1;           // loyalty points to use
+  int32 discount_cents = 2;   // value of discount in cents
+}
+
+message SubmitPayment {
+  string payment_method = 1;  // "card", "cash", etc.
+  int32 amount_cents = 2;     // payment amount (must match total after discount)
+}
+
+message ConfirmPayment {
+  string payment_reference = 1;  // external payment reference
+}
+
+message CancelOrder {
+  string reason = 1;
+}
+
+// Events
+message OrderCreated {
+  string customer_id = 1;
+  repeated LineItem items = 2;
+  int32 subtotal_cents = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message LoyaltyDiscountApplied {
+  int32 points_used = 1;
+  int32 discount_cents = 2;
+  google.protobuf.Timestamp applied_at = 3;
+}
+
+message PaymentSubmitted {
+  string payment_method = 1;
+  int32 amount_cents = 2;
+  google.protobuf.Timestamp submitted_at = 3;
+}
+
+message OrderCompleted {
+  int32 final_total_cents = 1;
+  string payment_method = 2;
+  string payment_reference = 3;
+  int32 loyalty_points_earned = 4;  // Points to award customer (1 point per $1)
+  google.protobuf.Timestamp completed_at = 5;
+}
+
+message OrderCancelled {
+  string reason = 1;
+  google.protobuf.Timestamp cancelled_at = 2;
+  int32 loyalty_points_used = 3;
+}
+
+// Shared types
+message LineItem {
+  string product_id = 1;
+  string name = 2;
+  int32 quantity = 3;
+  int32 unit_price_cents = 4;
+}
+
+// State (for snapshots)
+message OrderState {
+  string customer_id = 1;
+  repeated LineItem items = 2;
+  int32 subtotal_cents = 3;
+  int32 discount_cents = 4;
+  int32 loyalty_points_used = 5;
+  string payment_method = 6;
+  string payment_reference = 7;
+  string status = 8;  // "pending", "payment_submitted", "completed", "cancelled"
+}

@@ -1,5 +1,15 @@
 # Angzarr examples - multi-language gRPC implementations
 # Language-specific commands are in their respective justfiles (e.g., rust/justfile)
+#
+# UNIFIED WORKFLOW:
+#   1. From repo root: `just kind-create-registry && just infra-local` (one-time setup)
+#   2. `just dev rust` - watch mode with auto-rebuild on changes
+#   3. Or commit changes - lefthook triggers deployment automatically
+#
+# All 14 images use sha256 content-based tags.
+# Skaffold caches aggressively - only changed images are rebuilt.
+#
+# For tests, run from repo root: `just integration` or `just acceptance`
 
 set shell := ["bash", "-c"]
 
@@ -20,10 +30,10 @@ default:
 
 # Copy canonical proto files to example directories (required before building)
 proto-copy:
-    @mkdir -p "{{TOP}}/examples/go/proto"
-    @mkdir -p "{{TOP}}/examples/python/proto"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/go/proto/"
-    cp "{{TOP}}/proto/examples/domains.proto" "{{TOP}}/examples/python/proto/"
+    @mkdir -p "{{TOP}}/examples/go/proto/examples"
+    @mkdir -p "{{TOP}}/examples/python/proto/examples"
+    cp "{{TOP}}/proto/examples/"*.proto "{{TOP}}/examples/go/proto/examples/"
+    cp "{{TOP}}/proto/examples/"*.proto "{{TOP}}/examples/python/proto/examples/"
 
 # Generate protos (required before building non-Rust examples)
 proto: proto-copy
@@ -83,7 +93,7 @@ cache-status:
     podman system df
     @echo ""
     @echo "=== Example Images ==="
-    podman images --filter "reference=*entity-*" --filter "reference=*saga-*"
+    podman images --filter "reference=*aggregate-*" --filter "reference=*saga-*"
 
 # Prune unused images
 cache-prune:

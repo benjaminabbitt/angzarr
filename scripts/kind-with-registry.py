@@ -41,13 +41,14 @@ class Config:
     # Use k8s 1.31 for better rootless podman compatibility (1.35 has issues)
     node_image: str = "kindest/node:v1.31.4"
 
+    # Port scheme: 10-port ranges per component
+    # Gateway: 1350 (NodePort 31350), Stream: 1340 (NodePort 31340)
     port_mappings: list[PortMapping] = field(default_factory=lambda: [
         PortMapping(80, 8080, "Ingress HTTP"),
         PortMapping(443, 8443, "Ingress HTTPS"),
-        PortMapping(30051, 50051, "Angzarr command handler"),
-        PortMapping(30052, 50052, "Angzarr event query"),
-        PortMapping(30053, 50053, "Angzarr proxy"),
-        PortMapping(30054, 50054, "Angzarr stream"),
+        PortMapping(31350, 1350, "Angzarr gateway (commands + queries)"),
+        PortMapping(31340, 1340, "Angzarr stream"),
+        PortMapping(31310, 1310, "Angzarr aggregate sidecar"),
         PortMapping(30672, 5672, "RabbitMQ AMQP"),
         PortMapping(31672, 15672, "RabbitMQ Management"),
         PortMapping(30379, 6379, "Redis"),

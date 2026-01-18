@@ -1,0 +1,28 @@
+syntax = "proto3";
+package examples;
+option go_package = "github.com/angzarr/angzarr/proto/examples;examples";
+option java_package = "dev.angzarr.examples";
+option java_multiple_files = true;
+option csharp_namespace = "Angzarr.Examples";
+option ruby_package = "Angzarr::Examples";
+
+import "google/protobuf/timestamp.proto";
+import "examples/order.proto";
+
+// =============================================================================
+// Projections
+// =============================================================================
+
+// Receipt projection generated when an order completes
+message Receipt {
+  string order_id = 1;
+  string customer_id = 2;
+  repeated LineItem items = 3;
+  int32 subtotal_cents = 4;
+  int32 discount_cents = 5;
+  int32 final_total_cents = 6;
+  string payment_method = 7;
+  int32 loyalty_points_earned = 8;
+  google.protobuf.Timestamp completed_at = 9;
+  string formatted_text = 10;  // Human-readable receipt text
+}

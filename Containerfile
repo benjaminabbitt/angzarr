@@ -83,7 +83,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Runtime bases
 # =============================================================================
 FROM docker.io/library/debian:bookworm-slim AS runtime-dev-base
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    gdb \
+    gdbserver \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV ANGZARR_LOG=info
 

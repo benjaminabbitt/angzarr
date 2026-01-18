@@ -5,18 +5,20 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use tracing::warn;
 
+use crate::bus::EventBus;
+use crate::clients::{BusinessError, BusinessLogicClient};
 use crate::discovery::ServiceDiscovery;
-use crate::interfaces::{BusinessError, BusinessLogicClient, EventBus, EventStore, SnapshotStore};
+use crate::storage::{EventStore, SnapshotStore};
 use crate::proto::{
     aggregate_coordinator_server::AggregateCoordinator, CommandBook, CommandResponse, EventBook,
     Projection, SyncCommandBook, SyncEventBook,
 };
 use crate::repository::EventBookRepository;
 
-use super::response_builder::{
+use crate::utils::response_builder::{
     extract_events_from_response, generate_correlation_id, publish_and_build_response,
 };
-use super::sequence_validator::{
+use crate::utils::sequence_validator::{
     handle_storage_error, validate_sequence, SequenceValidationResult, StorageErrorOutcome,
 };
 use super::snapshot_handler::persist_snapshot_if_present;
@@ -246,7 +248,7 @@ impl AggregateCoordinator for AggregateService {
                 match validate_sequence(expected_sequence, next_sequence, auto_resequence) {
                     SequenceValidationResult::Valid => {}
                     SequenceValidationResult::Mismatch { expected, actual } => {
-                        return Err(super::sequence_validator::sequence_mismatch_error(
+                        return Err(crate::utils::sequence_validator::sequence_mismatch_error(
                             expected, actual,
                         ));
                     }
@@ -372,7 +374,7 @@ impl AggregateCoordinator for AggregateService {
                 match validate_sequence(expected_sequence, next_sequence, auto_resequence) {
                     SequenceValidationResult::Valid => {}
                     SequenceValidationResult::Mismatch { expected, actual } => {
-                        return Err(super::sequence_validator::sequence_mismatch_error(
+                        return Err(crate::utils::sequence_validator::sequence_mismatch_error(
                             expected, actual,
                         ));
                     }
@@ -447,7 +449,9 @@ impl AggregateCoordinator for AggregateService {
 mod tests {
     use super::*;
     use crate::proto::{CommandPage, Cover, EventBook, EventPage, Uuid as ProtoUuid};
-    use crate::test_utils::{MockBusinessLogic, MockEventBus, MockEventStore, MockSnapshotStore};
+    use crate::bus::MockEventBus;
+    use crate::clients::MockBusinessLogic;
+    use crate::storage::mock::{MockEventStore, MockSnapshotStore};
     use prost_types::Any;
 
     fn create_test_service_with_mocks(
@@ -662,7 +666,7 @@ mod tests {
         let stored = snapshot_store.get_stored("orders", root).await;
         assert!(stored.is_some());
         let snapshot = stored.unwrap();
-        assert_eq!(snapshot.sequence, 1); // First event, so snapshot at seq 1
+        assert_eq!(snapshot.sequence, 0); // First event at seq 0
     }
 
     #[tokio::test]
@@ -752,7 +756,7 @@ mod tests {
             stored.is_some(),
             "Snapshot should be stored when write is enabled"
         );
-        assert_eq!(stored.unwrap().sequence, 1);
+        assert_eq!(stored.unwrap().sequence, 0); // First event at seq 0
     }
 
     // ========== Sequence Validation Tests ==========

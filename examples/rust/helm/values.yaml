@@ -30,9 +30,6 @@ services:
 
 # Projector services
 projectors:
-  receipt:
-    image: rs-projector-receipt:latest
-    port: 50200
   logCustomer:
     image: rs-projector-log-customer:latest
     port: 50201

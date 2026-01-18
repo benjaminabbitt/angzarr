@@ -20,7 +20,21 @@ use common::proto::{
 };
 
 /// Default gateway endpoint for Kind cluster
-const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr port - standard across all languages/containers
+const DEFAULT_ANGZARR_PORT: u16 = 1350;
+
+/// Get gateway endpoint from environment or default
+fn get_gateway_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+    format!("http://{}:{}", host, port)
+}
 
 /// Makes an email unique for test isolation by inserting a UUID before the @ symbol.
 /// "alice@example.com" becomes "alice-{uuid}@example.com"
@@ -51,6 +65,9 @@ pub struct CustomerAcceptanceWorld {
     /// Current customer email (used to compute aggregate root)
     current_email: Option<String>,
 
+    /// Current sequence number for command tracking
+    current_sequence: u32,
+
     /// Last command response
     last_response: Option<CommandResponse>,
     /// Last error message
@@ -72,11 +89,11 @@ impl std::fmt::Debug for CustomerAcceptanceWorld {
 impl CustomerAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string()),
+            gateway_endpoint: get_gateway_endpoint(),
             gateway_client: None,
             query_client: None,
             current_email: None,
+            current_sequence: 0,
             last_response: None,
             last_error: None,
             queried_events: Vec::new(),
@@ -126,8 +143,7 @@ impl CustomerAcceptanceWorld {
         CommandBook {
             cover: Some(self.build_cover()),
             pages: vec![CommandPage {
-                sequence: 0,
-                synchronous: false,
+                sequence: self.current_sequence,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),
@@ -168,6 +184,7 @@ async fn given_system_running(world: &mut CustomerAcceptanceWorld, endpoint: Str
 async fn no_prior_events(world: &mut CustomerAcceptanceWorld) {
     // Clear email so When step will create a unique one
     world.current_email = None;
+    world.current_sequence = 0;
     world.last_response = None;
     world.last_error = None;
     world.queried_events.clear();
@@ -178,6 +195,7 @@ async fn customer_created_event(world: &mut CustomerAcceptanceWorld, name: Strin
     // Generate unique email for test isolation by adding UUID prefix to domain
     let unique_email = make_unique_email(&email);
     world.current_email = Some(unique_email.clone());
+    world.current_sequence = 0;
 
     // Send CreateCustomer command to create the event
     let command = CreateCustomer {
@@ -191,9 +209,10 @@ async fn customer_created_event(world: &mut CustomerAcceptanceWorld, name: Strin
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
-            world.last_error = Some(status.message().to_string());
+            panic!("Given step failed: CustomerCreated - {}", status.message());
         }
     }
 
@@ -218,9 +237,10 @@ async fn loyalty_points_added_event(
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
-            world.last_error = Some(status.message().to_string());
+            panic!("Given step failed: LoyaltyPointsAdded - {}", status.message());
         }
     }
 
@@ -244,9 +264,10 @@ async fn loyalty_points_redeemed_event(
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
-            world.last_error = Some(status.message().to_string());
+            panic!("Given step failed: LoyaltyPointsRedeemed - {}", status.message());
         }
     }
 

@@ -13,7 +13,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
 
-from state import rebuild_state, next_sequence
+from handlers.state import rebuild_state, next_sequence
 from handlers import (
     CommandRejectedError,
     handle_create_shipment,
@@ -39,7 +39,7 @@ logger = structlog.get_logger()
 DOMAIN = "fulfillment"
 
 
-class BusinessLogicServicer(angzarr_pb2_grpc.BusinessLogicServicer):
+class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
     def __init__(self) -> None:
         self.log = logger.bind(domain=DOMAIN, service="business_logic")
 
@@ -80,7 +80,7 @@ def serve() -> None:
     port = os.environ.get("PORT", "50305")
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    angzarr_pb2_grpc.add_BusinessLogicServicer_to_server(BusinessLogicServicer(), server)
+    angzarr_pb2_grpc.add_AggregateServicer_to_server(AggregateServicer(), server)
 
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)

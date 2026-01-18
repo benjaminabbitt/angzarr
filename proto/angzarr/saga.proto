@@ -1,0 +1,22 @@
+syntax = "proto3";
+package angzarr;
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_package = "dev.angzarr";
+option java_multiple_files = true;
+
+import "angzarr/types.proto";
+import "google/protobuf/empty.proto";
+
+// Saga: business logic that coordinates across aggregates
+// Business logic doesn't care about sync - coordinator decides
+service Saga {
+  rpc Handle (EventBook) returns (SagaResponse);
+}
+
+// SagaCoordinator: orchestrates saga processing
+service SagaCoordinator {
+  // Async processing - fire and forget
+  rpc Handle (EventBook) returns (google.protobuf.Empty);
+  // Sync processing - waits for completion based on sync_mode
+  rpc HandleSync (SyncEventBook) returns (SagaResponse);
+}

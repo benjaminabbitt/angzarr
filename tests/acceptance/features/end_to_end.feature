@@ -3,7 +3,7 @@ Feature: End-to-End Container Integration
   Verify the deployed angzarr system works correctly.
 
   Background:
-    Given the angzarr system is running at "localhost:50051"
+    Given the angzarr system is running at "localhost:1350"
 
   @container
   Scenario: Create a customer via gateway
@@ -21,3 +21,11 @@ Feature: End-to-End Container Integration
     When I query events for the customer aggregate
     Then I receive 1 event
     And the event at sequence 0 has type "CustomerCreated"
+
+  @container
+  Scenario: Synchronous projections returned in response
+    Given a new customer id
+    When I send a CreateCustomer command with name "Sync Projection Test" and email "sync@test.com"
+    Then the command succeeds
+    And the latest event type is "CustomerCreated"
+    # Projections are returned synchronously when projector coordinators are configured

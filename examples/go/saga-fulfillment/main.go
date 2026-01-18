@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	"saga-fulfillment/logic"
 	"saga-fulfillment/proto/angzarr"
@@ -25,17 +24,12 @@ type server struct {
 	angzarr.UnimplementedSagaServer
 }
 
-func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*emptypb.Empty, error) {
+func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*angzarr.SagaResponse, error) {
 	commands := sagaLogic.ProcessEvents(req)
 	if len(commands) > 0 {
 		logger.Info("processed events",
 			zap.Int("commands_generated", len(commands)))
 	}
-	return &emptypb.Empty{}, nil
-}
-
-func (s *server) HandleSync(ctx context.Context, req *angzarr.EventBook) (*angzarr.SagaResponse, error) {
-	commands := sagaLogic.ProcessEvents(req)
 	return &angzarr.SagaResponse{Commands: commands}, nil
 }
 

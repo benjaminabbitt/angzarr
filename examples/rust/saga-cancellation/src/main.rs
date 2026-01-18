@@ -4,13 +4,11 @@
 
 use std::env;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use tonic::{transport::Server, Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use angzarr::interfaces::saga::Saga;
 use angzarr::proto::saga_server::{Saga as SagaService, SagaServer};
 use angzarr::proto::{EventBook, SagaResponse};
 use saga_cancellation::CancellationSaga;
@@ -30,21 +28,13 @@ impl CancellationSagaService {
 
 #[tonic::async_trait]
 impl SagaService for CancellationSagaService {
-    async fn handle(&self, _request: Request<EventBook>) -> Result<Response<()>, Status> {
-        // Fire-and-forget - saga coordinator handles this
-        Ok(Response::new(()))
-    }
-
-    async fn handle_sync(
+    async fn handle(
         &self,
         request: Request<EventBook>,
     ) -> Result<Response<SagaResponse>, Status> {
-        let event_book = Arc::new(request.into_inner());
-
-        match self.saga.handle(&event_book).await {
-            Ok(commands) => Ok(Response::new(SagaResponse { commands })),
-            Err(e) => Err(Status::internal(e.to_string())),
-        }
+        let event_book = request.into_inner();
+        let commands = self.saga.handle(&event_book);
+        Ok(Response::new(SagaResponse { commands }))
     }
 }
 

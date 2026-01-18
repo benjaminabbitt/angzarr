@@ -34,7 +34,6 @@ Each language implements 6 bounded context examples:
 | `saga-loyalty` | Saga | Loyalty program orchestration across domains |
 | `projector-log-customer` | Projector | Customer event logging |
 | `projector-log-transaction` | Projector | Transaction event logging |
-| `projector-receipt` | Projector | Receipt generation from transaction events |
 
 ## Language Support
 
@@ -77,7 +76,6 @@ Scenario: Create a new customer
 - `transaction.feature` - Transaction scenarios
 - `saga-loyalty.feature` - Saga orchestration scenarios
 - `projector-log.feature` - Logging projector scenarios
-- `projector-receipt.feature` - Receipt projector scenarios
 
 ### References
 
@@ -150,15 +148,15 @@ just examples rust build
 
 Each language has a unique port range to allow concurrent deployments:
 
-| Language | Range | Customer | Transaction | Saga | Receipt | Log-Cust | Log-Trans |
-|----------|-------|----------|-------------|------|---------|----------|-----------|
-| Rust | 50100s | 50100 | 50101 | 50102 | 50103 | 50104 | 50105 |
-| Go | 50200s | 50200 | 50201 | 50202 | 50203 | 50204 | 50205 |
-| Python | 50300s | 50300 | 50301 | 50302 | 50303 | 50304 | 50305 |
-| TypeScript | 50400s | 50400 | 50401 | 50402 | 50403 | 50404 | 50405 |
-| Kotlin | 50500s | 50500 | 50501 | 50502 | 50503 | 50504 | 50505 |
-| C# | 50600s | 50600 | 50601 | 50602 | 50603 | 50604 | 50605 |
-| Java | 50700s | 50700 | 50701 | 50702 | 50703 | 50704 | 50705 |
-| Ruby | 50800s | 50800 | 50801 | 50802 | 50803 | 50804 | 50805 |
+| Language | Range | Customer | Transaction | Saga | Log-Cust | Log-Trans |
+|----------|-------|----------|-------------|------|----------|-----------|
+| Rust | 50100s | 50100 | 50101 | 50102 | 50104 | 50105 |
+| Go | 50200s | 50200 | 50201 | 50202 | 50204 | 50205 |
+| Python | 50300s | 50300 | 50301 | 50302 | 50304 | 50305 |
+| TypeScript | 50400s | 50400 | 50401 | 50402 | 50404 | 50405 |
+| Kotlin | 50500s | 50500 | 50501 | 50502 | 50504 | 50505 |
+| C# | 50600s | 50600 | 50601 | 50602 | 50604 | 50605 |
+| Java | 50700s | 50700 | 50701 | 50702 | 50704 | 50705 |
+| Ruby | 50800s | 50800 | 50801 | 50802 | 50804 | 50805 |
 
 See language-specific READMEs for details.

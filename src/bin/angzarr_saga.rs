@@ -25,11 +25,10 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use angzarr::bus::{AmqpConfig, AmqpEventBus};
-use angzarr::config::{Config, MessagingType};
+use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, MessagingType};
+use angzarr::config::Config;
 use angzarr::handlers::saga::SagaEventHandler;
-use angzarr::interfaces::EventBus;
-use angzarr::proto::business_coordinator_client::BusinessCoordinatorClient;
+use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::saga_coordinator_client::SagaCoordinatorClient;
 
 #[tokio::main]
@@ -113,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut attempt = 0;
         let client = loop {
             attempt += 1;
-            match BusinessCoordinatorClient::connect(cmd_url.clone()).await {
+            match AggregateCoordinatorClient::connect(cmd_url.clone()).await {
                 Ok(client) => {
                     info!("Connected to command handler for saga command execution");
                     break client;

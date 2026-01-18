@@ -9,7 +9,6 @@ from concurrent import futures
 import grpc
 import structlog
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
-from google.protobuf import empty_pb2
 
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
@@ -37,13 +36,8 @@ class SagaServicer(angzarr_pb2_grpc.SagaServicer):
     def __init__(self) -> None:
         self.log = logger.bind(saga=SAGA_NAME)
 
-    def Handle(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> empty_pb2.Empty:
-        # Async handler - loyalty points awarded when Delivered event is processed
-        # In practice, customer ID and points would come from saga context
-        return empty_pb2.Empty()
-
-    def HandleSync(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> angzarr.SagaResponse:
-        # Sync handler available for testing
+    def Handle(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> angzarr.SagaResponse:
+        # Customer ID and points would come from saga context
         return angzarr.SagaResponse(commands=[])
 
 

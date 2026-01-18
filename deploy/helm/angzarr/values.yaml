@@ -50,15 +50,39 @@ securityContext:
     drop:
       - ALL
 
+# Debug configuration - enables remote debugging with gdb/gdbserver
+# Debug ports are calculated: port + 1 (e.g., business on 50005 -> debug on 50006)
+debug:
+  enabled: false
+
+# =============================================================================
+# Port Scheme (10-port ranges per component)
+# =============================================================================
+# x0: gRPC (sidecar)      x5: gRPC (business logic)
+# x1: debug (sidecar)     x6: debug (business logic)
+# x2: future (web/ui)
+#
+# Infrastructure sidecars (1310-1359):
+#   aggregate: 1310-1319    projector: 1320-1329    saga: 1330-1339
+#   stream: 1340-1349       gateway: 1350-1359
+#
+# Business domains by language (10-port ranges):
+#   Rust: 500xx    Go: 501xx    Python: 502xx
+#
+#   customer: 00-09     product: 10-19      inventory: 20-29
+#   order: 30-39        cart: 40-49         fulfillment: 50-59
+#   saga-loyalty-earn: 60-69    saga-fulfillment: 70-79    saga-cancellation: 80-89
+# =============================================================================
+
 # Angzarr gRPC ports
 service:
   type: ClusterIP
-  aggregatePort: 1313
-  queryPort: 1314
+  aggregatePort: 1310     # Aggregate sidecar gRPC
+  queryPort: 1315         # Aggregate sidecar business logic port (EventQuery)
   # NodePort for local development access
   nodePort:
     enabled: false
-    aggregate: 30051
+    aggregate: 30310
 
 # Service discovery configuration
 serviceDiscovery:
@@ -73,7 +97,8 @@ infrastructure:
   stream:
     enabled: false
     replicas: 1
-    port: 1315
+    port: 1340            # Stream gRPC
+    projectorPort: 1345   # Stream's internal projector port
     resources:
       limits:
         cpu: 500m
@@ -86,7 +111,7 @@ infrastructure:
   gateway:
     enabled: false
     replicas: 1
-    port: 1316
+    port: 1350            # Gateway gRPC
     # Address of command service to forward to
     entityService: ""
     # Address of stream service
@@ -168,7 +193,38 @@ storage:
     # EventStoreDB connection string
     connectionString: "esdb://eventstore:2113?tls=false"
 
-# AMQP/RabbitMQ configuration for event bus
+# Messaging configuration
+messaging:
+  # Options: amqp, kafka
+  type: amqp
+
+  # AMQP (RabbitMQ) configuration
+  amqp:
+    enabled: false
+    url: "amqp://rabbitmq:5672"
+    # Use existing secret for URL
+    existingSecret: ""
+    secretKey: "amqp_url"
+
+  # Kafka configuration
+  kafka:
+    enabled: false
+    bootstrapServers: "kafka:9092"
+    topicPrefix: "angzarr"
+    securityProtocol: "PLAINTEXT"  # PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
+    saslMechanism: ""  # PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
+    saslUsername: ""
+    saslPassword: ""
+    sslCaLocation: ""
+    # Use existing secret for credentials
+    existingSecret: ""
+    secretKeys:
+      bootstrapServers: "kafka_bootstrap_servers"
+      saslUsername: "kafka_sasl_username"
+      saslPassword: "kafka_sasl_password"
+      saslMechanism: "kafka_sasl_mechanism"
+
+# Legacy AMQP config for backwards compatibility
 amqp:
   enabled: false
   url: "amqp://rabbitmq:5672"
@@ -182,6 +238,26 @@ rabbitmq:
     password: ""
   persistence:
     size: 1Gi
+
+# Kafka subchart configuration (Bitnami)
+kafka:
+  enabled: false
+  controller:
+    replicaCount: 1
+    persistence:
+      size: 2Gi
+  broker:
+    replicaCount: 1
+    persistence:
+      size: 2Gi
+  sasl:
+    client:
+      users: []
+      passwords: ""
+  listeners:
+    client:
+      protocol: PLAINTEXT
+  autoCreateTopicsEnable: true
 
 # MongoDB subchart configuration
 mongodb:

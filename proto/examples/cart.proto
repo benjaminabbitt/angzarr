@@ -1,0 +1,110 @@
+syntax = "proto3";
+package examples;
+option go_package = "github.com/angzarr/angzarr/proto/examples;examples";
+option java_package = "dev.angzarr.examples";
+option java_multiple_files = true;
+option csharp_namespace = "Angzarr.Examples";
+option ruby_package = "Angzarr::Examples";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Cart Domain - manages shopping cart lifecycle
+// =============================================================================
+
+// Commands
+message CreateCart {
+  string customer_id = 1;
+}
+
+message AddItem {
+  string product_id = 1;
+  string name = 2;
+  int32 quantity = 3;
+  int32 unit_price_cents = 4;
+}
+
+message UpdateQuantity {
+  string product_id = 1;
+  int32 new_quantity = 2;
+}
+
+message RemoveItem {
+  string product_id = 1;
+}
+
+message ApplyCoupon {
+  string code = 1;
+  string coupon_type = 2;  // "percentage", "fixed"
+  int32 value = 3;         // percentage (0-100) or cents
+}
+
+message ClearCart {}
+
+message Checkout {}
+
+// Events
+message CartCreated {
+  string customer_id = 1;
+  google.protobuf.Timestamp created_at = 2;
+}
+
+message ItemAdded {
+  string product_id = 1;
+  string name = 2;
+  int32 quantity = 3;
+  int32 unit_price_cents = 4;
+  int32 new_subtotal = 5;
+  google.protobuf.Timestamp added_at = 6;
+}
+
+message QuantityUpdated {
+  string product_id = 1;
+  int32 old_quantity = 2;
+  int32 new_quantity = 3;
+  int32 new_subtotal = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message ItemRemoved {
+  string product_id = 1;
+  int32 quantity = 2;
+  int32 new_subtotal = 3;
+  google.protobuf.Timestamp removed_at = 4;
+}
+
+message CouponApplied {
+  string coupon_code = 1;
+  string coupon_type = 2;
+  int32 value = 3;
+  int32 discount_cents = 4;
+  google.protobuf.Timestamp applied_at = 5;
+}
+
+message CartCleared {
+  int32 new_subtotal = 1;
+  google.protobuf.Timestamp cleared_at = 2;
+}
+
+message CartCheckedOut {
+  int32 final_subtotal = 1;
+  int32 discount_cents = 2;
+  google.protobuf.Timestamp checked_out_at = 3;
+}
+
+// State (for snapshots)
+message CartItem {
+  string product_id = 1;
+  string name = 2;
+  int32 quantity = 3;
+  int32 unit_price_cents = 4;
+}
+
+message CartState {
+  string customer_id = 1;
+  repeated CartItem items = 2;
+  int32 subtotal_cents = 3;
+  string coupon_code = 4;
+  int32 discount_cents = 5;
+  string status = 6;  // "active", "checked_out"
+}

@@ -66,17 +66,16 @@ if [ "$GENERATE_RUST" = true ]; then
     RUST_OUT="$OUTPUT_DIR/rust"
     mkdir -p "$RUST_OUT"
 
-    for proto in $PROTO_FILES; do
-        proto_dir=$(dirname "$proto")
-        protoc \
-            --prost_out="$RUST_OUT" \
-            --tonic_out="$RUST_OUT" \
-            --prost_opt=compile_well_known_types \
-            --tonic_opt=compile_well_known_types \
-            -I "$PROTO_DIR" \
-            -I /usr/include \
-            "$proto"
-    done
+    # Process all protos in a single invocation to avoid overwrites
+    # (prost groups by package, so all 'examples' protos must be processed together)
+    protoc \
+        --prost_out="$RUST_OUT" \
+        --tonic_out="$RUST_OUT" \
+        --prost_opt=compile_well_known_types \
+        --tonic_opt=compile_well_known_types \
+        -I "$PROTO_DIR" \
+        -I /usr/include \
+        $PROTO_FILES
 
     echo "Rust protos generated in $RUST_OUT"
     echo ""

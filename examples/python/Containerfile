@@ -116,15 +116,6 @@ RUN cp -r /shared-venv .venv
 COPY examples/python/saga-cancellation/*.py ./
 RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
 
-# projector-receipt needs pymongo
-FROM shared-venv AS build-projector-receipt
-WORKDIR /service
-RUN cp -r /shared-venv .venv
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv,sharing=locked \
-    uv pip install --python .venv pymongo
-COPY examples/python/projector-receipt/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
-
 # ============================================================================
 # Runtime base - distroless Python (minimal, secure)
 # ============================================================================
@@ -210,13 +201,3 @@ ENV PORT=50312 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
 EXPOSE 50312
 CMD ["server.py"]
 
-# ============================================================================
-# Projectors
-# ============================================================================
-FROM runtime AS projector-receipt
-COPY --from=build-projector-receipt --chown=nonroot:nonroot /service ./
-COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
-COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50320 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
-EXPOSE 50320
-CMD ["server.py"]

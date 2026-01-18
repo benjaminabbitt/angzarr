@@ -1,6 +1,6 @@
 """Customer bounded context gRPC server.
 
-Contains the gRPC BusinessLogicServicer and server startup logic.
+Contains the gRPC AggregateServicer and server startup logic.
 """
 
 import os
@@ -13,7 +13,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
 
-from state import next_sequence, rebuild_state
+from handlers.state import next_sequence, rebuild_state
 from handlers import (
     CommandRejectedError,
     handle_create_customer,
@@ -38,7 +38,7 @@ logger = structlog.get_logger()
 DOMAIN = "customer"
 
 
-class BusinessLogicServicer(angzarr_pb2_grpc.BusinessLogicServicer):
+class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
     """gRPC service implementation for Customer business logic."""
 
     def __init__(self) -> None:
@@ -87,7 +87,7 @@ def serve() -> None:
     port = os.environ.get("PORT", "50052")
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    angzarr_pb2_grpc.add_BusinessLogicServicer_to_server(BusinessLogicServicer(), server)
+    angzarr_pb2_grpc.add_AggregateServicer_to_server(AggregateServicer(), server)
 
     # Register gRPC health service
     health_servicer = health.HealthServicer()

@@ -25,7 +25,7 @@ const Domain = "order"
 var logger *zap.Logger
 
 type server struct {
-	angzarr.UnimplementedBusinessLogicServer
+	angzarr.UnimplementedAggregateServer
 	logic logic.OrderLogic
 }
 
@@ -139,7 +139,7 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	angzarr.RegisterBusinessLogicServer(s, &server{logic: logic.NewOrderLogic()})
+	angzarr.RegisterAggregateServer(s, &server{logic: logic.NewOrderLogic()})
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(s, healthServer)

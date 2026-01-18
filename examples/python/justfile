@@ -1,6 +1,15 @@
 # Python examples
 # Container: podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
 # Run:       podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
+#
+# Deployment Model:
+#   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm from root justfile
+#   - Application services: Deployed via Skaffold
+#
+# For cluster deployment:
+#   1. From repo root: `just kind-create-registry` - Create Kind cluster
+#   2. From repo root: `just infra-local` - Deploy backing services via Terraform
+#   3. Use `skaffold dev` or `skaffold run` in this directory for application services
 
 set shell := ["bash", "-c"]
 
@@ -19,7 +28,7 @@ container-test:
     cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
 
 # Setup all Python examples
-setup: setup-common setup-customer setup-transaction setup-saga-loyalty setup-projector-receipt setup-projector-log-customer setup-projector-log-transaction
+setup: setup-common setup-customer setup-transaction setup-saga-loyalty setup-projector-log-customer setup-projector-log-transaction
 
 # Setup common utilities
 setup-common:
@@ -37,10 +46,6 @@ setup-transaction:
 setup-saga-loyalty:
     cd saga-loyalty && just setup
 
-# Setup projector-receipt
-setup-projector-receipt:
-    cd projector-receipt && just setup
-
 # Setup projector-log-customer
 setup-projector-log-customer:
     cd projector-log-customer && just setup
@@ -50,7 +55,7 @@ setup-projector-log-transaction:
     cd projector-log-transaction && just setup
 
 # Test all Python examples
-test: test-customer test-transaction test-saga-loyalty test-projector-receipt test-projector-log-customer test-projector-log-transaction
+test: test-customer test-transaction test-saga-loyalty test-projector-log-customer test-projector-log-transaction
 
 # Test customer
 test-customer: setup-customer
@@ -63,10 +68,6 @@ test-transaction: setup-transaction
 # Test saga-loyalty
 test-saga-loyalty: setup-saga-loyalty
     cd saga-loyalty && just test
-
-# Test projector-receipt
-test-projector-receipt: setup-projector-receipt
-    cd projector-receipt && just test
 
 # Test projector-log-customer
 test-projector-log-customer: setup-projector-log-customer
@@ -82,7 +83,6 @@ clean:
     cd customer && just clean || true
     cd transaction && just clean || true
     cd saga-loyalty && just clean || true
-    cd projector-receipt && just clean || true
     cd projector-log-customer && just clean || true
     cd projector-log-transaction && just clean || true
 
@@ -91,7 +91,6 @@ fmt:
     cd customer && uv run ruff format .
     cd transaction && uv run ruff format .
     cd saga-loyalty && uv run ruff format .
-    cd projector-receipt && uv run ruff format .
     cd projector-log-customer && uv run ruff format .
     cd projector-log-transaction && uv run ruff format .
 
@@ -100,7 +99,6 @@ lint:
     cd customer && uv run ruff check .
     cd transaction && uv run ruff check .
     cd saga-loyalty && uv run ruff check .
-    cd projector-receipt && uv run ruff check .
     cd projector-log-customer && uv run ruff check .
     cd projector-log-transaction && uv run ruff check .
 
@@ -110,13 +108,14 @@ helm-lint:
 
 # ============================================================================
 # Integration Tests (deployed to Kind cluster)
+# Prerequisites: Backing services must be running via `just infra-local` from repo root
 # ============================================================================
 
 # Setup integration tests
 setup-integration:
     cd tests && uv sync
 
-# Run container integration tests (requires running cluster)
+# Run container integration tests (assumes backing services already deployed)
 integration: setup-integration
     cd tests && ANGZARR_TEST_MODE=container uv run pytest test_container_integration.py -v
 

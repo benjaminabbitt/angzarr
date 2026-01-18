@@ -1,5 +1,24 @@
 # Rust example applications for local development
 # Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-rust.yaml -n angzarr --create-namespace
+#
+# =============================================================================
+# Port Scheme - Rust (500xx range, 10 ports per domain)
+# =============================================================================
+# x0: sidecar gRPC (via service.aggregatePort)
+# x1: sidecar debug
+# x5: business gRPC
+# x6: business debug
+#
+# customer:           50000-50009  (business: 50005)
+# product:            50010-50019  (business: 50015)
+# inventory:          50020-50029  (business: 50025)
+# order:              50030-50039  (business: 50035)
+# cart:               50040-50049  (business: 50045)
+# fulfillment:        50050-50059  (business: 50055)
+# saga-loyalty-earn:  50060-50069  (business: 50065)
+# saga-fulfillment:   50070-50079  (business: 50075)
+# saga-cancellation:  50080-50089  (business: 50085)
+# =============================================================================
 
 # Allow non-bitnami images for local development
 global:
@@ -9,27 +28,29 @@ global:
 replicaCount: 1
 
 # Angzarr sidecar images (using local registry)
+# All images use sha256 tags - skaffold injects actual tags via setValueTemplates
+# pullPolicy: IfNotPresent works because new content = new sha256 tag = K8s pulls
 images:
-  entity:
-    repository: localhost:5001/angzarr-entity
+  aggregate:
+    repository: localhost:5001/angzarr-aggregate
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: "latest"  # Overridden by skaffold setValueTemplates
   projector:
     repository: localhost:5001/angzarr-projector
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: "latest"  # Overridden by skaffold setValueTemplates
   saga:
     repository: localhost:5001/angzarr-saga
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: "latest"  # Overridden by skaffold setValueTemplates
   stream:
     repository: localhost:5001/angzarr-stream
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: "latest"  # Overridden by skaffold setValueTemplates
   gateway:
     repository: localhost:5001/angzarr-gateway
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: "latest"  # Overridden by skaffold setValueTemplates
 
 # Minimal resources for local dev
 resources:
@@ -48,154 +69,138 @@ applicationResources:
     memory: "128Mi"
     cpu: "100m"
 
-# MongoDB storage - using Bitnami subchart
+# Storage - deployed by Terraform
+# MongoDB for aggregates (event store): angzarr-db-mongodb
+# PostgreSQL for projectors (read models): angzarr-db-postgresql
+# Credentials are loaded from Terraform-created secrets
 storage:
   type: mongodb
+  existingSecret: "angzarr-db-mongodb-credentials"
   mongodb:
-    # Bitnami replica set creates headless service: <release>-mongodb-headless
-    # replicaSet=rs0 (Bitnami default replica set name)
-    # retryWrites=true now works with replica set
-    uri: "mongodb://angzarr:angzarr@angzarr-mongodb-headless:27017/?authSource=angzarr&replicaSet=rs0"
-    database: "angzarr"
+    uri: ""  # Loaded from existingSecret
+    database: ""  # Loaded from existingSecret
+  postgres:
+    uri: "postgres://angzarr:angzarr@angzarr-db-postgresql:5432/angzarr"  # TODO: use existingSecret
 
-# AMQP event bus - using Bitnami subchart
+# Messaging configuration - using Terraform-deployed RabbitMQ
+messaging:
+  type: "amqp"
+  amqp:
+    enabled: true
+    url: ""  # Loaded from existingSecret
+
+# AMQP event bus - using Terraform-deployed RabbitMQ credentials secret
 amqp:
   enabled: true
-  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+  existingSecret: "angzarr-mq-credentials"
+  url: ""  # Loaded from existingSecret
 
 # External secrets disabled - using manual sync via `just secrets-sync`
 externalSecrets:
   enabled: false
 
-# RabbitMQ subchart - message bus for event distribution
-# Bitnami moved images to ECR: public.ecr.aws/bitnami/rabbitmq
+# Backing services are deployed via Terraform (just infra-local), NOT Helm subcharts.
+# Disable Bitnami subcharts - Terraform handles PostgreSQL, RabbitMQ, and MongoDB.
 rabbitmq:
-  enabled: true
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/rabbitmq
-    tag: "4.0"
-  auth:
-    username: "guest"
-    password: "guest"
-  persistence:
-    size: 1Gi
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "256Mi"
-      cpu: "250m"
+  enabled: false
 
-# MongoDB subchart - event store persistence
-# Using single-node replica set for transaction support and better restart behavior
-# Bitnami moved images to ECR: public.ecr.aws/bitnami/mongodb
 mongodb:
-  enabled: true
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/mongodb
-    tag: "8.0"
-  # Single-node replica set enables transactions and fixes lock file issues
-  architecture: replicaset
-  replicaCount: 1
-  auth:
-    rootUsername: "root"
-    rootPassword: "rootpassword"
-    usernames: ["angzarr"]
-    passwords: ["angzarr"]
-    databases: ["angzarr"]
-    replicaSetKey: "angzarrReplicaSetKey"
-  persistence:
-    size: 2Gi
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
+  enabled: false
 
 # Central infrastructure services
 infrastructure:
-  # Stream is now a projector (see applications.projectors below)
+  # Stream service - broadcasts events to clients by correlation ID
   stream:
-    enabled: false
+    enabled: true
+    replicas: 1
+    port: 1340           # Stream gRPC (x0)
+    projectorPort: 1345  # Stream internal projector port (x5)
+    # NodePort for external access (kind maps hostPort:1340 -> nodePort:31340)
+    serviceType: NodePort
+    nodePort: 31340
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
 
   # Gateway service - command proxy with streaming
   # Uses K8s API to discover command handlers by label (app.kubernetes.io/component=business)
   # and routes commands based on domain from angzarr.io/domain annotation
   gateway:
     enabled: true
-    # NodePort for external access (kind maps hostPort:50051 -> nodePort:30051)
+    replicas: 1
+    port: 1350           # Gateway gRPC (x0)
+    # NodePort for external access (kind maps hostPort:1350 -> nodePort:31350)
     serviceType: NodePort
-    nodePort: 30051
-    streamService: "angzarr-stream-rs:1315"
+    nodePort: 31350
+    streamService: "angzarr-stream:1340"
     streamTimeoutSecs: 30
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
 
 # Business logic applications - each gets angzarr as sidecar
+# Note: skaffold setValueTemplates override repository/tag with sha256-based tags
+# pullPolicy: IfNotPresent works because sha256 tags ensure new content = new tag
 applications:
   business:
-    # E-commerce Domain Aggregates
-    - name: entity-customer-rs
+    # E-commerce Domain Aggregates (Rust: 500xx range)
+    - name: aggregate-customer-rs
       image:
-        repository: localhost:5001/entity-customer-rs
+        repository: localhost:5001/aggregate-customer-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "customer"
-      port: 50055
+      port: 50005        # customer business gRPC (50000+5)
 
-    - name: entity-product-rs
+    - name: aggregate-product-rs
       image:
-        repository: localhost:5001/entity-product-rs
+        repository: localhost:5001/aggregate-product-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "product"
-      port: 50053
+      port: 50015        # product business gRPC (50010+5)
 
-    - name: entity-inventory-rs
+    - name: aggregate-inventory-rs
       image:
-        repository: localhost:5001/entity-inventory-rs
+        repository: localhost:5001/aggregate-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
-      port: 50054
+      port: 50025        # inventory business gRPC (50020+5)
 
-    - name: entity-order-rs
+    - name: aggregate-order-rs
       image:
-        repository: localhost:5001/entity-order-rs
+        repository: localhost:5001/aggregate-order-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
-      port: 50056
+      port: 50035        # order business gRPC (50030+5)
 
-    - name: entity-cart-rs
+    - name: aggregate-cart-rs
       image:
-        repository: localhost:5001/entity-cart-rs
+        repository: localhost:5001/aggregate-cart-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "cart"
-      port: 50057
+      port: 50045        # cart business gRPC (50040+5)
 
-    - name: entity-fulfillment-rs
+    - name: aggregate-fulfillment-rs
       image:
-        repository: localhost:5001/entity-fulfillment-rs
+        repository: localhost:5001/aggregate-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
-      port: 50058
+      port: 50055        # fulfillment business gRPC (50050+5)
 
-  projectors:
-    # Stream projector - broadcasts events to clients by correlation ID
-    - name: stream-rs
-      image:
-        repository: localhost:5001/angzarr-stream
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      port: 1315
-      topics:
-        - "#"  # Subscribe to all events
+  projectors: []
 
   sagas:
     # Loyalty Earn Saga - awards points when orders complete
@@ -204,7 +209,7 @@ applications:
         repository: localhost:5001/saga-loyalty-earn-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50060
+      port: 50065        # saga-loyalty-earn business gRPC (50060+5)
       topics:
         - "order.*"
 
@@ -214,7 +219,7 @@ applications:
         repository: localhost:5001/saga-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50061
+      port: 50075        # saga-fulfillment business gRPC (50070+5)
       topics:
         - "order.*"
 
@@ -224,20 +229,24 @@ applications:
         repository: localhost:5001/saga-cancellation-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50062
+      port: 50085        # saga-cancellation business gRPC (50080+5)
       topics:
         - "order.*"
 
-# Service configuration
+# Service configuration - Angzarr sidecar ports
 service:
   type: NodePort
-  entityPort: 50051
-  queryPort: 50052
-  # NodePort for local development entity access (kind maps hostPort:50052->30052)
-  # Entity sidecar hosts both BusinessCoordinator and EventQuery on entityPort
+  aggregatePort: 1310    # Aggregate sidecar gRPC (x0)
+  queryPort: 1315        # Aggregate sidecar query port (x5)
+  # NodePort for local development entity access
   nodePort:
     enabled: true
-    entity: 30052
+    aggregate: 31310     # Maps to aggregatePort
+
+# Enable remote debugging with gdb (adds SYS_PTRACE capability)
+# Debug ports are calculated: grpc_port + 1
+debug:
+  enabled: true
 
 logging:
   level: info

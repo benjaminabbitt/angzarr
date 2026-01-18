@@ -78,7 +78,7 @@ func (l *DefaultLoyaltyEarnSagaLogic) ProcessEvents(eventBook *angzarr.EventBook
 			Pages: []*angzarr.CommandPage{
 				{
 					Sequence:    0,
-					Synchronous: false,
+					SyncMode: angzarr.SyncMode_SYNC_MODE_NONE,
 					Command:     cmdAny,
 				},
 			},

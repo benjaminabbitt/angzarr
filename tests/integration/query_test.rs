@@ -8,7 +8,7 @@ mod common;
 
 use common::{
     build_command_book, build_query, create_gateway_client, create_query_client,
-    extract_event_type, should_run_integration_tests, ProtoUuid, Query,
+    extract_event_type, ProtoUuid, Query,
 };
 use uuid::Uuid;
 
@@ -22,11 +22,6 @@ use examples_proto::CreateCustomer;
 
 #[tokio::test]
 async fn test_query_empty_aggregate() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut query_client = create_query_client().await;
     let nonexistent_id = Uuid::new_v4();
 
@@ -48,11 +43,6 @@ async fn test_query_empty_aggregate() {
 
 #[tokio::test]
 async fn test_query_with_bounds() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -93,11 +83,6 @@ async fn test_query_with_bounds() {
 
 #[tokio::test]
 async fn test_query_returns_correct_domain() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -133,11 +118,6 @@ async fn test_query_returns_correct_domain() {
 
 #[tokio::test]
 async fn test_query_events_preserve_order() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -168,11 +148,6 @@ async fn test_query_events_preserve_order() {
 
 #[tokio::test]
 async fn test_query_event_payloads() {
-    if !should_run_integration_tests() {
-        eprintln!("Skipping: Set ANGZARR_TEST_MODE=container to run");
-        return;
-    }
-
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();

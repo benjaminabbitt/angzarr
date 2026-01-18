@@ -18,7 +18,21 @@ use common::proto::{
     CouponApplied, CreateCart, ItemAdded, ItemRemoved, QuantityUpdated, RemoveItem, UpdateQuantity,
 };
 
-const DEFAULT_GATEWAY_ENDPOINT: &str = "http://localhost:50051";
+/// Default Angzarr port - standard across all languages/containers
+const DEFAULT_ANGZARR_PORT: u16 = 1350;
+
+/// Get gateway endpoint from environment or default
+fn get_gateway_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
+        return endpoint;
+    }
+    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let port: u16 = std::env::var("ANGZARR_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_ANGZARR_PORT);
+    format!("http://{}:{}", host, port)
+}
 
 #[derive(World)]
 #[world(init = Self::new)]
@@ -27,6 +41,7 @@ pub struct CartAcceptanceWorld {
     gateway_client: Option<CommandGatewayClient<Channel>>,
     query_client: Option<EventQueryClient<Channel>>,
     current_cart_id: Option<Uuid>,
+    current_sequence: u32,
     last_response: Option<CommandResponse>,
     last_error: Option<String>,
 }
@@ -43,11 +58,11 @@ impl std::fmt::Debug for CartAcceptanceWorld {
 impl CartAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: std::env::var("ANGZARR_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| DEFAULT_GATEWAY_ENDPOINT.to_string()),
+            gateway_endpoint: get_gateway_endpoint(),
             gateway_client: None,
             query_client: None,
             current_cart_id: None,
+            current_sequence: 0,
             last_response: None,
             last_error: None,
         }
@@ -95,8 +110,7 @@ impl CartAcceptanceWorld {
         CommandBook {
             cover: Some(self.build_cover()),
             pages: vec![CommandPage {
-                sequence: 0,
-                synchronous: false,
+                sequence: self.current_sequence,
                 command: Some(prost_types::Any {
                     type_url: format!("type.googleapis.com/{}", type_url),
                     value: command.encode_to_vec(),
@@ -126,6 +140,7 @@ impl CartAcceptanceWorld {
 #[given("no prior events for the cart aggregate")]
 async fn no_prior_events(world: &mut CartAcceptanceWorld) {
     world.current_cart_id = Some(Uuid::new_v4());
+    world.current_sequence = 0;
     world.last_response = None;
     world.last_error = None;
 }
@@ -134,6 +149,7 @@ async fn no_prior_events(world: &mut CartAcceptanceWorld) {
 async fn cart_created_event(world: &mut CartAcceptanceWorld, customer_id: String) {
     if world.current_cart_id.is_none() {
         world.current_cart_id = Some(Uuid::new_v4());
+        world.current_sequence = 0;
     }
 
     let command = CreateCart { customer_id };
@@ -144,6 +160,7 @@ async fn cart_created_event(world: &mut CartAcceptanceWorld, customer_id: String
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
+            world.current_sequence += 1;
         }
         Err(status) => {
             world.last_error = Some(status.message().to_string());
@@ -170,7 +187,10 @@ async fn item_added_event(
     let command_book = world.build_command_book(command, "examples.AddItem");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: ItemAdded - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -184,7 +204,10 @@ async fn coupon_applied_event(world: &mut CartAcceptanceWorld, code: String) {
     let command_book = world.build_command_book(command, "examples.ApplyCoupon");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: CouponApplied - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 
@@ -194,7 +217,10 @@ async fn cart_checked_out_event(world: &mut CartAcceptanceWorld) {
     let command_book = world.build_command_book(command, "examples.Checkout");
 
     let client = world.get_gateway_client().await;
-    let _ = client.execute(command_book).await;
+    match client.execute(command_book).await {
+        Ok(_) => world.current_sequence += 1,
+        Err(e) => panic!("Given step failed: CartCheckedOut - {}", e.message()),
+    }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
 

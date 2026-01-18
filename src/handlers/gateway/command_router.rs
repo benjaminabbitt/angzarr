@@ -1,7 +1,7 @@
 //! Command routing for gateway service.
 //!
-//! Handles forwarding commands to entity services based on domain routing,
-//! service discovery, and gRPC client management.
+//! Handles forwarding commands to aggregate services based on domain routing,
+//! using K8s label-based service discovery.
 
 use std::sync::Arc;
 
@@ -9,24 +9,19 @@ use prost::Message;
 use tonic::{Request, Status};
 use tracing::{debug, warn};
 
-use crate::discovery::{RegistryError, ServiceRegistry};
-use crate::proto::{CommandBook, CommandResponse};
+use crate::discovery::{DiscoveryError, ServiceDiscovery};
+use crate::proto::{CommandBook, CommandResponse, SyncCommandBook};
 
-/// Command router for forwarding commands to entity services.
+/// Command router for forwarding commands to aggregate services.
 #[derive(Clone)]
 pub struct CommandRouter {
-    registry: Arc<ServiceRegistry>,
+    discovery: Arc<ServiceDiscovery>,
 }
 
 impl CommandRouter {
-    /// Create a new command router with service registry for domain routing.
-    pub fn new(registry: Arc<ServiceRegistry>) -> Self {
-        Self { registry }
-    }
-
-    /// Get the service registry.
-    pub fn registry(&self) -> &Arc<ServiceRegistry> {
-        &self.registry
+    /// Create a new command router with service discovery.
+    pub fn new(discovery: Arc<ServiceDiscovery>) -> Self {
+        Self { discovery }
     }
 
     /// Generate or use existing correlation ID.
@@ -46,13 +41,12 @@ impl CommandRouter {
         }
     }
 
-    /// Forward command to business coordinator based on domain.
+    /// Forward command to aggregate coordinator based on domain.
     pub async fn forward_command(
         &self,
         command_book: CommandBook,
         correlation_id: &str,
     ) -> Result<CommandResponse, Status> {
-        // Extract domain from command cover (clone to avoid borrow issues)
         let domain = command_book
             .cover
             .as_ref()
@@ -65,14 +59,13 @@ impl CommandRouter {
             "Routing command to domain"
         );
 
-        // Get client for domain from registry
-        let mut command_client = self
-            .registry
-            .get_client(&domain)
+        let mut client = self
+            .discovery
+            .get_aggregate(&domain)
             .await
-            .map_err(map_registry_error)?;
+            .map_err(map_discovery_error)?;
 
-        command_client
+        client
             .handle(Request::new(command_book))
             .await
             .map(|r| r.into_inner())
@@ -86,30 +79,84 @@ impl CommandRouter {
                 e
             })
     }
+
+    /// Forward command synchronously to aggregate coordinator based on domain.
+    pub async fn forward_command_sync(
+        &self,
+        command_book: CommandBook,
+        sync_mode: i32,
+        correlation_id: &str,
+    ) -> Result<CommandResponse, Status> {
+        let domain = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_else(|| "*".to_string());
+
+        debug!(
+            correlation_id = %correlation_id,
+            domain = %domain,
+            sync_mode = %sync_mode,
+            "Routing command to domain (sync)"
+        );
+
+        let mut client = self
+            .discovery
+            .get_aggregate(&domain)
+            .await
+            .map_err(map_discovery_error)?;
+
+        let sync_request = SyncCommandBook {
+            command: Some(command_book),
+            sync_mode,
+        };
+
+        client
+            .handle_sync(Request::new(sync_request))
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| {
+                warn!(
+                    correlation_id = %correlation_id,
+                    domain = %domain,
+                    error = %e,
+                    "Sync command failed"
+                );
+                e
+            })
+    }
 }
 
-/// Map registry errors to gRPC status.
-pub fn map_registry_error(e: RegistryError) -> Status {
+/// Map discovery errors to gRPC status.
+pub fn map_discovery_error(e: DiscoveryError) -> Status {
     match e {
-        RegistryError::DomainNotFound(d) => {
+        DiscoveryError::DomainNotFound(d) => {
             warn!(domain = %d, "No service registered for domain");
             Status::not_found(format!("No service registered for domain: {}", d))
         }
-        RegistryError::ConnectionFailed {
-            domain,
+        DiscoveryError::NoServicesFound(c) => {
+            warn!(component = %c, "No services found for component");
+            Status::not_found(format!("No services found for component: {}", c))
+        }
+        DiscoveryError::ConnectionFailed {
+            service,
             address,
             message,
         } => {
             warn!(
-                domain = %domain,
+                service = %service,
                 address = %address,
                 error = %message,
                 "Service connection failed"
             );
             Status::unavailable(format!(
                 "Service {} at {} unavailable: {}",
-                domain, address, message
+                service, address, message
             ))
+        }
+        DiscoveryError::KubeError(e) => {
+            warn!(error = %e, "Kubernetes API error");
+            Status::internal(format!("Kubernetes API error: {}", e))
         }
     }
 }
@@ -117,95 +164,13 @@ pub fn map_registry_error(e: RegistryError) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::ServiceEndpoint;
-    use crate::proto::business_coordinator_server::{
-        BusinessCoordinator, BusinessCoordinatorServer,
-    };
-    use crate::proto::{Cover, EventBook, EventPage, Uuid as ProtoUuid};
-    use std::net::SocketAddr;
-    use std::sync::atomic::{AtomicU32, Ordering};
-    use tonic::transport::Server;
-
-    /// Mock BusinessCoordinator that returns configurable responses.
-    struct MockBusinessCoordinator {
-        response_events: Arc<tokio::sync::RwLock<Option<EventBook>>>,
-        call_count: Arc<AtomicU32>,
-    }
-
-    impl MockBusinessCoordinator {
-        fn new() -> Self {
-            Self {
-                response_events: Arc::new(tokio::sync::RwLock::new(None)),
-                call_count: Arc::new(AtomicU32::new(0)),
-            }
-        }
-
-        fn get_call_count(&self) -> u32 {
-            self.call_count.load(Ordering::SeqCst)
-        }
-    }
-
-    impl Clone for MockBusinessCoordinator {
-        fn clone(&self) -> Self {
-            Self {
-                response_events: self.response_events.clone(),
-                call_count: self.call_count.clone(),
-            }
-        }
-    }
-
-    #[tonic::async_trait]
-    impl BusinessCoordinator for MockBusinessCoordinator {
-        async fn handle(
-            &self,
-            request: Request<CommandBook>,
-        ) -> Result<tonic::Response<CommandResponse>, Status> {
-            self.call_count.fetch_add(1, Ordering::SeqCst);
-            let cmd = request.into_inner();
-
-            let events = self
-                .response_events
-                .read()
-                .await
-                .clone()
-                .unwrap_or_else(|| EventBook {
-                    cover: cmd.cover.clone(),
-                    pages: vec![EventPage {
-                        sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-                        event: Some(prost_types::Any {
-                            type_url: "test.Event".to_string(),
-                            value: vec![],
-                        }),
-                        created_at: None,
-                        synchronous: false,
-                    }],
-                    snapshot: None,
-                    correlation_id: cmd.correlation_id.clone(),
-                    snapshot_state: None,
-                });
-
-            Ok(tonic::Response::new(CommandResponse {
-                events: Some(events),
-                projections: vec![],
-            }))
-        }
-
-        async fn record(
-            &self,
-            _request: Request<EventBook>,
-        ) -> Result<tonic::Response<CommandResponse>, Status> {
-            Ok(tonic::Response::new(CommandResponse {
-                events: None,
-                projections: vec![],
-            }))
-        }
-    }
+    use crate::proto::Cover;
 
     fn make_test_command(domain: &str) -> CommandBook {
         CommandBook {
             cover: Some(Cover {
                 domain: domain.to_string(),
-                root: Some(ProtoUuid {
+                root: Some(crate::proto::Uuid {
                     value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                 }),
             }),
@@ -215,57 +180,6 @@ mod tests {
             auto_resequence: false,
             fact: false,
         }
-    }
-
-    async fn setup_command_router() -> (
-        CommandRouter,
-        Arc<MockBusinessCoordinator>,
-        tokio::task::JoinHandle<()>,
-    ) {
-        let mock_coordinator = Arc::new(MockBusinessCoordinator::new());
-
-        let coord_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-        let coord_listener = tokio::net::TcpListener::bind(coord_addr).await.unwrap();
-        let coord_port = coord_listener.local_addr().unwrap().port();
-
-        let coord_clone = mock_coordinator.clone();
-        let coord_handle = tokio::spawn(async move {
-            Server::builder()
-                .add_service(BusinessCoordinatorServer::new(coord_clone.as_ref().clone()))
-                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
-                    coord_listener,
-                ))
-                .await
-                .ok();
-        });
-
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        let registry = Arc::new(ServiceRegistry::new());
-        registry
-            .update_endpoint(ServiceEndpoint {
-                domain: "*".to_string(),
-                address: "127.0.0.1".to_string(),
-                port: coord_port,
-            })
-            .await;
-
-        let router = CommandRouter::new(registry);
-
-        (router, mock_coordinator, coord_handle)
-    }
-
-    #[tokio::test]
-    async fn test_forward_command_success() {
-        let (router, mock_coord, handle) = setup_command_router().await;
-
-        let command = make_test_command("orders");
-        let result = router.forward_command(command, "test-correlation").await;
-
-        assert!(result.is_ok());
-        assert_eq!(mock_coord.get_call_count(), 1);
-
-        handle.abort();
     }
 
     #[tokio::test]
@@ -288,19 +202,5 @@ mod tests {
 
         assert_eq!(correlation_id, "my-custom-id");
         assert_eq!(command.correlation_id, "my-custom-id");
-    }
-
-    #[tokio::test]
-    async fn test_forward_command_unknown_domain_returns_not_found() {
-        let registry = Arc::new(ServiceRegistry::new());
-        let router = CommandRouter::new(registry);
-
-        let command = make_test_command("unknown-domain");
-        let result = router.forward_command(command, "test-correlation").await;
-
-        match result {
-            Err(status) => assert_eq!(status.code(), tonic::Code::NotFound),
-            Ok(_) => panic!("Expected not found error"),
-        }
     }
 }

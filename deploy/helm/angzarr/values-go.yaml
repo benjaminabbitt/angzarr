@@ -1,5 +1,24 @@
 # Go example applications for local development
 # Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-go.yaml -n angzarr --create-namespace
+#
+# =============================================================================
+# Port Scheme - Go (501xx range, 10 ports per domain)
+# =============================================================================
+# x0: sidecar gRPC (via service.aggregatePort)
+# x1: sidecar debug
+# x5: business gRPC
+# x6: business debug
+#
+# customer:           50100-50109  (business: 50105)
+# product:            50110-50119  (business: 50115)
+# inventory:          50120-50129  (business: 50125)
+# order:              50130-50139  (business: 50135)
+# cart:               50140-50149  (business: 50145)
+# fulfillment:        50150-50159  (business: 50155)
+# saga-loyalty-earn:  50160-50169  (business: 50165)
+# saga-fulfillment:   50170-50179  (business: 50175)
+# saga-cancellation:  50180-50189  (business: 50185)
+# =============================================================================
 
 global:
   security:
@@ -8,25 +27,25 @@ global:
 replicaCount: 1
 
 images:
-  entity:
-    repository: angzarr-entity
-    pullPolicy: Never
+  aggregate:
+    repository: localhost:5001/angzarr-aggregate
+    pullPolicy: IfNotPresent
     tag: "latest"
   projector:
-    repository: angzarr-projector
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-projector
+    pullPolicy: IfNotPresent
     tag: "latest"
   saga:
-    repository: angzarr-saga
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-saga
+    pullPolicy: IfNotPresent
     tag: "latest"
   stream:
-    repository: angzarr-stream
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-stream
+    pullPolicy: IfNotPresent
     tag: "latest"
   gateway:
-    repository: angzarr-gateway
-    pullPolicy: Never
+    repository: localhost:5001/angzarr-gateway
+    pullPolicy: IfNotPresent
     tag: "latest"
 
 resources:
@@ -47,146 +66,147 @@ applicationResources:
 
 storage:
   type: mongodb
+  existingSecret: "angzarr-db-mongodb-credentials"
   mongodb:
-    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
-    database: "angzarr"
+    uri: ""
+    database: ""
 
 amqp:
   enabled: true
-  url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+  existingSecret: "angzarr-mq-credentials"
+  url: ""
 
 rabbitmq:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: library/rabbitmq
-    tag: "3.13-management-alpine"
-    pullPolicy: Never
-  auth:
-    username: "guest"
-    password: "guest"
-  persistence:
-    size: 1Gi
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "256Mi"
-      cpu: "250m"
+  enabled: false
 
 mongodb:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: library/mongo
-    tag: "7"
-    pullPolicy: Never
-  auth:
-    rootUsername: "root"
-    rootPassword: "rootpassword"
-    usernames: ["angzarr"]
-    passwords: ["angzarr"]
-    databases: ["angzarr"]
-  persistence:
-    size: 2Gi
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
+  enabled: false
 
 infrastructure:
   stream:
-    enabled: false
+    enabled: true
+    replicas: 1
+    port: 1340
+    projectorPort: 1345
+    serviceType: NodePort
+    nodePort: 31340
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
   gateway:
     enabled: true
     replicas: 1
-    port: 1316
-    entities:
-      customer: "angzarr-entity-customer-go:50051"
-      transaction: "angzarr-entity-transaction-go:50051"
-    streamService: "angzarr-stream-go:1315"
+    port: 1350
+    serviceType: NodePort
+    nodePort: 31350
+    streamService: "angzarr-stream:1340"
     streamTimeoutSecs: 30
     resources:
       requests:
-        memory: "32Mi"
-        cpu: "25m"
+        memory: "64Mi"
+        cpu: "50m"
       limits:
-        memory: "128Mi"
-        cpu: "100m"
+        memory: "256Mi"
+        cpu: "250m"
 
 applications:
   business:
-    - name: entity-customer-go
+    # E-commerce Domain Aggregates (Go: 501xx range)
+    - name: aggregate-customer-go
       image:
-        repository: entity-customer-go
+        repository: localhost:5001/aggregate-customer-go
         tag: "latest"
-        pullPolicy: Never
+        pullPolicy: IfNotPresent
       domain: "customer"
-      port: 50100
+      port: 50105        # customer business gRPC (50100+5)
 
-    - name: entity-transaction-go
+    - name: aggregate-product-go
       image:
-        repository: entity-transaction-go
+        repository: localhost:5001/aggregate-product-go
         tag: "latest"
-        pullPolicy: Never
-      domain: "transaction"
-      port: 50101
+        pullPolicy: IfNotPresent
+      domain: "product"
+      port: 50115        # product business gRPC (50110+5)
 
-  projectors:
-    - name: stream-go
+    - name: aggregate-inventory-go
       image:
-        repository: angzarr-stream
+        repository: localhost:5001/aggregate-inventory-go
         tag: "latest"
-        pullPolicy: Never
-      port: 1315
-      topics:
-        - "#"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50125        # inventory business gRPC (50120+5)
 
-    - name: projector-receipt-go
+    - name: aggregate-order-go
       image:
-        repository: projector-receipt-go
+        repository: localhost:5001/aggregate-order-go
         tag: "latest"
-        pullPolicy: Never
-      port: 50103
-      topics:
-        - "transaction.*"
+        pullPolicy: IfNotPresent
+      domain: "order"
+      port: 50135        # order business gRPC (50130+5)
 
-    - name: projector-log-customer-go
+    - name: aggregate-cart-go
       image:
-        repository: projector-log-customer-go
+        repository: localhost:5001/aggregate-cart-go
         tag: "latest"
-        pullPolicy: Never
-      port: 50104
-      topics:
-        - "customer.*"
+        pullPolicy: IfNotPresent
+      domain: "cart"
+      port: 50145        # cart business gRPC (50140+5)
 
-    - name: projector-log-transaction-go
+    - name: aggregate-fulfillment-go
       image:
-        repository: projector-log-transaction-go
+        repository: localhost:5001/aggregate-fulfillment-go
         tag: "latest"
-        pullPolicy: Never
-      port: 50105
-      topics:
-        - "transaction.*"
+        pullPolicy: IfNotPresent
+      domain: "fulfillment"
+      port: 50155        # fulfillment business gRPC (50150+5)
+
+  projectors: []
 
   sagas:
-    - name: saga-loyalty-go
+    - name: saga-loyalty-earn-go
       image:
-        repository: saga-loyalty-go
+        repository: localhost:5001/saga-loyalty-earn-go
         tag: "latest"
-        pullPolicy: Never
-      port: 50102
+        pullPolicy: IfNotPresent
+      port: 50165        # saga-loyalty-earn business gRPC (50160+5)
       topics:
-        - "transaction.*"
+        - "order.*"
+
+    - name: saga-fulfillment-go
+      image:
+        repository: localhost:5001/saga-fulfillment-go
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      port: 50175        # saga-fulfillment business gRPC (50170+5)
+      topics:
+        - "order.*"
+
+    - name: saga-cancellation-go
+      image:
+        repository: localhost:5001/saga-cancellation-go
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      port: 50185        # saga-cancellation business gRPC (50180+5)
+      topics:
+        - "order.*"
 
 service:
   type: NodePort
-  entityPort: 50051
-  queryPort: 50052
+  aggregatePort: 1310
+  queryPort: 1315
+  nodePort:
+    enabled: true
+    aggregate: 31310
+
+# Enable remote debugging (adds SYS_PTRACE capability)
+# Note: Go uses delve for debugging, not gdb
+debug:
+  enabled: true
 
 logging:
   level: info

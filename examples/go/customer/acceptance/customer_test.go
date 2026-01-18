@@ -35,11 +35,25 @@ func (c *acceptanceContext) reset() {
 	c.lastError = nil
 }
 
-func (c *acceptanceContext) connect() error {
-	endpoint := os.Getenv("ANGZARR_GATEWAY_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "localhost:50051"
+// getAngzarrEndpoint returns the Angzarr gateway endpoint from environment or default.
+// Uses ANGZARR_ENDPOINT for full URL, or ANGZARR_HOST:ANGZARR_PORT for components.
+func getAngzarrEndpoint() string {
+	if endpoint := os.Getenv("ANGZARR_ENDPOINT"); endpoint != "" {
+		return endpoint
 	}
+	host := os.Getenv("ANGZARR_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("ANGZARR_PORT")
+	if port == "" {
+		port = "1350"
+	}
+	return host + ":" + port
+}
+
+func (c *acceptanceContext) connect() error {
+	endpoint := getAngzarrEndpoint()
 
 	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

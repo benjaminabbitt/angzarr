@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
-from state import CartState
+from .state import CartState
 
 from .errors import CommandRejectedError
 
