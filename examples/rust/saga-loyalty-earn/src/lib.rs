@@ -127,7 +127,7 @@ mod tests {
             snapshot: None,
             pages: vec![EventPage {
                 created_at: None,
-                sequence: 1,
+                sequence: Some(angzarr::proto::event_page::Sequence::Num(1)),
                 event: Some(event_any),
             }],
             correlation_id: "CORR-001".to_string(),
@@ -172,7 +172,7 @@ mod tests {
             snapshot: None,
             pages: vec![EventPage {
                 created_at: None,
-                sequence: 1,
+                sequence: Some(angzarr::proto::event_page::Sequence::Num(1)),
                 event: Some(event_any),
             }],
             correlation_id: "CORR-002".to_string(),

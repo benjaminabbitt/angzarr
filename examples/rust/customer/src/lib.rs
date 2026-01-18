@@ -403,6 +403,7 @@ mod tests {
                             points: 50,
                             new_balance: 50,
                             reason: "test".to_string(),
+                            new_lifetime_points: 50,
                         }
                         .encode_to_vec(),
                     }),
