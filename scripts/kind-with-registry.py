@@ -101,7 +101,7 @@ def cluster_exists(name: str) -> bool:
 
 def registry_exists(name: str) -> bool:
     """Check if the registry container exists."""
-    result = podman("inspect", name, capture=True, check=False)
+    result = podman("container", "inspect", name, capture=True, check=False)
     return result.returncode == 0
 
 
@@ -137,8 +137,9 @@ def ensure_registry(cfg: Config) -> None:
             "--restart=always",
             "-p", f"127.0.0.1:{cfg.registry_port}:5000",
             "-v", f"{volume_name}:/var/lib/registry",
+            "-e", "REGISTRY_STORAGE_DELETE_ENABLED=true",
             "--name", cfg.registry_name,
-            "registry:2",
+            "docker.io/library/registry:2",
         )
     elif not registry_running(cfg.registry_name):
         print("Starting stopped registry...")

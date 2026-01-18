@@ -5,12 +5,32 @@ set shell := ["bash", "-c"]
 # Repository root
 TOP := `git rev-parse --show-toplevel`
 
-# Import examples justfile as a module
+# Import justfile modules
 mod examples "examples/justfile"
+mod terraform "deploy/terraform/justfile"
+mod grpc "scripts/grpc.justfile"
 
 # Default recipe - show available commands
 default:
     @just --list
+
+# === Documentation ===
+
+# Render documentation from templates (updates LOC counts, etc.)
+docs:
+    @uv run "{{TOP}}/scripts/render_docs.py"
+
+# Check if documentation is up to date (for CI)
+docs-check:
+    @uv run "{{TOP}}/scripts/render_docs.py" --check
+
+# Show what documentation would be updated
+docs-dry-run:
+    @uv run "{{TOP}}/scripts/render_docs.py" --dry-run
+
+# Show example LOC stats
+docs-loc:
+    @uv run "{{TOP}}/scripts/count_example_loc.py" --format markdown
 
 # === Proto Generation ===
 
@@ -31,6 +51,8 @@ proto-rust: proto-container-build
         -v "{{TOP}}/proto:/workspace/proto:ro" \
         -v "{{TOP}}/generated:/workspace/generated" \
         angzarr-proto:latest --rust
+    @echo "Syncing generated Rust protos to examples/rust/common..."
+    cp "{{TOP}}/generated/rust/examples/examples.rs" "{{TOP}}/examples/rust/common/src/proto/examples.rs"
 
 # Generate only Python protos
 proto-python: proto-container-build
@@ -53,17 +75,13 @@ proto-clean:
 # === Framework Build ===
 
 # Build the project
-build:
+build: proto-rust
     cargo build
 
 # Build release (all binaries)
-build-release: build-standalone build-sidecars build-infrastructure
+build-release: build-sidecars build-infrastructure
 
 # === Sidecar Binaries ===
-
-# Build standalone binary (local development only, not containerized)
-build-standalone:
-    cargo build --release --bin angzarr-standalone --features "mode-standalone,amqp,mongodb"
 
 # Build command sidecar binary
 build-command:
@@ -77,13 +95,13 @@ build-projector:
 build-saga:
     cargo build --release --bin angzarr-saga --features "mode-saga,mongodb"
 
-# Build stream service binary (infrastructure)
+# Build stream service binary (infrastructure projector)
 build-stream:
-    cargo build --release --bin angzarr-stream --features "mode-stream"
+    cargo build --release --bin angzarr-stream
 
 # Build gateway service binary (infrastructure)
 build-gateway:
-    cargo build --release --bin angzarr-gateway --features "mode-gateway"
+    cargo build --release --bin angzarr-gateway
 
 # Build all sidecar binaries
 build-sidecars: build-command build-projector build-saga
@@ -92,43 +110,53 @@ build-sidecars: build-command build-projector build-saga
 build-infrastructure: build-stream build-gateway
 
 # === Sidecar Container Images ===
+# Multi-stage build - each target builds required stages and uses layer caching
 
-# Build command sidecar container image
-container-build-command:
-    podman build --target angzarr-entity -t angzarr-entity:latest .
+# Build aggregate sidecar container image
+container-build-aggregate:
+    podman build --target angzarr-aggregate -t localhost:{{REGISTRY_PORT}}/angzarr-aggregate:latest .
 
 # Build projector sidecar container image
 container-build-projector:
-    podman build --target angzarr-projector -t angzarr-projector:latest .
+    podman build --target angzarr-projector -t localhost:{{REGISTRY_PORT}}/angzarr-projector:latest .
 
 # Build saga sidecar container image
 container-build-saga:
-    podman build --target angzarr-saga -t angzarr-saga:latest .
+    podman build --target angzarr-saga -t localhost:{{REGISTRY_PORT}}/angzarr-saga:latest .
 
-# Build stream service container image (infrastructure)
+# Build stream service container image
 container-build-stream:
-    podman build --target angzarr-stream -t angzarr-stream:latest .
+    podman build --target angzarr-stream -t localhost:{{REGISTRY_PORT}}/angzarr-stream:latest .
 
-# Build gateway service container image (infrastructure)
+# Build gateway service container image
 container-build-gateway:
-    podman build --target angzarr-gateway -t angzarr-gateway:latest .
+    podman build --target angzarr-gateway -t localhost:{{REGISTRY_PORT}}/angzarr-gateway:latest .
 
 # Build all sidecar container images
-container-build-sidecars: container-build-command container-build-projector container-build-saga
+container-build-sidecars: container-build-aggregate container-build-projector container-build-saga
 
 # Build all infrastructure container images
 container-build-infrastructure: container-build-stream container-build-gateway
+
+# Build all container images
+container-build-all: container-build-sidecars container-build-infrastructure
 
 # Run unit tests (no infrastructure required)
 test:
     cargo test --lib
 
-# Run integration tests (deploys Kind cluster, runs Rust example integration tests)
-integration:
+# Run integration tests
+# 1. Creates Kind cluster with local registry
+# 2. Deploys backing services via Terraform/Helm (PostgreSQL, RabbitMQ)
+# 3. Delegates to examples/rust for Skaffold deployment and test execution
+integration: kind-create-registry infra-local
     cd "{{TOP}}/examples/rust" && just integration
 
-# Run acceptance tests (deploys Kind cluster, runs Rust example BDD tests)
-acceptance:
+# Run acceptance tests (BDD cucumber tests)
+# 1. Creates Kind cluster with local registry
+# 2. Deploys backing services via Terraform/Helm (PostgreSQL, RabbitMQ)
+# 3. Delegates to examples/rust for Skaffold deployment and test execution
+acceptance: kind-create-registry infra-local
     cd "{{TOP}}/examples/rust" && just acceptance
 
 # Run the standalone server (local development)
@@ -193,40 +221,68 @@ cache-prune-all:
     @echo ""
     podman system df
 
-# Initialize the database
-init-db:
-    mkdir -p data
-    touch data/events.db
+# === Registry Image Lifecycle ===
 
-# === Kubernetes/Helm ===
+# Show registry status (image count per repository)
+registry-status:
+    uv run "{{TOP}}/scripts/registry_cleanup.py" status
 
-# Load image into minikube
-k8s-load-minikube:
-    minikube image load angzarr:latest
+# List all images in registry
+registry-list:
+    uv run "{{TOP}}/scripts/registry_cleanup.py" list
 
-# Load image into kind
-k8s-load-kind:
-    kind load docker-image angzarr:latest
+# Clean all sha256 tags (keep named tags like 'latest')
+registry-clean-sha256:
+    uv run "{{TOP}}/scripts/registry_cleanup.py" clean-sha256
 
-# Deploy to local k8s with Helm
-k8s-deploy-helm:
-    helm upgrade --install evented deploy/helm/evented \
-        -f deploy/helm/evented/values-local.yaml \
-        --create-namespace \
-        --namespace evented
+# Delete ALL images from registry (full reset)
+registry-clean-all:
+    @echo "WARNING: Deleting ALL registry images in 5 seconds..."
+    @sleep 5
+    uv run "{{TOP}}/scripts/registry_cleanup.py" clean-all
 
-# Uninstall Helm release
-k8s-undeploy-helm:
-    helm uninstall evented --namespace evented || true
-    kubectl delete namespace evented || true
+# Run garbage collection (reclaim disk after deletes)
+registry-gc:
+    uv run "{{TOP}}/scripts/registry_cleanup.py" gc
 
-# Deploy with Terraform (local)
-k8s-deploy-tf:
-    cd deploy/terraform/local && terraform init && terraform apply -auto-approve
+# Clean sha256 tags + GC (typical cleanup)
+registry-prune: registry-clean-sha256 registry-gc
 
-# Destroy Terraform deployment
-k8s-undeploy-tf:
-    cd deploy/terraform/local && terraform destroy -auto-approve
+# Dry run - show what clean-sha256 would delete
+registry-clean-dry:
+    uv run "{{TOP}}/scripts/registry_cleanup.py" clean-sha256 --dry-run
+
+# === Infrastructure Shortcuts (Backing Services Only) ===
+# These targets deploy ONLY backing services (databases, messaging).
+# Application services are deployed via Skaffold in examples/ directories.
+# For terraform primitives, use: just terraform <command>
+
+# Deploy local backing services (PostgreSQL, RabbitMQ via Helm charts)
+infra-local: secrets-init
+    just terraform init local
+    just terraform apply-auto local
+
+# Destroy local infrastructure
+infra-local-destroy:
+    just terraform destroy-auto local
+
+# Deploy staging infrastructure
+infra-staging:
+    just terraform init staging
+    just terraform apply staging
+
+# Destroy staging infrastructure
+infra-staging-destroy:
+    just terraform destroy staging
+
+# Deploy production infrastructure
+infra-prod:
+    just terraform init prod
+    just terraform apply prod
+
+# Destroy production infrastructure (requires confirmation)
+infra-prod-destroy:
+    just terraform destroy prod
 
 # Port forward evented service
 k8s-port-forward:
@@ -237,6 +293,21 @@ k8s-logs:
     kubectl logs -n angzarr -l app.kubernetes.io/name=evented -f
 
 # === Skaffold Development ===
+#
+# UNIFIED WORKFLOW (with lefthook):
+#   1. Make changes
+#   2. Commit (lefthook triggers skaffold run automatically)
+#   3. Done!
+#
+# MANUAL WORKFLOW:
+#   just examples dev rust    - watch mode, rebuilds on file change
+#   just examples run rust    - build and deploy once
+#
+# All images use sha256 content-based tags:
+#   - New content = new tag = K8s pulls fresh image (even with IfNotPresent)
+#   - Same content = same tag = skaffold cache hit (no rebuild)
+#
+# Setup lefthook: lefthook install
 
 # One-time setup: configure Podman and Skaffold for local registry
 skaffold-init:
@@ -245,7 +316,7 @@ skaffold-init:
     @echo "Configuring Skaffold for Kind..."
     @uv run "{{TOP}}/scripts/configure_skaffold.py"
     @echo ""
-    @echo "Setup complete. Run 'just skaffold-dev' to start developing."
+    @echo "Setup complete!"
 
 # Check if Podman and Skaffold are configured
 skaffold-check:
@@ -254,25 +325,36 @@ skaffold-check:
     @echo "Checking Skaffold configuration..."
     @uv run "{{TOP}}/scripts/configure_skaffold.py" --check || true
 
-# Build and deploy with skaffold (recommended workflow)
-skaffold-dev: skaffold-init kind-create-registry secrets-init
-    skaffold dev --profile local
+# === Framework (Angzarr Sidecars) ===
+# Use these when you change angzarr core code (src/, proto/, Cargo.toml)
+# Build order: angzarr-builder first (cargo work), then 5 final images in parallel
 
-# Build and deploy once with skaffold
-skaffold-run: skaffold-init kind-create-registry secrets-init
-    skaffold run --profile local
-
-# Build only (no deploy)
-skaffold-build:
+# Build angzarr framework images only (builder + 5 final images)
+framework-build: skaffold-init kind-create-registry
+    @echo "Building angzarr framework images..."
+    @echo "  1. angzarr-builder (compiles all binaries)"
+    @echo "  2. 5 final images in parallel (just copy binaries)"
     skaffold build
+    @echo ""
+    @echo "Framework images built. Now run 'just examples dev' for business logic."
+
+# Watch and rebuild framework images on change
+framework-dev: skaffold-init kind-create-registry secrets-init infra-local
+    @echo "Starting framework dev loop..."
+    @echo "NOTE: For business logic changes, use 'just examples dev' in another terminal."
+    skaffold dev
+
+# Build and deploy once with skaffold (framework only)
+skaffold-run: skaffold-init kind-create-registry secrets-init
+    skaffold run
 
 # Delete skaffold deployment
 skaffold-delete:
-    skaffold delete --profile local
+    skaffold delete || true
 
 # Render skaffold manifests (dry-run)
 skaffold-render:
-    skaffold render --profile local
+    skaffold render
 
 # === Kind/Podman Development ===
 
@@ -318,15 +400,6 @@ registry-push IMAGE:
     podman tag {{IMAGE}} localhost:{{REGISTRY_PORT}}/{{IMAGE}}
     podman push localhost:{{REGISTRY_PORT}}/{{IMAGE}} --tls-verify=false
 
-# Push all Rust images to local registry
-registry-push-rust:
-    @for img in evented:{{IMAGE_TAG}} angzarr-stream:{{IMAGE_TAG}} angzarr-gateway:{{IMAGE_TAG}} \
-        rs-customer:{{IMAGE_TAG}} rs-transaction:{{IMAGE_TAG}} rs-saga-loyalty:{{IMAGE_TAG}} \
-        rs-projector-receipt:{{IMAGE_TAG}} rs-projector-log-customer:{{IMAGE_TAG}} rs-projector-log-transaction:{{IMAGE_TAG}}; do \
-        podman tag "docker.io/library/$img" "localhost:{{REGISTRY_PORT}}/$img" && \
-        podman push "localhost:{{REGISTRY_PORT}}/$img" --tls-verify=false; \
-    done
-
 # === Infrastructure Images ===
 
 # Pull infrastructure images
@@ -350,7 +423,7 @@ images-load-ingress: images-pull-ingress
     done
 
 # Full deployment: create cluster, build, and deploy via skaffold (recommended)
-deploy: kind-create-registry secrets-init
+deploy: kind-create-registry infra-local secrets-init
     cd "{{TOP}}/examples/rust" && skaffold run
     @echo "Waiting for core services via gRPC health..."
     @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
@@ -367,6 +440,53 @@ redeploy:
     cd "{{TOP}}/examples/rust" && skaffold run
     @kubectl get pods -n angzarr
 
+# === Reliable Deployment (Cache-Busting) ===
+# Use these targets when skaffold's incremental builds fail to pick up changes.
+
+# Clear all build caches (skaffold artifact cache + podman layer cache)
+cache-clear:
+    @echo "Clearing skaffold cache..."
+    rm -f ~/.skaffold/cache
+    @echo "Clearing podman build cache for angzarr images..."
+    podman image prune -f --filter label=angzarr=true 2>/dev/null || true
+    @echo "Cache cleared."
+
+# Force rebuild core angzarr images (no layer cache)
+rebuild-core:
+    @echo "Building angzarr core images (no cache)..."
+    rm -f ~/.skaffold/cache
+    BUILDAH_LAYERS=false skaffold build --cache-artifacts=false
+
+# Force rebuild all images including examples (no layer cache)
+rebuild-all:
+    @echo "Building all images (no cache)..."
+    rm -f ~/.skaffold/cache
+    cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold build --cache-artifacts=false
+
+# Force pods to restart and pull fresh images
+reload-pods:
+    @echo "Restarting angzarr deployments..."
+    kubectl rollout restart deployment -n angzarr -l app.kubernetes.io/component=aggregate 2>/dev/null || true
+    kubectl rollout restart deployment -n angzarr -l app.kubernetes.io/component=saga 2>/dev/null || true
+    kubectl rollout restart deployment -n angzarr angzarr-gateway 2>/dev/null || true
+    kubectl rollout restart deployment -n angzarr angzarr-stream 2>/dev/null || true
+    @echo "Waiting for rollouts..."
+    kubectl rollout status deployment -n angzarr -l app.kubernetes.io/component=aggregate --timeout=120s 2>/dev/null || true
+    kubectl rollout status deployment -n angzarr angzarr-gateway --timeout=60s 2>/dev/null || true
+
+# Full fresh deploy: regenerate protos, clear cache, rebuild, deploy
+fresh-deploy: proto-rust cache-clear
+    @echo "=== Fresh Deploy ==="
+    cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold run --cache-artifacts=false --force
+    @echo "Waiting for services..."
+    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:50051 || true
+    @kubectl get pods -n angzarr
+
+# Quick redeploy: rebuild with cache, force helm upgrade
+quick-deploy:
+    cd "{{TOP}}/examples/rust" && skaffold run --force
+    @kubectl get pods -n angzarr
+
 # Redeploy a single Rust service (e.g., just redeploy-service customer)
 redeploy-service SERVICE:
     @echo "Building {{SERVICE}}..."
@@ -377,7 +497,7 @@ redeploy-service SERVICE:
     @kubectl rollout restart deployment/rs-{{SERVICE}} -n angzarr 2>/dev/null || true
     @kubectl rollout status deployment/rs-{{SERVICE}} -n angzarr --timeout=60s 2>/dev/null || true
 
-# Helm upgrade (use after registry-push-rust)
+# Helm upgrade
 helm-upgrade:
     helm upgrade --install angzarr "{{TOP}}/deploy/helm/angzarr" \
         -f "{{TOP}}/deploy/helm/angzarr/values-local.yaml" \
@@ -466,83 +586,10 @@ ingress-status:
     @echo "---"
     @kubectl get ingress -n angzarr
 
-# === gRPC Health Checks ===
-
-# Check gRPC health of all core services
-grpc-health-check:
-    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 10 --interval 1 \
-        localhost:50051 localhost:50052 localhost:50053 localhost:50054
-
-# Check gRPC health of command handler only
-grpc-health-command:
-    @grpcurl -plaintext -d '{"service": ""}' localhost:50051 grpc.health.v1.Health/Check
-
-# Check gRPC health of query service only
-grpc-health-query:
-    @grpcurl -plaintext -d '{"service": ""}' localhost:50052 grpc.health.v1.Health/Check
-
-# Check gRPC health of gateway only
-grpc-health-gateway:
-    @grpcurl -plaintext -d '{"service": ""}' localhost:50053 grpc.health.v1.Health/Check
-
-# Check gRPC health of stream only
-grpc-health-stream:
-    @grpcurl -plaintext -d '{"service": ""}' localhost:50054 grpc.health.v1.Health/Check
-
-# === gRPC Client Helpers ===
-
-# List available gRPC services via command handler
-grpc-list-command:
-    grpcurl -plaintext localhost:50051 list
-
-# List available gRPC services via gateway
-grpc-list-gateway:
-    grpcurl -plaintext localhost:50053 list
-
-# List available gRPC services via stream
-grpc-list-stream:
-    grpcurl -plaintext localhost:50054 list
-
-# Describe BusinessCoordinator service
-grpc-describe-command:
-    grpcurl -plaintext localhost:50051 describe angzarr.BusinessCoordinator
-
-# Describe CommandProxy service
-grpc-describe-gateway:
-    grpcurl -plaintext localhost:50053 describe angzarr.CommandProxy
-
-# Describe EventStream service
-grpc-describe-stream:
-    grpcurl -plaintext localhost:50054 describe angzarr.EventStream
-
-# Send a command via command handler (example)
-grpc-example-command DOMAIN AGGREGATE_ID:
-    @echo "Sending command to {{DOMAIN}}/{{AGGREGATE_ID}}..."
-    grpcurl -plaintext -d '{"cover": {"domain": "{{DOMAIN}}", "root": {"value": "{{AGGREGATE_ID}}"}}, "pages": []}' \
-        localhost:50051 angzarr.BusinessCoordinator/Handle
-
-# Send a command via gateway with streaming response (example)
-grpc-example-gateway DOMAIN AGGREGATE_ID:
-    @echo "Sending command via gateway to {{DOMAIN}}/{{AGGREGATE_ID}} with streaming..."
-    grpcurl -plaintext -d '{"cover": {"domain": "{{DOMAIN}}", "root": {"value": "{{AGGREGATE_ID}}"}}, "pages": [], "correlation_id": ""}' \
-        localhost:50053 angzarr.CommandProxy/Execute
-
-# Subscribe to events by correlation ID (example)
-grpc-subscribe-stream CORRELATION_ID:
-    @echo "Subscribing to events with correlation ID {{CORRELATION_ID}}..."
-    grpcurl -plaintext -d '{"correlation_id": "{{CORRELATION_ID}}"}' \
-        localhost:50054 angzarr.EventStream/Subscribe
-
-# Query events for an aggregate
-grpc-query-events DOMAIN AGGREGATE_ID:
-    @echo "Querying events for {{DOMAIN}}/{{AGGREGATE_ID}}..."
-    grpcurl -plaintext -d '{"domain": "{{DOMAIN}}", "root": {"value": "{{AGGREGATE_ID}}"}, "lower_bound": 0, "upper_bound": 0}' \
-        localhost:50052 angzarr.EventQuery/GetEvents
-
 # === Full Setup with Ingress ===
 
 # Full deployment with ingress controller
-deploy-with-ingress: kind-create-registry images-load-ingress ingress-install secrets-init
+deploy-with-ingress: kind-create-registry infra-local images-load-ingress ingress-install secrets-init
     cd "{{TOP}}/examples/rust" && skaffold run
     @echo "Waiting for all services via gRPC health..."
     @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
@@ -562,7 +609,7 @@ deploy-with-ingress: kind-create-registry images-load-ingress ingress-install se
     @echo "  Stream:  stream.angzarr.local:80"
     @echo ""
     @echo "Example grpcurl commands:"
-    @echo "  just grpc-list-command"
-    @echo "  just grpc-list-gateway"
-    @echo "  just grpc-list-stream"
-    @echo "  just grpc-query-events customer <uuid>"
+    @echo "  just grpc list-command"
+    @echo "  just grpc list-gateway"
+    @echo "  just grpc list-stream"
+    @echo "  just grpc query-events customer <uuid>"
