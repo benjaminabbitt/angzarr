@@ -12,7 +12,3 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # Faster incremental builds
 [build]
 incremental = true
-
-# Use all available cores
-[term]
-jobs = 0

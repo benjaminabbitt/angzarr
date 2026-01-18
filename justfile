@@ -5,6 +5,9 @@ set shell := ["bash", "-c"]
 # Repository root
 TOP := `git rev-parse --show-toplevel`
 
+# Use sccache for faster compilation (if installed)
+export RUSTC_WRAPPER := `command -v sccache || true`
+
 # Import justfile modules
 mod examples "examples/justfile"
 mod terraform "deploy/terraform/justfile"
