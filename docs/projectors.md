@@ -378,7 +378,7 @@ The stream projector enables real-time event streaming to clients via the gatewa
 |----------|-------------|---------|
 | `PORT` | Port for gRPC services | 50051 |
 
-The stream projector is core infrastructure, not a business logic example. It runs alongside a projector sidecar that handles AMQP subscription and event routing.
+The stream projector is a **standalone infrastructure service**, not a sidecar. It deploys with an `angzarr-projector` sidecar that subscribes to AMQP and forwards events to it via the Projector gRPC interface—the same pattern as business logic projectors, but the "business logic" here is event filtering and streaming.
 
 ---
 

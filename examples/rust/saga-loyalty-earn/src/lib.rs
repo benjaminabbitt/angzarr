@@ -87,6 +87,12 @@ impl Default for LoyaltyEarnSaga {
     }
 }
 
+impl common::SagaLogic for LoyaltyEarnSaga {
+    fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
+        self.handle(book)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -37,8 +37,9 @@ use std::time::Duration;
 
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
-use tracing::{error, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::{error, info};
+
+use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
 
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::handlers::gateway::{EventQueryProxy, GatewayService};
@@ -52,13 +53,7 @@ const DEFAULT_STREAM_TIMEOUT_SECS: u64 = 30;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_env("ANGZARR_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    init_tracing();
 
     info!("Starting angzarr-gateway service");
 
@@ -99,38 +94,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_STREAM_TIMEOUT_SECS);
 
-    info!("Connecting to stream service at {}", stream_address);
     let stream_url = format!("http://{}", stream_address);
-    let stream_client = {
-        let max_retries = 30;
-        let mut delay = Duration::from_millis(100);
-        let mut attempt = 0;
-        loop {
-            attempt += 1;
-            match EventStreamClient::connect(stream_url.clone()).await {
-                Ok(client) => {
-                    info!("Connected to stream service at {}", stream_address);
-                    break client;
-                }
-                Err(e) if attempt < max_retries => {
-                    warn!(
-                        "Failed to connect to stream (attempt {}/{}): {}. Retrying in {:?}...",
-                        attempt, max_retries, e, delay
-                    );
-                    tokio::time::sleep(delay).await;
-                    delay = std::cmp::min(delay * 2, Duration::from_secs(5));
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to connect to stream after {} attempts: {}",
-                        max_retries,
-                        e
-                    );
-                    return Err(e.into());
-                }
-            }
-        }
-    };
+    let stream_client = connect_with_retry("stream service", &stream_address, || {
+        EventStreamClient::connect(stream_url.clone())
+    })
+    .await?;
 
     let gateway_service = GatewayService::new(
         discovery.clone(),

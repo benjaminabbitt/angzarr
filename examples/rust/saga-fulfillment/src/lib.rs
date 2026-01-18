@@ -84,3 +84,9 @@ impl Default for FulfillmentSaga {
         Self::new()
     }
 }
+
+impl common::SagaLogic for FulfillmentSaga {
+    fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
+        self.handle(book)
+    }
+}

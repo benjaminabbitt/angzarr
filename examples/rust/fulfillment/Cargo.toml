@@ -11,22 +11,22 @@ name = "fulfillment-server"
 path = "src/main.rs"
 
 [dependencies]
-angzarr = { path = "../../.." }
-common = { path = "../common" }
-prost = "0.13"
-prost-types = "0.13"
-async-trait = "0.1"
-tonic = "0.12"
-tonic-health = "0.12"
-tokio = { version = "1", features = ["full"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json"] }
+angzarr.workspace = true
+common.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+async-trait.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
-cucumber = "0.21"
-futures = "0.3"
-uuid = { version = "1", features = ["v4", "v5"] }
-tokio-stream = "0.1"
+cucumber.workspace = true
+futures.workspace = true
+uuid.workspace = true
+tokio-stream.workspace = true
 
 [[test]]
 name = "acceptance"

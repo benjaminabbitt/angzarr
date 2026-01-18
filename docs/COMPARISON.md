@@ -9,7 +9,7 @@ A technical comparison for architects evaluating event sourcing infrastructure.
 | Capability | ⍼ Angzarr | AWS Lambda + Step Functions | GCP Cloud Run + Workflows | Axon Framework | EventStoreDB | Kafka + Custom |
 |------------|------------|----------------------------|---------------------------|----------------|--------------|----------------|
 | **Schema** | Protobuf-first, enforced | Application-defined | Application-defined | Java classes | JSON/binary | Application-defined |
-| **Event Store** | Pluggable (SQLite, MongoDB) | DynamoDB/custom | Firestore/custom | Axon Server or custom | Native | Custom |
+| **Event Store** | Pluggable (MongoDB, PostgreSQL) | DynamoDB/custom | Firestore/custom | Axon Server or custom | Native | Custom |
 | **Optimistic Concurrency** | Native (sequence validation) | Manual | Manual | Native | Native | Manual |
 | **Snapshots** | Built-in | Manual | Manual | Built-in | Manual (projections) | Manual |
 | **Saga Orchestration** | Built-in | Step Functions | Workflows | Built-in | Manual | Manual |
@@ -121,7 +121,7 @@ def handle(self, ctx: ContextualCommand) -> EventBook:
 |--------|------|------------|
 | **Language** | Java (primary), Kotlin | Rust, Go, Python, Java, C# |
 | **Aggregate Model** | Annotation-driven, framework manages | Function-based, you manage state |
-| **Event Store** | Axon Server or JPA-based | MongoDB, SQLite, Redis |
+| **Event Store** | Axon Server or JPA-based | MongoDB, PostgreSQL, EventStoreDB |
 | **Deployment** | Axon Server (managed or self-hosted) | K8s sidecars (self-hosted) |
 | **Saga Model** | Annotation-driven (@SagaEventHandler) | Interface-based (gRPC) |
 | **Learning Curve** | Steep (annotations, lifecycle) | Shallow (functions) |
@@ -214,7 +214,7 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 | Aspect | Marten | Angzarr |
 |--------|--------|------------|
 | **Language** | C# / .NET | Rust, Go, Python, Java, C# |
-| **Database** | PostgreSQL (required) | MongoDB, SQLite, Redis, PostgreSQL |
+| **Database** | PostgreSQL (required) | MongoDB, PostgreSQL, EventStoreDB, Redis |
 | **Model** | Library (embedded) | Distributed sidecars |
 | **Sagas** | Wolverine integration | Built-in |
 | **Projections** | Built-in (inline, async) | Built-in (sync, async) |
@@ -348,7 +348,7 @@ Unlike Axon Cloud, EventStoreDB Cloud, or AWS/GCP managed services:
 |---------|--------|--------|
 | **Event upcasting / schema evolution** | Not implemented | Must handle event versioning manually |
 | **Automatic snapshotting** | Not implemented | Must trigger snapshots explicitly |
-| **PostgreSQL backend** | Planned | Limited to MongoDB/SQLite/Redis for now |
+| **PostgreSQL backend** | Implemented | Available alongside MongoDB |
 | **Kafka event bus** | Planned | RabbitMQ only for distributed deployments |
 | **Projection replay/reset** | Not implemented | Cannot rebuild read models from scratch |
 | **Subscription queries** | Not implemented | No live query updates |

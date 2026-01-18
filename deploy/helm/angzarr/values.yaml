@@ -50,10 +50,20 @@ securityContext:
     drop:
       - ALL
 
-# Debug configuration - enables remote debugging with gdb/gdbserver
-# Debug ports are calculated: port + 1 (e.g., business on 50005 -> debug on 50006)
+# Debug configuration
+# WARNING: Do not enable in production
 debug:
+  # Enable remote debugging with gdb/gdbserver for sidecars
+  # Debug ports are calculated: port + 1 (e.g., business on 50005 -> debug on 50006)
   enabled: false
+  # Enable debug access for MongoDB (external test connections)
+  mongodb:
+    enabled: false
+    nodePort: 30017
+  # Enable debug access for RabbitMQ management UI
+  rabbitmq:
+    enabled: false
+    nodePort: 30672
 
 # =============================================================================
 # Port Scheme (10-port ranges per component)
@@ -224,11 +234,6 @@ messaging:
       saslPassword: "kafka_sasl_password"
       saslMechanism: "kafka_sasl_mechanism"
 
-# Legacy AMQP config for backwards compatibility
-amqp:
-  enabled: false
-  url: "amqp://rabbitmq:5672"
-
 # RabbitMQ subchart configuration
 rabbitmq:
   enabled: false
@@ -379,18 +384,6 @@ extraVolumeMounts: []
 logging:
   level: info
   format: json
-
-# Debug configuration - exposes services via NodePort for development/debugging
-# WARNING: Do not enable in production
-debug:
-  # Enable debug access for MongoDB (external test connections)
-  mongodb:
-    enabled: false
-    nodePort: 30017
-  # Enable debug access for RabbitMQ management UI
-  rabbitmq:
-    enabled: false
-    nodePort: 30672
 
 # Stakater Reloader configuration
 # Automatically restarts pods when ConfigMaps/Secrets change

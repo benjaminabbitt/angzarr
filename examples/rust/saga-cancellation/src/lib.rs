@@ -124,3 +124,9 @@ impl Default for CancellationSaga {
         Self::new()
     }
 }
+
+impl common::SagaLogic for CancellationSaga {
+    fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
+        self.handle(book)
+    }
+}

@@ -107,10 +107,10 @@ just test
 The fastest path to experimentation—no external dependencies:
 
 ```bash
-# Start the server with default SQLite storage
+# Start the server with mock storage (in-memory)
 just run
 
-# Or use in-memory storage for tests
+# Or run acceptance tests directly
 cargo test --test acceptance
 ```
 
@@ -159,7 +159,7 @@ business_logic:
 ## Architecture
 
 Business logic lives in external services called via gRPC. Angzarr handles:
-- **EventStore**: Persist and query events (SQLite, Redis, MongoDB)
+- **EventStore**: Persist and query events (MongoDB, PostgreSQL, EventStoreDB)
 - **SnapshotStore**: Optimize replay with snapshots
 - **EventBus**: Distribute events to projectors/sagas
 - **CommandHandler**: Orchestrate command processing
@@ -167,6 +167,23 @@ Business logic lives in external services called via gRPC. Angzarr handles:
 - **SagaCoordinator**: Route events to cross-aggregate workflows
 - **EventStream**: Stream filtered events to subscribers by correlation ID
 - **CommandGateway**: Forward commands and stream back resulting events
+
+### Binaries
+
+Angzarr provides five binaries in two categories:
+
+**Sidecars** (run alongside your business logic in the same pod):
+| Binary | Purpose |
+|--------|---------|
+| `angzarr-aggregate` | Command handling, event persistence, snapshot management |
+| `angzarr-projector` | AMQP subscription, event routing to projector services |
+| `angzarr-saga` | AMQP subscription, event routing to saga services |
+
+**Standalone Infrastructure** (central services, not sidecars):
+| Binary | Purpose |
+|--------|---------|
+| `angzarr-gateway` | Client entry point, command routing, event streaming to clients |
+| `angzarr-stream` | Infrastructure projector for correlation-based event filtering |
 
 ### Streaming Infrastructure
 
@@ -399,7 +416,7 @@ Examples use a submodule - access them with `just examples <command>`:
 #### Test Types
 
 **Acceptance Tests** (`just acceptance-test`)
-- Run entirely in-memory using SQLite and stub services
+- Run entirely in-memory using mock storage and stub services
 - Fast, no external dependencies
 - Test core framework logic: command handling, event persistence, snapshots
 - Feature files: `tests/acceptance/features/*.feature`
@@ -442,7 +459,7 @@ Log output is structured JSON in production, human-readable in development:
 
 ```
 2024-01-15T10:30:45.123Z  INFO angzarr: Starting angzarr server
-2024-01-15T10:30:45.456Z  INFO angzarr: Storage: sqlite at ./data/events.db
+2024-01-15T10:30:45.456Z  INFO angzarr: Storage: mock (in-memory)
 2024-01-15T10:30:45.789Z  INFO angzarr: Entity listening on 0.0.0.0:1313
 ```
 
@@ -485,26 +502,6 @@ grpcurl -plaintext -d '{
   "aggregate_id": "cust-001",
   "from_sequence": 5
 }' localhost:1314 angzarr.EventQuery/GetEvents
-```
-
-### SQLite Direct Access
-
-For development debugging, query the SQLite database directly:
-
-```bash
-# Connect to the event store
-sqlite3 data/events.db
-
-# View recent events
-SELECT domain, aggregate_id, sequence, type_url, created_at
-FROM events
-ORDER BY created_at DESC
-LIMIT 10;
-
-# Count events per aggregate
-SELECT domain, aggregate_id, COUNT(*) as event_count
-FROM events
-GROUP BY domain, aggregate_id;
 ```
 
 ### Kubernetes Debugging

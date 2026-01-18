@@ -521,10 +521,11 @@ Streaming responses handle large event histories efficiently. The `Synchronize` 
 Angzarr's core abstracts storage and messaging behind adapter interfaces. Custom adapters implement a defined trait.
 
 **Event Store Adapters**
-- SQLite (local development)
 - MongoDB (production)
-- *PostgreSQL (planned)*
-- *Redis (planned)*
+- PostgreSQL (production)
+- EventStoreDB (implemented, untested)
+- Redis (implemented, untested)
+- Mock (development/testing)
 
 **Message Bus Adapters**
 - Direct gRPC (development, simple deployments)
@@ -561,8 +562,7 @@ sagas:
 ```yaml
 # config.yaml (local development)
 storage:
-  type: sqlite
-  path: ./data/events.db
+  type: mock  # In-memory, no persistence
 
 bus:
   type: direct  # gRPC calls, no message broker
@@ -629,7 +629,35 @@ spec:
               drop: ["ALL"]
 ```
 
-For local development, use Kind (Kubernetes in Docker) with SQLite storage:
+### Standalone Infrastructure
+
+Not all Angzarr binaries are sidecars. Two services run as standalone infrastructure:
+
+| Service | Purpose |
+|---------|---------|
+| **angzarr-gateway** | Client entry point. Routes commands to domain-specific aggregates, streams events back to clients. |
+| **angzarr-stream** | Infrastructure projector. Receives events from a projector sidecar, filters by correlation ID, forwards to gateway subscribers. |
+
+These deploy as regular services, not as sidecars to business logic:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Standalone Infrastructure                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  [angzarr-gateway]                    [angzarr-stream + projector sidecar] │
+│       ↓ routes commands                      ↑ receives all events      │
+└───────┼──────────────────────────────────────┼──────────────────────────┘
+        ↓                                      │
+┌───────┴──────────────────────────────────────┴──────────────────────────┐
+│                         Business Logic Pods                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│  [Your Aggregate] ←→ [angzarr-aggregate sidecar] → publishes to AMQP    │
+│  [Your Projector] ←→ [angzarr-projector sidecar] ← subscribes to AMQP   │
+│  [Your Saga]      ←→ [angzarr-saga sidecar]      ← subscribes to AMQP   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+For local development, use Kind (Kubernetes in Docker):
 
 ```bash
 # Local dev with Kind cluster
@@ -646,7 +674,7 @@ The framework core is implemented in Rust. This choice is pragmatic, not ideolog
 - **Memory safety without runtime cost**: No garbage collection pauses affecting tail latencies. No null pointer exceptions in production. Memory safety guarantees reduce the class of security vulnerabilities possible in the framework itself.
 - **Minimal deployment footprint**: Sidecar container images are ~8MB. No runtime dependencies, no JVM, no interpreter. Distroless base images with only the Angzarr binary reduce attack surface to the minimum possible.
 - **Predictable performance**: Latency-sensitive paths (command routing, event serialization) benefit from zero-cost abstractions and control over allocation.
-- **Strong ecosystem for the domain**: `tonic` (gRPC), `prost` (protobuf), `sqlx`/`mongodb`/`bigtable` drivers, and `tokio` (async runtime) are mature and actively maintained.
+- **Strong ecosystem for the domain**: `tonic` (gRPC), `prost` (protobuf), `sqlx` (PostgreSQL), `mongodb`, and `tokio` (async runtime) are mature and actively maintained.
 
 Business logic runs in whatever language suits the domain and team. Rust proficiency is not required to use Angzarr.
 
@@ -679,7 +707,7 @@ Angzarr optimizes for a specific architectural style. It is not universally appl
 
 | Aspect | ⍼ Angzarr | AWS Lambda + Step Functions | Axon Framework | EventStoreDB |
 |--------|-----------|----------------------------|----------------|--------------|
-| **Event Store** | Pluggable (SQLite, MongoDB) | DynamoDB (you build) | Axon Server | Native |
+| **Event Store** | Pluggable (MongoDB, PostgreSQL) | DynamoDB (you build) | Axon Server | Native |
 | **Schema** | Protobuf-first, enforced | Application-defined | Java classes | JSON/binary |
 | **Multi-Language** | Native (gRPC boundary) | Any (containers) | Java primary | Client libraries |
 | **Saga Coordination** | Built-in | Step Functions | Built-in | You build |

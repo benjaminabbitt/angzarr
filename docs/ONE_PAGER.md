@@ -65,7 +65,7 @@ service BusinessLogic {
 
 ## Infrastructure Adapters
 
-**Event Store:** SQLite · MongoDB · *PostgreSQL (planned)*
+**Event Store:** MongoDB · PostgreSQL · EventStoreDB · *Redis (untested)*
 
 **Message Bus:** Direct gRPC · RabbitMQ · *Kafka (planned)*
 

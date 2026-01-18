@@ -34,7 +34,6 @@ use std::sync::Arc;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use angzarr::bus::{AmqpEventBus, EventBus, MessagingType, MockEventBus};
 use angzarr::clients::{BusinessLogicClient, StaticBusinessLogicClient};
@@ -48,13 +47,7 @@ use angzarr::storage::init_storage;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_env("ANGZARR_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    angzarr::utils::bootstrap::init_tracing();
 
     let config = Config::load().map_err(|e| {
         error!("Failed to load configuration: {}", e);

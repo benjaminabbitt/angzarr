@@ -28,7 +28,8 @@ use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_health::server::health_reporter;
 use tracing::info;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use angzarr::utils::bootstrap::init_tracing;
 
 use angzarr::handlers::stream::StreamService;
 use angzarr::proto::event_stream_server::EventStreamServer;
@@ -84,13 +85,7 @@ impl angzarr::proto::event_stream_server::EventStream for StreamServiceWrapper {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_env("ANGZARR_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    init_tracing();
 
     let port = std::env::var("ANGZARR_PORT")
         .ok()

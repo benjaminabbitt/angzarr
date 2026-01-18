@@ -16,6 +16,41 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+# gRPC
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.12"
+tonic-health = "0.12"
+tokio-stream = "0.1"
+
+# Async
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "v5"] }
+chrono = "0.4"
+hex = "0.4"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Testing
+cucumber = "0.21"
+
+# Storage (for projectors)
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
+sea-query = "0.32"
+sea-query-binder = { version = "0.7", features = ["sqlx-postgres"] }
+
+# Local crates
+angzarr = { path = "." }
+common = { path = "examples/rust/common" }
+
 [package]
 name = "angzarr"
 version = "0.1.0"
@@ -67,6 +102,10 @@ thiserror = "2"
 futures = "0.3"
 chrono = "0.4"
 hex = "0.4"
+serde_json = "1"
+
+# Protobuf reflection (for logging projector)
+prost-reflect = { version = "0.14", features = ["serde"] }
 
 # Logging/Tracing
 tracing = "0.1"
@@ -119,6 +158,10 @@ path = "src/bin/angzarr_gateway.rs"
 [[bin]]
 name = "angzarr-stream"
 path = "src/bin/angzarr_stream.rs"
+
+[[bin]]
+name = "angzarr-log"
+path = "src/bin/angzarr_log.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
