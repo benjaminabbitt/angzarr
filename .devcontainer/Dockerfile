@@ -1,0 +1,43 @@
+# Angzarr development container
+# Includes Rust toolchain, mold linker, sccache, and development tools
+
+FROM mcr.microsoft.com/devcontainers/rust:1-bookworm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Fast linker
+    mold \
+    clang \
+    # Protobuf
+    protobuf-compiler \
+    libprotobuf-dev \
+    # General utilities
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install just (command runner)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Install grpcurl (from GitHub releases, not apt)
+RUN GRPCURL_VERSION=1.9.1 \
+    && curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_x86_64.tar.gz" \
+    | tar -xzf - -C /usr/local/bin grpcurl
+
+# Install kind for local k8s
+RUN curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64 \
+    && chmod +x /usr/local/bin/kind
+
+# Install Rust tools as vscode user
+USER vscode
+
+# Install sccache and other cargo tools
+RUN cargo install sccache cargo-watch cargo-chef
+
+# Set up environment for fast builds
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE_DIR=/home/vscode/.cache/sccache
+
+# Create cache directories
+RUN mkdir -p /home/vscode/.cache/sccache
+
+USER root

@@ -28,7 +28,35 @@ Business logic runs as external gRPC services, so teams can use whatever languag
 - Podman or Docker (for Kubernetes development)
 - [just](https://github.com/casey/just) - command runner (see below)
 - [Helm](https://helm.sh/) - Kubernetes package manager
+- [mold](https://github.com/rui314/mold) - fast linker (recommended)
+- [sccache](https://github.com/mozilla/sccache) - compilation cache (recommended)
 - grpcurl (optional, for debugging)
+
+#### Fast Build Setup (Recommended)
+
+Install mold and sccache for significantly faster builds:
+
+```bash
+# Debian/Ubuntu
+sudo apt install mold clang
+
+# Fedora
+sudo dnf install mold clang
+
+# macOS (mold not available, use default linker)
+# The .cargo/config.toml will use default linker on macOS
+
+# Install sccache
+cargo install sccache
+
+# Enable sccache (add to ~/.bashrc or ~/.zshrc)
+export RUSTC_WRAPPER=sccache
+```
+
+**Expected speedups:**
+- mold linker: 50-80% faster linking
+- sccache: Near-instant rebuilds on cache hits
+- `just build-fast`: Uses fast-dev profile (no debug info, max parallelism)
 
 ### About `just`
 
@@ -146,7 +174,7 @@ For clients that need real-time event streaming, Angzarr provides two standalone
 
 ```
 ┌────────┐     ┌──────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Client │────▶│ angzarr-gateway│────▶│ angzarr-entity │────▶│ Business Logic  │
+│ Client │────▶│ angzarr-gateway│────▶│ angzarr-aggregate │────▶│ Business Logic  │
 └────────┘     └──────────────┘     └─────────────────┘     └─────────────────┘
     ▲                 │                      │
     │                 │                      │ publishes events
@@ -156,34 +184,39 @@ For clients that need real-time event streaming, Angzarr provides two standalone
     │                 │              └────────┬────────┘
     │                 │                       │
     │                 │              ┌────────▼────────┐
-    │                 │              │  angzarr-stream │
-    │                 └─────────────▶│  (projector)    │
-    │                 registers      └────────┬────────┘
-    │                 correlation ID          │ only forwards if
+    │                 │              │angzarr-projector│ (sidecar)
+    │                 │              └────────┬────────┘
+    │                 │                       │ Projector gRPC
+    │                 │              ┌────────▼────────┐
+    │                 └─────────────▶│  angzarr-stream │
+    │                 registers      │  (projector)    │
+    │                 correlation ID └────────┬────────┘
+    │                                         │ only forwards if
     │                                         │ correlation ID matches
     └─────────────────────────────────────────┘
               streams matching events back
 ```
 
-**angzarr-stream** - A projector that enables event streaming:
-- Subscribes to all AMQP events (like any projector)
+**angzarr-stream** - An infrastructure projector for event streaming:
+- Implements the Projector gRPC interface, receiving events from angzarr-projector sidecar
 - Maintains a registry of correlation IDs with active subscribers
 - Forwards events only to subscribers who registered interest in that correlation ID
 - Drops events with no matching subscribers (no storage/buffering)
+- Also exposes EventStream gRPC interface for gateway subscriptions
 
 **angzarr-gateway** - Standalone service that:
 - Receives commands via `CommandGateway.Execute`
 - Generates a deterministic correlation ID (UUIDv5 from command body) if not provided
 - Registers interest with angzarr-stream for that correlation ID
-- Forwards command to angzarr-entity
+- Forwards command to angzarr-aggregate
 - Streams resulting events back to the client
 
 #### Usage
 
 ```bash
 # Build the streaming services
-cargo build --release --features mode-stream,mongodb --bin angzarr-stream
-cargo build --release --features mode-gateway --bin angzarr-gateway
+cargo build --release --bin angzarr-stream
+cargo build --release --bin angzarr-gateway
 ```
 
 Configuration via environment variables:
@@ -191,13 +224,12 @@ Configuration via environment variables:
 **angzarr-stream:**
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AMQP_URL` | RabbitMQ connection URL | Required |
-| `GRPC_PORT` | Port for EventStream gRPC service | 1315 |
+| `PORT` | Port for gRPC services (Projector + EventStream) | 50051 |
 
 **angzarr-gateway:**
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `COMMAND_ADDRESS` | angzarr-entity service address | Required |
+| `COMMAND_ADDRESS` | angzarr-aggregate service address | Required |
 | `STREAM_ADDRESS` | angzarr-stream service address | Required |
 | `GRPC_PORT` | Port for CommandGateway gRPC service | 1316 |
 | `STREAM_TIMEOUT_SECS` | Timeout for event stream | 30 |
@@ -499,7 +531,7 @@ just k8s-port-forward
 | "Connection refused" on startup | Business logic service not running | Start your domain service first |
 | "Failed to connect to projector" | Projector not reachable | Check projector address in config.yaml |
 | Events not persisting | Database path not writable | Ensure `data/` directory exists with write permissions |
-| AMQP connection failed | RabbitMQ not running | Start RabbitMQ or use DirectEventBus for local dev |
+| AMQP connection failed | RabbitMQ not running | Start RabbitMQ via Kind cluster or Docker |
 
 For Kind/Podman infrastructure issues (cgroup delegation, port conflicts, cluster cleanup), see [COMMON_PROBLEMS.md](COMMON_PROBLEMS.md).
 

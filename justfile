@@ -74,11 +74,15 @@ proto-clean:
 
 # === Framework Build ===
 
-# Build the project
+# Build the project (debug - fast compile)
 build: proto-rust
     cargo build
 
-# Build release (all binaries)
+# Build with fast-dev profile (fastest compile, no debug info)
+build-fast:
+    cargo build --profile fast-dev
+
+# Build release (all binaries - slow compile, fast runtime)
 build-release: build-sidecars build-infrastructure
 
 # === Sidecar Binaries ===
@@ -145,6 +149,10 @@ container-build-all: container-build-sidecars container-build-infrastructure
 test:
     cargo test --lib
 
+# Run unit tests with fast-dev profile
+test-fast:
+    cargo test --lib --profile fast-dev
+
 # Run integration tests
 # 1. Creates Kind cluster with local registry
 # 2. Deploys backing services via Terraform/Helm (PostgreSQL, RabbitMQ)
@@ -205,10 +213,10 @@ cache-prune:
     @echo ""
     podman system df
 
-# Prune old images (older than 24h)
+# Prune old images (older than 4h)
 cache-prune-old:
-    @echo "Pruning images older than 24 hours..."
-    podman image prune -f --filter "until=24h"
+    @echo "Pruning images older than 4 hours..."
+    podman image prune -f --filter "until=4h"
     @echo ""
     podman system df
 
@@ -220,6 +228,28 @@ cache-prune-all:
     podman system prune -af --volumes
     @echo ""
     podman system df
+
+# EMERGENCY: Stop podman and wipe all storage (nuclear option)
+# Works even with zero disk space by directly removing storage directories
+cache-nuke:
+    @echo "!!! EMERGENCY WIPE !!!"
+    @echo "This will STOP all containers and DELETE all podman data."
+    @echo "Press Ctrl+C within 10 seconds to cancel..."
+    @sleep 10
+    @echo "Stopping all containers..."
+    -podman stop -a -t 0 2>/dev/null
+    -podman rm -af 2>/dev/null
+    @echo "Attempting podman reset..."
+    -podman system reset --force 2>/dev/null
+    @echo "Direct storage removal (works when disk full)..."
+    rm -rf ~/.local/share/containers/storage/* 2>/dev/null || true
+    rm -rf ~/.local/share/containers/cache/* 2>/dev/null || true
+    rm -rf ~/.config/containers/podman/machine/* 2>/dev/null || true
+    @echo "Clearing buildah cache..."
+    -podman volume rm -af 2>/dev/null
+    rm -rf ~/.local/share/buildah 2>/dev/null || true
+    @echo "Storage wiped."
+    @echo "Recreate cluster with: just kind-create-registry"
 
 # === Registry Image Lifecycle ===
 

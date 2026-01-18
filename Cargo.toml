@@ -11,7 +11,8 @@ members = [
     "examples/rust/saga-loyalty-earn",
     "examples/rust/saga-fulfillment",
     "examples/rust/saga-cancellation",
-    "examples/rust/projector-receipt",
+    "examples/rust/projectors/accounting",
+    "examples/rust/projectors/web",
 ]
 resolver = "2"
 
@@ -24,7 +25,21 @@ description = "Schema-first CQRS/ES framework for polyglot business logic"
 license-file = "LICENSE"
 
 [features]
-default = []
+# Default features - common production setup
+default = ["amqp", "mongodb"]
+
+# Messaging backends
+amqp = ["dep:lapin", "dep:deadpool-lapin"]
+kafka = ["dep:rdkafka"]
+
+# Storage backends
+mongodb = ["dep:mongodb"]
+postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder"]
+redis = ["dep:redis"]
+eventstoredb = ["dep:eventstore"]
+
+# All features for development
+full = ["amqp", "kafka", "mongodb", "postgres", "redis", "eventstoredb"]
 
 [dependencies]
 # gRPC
@@ -37,13 +52,13 @@ tokio-stream = "0.1"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# Storage - Query builder approach (like jOOQ)
-sea-query = "0.32"
-sea-query-binder = { version = "0.7", features = ["sqlx-sqlite", "sqlx-postgres"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres"] }
+# Storage - Query builder approach (like jOOQ) - optional for postgres
+sea-query = { version = "0.32", optional = true }
+sea-query-binder = { version = "0.7", features = ["sqlx-postgres"], optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
 
-# EventStoreDB
-eventstore = "3"
+# EventStoreDB (optional)
+eventstore = { version = "3", optional = true }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -58,26 +73,36 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
+config = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 
-# AMQP/RabbitMQ
-lapin = "2"
-deadpool-lapin = "0.12"
+# AMQP/RabbitMQ (optional)
+lapin = { version = "2", optional = true }
+deadpool-lapin = { version = "0.12", optional = true }
 
-# MongoDB
-mongodb = "3"
+# MongoDB (optional)
+mongodb = { version = "3", optional = true }
+
+# Redis (optional)
+redis = { version = "0.27", features = ["aio", "connection-manager", "tokio-comp"], optional = true }
+
+# Kafka (optional)
+rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"], optional = true }
 
 # Kubernetes API (for gateway service discovery)
 kube = { version = "0.98", features = ["runtime", "client"] }
 k8s-openapi = { version = "0.24", features = ["v1_29"] }
 
+# DNS resolution (for SRV-based service discovery)
+hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
+
 [build-dependencies]
 tonic-build = "0.12"
 
 [[bin]]
-name = "angzarr-entity"
-path = "src/bin/angzarr_entity.rs"
+name = "angzarr-aggregate"
+path = "src/bin/angzarr_aggregate.rs"
 
 [[bin]]
 name = "angzarr-projector"
@@ -88,12 +113,12 @@ name = "angzarr-saga"
 path = "src/bin/angzarr_saga.rs"
 
 [[bin]]
-name = "angzarr-stream"
-path = "src/bin/angzarr_stream.rs"
-
-[[bin]]
 name = "angzarr-gateway"
 path = "src/bin/angzarr_gateway.rs"
+
+[[bin]]
+name = "angzarr-stream"
+path = "src/bin/angzarr_stream.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -101,6 +126,7 @@ tempfile = "3"
 cucumber = "0.21"
 futures = "0.3"
 common = { path = "examples/rust/common" }
+serial_test = "3"
 
 [[test]]
 name = "container_integration"
@@ -120,3 +146,33 @@ path = "tests/integration/query_test.rs"
 
 [[test]]
 name = "mongodb_debug"
+required-features = ["mongodb"]
+
+# === Build Profiles ===
+
+# Dev profile - fast compilation, slow runtime (default for `cargo build`)
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+codegen-units = 256  # More units = faster compile, slower code
+
+# Dev with some optimization - good balance for local testing
+[profile.dev.package."*"]
+opt-level = 2  # Optimize dependencies, not our code
+
+# Fast-dev profile - even faster compilation for rapid iteration
+# Usage: cargo build --profile fast-dev
+[profile.fast-dev]
+inherits = "dev"
+opt-level = 0
+debug = 0           # Skip debug info generation
+incremental = true
+codegen-units = 512
+
+# Release profile - slow compilation, fast runtime (for production)
+[profile.release]
+opt-level = 3
+lto = "thin"        # Link-time optimization (thin = faster than fat)
+codegen-units = 1   # Better optimization
+strip = true        # Strip symbols for smaller binaries

@@ -4,7 +4,7 @@
 # All binaries built in single stage to share compiled artifacts
 
 # =============================================================================
-# Stage 1: Chef - install cargo-chef with musl toolchain
+# Stage 1: Chef - install cargo-chef and sccache with musl toolchain
 # =============================================================================
 FROM docker.io/library/rust:1.92-alpine AS chef
 
@@ -17,13 +17,15 @@ RUN apk add --no-cache \
     pkgconfig
 
 RUN rustup target add x86_64-unknown-linux-musl
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    cargo install cargo-chef --locked
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    cargo install cargo-chef sccache --locked
 
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
 ENV OPENSSL_DIR=/usr
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE_DIR=/sccache
 
 WORKDIR /app
 
@@ -42,10 +44,15 @@ RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main
 RUN mkdir -p examples/rust/common/src && \
     echo -e '[package]\nname = "common"\nversion = "0.1.0"\nedition = "2021"\n[lib]\npath = "src/lib.rs"' > examples/rust/common/Cargo.toml && \
     echo "" > examples/rust/common/src/lib.rs && \
-    for pkg in customer product inventory order cart fulfillment saga-loyalty-earn saga-fulfillment saga-cancellation projector-receipt; do \
+    for pkg in customer product inventory order cart fulfillment saga-loyalty-earn saga-fulfillment saga-cancellation; do \
         mkdir -p examples/rust/$pkg/src && \
         echo -e "[package]\nname = \"$pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[[bin]]\nname = \"$pkg-server\"\npath = \"src/main.rs\"" > examples/rust/$pkg/Cargo.toml && \
         echo "fn main() {}" > examples/rust/$pkg/src/main.rs; \
+    done && \
+    for proj in accounting web; do \
+        mkdir -p examples/rust/projectors/$proj/src && \
+        echo -e "[package]\nname = \"projector-$proj\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[[bin]]\nname = \"projector-$proj-server\"\npath = \"src/main.rs\"" > examples/rust/projectors/$proj/Cargo.toml && \
+        echo "fn main() {}" > examples/rust/projectors/$proj/src/main.rs; \
     done
 
 RUN cargo chef prepare --recipe-path recipe.json
@@ -64,8 +71,9 @@ RUN mkdir -p src && echo "" > src/lib.rs
 RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main() {}" > tests/container_integration.rs && echo "fn main() {}" > tests/mongodb_debug.rs
 
 # Build dependencies with musl
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/sccache,sharing=locked \
     cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
 
 # =============================================================================
@@ -84,10 +92,11 @@ COPY src/ ./src/
 RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && echo "fn main() {}" > tests/container_integration.rs && echo "fn main() {}" > tests/mongodb_debug.rs
 
 # Build all binaries in single invocation - shares compilation across all targets
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/sccache,sharing=locked \
     cargo build --release --target x86_64-unknown-linux-musl \
-    --bin angzarr-entity \
+    --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-stream \
@@ -107,9 +116,9 @@ ENV ANGZARR_LOG=info
 # Final images - all copy from single builder stage
 # =============================================================================
 
-# Entity sidecar image
-FROM runtime-base AS angzarr-entity
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-entity ./server
+# Aggregate sidecar image
+FROM runtime-base AS angzarr-aggregate
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/angzarr-aggregate ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
