@@ -9,7 +9,7 @@ use serde::Deserialize;
 // Configuration
 // ============================================================================
 
-/// Unified service endpoint configuration.
+/// Service endpoint configuration.
 ///
 /// Used for all service types: business logic, projectors, and sagas.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -20,15 +20,6 @@ pub struct ServiceEndpoint {
     /// gRPC address (host:port).
     pub address: String,
 }
-
-/// Business logic service endpoint.
-pub type BusinessLogicEndpoint = ServiceEndpoint;
-
-/// Projector endpoint.
-pub type ProjectorEndpoint = ServiceEndpoint;
-
-/// Saga endpoint.
-pub type SagaEndpoint = ServiceEndpoint;
 
 /// Saga compensation configuration.
 ///

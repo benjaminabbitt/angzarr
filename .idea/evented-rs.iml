@@ -42,6 +42,7 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-accounting/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-web/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/accounting/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/logging/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/web/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

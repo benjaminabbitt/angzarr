@@ -31,6 +31,51 @@ pub struct TargetConfig {
     pub address: String,
     /// Domain handled by this service (for aggregate mode).
     pub domain: Option<String>,
+    /// Command to spawn the business logic process.
+    /// If set, the sidecar will spawn this process before connecting.
+    pub command: Option<String>,
+    /// Working directory for the spawned process.
+    pub working_dir: Option<String>,
+}
+
+/// Configuration for a service in embedded mode.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceConfig {
+    /// Domain name (for aggregates) or handler name (for sagas/projectors).
+    pub domain: String,
+    /// Projector name (optional, for projectors with multiple instances per domain).
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Command to spawn the service.
+    pub command: String,
+    /// Domains to listen for events from (sagas and projectors only).
+    #[serde(default)]
+    pub listen_domains: Vec<String>,
+}
+
+/// Gateway configuration for embedded mode.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct GatewayConfig {
+    /// Enable the gateway.
+    pub enabled: bool,
+    /// Port for TCP gateway (if not using UDS).
+    pub port: Option<u16>,
+}
+
+/// Embedded mode configuration.
+/// Groups all settings for running angzarr locally with spawned processes.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct EmbeddedConfig {
+    /// Aggregate services (business logic handlers).
+    pub aggregates: Vec<ServiceConfig>,
+    /// Saga services (cross-aggregate workflows).
+    pub sagas: Vec<ServiceConfig>,
+    /// Projector services (read model builders).
+    pub projectors: Vec<ServiceConfig>,
+    /// Gateway configuration.
+    pub gateway: GatewayConfig,
 }
 
 #[cfg(test)]

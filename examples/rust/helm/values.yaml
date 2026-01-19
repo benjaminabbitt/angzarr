@@ -1,4 +1,5 @@
 # Rust example services for Angzarr
+# See docs/port-conventions.md for port scheme (logic port = base + 3)
 
 namespace: angzarr-rs
 
@@ -6,9 +7,9 @@ namespace: angzarr-rs
 angzarr:
   command:
     image: angzarr-entity:latest
-    port: 50051
+    port: 50050  # Coordinator port for customer (base)
   query:
-    port: 50052
+    port: 50051
   stream:
     image: angzarr-stream:latest
     port: 1315
@@ -17,31 +18,53 @@ angzarr:
     port: 1316
     streamTimeoutSecs: 30
 
-# Business logic services
+# Business logic services (logic port = base + 3)
 services:
   customer:
     image: rs-customer:latest
-    port: 50100
+    port: 50053
     domain: customer
-  transaction:
-    image: rs-transaction:latest
-    port: 50101
-    domain: transaction
+  product:
+    image: rs-product:latest
+    port: 50063
+    domain: product
+  inventory:
+    image: rs-inventory:latest
+    port: 50073
+    domain: inventory
+  order:
+    image: rs-order:latest
+    port: 50083
+    domain: order
+  cart:
+    image: rs-cart:latest
+    port: 50093
+    domain: cart
+  fulfillment:
+    image: rs-fulfillment:latest
+    port: 50103
+    domain: fulfillment
 
-# Projector services
+# Projector services (logic port = base + 3)
 projectors:
-  logCustomer:
-    image: rs-projector-log-customer:latest
-    port: 50201
-  logTransaction:
-    image: rs-projector-log-transaction:latest
-    port: 50202
+  accounting:
+    image: rs-projector-accounting:latest
+    port: 50143
+  web:
+    image: rs-projector-web:latest
+    port: 50153
 
-# Saga services
+# Saga services (logic port = base + 3)
 sagas:
-  loyalty:
-    image: rs-saga-loyalty:latest
-    port: 50300
+  loyaltyEarn:
+    image: rs-saga-loyalty-earn:latest
+    port: 50113
+  fulfillment:
+    image: rs-saga-fulfillment:latest
+    port: 50123
+  cancellation:
+    image: rs-saga-cancellation:latest
+    port: 50133
 
 # Ingress configuration
 ingress:

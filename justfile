@@ -641,3 +641,37 @@ deploy-with-ingress: kind-create-registry infra-local images-load-ingress ingres
     @echo "  just grpc list"
     @echo "  just grpc send-command customer <uuid>"
     @echo "  just grpc query-events customer <uuid>"
+
+# === Release Management ===
+# Uses versionator CLI for semantic versioning with VERSION file
+
+# Bump patch version (0.1.0 -> 0.1.1)
+release-patch:
+    versionator patch increment
+    @uv run "{{TOP}}/scripts/sync_version.py"
+
+# Bump minor version (0.1.0 -> 0.2.0)
+release-minor:
+    versionator minor increment
+    @uv run "{{TOP}}/scripts/sync_version.py"
+
+# Bump major version (0.1.0 -> 1.0.0)
+release-major:
+    versionator major increment
+    @uv run "{{TOP}}/scripts/sync_version.py"
+
+# Create git tag from VERSION
+release-tag:
+    versionator commit
+    git push origin --tags
+
+# Full release workflow: bump version, commit, tag, push
+release TYPE="patch":
+    @just release-{{TYPE}}
+    git add VERSION Cargo.toml deploy/helm/angzarr/Chart.yaml
+    git commit -m "chore: release v$(cat VERSION)"
+    just release-tag
+
+# Show current version
+version:
+    @cat VERSION

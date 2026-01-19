@@ -1,20 +1,25 @@
 """Cancellation Saga gRPC server.
 
 Handles compensation when orders are cancelled.
+Supports both TCP and Unix Domain Socket (UDS) transports.
 """
 
 import os
-from concurrent import futures
+import sys
+from pathlib import Path
 
 import grpc
 import structlog
-from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from google.protobuf.any_pb2 import Any
+
+# Add common to path for server utilities
+sys.path.insert(0, str(Path(__file__).parent.parent / "common"))
 
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
 from proto import domains_pb2 as domains
 
+# Configure structlog
 structlog.configure(
     processors=[
         structlog.stdlib.add_log_level,
@@ -102,21 +107,38 @@ class SagaServicer(angzarr_pb2_grpc.SagaServicer):
 
 
 def serve() -> None:
-    port = os.environ.get("PORT", "50309")
+    """Start the gRPC server.
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    angzarr_pb2_grpc.add_SagaServicer_to_server(SagaServicer(), server)
+    Supports both TCP and UDS transports based on environment variables.
+    """
+    os.environ.setdefault("SAGA_NAME", SAGA_NAME)
 
-    health_servicer = health.HealthServicer()
-    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    try:
+        from server import run_server
+        run_server(
+            angzarr_pb2_grpc.add_SagaServicer_to_server,
+            SagaServicer(),
+            service_name="Saga",
+            domain=SAGA_NAME,
+            default_port="50309",
+            logger=logger,
+        )
+    except ImportError:
+        from concurrent import futures
+        from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
-    server.add_insecure_port(f"[::]:{port}")
+        port = os.environ.get("PORT", "50309")
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        angzarr_pb2_grpc.add_SagaServicer_to_server(SagaServicer(), server)
 
-    logger.info("saga_server_started", saga=SAGA_NAME, port=port, source_domain=SOURCE_DOMAIN)
+        health_servicer = health.HealthServicer()
+        health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+        health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
 
-    server.start()
-    server.wait_for_termination()
+        server.add_insecure_port(f"[::]:{port}")
+        logger.info("saga_server_started", saga=SAGA_NAME, port=port, source_domain=SOURCE_DOMAIN, transport="tcp")
+        server.start()
+        server.wait_for_termination()
 
 
 if __name__ == "__main__":

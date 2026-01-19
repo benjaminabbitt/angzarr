@@ -12,6 +12,7 @@ members = [
     "examples/rust/saga-fulfillment",
     "examples/rust/saga-cancellation",
     "examples/rust/projectors/accounting",
+    "examples/rust/projectors/logging",
     "examples/rust/projectors/web",
 ]
 resolver = "2"
@@ -22,7 +23,7 @@ prost = "0.13"
 prost-types = "0.13"
 tonic = "0.12"
 tonic-health = "0.12"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["net"] }
 
 # Async
 tokio = { version = "1", features = ["full"] }
@@ -66,14 +67,22 @@ default = ["amqp", "mongodb"]
 # Messaging backends
 amqp = ["dep:lapin", "dep:deadpool-lapin"]
 kafka = ["dep:rdkafka"]
+channel = []  # In-memory event bus, no external deps
 
 # Storage backends
 mongodb = ["dep:mongodb"]
-postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder"]
+postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/postgres", "sea-query-binder/sqlx-postgres"]
+sqlite = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/sqlite", "sea-query-binder/sqlx-sqlite"]
 redis = ["dep:redis"]
 
+# Testing utilities
+lossy = ["dep:rand"]
+
+# Convenience
+embedded = ["sqlite", "channel"]
+
 # All features for development
-full = ["amqp", "kafka", "mongodb", "postgres", "redis"]
+full = ["amqp", "kafka", "channel", "mongodb", "postgres", "sqlite", "redis", "lossy"]
 
 [dependencies]
 # gRPC
@@ -81,15 +90,17 @@ tonic = "0.12"
 tonic-health = "0.12"
 prost = "0.13"
 prost-types = "0.13"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["net"] }
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# Storage - Query builder approach (like jOOQ) - optional for postgres
+# Storage - Query builder approach (like jOOQ) - optional for postgres/sqlite
 sea-query = { version = "0.32", optional = true }
-sea-query-binder = { version = "0.7", features = ["sqlx-postgres"], optional = true }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
+sea-query-binder = { version = "0.7", optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio"], optional = true }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -125,12 +136,19 @@ redis = { version = "0.27", features = ["aio", "connection-manager", "tokio-comp
 # Kafka (optional)
 rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"], optional = true }
 
+# Random (for lossy testing bus)
+rand = { version = "0.9", optional = true }
+
 # Kubernetes API (for gateway service discovery)
 kube = { version = "0.98", features = ["runtime", "client"] }
 k8s-openapi = { version = "0.24", features = ["v1_29"] }
 
 # DNS resolution (for SRV-based service discovery)
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
+
+# Unix process management (for embedded orchestrator)
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process", "fs"] }
 
 [build-dependencies]
 tonic-build = "0.12"
@@ -158,6 +176,10 @@ path = "src/bin/angzarr_stream.rs"
 [[bin]]
 name = "angzarr-log"
 path = "src/bin/angzarr_log.rs"
+
+[[bin]]
+name = "angzarr_embedded"
+path = "src/bin/angzarr_embedded.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -194,6 +216,10 @@ required-features = ["redis"]
 [[test]]
 name = "storage_postgres"
 required-features = ["postgres"]
+
+[[test]]
+name = "storage_sqlite"
+required-features = ["sqlite"]
 
 # === Build Profiles ===
 
@@ -237,6 +263,17 @@ incremental = true
 # Release profile - slow compilation, fast runtime (for production)
 [profile.release]
 opt-level = 3
-lto = "thin"        # Link-time optimization (thin = faster than fat)
-codegen-units = 1   # Better optimization
+lto = "fat"         # Maximum link-time optimization
+codegen-units = 1   # Single codegen unit for best optimization
 strip = true        # Strip symbols for smaller binaries
+panic = "abort"     # Abort on panic (smaller binaries, no unwinding)
+
+# Production profile - maximum optimization with all features
+# Usage: cargo build --profile production --features full
+[profile.production]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+opt-level = 3

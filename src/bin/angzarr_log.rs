@@ -12,35 +12,34 @@
 //! ```
 //!
 //! ## Configuration
-//! - ANGZARR_PORT: Port for gRPC services (default: 50051)
+//! - transport.type: "tcp" or "uds"
+//! - transport.tcp.port: Port for TCP (default: 50051)
+//! - transport.uds.base_path: Base path for UDS sockets
 //! - DESCRIPTOR_PATH: Path to FileDescriptorSet for JSON decoding (optional)
 //!
 //! If DESCRIPTOR_PATH is set, events are decoded to JSON using prost-reflect.
 //! Otherwise, events are displayed as hex dumps with type information.
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
-use tracing::info;
+use tracing::{error, info};
 
+use angzarr::config::Config;
 use angzarr::handlers::projectors::log::{LogService, LogServiceHandle};
 use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
+use angzarr::transport::serve_with_transport;
 use angzarr::utils::bootstrap::init_tracing;
-
-const DEFAULT_PORT: u16 = 50051;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    let port = std::env::var("ANGZARR_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
-
-    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+    let config = Config::load().map_err(|e| {
+        error!("Failed to load configuration: {}", e);
+        e
+    })?;
 
     // Create log service
     let log_service = Arc::new(LogService::new());
@@ -52,13 +51,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_serving::<ProjectorCoordinatorServer<LogServiceHandle>>()
         .await;
 
-    info!(port = %port, "angzarr-log started");
+    info!("angzarr-log started");
 
-    Server::builder()
+    let router = Server::builder()
         .add_service(health_service)
-        .add_service(ProjectorCoordinatorServer::new(projector_service))
-        .serve(addr)
-        .await?;
+        .add_service(ProjectorCoordinatorServer::new(projector_service));
+
+    serve_with_transport(router, &config.transport, "log", None).await?;
 
     Ok(())
 }

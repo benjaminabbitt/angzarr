@@ -11,7 +11,22 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
+}
+
+# Auto-generate password if not provided
+resource "random_password" "redis" {
+  count   = var.password == null ? 1 : 0
+  length  = 32
+  special = false
+}
+
+locals {
+  password = var.password != null ? var.password : random_password.redis[0].result
 }
 
 # Redis via Bitnami Helm chart (OCI registry)
@@ -38,7 +53,7 @@ resource "helm_release" "redis" {
       }
       auth = {
         enabled  = var.auth_enabled
-        password = var.password
+        password = local.password
       }
       master = {
         persistence = {
@@ -90,9 +105,9 @@ resource "kubernetes_secret" "redis_credentials" {
   }
 
   data = {
-    password = var.password
+    password = local.password
     host     = local.host
-    port     = local.port
+    port     = tostring(local.port)
     uri      = local.uri
   }
 }
@@ -105,7 +120,7 @@ locals {
   # Redis URI format
   uri = var.managed ? var.external_uri : (
     var.auth_enabled
-    ? "redis://:${var.password}@${local.host}:${local.port}"
+    ? "redis://:${local.password}@${local.host}:${local.port}"
     : "redis://${local.host}:${local.port}"
   )
 }

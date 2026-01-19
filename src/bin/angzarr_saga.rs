@@ -1,35 +1,38 @@
 //! angzarr-saga: Saga sidecar
 //!
-//! Kubernetes sidecar for saga services. Subscribes to events from AMQP,
-//! forwards to saga for processing, and executes resulting commands via
-//! the command handler.
+//! Kubernetes sidecar for saga services. Subscribes to events from the
+//! message bus (AMQP, Kafka, or IPC), forwards to saga for processing,
+//! and executes resulting commands via the command handler.
 //!
 //! ## Architecture
 //! ```text
-//! [AMQP Events] -> [angzarr-saga] -> [Saga Service]
+//! [Event Bus] -> [angzarr-saga] -> [Saga Service]
 //!                        |                 |
 //!                        v                 v
 //!              [angzarr-entity] <-- [Commands]
 //!                        |
 //!                        v
-//!                  [AMQP Events] -> [angzarr-stream] -> [Client]
+//!                  [Event Bus] -> [angzarr-stream] -> [Client]
 //! ```
 //!
 //! ## Configuration
 //! - TARGET_ADDRESS: Saga gRPC address (e.g., "localhost:50051")
-//! - COMMAND_ADDRESS: Command handler address for executing saga commands (e.g., "angzarr-entity:1313")
-//! - AMQP_URL: RabbitMQ connection string
-//! - AMQP_DOMAIN: Domain to subscribe to (or "#" for all)
+//! - TARGET_COMMAND: Optional command to spawn saga (embedded mode)
+//! - COMMAND_ADDRESS: Command handler address for executing saga commands
+//! - MESSAGING_TYPE: amqp, kafka, or ipc
+
+use std::time::Duration;
 
 use tracing::{error, info, warn};
 
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
-
-use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, MessagingType};
+use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::Config;
 use angzarr::handlers::core::saga::SagaEventHandler;
+use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::saga_coordinator_client::SagaCoordinatorClient;
+use angzarr::transport::connect_to_address;
+use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,36 +50,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .ok_or("Saga sidecar requires 'target' configuration")?;
 
-    info!("Target saga: {}", target.address);
+    // Extract saga name for socket naming
+    let saga_name = target
+        .domain
+        .as_deref()
+        .unwrap_or("saga");
+
+    info!("Target saga: {} (name: {})", target.address, saga_name);
+
+    // Spawn saga process if command is configured (embedded mode)
+    let _managed_process = if let Some(ref command) = target.command {
+        let env = ProcessEnv::from_transport(&config.transport, "saga", Some(saga_name));
+        let process = ManagedProcess::spawn(
+            command,
+            target.working_dir.as_deref(),
+            &env,
+        )
+        .await?;
+
+        // Wait for the service to be ready
+        info!("Waiting for saga to be ready...");
+        wait_for_ready(
+            &target.address,
+            Duration::from_secs(30),
+            Duration::from_millis(500),
+        )
+        .await?;
+
+        Some(process)
+    } else {
+        None
+    };
 
     let messaging = config
         .messaging
         .as_ref()
-        .filter(|m| m.messaging_type == MessagingType::Amqp)
-        .ok_or("Saga sidecar requires 'messaging.type: amqp' configuration")?;
+        .ok_or("Saga sidecar requires 'messaging' configuration")?;
 
-    let amqp_config = &messaging.amqp;
-
-    let domains = amqp_config
-        .domains
-        .clone()
-        .or_else(|| amqp_config.domain.as_ref().map(|d| vec![d.clone()]))
-        .unwrap_or_else(|| vec!["#".to_string()]);
-
-    info!("Subscribing to AMQP events for domains: {:?}", domains);
+    info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
 
     // Connect to saga service with retry
-    let saga_address = format!("http://{}", target.address);
+    let saga_addr = target.address.clone();
     let saga_client = connect_with_retry("saga", &target.address, || {
-        SagaCoordinatorClient::connect(saga_address.clone())
+        let addr = saga_addr.clone();
+        async move {
+            let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
+            Ok::<_, String>(SagaCoordinatorClient::new(channel))
+        }
     })
     .await?;
 
     // Connect to command handler if configured (for executing saga-produced commands)
     let command_handler = if let Ok(command_address) = std::env::var("COMMAND_ADDRESS") {
-        let cmd_url = format!("http://{}", command_address);
+        let cmd_addr = command_address.clone();
         let client = connect_with_retry("command handler", &command_address, || {
-            AggregateCoordinatorClient::connect(cmd_url.clone())
+            let addr = cmd_addr.clone();
+            async move {
+                let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
+                Ok::<_, String>(AggregateCoordinatorClient::new(channel))
+            }
         })
         .await?;
         Some(client)
@@ -85,18 +117,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // Create AMQP publisher for saga-produced event books
-    let publisher_config = AmqpConfig::publisher(&amqp_config.url);
-    let publisher = AmqpEventBus::new(publisher_config).await?;
+    // Create publisher for saga-produced event books
+    let publisher = init_event_bus(messaging, EventBusMode::Publisher).await
+        .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
-    // Create AMQP subscriber
-    let queue_name = format!("saga-{}", std::process::id());
-    let subscriber_config = if domains.len() == 1 && domains[0] != "#" {
-        AmqpConfig::subscriber(&amqp_config.url, &queue_name, &domains[0])
-    } else {
-        AmqpConfig::subscriber_all(&amqp_config.url, &queue_name)
-    };
-    let subscriber = AmqpEventBus::new(subscriber_config).await?;
+    // Create subscriber
+    let queue_name = format!("saga-{}", saga_name);
+    let subscriber_mode = EventBusMode::SubscriberAll { queue: queue_name };
+    let subscriber = init_event_bus(messaging, subscriber_mode).await
+        .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
     // Create handler with or without command execution capability
     let handler = if let Some(cmd_handler) = command_handler {
@@ -105,8 +134,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SagaEventHandler::new(saga_client, publisher)
     };
 
-    subscriber.subscribe(Box::new(handler)).await?;
-    subscriber.start_consuming().await?;
+    subscriber.subscribe(Box::new(handler)).await
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+    // Start consuming (no-op for AMQP/Kafka, spawns reader for IPC)
+    subscriber.start_consuming().await
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
     info!("Saga sidecar running, press Ctrl+C to exit");
 

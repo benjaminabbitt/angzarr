@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
+use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 
 /// Extract domain and root UUID from an EventBook.
 fn extract_cover(book: &EventBook) -> Result<(&str, Uuid)> {

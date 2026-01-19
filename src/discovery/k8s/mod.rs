@@ -96,10 +96,69 @@ pub struct DiscoveredService {
 }
 
 impl DiscoveredService {
-    /// Get the gRPC endpoint URL.
+    /// Get the gRPC endpoint URL or path.
+    ///
+    /// For TCP endpoints, returns `http://address:port`.
+    /// For UDS endpoints (starting with `/`), returns the path as-is.
     pub fn grpc_url(&self) -> String {
-        format!("http://{}:{}", self.service_address, self.port)
+        if self.service_address.starts_with('/') {
+            // UDS path - return as-is
+            self.service_address.clone()
+        } else {
+            // TCP address
+            format!("http://{}:{}", self.service_address, self.port)
+        }
     }
+}
+
+/// Get or create a cached gRPC client connection.
+///
+/// Checks the cache first, creates a new connection if not found,
+/// and caches the result for future use.
+///
+/// Supports both TCP (http://host:port) and UDS (/path/to/socket.sock) addresses.
+async fn get_or_create_client<C, F>(
+    cache: &RwLock<HashMap<String, C>>,
+    service: &DiscoveredService,
+    client_type: &str,
+    connect_fn: F,
+) -> Result<C, DiscoveryError>
+where
+    C: Clone,
+    F: FnOnce(Channel) -> C,
+{
+    let url = service.grpc_url();
+
+    // Check cache
+    {
+        let clients = cache.read().await;
+        if let Some(client) = clients.get(&url) {
+            debug!(service = %service.name, client_type = %client_type, "Using cached client");
+            return Ok(client.clone());
+        }
+    }
+
+    // Create new connection - handle both TCP and UDS
+    info!(service = %service.name, url = %url, client_type = %client_type, "Creating client");
+    let channel = crate::transport::connect_to_address(&url)
+        .await
+        .map_err(|e| DiscoveryError::ConnectionFailed {
+            service: service.name.clone(),
+            address: url.clone(),
+            message: e.to_string(),
+        })?;
+
+    let client = connect_fn(channel);
+
+    // Cache
+    cache.write().await.insert(url, client.clone());
+
+    Ok(client)
+}
+
+/// Create an empty RwLock-wrapped HashMap.
+fn empty_cache<K, V>() -> Arc<RwLock<HashMap<K, V>>> {
+    Arc::new(RwLock::new(HashMap::new()))
 }
 
 /// K8s label-based service discovery.
@@ -129,37 +188,38 @@ impl ServiceDiscovery {
         Ok(Self {
             client: Some(client),
             namespace,
-            aggregates: Arc::new(RwLock::new(HashMap::new())),
-            projectors: Arc::new(RwLock::new(HashMap::new())),
-            sagas: Arc::new(RwLock::new(HashMap::new())),
-            aggregate_clients: Arc::new(RwLock::new(HashMap::new())),
-            event_query_clients: Arc::new(RwLock::new(HashMap::new())),
-            projector_clients: Arc::new(RwLock::new(HashMap::new())),
-            saga_clients: Arc::new(RwLock::new(HashMap::new())),
+            aggregates: empty_cache(),
+            projectors: empty_cache(),
+            sagas: empty_cache(),
+            aggregate_clients: empty_cache(),
+            event_query_clients: empty_cache(),
+            projector_clients: empty_cache(),
+            saga_clients: empty_cache(),
         })
     }
 
-    /// Create a test instance without K8s client.
+    /// Create a static instance without K8s client.
     ///
-    /// Use `register_aggregate_for_test` to add services manually.
-    #[cfg(test)]
-    pub fn new_test() -> Self {
+    /// Use `register_aggregate` to add services manually.
+    /// Useful for embedded mode and testing.
+    pub fn new_static() -> Self {
         Self {
             client: None,
-            namespace: "test".to_string(),
-            aggregates: Arc::new(RwLock::new(HashMap::new())),
-            projectors: Arc::new(RwLock::new(HashMap::new())),
-            sagas: Arc::new(RwLock::new(HashMap::new())),
-            aggregate_clients: Arc::new(RwLock::new(HashMap::new())),
-            event_query_clients: Arc::new(RwLock::new(HashMap::new())),
-            projector_clients: Arc::new(RwLock::new(HashMap::new())),
-            saga_clients: Arc::new(RwLock::new(HashMap::new())),
+            namespace: "static".to_string(),
+            aggregates: empty_cache(),
+            projectors: empty_cache(),
+            sagas: empty_cache(),
+            aggregate_clients: empty_cache(),
+            event_query_clients: empty_cache(),
+            projector_clients: empty_cache(),
+            saga_clients: empty_cache(),
         }
     }
 
-    /// Register an aggregate service for testing.
-    #[cfg(test)]
-    pub async fn register_aggregate_for_test(&self, domain: &str, address: &str, port: u16) {
+    /// Register an aggregate service manually.
+    ///
+    /// Used for static discovery in embedded mode.
+    pub async fn register_aggregate(&self, domain: &str, address: &str, port: u16) {
         let service = DiscoveredService {
             name: format!("{}-aggregate", domain),
             service_address: address.to_string(),
@@ -167,7 +227,65 @@ impl ServiceDiscovery {
             domain: Some(domain.to_string()),
             source_domain: None,
         };
+        info!(
+            domain = %domain,
+            address = %address,
+            port = port,
+            "Registered static aggregate"
+        );
         self.aggregates
+            .write()
+            .await
+            .insert(service.name.clone(), service);
+    }
+
+    /// Register a projector service manually.
+    pub async fn register_projector(&self, name: &str, domain: &str, address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: Some(domain.to_string()),
+            source_domain: None,
+        };
+        info!(
+            name = %name,
+            domain = %domain,
+            address = %address,
+            port = port,
+            "Registered static projector"
+        );
+        self.projectors
+            .write()
+            .await
+            .insert(service.name.clone(), service);
+    }
+
+    /// Register a saga service manually.
+    pub async fn register_saga(
+        &self,
+        name: &str,
+        domain: &str,
+        source_domain: &str,
+        address: &str,
+        port: u16,
+    ) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: Some(domain.to_string()),
+            source_domain: Some(source_domain.to_string()),
+        };
+        info!(
+            name = %name,
+            domain = %domain,
+            source_domain = %source_domain,
+            address = %address,
+            port = port,
+            "Registered static saga"
+        );
+        self.sagas
             .write()
             .await
             .insert(service.name.clone(), service);
@@ -392,31 +510,13 @@ impl ServiceDiscovery {
         &self,
         service: &DiscoveredService,
     ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError> {
-        let url = service.grpc_url();
-
-        // Check cache
-        {
-            let clients = self.aggregate_clients.read().await;
-            if let Some(client) = clients.get(&url) {
-                debug!(service = %service.name, "Using cached aggregate client");
-                return Ok(client.clone());
-            }
-        }
-
-        // Create new connection
-        info!(service = %service.name, url = %url, "Creating aggregate client");
-        let client = AggregateCoordinatorClient::connect(url.clone())
-            .await
-            .map_err(|e| DiscoveryError::ConnectionFailed {
-                service: service.name.clone(),
-                address: url.clone(),
-                message: e.to_string(),
-            })?;
-
-        // Cache
-        self.aggregate_clients.write().await.insert(url, client.clone());
-
-        Ok(client)
+        get_or_create_client(
+            &self.aggregate_clients,
+            service,
+            "aggregate",
+            AggregateCoordinatorClient::new,
+        )
+        .await
     }
 
     /// Get event query client by domain.
@@ -445,34 +545,13 @@ impl ServiceDiscovery {
         &self,
         service: &DiscoveredService,
     ) -> Result<EventQueryClient<Channel>, DiscoveryError> {
-        let url = service.grpc_url();
-
-        // Check cache
-        {
-            let clients = self.event_query_clients.read().await;
-            if let Some(client) = clients.get(&url) {
-                debug!(service = %service.name, "Using cached event query client");
-                return Ok(client.clone());
-            }
-        }
-
-        // Create new connection
-        info!(service = %service.name, url = %url, "Creating event query client");
-        let client = EventQueryClient::connect(url.clone())
-            .await
-            .map_err(|e| DiscoveryError::ConnectionFailed {
-                service: service.name.clone(),
-                address: url.clone(),
-                message: e.to_string(),
-            })?;
-
-        // Cache
-        self.event_query_clients
-            .write()
-            .await
-            .insert(url, client.clone());
-
-        Ok(client)
+        get_or_create_client(
+            &self.event_query_clients,
+            service,
+            "event_query",
+            EventQueryClient::new,
+        )
+        .await
     }
 
     /// Get all aggregate domains.
@@ -517,31 +596,13 @@ impl ServiceDiscovery {
         &self,
         service: &DiscoveredService,
     ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError> {
-        let url = service.grpc_url();
-
-        // Check cache
-        {
-            let clients = self.projector_clients.read().await;
-            if let Some(client) = clients.get(&url) {
-                debug!(service = %service.name, "Using cached projector client");
-                return Ok(client.clone());
-            }
-        }
-
-        // Create new connection
-        info!(service = %service.name, url = %url, "Creating projector client");
-        let client = ProjectorCoordinatorClient::connect(url.clone())
-            .await
-            .map_err(|e| DiscoveryError::ConnectionFailed {
-                service: service.name.clone(),
-                address: url.clone(),
-                message: e.to_string(),
-            })?;
-
-        // Cache
-        self.projector_clients.write().await.insert(url, client.clone());
-
-        Ok(client)
+        get_or_create_client(
+            &self.projector_clients,
+            service,
+            "projector",
+            ProjectorCoordinatorClient::new,
+        )
+        .await
     }
 
     /// Get saga coordinator clients matching source domain.
@@ -580,31 +641,13 @@ impl ServiceDiscovery {
         &self,
         service: &DiscoveredService,
     ) -> Result<SagaCoordinatorClient<Channel>, DiscoveryError> {
-        let url = service.grpc_url();
-
-        // Check cache
-        {
-            let clients = self.saga_clients.read().await;
-            if let Some(client) = clients.get(&url) {
-                debug!(service = %service.name, "Using cached saga client");
-                return Ok(client.clone());
-            }
-        }
-
-        // Create new connection
-        info!(service = %service.name, url = %url, "Creating saga client");
-        let client = SagaCoordinatorClient::connect(url.clone())
-            .await
-            .map_err(|e| DiscoveryError::ConnectionFailed {
-                service: service.name.clone(),
-                address: url.clone(),
-                message: e.to_string(),
-            })?;
-
-        // Cache
-        self.saga_clients.write().await.insert(url, client.clone());
-
-        Ok(client)
+        get_or_create_client(
+            &self.saga_clients,
+            service,
+            "saga",
+            SagaCoordinatorClient::new,
+        )
+        .await
     }
 
     /// Check if any aggregates are available.

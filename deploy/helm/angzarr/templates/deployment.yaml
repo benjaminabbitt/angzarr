@@ -73,6 +73,7 @@ spec:
         {{- end }}
       containers:
         # Main container: Business logic application
+        # Port scheme: base+3 = client logic, base+4 = client debug
         - name: {{ .name }}
           image: "{{ .image.repository }}:{{ .image.tag }}"
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
@@ -80,8 +81,8 @@ spec:
             - name: grpc
               containerPort: {{ .port }}
               protocol: TCP
-            {{- if $.Values.debug.enabled }}
-            - name: debug
+            {{- if $.Values.ports.clientDebug.enabled }}
+            - name: client-debug
               containerPort: {{ add .port 1 }}
               protocol: TCP
             {{- end }}
@@ -122,6 +123,7 @@ spec:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
         # Sidecar: Angzarr entity sidecar
+        # Port scheme: base+0 = coordinator, base+2 = coordinator debug
         - name: angzarr
           securityContext:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
@@ -134,9 +136,9 @@ spec:
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
-            {{- if $.Values.debug.enabled }}
-            - name: debug
-              containerPort: {{ add $.Values.service.aggregatePort 1 }}
+            {{- if $.Values.ports.coordinatorDebug.enabled }}
+            - name: coord-debug
+              containerPort: {{ add $.Values.service.aggregatePort 2 }}
               protocol: TCP
             {{- end }}
           env:
@@ -265,6 +267,7 @@ spec:
         {{- end }}
       containers:
         # Main container: Projector application
+        # Port scheme: base+3 = client logic, base+4 = client debug
         - name: {{ .name }}
           image: "{{ .image.repository }}:{{ .image.tag }}"
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
@@ -272,8 +275,8 @@ spec:
             - name: grpc
               containerPort: {{ .port | default 50051 }}
               protocol: TCP
-            {{- if $.Values.debug.enabled }}
-            - name: debug
+            {{- if $.Values.ports.clientDebug.enabled }}
+            - name: client-debug
               containerPort: {{ add (.port | default 50051) 1 }}
               protocol: TCP
             {{- end }}
@@ -315,7 +318,7 @@ spec:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
         # Sidecar: Angzarr projector sidecar
-        # Uses environment variables for configuration (no config file)
+        # Port scheme: base+0 = coordinator, base+2 = coordinator debug
         - name: angzarr
           securityContext:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
@@ -325,9 +328,9 @@ spec:
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
-            {{- if $.Values.debug.enabled }}
-            - name: debug
-              containerPort: {{ add $.Values.service.queryPort 1 }}
+            {{- if $.Values.ports.coordinatorDebug.enabled }}
+            - name: coord-debug
+              containerPort: {{ add $.Values.service.queryPort 2 }}
               protocol: TCP
             {{- end }}
           env:
@@ -452,6 +455,7 @@ spec:
         {{- end }}
       containers:
         # Main container: Saga application
+        # Port scheme: base+3 = client logic, base+4 = client debug
         - name: {{ .name }}
           image: "{{ .image.repository }}:{{ .image.tag }}"
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
@@ -459,8 +463,8 @@ spec:
             - name: grpc
               containerPort: {{ .port | default 50051 }}
               protocol: TCP
-            {{- if $.Values.debug.enabled }}
-            - name: debug
+            {{- if $.Values.ports.clientDebug.enabled }}
+            - name: client-debug
               containerPort: {{ add (.port | default 50051) 1 }}
               protocol: TCP
             {{- end }}
@@ -501,7 +505,7 @@ spec:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
         # Sidecar: Angzarr saga sidecar
-        # Uses environment variables for configuration (no config file)
+        # Port scheme: base+0 = coordinator, base+2 = coordinator debug
         - name: angzarr
           securityContext:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
@@ -514,9 +518,9 @@ spec:
             - name: query
               containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
-            {{- if $.Values.debug.enabled }}
-            - name: debug
-              containerPort: {{ add $.Values.service.aggregatePort 1 }}
+            {{- if $.Values.ports.coordinatorDebug.enabled }}
+            - name: coord-debug
+              containerPort: {{ add $.Values.service.aggregatePort 2 }}
               protocol: TCP
             {{- end }}
           env:
@@ -740,9 +744,9 @@ spec:
             - name: grpc
               containerPort: {{ .Values.infrastructure.gateway.port }}
               protocol: TCP
-            {{- if .Values.debug.enabled }}
-            - name: debug
-              containerPort: {{ add .Values.infrastructure.gateway.port 1 }}
+            {{- if .Values.ports.coordinatorDebug.enabled }}
+            - name: coord-debug
+              containerPort: {{ add .Values.infrastructure.gateway.port 2 }}
               protocol: TCP
             {{- end }}
           env:

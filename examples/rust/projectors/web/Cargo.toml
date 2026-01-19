@@ -27,8 +27,8 @@ sea-query-binder.workspace = true
 uuid.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 hex.workspace = true
+tokio-stream.workspace = true
 
 [dev-dependencies]
 cucumber.workspace = true
 futures.workspace = true
-tokio-stream.workspace = true

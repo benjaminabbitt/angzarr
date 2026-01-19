@@ -1,0 +1,13 @@
+# Customer aggregate sidecar configuration (embedded mode)
+storage:
+  type: sqlite
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+target:
+  address: /tmp/angzarr/business-customer.sock
+  domain: customer
+  command: uv run --directory customer python server.py

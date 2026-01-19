@@ -32,8 +32,9 @@ variable "auth_enabled" {
 }
 
 variable "password" {
-  description = "Redis password"
+  description = "Redis password (auto-generated if not provided)"
   type        = string
+  default     = null
   sensitive   = true
 }
 

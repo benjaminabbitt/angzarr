@@ -16,6 +16,17 @@ output "uri" {
   sensitive   = true
 }
 
+output "username" {
+  description = "Message broker username"
+  value       = var.username
+}
+
+output "password" {
+  description = "Message broker password (generated or provided)"
+  value       = local.password
+  sensitive   = true
+}
+
 output "secret_name" {
   description = "Kubernetes secret containing credentials"
   value       = kubernetes_secret.messaging_credentials.metadata[0].name

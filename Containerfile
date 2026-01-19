@@ -6,6 +6,8 @@
 #
 # Dev uses native glibc target + debian runtime (no cross-compilation)
 # Release uses musl static target + distroless runtime (smallest images)
+#
+# Multi-arch release: podman build --platform linux/amd64,linux/arm64 --target angzarr-aggregate ...
 
 # =============================================================================
 # Dev builder - native glibc (fast compilation)
@@ -41,9 +43,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp target/container-dev/angzarr-* /tmp/
 
 # =============================================================================
-# Release builder - musl static (small images)
+# Release builder - musl static, multi-arch (small images, all features)
 # =============================================================================
 FROM docker.io/library/rust:1.92-alpine AS builder-release
+
+# Build argument for target architecture (set by buildx/podman)
+ARG TARGETARCH
 
 RUN apk add --no-cache \
     musl-dev \
@@ -51,9 +56,16 @@ RUN apk add --no-cache \
     protoc \
     openssl-dev \
     openssl-libs-static \
-    pkgconfig
+    pkgconfig \
+    cmake \
+    make \
+    g++ \
+    perl \
+    linux-headers \
+    cyrus-sasl-dev
 
-RUN rustup target add x86_64-unknown-linux-musl
+# Install targets for both architectures
+RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
@@ -70,16 +82,23 @@ RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
     echo "fn main() {}" > tests/container_integration.rs && \
     echo "fn main() {}" > tests/mongodb_debug.rs
 
+# Build with full features and production optimization
+# Uses TARGETARCH to select the correct musl target
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    cargo build --release --target x86_64-unknown-linux-musl \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        TARGET="aarch64-unknown-linux-musl"; \
+    else \
+        TARGET="x86_64-unknown-linux-musl"; \
+    fi && \
+    cargo build --profile production --target $TARGET --features full \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-stream \
     --bin angzarr-gateway \
     --bin angzarr-log && \
-    cp target/x86_64-unknown-linux-musl/release/angzarr-* /tmp/
+    cp target/$TARGET/production/angzarr-* /tmp/
 
 # =============================================================================
 # Runtime bases
@@ -131,7 +150,7 @@ EXPOSE 50051
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Release images (slow builds, minimal runtime)
+# Release images (slow builds, minimal runtime, all features)
 # =============================================================================
 FROM runtime-release-base AS angzarr-aggregate
 COPY --from=builder-release /tmp/angzarr-aggregate ./server

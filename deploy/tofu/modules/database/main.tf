@@ -11,7 +11,30 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
+}
+
+# Auto-generate admin password if not provided
+resource "random_password" "admin" {
+  count   = var.admin_password == null ? 1 : 0
+  length  = 32
+  special = false
+}
+
+# Auto-generate user password if not provided
+resource "random_password" "user" {
+  count   = var.password == null ? 1 : 0
+  length  = 32
+  special = false
+}
+
+locals {
+  admin_password = var.admin_password != null ? var.admin_password : random_password.admin[0].result
+  user_password  = var.password != null ? var.password : random_password.user[0].result
 }
 
 # PostgreSQL via Bitnami Helm chart (OCI registry)
@@ -38,9 +61,9 @@ resource "helm_release" "postgresql" {
         tag        = "18"
       }
       auth = {
-        postgresPassword = var.admin_password
+        postgresPassword = local.admin_password
         username         = var.username
-        password         = var.password
+        password         = local.user_password
         database         = var.database
       }
       primary = {
@@ -94,9 +117,9 @@ resource "helm_release" "mongodb" {
       auth = {
         enabled      = true
         rootUser     = "root"
-        rootPassword = var.admin_password
+        rootPassword = local.admin_password
         usernames    = [var.username]
-        passwords    = [var.password]
+        passwords    = [local.user_password]
         databases    = [var.database]
       }
       persistence = {
@@ -130,12 +153,13 @@ resource "kubernetes_secret" "database_credentials" {
   }
 
   data = {
-    username = var.username
-    password = var.password
-    database = var.database
-    host     = local.host
-    port     = local.port
-    uri      = local.uri
+    username       = var.username
+    password       = local.user_password
+    admin_password = local.admin_password
+    database       = var.database
+    host           = local.host
+    port           = tostring(local.port)
+    uri            = local.uri
   }
 }
 
@@ -150,7 +174,7 @@ locals {
     var.type == "mongodb" ? 27017 : var.external_port
   )
 
-  uri = var.type == "postgresql" ? "postgres://${var.username}:${var.password}@${local.host}:${local.port}/${var.database}" : (
-    var.type == "mongodb" ? "mongodb://${var.username}:${var.password}@${local.host}:${local.port}/${var.database}" : var.external_uri
+  uri = var.type == "postgresql" ? "postgres://${var.username}:${local.user_password}@${local.host}:${local.port}/${var.database}" : (
+    var.type == "mongodb" ? "mongodb://${var.username}:${local.user_password}@${local.host}:${local.port}/${var.database}" : var.external_uri
   )
 }

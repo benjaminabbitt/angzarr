@@ -12,6 +12,66 @@ Angzarr provides the infrastructure layer for event-sourced systems:
 
 Business logic runs as external gRPC services, so teams can use whatever language fits their needs.
 
+## Installation
+
+### Helm Chart (Recommended)
+
+```bash
+# Add and install from OCI registry
+helm install angzarr oci://ghcr.io/benjaminabbitt/charts/angzarr --version 0.1.0
+
+# With custom values
+helm install angzarr oci://ghcr.io/benjaminabbitt/charts/angzarr \
+  --version 0.1.0 \
+  --namespace angzarr \
+  --create-namespace \
+  -f values.yaml
+```
+
+### Container Images
+
+All images are published to GitHub Container Registry with multi-arch support (amd64/arm64):
+
+```bash
+# Pull individual images
+docker pull ghcr.io/benjaminabbitt/angzarr-aggregate:0.1.0
+docker pull ghcr.io/benjaminabbitt/angzarr-projector:0.1.0
+docker pull ghcr.io/benjaminabbitt/angzarr-saga:0.1.0
+docker pull ghcr.io/benjaminabbitt/angzarr-stream:0.1.0
+docker pull ghcr.io/benjaminabbitt/angzarr-gateway:0.1.0
+docker pull ghcr.io/benjaminabbitt/angzarr-log:0.1.0
+```
+
+### OpenTofu/Terraform Modules
+
+Deploy backing services (databases, messaging) with infrastructure-as-code:
+
+```hcl
+# Database (MongoDB or PostgreSQL)
+module "database" {
+  source = "github.com/benjaminabbitt/angzarr//deploy/tofu/modules/database?ref=v0.1.0"
+
+  type      = "mongodb"  # or "postgresql"
+  namespace = "angzarr"
+  # Passwords auto-generated if not provided
+}
+
+# Messaging (RabbitMQ or Kafka)
+module "messaging" {
+  source = "github.com/benjaminabbitt/angzarr//deploy/tofu/modules/messaging?ref=v0.1.0"
+
+  type      = "rabbitmq"  # or "kafka"
+  namespace = "angzarr"
+}
+
+# Redis (caching/sessions)
+module "redis" {
+  source = "github.com/benjaminabbitt/angzarr//deploy/tofu/modules/redis?ref=v0.1.0"
+
+  namespace = "angzarr"
+}
+```
+
 ## Documentation
 
 - **[docs/](docs/)** — Architecture guides and pattern documentation
@@ -114,7 +174,42 @@ just run
 cargo test --test acceptance
 ```
 
-### 3. Run with Kubernetes (Production-Like)
+### 3. Embedded Mode (Local Multi-Process)
+
+For development that mirrors production architecture without external infrastructure:
+
+```bash
+# Build with embedded features (SQLite + Channel bus + UDS)
+cargo build --features embedded
+
+# Copy the embedded config template
+cp config.embedded.yaml config.yaml
+
+# Start services (each in separate terminals)
+cargo run --features embedded --bin angzarr-aggregate
+cargo run --features embedded --bin angzarr-stream
+cargo run --features embedded --bin angzarr-log
+```
+
+Embedded mode uses:
+- **SQLite** for event storage (in-memory by default, or file-based)
+- **Channel event bus** for in-process pub/sub (replaces AMQP/Kafka)
+- **Unix domain sockets** for gRPC transport (replaces TCP ports)
+
+Socket files are created under `/tmp/angzarr/` by default:
+- `gateway.sock` - Command gateway
+- `aggregate.sock` - Aggregate sidecar
+- `stream.sock` - Event streaming
+- `log.sock` - Logging projector
+
+**Pivoting to production**: Change `config.yaml` settings to use:
+- `storage.type: postgres` (or mongodb)
+- `messaging.type: amqp` (or kafka)
+- `transport.type: tcp`
+
+The architecture remains identical—only the transport and infrastructure change.
+
+### 4. Run with Kubernetes (Production-Like)
 
 For realistic multi-service deployments:
 

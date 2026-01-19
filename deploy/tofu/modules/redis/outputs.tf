@@ -16,6 +16,12 @@ output "uri" {
   sensitive   = true
 }
 
+output "password" {
+  description = "Redis password (generated or provided)"
+  value       = local.password
+  sensitive   = true
+}
+
 output "secret_name" {
   description = "Kubernetes secret containing credentials"
   value       = kubernetes_secret.redis_credentials.metadata[0].name

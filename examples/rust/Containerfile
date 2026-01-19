@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --profile container-dev \
     -p customer --bin customer-server \
     -p product --bin product-server \
-    -p inventory@0.1.0 --bin inventory-server \
+    -p inventory-svc --bin inventory-server \
     -p order --bin order-server \
     -p cart --bin cart-server \
     -p fulfillment --bin fulfillment-server \
@@ -78,7 +78,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --target x86_64-unknown-linux-musl \
     -p customer --bin customer-server \
     -p product --bin product-server \
-    -p inventory@0.1.0 --bin inventory-server \
+    -p inventory-svc --bin inventory-server \
     -p order --bin order-server \
     -p cart --bin cart-server \
     -p fulfillment --bin fulfillment-server \
@@ -102,121 +102,125 @@ FROM scratch AS runtime-release-base
 WORKDIR /app
 
 # =============================================================================
-# Dev images - Domain Aggregates
+# Dev images - Domain Aggregates (logic port = base + 3)
+# See docs/port-conventions.md for port scheme
 # =============================================================================
 FROM runtime-dev-base AS customer-dev
 COPY --from=builder-dev /tmp/customer-server ./server
-ENV PORT=50055
-EXPOSE 50055
+ENV PORT=50053
+EXPOSE 50053
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS product-dev
 COPY --from=builder-dev /tmp/product-server ./server
-ENV PORT=50053
-EXPOSE 50053
+ENV PORT=50063
+EXPOSE 50063
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS inventory-dev
 COPY --from=builder-dev /tmp/inventory-server ./server
-ENV PORT=50054
-EXPOSE 50054
+ENV PORT=50073
+EXPOSE 50073
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS order-dev
 COPY --from=builder-dev /tmp/order-server ./server
-ENV PORT=50056
-EXPOSE 50056
+ENV PORT=50083
+EXPOSE 50083
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS cart-dev
 COPY --from=builder-dev /tmp/cart-server ./server
-ENV PORT=50057
-EXPOSE 50057
+ENV PORT=50093
+EXPOSE 50093
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS fulfillment-dev
 COPY --from=builder-dev /tmp/fulfillment-server ./server
-ENV PORT=50058
-EXPOSE 50058
+ENV PORT=50103
+EXPOSE 50103
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Dev images - Sagas
+# Dev images - Sagas (logic port = base + 3)
+# See docs/port-conventions.md for port scheme
 # =============================================================================
 FROM runtime-dev-base AS saga-loyalty-earn-dev
 COPY --from=builder-dev /tmp/saga-loyalty-earn-server ./server
-ENV PORT=50060
-EXPOSE 50060
+ENV PORT=50113
+EXPOSE 50113
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS saga-fulfillment-dev
 COPY --from=builder-dev /tmp/saga-fulfillment-server ./server
-ENV PORT=50061
-EXPOSE 50061
+ENV PORT=50123
+EXPOSE 50123
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS saga-cancellation-dev
 COPY --from=builder-dev /tmp/saga-cancellation-server ./server
-ENV PORT=50062
-EXPOSE 50062
+ENV PORT=50133
+EXPOSE 50133
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Release images - Domain Aggregates
+# Release images - Domain Aggregates (logic port = base + 3)
+# See docs/port-conventions.md for port scheme
 # =============================================================================
 FROM runtime-release-base AS customer
 COPY --from=builder-release /tmp/customer-server ./server
-ENV PORT=50055
-EXPOSE 50055
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS product
-COPY --from=builder-release /tmp/product-server ./server
 ENV PORT=50053
 EXPOSE 50053
 ENTRYPOINT ["./server"]
 
+FROM runtime-release-base AS product
+COPY --from=builder-release /tmp/product-server ./server
+ENV PORT=50063
+EXPOSE 50063
+ENTRYPOINT ["./server"]
+
 FROM runtime-release-base AS inventory
 COPY --from=builder-release /tmp/inventory-server ./server
-ENV PORT=50054
-EXPOSE 50054
+ENV PORT=50073
+EXPOSE 50073
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS order
 COPY --from=builder-release /tmp/order-server ./server
-ENV PORT=50056
-EXPOSE 50056
+ENV PORT=50083
+EXPOSE 50083
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS cart
 COPY --from=builder-release /tmp/cart-server ./server
-ENV PORT=50057
-EXPOSE 50057
+ENV PORT=50093
+EXPOSE 50093
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS fulfillment
 COPY --from=builder-release /tmp/fulfillment-server ./server
-ENV PORT=50058
-EXPOSE 50058
+ENV PORT=50103
+EXPOSE 50103
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Release images - Sagas
+# Release images - Sagas (logic port = base + 3)
+# See docs/port-conventions.md for port scheme
 # =============================================================================
 FROM runtime-release-base AS saga-loyalty-earn
 COPY --from=builder-release /tmp/saga-loyalty-earn-server ./server
-ENV PORT=50060
-EXPOSE 50060
+ENV PORT=50113
+EXPOSE 50113
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS saga-fulfillment
 COPY --from=builder-release /tmp/saga-fulfillment-server ./server
-ENV PORT=50061
-EXPOSE 50061
+ENV PORT=50123
+EXPOSE 50123
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS saga-cancellation
 COPY --from=builder-release /tmp/saga-cancellation-server ./server
-ENV PORT=50062
-EXPOSE 50062
+ENV PORT=50133
+EXPOSE 50133
 ENTRYPOINT ["./server"]

@@ -1,0 +1,81 @@
+# Embedded mode configuration for Rust examples
+# Run with: ANGZARR_CONFIG=config/embedded.yaml angzarr-embedded
+
+storage:
+  type: sqlite
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+messaging:
+  type: ipc
+  ipc:
+    base_path: /tmp/angzarr
+
+embedded:
+  aggregates:
+    - domain: customer
+      command: ../../target/debug/customer-server
+    - domain: product
+      command: ../../target/debug/product-server
+    - domain: inventory
+      command: ../../target/debug/inventory-server
+    - domain: order
+      command: ../../target/debug/order-server
+    - domain: cart
+      command: ../../target/debug/cart-server
+    - domain: fulfillment
+      command: ../../target/debug/fulfillment-server
+
+  sagas:
+    - domain: fulfillment
+      listen_domains: [order]
+      command: ../../target/debug/saga-fulfillment-server
+    - domain: cancellation
+      listen_domains: [order]
+      command: ../../target/debug/saga-cancellation-server
+    - domain: loyalty-earn
+      listen_domains: [fulfillment]
+      command: ../../target/debug/saga-loyalty-earn-server
+
+  projectors:
+    # Logging projectors (no external dependencies)
+    - name: logging
+      domain: customer
+      listen_domains: [customer]
+      command: ../../target/debug/projector-logging-server
+    - name: logging
+      domain: product
+      listen_domains: [product]
+      command: ../../target/debug/projector-logging-server
+    - name: logging
+      domain: inventory
+      listen_domains: [inventory]
+      command: ../../target/debug/projector-logging-server
+    - name: logging
+      domain: order
+      listen_domains: [order]
+      command: ../../target/debug/projector-logging-server
+    - name: logging
+      domain: cart
+      listen_domains: [cart]
+      command: ../../target/debug/projector-logging-server
+    - name: logging
+      domain: fulfillment
+      listen_domains: [fulfillment]
+      command: ../../target/debug/projector-logging-server
+    # PostgreSQL projectors (require DATABASE_URL - disabled by default)
+    # - name: accounting
+    #   domain: all
+    #   listen_domains: [order, customer]
+    #   command: ../../target/debug/projector-accounting-server
+    # - name: web
+    #   domain: all
+    #   listen_domains: [order, product]
+    #   command: ../../target/debug/projector-web-server
+
+  gateway:
+    enabled: true
+    port: 1350

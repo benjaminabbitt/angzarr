@@ -54,12 +54,44 @@ securityContext:
     drop:
       - ALL
 
-# Debug configuration
+# =============================================================================
+# Port Scheme (10-port ranges per component)
+# See docs/port-conventions.md for full documentation
+# =============================================================================
+# Offset | Purpose              | Typically Exposed
+# -------|----------------------|------------------
+#   0    | Coordinator gRPC     | Yes (always)
+#   1    | REST proxy           | Optional
+#   2    | Coordinator debug    | No (dev only)
+#   3    | Client logic gRPC    | No (internal)
+#   4    | Client debug         | No (dev only)
+#  5-8   | Reserved             | No
+#   9    | Control/Meta UI      | Optional
+#
+# Business domains by language (10-port ranges, base port):
+#   Rust: 50050+    Go: 50200+    Python: 50400+
+# =============================================================================
+
+# Port exposure configuration
+# WARNING: Do not enable debug ports in production
+ports:
+  # Expose coordinator debug port (base + 2)
+  coordinatorDebug:
+    enabled: false
+  # Expose client logic port (base + 3)
+  # WARNING: Generally should NOT be exposed - sidecar handles all external communication
+  clientLogic:
+    enabled: false
+  # Expose client debug port (base + 4)
+  clientDebug:
+    enabled: false
+  # Expose control/meta UI port (base + 9)
+  controlUI:
+    enabled: false
+
+# Debug access for backing services
 # WARNING: Do not enable in production
 debug:
-  # Enable remote debugging with gdb/gdbserver for sidecars
-  # Debug ports are calculated: port + 1 (e.g., business on 50005 -> debug on 50006)
-  enabled: false
   # Enable debug access for MongoDB (external test connections)
   mongodb:
     enabled: false
@@ -68,25 +100,6 @@ debug:
   rabbitmq:
     enabled: false
     nodePort: 30672
-
-# =============================================================================
-# Port Scheme (10-port ranges per component)
-# =============================================================================
-# x0: gRPC (sidecar)      x5: gRPC (business logic)
-# x1: debug (sidecar)     x6: debug (business logic)
-# x2: future (web/ui)
-#
-# Infrastructure sidecars (1310-1359):
-#   aggregate: 1310-1319    projector: 1320-1329    saga: 1330-1339
-#   stream: 1340-1349       gateway: 1350-1359
-#
-# Business domains by language (10-port ranges):
-#   Rust: 500xx    Go: 501xx    Python: 502xx
-#
-#   customer: 00-09     product: 10-19      inventory: 20-29
-#   order: 30-39        cart: 40-49         fulfillment: 50-59
-#   saga-loyalty-earn: 60-69    saga-fulfillment: 70-79    saga-cancellation: 80-89
-# =============================================================================
 
 # Angzarr gRPC ports
 service:

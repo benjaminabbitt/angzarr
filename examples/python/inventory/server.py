@@ -1,14 +1,17 @@
 """Inventory bounded context gRPC server.
 
 Handles stock levels and reservations.
+Supports both TCP and Unix Domain Socket (UDS) transports.
 """
 
-import os
-from concurrent import futures
+import sys
+from pathlib import Path
 
 import grpc
 import structlog
-from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+
+# Add common to path for server utilities
+sys.path.insert(0, str(Path(__file__).parent.parent / "common"))
 
 from angzarr import angzarr_pb2 as angzarr
 from angzarr import angzarr_pb2_grpc
@@ -23,6 +26,7 @@ from handlers import (
     handle_commit_reservation,
 )
 
+# Configure structlog
 structlog.configure(
     processors=[
         structlog.stdlib.add_log_level,
@@ -77,21 +81,37 @@ class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
 
 
 def serve() -> None:
-    port = os.environ.get("PORT", "50304")
+    """Start the gRPC server.
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    angzarr_pb2_grpc.add_AggregateServicer_to_server(AggregateServicer(), server)
+    Supports both TCP and UDS transports based on environment variables.
+    """
+    try:
+        from server import run_server
+        run_server(
+            angzarr_pb2_grpc.add_AggregateServicer_to_server,
+            AggregateServicer(),
+            service_name="Aggregate",
+            domain=DOMAIN,
+            default_port="50304",
+            logger=logger,
+        )
+    except ImportError:
+        import os
+        from concurrent import futures
+        from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
-    health_servicer = health.HealthServicer()
-    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+        port = os.environ.get("PORT", "50304")
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        angzarr_pb2_grpc.add_AggregateServicer_to_server(AggregateServicer(), server)
 
-    server.add_insecure_port(f"[::]:{port}")
+        health_servicer = health.HealthServicer()
+        health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+        health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
 
-    logger.info("server_started", domain=DOMAIN, port=port)
-
-    server.start()
-    server.wait_for_termination()
+        server.add_insecure_port(f"[::]:{port}")
+        logger.info("server_started", domain=DOMAIN, port=port, transport="tcp")
+        server.start()
+        server.wait_for_termination()
 
 
 if __name__ == "__main__":

@@ -16,14 +16,17 @@ use uuid::Uuid;
 use crate::proto::{EventPage, Snapshot};
 
 // Implementation modules
+pub mod helpers;
 pub mod mock;
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 #[cfg(feature = "redis")]
 pub mod redis;
-#[cfg(feature = "postgres")]
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod schema;
 
 // Re-exports
@@ -32,6 +35,8 @@ pub use mock::{MockEventStore, MockSnapshotStore};
 pub use mongodb::{MongoEventStore, MongoSnapshotStore};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresSnapshotStore};
+#[cfg(feature = "sqlite")]
+pub use sqlite::{SqliteEventStore, SqliteSnapshotStore};
 
 // ============================================================================
 // Traits
@@ -55,7 +60,7 @@ pub enum StorageError {
     #[error("Invalid UUID: {0}")]
     InvalidUuid(#[from] uuid::Error),
 
-    #[cfg(feature = "postgres")]
+    #[cfg(any(feature = "postgres", feature = "sqlite"))]
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
@@ -163,6 +168,7 @@ pub enum StorageType {
     #[default]
     Mongodb,
     Postgres,
+    Sqlite,
     Redis,
 }
 
@@ -177,6 +183,8 @@ pub struct StorageConfig {
     pub mongodb: MongodbConfig,
     /// PostgreSQL-specific configuration.
     pub postgres: PostgresConfig,
+    /// SQLite-specific configuration.
+    pub sqlite: SqliteConfig,
     /// Redis-specific configuration.
     pub redis: RedisConfig,
     /// Snapshot enable/disable flags for debugging and troubleshooting.
@@ -189,6 +197,7 @@ impl Default for StorageConfig {
             storage_type: StorageType::Mongodb,
             mongodb: MongodbConfig::default(),
             postgres: PostgresConfig::default(),
+            sqlite: SqliteConfig::default(),
             redis: RedisConfig::default(),
             snapshots_enable: SnapshotsEnableConfig::default(),
         }
@@ -226,6 +235,26 @@ impl Default for PostgresConfig {
     fn default() -> Self {
         Self {
             uri: "postgres://localhost:5432/angzarr".to_string(),
+        }
+    }
+}
+
+/// SQLite-specific configuration.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SqliteConfig {
+    /// SQLite database path.
+    /// If empty or not set, uses in-memory database (:memory:).
+    pub path: Option<String>,
+}
+
+impl SqliteConfig {
+    /// Get the connection URI for SQLite.
+    /// Returns in-memory URI if path is not configured.
+    pub fn uri(&self) -> String {
+        match &self.path {
+            Some(path) if !path.is_empty() => format!("sqlite:{}", path),
+            _ => "sqlite::memory:".to_string(),
         }
     }
 }
@@ -285,6 +314,7 @@ impl Default for SnapshotsEnableConfig {
 /// Requires the corresponding feature to be enabled:
 /// - MongoDB: `--features mongodb` (included in default)
 /// - PostgreSQL: `--features postgres`
+/// - SQLite: `--features sqlite`
 /// - Redis: `--features redis`
 pub async fn init_storage(
     config: &StorageConfig,
@@ -333,6 +363,42 @@ pub async fn init_storage(
             #[cfg(not(feature = "postgres"))]
             {
                 Err("PostgreSQL support requires the 'postgres' feature. Rebuild with --features postgres".into())
+            }
+        }
+        StorageType::Sqlite => {
+            #[cfg(feature = "sqlite")]
+            {
+                use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+                use std::str::FromStr;
+                use std::time::Duration;
+
+                let uri = config.sqlite.uri();
+                info!("Storage: sqlite at {}", uri);
+
+                // Configure SQLite for concurrent access:
+                // - WAL mode: allows concurrent readers during writes
+                // - busy_timeout: wait instead of failing on lock contention
+                let connect_options = SqliteConnectOptions::from_str(&uri)?
+                    .journal_mode(SqliteJournalMode::Wal)
+                    .busy_timeout(Duration::from_secs(30));
+
+                let pool = SqlitePoolOptions::new()
+                    .max_connections(5)
+                    .connect_with(connect_options)
+                    .await?;
+
+                let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
+                event_store.init().await?;
+
+                let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
+                snapshot_store.init().await?;
+
+                Ok((event_store, snapshot_store))
+            }
+
+            #[cfg(not(feature = "sqlite"))]
+            {
+                Err("SQLite support requires the 'sqlite' feature. Rebuild with --features sqlite".into())
             }
         }
         StorageType::Redis => {

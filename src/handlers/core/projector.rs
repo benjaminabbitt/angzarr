@@ -1,12 +1,13 @@
 //! Projector event handler for projector sidecar.
 //!
-//! Receives events from the event bus (AMQP) and forwards them to projector
-//! coordinator services. Ensures projectors receive complete EventBooks by
-//! fetching missing history from the EventQuery service when needed.
+//! Receives events from the event bus and forwards them to projector
+//! coordinator services. The coordinator ensures projectors receive complete
+//! EventBooks by fetching missing history from the EventQuery service.
 //!
 //! When projectors produce output (Projections), these are published back
-//! to AMQP as synthetic EventBooks with the original correlation_id preserved,
-//! enabling streaming of projector results back to clients via angzarr-stream.
+//! to the event bus as synthetic EventBooks with the original correlation_id
+//! preserved, enabling streaming of projector results back to clients via
+//! angzarr-stream.
 
 use std::sync::Arc;
 
@@ -14,71 +15,42 @@ use futures::future::BoxFuture;
 use prost::Message;
 use prost_types::Any;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
-use crate::bus::{AmqpEventBus, BusError, EventBus, EventHandler};
+use crate::bus::{BusError, EventBus, EventHandler};
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use crate::proto::{EventBook, Projection, SyncEventBook, SyncMode};
-use crate::services::event_book_repair::{self, EventBookRepairer};
 
 /// Event handler that forwards events to a projector gRPC service.
 ///
 /// Calls `handle_sync` to get projector output, then publishes the
-/// Projection back to AMQP as a synthetic EventBook for streaming.
+/// Projection back to the event bus as a synthetic EventBook for streaming.
 pub struct ProjectorEventHandler {
     client: Arc<Mutex<ProjectorCoordinatorClient<tonic::transport::Channel>>>,
-    publisher: Option<Arc<AmqpEventBus>>,
-    repairer: Option<Arc<Mutex<EventBookRepairer>>>,
+    publisher: Option<Arc<dyn EventBus>>,
 }
 
 impl ProjectorEventHandler {
     /// Create a new projector event handler without streaming output.
     ///
-    /// Projector results are not published back to AMQP.
+    /// Projector results are not published.
     pub fn new(client: ProjectorCoordinatorClient<tonic::transport::Channel>) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
             publisher: None,
-            repairer: None,
         }
     }
 
     /// Create a new projector event handler with streaming output.
     ///
-    /// Projector results are published back to AMQP for streaming to clients.
+    /// Projector results are published to the event bus for streaming to clients.
     pub fn with_publisher(
         client: ProjectorCoordinatorClient<tonic::transport::Channel>,
-        publisher: AmqpEventBus,
+        publisher: Arc<dyn EventBus>,
     ) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
-            publisher: Some(Arc::new(publisher)),
-            repairer: None,
-        }
-    }
-
-    /// Create a new projector event handler with repair and streaming.
-    pub fn with_repairer_and_publisher(
-        client: ProjectorCoordinatorClient<tonic::transport::Channel>,
-        repairer: EventBookRepairer,
-        publisher: AmqpEventBus,
-    ) -> Self {
-        Self {
-            client: Arc::new(Mutex::new(client)),
-            publisher: Some(Arc::new(publisher)),
-            repairer: Some(Arc::new(Mutex::new(repairer))),
-        }
-    }
-
-    /// Create a new projector event handler with repair capability only.
-    pub fn with_repairer(
-        client: ProjectorCoordinatorClient<tonic::transport::Channel>,
-        repairer: EventBookRepairer,
-    ) -> Self {
-        Self {
-            client: Arc::new(Mutex::new(client)),
-            publisher: None,
-            repairer: Some(Arc::new(Mutex::new(repairer))),
+            publisher: Some(publisher),
         }
     }
 }
@@ -87,35 +59,16 @@ impl EventHandler for ProjectorEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
         let client = self.client.clone();
         let publisher = self.publisher.clone();
-        let repairer = self.repairer.clone();
 
         Box::pin(async move {
             let book_owned = (*book).clone();
             let correlation_id = book_owned.correlation_id.clone();
 
-            // Repair if incomplete
-            let book_to_send = if event_book_repair::is_complete(&book_owned) {
-                book_owned
-            } else if let Some(ref repairer) = repairer {
-                let mut repairer = repairer.lock().await;
-                repairer.repair(book_owned).await.map_err(|e| {
-                    error!(error = %e, "Failed to repair EventBook");
-                    BusError::Grpc(tonic::Status::internal(format!(
-                        "Failed to repair EventBook: {}",
-                        e
-                    )))
-                })?
-            } else {
-                warn!(
-                    "Received incomplete EventBook but no repairer configured, passing through as-is"
-                );
-                book_owned
-            };
-
             // Call projector coordinator handle_sync to get the Projection result
+            // The coordinator will repair incomplete EventBooks if needed
             let mut client = client.lock().await;
             let sync_request = SyncEventBook {
-                events: Some(book_to_send.clone()),
+                events: Some(book_owned),
                 sync_mode: SyncMode::Simple.into(),
             };
             let response = client
@@ -141,7 +94,7 @@ impl EventHandler for ProjectorEventHandler {
                     info!(
                         correlation_id = %correlation_id,
                         domain = projection_event_book.cover.as_ref().map(|c| c.domain.as_str()).unwrap_or("unknown"),
-                        "Publishing projection to AMQP for streaming"
+                        "Publishing projection for streaming"
                     );
 
                     publisher.publish(Arc::new(projection_event_book)).await?;

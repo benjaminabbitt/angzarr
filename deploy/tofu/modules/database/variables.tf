@@ -41,8 +41,9 @@ variable "mongodb_chart_version" {
 
 # Authentication
 variable "admin_password" {
-  description = "Admin/root password"
+  description = "Admin/root password (auto-generated if not provided)"
   type        = string
+  default     = null
   sensitive   = true
 }
 
@@ -53,8 +54,9 @@ variable "username" {
 }
 
 variable "password" {
-  description = "Application database password"
+  description = "Application database password (auto-generated if not provided)"
   type        = string
+  default     = null
   sensitive   = true
 }
 

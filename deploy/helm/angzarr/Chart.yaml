@@ -1,16 +1,45 @@
 apiVersion: v2
 name: angzarr
-description: CQRS/ES framework - Rust implementation
+description: Schema-first CQRS/ES framework for polyglot business logic
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-icon: file://icons/angzarr-gateway.svg
+home: https://github.com/benjaminabbitt/angzarr
+sources:
+  - https://github.com/benjaminabbitt/angzarr
 keywords:
   - cqrs
   - event-sourcing
   - rust
   - grpc
+  - kubernetes
+  - sidecar
 maintainers:
   - name: Benjamin Abbitt
-# Backing services (MongoDB, PostgreSQL, RabbitMQ) are deployed via Terraform.
-# This chart only deploys angzarr application services.
+annotations:
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/license: MIT
+  artifacthub.io/operator: "false"
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/images: |
+    - name: aggregate
+      image: ghcr.io/benjaminabbitt/angzarr-aggregate:0.1.0
+    - name: projector
+      image: ghcr.io/benjaminabbitt/angzarr-projector:0.1.0
+    - name: saga
+      image: ghcr.io/benjaminabbitt/angzarr-saga:0.1.0
+    - name: stream
+      image: ghcr.io/benjaminabbitt/angzarr-stream:0.1.0
+    - name: gateway
+      image: ghcr.io/benjaminabbitt/angzarr-gateway:0.1.0
+    - name: log
+      image: ghcr.io/benjaminabbitt/angzarr-log:0.1.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/benjaminabbitt/angzarr/blob/main/README.md
+    - name: Source
+      url: https://github.com/benjaminabbitt/angzarr
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial release

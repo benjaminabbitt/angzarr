@@ -1,0 +1,19 @@
+# Fulfillment saga sidecar configuration (embedded mode)
+storage:
+  type: sqlite
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+messaging:
+  type: amqp
+  amqp:
+    url: amqp://guest:guest@localhost:5672
+    domain: order
+
+target:
+  address: /tmp/angzarr/saga-fulfillment.sock
+  domain: fulfillment
+  command: uv run --directory saga-fulfillment python server.py

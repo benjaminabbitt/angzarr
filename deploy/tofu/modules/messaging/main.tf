@@ -11,7 +11,22 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
+}
+
+# Auto-generate password if not provided
+resource "random_password" "messaging" {
+  count   = var.password == null ? 1 : 0
+  length  = 32
+  special = false
+}
+
+locals {
+  password = var.password != null ? var.password : random_password.messaging[0].result
 }
 
 # RabbitMQ via Bitnami Helm chart (OCI registry)
@@ -39,7 +54,7 @@ resource "helm_release" "rabbitmq" {
       }
       auth = {
         username = var.username
-        password = var.password
+        password = local.password
       }
       persistence = {
         enabled = var.persistence_enabled
@@ -100,7 +115,7 @@ resource "helm_release" "kafka" {
       sasl = {
         client = {
           users     = var.kafka_sasl_enabled ? [var.username] : []
-          passwords = var.kafka_sasl_enabled ? var.password : ""
+          passwords = var.kafka_sasl_enabled ? local.password : ""
         }
       }
       persistence = {
@@ -144,7 +159,7 @@ resource "kubernetes_secret" "messaging_credentials" {
 
   data = {
     username = var.username
-    password = var.password
+    password = local.password
     host     = local.host
     port     = tostring(local.port)
     uri      = local.uri
@@ -162,7 +177,7 @@ locals {
     var.type == "kafka" ? 9092 : var.external_port
   )
 
-  uri = var.type == "rabbitmq" ? "amqp://${var.username}:${var.password}@${local.host}:${local.port}" : (
+  uri = var.type == "rabbitmq" ? "amqp://${var.username}:${local.password}@${local.host}:${local.port}" : (
     var.type == "kafka" ? "${local.host}:${local.port}" : var.external_uri
   )
 }

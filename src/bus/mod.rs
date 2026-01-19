@@ -19,15 +19,25 @@ use crate::proto::{EventBook, Projection};
 // Implementation modules
 #[cfg(feature = "amqp")]
 pub mod amqp;
+pub mod channel;
+#[cfg(unix)]
+pub mod ipc;
 #[cfg(feature = "kafka")]
 pub mod kafka;
+#[cfg(feature = "lossy")]
+pub mod lossy;
 pub mod mock;
 
 // Re-exports
 #[cfg(feature = "amqp")]
 pub use amqp::{AmqpConfig, AmqpEventBus};
+pub use channel::{ChannelConfig, ChannelEventBus};
+#[cfg(unix)]
+pub use ipc::{IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus, SubscriberInfo, SUBSCRIBERS_ENV_VAR};
 #[cfg(feature = "kafka")]
 pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
+#[cfg(feature = "lossy")]
+pub use lossy::{LossyConfig, LossyEventBus, LossyStats};
 pub use mock::MockEventBus;
 
 // ============================================================================
@@ -98,6 +108,16 @@ pub trait EventBus: Send + Sync {
     ///
     /// The handler will be called for each event book received.
     async fn subscribe(&self, handler: Box<dyn EventHandler>) -> Result<()>;
+
+    /// Start consuming events (for bus implementations that require explicit start).
+    ///
+    /// Most implementations (AMQP, Kafka) start consuming automatically after subscribe.
+    /// IPC requires explicit start because it spawns a blocking reader thread.
+    ///
+    /// Default implementation is a no-op for backwards compatibility.
+    async fn start_consuming(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -111,8 +131,13 @@ pub enum MessagingType {
     /// AMQP/RabbitMQ messaging.
     #[default]
     Amqp,
-    /// Kafka messaging (future).
+    /// Kafka messaging.
     Kafka,
+    /// In-memory channel (single process only).
+    Channel,
+    /// IPC via UDS/pipes (multi-process embedded mode, Unix only).
+    #[cfg(unix)]
+    Ipc,
 }
 
 /// Messaging configuration (discriminated union).
@@ -126,6 +151,9 @@ pub struct MessagingConfig {
     pub amqp: AmqpBusConfig,
     /// Kafka-specific configuration (future).
     pub kafka: KafkaConfig,
+    /// IPC-specific configuration (for embedded mode).
+    #[cfg(unix)]
+    pub ipc: IpcBusConfig,
 }
 
 impl Default for MessagingConfig {
@@ -134,6 +162,49 @@ impl Default for MessagingConfig {
             messaging_type: MessagingType::Amqp,
             amqp: AmqpBusConfig::default(),
             kafka: KafkaConfig::default(),
+            #[cfg(unix)]
+            ipc: IpcBusConfig::default(),
+        }
+    }
+}
+
+/// IPC-specific configuration (for embedded mode).
+#[cfg(unix)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct IpcBusConfig {
+    /// Base path for pipes.
+    pub base_path: String,
+    /// Subscriber name (for subscriber mode).
+    pub subscriber_name: Option<String>,
+    /// Single domain to subscribe to (simpler env var).
+    pub domain: Option<String>,
+    /// Domains to subscribe to (for subscriber mode) - comma-separated when set via env var.
+    pub domains: Option<Vec<String>>,
+}
+
+#[cfg(unix)]
+impl IpcBusConfig {
+    /// Get domains as a Vec, preferring `domains` over `domain`.
+    pub fn get_domains(&self) -> Vec<String> {
+        self.domains
+            .clone()
+            .or_else(|| self.domain.as_ref().map(|d| {
+                // Support comma-separated domains in the single domain field
+                d.split(',').map(|s| s.trim().to_string()).collect()
+            }))
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(unix)]
+impl Default for IpcBusConfig {
+    fn default() -> Self {
+        Self {
+            base_path: "/tmp/angzarr".to_string(),
+            subscriber_name: None,
+            domain: None,
+            domains: None,
         }
     }
 }
@@ -210,6 +281,7 @@ impl Default for KafkaConfig {
 /// Requires the corresponding feature to be enabled:
 /// - AMQP: `--features amqp` (included in default)
 /// - Kafka: `--features kafka`
+/// - Channel: Always available (in-memory, no external deps)
 pub async fn init_event_bus(
     config: &MessagingConfig,
     mode: EventBusMode,
@@ -287,6 +359,38 @@ pub async fn init_event_bus(
             {
                 Err("Kafka support requires the 'kafka' feature. Rebuild with --features kafka".into())
             }
+        }
+        MessagingType::Channel => {
+            let channel_config = match mode {
+                EventBusMode::Publisher => ChannelConfig::publisher(),
+                EventBusMode::Subscriber { domain, .. } => ChannelConfig::subscriber(domain),
+                EventBusMode::SubscriberAll { .. } => ChannelConfig::subscriber_all(),
+            };
+
+            let bus = ChannelEventBus::new(channel_config);
+            info!(messaging_type = "channel", "Event bus initialized");
+            Ok(Arc::new(bus))
+        }
+        #[cfg(unix)]
+        MessagingType::Ipc => {
+            let ipc_config = match mode {
+                EventBusMode::Publisher => IpcConfig::publisher(&config.ipc.base_path),
+                EventBusMode::Subscriber { domain, .. } => {
+                    let name = config.ipc.subscriber_name.clone().unwrap_or_else(|| {
+                        format!("subscriber-{}", domain)
+                    });
+                    IpcConfig::subscriber(&config.ipc.base_path, name, vec![domain])
+                }
+                EventBusMode::SubscriberAll { queue } => {
+                    let name = config.ipc.subscriber_name.clone().unwrap_or(queue);
+                    let domains = config.ipc.get_domains();
+                    IpcConfig::subscriber(&config.ipc.base_path, name, domains)
+                }
+            };
+
+            let bus = IpcEventBus::new(ipc_config);
+            info!(messaging_type = "ipc", "Event bus initialized");
+            Ok(Arc::new(bus))
         }
     }
 }

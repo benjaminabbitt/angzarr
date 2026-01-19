@@ -13,5 +13,6 @@ uuid.workspace = true
 tonic.workspace = true
 tonic-health.workspace = true
 tokio.workspace = true
+tokio-stream.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

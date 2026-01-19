@@ -1,8 +1,8 @@
 //! Saga event handler for saga sidecar.
 //!
-//! Receives events from the event bus (AMQP) and forwards them to saga
-//! coordinator services. Ensures sagas receive complete EventBooks by
-//! fetching missing history from the EventQuery service when needed.
+//! Receives events from the event bus and forwards them to saga
+//! coordinator services. The coordinator ensures sagas receive complete
+//! EventBooks by fetching missing history from the EventQuery service.
 //!
 //! When sagas produce commands, they are executed via the command handler.
 //! When saga commands are rejected, compensation flow is initiated:
@@ -18,24 +18,22 @@ use futures::future::BoxFuture;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use crate::bus::{AmqpEventBus, BusError, EventBus, EventHandler};
+use crate::bus::{BusError, EventBus, EventHandler};
 use crate::clients::SagaCompensationConfig;
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::saga_coordinator_client::SagaCoordinatorClient;
 use crate::proto::{CommandBook, EventBook, SyncEventBook, SyncMode};
-use crate::services::event_book_repair::{self, EventBookRepairer};
 use crate::utils::saga_compensation::{build_revoke_command_book, CompensationContext};
 
 /// Event handler that forwards events to a saga gRPC service.
 ///
 /// Calls `handle_sync` to get saga-produced commands and event books.
 /// Commands are executed via the command handler (which publishes resulting
-/// events to AMQP). When commands are rejected, compensation is attempted.
+/// events). When commands are rejected, compensation is attempted.
 pub struct SagaEventHandler {
     client: Arc<Mutex<SagaCoordinatorClient<tonic::transport::Channel>>>,
     command_handler: Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
-    publisher: Arc<AmqpEventBus>,
-    repairer: Option<Arc<Mutex<EventBookRepairer>>>,
+    publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
 }
 
@@ -45,13 +43,12 @@ impl SagaEventHandler {
     /// Saga-produced commands will be logged but not executed.
     pub fn new(
         client: SagaCoordinatorClient<tonic::transport::Channel>,
-        publisher: AmqpEventBus,
+        publisher: Arc<dyn EventBus>,
     ) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
             command_handler: None,
-            publisher: Arc::new(publisher),
-            repairer: None,
+            publisher,
             compensation_config: SagaCompensationConfig::default(),
         }
     }
@@ -62,44 +59,12 @@ impl SagaEventHandler {
     pub fn with_command_handler(
         client: SagaCoordinatorClient<tonic::transport::Channel>,
         command_handler: AggregateCoordinatorClient<tonic::transport::Channel>,
-        publisher: AmqpEventBus,
+        publisher: Arc<dyn EventBus>,
     ) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
             command_handler: Some(Arc::new(Mutex::new(command_handler))),
-            publisher: Arc::new(publisher),
-            repairer: None,
-            compensation_config: SagaCompensationConfig::default(),
-        }
-    }
-
-    /// Create a new saga event handler with repair and command execution.
-    pub fn with_repairer_and_command_handler(
-        client: SagaCoordinatorClient<tonic::transport::Channel>,
-        command_handler: AggregateCoordinatorClient<tonic::transport::Channel>,
-        publisher: AmqpEventBus,
-        repairer: EventBookRepairer,
-    ) -> Self {
-        Self {
-            client: Arc::new(Mutex::new(client)),
-            command_handler: Some(Arc::new(Mutex::new(command_handler))),
-            publisher: Arc::new(publisher),
-            repairer: Some(Arc::new(Mutex::new(repairer))),
-            compensation_config: SagaCompensationConfig::default(),
-        }
-    }
-
-    /// Create a new saga event handler with repair capability only.
-    pub fn with_repairer(
-        client: SagaCoordinatorClient<tonic::transport::Channel>,
-        publisher: AmqpEventBus,
-        repairer: EventBookRepairer,
-    ) -> Self {
-        Self {
-            client: Arc::new(Mutex::new(client)),
-            command_handler: None,
-            publisher: Arc::new(publisher),
-            repairer: Some(Arc::new(Mutex::new(repairer))),
+            publisher,
             compensation_config: SagaCompensationConfig::default(),
         }
     }
@@ -108,15 +73,13 @@ impl SagaEventHandler {
     pub fn with_config(
         client: SagaCoordinatorClient<tonic::transport::Channel>,
         command_handler: AggregateCoordinatorClient<tonic::transport::Channel>,
-        publisher: AmqpEventBus,
-        repairer: EventBookRepairer,
+        publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
     ) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
             command_handler: Some(Arc::new(Mutex::new(command_handler))),
-            publisher: Arc::new(publisher),
-            repairer: Some(Arc::new(Mutex::new(repairer))),
+            publisher,
             compensation_config,
         }
     }
@@ -127,36 +90,17 @@ impl EventHandler for SagaEventHandler {
         let client = self.client.clone();
         let command_handler = self.command_handler.clone();
         let publisher = self.publisher.clone();
-        let repairer = self.repairer.clone();
         let compensation_config = self.compensation_config.clone();
 
         Box::pin(async move {
             let book_owned = (*book).clone();
             let correlation_id = book_owned.correlation_id.clone();
 
-            // Repair if incomplete
-            let book_to_send = if event_book_repair::is_complete(&book_owned) {
-                book_owned
-            } else if let Some(ref repairer) = repairer {
-                let mut repairer = repairer.lock().await;
-                repairer.repair(book_owned).await.map_err(|e| {
-                    error!(error = %e, "Failed to repair EventBook");
-                    BusError::Grpc(tonic::Status::internal(format!(
-                        "Failed to repair EventBook: {}",
-                        e
-                    )))
-                })?
-            } else {
-                warn!(
-                    "Received incomplete EventBook but no repairer configured, passing through as-is"
-                );
-                book_owned
-            };
-
             // Call saga coordinator handle_sync to get resulting commands
+            // The coordinator will repair incomplete EventBooks if needed
             let mut client = client.lock().await;
             let sync_request = SyncEventBook {
-                events: Some(book_to_send),
+                events: Some(book_owned),
                 sync_mode: SyncMode::Simple.into(),
             };
             let response = client
@@ -245,7 +189,7 @@ async fn handle_command_rejection(
     rejected_command: &CommandBook,
     rejection_error: &tonic::Status,
     handler: &mut AggregateCoordinatorClient<tonic::transport::Channel>,
-    publisher: &AmqpEventBus,
+    publisher: &Arc<dyn EventBus>,
     config: &SagaCompensationConfig,
 ) {
     let rejection_reason = rejection_error.message().to_string();
@@ -351,7 +295,7 @@ async fn handle_command_rejection(
 async fn emit_fallback_event(
     context: &CompensationContext,
     reason: &str,
-    publisher: &AmqpEventBus,
+    publisher: &Arc<dyn EventBus>,
     config: &SagaCompensationConfig,
 ) {
     use crate::utils::saga_compensation::build_compensation_failed_event_book;

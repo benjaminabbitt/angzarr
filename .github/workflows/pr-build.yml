@@ -1,0 +1,129 @@
+name: PR Build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Lint and format check
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  # Unit tests
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        run: cargo test --lib --all-features
+
+  # Build check (no push)
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container images (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-aggregate
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Helm lint
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      - name: Lint main chart
+        run: helm lint deploy/helm/angzarr
+
+      - name: Template validation
+        run: |
+          helm template angzarr deploy/helm/angzarr \
+            --set mongodb.auth.rootPassword=test \
+            --set mongodb.auth.passwords[0]=test \
+            --set rabbitmq.auth.password=test \
+            > /dev/null
+
+  # OpenTofu validation
+  tofu-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.6.0
+
+      - name: Validate database module
+        run: |
+          cd deploy/tofu/modules/database
+          tofu init -backend=false
+          tofu validate
+
+      - name: Validate messaging module
+        run: |
+          cd deploy/tofu/modules/messaging
+          tofu init -backend=false
+          tofu validate
+
+      - name: Validate redis module
+        run: |
+          cd deploy/tofu/modules/redis
+          tofu init -backend=false
+          tofu validate

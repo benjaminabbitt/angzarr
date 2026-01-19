@@ -8,8 +8,8 @@ pub mod proto;
 pub mod server;
 
 pub use server::{
-    init_tracing, run_aggregate_server, run_saga_server, AggregateLogic, AggregateWrapper,
-    SagaLogic, SagaWrapper,
+    init_tracing, run_aggregate_server, run_projector_server, run_saga_server, AggregateLogic,
+    AggregateWrapper, ProjectorLogic, ProjectorWrapper, SagaLogic, SagaWrapper,
 };
 
 // ============================================================================

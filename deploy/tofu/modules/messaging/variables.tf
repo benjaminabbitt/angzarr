@@ -47,8 +47,9 @@ variable "username" {
 }
 
 variable "password" {
-  description = "Message broker password"
+  description = "Message broker password (auto-generated if not provided)"
   type        = string
+  default     = null
   sensitive   = true
 }
 

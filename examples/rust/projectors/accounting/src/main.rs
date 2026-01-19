@@ -4,8 +4,11 @@
 
 use std::env;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use sqlx::PgPool;
+use tokio::net::UnixListener;
+use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{transport::Server, Request, Response, Status};
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -56,9 +59,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
 
-    let port = env::var("PORT").unwrap_or_else(|_| "50051".to_string());
-    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
-
     // Connect to PostgreSQL
     info!(database = %database_url, "Connecting to database");
     let pool = PgPool::connect(&database_url).await?;
@@ -76,17 +76,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_serving::<ProjectorServer<AccountingProjectorService>>()
         .await;
 
-    info!(
-        projector = projector_accounting::PROJECTOR_NAME,
-        port = %port,
-        "server_started"
-    );
+    // Check transport type
+    let transport_type = env::var("TRANSPORT_TYPE").unwrap_or_else(|_| "tcp".to_string());
 
-    Server::builder()
-        .add_service(health_service)
-        .add_service(ProjectorServer::new(service))
-        .serve(addr)
-        .await?;
+    if transport_type == "uds" {
+        let base_path = env::var("UDS_BASE_PATH").unwrap_or_else(|_| "/tmp/angzarr".to_string());
+        let service_name = env::var("SERVICE_NAME").unwrap_or_else(|_| "projector".to_string());
+        let domain = env::var("DOMAIN").unwrap_or_else(|_| "accounting".to_string());
+        let socket_path = PathBuf::from(format!("{}/{}-{}.sock", base_path, service_name, domain));
+
+        if socket_path.exists() {
+            std::fs::remove_file(&socket_path)?;
+        }
+        let uds = UnixListener::bind(&socket_path)?;
+        let uds_stream = UnixListenerStream::new(uds);
+
+        info!(
+            projector = projector_accounting::PROJECTOR_NAME,
+            path = %socket_path.display(),
+            transport = "uds",
+            "projector_server_started"
+        );
+
+        Server::builder()
+            .add_service(health_service)
+            .add_service(ProjectorServer::new(service))
+            .serve_with_incoming(uds_stream)
+            .await?;
+    } else {
+        let port = env::var("PORT").unwrap_or_else(|_| "50143".to_string());
+        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+
+        info!(
+            projector = projector_accounting::PROJECTOR_NAME,
+            port = %port,
+            transport = "tcp",
+            "projector_server_started"
+        );
+
+        Server::builder()
+            .add_service(health_service)
+            .add_service(ProjectorServer::new(service))
+            .serve(addr)
+            .await?;
+    }
 
     Ok(())
 }

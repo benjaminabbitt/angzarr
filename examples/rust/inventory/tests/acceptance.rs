@@ -1,7 +1,7 @@
 //! Acceptance tests for Inventory domain.
 //!
 //! These tests run against a deployed angzarr system (Kind cluster).
-//! Run with: cargo test -p inventory --test acceptance
+//! Run with: cargo test -p inventory-svc --test acceptance
 
 use cucumber::{given, then, when, World};
 use prost::Message;

@@ -19,24 +19,24 @@
 //! that enables real-time event streaming to connected clients via the gateway.
 //!
 //! ## Configuration
-//! - PORT: Port for gRPC services (default: 50051)
+//! - transport.type: "tcp" or "uds"
+//! - transport.tcp.port: Port for TCP (default: 50051)
+//! - transport.uds.base_path: Base path for UDS sockets
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_health::server::health_reporter;
-use tracing::info;
+use tracing::{error, info};
 
-use angzarr::utils::bootstrap::init_tracing;
-
+use angzarr::config::Config;
 use angzarr::handlers::projectors::stream::StreamService;
 use angzarr::proto::event_stream_server::EventStreamServer;
 use angzarr::proto::projector_server::{Projector, ProjectorServer};
 use angzarr::proto::{EventBook, Projection};
-
-const DEFAULT_PORT: u16 = 50051;
+use angzarr::transport::serve_with_transport;
+use angzarr::utils::bootstrap::init_tracing;
 
 /// Projector service that receives events from the projector sidecar.
 struct StreamProjectorService {
@@ -87,12 +87,10 @@ impl angzarr::proto::event_stream_server::EventStream for StreamServiceWrapper {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    let port = std::env::var("ANGZARR_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
-
-    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+    let config = Config::load().map_err(|e| {
+        error!("Failed to load configuration: {}", e);
+        e
+    })?;
 
     // Create shared stream service
     let stream_service = Arc::new(StreamService::new());
@@ -109,14 +107,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_serving::<ProjectorServer<StreamProjectorService>>()
         .await;
 
-    info!(port = %port, "angzarr-stream started");
+    info!("angzarr-stream started");
 
-    Server::builder()
+    let router = Server::builder()
         .add_service(health_service)
         .add_service(ProjectorServer::new(projector_service))
-        .add_service(EventStreamServer::new(event_stream_service))
-        .serve(addr)
-        .await?;
+        .add_service(EventStreamServer::new(event_stream_service));
+
+    serve_with_transport(router, &config.transport, "stream", None).await?;
 
     Ok(())
 }

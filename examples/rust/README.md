@@ -101,7 +101,7 @@ just skaffold-delete
 
 ## Port Configuration
 
-Services bind to `GRPC_PORT` environment variable (default: 50051). For concurrent deployments, set unique ports per instance. MongoDB uses `angzarr_rust` database by default.
+Services bind to `PORT` environment variable. See [port-conventions.md](../../docs/port-conventions.md) for the standardized ten-port-per-pod scheme. Rust examples use ports 50050-50199 with logic ports at base+3.
 
 ## Dependencies
 

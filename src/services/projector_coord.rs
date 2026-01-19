@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
@@ -18,7 +18,6 @@ use crate::proto::{
     EventBook, Projection, SyncEventBook,
 };
 use crate::services::event_book_repair::EventBookRepairer;
-use crate::services::repairable::RepairableCoordinator;
 
 /// Connected projector client.
 struct ProjectorConnection {
@@ -33,35 +32,30 @@ struct ProjectorConnection {
 /// the EventQuery service if needed.
 pub struct ProjectorCoordinatorService {
     projectors: Arc<RwLock<Vec<ProjectorConnection>>>,
-    repairer: RepairableCoordinator,
+    repairer: Arc<Mutex<EventBookRepairer>>,
 }
 
 impl ProjectorCoordinatorService {
-    /// Create a new projector coordinator without repair capability.
-    pub fn new() -> Self {
+    /// Create a new projector coordinator.
+    pub fn new(repairer: EventBookRepairer) -> Self {
         Self {
             projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: RepairableCoordinator::new(),
+            repairer: Arc::new(Mutex::new(repairer)),
         }
     }
 
-    /// Create a new projector coordinator with repair capability.
-    ///
-    /// The repairer will fetch missing events from the EventQuery service
-    /// at the given address when incomplete EventBooks are received.
-    pub async fn with_repair(event_query_address: &str) -> Result<Self, String> {
-        Ok(Self {
-            projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: RepairableCoordinator::with_repair(event_query_address).await?,
-        })
-    }
+    /// Create a new projector coordinator, connecting to EventQuery service.
+    pub async fn connect(event_query_address: &str) -> Result<Self, String> {
+        let repairer = EventBookRepairer::connect(event_query_address)
+            .await
+            .map_err(|e| format!("Failed to connect to EventQuery service: {}", e))?;
 
-    /// Create a new projector coordinator with an existing repairer.
-    pub fn with_repairer(repairer: EventBookRepairer) -> Self {
-        Self {
-            projectors: Arc::new(RwLock::new(Vec::new())),
-            repairer: RepairableCoordinator::with_repairer(repairer),
-        }
+        info!(
+            address = %event_query_address,
+            "Connected to EventQuery service for EventBook repair"
+        );
+
+        Ok(Self::new(repairer))
     }
 
     /// Register a projector endpoint.
@@ -84,12 +78,6 @@ impl ProjectorCoordinatorService {
     }
 }
 
-impl Default for ProjectorCoordinatorService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[tonic::async_trait]
 impl ProjectorCoordinator for ProjectorCoordinatorService {
     /// Handle events synchronously, returning a projection.
@@ -103,7 +91,10 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
             .ok_or_else(|| Status::invalid_argument("SyncEventBook must have events"))?;
 
         // Repair EventBook if incomplete
-        let event_book = self.repairer.repair_event_book(event_book).await?;
+        let event_book = self.repairer.lock().await.repair(event_book).await.map_err(|e| {
+            error!(error = %e, "Failed to repair EventBook");
+            Status::internal(format!("Failed to repair EventBook: {}", e))
+        })?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -147,7 +138,10 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         let event_book = request.into_inner();
 
         // Repair EventBook if incomplete
-        let event_book = self.repairer.repair_event_book(event_book).await?;
+        let event_book = self.repairer.lock().await.repair(event_book).await.map_err(|e| {
+            error!(error = %e, "Failed to repair EventBook");
+            Status::internal(format!("Failed to repair EventBook: {}", e))
+        })?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -175,9 +169,13 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clients::ServiceEndpoint;
-    use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
-    use prost_types::Any;
+    use crate::proto::event_query_server::EventQueryServer;
+    use crate::proto::{Cover, Uuid as ProtoUuid};
+    use crate::services::EventQueryService;
+    use crate::storage::mock::{MockEventStore, MockSnapshotStore};
+    use std::net::SocketAddr;
+    use tokio::net::TcpListener;
+    use tonic::transport::Server;
 
     fn make_event_book() -> EventBook {
         EventBook {
@@ -192,61 +190,34 @@ mod tests {
         }
     }
 
-    fn make_complete_event_book() -> EventBook {
-        EventBook {
-            cover: Some(Cover {
-                domain: "orders".to_string(),
-                root: Some(ProtoUuid { value: vec![1; 16] }),
-            }),
-            pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(0)),
-                event: Some(Any {
-                    type_url: "test.Event".to_string(),
-                    value: vec![],
-                }),
-                created_at: None,
-            }],
-            snapshot: None,
-            correlation_id: String::new(),
-            snapshot_state: None,
-        }
-    }
+    async fn start_event_query_server() -> SocketAddr {
+        let event_store = Arc::new(MockEventStore::new());
+        let snapshot_store = Arc::new(MockSnapshotStore::new());
 
-    fn make_incomplete_event_book() -> EventBook {
-        EventBook {
-            cover: Some(Cover {
-                domain: "orders".to_string(),
-                root: Some(ProtoUuid { value: vec![1; 16] }),
-            }),
-            pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(5)), // Missing events 0-4
-                event: Some(Any {
-                    type_url: "test.Event".to_string(),
-                    value: vec![],
-                }),
-                created_at: None,
-            }],
-            snapshot: None,
-            correlation_id: String::new(),
-            snapshot_state: None,
-        }
-    }
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
 
-    #[tokio::test]
-    async fn test_new_creates_empty_coordinator() {
-        let coordinator = ProjectorCoordinatorService::new();
-        assert!(coordinator.projectors.read().await.is_empty());
-    }
+        let service = EventQueryService::new(event_store, snapshot_store);
 
-    #[tokio::test]
-    async fn test_default_creates_empty_coordinator() {
-        let coordinator = ProjectorCoordinatorService::default();
-        assert!(coordinator.projectors.read().await.is_empty());
+        tokio::spawn(async move {
+            Server::builder()
+                .add_service(EventQueryServer::new(service))
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await
+                .unwrap();
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        addr
     }
 
     #[tokio::test]
     async fn test_handle_sync_with_no_projectors_returns_empty_projection() {
-        let coordinator = ProjectorCoordinatorService::new();
+        let addr = start_event_query_server().await;
+        let coordinator = ProjectorCoordinatorService::connect(&addr.to_string())
+            .await
+            .unwrap();
+
         let event_book = make_event_book();
         let sync_request = SyncEventBook {
             events: Some(event_book),
@@ -263,7 +234,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_with_no_projectors_succeeds() {
-        let coordinator = ProjectorCoordinatorService::new();
+        let addr = start_event_query_server().await;
+        let coordinator = ProjectorCoordinatorService::connect(&addr.to_string())
+            .await
+            .unwrap();
+
         let event_book = make_event_book();
 
         let response = coordinator.handle(Request::new(event_book)).await;
@@ -273,7 +248,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_projector_invalid_address() {
-        let coordinator = ProjectorCoordinatorService::new();
+        let addr = start_event_query_server().await;
+        let coordinator = ProjectorCoordinatorService::connect(&addr.to_string())
+            .await
+            .unwrap();
+
         let config = ServiceEndpoint {
             name: "test".to_string(),
             address: "".to_string(), // Invalid
@@ -284,29 +263,4 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
-    async fn test_repair_event_book_complete_passes_through() {
-        let coordinator = ProjectorCoordinatorService::new();
-        let event_book = make_complete_event_book();
-
-        let result = coordinator.repairer.repair_event_book(event_book.clone()).await;
-
-        assert!(result.is_ok());
-        let repaired = result.unwrap();
-        assert_eq!(repaired.pages.len(), event_book.pages.len());
-    }
-
-    #[tokio::test]
-    async fn test_repair_event_book_incomplete_without_repairer_warns() {
-        let coordinator = ProjectorCoordinatorService::new();
-        let event_book = make_incomplete_event_book();
-
-        // Without a repairer, incomplete books pass through with a warning
-        let result = coordinator.repairer.repair_event_book(event_book.clone()).await;
-
-        assert!(result.is_ok());
-        let passed = result.unwrap();
-        // Still incomplete since no repairer
-        assert_eq!(passed.pages.len(), 1);
-    }
 }

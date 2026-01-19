@@ -23,9 +23,9 @@ default:
 # Build / Test / Clean (workspace-level)
 # ============================================================================
 
-# Build all Rust example crates
+# Build all Rust example crates (includes angzarr with sqlite)
 build:
-    cargo build --workspace
+    cargo build --workspace --features sqlite
 
 # Run unit tests (inline lib tests, no cluster required)
 test:
@@ -145,42 +145,119 @@ delete:
     skaffold delete
 
 # ============================================================================
-# Run Individual Services (local development without K8s)
+# Embedded Mode (Local Development with UDS)
+# Runs all services via angzarr-embedded orchestrator
 # ============================================================================
 
-# Run customer server (port 50055)
+# Build angzarr binaries for embedded mode
+build-angzarr:
+    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-gateway --bin angzarr_embedded
+
+# Clean up stale UDS sockets
+clean-sockets:
+    mkdir -p /tmp/angzarr
+    rm -f /tmp/angzarr/*.sock 2>/dev/null || true
+
+# Run all services in embedded mode (single command)
+embedded: build-angzarr clean-sockets build
+    cd {{TOP}}/examples/rust && ANGZARR_CONFIG=config/embedded.yaml {{TOP}}/target/debug/angzarr_embedded
+
+# Kill any stale embedded processes
+kill-embedded:
+    #!/usr/bin/env bash
+    # Use pgrep to find exact binary matches, then kill
+    for proc in angzarr_embedded angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
+        pids=$(pgrep -x "$proc" 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null || true
+        fi
+    done
+    sleep 1
+
+# Run acceptance tests against embedded mode
+# Starts embedded runtime in background, runs tests, cleans up
+acceptance-embedded: build-angzarr kill-embedded clean-sockets build
+    #!/usr/bin/env bash
+    set -e
+    cd "{{TOP}}/examples/rust"
+
+    # Cleanup function
+    cleanup() {
+        echo "Cleaning up..."
+        for proc in angzarr_embedded angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
+            pids=$(pgrep -x "$proc" 2>/dev/null || true)
+            if [ -n "$pids" ]; then
+                echo "$pids" | xargs kill -9 2>/dev/null || true
+            fi
+        done
+        rm -f /tmp/angzarr/*.sock 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    # Start embedded runtime in background
+    echo "Starting embedded runtime..."
+    ANGZARR_CONFIG=config/embedded.yaml "{{TOP}}/target/debug/angzarr_embedded" &
+    EMBEDDED_PID=$!
+
+    # Wait for services to be ready (gateway on port 1350)
+    # Use TCP connection check (no reflection needed)
+    echo "Waiting for gateway to be ready..."
+    for i in {1..60}; do
+        if nc -z localhost 1350 2>/dev/null; then
+            echo "Gateway ready!"
+            break
+        fi
+        if [ $i -eq 60 ]; then
+            echo "Timeout waiting for gateway"
+            exit 1
+        fi
+        sleep 1
+    done
+
+    # Run acceptance tests
+    echo "Running acceptance tests..."
+    ANGZARR_PORT=1350 cargo test --workspace --test acceptance || TEST_RESULT=$?
+
+    exit ${TEST_RESULT:-0}
+
+# ============================================================================
+# Run Individual Services (local development without K8s)
+# See docs/port-conventions.md for port scheme (logic port = base + 3)
+# ============================================================================
+
+# Run customer server (logic port 50053)
 run-customer:
     cargo run -p customer --bin customer-server
 
-# Run product server (port 50053)
+# Run product server (logic port 50063)
 run-product:
     cargo run -p product --bin product-server
 
-# Run inventory server (port 50054)
+# Run inventory server (logic port 50073)
 run-inventory:
-    cargo run -p inventory --bin inventory-server
+    cargo run -p inventory-svc --bin inventory-server
 
-# Run order server (port 50056)
+# Run order server (logic port 50083)
 run-order:
     cargo run -p order --bin order-server
 
-# Run cart server (port 50057)
+# Run cart server (logic port 50093)
 run-cart:
     cargo run -p cart --bin cart-server
 
-# Run fulfillment server (port 50058)
+# Run fulfillment server (logic port 50103)
 run-fulfillment:
     cargo run -p fulfillment --bin fulfillment-server
 
-# Run saga-loyalty-earn server (port 50060)
+# Run saga-loyalty-earn server (logic port 50113)
 run-saga-loyalty-earn:
     cargo run -p saga-loyalty-earn --bin saga-loyalty-earn-server
 
-# Run saga-fulfillment server (port 50061)
+# Run saga-fulfillment server (logic port 50123)
 run-saga-fulfillment:
     cargo run -p saga-fulfillment --bin saga-fulfillment-server
 
-# Run saga-cancellation server (port 50062)
+# Run saga-cancellation server (logic port 50133)
 run-saga-cancellation:
     cargo run -p saga-cancellation --bin saga-cancellation-server
 

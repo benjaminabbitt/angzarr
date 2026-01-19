@@ -6,6 +6,7 @@
 - [Command Handlers (Aggregates)](command-handlers.md) — Processing commands and emitting events
 - [Projectors](projectors.md) — Building read models from event streams
 - [Sagas](sagas.md) — Orchestrating workflows across aggregates
+- [Port Conventions](port-conventions.md) — Standardized five-port-per-pod scheme
 
 ## Quick Reference
 

@@ -122,3 +122,45 @@ integration: setup-integration
 # Run integration tests with custom gateway address
 integration-custom GATEWAY: setup-integration
     cd tests && ANGZARR_TEST_MODE=container ANGZARR_GATEWAY={{GATEWAY}} uv run pytest test_container_integration.py -v
+
+# ============================================================================
+# Embedded Mode (Local Development with UDS)
+# Runs angzarr sidecars that spawn Python business logic
+# ============================================================================
+
+# Build angzarr binaries
+build-angzarr:
+    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-stream --bin angzarr-gateway --bin angzarr_embedded
+
+# Run all services in embedded mode (single command)
+embedded: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/embedded.yaml {{TOP}}/target/debug/angzarr_embedded
+
+# Clean up stale UDS sockets
+clean-sockets:
+    mkdir -p /tmp/angzarr
+    rm -f /tmp/angzarr/*.sock 2>/dev/null || true
+
+# Run customer aggregate (spawns Python business logic)
+run-customer: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-customer.yaml {{TOP}}/target/debug/angzarr-aggregate
+
+# Run order aggregate
+run-order: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-order.yaml {{TOP}}/target/debug/angzarr-aggregate
+
+# Run cart aggregate
+run-cart: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-cart.yaml {{TOP}}/target/debug/angzarr-aggregate
+
+# Run inventory aggregate
+run-inventory: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-inventory.yaml {{TOP}}/target/debug/angzarr-aggregate
+
+# Run product aggregate
+run-product: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-product.yaml {{TOP}}/target/debug/angzarr-aggregate
+
+# Run fulfillment aggregate
+run-fulfillment: build-angzarr clean-sockets
+    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-fulfillment.yaml {{TOP}}/target/debug/angzarr-aggregate

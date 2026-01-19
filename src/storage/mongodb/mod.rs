@@ -87,39 +87,8 @@ impl EventStore for MongoEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-
-            // Determine sequence number
-            let sequence = match &event.sequence {
-                Some(crate::proto::event_page::Sequence::Num(n)) => {
-                    if *n < base_sequence {
-                        return Err(StorageError::SequenceConflict {
-                            expected: base_sequence,
-                            actual: *n,
-                        });
-                    }
-                    *n
-                }
-                Some(crate::proto::event_page::Sequence::Force(_)) | None => {
-                    let seq = auto_sequence;
-                    auto_sequence += 1;
-                    seq
-                }
-            };
-
-            let created_at = event
-                .created_at
-                .as_ref()
-                .map(|ts| {
-                    chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32).ok_or_else(|| {
-                        StorageError::InvalidTimestamp {
-                            seconds: ts.seconds,
-                            nanos: ts.nanos,
-                        }
-                    })
-                })
-                .transpose()?
-                .map(|dt| dt.to_rfc3339())
-                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+            let sequence = super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let created_at = super::helpers::parse_timestamp(&event)?;
 
             let doc = doc! {
                 "domain": domain,
@@ -132,15 +101,16 @@ impl EventStore for MongoEventStore {
             // Insert with unique index enforcing consistency
             // Duplicate key error indicates concurrent write conflict
             self.events.insert_one(doc).await.map_err(|e| {
-                if let mongodb::error::ErrorKind::Write(ref we) = *e.kind {
-                    if let mongodb::error::WriteFailure::WriteError(ref write_err) = we {
-                        if write_err.code == 11000 {
-                            // Duplicate key error - sequence conflict
-                            return StorageError::SequenceConflict {
-                                expected: sequence,
-                                actual: sequence,
-                            };
-                        }
+                if let mongodb::error::ErrorKind::Write(
+                    mongodb::error::WriteFailure::WriteError(ref write_err),
+                ) = *e.kind
+                {
+                    if write_err.code == 11000 {
+                        // Duplicate key error - sequence conflict
+                        return StorageError::SequenceConflict {
+                            expected: sequence,
+                            actual: sequence,
+                        };
                     }
                 }
                 StorageError::from(e)

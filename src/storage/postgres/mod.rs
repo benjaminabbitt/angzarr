@@ -6,7 +6,7 @@ use sea_query::{ColumnDef, Expr, Index, OnConflict, Order, PostgresQueryBuilder,
 use sqlx::{Acquire, PgPool, Row};
 use uuid::Uuid;
 
-use super::{EventStore, Result, SnapshotStore, StorageError};
+use super::{EventStore, Result, SnapshotStore};
 use crate::proto::{EventPage, Snapshot};
 
 use super::schema::{Events, Snapshots};
@@ -95,40 +95,8 @@ impl EventStore for PostgresEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-
-            // Determine sequence number
-            let sequence = match &event.sequence {
-                Some(crate::proto::event_page::Sequence::Num(n)) => {
-                    // Validate explicit sequence numbers
-                    if *n < base_sequence {
-                        return Err(StorageError::SequenceConflict {
-                            expected: base_sequence,
-                            actual: *n,
-                        });
-                    }
-                    *n
-                }
-                Some(crate::proto::event_page::Sequence::Force(_)) | None => {
-                    let seq = auto_sequence;
-                    auto_sequence += 1;
-                    seq
-                }
-            };
-
-            let created_at = event
-                .created_at
-                .as_ref()
-                .map(|ts| {
-                    chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32).ok_or_else(|| {
-                        StorageError::InvalidTimestamp {
-                            seconds: ts.seconds,
-                            nanos: ts.nanos,
-                        }
-                    })
-                })
-                .transpose()?
-                .map(|dt| dt.to_rfc3339())
-                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+            let sequence = super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let created_at = super::helpers::parse_timestamp(&event)?;
 
             let query = Query::insert()
                 .into_table(Events::Table)

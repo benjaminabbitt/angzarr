@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
@@ -19,7 +19,6 @@ use crate::proto::{
     EventBook, SagaCommandOrigin, SagaResponse, SyncEventBook,
 };
 use crate::services::event_book_repair::EventBookRepairer;
-use crate::services::repairable::RepairableCoordinator;
 
 /// Connected saga client.
 struct SagaConnection {
@@ -34,35 +33,30 @@ struct SagaConnection {
 /// missing history from the EventQuery service if needed.
 pub struct SagaCoordinatorService {
     sagas: Arc<RwLock<Vec<SagaConnection>>>,
-    repairer: RepairableCoordinator,
+    repairer: Arc<Mutex<EventBookRepairer>>,
 }
 
 impl SagaCoordinatorService {
-    /// Create a new saga coordinator without repair capability.
-    pub fn new() -> Self {
+    /// Create a new saga coordinator.
+    pub fn new(repairer: EventBookRepairer) -> Self {
         Self {
             sagas: Arc::new(RwLock::new(Vec::new())),
-            repairer: RepairableCoordinator::new(),
+            repairer: Arc::new(Mutex::new(repairer)),
         }
     }
 
-    /// Create a new saga coordinator with repair capability.
-    ///
-    /// The repairer will fetch missing events from the EventQuery service
-    /// at the given address when incomplete EventBooks are received.
-    pub async fn with_repair(event_query_address: &str) -> Result<Self, String> {
-        Ok(Self {
-            sagas: Arc::new(RwLock::new(Vec::new())),
-            repairer: RepairableCoordinator::with_repair(event_query_address).await?,
-        })
-    }
+    /// Create a new saga coordinator, connecting to EventQuery service.
+    pub async fn connect(event_query_address: &str) -> Result<Self, String> {
+        let repairer = EventBookRepairer::connect(event_query_address)
+            .await
+            .map_err(|e| format!("Failed to connect to EventQuery service: {}", e))?;
 
-    /// Create a new saga coordinator with an existing repairer.
-    pub fn with_repairer(repairer: EventBookRepairer) -> Self {
-        Self {
-            sagas: Arc::new(RwLock::new(Vec::new())),
-            repairer: RepairableCoordinator::with_repairer(repairer),
-        }
+        info!(
+            address = %event_query_address,
+            "Connected to EventQuery service for EventBook repair"
+        );
+
+        Ok(Self::new(repairer))
     }
 
     /// Register a saga endpoint.
@@ -82,12 +76,6 @@ impl SagaCoordinatorService {
             .push(SagaConnection { config, client });
 
         Ok(())
-    }
-}
-
-impl Default for SagaCoordinatorService {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -125,7 +113,10 @@ impl SagaCoordinator for SagaCoordinatorService {
         let event_book = request.into_inner();
 
         // Repair EventBook if incomplete
-        let event_book = self.repairer.repair_event_book(event_book).await?;
+        let event_book = self.repairer.lock().await.repair(event_book).await.map_err(|e| {
+            error!(error = %e, "Failed to repair EventBook");
+            Status::internal(format!("Failed to repair EventBook: {}", e))
+        })?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -159,7 +150,10 @@ impl SagaCoordinator for SagaCoordinatorService {
         let correlation_id = event_book.correlation_id.clone();
 
         // Repair EventBook if incomplete
-        let event_book = self.repairer.repair_event_book(event_book).await?;
+        let event_book = self.repairer.lock().await.repair(event_book).await.map_err(|e| {
+            error!(error = %e, "Failed to repair EventBook");
+            Status::internal(format!("Failed to repair EventBook: {}", e))
+        })?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -213,7 +207,6 @@ impl SagaCoordinator for SagaCoordinatorService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clients::ServiceEndpoint;
     use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
     use prost_types::Any;
 
@@ -248,103 +241,6 @@ mod tests {
             correlation_id: String::new(),
             snapshot_state: None,
         }
-    }
-
-    fn make_incomplete_event_book() -> EventBook {
-        EventBook {
-            cover: Some(Cover {
-                domain: "orders".to_string(),
-                root: Some(ProtoUuid { value: vec![1; 16] }),
-            }),
-            pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(5)), // Missing events 0-4
-                event: Some(Any {
-                    type_url: "test.Event".to_string(),
-                    value: vec![],
-                }),
-                created_at: None,
-            }],
-            snapshot: None,
-            correlation_id: String::new(),
-            snapshot_state: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_new_creates_empty_coordinator() {
-        let coordinator = SagaCoordinatorService::new();
-        assert!(coordinator.sagas.read().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_default_creates_empty_coordinator() {
-        let coordinator = SagaCoordinatorService::default();
-        assert!(coordinator.sagas.read().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_handle_sync_with_no_sagas_returns_empty_response() {
-        let coordinator = SagaCoordinatorService::new();
-        let event_book = make_event_book();
-        let sync_request = SyncEventBook {
-            events: Some(event_book),
-            sync_mode: crate::proto::SyncMode::Simple.into(),
-        };
-
-        let response = coordinator.handle_sync(Request::new(sync_request)).await;
-
-        assert!(response.is_ok());
-        let sync_response = response.unwrap().into_inner();
-        assert!(sync_response.commands.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_handle_with_no_sagas_succeeds() {
-        let coordinator = SagaCoordinatorService::new();
-        let event_book = make_event_book();
-
-        let response = coordinator.handle(Request::new(event_book)).await;
-
-        assert!(response.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_add_saga_invalid_address() {
-        let coordinator = SagaCoordinatorService::new();
-        let config = ServiceEndpoint {
-            name: "test".to_string(),
-            address: "".to_string(), // Invalid
-        };
-
-        let result = coordinator.add_saga(config).await;
-
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_repair_event_book_complete_passes_through() {
-        let coordinator = SagaCoordinatorService::new();
-        let event_book = make_complete_event_book();
-
-        let result = coordinator.repairer.repair_event_book(event_book.clone()).await;
-
-        assert!(result.is_ok());
-        let repaired = result.unwrap();
-        assert_eq!(repaired.pages.len(), event_book.pages.len());
-    }
-
-    #[tokio::test]
-    async fn test_repair_event_book_incomplete_without_repairer_warns() {
-        let coordinator = SagaCoordinatorService::new();
-        let event_book = make_incomplete_event_book();
-
-        // Without a repairer, incomplete books pass through with a warning
-        let result = coordinator.repairer.repair_event_book(event_book.clone()).await;
-
-        assert!(result.is_ok());
-        let passed = result.unwrap();
-        // Still incomplete since no repairer
-        assert_eq!(passed.pages.len(), 1);
     }
 
     #[test]
