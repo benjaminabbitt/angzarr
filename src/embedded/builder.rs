@@ -7,8 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, MessagingType};
-#[cfg(feature = "lossy")]
-use crate::bus::{LossyConfig, LossyEventBus};
 use crate::storage::{SqliteConfig, StorageConfig, StorageType};
 use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
@@ -55,10 +53,6 @@ impl GatewayConfig {
 ///     .build()
 ///     .await?;
 /// ```
-/// Default lossy drop rate for embedded mode (5%).
-#[cfg(feature = "lossy")]
-const DEFAULT_LOSSY_DROP_RATE: f64 = 0.05;
-
 pub struct RuntimeBuilder {
     /// Storage configuration.
     storage: StorageConfig,
@@ -74,9 +68,10 @@ pub struct RuntimeBuilder {
     projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
     /// Registered saga handlers by name.
     sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
-    /// Lossy message drop rate (0.0 = disabled, requires 'lossy' feature).
-    #[cfg(feature = "lossy")]
-    lossy_drop_rate: f64,
+    /// Optional custom channel bus (base pub/sub bus for subscriptions).
+    custom_channel_bus: Option<Arc<ChannelEventBus>>,
+    /// Optional custom event bus (wrapper around channel bus for publishing).
+    custom_event_bus: Option<Arc<dyn EventBus>>,
 }
 
 impl Default for RuntimeBuilder {
@@ -113,8 +108,8 @@ impl RuntimeBuilder {
             aggregates: HashMap::new(),
             projectors: HashMap::new(),
             sagas: HashMap::new(),
-            #[cfg(feature = "lossy")]
-            lossy_drop_rate: DEFAULT_LOSSY_DROP_RATE,
+            custom_channel_bus: None,
+            custom_event_bus: None,
         }
     }
 
@@ -239,25 +234,39 @@ impl RuntimeBuilder {
     }
 
     // ========================================================================
-    // Lossy Configuration (for testing)
+    // Custom Event Bus (for testing)
     // ========================================================================
 
-    /// Set the message drop rate for testing unreliable delivery.
+    /// Use a custom event bus implementation with its underlying channel bus.
     ///
-    /// Default is 5% (0.05) when 'lossy' feature is enabled.
-    /// Set to 0.0 to disable lossy behavior.
+    /// This is for testing scenarios like wrapping with LossyEventBus.
+    /// Both the channel bus (for subscriptions) and the wrapper (for publishing)
+    /// must be provided so they share the same underlying pub/sub channel.
     ///
-    /// Requires the 'lossy' feature to be enabled.
-    #[cfg(feature = "lossy")]
-    pub fn with_lossy(mut self, drop_rate: f64) -> Self {
-        self.lossy_drop_rate = drop_rate.clamp(0.0, 1.0);
-        self
-    }
-
-    /// Disable lossy message delivery (pass-through mode).
-    #[cfg(feature = "lossy")]
-    pub fn without_lossy(mut self) -> Self {
-        self.lossy_drop_rate = 0.0;
+    /// # Example
+    ///
+    /// ```ignore
+    /// use angzarr::bus::{ChannelEventBus, ChannelConfig, LossyEventBus, LossyConfig};
+    ///
+    /// let channel_bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
+    /// let lossy_bus = Arc::new(LossyEventBus::new(
+    ///     channel_bus.clone(), // Wrap the same channel bus
+    ///     LossyConfig::with_drop_rate(0.5),
+    /// ));
+    ///
+    /// let runtime = RuntimeBuilder::new()
+    ///     .with_event_bus(channel_bus, lossy_bus)
+    ///     .register_aggregate("orders", handler)
+    ///     .build()
+    ///     .await?;
+    /// ```
+    pub fn with_event_bus(
+        mut self,
+        channel_bus: Arc<ChannelEventBus>,
+        event_bus: Arc<dyn EventBus>,
+    ) -> Self {
+        self.custom_channel_bus = Some(channel_bus);
+        self.custom_event_bus = Some(event_bus);
         self
     }
 
@@ -322,22 +331,15 @@ impl RuntimeBuilder {
     /// Initializes storage, messaging, and transport based on configuration.
     /// Returns a Runtime that can be used to run the system.
     pub async fn build(self) -> Result<Runtime, Box<dyn std::error::Error>> {
-        // Create shared channel event bus for in-process pub/sub
-        let channel_bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
+        // Use custom channel bus if provided, otherwise create a new one
+        let channel_bus = self
+            .custom_channel_bus
+            .unwrap_or_else(|| Arc::new(ChannelEventBus::new(ChannelConfig::publisher())));
 
-        // Wrap in lossy bus if feature enabled and drop rate > 0
-        #[cfg(feature = "lossy")]
-        let event_bus: Arc<dyn EventBus> = if self.lossy_drop_rate > 0.0 {
-            Arc::new(LossyEventBus::new(
-                channel_bus.with_config(ChannelConfig::publisher()),
-                LossyConfig::with_drop_rate(self.lossy_drop_rate),
-            ))
-        } else {
-            channel_bus.clone()
-        };
-
-        #[cfg(not(feature = "lossy"))]
-        let event_bus: Arc<dyn EventBus> = channel_bus.clone();
+        // Use custom event bus if provided, otherwise use the channel bus directly
+        let event_bus: Arc<dyn EventBus> = self
+            .custom_event_bus
+            .unwrap_or_else(|| channel_bus.clone());
 
         Runtime::new(
             self.storage,
