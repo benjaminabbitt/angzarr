@@ -9,7 +9,7 @@ use crate::storage::EventStore;
 use crate::storage::SnapshotStore;
 use crate::proto::{
     event_query_server::EventQuery as EventQueryTrait, AggregateRoot, EventBook, Query,
-    Uuid as ProtoUuid,
+    Uuid as ProtoUuid, query::Selection,
 };
 use crate::repository::EventBookRepository;
 
@@ -22,18 +22,18 @@ pub struct EventQueryService {
 }
 
 impl EventQueryService {
-    /// Create a new event query service.
+    /// Create a new event query service with snapshot optimization enabled.
     ///
-    /// Note: Snapshot reading is disabled by default for queries because clients
-    /// typically want to see all raw events, not a snapshot-optimized view.
+    /// Snapshots are enabled by default because sagas benefit from the
+    /// optimization (snapshot + events after snapshot vs all events).
     pub fn new(event_store: Arc<dyn EventStore>, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
-        Self::with_options(event_store, snapshot_store, false)
+        Self::with_options(event_store, snapshot_store, true)
     }
 
     /// Create a new event query service with configurable snapshot reading.
     ///
-    /// Use `enable_snapshots = true` for repair use cases where snapshots
-    /// improve efficiency. Use `false` (default) for raw event queries.
+    /// Use `enable_snapshots = true` (default) for saga workloads where snapshots
+    /// improve efficiency. Use `false` for raw event queries (debugging, replay).
     pub fn with_options(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
@@ -58,30 +58,68 @@ impl EventQueryTrait for EventQueryService {
 
     async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
         let query = request.into_inner();
+
+        // Correlation ID query: returns first matching EventBook across all domains
+        // Useful for sagas that need to find related events without knowing the root ID
+        if !query.correlation_id.is_empty() {
+            info!(correlation_id = %query.correlation_id, "GetEventBook by correlation_id");
+
+            let books = self
+                .event_store
+                .get_by_correlation(&query.correlation_id)
+                .await
+                .map_err(|e| {
+                    error!(correlation_id = %query.correlation_id, error = %e, "GetEventBook correlation query failed");
+                    Status::internal(e.to_string())
+                })?;
+
+            // Return first matching book, or empty book if none found
+            let book = books.into_iter().next().unwrap_or_default();
+            info!(correlation_id = %query.correlation_id, pages = book.pages.len(), "GetEventBook by correlation_id completed");
+            return Ok(Response::new(book));
+        }
+
+        // Standard query by domain + root
         let domain = query.domain;
         let root = query
             .root
-            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID"))?;
+            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID or correlation_id"))?;
 
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
 
-        info!(domain = %domain, root = %root_uuid, "GetEventBook starting query");
+        info!(
+            domain = %domain,
+            root = %root_uuid,
+            selection = ?query.selection,
+            "GetEventBook starting query"
+        );
 
-        // Support range queries if bounds are specified
-        let book = if query.lower_bound > 0 || query.upper_bound > 0 {
-            let upper = if query.upper_bound == 0 {
-                u32::MAX
-            } else {
-                query.upper_bound
-            };
-            info!(domain = %domain, root = %root_uuid, lower = query.lower_bound, upper = upper, "GetEventBook range query");
-            self.event_book_repo
-                .get_from_to(&domain, root_uuid, query.lower_bound, upper)
-                .await
-        } else {
-            info!(domain = %domain, root = %root_uuid, "GetEventBook full query");
-            self.event_book_repo.get(&domain, root_uuid).await
+        // Handle selection: range, specific sequences, or full query
+        let book = match query.selection {
+            Some(Selection::Range(ref range)) => {
+                let lower = range.lower;
+                // Proto uses inclusive upper bound, storage uses exclusive.
+                // Convert: inclusive N → exclusive N+1 (saturating to avoid overflow)
+                let upper = range
+                    .upper
+                    .map(|u| u.saturating_add(1))
+                    .unwrap_or(u32::MAX);
+                info!(domain = %domain, root = %root_uuid, lower = lower, upper = upper, "GetEventBook range query");
+                self.event_book_repo
+                    .get_from_to(&domain, root_uuid, lower, upper)
+                    .await
+            }
+            Some(Selection::Sequences(ref seq_set)) => {
+                // TODO: Implement specific sequence fetching
+                // For now, fall back to full query
+                info!(domain = %domain, root = %root_uuid, sequences = ?seq_set.values, "GetEventBook sequences query (not yet implemented, using full)");
+                self.event_book_repo.get(&domain, root_uuid).await
+            }
+            None => {
+                info!(domain = %domain, root = %root_uuid, "GetEventBook full query");
+                self.event_book_repo.get(&domain, root_uuid).await
+            }
         }
         .map_err(|e| {
             error!(domain = %domain, root = %root_uuid, error = %e, "GetEventBook query failed");
@@ -97,17 +135,41 @@ impl EventQueryTrait for EventQueryService {
         request: Request<Query>,
     ) -> Result<Response<Self::GetEventsStream>, Status> {
         let query = request.into_inner();
+        let (tx, rx) = tokio::sync::mpsc::channel(32);
+
+        // Correlation ID query: streams ALL matching EventBooks across all domains
+        if !query.correlation_id.is_empty() {
+            let event_store = self.event_store.clone();
+            let correlation_id = query.correlation_id.clone();
+
+            tokio::spawn(async move {
+                match event_store.get_by_correlation(&correlation_id).await {
+                    Ok(books) => {
+                        for book in books {
+                            if tx.send(Ok(book)).await.is_err() {
+                                break; // Client disconnected
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(Status::internal(e.to_string()))).await;
+                    }
+                }
+            });
+
+            return Ok(Response::new(ReceiverStream::new(rx)));
+        }
+
+        // Standard query by domain + root
         let domain = query.domain;
         let root = query
             .root
-            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID"))?;
+            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID or correlation_id"))?;
 
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
 
         let event_book_repo = self.event_book_repo.clone();
-
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
 
         tokio::spawn(async move {
             match event_book_repo.get(&domain, root_uuid).await {
@@ -161,18 +223,22 @@ impl EventQueryTrait for EventQueryService {
                             }
                         };
 
-                        // Support range queries if bounds are specified
-                        let result = if query.lower_bound > 0 || query.upper_bound > 0 {
-                            let upper = if query.upper_bound == 0 {
-                                u32::MAX
-                            } else {
-                                query.upper_bound
-                            };
-                            event_book_repo
-                                .get_from_to(&domain, root, query.lower_bound, upper)
-                                .await
-                        } else {
-                            event_book_repo.get(&domain, root).await
+                        // Handle selection: range, specific sequences, or full query
+                        let result = match query.selection {
+                            Some(Selection::Range(ref range)) => {
+                                let lower = range.lower;
+                                let upper = range.upper.unwrap_or(u32::MAX);
+                                event_book_repo
+                                    .get_from_to(&domain, root, lower, upper)
+                                    .await
+                            }
+                            Some(Selection::Sequences(_)) => {
+                                // TODO: Implement specific sequence fetching
+                                event_book_repo.get(&domain, root).await
+                            }
+                            None => {
+                                event_book_repo.get(&domain, root).await
+                            }
                         };
 
                         match result {
@@ -249,7 +315,7 @@ impl EventQueryTrait for EventQueryService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{event_page, EventPage};
+    use crate::proto::{event_page, EventPage, SequenceRange};
     use crate::storage::mock::{MockEventStore, MockSnapshotStore};
     use prost_types::Any;
     use tokio_stream::StreamExt;
@@ -284,8 +350,8 @@ mod tests {
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -308,15 +374,15 @@ mod tests {
             }),
             created_at: None,
         }];
-        event_store.add("orders", root, events).await.unwrap();
+        event_store.add("orders", root, events, "").await.unwrap();
 
         let query = Query {
             domain: "orders".to_string(),
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -333,8 +399,8 @@ mod tests {
         let query = Query {
             domain: "orders".to_string(),
             root: None,
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -353,8 +419,8 @@ mod tests {
             root: Some(ProtoUuid {
                 value: vec![1, 2, 3],
             }),
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -379,24 +445,27 @@ mod tests {
                 }),
                 created_at: None,
             }];
-            event_store.add("orders", root, events).await.unwrap();
+            event_store.add("orders", root, events, "").await.unwrap();
         }
 
-        // Query for range [2, 4)
+        // Query for range [2, 4] - inclusive bounds, should return events 2, 3, 4
         let query = Query {
             domain: "orders".to_string(),
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
-            lower_bound: 2,
-            upper_bound: 4,
+            selection: Some(Selection::Range(SequenceRange {
+                lower: 2,
+                upper: Some(4),
+            })),
+            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
 
         assert!(response.is_ok());
         let book = response.unwrap().into_inner();
-        assert_eq!(book.pages.len(), 2);
+        assert_eq!(book.pages.len(), 3); // Events 2, 3, 4 (inclusive upper bound)
     }
 
     #[tokio::test]
@@ -409,8 +478,8 @@ mod tests {
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -437,15 +506,15 @@ mod tests {
             }),
             created_at: None,
         }];
-        event_store.add("orders", root, events).await.unwrap();
+        event_store.add("orders", root, events, "").await.unwrap();
 
         let query = Query {
             domain: "orders".to_string(),
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -465,8 +534,8 @@ mod tests {
         let query = Query {
             domain: "orders".to_string(),
             root: None,
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -485,8 +554,8 @@ mod tests {
             root: Some(ProtoUuid {
                 value: vec![1, 2, 3], // Invalid: must be 16 bytes
             }),
-            lower_bound: 0,
-            upper_bound: 0,
+            selection: None,
+            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -515,8 +584,8 @@ mod tests {
         let root2 = uuid::Uuid::new_v4();
 
         // Add some events
-        event_store.add("orders", root1, vec![]).await.unwrap();
-        event_store.add("orders", root2, vec![]).await.unwrap();
+        event_store.add("orders", root1, vec![], "").await.unwrap();
+        event_store.add("orders", root2, vec![], "").await.unwrap();
 
         let response = service.get_aggregate_roots(Request::new(())).await;
 
@@ -531,11 +600,11 @@ mod tests {
         let (service, event_store, _) = create_default_test_service();
 
         event_store
-            .add("orders", uuid::Uuid::new_v4(), vec![])
+            .add("orders", uuid::Uuid::new_v4(), vec![], "")
             .await
             .unwrap();
         event_store
-            .add("inventory", uuid::Uuid::new_v4(), vec![])
+            .add("inventory", uuid::Uuid::new_v4(), vec![], "")
             .await
             .unwrap();
 
@@ -545,5 +614,98 @@ mod tests {
         let stream = response.unwrap().into_inner();
         let roots: Vec<_> = stream.collect().await;
         assert_eq!(roots.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_by_correlation_id() {
+        let (service, event_store, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+        let correlation_id = "corr-123";
+
+        // Add events with correlation ID
+        let events = vec![EventPage {
+            sequence: Some(event_page::Sequence::Num(0)),
+            event: Some(Any {
+                type_url: "test.Event".to_string(),
+                value: vec![],
+            }),
+            created_at: None,
+        }];
+        event_store
+            .add("orders", root, events, correlation_id)
+            .await
+            .unwrap();
+
+        // Query by correlation ID (no root needed)
+        let query = Query {
+            domain: String::new(),
+            root: None,
+            selection: None,
+            correlation_id: correlation_id.to_string(),
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert_eq!(book.pages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_by_correlation_id_not_found() {
+        let (service, _, _) = create_default_test_service();
+
+        let query = Query {
+            domain: String::new(),
+            root: None,
+            selection: None,
+            correlation_id: "nonexistent".to_string(),
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert!(book.pages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_events_by_correlation_id_multiple_aggregates() {
+        let (service, event_store, _) = create_default_test_service();
+        let correlation_id = "corr-multi";
+
+        // Add events to multiple aggregates with same correlation ID
+        for (domain, root) in [
+            ("orders", uuid::Uuid::new_v4()),
+            ("inventory", uuid::Uuid::new_v4()),
+        ] {
+            let events = vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(0)),
+                event: Some(Any {
+                    type_url: format!("{}.Event", domain),
+                    value: vec![],
+                }),
+                created_at: None,
+            }];
+            event_store
+                .add(domain, root, events, correlation_id)
+                .await
+                .unwrap();
+        }
+
+        // Query by correlation ID - should return both
+        let query = Query {
+            domain: String::new(),
+            root: None,
+            selection: None,
+            correlation_id: correlation_id.to_string(),
+        };
+
+        let response = service.get_events(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let stream = response.unwrap().into_inner();
+        let books: Vec<_> = stream.collect().await;
+        assert_eq!(books.len(), 2);
     }
 }

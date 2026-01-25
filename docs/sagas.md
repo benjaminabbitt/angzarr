@@ -62,36 +62,69 @@ flowchart TD
 
 Sagas implement the `Saga` service:
 
-**[proto/angzarr/angzarr.proto](../proto/angzarr/angzarr.proto)**
+**[proto/angzarr/saga.proto](../proto/angzarr/saga.proto)**
 
 ```protobuf
 // You implement this service
 service Saga {
-  // Asynchronous: fire-and-forget
-  rpc Handle (EventBook) returns (google.protobuf.Empty);
+  // Handle events and produce commands for other aggregates
+  rpc Handle (SagaRequest) returns (SagaResponse);
+  // Retry with context when a command was rejected
+  rpc HandleRetry (SagaRetryRequest) returns (SagaResponse);
+}
 
-  // Synchronous: blocks until saga produces commands
-  rpc HandleSync (EventBook) returns (SagaResponse);
+// Request contains full context for command sequencing
+message SagaRequest {
+  SagaContext context = 1;
+}
+
+// Context provides events and target aggregate states
+message SagaContext {
+  EventBook events = 1;                          // Triggering events
+  repeated DomainState target_domain_states = 2; // Current sequence for target aggregates
+  Snapshot saga_state = 3;                       // Previous saga state (if any)
+}
+
+// Current sequence state for a domain/root combination
+message DomainState {
+  Cover cover = 1;
+  uint32 sequence = 2;  // Current sequence (use in CommandPage.sequence)
 }
 
 message SagaResponse {
-  repeated CommandBook commands = 1;  // Commands to dispatch to other aggregates
+  repeated SagaCommand commands = 1;  // Commands to dispatch to other aggregates
+  Snapshot new_state = 2;             // Optional new saga state to persist
 }
 
-message CommandBook {
+message SagaCommand {
   Cover cover = 1;              // Target domain + aggregate root ID
   repeated CommandPage pages = 2;
-  SagaOrigin saga_origin = 3;   // For compensation tracking
-  bool auto_resequence = 4;     // Retry on sequence conflicts
-  bool fact = 5;                // True = guaranteed to succeed (event already committed)
-}
-
-message SagaOrigin {
-  string saga_name = 1;         // Name of originating saga
-  string correlation_id = 2;    // Tracks related operations
-  EventBook triggering_event = 3; // Event that triggered this saga
+  string correlation_id = 3;
 }
 ```
+
+### Using target_domain_states
+
+The sidecar populates `target_domain_states` with the current sequence numbers for aggregates the saga might target. **Always use these sequences in your CommandPage** instead of hardcoding values:
+
+```python
+def get_target_sequence(context: SagaContext, domain: str, root: bytes) -> int:
+    """Look up sequence for target domain/root. Returns 0 for new aggregates."""
+    for state in context.target_domain_states:
+        if state.cover.domain == domain and state.cover.root.value == root:
+            return state.sequence
+    return 0
+
+# In your saga handler:
+target_seq = get_target_sequence(context, "customer", customer_root)
+command = SagaCommand(
+    cover=Cover(domain="customer", root=customer_root),
+    pages=[CommandPage(sequence=target_seq, command=cmd_any)],
+    ...
+)
+```
+
+This ensures commands use the correct sequence, avoiding "sequence mismatch" rejections.
 
 ---
 
@@ -186,6 +219,170 @@ sequenceDiagram
 
 ---
 
+## Querying Other Aggregates
+
+Sagas sometimes need data from aggregates other than the one that triggered them. For example, a fulfillment saga might need to check inventory levels before creating a shipment.
+
+### Option 1: EventQuery (Recommended)
+
+Query the **event store** directly via EventQuery:
+
+```protobuf
+service EventQuery {
+  rpc GetEventBook (Query) returns (EventBook);
+  rpc GetEvents (Query) returns (stream EventBook);  // Streams all matches
+}
+
+message Query {
+  string domain = 1;           // Target domain (optional if using correlation_id)
+  Uuid root = 2;               // Aggregate root ID (optional if using correlation_id)
+  uint32 lower_bound = 3;      // Optional: start sequence (0 = from beginning)
+  uint32 upper_bound = 4;      // Optional: end sequence (0 = unbounded)
+  string correlation_id = 5;   // Query by correlation ID (cross-domain lookup)
+}
+```
+
+#### Complete State Query (Preferred for Sagas)
+
+**Query with `lower_bound=0` and `upper_bound=0` (or omit both) to get a complete picture of an aggregate's current state.** This is the preferred approach for sagas because:
+
+1. **Snapshot optimization**: If a snapshot exists, it's returned along with only the events after the snapshot sequence
+2. **No sequence tracking needed**: Saga doesn't need to know the current sequence number
+3. **Always consistent**: Returns the complete state as of query time
+
+The response contains:
+- `snapshot`: Pre-computed state up to `snapshot.sequence` (if available)
+- `pages`: Events after the snapshot (or all events if no snapshot)
+
+```python
+# Preferred: Query for complete state - let the system optimize
+async def handle(self, event_book: EventBook) -> SagaResponse:
+    order_placed = extract_event(event_book, "OrderPlaced")
+    product_id = order_placed.product_id
+
+    # Query with no bounds = complete picture
+    # System returns snapshot + events after snapshot (if snapshot exists)
+    # Or all events (if no snapshot)
+    inventory_book = await self.event_query.get_event_book(
+        Query(domain="inventory", root=to_uuid(product_id))
+        # lower_bound and upper_bound default to 0
+    )
+
+    # Reconstruct state: start from snapshot (if present), then replay events
+    if inventory_book.snapshot:
+        stock = inventory_book.snapshot.state.stock_level
+    else:
+        stock = 0
+
+    # Replay events after snapshot (or all events if no snapshot)
+    for page in inventory_book.pages:
+        if has_event(page, "StockAdded"):
+            stock += page.event.quantity
+        elif has_event(page, "StockReserved"):
+            stock -= page.event.quantity
+
+    if stock < order_placed.quantity:
+        return SagaResponse(commands=[reject_order_command()])
+
+    return SagaResponse(commands=[create_shipment_command()])
+```
+
+**Query Response Scenarios:**
+
+| Scenario | `snapshot` | `pages` |
+|----------|------------|---------|
+| No snapshot exists | `None` | All events (0 to current) |
+| Snapshot is current | Snapshot at seq N | Empty (no events after N) |
+| Snapshot is stale | Snapshot at seq N | Events N+1 to current |
+
+#### Range Query (For Specific Use Cases)
+
+Use explicit bounds only when you need a specific event range (e.g., fetching events since last processed):
+
+```python
+# Range query: specific event window
+# [lower_bound, upper_bound) - inclusive lower, exclusive upper
+events = await self.event_query.get_event_book(
+    Query(domain="inventory", root=product_id, lower_bound=5, upper_bound=10)
+)
+# Returns events 5, 6, 7, 8, 9 (no snapshot optimization)
+```
+
+**Note:** Range queries bypass snapshot optimization - they always return raw events.
+
+#### Server Configuration
+
+Snapshot optimization is **enabled by default** on EventQueryService. Complete state queries automatically return `snapshot + events_after_snapshot` when a snapshot exists.
+
+To disable snapshots (for debugging or raw event replay):
+
+```rust
+// Disable snapshot optimization for raw event access
+let query_service = EventQueryService::with_options(
+    event_store,
+    snapshot_store,
+    false,  // disable snapshots
+);
+```
+
+#### Query by Correlation ID
+
+If you don't know the root ID but have the correlation ID, you can find all related events across domains:
+
+```python
+# Find all events related to a specific workflow
+async def get_workflow_events(self, correlation_id: str) -> list[EventBook]:
+    # GetEvents streams ALL matching EventBooks across all domains
+    books = []
+    async for book in self.event_query.get_events(
+        Query(correlation_id=correlation_id)
+    ):
+        books.append(book)
+    return books
+```
+
+This is useful when:
+- A saga needs to inspect what happened in a previous workflow step
+- Debugging/tracing a distributed transaction
+- Building compensation logic that needs full context
+
+**Advantages:**
+- No separate read model to maintain
+- Always consistent with event store (source of truth)
+- Works with any aggregate if you have root ID or correlation ID
+- Correlation ID queries work across all domains
+
+**Considerations:**
+- Requires replaying events to compute state
+- For complex aggregates, consider caching computed state in saga
+- Root ID or correlation ID must be included in triggering event or derivable
+
+### Option 2: Projector Query
+
+Query a projector's read model via HTTP/gRPC. Useful when:
+- You need to search by non-ID fields
+- The read model has pre-computed aggregations
+- Multiple sagas need the same derived data
+
+```python
+# Query projector for inventory by SKU (not root ID)
+inventory = await self.inventory_projector.get_by_sku(sku="WIDGET-001")
+```
+
+**Trade-off:** Projector data may lag behind the event store during high load.
+
+### Choosing Between Options
+
+| Scenario | Use EventQuery | Use Projector |
+|----------|----------------|---------------|
+| Know the aggregate root ID | ✓ | |
+| Need to search by other fields | | ✓ |
+| Need real-time consistency | ✓ | |
+| Complex queries/aggregations | | ✓ |
+| Minimal infrastructure | ✓ | |
+
+---
+
 ## Command Properties
 
 Commands emitted by sagas have special properties:
@@ -193,7 +390,6 @@ Commands emitted by sagas have special properties:
 | Property | Purpose |
 |----------|---------|
 | `saga_origin` | Links command to triggering event for compensation |
-| `auto_resequence` | Retry with updated sequence on optimistic concurrency conflict |
 | `fact` | When true, indicates the triggering event is committed—command should succeed |
 
 ### The `fact` Flag
@@ -291,7 +487,7 @@ Scenario: Award loyalty points when transaction completes
 
 Best practices:
 - Make saga logic idempotent (may receive same event twice)
-- Use `auto_resequence` for optimistic concurrency handling
+- Handle sequence conflict errors by fetching fresh state and retrying
 - Log saga origin for debugging failed workflows
 - Design for eventual consistency
 
