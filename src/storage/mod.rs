@@ -57,6 +57,9 @@ pub enum StorageError {
     #[error("Invalid timestamp: seconds={seconds}, nanos={nanos}")]
     InvalidTimestamp { seconds: i64, nanos: i32 },
 
+    #[error("Invalid timestamp format: {0}")]
+    InvalidTimestampFormat(String),
+
     #[error("Invalid UUID: {0}")]
     InvalidUuid(#[from] uuid::Error),
 
@@ -127,6 +130,17 @@ pub trait EventStore: Send + Sync {
 
     /// Get the next sequence number for an aggregate.
     async fn get_next_sequence(&self, domain: &str, root: Uuid) -> Result<u32>;
+
+    /// Retrieve events up to (inclusive) a timestamp.
+    ///
+    /// Returns events ordered by sequence ASC where created_at <= until.
+    /// Used for temporal queries to reconstruct historical state.
+    async fn get_until_timestamp(
+        &self,
+        domain: &str,
+        root: Uuid,
+        until: &str,
+    ) -> Result<Vec<EventPage>>;
 
     /// Retrieve all events with a given correlation ID across all domains.
     ///

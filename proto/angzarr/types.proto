@@ -181,16 +181,26 @@ message SequenceSet {
   repeated uint32 values = 1;
 }
 
+// Temporal query: retrieve aggregate state at a point in history.
+// Replays events from sequence 0 (no snapshots) to the specified point.
+message TemporalQuery {
+  oneof point_in_time {
+    google.protobuf.Timestamp as_of_time = 1;     // Events with created_at <= this
+    uint32 as_of_sequence = 2;                     // Events with sequence <= this
+  }
+}
+
 message Query {
   // Cover identifies the aggregate: domain + (root | correlation_id | both)
   // Query by root: Cover { domain, root }
   // Query by correlation: Cover { domain, correlation_id }
   Cover cover = 1;
+  // Field 2 removed: now use cover.root
   oneof selection {
     SequenceRange range = 3;
     SequenceSet sequences = 4;
+    TemporalQuery temporal = 5;
   }
-  // Fields 2, 5 removed: now use cover.root and cover.correlation_id
 }
 
 message AggregateRoot {

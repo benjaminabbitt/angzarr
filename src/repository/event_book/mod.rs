@@ -112,6 +112,61 @@ impl EventBookRepository {
         })
     }
 
+    /// Load an EventBook as-of a timestamp (no snapshots).
+    ///
+    /// Returns events from sequence 0 with created_at <= until.
+    /// Snapshots are skipped to ensure correct historical reconstruction.
+    pub async fn get_temporal_by_time(
+        &self,
+        domain: &str,
+        root: Uuid,
+        until: &str,
+    ) -> Result<EventBook> {
+        let events = self.event_store.get_until_timestamp(domain, root, until).await?;
+
+        Ok(EventBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+            }),
+            snapshot: None,
+            pages: events,
+            snapshot_state: None,
+        })
+    }
+
+    /// Load an EventBook as-of a sequence number (no snapshots).
+    ///
+    /// Returns events from sequence 0 through `sequence` inclusive.
+    /// Snapshots are skipped to ensure correct historical reconstruction.
+    pub async fn get_temporal_by_sequence(
+        &self,
+        domain: &str,
+        root: Uuid,
+        sequence: u32,
+    ) -> Result<EventBook> {
+        let events = self
+            .event_store
+            .get_from_to(domain, root, 0, sequence.saturating_add(1))
+            .await?;
+
+        Ok(EventBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+            }),
+            snapshot: None,
+            pages: events,
+            snapshot_state: None,
+        })
+    }
+
     /// Persist an EventBook.
     ///
     /// Stores all events in the event store.
@@ -667,6 +722,119 @@ mod tests {
             assert_eq!(book.pages.len(), 5);
             assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(0)));
             assert_eq!(book.pages[4].sequence, Some(event_page::Sequence::Num(4)));
+        }
+
+        #[tokio::test]
+        async fn test_get_temporal_by_time_skips_snapshots() {
+            let (repo, event_store, snapshot_store) = setup_shared();
+
+            let domain = "test_domain";
+            let root = Uuid::new_v4();
+
+            // Events at 1-second intervals starting at 2024-01-01T00:00:00Z
+            use crate::storage::EventStore;
+            event_store
+                .add(
+                    domain,
+                    root,
+                    vec![
+                        test_event(0, "Event0"),
+                        test_event(1, "Event1"),
+                        test_event(2, "Event2"),
+                        test_event(3, "Event3"),
+                        test_event(4, "Event4"),
+                    ],
+                    "",
+                )
+                .await
+                .unwrap();
+
+            // Snapshot at sequence 3 — should be ignored for temporal queries
+            use crate::storage::SnapshotStore;
+            snapshot_store
+                .put(domain, root, test_snapshot(3))
+                .await
+                .unwrap();
+
+            // Query as-of 2 seconds after epoch (should return events 0, 1, 2)
+            let book = repo
+                .get_temporal_by_time(domain, root, "2024-01-01T00:00:02+00:00")
+                .await
+                .unwrap();
+
+            assert!(book.snapshot.is_none()); // No snapshot in temporal query
+            assert_eq!(book.pages.len(), 3); // Events 0, 1, 2
+        }
+
+        #[tokio::test]
+        async fn test_get_temporal_by_sequence_skips_snapshots() {
+            let (repo, event_store, snapshot_store) = setup_shared();
+
+            let domain = "test_domain";
+            let root = Uuid::new_v4();
+
+            use crate::storage::EventStore;
+            event_store
+                .add(
+                    domain,
+                    root,
+                    vec![
+                        test_event(0, "Event0"),
+                        test_event(1, "Event1"),
+                        test_event(2, "Event2"),
+                        test_event(3, "Event3"),
+                        test_event(4, "Event4"),
+                    ],
+                    "",
+                )
+                .await
+                .unwrap();
+
+            // Snapshot at sequence 3 — should be ignored
+            use crate::storage::SnapshotStore;
+            snapshot_store
+                .put(domain, root, test_snapshot(3))
+                .await
+                .unwrap();
+
+            // Query as-of sequence 2 — should return events 0, 1, 2
+            let book = repo
+                .get_temporal_by_sequence(domain, root, 2)
+                .await
+                .unwrap();
+
+            assert!(book.snapshot.is_none());
+            assert_eq!(book.pages.len(), 3);
+            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(0)));
+            assert_eq!(book.pages[2].sequence, Some(event_page::Sequence::Num(2)));
+        }
+
+        #[tokio::test]
+        async fn test_get_temporal_by_sequence_zero() {
+            let (repo, event_store, _) = setup_shared();
+
+            let domain = "test_domain";
+            let root = Uuid::new_v4();
+
+            use crate::storage::EventStore;
+            event_store
+                .add(
+                    domain,
+                    root,
+                    vec![test_event(0, "Event0"), test_event(1, "Event1")],
+                    "",
+                )
+                .await
+                .unwrap();
+
+            // Query as-of sequence 0 — should return only event 0
+            let book = repo
+                .get_temporal_by_sequence(domain, root, 0)
+                .await
+                .unwrap();
+
+            assert_eq!(book.pages.len(), 1);
+            assert_eq!(book.pages[0].sequence, Some(event_page::Sequence::Num(0)));
         }
     }
 }

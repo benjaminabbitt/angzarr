@@ -123,6 +123,30 @@ impl EventStore for MockEventStore {
             .collect())
     }
 
+    async fn get_until_timestamp(
+        &self,
+        domain: &str,
+        root: Uuid,
+        until: &str,
+    ) -> Result<Vec<EventPage>> {
+        let events = self.get(domain, root).await?;
+        let until_dt = chrono::DateTime::parse_from_rfc3339(until)
+            .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;
+        Ok(events
+            .into_iter()
+            .filter(|e| {
+                if let Some(ref ts) = e.created_at {
+                    if let Some(dt) =
+                        chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+                    {
+                        return dt <= until_dt;
+                    }
+                }
+                false
+            })
+            .collect())
+    }
+
     async fn list_roots(&self, domain: &str) -> Result<Vec<Uuid>> {
         let store = self.events.read().await;
         Ok(store
@@ -294,6 +318,110 @@ mod tests {
         // Query with different correlation_id returns empty
         let empty = store.get_by_correlation("tx-xyz").await.unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_until_timestamp_filters_by_created_at() {
+        let store = MockEventStore::new();
+        let root = Uuid::new_v4();
+
+        let events = vec![
+            EventPage {
+                sequence: Some(crate::proto::event_page::Sequence::Num(0)),
+                event: Some(prost_types::Any {
+                    type_url: "test.Event0".to_string(),
+                    value: vec![],
+                }),
+                created_at: Some(prost_types::Timestamp {
+                    seconds: 1704067200, // 2024-01-01T00:00:00Z
+                    nanos: 0,
+                }),
+            },
+            EventPage {
+                sequence: Some(crate::proto::event_page::Sequence::Num(1)),
+                event: Some(prost_types::Any {
+                    type_url: "test.Event1".to_string(),
+                    value: vec![],
+                }),
+                created_at: Some(prost_types::Timestamp {
+                    seconds: 1704153600, // 2024-01-02T00:00:00Z
+                    nanos: 0,
+                }),
+            },
+            EventPage {
+                sequence: Some(crate::proto::event_page::Sequence::Num(2)),
+                event: Some(prost_types::Any {
+                    type_url: "test.Event2".to_string(),
+                    value: vec![],
+                }),
+                created_at: Some(prost_types::Timestamp {
+                    seconds: 1704240000, // 2024-01-03T00:00:00Z
+                    nanos: 0,
+                }),
+            },
+        ];
+        store.add("orders", root, events, "").await.unwrap();
+
+        // Query as-of Jan 2 — should return events 0 and 1
+        let result = store
+            .get_until_timestamp("orders", root, "2024-01-02T00:00:00Z")
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+
+        // Query as-of Jan 1 — should return event 0 only
+        let result = store
+            .get_until_timestamp("orders", root, "2024-01-01T00:00:00Z")
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+
+        // Query before any events — should return empty
+        let result = store
+            .get_until_timestamp("orders", root, "2023-12-31T00:00:00Z")
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+
+        // Query after all events — should return all
+        let result = store
+            .get_until_timestamp("orders", root, "2024-01-04T00:00:00Z")
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_until_timestamp_excludes_events_without_timestamp() {
+        let store = MockEventStore::new();
+        let root = Uuid::new_v4();
+
+        let events = vec![EventPage {
+            sequence: Some(crate::proto::event_page::Sequence::Num(0)),
+            event: Some(prost_types::Any {
+                type_url: "test.Event".to_string(),
+                value: vec![],
+            }),
+            created_at: None,
+        }];
+        store.add("orders", root, events, "").await.unwrap();
+
+        let result = store
+            .get_until_timestamp("orders", root, "2024-01-02T00:00:00Z")
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_until_timestamp_invalid_format() {
+        let store = MockEventStore::new();
+        let root = Uuid::new_v4();
+
+        let result = store
+            .get_until_timestamp("orders", root, "not-a-timestamp")
+            .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

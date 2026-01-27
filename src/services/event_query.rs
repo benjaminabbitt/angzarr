@@ -6,8 +6,8 @@ use tonic::{Request, Response, Status};
 use tracing::{error, info};
 
 use crate::proto::{
-    event_query_server::EventQuery as EventQueryTrait, query::Selection, AggregateRoot, EventBook,
-    Query, Uuid as ProtoUuid,
+    event_query_server::EventQuery as EventQueryTrait, query::Selection,
+    temporal_query::PointInTime, AggregateRoot, EventBook, Query, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
 use crate::storage::EventStore;
@@ -104,7 +104,7 @@ impl EventQueryTrait for EventQueryService {
             "GetEventBook starting query"
         );
 
-        // Handle selection: range, specific sequences, or full query
+        // Handle selection: range, specific sequences, temporal, or full query
         let book = match query.selection {
             Some(Selection::Range(ref range)) => {
                 let lower = range.lower;
@@ -124,6 +124,29 @@ impl EventQueryTrait for EventQueryService {
                 // For now, fall back to full query
                 info!(domain = %domain, root = %root_uuid, sequences = ?seq_set.values, "GetEventBook sequences query (not yet implemented, using full)");
                 self.event_book_repo.get(&domain, root_uuid).await
+            }
+            Some(Selection::Temporal(ref tq)) => {
+                match tq.point_in_time {
+                    Some(PointInTime::AsOfTime(ref ts)) => {
+                        let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(ts)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+                        info!(domain = %domain, root = %root_uuid, as_of = %rfc3339, "GetEventBook temporal time query");
+                        self.event_book_repo
+                            .get_temporal_by_time(&domain, root_uuid, &rfc3339)
+                            .await
+                    }
+                    Some(PointInTime::AsOfSequence(seq)) => {
+                        info!(domain = %domain, root = %root_uuid, as_of_sequence = seq, "GetEventBook temporal sequence query");
+                        self.event_book_repo
+                            .get_temporal_by_sequence(&domain, root_uuid, seq)
+                            .await
+                    }
+                    None => {
+                        return Err(Status::invalid_argument(
+                            "TemporalQuery must specify as_of_time or as_of_sequence",
+                        ));
+                    }
+                }
             }
             None => {
                 info!(domain = %domain, root = %root_uuid, "GetEventBook full query");
@@ -251,7 +274,7 @@ impl EventQueryTrait for EventQueryService {
                             }
                         };
 
-                        // Handle selection: range, specific sequences, or full query
+                        // Handle selection: range, specific sequences, temporal, or full query
                         let result = match query.selection {
                             Some(Selection::Range(ref range)) => {
                                 let lower = range.lower;
@@ -263,6 +286,40 @@ impl EventQueryTrait for EventQueryService {
                             Some(Selection::Sequences(_)) => {
                                 // TODO: Implement specific sequence fetching
                                 event_book_repo.get(&domain, root).await
+                            }
+                            Some(Selection::Temporal(ref tq)) => {
+                                match tq.point_in_time {
+                                    Some(PointInTime::AsOfTime(ref ts)) => {
+                                        match crate::storage::helpers::timestamp_to_rfc3339(ts) {
+                                            Ok(rfc3339) => {
+                                                event_book_repo
+                                                    .get_temporal_by_time(&domain, root, &rfc3339)
+                                                    .await
+                                            }
+                                            Err(e) => {
+                                                let _ = tx
+                                                    .send(Err(Status::invalid_argument(
+                                                        e.to_string(),
+                                                    )))
+                                                    .await;
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    Some(PointInTime::AsOfSequence(seq)) => {
+                                        event_book_repo
+                                            .get_temporal_by_sequence(&domain, root, seq)
+                                            .await
+                                    }
+                                    None => {
+                                        let _ = tx
+                                            .send(Err(Status::invalid_argument(
+                                                "TemporalQuery must specify as_of_time or as_of_sequence",
+                                            )))
+                                            .await;
+                                        continue;
+                                    }
+                                }
                             }
                             None => event_book_repo.get(&domain, root).await,
                         };
@@ -341,9 +398,9 @@ impl EventQueryTrait for EventQueryService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{event_page, EventPage, SequenceRange};
+    use crate::proto::{event_page, EventPage, SequenceRange, TemporalQuery};
     use crate::storage::mock::{MockEventStore, MockSnapshotStore};
-    use prost_types::Any;
+    use prost_types::{Any, Timestamp};
     use tokio_stream::StreamExt;
 
     fn create_test_service_with_mocks(
@@ -757,5 +814,135 @@ mod tests {
         let stream = response.unwrap().into_inner();
         let books: Vec<_> = stream.collect().await;
         assert_eq!(books.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_temporal_by_time() {
+        let (service, event_store, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        let events = vec![
+            EventPage {
+                sequence: Some(event_page::Sequence::Num(0)),
+                event: Some(Any {
+                    type_url: "test.Event0".to_string(),
+                    value: vec![],
+                }),
+                created_at: Some(Timestamp {
+                    seconds: 1704067200, // 2024-01-01T00:00:00Z
+                    nanos: 0,
+                }),
+            },
+            EventPage {
+                sequence: Some(event_page::Sequence::Num(1)),
+                event: Some(Any {
+                    type_url: "test.Event1".to_string(),
+                    value: vec![],
+                }),
+                created_at: Some(Timestamp {
+                    seconds: 1704153600, // 2024-01-02T00:00:00Z
+                    nanos: 0,
+                }),
+            },
+            EventPage {
+                sequence: Some(event_page::Sequence::Num(2)),
+                event: Some(Any {
+                    type_url: "test.Event2".to_string(),
+                    value: vec![],
+                }),
+                created_at: Some(Timestamp {
+                    seconds: 1704240000, // 2024-01-03T00:00:00Z
+                    nanos: 0,
+                }),
+            },
+        ];
+        event_store.add("orders", root, events, "").await.unwrap();
+
+        // Query as-of Jan 2
+        let query = Query {
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+            }),
+            selection: Some(Selection::Temporal(TemporalQuery {
+                point_in_time: Some(PointInTime::AsOfTime(Timestamp {
+                    seconds: 1704153600, // 2024-01-02T00:00:00Z
+                    nanos: 0,
+                })),
+            })),
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert_eq!(book.pages.len(), 2); // Events 0 and 1
+        assert!(book.snapshot.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_temporal_by_sequence() {
+        let (service, event_store, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        for i in 0..5 {
+            let events = vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(i)),
+                event: Some(Any {
+                    type_url: format!("test.Event{}", i),
+                    value: vec![],
+                }),
+                created_at: None,
+            }];
+            event_store.add("orders", root, events, "").await.unwrap();
+        }
+
+        // Query as-of sequence 2 — should return events 0, 1, 2
+        let query = Query {
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+            }),
+            selection: Some(Selection::Temporal(TemporalQuery {
+                point_in_time: Some(PointInTime::AsOfSequence(2)),
+            })),
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_ok());
+        let book = response.unwrap().into_inner();
+        assert_eq!(book.pages.len(), 3);
+        assert!(book.snapshot.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_event_book_temporal_empty_point_in_time() {
+        let (service, _, _) = create_default_test_service();
+        let root = uuid::Uuid::new_v4();
+
+        let query = Query {
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+            }),
+            selection: Some(Selection::Temporal(TemporalQuery {
+                point_in_time: None,
+            })),
+        };
+
+        let response = service.get_event_book(Request::new(query)).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
     }
 }

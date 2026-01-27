@@ -47,6 +47,13 @@ impl MongoEventStore {
 
         self.events.create_index(domain_index).await?;
 
+        // Index for temporal queries (created_at filtering)
+        let temporal_index = IndexModel::builder()
+            .keys(doc! { "domain": 1, "root": 1, "created_at": 1 })
+            .build();
+
+        self.events.create_index(temporal_index).await?;
+
         Ok(())
     }
 
@@ -201,6 +208,40 @@ impl EventStore for MongoEventStore {
             "domain": domain,
             "root": &root_str,
             "sequence": { "$gte": from as i32, "$lt": to as i32 }
+        };
+
+        let options = FindOptions::builder().sort(doc! { "sequence": 1 }).build();
+
+        let mut cursor = self.events.find(filter).with_options(options).await?;
+
+        let mut events = Vec::new();
+        while cursor.advance().await? {
+            let doc = cursor.deserialize_current()?;
+            let event_data =
+                doc.get_binary_generic("event_data")
+                    .map_err(|_| StorageError::NotFound {
+                        domain: domain.to_string(),
+                        root,
+                    })?;
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    async fn get_until_timestamp(
+        &self,
+        domain: &str,
+        root: Uuid,
+        until: &str,
+    ) -> Result<Vec<EventPage>> {
+        let root_str = root.to_string();
+
+        let filter = doc! {
+            "domain": domain,
+            "root": &root_str,
+            "created_at": { "$lte": until }
         };
 
         let options = FindOptions::builder().sort(doc! { "sequence": 1 }).build();

@@ -192,6 +192,32 @@ impl EventStore for RedisEventStore {
         events
     }
 
+    async fn get_until_timestamp(
+        &self,
+        domain: &str,
+        root: Uuid,
+        until: &str,
+    ) -> Result<Vec<EventPage>> {
+        let until_dt = chrono::DateTime::parse_from_rfc3339(until)
+            .map_err(|e| StorageError::InvalidTimestampFormat(e.to_string()))?;
+
+        let all_events = self.get(domain, root).await?;
+
+        Ok(all_events
+            .into_iter()
+            .filter(|e| {
+                if let Some(ref ts) = e.created_at {
+                    if let Some(dt) =
+                        chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+                    {
+                        return dt <= until_dt;
+                    }
+                }
+                false
+            })
+            .collect())
+    }
+
     async fn list_roots(&self, domain: &str) -> Result<Vec<Uuid>> {
         let roots_key = self.roots_key(domain);
         let mut conn = self.conn.clone();

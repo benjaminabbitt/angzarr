@@ -71,6 +71,20 @@ impl SqliteEventStore {
             .execute(&self.pool)
             .await?;
 
+        // Create index for temporal queries (created_at filtering)
+        let create_temporal_index = Index::create()
+            .if_not_exists()
+            .name("idx_events_domain_root_created_at")
+            .table(Events::Table)
+            .col(Events::Domain)
+            .col(Events::Root)
+            .col(Events::CreatedAt)
+            .to_string(SqliteQueryBuilder);
+
+        sqlx::query(&create_temporal_index)
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 }
@@ -195,6 +209,35 @@ impl EventStore for SqliteEventStore {
             .and_where(Expr::col(Events::Root).eq(&root_str))
             .and_where(Expr::col(Events::Sequence).gte(from))
             .and_where(Expr::col(Events::Sequence).lt(to))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(SqliteQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    async fn get_until_timestamp(
+        &self,
+        domain: &str,
+        root: Uuid,
+        until: &str,
+    ) -> Result<Vec<EventPage>> {
+        let root_str = root.to_string();
+
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(&root_str))
+            .and_where(Expr::col(Events::CreatedAt).lte(until))
             .order_by(Events::Sequence, Order::Asc)
             .to_string(SqliteQueryBuilder);
 
