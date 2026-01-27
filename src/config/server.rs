@@ -1,29 +1,12 @@
 //! Server and networking configuration types.
 
-use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
-/// Deserialize optional args from either a Vec<String>, JSON string, or null.
-fn deserialize_args_default<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum ArgsOrString {
-        Args(Vec<String>),
-        JsonString(String),
-        Null,
-    }
+use serde::Deserialize;
 
-    match Option::<ArgsOrString>::deserialize(deserializer)? {
-        Some(ArgsOrString::Args(args)) => Ok(args),
-        Some(ArgsOrString::JsonString(s)) if !s.is_empty() => {
-            // Try to parse as JSON array
-            serde_json::from_str(&s).map_err(serde::de::Error::custom)
-        }
-        _ => Ok(Vec::new()),
-    }
-}
+use crate::storage::StorageConfig;
+use crate::transport::TransportConfig;
 
 /// Server configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -47,51 +30,169 @@ impl Default for ServerConfig {
     }
 }
 
-/// Target service configuration for sidecar modes.
-#[derive(Debug, Clone, Deserialize)]
-pub struct TargetConfig {
-    /// gRPC address of the target service.
-    pub address: String,
-    /// Domain handled by this service (for aggregate mode).
-    pub domain: Option<String>,
-    /// Command to spawn the business logic process.
-    /// If set, the sidecar will spawn this process before connecting.
-    pub command: Option<String>,
-    /// Additional arguments to pass to the command.
-    /// If provided, command is treated as the executable and args as its arguments.
-    /// If not provided, command is passed to `sh -c` for shell interpretation.
-    #[serde(default, deserialize_with = "deserialize_args_default")]
-    pub args: Vec<String>,
-    /// Working directory for the spawned process.
-    pub working_dir: Option<String>,
-    /// Domains to listen for events from (saga/projector sidecars).
-    /// Empty means all domains. Uses hierarchical matching.
-    #[serde(default)]
-    pub listen_domains: Vec<String>,
-}
-
-/// Configuration for a service in standalone mode.
+/// Unified service configuration for both sidecar and standalone modes.
+///
+/// Works as:
+/// - A sidecar target: `target: { domain: cart, command: [...] }`
+/// - A standalone entry: `standalone.aggregates[*]`
+/// - A file reference: `{ file: path/to/service.yaml }`
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServiceConfig {
     /// Domain name (for aggregates) or handler name (for sagas/projectors).
     pub domain: String,
-    /// Projector name (optional, for projectors with multiple instances per domain).
+
+    /// Service name (optional, for projectors with multiple instances per domain).
     #[serde(default)]
     pub name: Option<String>,
-    /// Command to spawn the service.
-    pub command: String,
-    /// Additional arguments to pass to the command.
-    /// If provided, command is treated as the executable and args as its arguments.
-    /// If not provided, command is passed to `sh -c` for shell interpretation.
-    #[serde(default, deserialize_with = "deserialize_args_default")]
-    pub args: Vec<String>,
-    /// Domains to listen for events from (sagas and projectors only).
+
+    /// Explicit gRPC address override.
+    /// If not set, derived from transport config:
+    /// - UDS: `{base_path}/{service_type}-{domain}.sock`
+    /// - TCP: Must be explicit
     #[serde(default)]
-    pub listen_domains: Vec<String>,
+    pub address: Option<String>,
+
+    /// Working directory for the spawned process.
+    #[serde(default)]
+    pub working_dir: Option<String>,
+
+    /// Command to spawn the service as array: ["executable", "arg1", "arg2", ...].
+    /// First element is the executable, rest are arguments. No shell interpretation.
+    #[serde(default)]
+    pub command: Vec<String>,
+
+    /// Domain to listen for events from (sagas and projectors only).
+    #[serde(default)]
+    pub listen_domain: Option<String>,
+
     /// Environment variables to set for the spawned process.
     #[serde(default)]
-    pub env: std::collections::HashMap<String, String>,
+    pub env: HashMap<String, String>,
+
+    /// Per-service storage configuration.
+    /// If not set, falls back to the root storage config.
+    #[serde(default)]
+    pub storage: Option<StorageConfig>,
 }
+
+impl ServiceConfig {
+    /// Resolve the address for this service.
+    ///
+    /// Uses explicit address if set, otherwise derives from transport config.
+    pub fn resolve_address(&self, transport: &TransportConfig, service_type: &str) -> String {
+        use crate::transport::TransportType;
+
+        if let Some(ref addr) = self.address {
+            return addr.clone();
+        }
+
+        match transport.transport_type {
+            TransportType::Uds => {
+                let socket_name = match &self.name {
+                    Some(name) => format!("{}-{}-{}", service_type, name, self.domain),
+                    None => format!("{}-{}", service_type, self.domain),
+                };
+                format!("{}/{}.sock", transport.uds.base_path.display(), socket_name)
+            }
+            TransportType::Tcp => {
+                // TCP requires explicit address
+                panic!(
+                    "TCP transport requires explicit address for service '{}'",
+                    self.domain
+                )
+            }
+        }
+    }
+}
+
+/// Backwards-compatible alias for sidecar mode.
+pub type TargetConfig = ServiceConfig;
+
+/// Fields that can be overridden when referencing a file.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ServiceConfigOverrides {
+    /// Override storage configuration.
+    #[serde(default)]
+    pub storage: Option<StorageConfig>,
+    /// Additional environment variables (merged with file's env).
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
+    /// Override working directory.
+    #[serde(default)]
+    pub working_dir: Option<String>,
+    /// Override address.
+    #[serde(default)]
+    pub address: Option<String>,
+}
+
+/// Service configuration that can be inline or a file reference.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ServiceConfigRef {
+    /// File reference with optional overrides.
+    File {
+        /// Path to external config file (relative to main config).
+        file: PathBuf,
+        /// Override fields from the referenced file.
+        #[serde(flatten)]
+        overrides: ServiceConfigOverrides,
+    },
+    /// Inline service configuration.
+    Inline(ServiceConfig),
+}
+
+impl ServiceConfigRef {
+    /// Resolve to a concrete ServiceConfig, loading from file if needed.
+    pub fn resolve(&self, base_dir: &Path) -> Result<ServiceConfig, ConfigError> {
+        match self {
+            ServiceConfigRef::Inline(config) => Ok(config.clone()),
+            ServiceConfigRef::File { file, overrides } => {
+                let path = base_dir.join(file);
+                let content = std::fs::read_to_string(&path).map_err(|e| {
+                    ConfigError::FileRead(path.display().to_string(), e.to_string())
+                })?;
+                let mut config: ServiceConfig = serde_yaml::from_str(&content)
+                    .map_err(|e| ConfigError::Parse(path.display().to_string(), e.to_string()))?;
+
+                // Apply overrides
+                if let Some(storage) = &overrides.storage {
+                    config.storage = Some(storage.clone());
+                }
+                if let Some(env) = &overrides.env {
+                    config.env.extend(env.clone());
+                }
+                if let Some(working_dir) = &overrides.working_dir {
+                    config.working_dir = Some(working_dir.clone());
+                }
+                if let Some(address) = &overrides.address {
+                    config.address = Some(address.clone());
+                }
+
+                Ok(config)
+            }
+        }
+    }
+}
+
+/// Error type for configuration loading.
+#[derive(Debug, Clone)]
+pub enum ConfigError {
+    /// Failed to read config file.
+    FileRead(String, String),
+    /// Failed to parse config file.
+    Parse(String, String),
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::FileRead(path, err) => write!(f, "Failed to read '{}': {}", path, err),
+            ConfigError::Parse(path, err) => write!(f, "Failed to parse '{}': {}", path, err),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
 
 /// Gateway configuration for standalone mode.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -135,16 +236,15 @@ pub enum HealthCheckConfig {
 pub struct ExternalServiceConfig {
     /// Service name (for logging and identification).
     pub name: String,
-    /// Command to execute.
-    pub command: String,
-    /// Command arguments.
-    #[serde(default, deserialize_with = "deserialize_args_default")]
-    pub args: Vec<String>,
+    /// Command to spawn as array: ["executable", "arg1", "arg2", ...].
+    /// First element is the executable, rest are arguments. No shell interpretation.
+    pub command: Vec<String>,
     /// Working directory.
+    #[serde(default)]
     pub working_dir: Option<String>,
     /// Environment variables.
     #[serde(default)]
-    pub env: std::collections::HashMap<String, String>,
+    pub env: HashMap<String, String>,
     /// Health check configuration.
     #[serde(default)]
     pub health_check: HealthCheckConfig,
@@ -175,6 +275,36 @@ pub struct StandaloneConfig {
     pub gateway: GatewayConfig,
 }
 
+/// Resolved standalone config with all file references expanded.
+#[derive(Debug, Clone)]
+pub struct ResolvedStandaloneConfig {
+    /// Resolved aggregate services.
+    pub aggregates: Vec<ServiceConfig>,
+    /// Resolved saga services.
+    pub sagas: Vec<ServiceConfig>,
+    /// Resolved projector services.
+    pub projectors: Vec<ServiceConfig>,
+    /// External services (no resolution needed).
+    pub services: Vec<ExternalServiceConfig>,
+    /// Gateway configuration.
+    pub gateway: GatewayConfig,
+}
+
+impl StandaloneConfig {
+    /// Resolve all service references, loading external files.
+    /// Currently a no-op since StandaloneConfig uses direct ServiceConfig.
+    /// File references support will be added later via ServiceConfigRef.
+    pub fn resolve(&self, _base_dir: &Path) -> Result<ResolvedStandaloneConfig, ConfigError> {
+        Ok(ResolvedStandaloneConfig {
+            aggregates: self.aggregates.clone(),
+            sagas: self.sagas.clone(),
+            projectors: self.projectors.clone(),
+            services: self.services.clone(),
+            gateway: self.gateway.clone(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +315,38 @@ mod tests {
         assert_eq!(server.aggregate_port, 1313);
         assert_eq!(server.event_query_port, 1314);
         assert_eq!(server.host, "0.0.0.0");
+    }
+
+    #[test]
+    fn test_service_config_inline_deserialization() {
+        let yaml = r#"
+            domain: cart
+            command: ["python", "server.py"]
+        "#;
+        let config: ServiceConfigRef = serde_yaml::from_str(yaml).unwrap();
+        match config {
+            ServiceConfigRef::Inline(svc) => {
+                assert_eq!(svc.domain, "cart");
+                assert_eq!(svc.command, vec!["python", "server.py"]);
+            }
+            ServiceConfigRef::File { .. } => panic!("Expected inline config"),
+        }
+    }
+
+    #[test]
+    fn test_service_config_file_ref_deserialization() {
+        let yaml = r#"
+            file: config/cart.yaml
+            storage:
+              type: sqlite
+        "#;
+        let config: ServiceConfigRef = serde_yaml::from_str(yaml).unwrap();
+        match config {
+            ServiceConfigRef::File { file, overrides } => {
+                assert_eq!(file, PathBuf::from("config/cart.yaml"));
+                assert!(overrides.storage.is_some());
+            }
+            ServiceConfigRef::Inline(_) => panic!("Expected file reference"),
+        }
     }
 }

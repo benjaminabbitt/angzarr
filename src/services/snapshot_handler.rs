@@ -7,8 +7,8 @@ use std::sync::Arc;
 use tonic::Status;
 use uuid::Uuid;
 
-use crate::storage::SnapshotStore;
 use crate::proto::{event_page, EventBook, Snapshot};
+use crate::storage::SnapshotStore;
 
 /// Computes the snapshot sequence from the last event in an EventBook.
 ///
@@ -87,10 +87,10 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages,
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: if has_snapshot {
                 Some(Any {
                     type_url: "test.State".to_string(),

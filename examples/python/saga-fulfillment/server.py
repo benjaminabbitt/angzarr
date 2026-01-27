@@ -1,7 +1,7 @@
 """Fulfillment Saga gRPC server.
 
 Creates shipments when orders complete.
-Supports both TCP and Unix Domain Socket (UDS) transports.
+Two-phase protocol: Prepare declares destinations, Execute produces commands.
 """
 
 import os
@@ -15,9 +15,11 @@ from google.protobuf.any_pb2 import Any
 # Add common to path for server utilities
 sys.path.insert(0, str(Path(__file__).parent.parent / "common"))
 
-from angzarr import angzarr_pb2 as angzarr
-from angzarr import angzarr_pb2_grpc
-from proto import domains_pb2 as domains
+from angzarr import saga_pb2 as saga
+from angzarr import saga_pb2_grpc
+from angzarr import types_pb2 as types
+from proto import order_pb2 as order
+from proto import fulfillment_pb2 as fulfillment
 
 # Configure structlog
 structlog.configure(
@@ -38,13 +40,41 @@ SOURCE_DOMAIN = "order"
 TARGET_DOMAIN = "fulfillment"
 
 
-def process_events(event_book: angzarr.EventBook) -> list[angzarr.CommandBook]:
-    if not event_book.pages:
+def prepare(source: types.EventBook) -> list[types.Cover]:
+    """Phase 1: Declare which destination aggregates are needed.
+
+    Returns the fulfillment aggregate cover for optimistic concurrency.
+    """
+    if not source or not source.pages:
         return []
+
+    if not source.cover or not source.cover.root:
+        return []
+
+    # Check if any page has OrderCompleted event
+    for page in source.pages:
+        if not page.event:
+            continue
+        if page.event.type_url.endswith("OrderCompleted"):
+            # Request the fulfillment aggregate state (same root as order)
+            return [types.Cover(domain=TARGET_DOMAIN, root=source.cover.root)]
+
+    return []
+
+
+def execute(source: types.EventBook, destinations: list[types.EventBook]) -> list[types.CommandBook]:
+    """Phase 2: Produce commands given source and destination state."""
+    if not source or not source.pages:
+        return []
+
+    # Calculate target sequence from destination state
+    target_sequence = 0
+    if destinations and destinations[0]:
+        target_sequence = len(destinations[0].pages)
 
     commands = []
 
-    for page in event_book.pages:
+    for page in source.pages:
         if not page.event:
             continue
 
@@ -52,26 +82,26 @@ def process_events(event_book: angzarr.EventBook) -> list[angzarr.CommandBook]:
             continue
 
         # Verify it decodes
-        event = domains.OrderCompleted()
+        event = order.OrderCompleted()
         page.event.Unpack(event)
 
         # Get order ID from root
-        order_id = ""
-        if event_book.cover and event_book.cover.root:
-            order_id = event_book.cover.root.value.hex()
+        if not source.cover or not source.cover.root:
+            continue
 
+        order_id = source.cover.root.value.hex()
         if not order_id:
             continue
 
         # Create shipment command
-        cmd = domains.CreateShipment(order_id=order_id)
+        cmd = fulfillment.CreateShipment(order_id=order_id)
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.examples/")
 
-        cmd_book = angzarr.CommandBook(
-            cover=angzarr.Cover(domain=TARGET_DOMAIN, root=event_book.cover.root),
-            pages=[angzarr.CommandPage(sequence=0, sync_mode=angzarr.SYNC_MODE_NONE, command=cmd_any)],
-            correlation_id=event_book.correlation_id,
+        cmd_book = types.CommandBook(
+            cover=types.Cover(domain=TARGET_DOMAIN, root=source.cover.root),
+            pages=[types.CommandPage(sequence=target_sequence, command=cmd_any)],
+            correlation_id=source.correlation_id,
         )
 
         commands.append(cmd_book)
@@ -79,30 +109,38 @@ def process_events(event_book: angzarr.EventBook) -> list[angzarr.CommandBook]:
     return commands
 
 
-class SagaServicer(angzarr_pb2_grpc.SagaServicer):
+class SagaServicer(saga_pb2_grpc.SagaServicer):
     def __init__(self) -> None:
         self.log = logger.bind(saga=SAGA_NAME)
 
-    def Handle(self, request: angzarr.EventBook, context: grpc.ServicerContext) -> angzarr.SagaResponse:
-        commands = process_events(request)
+    def Prepare(self, request: saga.SagaPrepareRequest, context: grpc.ServicerContext) -> saga.SagaPrepareResponse:
+        """Phase 1: Declare which destination aggregates are needed."""
+        destinations = prepare(request.source)
+        return saga.SagaPrepareResponse(destinations=destinations)
+
+    def Execute(self, request: saga.SagaExecuteRequest, context: grpc.ServicerContext) -> types.SagaResponse:
+        """Phase 2: Produce commands given source and destination state."""
+        commands = execute(request.source, list(request.destinations))
         if commands:
             self.log.info("processed_events", commands_generated=len(commands))
-        return angzarr.SagaResponse(commands=commands)
+        return types.SagaResponse(commands=commands)
+
+    def Retry(self, request: saga.SagaRetryRequest, context: grpc.ServicerContext) -> types.SagaResponse:
+        """Phase 2 (alternate): Retry after command rejection."""
+        commands = execute(request.source, list(request.destinations))
+        if commands:
+            self.log.info("retrying_saga", attempt=request.attempt, commands_generated=len(commands))
+        return types.SagaResponse(commands=commands)
 
 
 def serve() -> None:
-    """Start the gRPC server.
-
-    Supports both TCP and UDS transports based on environment variables.
-    For sagas, uses SAGA_NAME env var for socket naming.
-    """
-    # Set saga name env var for the common server module
+    """Start the gRPC server."""
     os.environ.setdefault("SAGA_NAME", SAGA_NAME)
 
     try:
         from server import run_server
         run_server(
-            angzarr_pb2_grpc.add_SagaServicer_to_server,
+            saga_pb2_grpc.add_SagaServicer_to_server,
             SagaServicer(),
             service_name="Saga",
             domain=SAGA_NAME,
@@ -115,7 +153,7 @@ def serve() -> None:
 
         port = os.environ.get("PORT", "50307")
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-        angzarr_pb2_grpc.add_SagaServicer_to_server(SagaServicer(), server)
+        saga_pb2_grpc.add_SagaServicer_to_server(SagaServicer(), server)
 
         health_servicer = health.HealthServicer()
         health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)

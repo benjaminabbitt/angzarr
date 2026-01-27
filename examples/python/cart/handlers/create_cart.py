@@ -9,18 +9,18 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 from .state import CartState
 
-from .errors import CommandRejectedError
+from .errors import CommandRejectedError, errmsg
 
 
 def handle_create_cart(command_book, command_any, state: CartState, seq: int, log) -> angzarr.EventBook:
     if state.exists():
-        raise CommandRejectedError("Cart already exists")
+        raise CommandRejectedError(errmsg.CART_EXISTS)
 
     cmd = domains.CreateCart()
     command_any.Unpack(cmd)
 
     if not cmd.customer_id:
-        raise CommandRejectedError("Customer ID is required")
+        raise CommandRejectedError(errmsg.CUSTOMER_ID_REQUIRED)
 
     log.info("creating_cart", customer_id=cmd.customer_id)
 

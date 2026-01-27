@@ -1,16 +1,13 @@
 //! Sequence validation logic for AggregateService.
 //!
-//! Handles sequence validation, auto-resequence conflict handling,
-//! and sequence computation helpers.
+//! Handles sequence validation and sequence computation helpers.
 
+use prost::Message;
 use tonic::Status;
-use tracing::warn;
 use uuid::Uuid;
 
+use crate::proto::EventBook;
 use crate::storage::StorageError;
-
-/// Maximum number of retries for auto_resequence on sequence conflicts.
-pub const MAX_RESEQUENCE_RETRIES: u32 = 3;
 
 /// Result of a sequence validation check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,28 +20,14 @@ pub enum SequenceValidationResult {
 
 /// Validates that the command sequence matches the aggregate's current sequence.
 ///
-/// When `auto_resequence` is enabled, this validation is skipped as write-time
-/// validation will handle conflicts through retry logic.
-///
 /// # Arguments
 /// * `expected_sequence` - The sequence number from the command
 /// * `actual_sequence` - The current aggregate sequence from the event store
-/// * `auto_resequence` - Whether auto-resequence is enabled
 ///
 /// # Returns
-/// `SequenceValidationResult::Valid` if sequences match or auto_resequence is enabled,
+/// `SequenceValidationResult::Valid` if sequences match,
 /// otherwise `SequenceValidationResult::Mismatch` with details.
-pub fn validate_sequence(
-    expected_sequence: u32,
-    actual_sequence: u32,
-    auto_resequence: bool,
-) -> SequenceValidationResult {
-    if auto_resequence {
-        // Skip pre-validation when auto_resequence is enabled
-        // Write-time validation handles conflicts instead
-        return SequenceValidationResult::Valid;
-    }
-
+pub fn validate_sequence(expected_sequence: u32, actual_sequence: u32) -> SequenceValidationResult {
     if expected_sequence == actual_sequence {
         SequenceValidationResult::Valid
     } else {
@@ -63,58 +46,66 @@ pub fn sequence_mismatch_error(expected: u32, actual: u32) -> Status {
     ))
 }
 
+/// Creates a Status error for sequence mismatch with EventBook attached as details.
+///
+/// The EventBook is serialized and attached to the status details,
+/// allowing the caller to extract current state for retry without an extra fetch.
+pub fn sequence_mismatch_error_with_state(
+    expected: u32,
+    actual: u32,
+    current_state: &EventBook,
+) -> Status {
+    let message = format!(
+        "Sequence mismatch: command expects {}, aggregate at {}",
+        expected, actual
+    );
+
+    // Serialize EventBook to binary for status details
+    let details = current_state.encode_to_vec();
+
+    Status::with_details(
+        tonic::Code::FailedPrecondition,
+        message,
+        details.into(),
+    )
+}
+
+/// Extract EventBook from status details if present.
+///
+/// Returns None if details are empty or cannot be decoded.
+pub fn extract_event_book_from_status(status: &Status) -> Option<EventBook> {
+    let details = status.details();
+    if details.is_empty() {
+        return None;
+    }
+
+    EventBook::decode(details).ok()
+}
+
+
 /// Outcome of handling a storage error during event persistence.
 #[derive(Debug)]
 pub enum StorageErrorOutcome {
-    /// Should retry the operation with fresh state.
-    Retry,
     /// Should abort with the given error.
     Abort(Status),
 }
 
-/// Handles storage errors during event persistence, implementing retry logic
-/// for sequence conflicts when auto_resequence is enabled.
+/// Handles storage errors during event persistence.
 ///
 /// # Arguments
 /// * `error` - The storage error that occurred
 /// * `domain` - The domain name (for logging)
 /// * `root_uuid` - The aggregate root UUID (for logging)
-/// * `attempt` - Current attempt number (1-based)
-/// * `auto_resequence` - Whether auto-resequence is enabled
 ///
 /// # Returns
-/// `StorageErrorOutcome::Retry` if the operation should be retried,
-/// `StorageErrorOutcome::Abort` with a Status error otherwise.
-pub fn handle_storage_error(
-    error: StorageError,
-    domain: &str,
-    root_uuid: Uuid,
-    attempt: u32,
-    auto_resequence: bool,
-) -> StorageErrorOutcome {
+/// `StorageErrorOutcome::Abort` with a Status error.
+pub fn handle_storage_error(error: StorageError, _domain: &str, _root_uuid: Uuid) -> StorageErrorOutcome {
     match error {
         StorageError::SequenceConflict { expected, actual } => {
-            if auto_resequence && attempt < MAX_RESEQUENCE_RETRIES {
-                warn!(
-                    domain = %domain,
-                    root = %root_uuid,
-                    attempt = attempt,
-                    expected = expected,
-                    actual = actual,
-                    "Sequence conflict, retrying with fresh state"
-                );
-                StorageErrorOutcome::Retry
-            } else if auto_resequence {
-                StorageErrorOutcome::Abort(Status::aborted(format!(
-                    "Sequence conflict after {} retries: expected {}, got {}",
-                    MAX_RESEQUENCE_RETRIES, expected, actual
-                )))
-            } else {
-                StorageErrorOutcome::Abort(Status::aborted(format!(
-                    "Sequence conflict: expected {}, got {} (auto_resequence disabled)",
-                    expected, actual
-                )))
-            }
+            StorageErrorOutcome::Abort(Status::aborted(format!(
+                "Sequence conflict: expected {}, got {}",
+                expected, actual
+            )))
         }
         e => StorageErrorOutcome::Abort(Status::internal(format!("Failed to persist events: {e}"))),
     }
@@ -126,13 +117,13 @@ mod tests {
 
     #[test]
     fn test_validate_sequence_matching() {
-        let result = validate_sequence(5, 5, false);
+        let result = validate_sequence(5, 5);
         assert_eq!(result, SequenceValidationResult::Valid);
     }
 
     #[test]
     fn test_validate_sequence_mismatch() {
-        let result = validate_sequence(0, 5, false);
+        let result = validate_sequence(0, 5);
         assert_eq!(
             result,
             SequenceValidationResult::Mismatch {
@@ -143,15 +134,8 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_sequence_auto_resequence_skips_validation() {
-        // Even with mismatch, auto_resequence returns Valid
-        let result = validate_sequence(0, 5, true);
-        assert_eq!(result, SequenceValidationResult::Valid);
-    }
-
-    #[test]
     fn test_validate_sequence_new_aggregate() {
-        let result = validate_sequence(0, 0, false);
+        let result = validate_sequence(0, 0);
         assert_eq!(result, SequenceValidationResult::Valid);
     }
 
@@ -165,50 +149,19 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_storage_error_sequence_conflict_retry() {
+    fn test_handle_storage_error_sequence_conflict() {
         let error = StorageError::SequenceConflict {
             expected: 5,
             actual: 6,
         };
         let root = Uuid::new_v4();
 
-        let outcome = handle_storage_error(error, "test", root, 1, true);
-        assert!(matches!(outcome, StorageErrorOutcome::Retry));
-    }
-
-    #[test]
-    fn test_handle_storage_error_sequence_conflict_max_retries() {
-        let error = StorageError::SequenceConflict {
-            expected: 5,
-            actual: 6,
-        };
-        let root = Uuid::new_v4();
-
-        let outcome = handle_storage_error(error, "test", root, MAX_RESEQUENCE_RETRIES, true);
+        let outcome = handle_storage_error(error, "test", root);
         match outcome {
             StorageErrorOutcome::Abort(status) => {
                 assert_eq!(status.code(), tonic::Code::Aborted);
-                assert!(status.message().contains("retries"));
+                assert!(status.message().contains("Sequence conflict"));
             }
-            StorageErrorOutcome::Retry => panic!("Expected Abort, got Retry"),
-        }
-    }
-
-    #[test]
-    fn test_handle_storage_error_sequence_conflict_no_auto_resequence() {
-        let error = StorageError::SequenceConflict {
-            expected: 5,
-            actual: 6,
-        };
-        let root = Uuid::new_v4();
-
-        let outcome = handle_storage_error(error, "test", root, 1, false);
-        match outcome {
-            StorageErrorOutcome::Abort(status) => {
-                assert_eq!(status.code(), tonic::Code::Aborted);
-                assert!(status.message().contains("auto_resequence disabled"));
-            }
-            StorageErrorOutcome::Retry => panic!("Expected Abort, got Retry"),
         }
     }
 
@@ -217,13 +170,12 @@ mod tests {
         let error = StorageError::MissingCover;
         let root = Uuid::new_v4();
 
-        let outcome = handle_storage_error(error, "test", root, 1, true);
+        let outcome = handle_storage_error(error, "test", root);
         match outcome {
             StorageErrorOutcome::Abort(status) => {
                 assert_eq!(status.code(), tonic::Code::Internal);
                 assert!(status.message().contains("persist events"));
             }
-            StorageErrorOutcome::Retry => panic!("Expected Abort, got Retry"),
         }
     }
 }

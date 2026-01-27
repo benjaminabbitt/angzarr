@@ -151,8 +151,6 @@ impl CustomerAcceptanceWorld {
             }],
             correlation_id,
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
@@ -240,7 +238,10 @@ async fn loyalty_points_added_event(
             world.current_sequence += 1;
         }
         Err(status) => {
-            panic!("Given step failed: LoyaltyPointsAdded - {}", status.message());
+            panic!(
+                "Given step failed: LoyaltyPointsAdded - {}",
+                status.message()
+            );
         }
     }
 
@@ -267,7 +268,10 @@ async fn loyalty_points_redeemed_event(
             world.current_sequence += 1;
         }
         Err(status) => {
-            panic!("Given step failed: LoyaltyPointsRedeemed - {}", status.message());
+            panic!(
+                "Given step failed: LoyaltyPointsRedeemed - {}",
+                status.message()
+            );
         }
     }
 

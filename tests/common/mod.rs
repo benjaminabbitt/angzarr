@@ -67,7 +67,7 @@ pub fn build_command_book(
     command: impl Message,
     type_url: &str,
 ) -> CommandBook {
-    build_command_book_with_options(domain, root, command, type_url, 0, false)
+    build_command_book_at_sequence(domain, root, command, type_url, 0)
 }
 
 /// Builds a CommandBook with specific sequence number.
@@ -78,28 +78,6 @@ pub fn build_command_book_at_sequence(
     type_url: &str,
     sequence: u32,
 ) -> CommandBook {
-    build_command_book_with_options(domain, root, command, type_url, sequence, false)
-}
-
-/// Builds a CommandBook with auto_resequence enabled.
-pub fn build_command_book_auto_resequence(
-    domain: &str,
-    root: Uuid,
-    command: impl Message,
-    type_url: &str,
-) -> CommandBook {
-    build_command_book_with_options(domain, root, command, type_url, 0, true)
-}
-
-/// Builds a CommandBook with full configuration options.
-pub fn build_command_book_with_options(
-    domain: &str,
-    root: Uuid,
-    command: impl Message,
-    type_url: &str,
-    sequence: u32,
-    auto_resequence: bool,
-) -> CommandBook {
     let correlation_id = Uuid::new_v4().to_string();
     CommandBook {
         cover: Some(Cover {
@@ -107,6 +85,7 @@ pub fn build_command_book_with_options(
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
+            correlation_id,
         }),
         pages: vec![CommandPage {
             sequence,
@@ -115,10 +94,7 @@ pub fn build_command_book_with_options(
                 value: command.encode_to_vec(),
             }),
         }],
-        correlation_id,
         saga_origin: None,
-        auto_resequence,
-        fact: false,
     }
 }
 
@@ -135,12 +111,14 @@ pub fn extract_sequence(page: &angzarr::proto::EventPage) -> u32 {
 /// Builds a Query for retrieving events from an aggregate.
 pub fn build_query(domain: &str, root: Uuid) -> Query {
     Query {
-        domain: domain.to_string(),
-        root: Some(ProtoUuid {
-            value: root.as_bytes().to_vec(),
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
         }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
+        selection: None,
     }
 }
 

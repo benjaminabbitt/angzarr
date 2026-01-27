@@ -1,15 +1,12 @@
-# Python examples
-# Container: podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
-# Run:       podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
+# Python examples for angzarr e-commerce domain
+# Services: customer, product, inventory, order, cart, fulfillment
+# Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
 #
-# Deployment Model:
-#   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm from root justfile
-#   - Application services: Deployed via Skaffold
-#
-# For cluster deployment:
-#   1. From repo root: `just kind-create-registry` - Create Kind cluster
-#   2. From repo root: `just infra-local` - Deploy backing services via Terraform
-#   3. Use `skaffold dev` or `skaffold run` in this directory for application services
+# Deployment modes (use from examples/ directory):
+#   just examples standalone run python     # Run in standalone mode
+#   just examples standalone test python    # Test in standalone mode
+#   just examples k8s deploy python       # Deploy to K8s
+#   just examples k8s test python         # Test in K8s
 
 set shell := ["bash", "-c"]
 
@@ -19,6 +16,49 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
+# ============================================================================
+# Build / Test / Clean
+# ============================================================================
+
+# Sync all Python service dependencies
+sync:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        (cd "{{TOP}}/examples/python/$dir" && uv sync); \
+    done
+
+# Run unit tests for all services
+test:
+    for dir in customer product inventory order cart fulfillment; do \
+        echo "Testing $dir..."; \
+        (cd "{{TOP}}/examples/python/$dir" && uv run pytest -v) || true; \
+    done
+
+# Clean all Python examples
+clean:
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+    find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+
+# Format all Python code
+fmt:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        (cd "{{TOP}}/examples/python/$dir" && uv run ruff format .) 2>/dev/null || true; \
+    done
+
+# Lint all Python code
+lint:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        (cd "{{TOP}}/examples/python/$dir" && uv run ruff check .) 2>/dev/null || true; \
+    done
+
+# Lint Helm chart
+helm-lint:
+    helm lint helm
+
+# ============================================================================
+# Container Images
+# ============================================================================
+
 # Build dev container
 container-build:
     cd {{TOP}} && podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
@@ -27,140 +67,46 @@ container-build:
 container-test:
     cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
 
-# Setup all Python examples
-setup: setup-common setup-customer setup-transaction setup-saga-loyalty setup-projector-log-customer setup-projector-log-transaction
-
-# Setup common utilities
-setup-common:
-    cd common && just setup
-
-# Setup customer bounded context
-setup-customer:
-    cd customer && just setup
-
-# Setup transaction bounded context
-setup-transaction:
-    cd transaction && just setup
-
-# Setup saga-loyalty
-setup-saga-loyalty:
-    cd saga-loyalty && just setup
-
-# Setup projector-log-customer
-setup-projector-log-customer:
-    cd projector-log-customer && just setup
-
-# Setup projector-log-transaction
-setup-projector-log-transaction:
-    cd projector-log-transaction && just setup
-
-# Test all Python examples
-test: test-customer test-transaction test-saga-loyalty test-projector-log-customer test-projector-log-transaction
-
-# Test customer
-test-customer: setup-customer
-    cd customer && just test
-
-# Test transaction
-test-transaction: setup-transaction
-    cd transaction && just test
-
-# Test saga-loyalty
-test-saga-loyalty: setup-saga-loyalty
-    cd saga-loyalty && just test
-
-# Test projector-log-customer
-test-projector-log-customer: setup-projector-log-customer
-    cd projector-log-customer && just test
-
-# Test projector-log-transaction
-test-projector-log-transaction: setup-projector-log-transaction
-    cd projector-log-transaction && just test
-
-# Clean all Python examples
-clean:
-    cd common && just clean || true
-    cd customer && just clean || true
-    cd transaction && just clean || true
-    cd saga-loyalty && just clean || true
-    cd projector-log-customer && just clean || true
-    cd projector-log-transaction && just clean || true
-
-# Format all Python code
-fmt:
-    cd customer && uv run ruff format .
-    cd transaction && uv run ruff format .
-    cd saga-loyalty && uv run ruff format .
-    cd projector-log-customer && uv run ruff format .
-    cd projector-log-transaction && uv run ruff format .
-
-# Lint all Python code
-lint:
-    cd customer && uv run ruff check .
-    cd transaction && uv run ruff check .
-    cd saga-loyalty && uv run ruff check .
-    cd projector-log-customer && uv run ruff check .
-    cd projector-log-transaction && uv run ruff check .
-
-# Lint Helm chart
-helm-lint:
-    helm lint helm
-
 # ============================================================================
-# Integration Tests (deployed to Kind cluster)
-# Prerequisites: Backing services must be running via `just infra-local` from repo root
+# Integration Tests
 # ============================================================================
 
 # Setup integration tests
-setup-integration:
+setup-tests:
     cd tests && uv sync
 
-# Run container integration tests (assumes backing services already deployed)
-integration: setup-integration
-    cd tests && ANGZARR_TEST_MODE=container uv run pytest test_container_integration.py -v
-
-# Run integration tests with custom gateway address
-integration-custom GATEWAY: setup-integration
-    cd tests && ANGZARR_TEST_MODE=container ANGZARR_GATEWAY={{GATEWAY}} uv run pytest test_container_integration.py -v
+# Run integration tests (assumes gateway available)
+integration GATEWAY="localhost:1350": setup-tests
+    cd tests && ANGZARR_PORT=1350 ANGZARR_TEST_MODE=container uv run pytest -v
 
 # ============================================================================
-# Embedded Mode (Local Development with UDS)
-# Runs angzarr sidecars that spawn Python business logic
+# Standalone Mode Shortcuts (delegates to examples/standalone.justfile)
 # ============================================================================
 
-# Build angzarr binaries
-build-angzarr:
-    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-stream --bin angzarr-gateway --bin angzarr_embedded
+# Run in standalone mode
+standalone:
+    cd {{TOP}}/examples && just standalone run python
 
-# Run all services in embedded mode (single command)
-embedded: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/embedded.yaml {{TOP}}/target/debug/angzarr_embedded
+# Run acceptance tests in standalone mode
+acceptance-standalone:
+    cd {{TOP}}/examples && just standalone test python
 
-# Clean up stale UDS sockets
-clean-sockets:
-    mkdir -p /tmp/angzarr
-    rm -f /tmp/angzarr/*.sock 2>/dev/null || true
+# ============================================================================
+# K8s Mode Shortcuts (delegates to examples/k8s.justfile)
+# ============================================================================
 
-# Run customer aggregate (spawns Python business logic)
-run-customer: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-customer.yaml {{TOP}}/target/debug/angzarr-aggregate
+# Deploy to K8s
+deploy:
+    cd {{TOP}}/examples && just k8s deploy python
 
-# Run order aggregate
-run-order: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-order.yaml {{TOP}}/target/debug/angzarr-aggregate
+# Run acceptance tests in K8s
+acceptance-k8s:
+    cd {{TOP}}/examples && just k8s test python
 
-# Run cart aggregate
-run-cart: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-cart.yaml {{TOP}}/target/debug/angzarr-aggregate
+# Start dev mode with file watching
+dev:
+    cd {{TOP}}/examples && just k8s dev python
 
-# Run inventory aggregate
-run-inventory: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-inventory.yaml {{TOP}}/target/debug/angzarr-aggregate
-
-# Run product aggregate
-run-product: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-product.yaml {{TOP}}/target/debug/angzarr-aggregate
-
-# Run fulfillment aggregate
-run-fulfillment: build-angzarr clean-sockets
-    cd {{TOP}}/examples/python && ANGZARR_CONFIG=config/aggregate-fulfillment.yaml {{TOP}}/target/debug/angzarr-aggregate
+# Delete K8s deployment
+delete:
+    cd {{TOP}}/examples && just k8s delete python

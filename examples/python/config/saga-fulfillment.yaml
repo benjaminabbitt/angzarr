@@ -1,4 +1,4 @@
-# Fulfillment saga sidecar configuration (embedded mode)
+# Fulfillment saga sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -16,4 +16,4 @@ messaging:
 target:
   address: /tmp/angzarr/saga-fulfillment.sock
   domain: fulfillment
-  command: uv run --directory saga-fulfillment python server.py
+  command: ["uv", "run", "--directory", "saga-fulfillment", "python", "server.py"]

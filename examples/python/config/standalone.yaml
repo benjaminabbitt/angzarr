@@ -1,0 +1,47 @@
+# Standalone mode configuration for Python examples
+# Run with: ANGZARR_CONFIG=config/standalone.yaml angzarr-standalone
+
+storage:
+  type: sqlite
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+messaging:
+  type: ipc
+  ipc:
+    base_path: /tmp/angzarr
+
+standalone:
+  aggregates:
+    - domain: customer
+      command: ["uv", "run", "--directory", "customer", "python", "server.py"]
+    - domain: order
+      command: ["uv", "run", "--directory", "order", "python", "server.py"]
+    - domain: cart
+      command: ["uv", "run", "--directory", "cart", "python", "server.py"]
+    - domain: inventory
+      command: ["uv", "run", "--directory", "inventory", "python", "server.py"]
+    - domain: product
+      command: ["uv", "run", "--directory", "product", "python", "server.py"]
+    - domain: fulfillment
+      command: ["uv", "run", "--directory", "fulfillment", "python", "server.py"]
+
+  sagas:
+    - domain: fulfillment
+      listen_domain: order
+      command: ["uv", "run", "--directory", "saga-fulfillment", "python", "server.py"]
+    - domain: cancellation
+      listen_domain: order
+      command: ["uv", "run", "--directory", "saga-cancellation", "python", "server.py"]
+    - domain: loyalty-earn
+      listen_domain: fulfillment
+      command: ["uv", "run", "--directory", "saga-loyalty-earn", "python", "server.py"]
+
+  projectors: []
+
+  gateway:
+    enabled: false
+    port: 50051

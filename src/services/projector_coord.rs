@@ -91,10 +91,16 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
             .ok_or_else(|| Status::invalid_argument("SyncEventBook must have events"))?;
 
         // Repair EventBook if incomplete
-        let event_book = self.repairer.lock().await.repair(event_book).await.map_err(|e| {
-            error!(error = %e, "Failed to repair EventBook");
-            Status::internal(format!("Failed to repair EventBook: {}", e))
-        })?;
+        let event_book = self
+            .repairer
+            .lock()
+            .await
+            .repair(event_book)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to repair EventBook");
+                Status::internal(format!("Failed to repair EventBook: {}", e))
+            })?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -138,10 +144,16 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         let event_book = request.into_inner();
 
         // Repair EventBook if incomplete
-        let event_book = self.repairer.lock().await.repair(event_book).await.map_err(|e| {
-            error!(error = %e, "Failed to repair EventBook");
-            Status::internal(format!("Failed to repair EventBook: {}", e))
-        })?;
+        let event_book = self
+            .repairer
+            .lock()
+            .await
+            .repair(event_book)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to repair EventBook");
+                Status::internal(format!("Failed to repair EventBook: {}", e))
+            })?;
 
         // Clone connections to minimize lock scope during async I/O
         let connections: Vec<_> = {
@@ -182,10 +194,10 @@ mod tests {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         }
     }
@@ -262,5 +274,4 @@ mod tests {
 
         assert!(result.is_err());
     }
-
 }

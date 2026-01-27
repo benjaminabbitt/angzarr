@@ -5,13 +5,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{error, info};
 
-use crate::storage::EventStore;
-use crate::storage::SnapshotStore;
 use crate::proto::{
-    event_query_server::EventQuery as EventQueryTrait, AggregateRoot, EventBook, Query,
-    Uuid as ProtoUuid, query::Selection,
+    event_query_server::EventQuery as EventQueryTrait, query::Selection, AggregateRoot, EventBook,
+    Query, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
+use crate::storage::EventStore;
+use crate::storage::SnapshotStore;
 
 /// Event query service.
 ///
@@ -58,32 +58,41 @@ impl EventQueryTrait for EventQueryService {
 
     async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
         let query = request.into_inner();
+        let cover = query.cover.as_ref();
+
+        // Extract correlation_id from cover
+        let correlation_id = cover
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
 
         // Correlation ID query: returns first matching EventBook across all domains
         // Useful for sagas that need to find related events without knowing the root ID
-        if !query.correlation_id.is_empty() {
-            info!(correlation_id = %query.correlation_id, "GetEventBook by correlation_id");
+        if !correlation_id.is_empty() {
+            info!(correlation_id = %correlation_id, "GetEventBook by correlation_id");
 
             let books = self
                 .event_store
-                .get_by_correlation(&query.correlation_id)
+                .get_by_correlation(correlation_id)
                 .await
                 .map_err(|e| {
-                    error!(correlation_id = %query.correlation_id, error = %e, "GetEventBook correlation query failed");
+                    error!(correlation_id = %correlation_id, error = %e, "GetEventBook correlation query failed");
                     Status::internal(e.to_string())
                 })?;
 
             // Return first matching book, or empty book if none found
             let book = books.into_iter().next().unwrap_or_default();
-            info!(correlation_id = %query.correlation_id, pages = book.pages.len(), "GetEventBook by correlation_id completed");
+            info!(correlation_id = %correlation_id, pages = book.pages.len(), "GetEventBook by correlation_id completed");
             return Ok(Response::new(book));
         }
 
         // Standard query by domain + root
-        let domain = query.domain;
-        let root = query
-            .root
-            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID or correlation_id"))?;
+        let cover = cover.ok_or_else(|| {
+            Status::invalid_argument("Query must have a cover with domain/root or correlation_id")
+        })?;
+        let domain = cover.domain.clone();
+        let root = cover.root.as_ref().ok_or_else(|| {
+            Status::invalid_argument("Query must have a root UUID or correlation_id")
+        })?;
 
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
@@ -136,11 +145,16 @@ impl EventQueryTrait for EventQueryService {
     ) -> Result<Response<Self::GetEventsStream>, Status> {
         let query = request.into_inner();
         let (tx, rx) = tokio::sync::mpsc::channel(32);
+        let cover = query.cover.as_ref();
+
+        // Extract correlation_id from cover
+        let correlation_id = cover
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
 
         // Correlation ID query: streams ALL matching EventBooks across all domains
-        if !query.correlation_id.is_empty() {
+        if !correlation_id.is_empty() {
             let event_store = self.event_store.clone();
-            let correlation_id = query.correlation_id.clone();
 
             tokio::spawn(async move {
                 match event_store.get_by_correlation(&correlation_id).await {
@@ -161,10 +175,13 @@ impl EventQueryTrait for EventQueryService {
         }
 
         // Standard query by domain + root
-        let domain = query.domain;
-        let root = query
-            .root
-            .ok_or_else(|| Status::invalid_argument("Query must have a root UUID or correlation_id"))?;
+        let cover = cover.ok_or_else(|| {
+            Status::invalid_argument("Query must have a cover with domain/root or correlation_id")
+        })?;
+        let domain = cover.domain.clone();
+        let root = cover.root.as_ref().ok_or_else(|| {
+            Status::invalid_argument("Query must have a root UUID or correlation_id")
+        })?;
 
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
@@ -199,9 +216,20 @@ impl EventQueryTrait for EventQueryService {
             while let Some(query_result) = stream.next().await {
                 match query_result {
                     Ok(query) => {
-                        let domain = query.domain.clone();
-                        let root = match query.root {
-                            Some(ref r) => match uuid::Uuid::from_slice(&r.value) {
+                        let cover = match query.cover.as_ref() {
+                            Some(c) => c,
+                            None => {
+                                let _ = tx
+                                    .send(Err(Status::invalid_argument(
+                                        "Query must have a cover",
+                                    )))
+                                    .await;
+                                continue;
+                            }
+                        };
+                        let domain = cover.domain.clone();
+                        let root = match cover.root.as_ref() {
+                            Some(r) => match uuid::Uuid::from_slice(&r.value) {
                                 Ok(uuid) => uuid,
                                 Err(e) => {
                                     error!(error = %e, "Invalid UUID in synchronize query");
@@ -236,9 +264,7 @@ impl EventQueryTrait for EventQueryService {
                                 // TODO: Implement specific sequence fetching
                                 event_book_repo.get(&domain, root).await
                             }
-                            None => {
-                                event_book_repo.get(&domain, root).await
-                            }
+                            None => event_book_repo.get(&domain, root).await,
                         };
 
                         match result {
@@ -346,12 +372,14 @@ mod tests {
         let root = uuid::Uuid::new_v4();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
             }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -377,12 +405,14 @@ mod tests {
         event_store.add("orders", root, events, "").await.unwrap();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
             }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -397,10 +427,12 @@ mod tests {
         let (service, _, _) = create_default_test_service();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: None,
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: None,
+                correlation_id: String::new(),
+            }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -415,12 +447,14 @@ mod tests {
         let (service, _, _) = create_default_test_service();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: vec![1, 2, 3],
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: vec![1, 2, 3], // Invalid UUID
+                }),
+                correlation_id: String::new(),
             }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -450,15 +484,17 @@ mod tests {
 
         // Query for range [2, 4] - inclusive bounds, should return events 2, 3, 4
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
             }),
             selection: Some(Selection::Range(SequenceRange {
                 lower: 2,
                 upper: Some(4),
             })),
-            correlation_id: String::new(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -474,12 +510,14 @@ mod tests {
         let root = uuid::Uuid::new_v4();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
             }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -509,12 +547,14 @@ mod tests {
         event_store.add("orders", root, events, "").await.unwrap();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
             }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -532,10 +572,12 @@ mod tests {
         let (service, _, _) = create_default_test_service();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: None,
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: None,
+                correlation_id: String::new(),
+            }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -550,12 +592,14 @@ mod tests {
         let (service, _, _) = create_default_test_service();
 
         let query = Query {
-            domain: "orders".to_string(),
-            root: Some(ProtoUuid {
-                value: vec![1, 2, 3], // Invalid: must be 16 bytes
+            cover: Some(crate::proto::Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: vec![1, 2, 3], // Invalid: must be 16 bytes
+                }),
+                correlation_id: String::new(),
             }),
             selection: None,
-            correlation_id: String::new(),
         };
 
         let response = service.get_events(Request::new(query)).await;
@@ -638,10 +682,12 @@ mod tests {
 
         // Query by correlation ID (no root needed)
         let query = Query {
-            domain: String::new(),
-            root: None,
+            cover: Some(crate::proto::Cover {
+                domain: String::new(),
+                root: None,
+                correlation_id: correlation_id.to_string(),
+            }),
             selection: None,
-            correlation_id: correlation_id.to_string(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -656,10 +702,12 @@ mod tests {
         let (service, _, _) = create_default_test_service();
 
         let query = Query {
-            domain: String::new(),
-            root: None,
+            cover: Some(crate::proto::Cover {
+                domain: String::new(),
+                root: None,
+                correlation_id: "nonexistent".to_string(),
+            }),
             selection: None,
-            correlation_id: "nonexistent".to_string(),
         };
 
         let response = service.get_event_book(Request::new(query)).await;
@@ -695,10 +743,12 @@ mod tests {
 
         // Query by correlation ID - should return both
         let query = Query {
-            domain: String::new(),
-            root: None,
+            cover: Some(crate::proto::Cover {
+                domain: String::new(),
+                root: None,
+                correlation_id: correlation_id.to_string(),
+            }),
             selection: None,
-            correlation_id: correlation_id.to_string(),
         };
 
         let response = service.get_events(Request::new(query)).await;

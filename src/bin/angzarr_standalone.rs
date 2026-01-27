@@ -41,7 +41,7 @@
 //!       command: uv run --directory order python server.py
 //!   sagas:
 //!     - domain: fulfillment
-//!       listen_domains: [order]
+//!       listen_domain: order
 //!       command: uv run --directory saga-fulfillment python server.py
 //!   projectors:
 //!     - domain: web
@@ -95,6 +95,8 @@ impl ManagedChild {
         tracing::debug!(name = %name, env_count = env.len(), "Environment variables for sidecar");
 
         let mut cmd = Command::new(binary);
+        // Clear ANGZARR_CONFIG so sidecars don't load the standalone config file
+        cmd.env_remove("ANGZARR_CONFIG");
         for (key, value) in &env {
             cmd.env(key, value);
         }
@@ -141,12 +143,7 @@ impl ManagedChild {
             let _ = self.child.start_kill();
 
             // Wait briefly for graceful shutdown
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                self.child.wait(),
-            )
-            .await
-            {
+            match tokio::time::timeout(std::time::Duration::from_secs(2), self.child.wait()).await {
                 Ok(Ok(status)) => {
                     info!(name = %self.name, status = ?status, "Sidecar exited");
                 }
@@ -236,7 +233,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Find sidecar binaries (same directory as this binary, or in PATH)
     let self_path = std::env::current_exe()?;
-    let bin_dir = self_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let bin_dir = self_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
 
     let aggregate_bin = find_binary(bin_dir, "angzarr-aggregate")?;
     let saga_bin = find_binary(bin_dir, "angzarr-saga")?;
@@ -259,7 +258,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn aggregate sidecars (with subscriber list for IPC)
     for svc in &config.standalone.aggregates {
-        let mut env = build_aggregate_env(&base_env, &config, svc);
+        let mut env = build_aggregate_env(&base_env, &config, svc)?;
         // Pass subscriber list for IPC fanout
         if ipc_broker.is_some() {
             env.insert(SUBSCRIBERS_ENV_VAR.to_string(), subscribers_json.clone());
@@ -271,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn saga sidecars
     for svc in &config.standalone.sagas {
-        let env = build_saga_env(&base_env, &config, svc, &ipc_broker);
+        let env = build_saga_env(&base_env, &config, svc, &ipc_broker)?;
         let name = format!("saga-{}", svc.domain);
         let child = ManagedChild::spawn(&name, &saga_bin, env).await?;
         children.push(child);
@@ -279,7 +278,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn projector sidecars
     for svc in &config.standalone.projectors {
-        let env = build_projector_env(&base_env, &config, svc, &ipc_broker);
+        let env = build_projector_env(&base_env, &config, svc, &ipc_broker)?;
         let name = match &svc.name {
             Some(proj_name) => format!("projector-{}-{}", proj_name, svc.domain),
             None => format!("projector-{}", svc.domain),
@@ -300,18 +299,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Spawn stream service and its projector sidecar if gateway is enabled
+    // Spawn stream service if gateway is enabled
     // Stream enables execute_stream() for real-time event streaming to clients
+    // Note: The stream projector must be configured explicitly in standalone.projectors
     if config.standalone.gateway.enabled {
-        // Spawn angzarr-stream (receives events, provides subscriptions)
         let stream_env = build_stream_env(&base_env, &config);
         let child = ManagedChild::spawn("stream", &stream_bin, stream_env).await?;
-        children.push(child);
-
-        // Spawn projector sidecar to feed events to stream service
-        // This sidecar subscribes to all events and forwards to angzarr-stream
-        let stream_projector_env = build_stream_projector_env(&base_env, &config, &ipc_broker);
-        let child = ManagedChild::spawn("projector-stream", &projector_bin, stream_projector_env).await?;
         children.push(child);
     }
 
@@ -347,7 +340,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Find a binary in the given directory or PATH.
-fn find_binary(bin_dir: &std::path::Path, name: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn find_binary(
+    bin_dir: &std::path::Path,
+    name: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     // Try same directory first
     let local_path = bin_dir.join(name);
     if local_path.exists() {
@@ -367,15 +363,9 @@ fn find_binary(bin_dir: &std::path::Path, name: &str) -> Result<String, Box<dyn 
     Ok(name.to_string())
 }
 
-/// Build base environment variables from config.
+/// Build base environment variables from config (transport and messaging only).
 fn build_base_env(config: &Config) -> HashMap<String, String> {
     let mut env = HashMap::new();
-
-    // Storage
-    env.insert(
-        "ANGZARR__STORAGE__TYPE".to_string(),
-        format!("{:?}", config.storage.storage_type).to_lowercase(),
-    );
 
     // Transport
     env.insert("ANGZARR__TRANSPORT__TYPE".to_string(), "uds".to_string());
@@ -411,14 +401,66 @@ fn build_base_env(config: &Config) -> HashMap<String, String> {
     env
 }
 
+/// Build storage environment variables from StorageConfig.
+fn build_storage_env(
+    env: &mut HashMap<String, String>,
+    storage: &angzarr::storage::StorageConfig,
+) {
+    use angzarr::storage::StorageType;
+
+    env.insert(
+        "ANGZARR__STORAGE__TYPE".to_string(),
+        format!("{:?}", storage.storage_type).to_lowercase(),
+    );
+
+    match storage.storage_type {
+        StorageType::Sqlite => {
+            if let Some(ref path) = storage.sqlite.path {
+                env.insert("ANGZARR__STORAGE__SQLITE__PATH".to_string(), path.clone());
+            }
+        }
+        StorageType::Postgres => {
+            env.insert(
+                "ANGZARR__STORAGE__POSTGRES__URI".to_string(),
+                storage.postgres.uri.clone(),
+            );
+        }
+        StorageType::Mongodb => {
+            env.insert(
+                "ANGZARR__STORAGE__MONGODB__URI".to_string(),
+                storage.mongodb.uri.clone(),
+            );
+            env.insert(
+                "ANGZARR__STORAGE__MONGODB__DATABASE".to_string(),
+                storage.mongodb.database.clone(),
+            );
+        }
+        StorageType::Redis => {
+            env.insert(
+                "ANGZARR__STORAGE__REDIS__URI".to_string(),
+                storage.redis.uri.clone(),
+            );
+        }
+    }
+}
+
 /// Build environment for aggregate sidecar.
 fn build_aggregate_env(
     base: &HashMap<String, String>,
     config: &Config,
     svc: &ServiceConfig,
-) -> HashMap<String, String> {
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut env = base.clone();
     let base_path = &config.transport.uds.base_path;
+
+    // Storage is required for each aggregate
+    let storage = svc.storage.as_ref().ok_or_else(|| {
+        format!(
+            "Aggregate '{}' missing required storage configuration",
+            svc.domain
+        )
+    })?;
+    build_storage_env(&mut env, storage);
 
     // Target configuration
     env.insert(
@@ -426,34 +468,30 @@ fn build_aggregate_env(
         format!("{}/business-{}.sock", base_path.display(), svc.domain),
     );
     env.insert("ANGZARR__TARGET__DOMAIN".to_string(), svc.domain.clone());
-    env.insert("ANGZARR__TARGET__COMMAND".to_string(), svc.command.clone());
-    if !svc.args.is_empty() {
-        // Pass args as JSON array
+    // Pass command as JSON array for sidecar's ManagedProcess to parse
+    if !svc.command.is_empty() {
         env.insert(
-            "ANGZARR__TARGET__ARGS".to_string(),
-            serde_json::to_string(&svc.args).unwrap_or_default(),
+            "ANGZARR__TARGET__COMMAND_JSON".to_string(),
+            serde_json::to_string(&svc.command).unwrap_or_default(),
         );
     }
-
-    // Per-domain SQLite database to avoid lock contention
-    if let Some(ref path) = config.storage.sqlite.path {
-        // Replace .db extension with _{domain}.db, or append _{domain} if no extension
-        let domain_path = if path.ends_with(".db") {
-            format!("{}_{}.db", &path[..path.len() - 3], svc.domain)
-        } else {
-            format!("{}_{}", path, svc.domain)
-        };
-        env.insert("ANGZARR__STORAGE__SQLITE__PATH".to_string(), domain_path);
+    if let Some(ref working_dir) = svc.working_dir {
+        env.insert(
+            "ANGZARR__TARGET__WORKING_DIR".to_string(),
+            working_dir.clone(),
+        );
     }
 
     // Disable K8s service discovery in standalone mode
     env.insert("ANGZARR_DISCOVERY".to_string(), "static".to_string());
 
-    env
+    Ok(env)
 }
 
 /// Set up IPC broker if using IPC messaging.
-async fn setup_ipc_broker(config: &Config) -> Result<Option<IpcBroker>, Box<dyn std::error::Error>> {
+async fn setup_ipc_broker(
+    config: &Config,
+) -> Result<Option<IpcBroker>, Box<dyn std::error::Error>> {
     let messaging_type = config
         .messaging
         .as_ref()
@@ -481,31 +519,21 @@ async fn setup_ipc_broker(config: &Config) -> Result<Option<IpcBroker>, Box<dyn 
             Some(proj_name) => format!("projector-{}-{}", proj_name, svc.domain),
             None => format!("projector-{}", svc.domain),
         };
-        let domains = if svc.listen_domains.is_empty() {
-            vec![svc.domain.clone()]
-        } else {
-            svc.listen_domains.clone()
-        };
-        broker.register_subscriber(&name, domains)?;
+        let domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+        broker.register_subscriber(&name, vec![domain.clone()])?;
     }
 
     // Register all sagas as subscribers
     for svc in &config.standalone.sagas {
         let name = format!("saga-{}", svc.domain);
-        let domains = if svc.listen_domains.is_empty() {
-            vec![svc.domain.clone()]
-        } else {
-            svc.listen_domains.clone()
-        };
-        broker.register_subscriber(&name, domains)?;
+        let domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+        broker.register_subscriber(&name, vec![domain.clone()])?;
     }
 
-    // Register stream projector if gateway enabled (subscribes to all)
-    if config.standalone.gateway.enabled {
-        broker.register_subscriber("projector-stream", vec!["#".to_string()])?;
-    }
-
-    info!(subscribers = broker.get_subscribers().len(), "IPC broker ready");
+    info!(
+        subscribers = broker.get_subscribers().len(),
+        "IPC broker ready"
+    );
 
     Ok(Some(broker))
 }
@@ -516,10 +544,19 @@ fn build_saga_env(
     config: &Config,
     svc: &ServiceConfig,
     ipc_broker: &Option<IpcBroker>,
-) -> HashMap<String, String> {
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut env = base.clone();
     let base_path = &config.transport.uds.base_path;
     let subscriber_name = format!("saga-{}", svc.domain);
+
+    // Storage is required for each saga
+    let storage = svc.storage.as_ref().ok_or_else(|| {
+        format!(
+            "Saga '{}' missing required storage configuration",
+            svc.domain
+        )
+    })?;
+    build_storage_env(&mut env, storage);
 
     // Target configuration
     env.insert(
@@ -527,33 +564,37 @@ fn build_saga_env(
         format!("{}/saga-{}.sock", base_path.display(), svc.domain),
     );
     env.insert("ANGZARR__TARGET__DOMAIN".to_string(), svc.domain.clone());
-    env.insert("ANGZARR__TARGET__COMMAND".to_string(), svc.command.clone());
-    if !svc.args.is_empty() {
-        // Pass args as JSON array
+    // Pass command as JSON array for sidecar's ManagedProcess to parse
+    if !svc.command.is_empty() {
         env.insert(
-            "ANGZARR__TARGET__ARGS".to_string(),
-            serde_json::to_string(&svc.args).unwrap_or_default(),
+            "ANGZARR__TARGET__COMMAND_JSON".to_string(),
+            serde_json::to_string(&svc.command).unwrap_or_default(),
+        );
+    }
+    if let Some(ref working_dir) = svc.working_dir {
+        env.insert(
+            "ANGZARR__TARGET__WORKING_DIR".to_string(),
+            working_dir.clone(),
         );
     }
 
     // Messaging configuration - IPC or AMQP
+    let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
     if ipc_broker.is_some() {
-        // IPC mode: set subscriber name and domain (singular, comma-separated)
+        // IPC mode: set subscriber name and domain
         env.insert(
             "ANGZARR__MESSAGING__IPC__SUBSCRIBER_NAME".to_string(),
             subscriber_name,
         );
-        if !svc.listen_domains.is_empty() {
-            env.insert(
-                "ANGZARR__MESSAGING__IPC__DOMAIN".to_string(),
-                svc.listen_domains.join(","),
-            );
-        }
-    } else if !svc.listen_domains.is_empty() {
-        // AMQP mode: set domain (singular, first domain wins for AMQP)
+        env.insert(
+            "ANGZARR__MESSAGING__IPC__DOMAIN".to_string(),
+            listen_domain.clone(),
+        );
+    } else {
+        // AMQP mode: set domain
         env.insert(
             "ANGZARR__MESSAGING__AMQP__DOMAIN".to_string(),
-            svc.listen_domains.first().cloned().unwrap_or_default(),
+            listen_domain.clone(),
         );
     }
 
@@ -574,27 +615,13 @@ fn build_saga_env(
 
     env.insert("ANGZARR_STATIC_ENDPOINTS".to_string(), endpoints.join(","));
 
-    // EventQuery address for repair (use first listen domain's aggregate)
+    // EventQuery address for repair (use listen domain's aggregate)
     // Strip routing wildcards (e.g., "game.#" -> "game") for socket paths
-    let repair_domain = svc
-        .listen_domains
-        .first()
-        .map(|d| strip_routing_wildcards(d))
-        .unwrap_or(&svc.domain);
+    let repair_domain = strip_routing_wildcards(listen_domain);
     env.insert(
         "EVENT_QUERY_ADDRESS".to_string(),
         format!("{}/aggregate-{}.sock", base_path.display(), repair_domain),
     );
-
-    // Per-domain SQLite database to avoid lock contention
-    if let Some(ref path) = config.storage.sqlite.path {
-        let domain_path = if path.ends_with(".db") {
-            format!("{}_{}.db", &path[..path.len() - 3], svc.domain)
-        } else {
-            format!("{}_{}", path, svc.domain)
-        };
-        env.insert("ANGZARR__STORAGE__SQLITE__PATH".to_string(), domain_path);
-    }
 
     // Merge in service-specific environment variables from config
     // These override any previously set values
@@ -602,7 +629,7 @@ fn build_saga_env(
         env.insert(key.clone(), value.clone());
     }
 
-    env
+    Ok(env)
 }
 
 /// Build environment for projector sidecar.
@@ -611,9 +638,18 @@ fn build_projector_env(
     config: &Config,
     svc: &ServiceConfig,
     ipc_broker: &Option<IpcBroker>,
-) -> HashMap<String, String> {
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut env = base.clone();
     let base_path = &config.transport.uds.base_path;
+
+    // Storage is required for each projector (tracks sequence position)
+    let storage = svc.storage.as_ref().ok_or_else(|| {
+        format!(
+            "Projector '{}' missing required storage configuration",
+            svc.domain
+        )
+    })?;
+    build_storage_env(&mut env, storage);
 
     // Subscriber/socket name: use "name-domain" if name is set, otherwise just "domain"
     let subscriber_name = match &svc.name {
@@ -631,46 +667,43 @@ fn build_projector_env(
         format!("{}/projector-{}.sock", base_path.display(), socket_name),
     );
     env.insert("ANGZARR__TARGET__DOMAIN".to_string(), svc.domain.clone());
-    env.insert("ANGZARR__TARGET__COMMAND".to_string(), svc.command.clone());
-    if !svc.args.is_empty() {
-        // Pass args as JSON array
+    // Pass command as JSON array for sidecar's ManagedProcess to parse
+    if !svc.command.is_empty() {
         env.insert(
-            "ANGZARR__TARGET__ARGS".to_string(),
-            serde_json::to_string(&svc.args).unwrap_or_default(),
+            "ANGZARR__TARGET__COMMAND_JSON".to_string(),
+            serde_json::to_string(&svc.command).unwrap_or_default(),
+        );
+    }
+    if let Some(ref working_dir) = svc.working_dir {
+        env.insert(
+            "ANGZARR__TARGET__WORKING_DIR".to_string(),
+            working_dir.clone(),
         );
     }
 
     // Messaging configuration - IPC or AMQP
+    let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
     if ipc_broker.is_some() {
-        // IPC mode: set subscriber name and domain (singular, comma-separated)
+        // IPC mode: set subscriber name and domain
         env.insert(
             "ANGZARR__MESSAGING__IPC__SUBSCRIBER_NAME".to_string(),
             subscriber_name,
         );
-        let domains = if svc.listen_domains.is_empty() {
-            vec![svc.domain.clone()]
-        } else {
-            svc.listen_domains.clone()
-        };
         env.insert(
             "ANGZARR__MESSAGING__IPC__DOMAIN".to_string(),
-            domains.join(","),
+            listen_domain.clone(),
         );
-    } else if !svc.listen_domains.is_empty() {
-        // AMQP mode: set domain (singular)
+    } else {
+        // AMQP mode: set domain
         env.insert(
             "ANGZARR__MESSAGING__AMQP__DOMAIN".to_string(),
-            svc.listen_domains.first().cloned().unwrap_or_default(),
+            listen_domain.clone(),
         );
     }
 
-    // EventQuery address for repair (use first listen domain's aggregate)
+    // EventQuery address for repair (use listen domain's aggregate)
     // Strip routing wildcards (e.g., "game.#" -> "game") for socket paths
-    let repair_domain = svc
-        .listen_domains
-        .first()
-        .map(|d| strip_routing_wildcards(d))
-        .unwrap_or(&svc.domain);
+    let repair_domain = strip_routing_wildcards(listen_domain);
     env.insert(
         "EVENT_QUERY_ADDRESS".to_string(),
         format!("{}/aggregate-{}.sock", base_path.display(), repair_domain),
@@ -682,7 +715,7 @@ fn build_projector_env(
         env.insert(key.clone(), value.clone());
     }
 
-    env
+    Ok(env)
 }
 
 /// Build environment for stream service.
@@ -692,62 +725,27 @@ fn build_stream_env(base: &HashMap<String, String>, _config: &Config) -> HashMap
     base.clone()
 }
 
-/// Build environment for the projector sidecar that feeds events to stream service.
-fn build_stream_projector_env(
-    base: &HashMap<String, String>,
-    config: &Config,
-    ipc_broker: &Option<IpcBroker>,
-) -> HashMap<String, String> {
-    let mut env = base.clone();
-    let base_path = &config.transport.uds.base_path;
-
-    // Target is the stream service socket
-    env.insert(
-        "ANGZARR__TARGET__ADDRESS".to_string(),
-        format!("{}/stream.sock", base_path.display()),
-    );
-    env.insert("ANGZARR__TARGET__DOMAIN".to_string(), "stream".to_string());
-    // No TARGET__COMMAND - stream service is already running
-
-    // Messaging configuration - IPC or AMQP
-    if ipc_broker.is_some() {
-        // IPC mode: set subscriber name and subscribe to all domains
-        env.insert(
-            "ANGZARR__MESSAGING__IPC__SUBSCRIBER_NAME".to_string(),
-            "projector-stream".to_string(),
-        );
-        env.insert(
-            "ANGZARR__MESSAGING__IPC__DOMAIN".to_string(),
-            "#".to_string(),
-        );
-    } else {
-        // AMQP mode: subscribe to all domains
-        env.insert(
-            "ANGZARR__MESSAGING__AMQP__DOMAIN".to_string(),
-            "#".to_string(),
-        );
-    }
-
-    env
-}
-
 /// Spawn an external service process.
 async fn spawn_external_service(
     name: &str,
     svc: &ExternalServiceConfig,
 ) -> Result<ManagedChild, Box<dyn std::error::Error>> {
+    if svc.command.is_empty() {
+        return Err(format!("External service '{}' has empty command array", name).into());
+    }
+
+    let executable = &svc.command[0];
+    let args = &svc.command[1..];
+
     info!(
         name = %name,
-        command = %svc.command,
+        executable = %executable,
+        ?args,
         "Spawning external service"
     );
 
-    let mut cmd = Command::new(&svc.command);
-
-    // Add arguments
-    if !svc.args.is_empty() {
-        cmd.args(&svc.args);
-    }
+    let mut cmd = Command::new(executable);
+    cmd.args(args);
 
     // Set working directory
     if let Some(ref dir) = svc.working_dir {
@@ -767,7 +765,7 @@ async fn spawn_external_service(
     cmd.process_group(0);
 
     let child = cmd.spawn().map_err(|e| {
-        error!(name = %name, command = %svc.command, error = %e, "Failed to spawn external service");
+        error!(name = %name, executable = %executable, error = %e, "Failed to spawn external service");
         e
     })?;
 
@@ -900,11 +898,17 @@ fn build_gateway_env(base: &HashMap<String, String>, config: &Config) -> HashMap
 
     // Server port (on TCP for external clients)
     let port = config.standalone.gateway.port.unwrap_or(50051);
-    env.insert("ANGZARR__SERVER__AGGREGATE_PORT".to_string(), port.to_string());
+    env.insert(
+        "ANGZARR__SERVER__AGGREGATE_PORT".to_string(),
+        port.to_string(),
+    );
 
     // Use TCP transport for gateway (so external clients can connect)
     env.insert("ANGZARR__TRANSPORT__TYPE".to_string(), "tcp".to_string());
-    env.insert("ANGZARR__TRANSPORT__TCP__PORT".to_string(), port.to_string());
+    env.insert(
+        "ANGZARR__TRANSPORT__TCP__PORT".to_string(),
+        port.to_string(),
+    );
 
     // Build static endpoints from aggregates
     // Format: "domain=/path/to/socket.sock,domain2=/path/to/socket2.sock"

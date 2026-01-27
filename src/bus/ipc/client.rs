@@ -170,31 +170,35 @@ impl IpcEventBus {
 
         // Spawn blocking task for pipe reading (pipes are blocking I/O)
         let handle = tokio::task::spawn_blocking(move || {
-            // Open pipe for reading (blocks until writer opens)
-            let mut file = match File::open(&pipe_path) {
-                Ok(f) => f,
-                Err(e) => {
-                    error!(pipe = %pipe_path.display(), error = %e, "Failed to open pipe");
-                    return;
-                }
-            };
-
-            info!(pipe = %pipe_path.display(), "IPC consumer connected");
-
+            // Outer loop: reopen pipe after EOF (writers may close and reopen)
             loop {
-                // Read length prefix (4 bytes, big-endian)
-                let mut len_buf = [0u8; 4];
-                match file.read_exact(&mut len_buf) {
-                    Ok(_) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                        info!("Pipe closed, stopping consumer");
-                        break;
-                    }
+                // Open pipe for reading (blocks until writer opens)
+                let mut file = match File::open(&pipe_path) {
+                    Ok(f) => f,
                     Err(e) => {
-                        error!(error = %e, "Pipe read error");
-                        break;
+                        error!(pipe = %pipe_path.display(), error = %e, "Failed to open pipe");
+                        return;
                     }
-                }
+                };
+
+                info!(pipe = %pipe_path.display(), "IPC consumer connected");
+
+                // Inner loop: read messages until EOF
+                loop {
+                    // Read length prefix (4 bytes, big-endian)
+                    let mut len_buf = [0u8; 4];
+                    match file.read_exact(&mut len_buf) {
+                        Ok(_) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                            // Pipe closed by writers, reopen and wait for more
+                            debug!(pipe = %pipe_path.display(), "Pipe EOF, reopening");
+                            break; // Break inner loop, continue outer to reopen
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Pipe read error");
+                            return; // Fatal error, exit entirely
+                        }
+                    }
 
                 let len = u32::from_be_bytes(len_buf) as usize;
                 if len > 10 * 1024 * 1024 {
@@ -225,8 +229,7 @@ impl IpcEventBus {
                     .unwrap_or("unknown");
 
                 // Check domain filter
-                let matches = domains.is_empty()
-                    || domains.iter().any(|d| d == "#" || d == domain);
+                let matches = domains.is_empty() || domains.iter().any(|d| d == "#" || d == domain);
 
                 if !matches {
                     continue;
@@ -246,6 +249,7 @@ impl IpcEventBus {
                         }
                     }
                 });
+                }
             }
         });
 

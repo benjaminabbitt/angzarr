@@ -1,4 +1,4 @@
-# Product aggregate sidecar configuration (embedded mode)
+# Product aggregate sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -10,4 +10,4 @@ transport:
 target:
   address: /tmp/angzarr/business-product.sock
   domain: product
-  command: uv run --directory product python server.py
+  command: ["uv", "run", "--directory", "product", "python", "server.py"]

@@ -62,7 +62,11 @@ impl EventHandler for ProjectorEventHandler {
 
         Box::pin(async move {
             let book_owned = (*book).clone();
-            let correlation_id = book_owned.correlation_id.clone();
+            let correlation_id = book_owned
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.clone())
+                .unwrap_or_default();
 
             // Call projector coordinator handle_sync to get the Projection result
             // The coordinator will repair incomplete EventBooks if needed
@@ -124,6 +128,21 @@ fn create_projection_event_book(projection: Projection, correlation_id: &str) ->
     // Serialize the projection as the event payload
     let projection_bytes = projection.encode_to_vec();
 
+    // Ensure correlation_id is set on cover
+    let cover = match cover {
+        Some(mut c) => {
+            if c.correlation_id.is_empty() {
+                c.correlation_id = correlation_id.to_string();
+            }
+            Some(c)
+        }
+        None => Some(crate::proto::Cover {
+            domain: format!("_projection.{}", projector_name),
+            root: None,
+            correlation_id: correlation_id.to_string(),
+        }),
+    };
+
     EventBook {
         cover,
         // No snapshot - snapshots are aggregate state, not projection transport
@@ -136,7 +155,6 @@ fn create_projection_event_book(projection: Projection, correlation_id: &str) ->
             }),
             created_at: None,
         }],
-        correlation_id: correlation_id.to_string(),
         snapshot_state: None,
     }
 }

@@ -19,6 +19,8 @@ pub enum Events {
     CreatedAt,
     #[iden = "event_data"]
     EventData,
+    #[iden = "correlation_id"]
+    CorrelationId,
 }
 
 /// Snapshots table schema.

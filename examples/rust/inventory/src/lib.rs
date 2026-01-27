@@ -6,7 +6,6 @@ use std::collections::HashMap;
 
 use prost::Message;
 
-use common::{AggregateLogic, BusinessError, Result};
 use angzarr::proto::{
     business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
     EventBook, EventPage,
@@ -17,6 +16,7 @@ use common::proto::{
     ReleaseReservation, ReservationCommitted, ReservationReleased, ReserveStock, StockInitialized,
     StockReceived, StockReserved,
 };
+use common::{AggregateLogic, BusinessError, Result};
 
 pub mod errmsg {
     pub const ALREADY_INITIALIZED: &str = "Inventory already initialized";
@@ -252,7 +252,7 @@ impl InventoryLogic {
             order_id: cmd.order_id.clone(),
             new_available,
             reserved_at: Some(now()),
-            new_reserved,           // Fact: total reserved after this event
+            new_reserved,               // Fact: total reserved after this event
             new_on_hand: state.on_hand, // Fact: on_hand unchanged by reserve
         };
 
@@ -337,7 +337,7 @@ impl InventoryLogic {
             quantity,
             new_available,
             released_at: Some(now()),
-            new_reserved,           // Fact: total reserved after this event
+            new_reserved,               // Fact: total reserved after this event
             new_on_hand: state.on_hand, // Fact: on_hand unchanged by release
         };
 
@@ -399,7 +399,7 @@ impl InventoryLogic {
             quantity,
             new_on_hand,
             committed_at: Some(now()),
-            new_reserved,           // Fact: total reserved after this event
+            new_reserved, // Fact: total reserved after this event
         };
 
         let mut new_reservations = state.reservations.clone();
@@ -518,7 +518,10 @@ impl InventoryLogic {
 
 #[tonic::async_trait]
 impl AggregateLogic for InventoryLogic {
-    async fn handle(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, tonic::Status> {
+    async fn handle(
+        &self,
+        cmd: ContextualCommand,
+    ) -> std::result::Result<BusinessResponse, tonic::Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -526,9 +529,7 @@ impl AggregateLogic for InventoryLogic {
         let next_seq = next_sequence(prior_events);
 
         let Some(cb) = command_book else {
-            return Err(BusinessError::Rejected(
-                errmsg::NO_COMMAND_PAGES.to_string(),
-            ).into());
+            return Err(BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()).into());
         };
 
         let command_page = cb
@@ -556,7 +557,8 @@ impl AggregateLogic for InventoryLogic {
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )).into());
+            ))
+            .into());
         };
 
         Ok(BusinessResponse {
@@ -597,8 +599,6 @@ mod tests {
             }],
             correlation_id: String::new(),
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 

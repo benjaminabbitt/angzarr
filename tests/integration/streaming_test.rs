@@ -17,8 +17,19 @@ mod examples_proto {
 
 use examples_proto::CreateCustomer;
 
+/// Returns true if container tests should run.
+fn should_run_container_tests() -> bool {
+    std::env::var("ANGZARR_TEST_MODE")
+        .map(|v| v.to_lowercase() == "container")
+        .unwrap_or(false)
+}
+
 #[tokio::test]
 async fn test_execute_stream_returns_events() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -29,7 +40,11 @@ async fn test_execute_stream_returns_events() {
     let command_book =
         build_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
-    let correlation_id = command_book.correlation_id.clone();
+    let correlation_id = command_book
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.clone())
+        .unwrap_or_default();
 
     let response = client.execute_stream(command_book).await;
     assert!(
@@ -59,8 +74,13 @@ async fn test_execute_stream_returns_events() {
 
     // Verify all events have the same correlation ID
     for event in &events {
+        let event_correlation_id = event
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
         assert_eq!(
-            event.correlation_id, correlation_id,
+            event_correlation_id, correlation_id,
             "Event correlation ID mismatch"
         );
     }
@@ -68,6 +88,10 @@ async fn test_execute_stream_returns_events() {
 
 #[tokio::test]
 async fn test_stream_includes_expected_event_types() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -107,6 +131,10 @@ async fn test_stream_includes_expected_event_types() {
 
 #[tokio::test]
 async fn test_execute_returns_immediate_response() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -126,6 +154,10 @@ async fn test_execute_returns_immediate_response() {
 
 #[tokio::test]
 async fn test_multiple_customers_isolated_streams() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut client = create_gateway_client().await;
     let customer_id_1 = Uuid::new_v4();
     let customer_id_2 = Uuid::new_v4();
@@ -141,7 +173,11 @@ async fn test_multiple_customers_isolated_streams() {
         command1,
         "examples.CreateCustomer",
     );
-    let correlation_id_1 = command_book1.correlation_id.clone();
+    let correlation_id_1 = command_book1
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.clone())
+        .unwrap_or_default();
 
     let response1 = client.execute_stream(command_book1).await;
     assert!(response1.is_ok());
@@ -169,7 +205,11 @@ async fn test_multiple_customers_isolated_streams() {
         command2,
         "examples.CreateCustomer",
     );
-    let correlation_id_2 = command_book2.correlation_id.clone();
+    let correlation_id_2 = command_book2
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.clone())
+        .unwrap_or_default();
 
     let response2 = client.execute_stream(command_book2).await;
     assert!(response2.is_ok());
@@ -188,15 +228,25 @@ async fn test_multiple_customers_isolated_streams() {
 
     // Verify events are isolated by correlation ID
     for event in &events1 {
+        let event_correlation_id = event
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
         assert_eq!(
-            event.correlation_id, correlation_id_1,
+            event_correlation_id, correlation_id_1,
             "Customer 1 stream contains wrong correlation ID"
         );
     }
 
     for event in &events2 {
+        let event_correlation_id = event
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
         assert_eq!(
-            event.correlation_id, correlation_id_2,
+            event_correlation_id, correlation_id_2,
             "Customer 2 stream contains wrong correlation ID"
         );
     }

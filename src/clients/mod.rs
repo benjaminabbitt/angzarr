@@ -55,6 +55,39 @@ impl Default for SagaCompensationConfig {
     }
 }
 
+/// Process Manager configuration.
+///
+/// Process managers coordinate long-running workflows across multiple aggregates.
+/// They maintain event-sourced state and can subscribe to multiple domains.
+///
+/// WARNING: Only use when saga + queries is insufficient. Consider:
+/// - Can a simple saga + destination queries solve this?
+/// - Is the "state" derivable from existing aggregates?
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ProcessManagerConfig {
+    /// Name of the process manager. Also used as the domain for PM state.
+    pub name: String,
+    /// gRPC address (host:port).
+    pub address: String,
+    /// Timeout configurations by type (e.g., "payment", "reservation").
+    pub timeouts: Option<std::collections::HashMap<String, TimeoutConfig>>,
+}
+
+impl ProcessManagerConfig {
+    /// Domain = name. Process manager stores its state in its own domain.
+    pub fn domain(&self) -> &str {
+        &self.name
+    }
+}
+
+/// Timeout configuration for process manager stages.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimeoutConfig {
+    /// Duration in minutes before timeout is triggered.
+    pub duration_minutes: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +108,24 @@ mod tests {
         assert!(config.fallback_emit_system_revocation);
         assert!(!config.fallback_send_to_dlq);
         assert!(!config.fallback_escalate);
+    }
+
+    #[test]
+    fn test_process_manager_config_default() {
+        let config = ProcessManagerConfig::default();
+        assert_eq!(config.name, "");
+        assert_eq!(config.address, "");
+        assert!(config.timeouts.is_none());
+        assert_eq!(config.domain(), "");
+    }
+
+    #[test]
+    fn test_process_manager_config_domain() {
+        let config = ProcessManagerConfig {
+            name: "order-fulfillment".to_string(),
+            address: "localhost:50060".to_string(),
+            timeouts: None,
+        };
+        assert_eq!(config.domain(), "order-fulfillment");
     }
 }

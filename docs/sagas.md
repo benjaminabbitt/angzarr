@@ -1,12 +1,28 @@
-# Sagas
+# Sagas (Process Coordinators)
 
-A **saga** orchestrates workflows that span multiple aggregates. When an event occurs in one domain, a saga can react by issuing commands to other domains, coordinating distributed transactions without tight coupling.
+A **saga** (also called a **process coordinator**) orchestrates workflows that span multiple aggregates. When an event occurs in one domain, a saga can react by issuing commands to other domains, coordinating distributed transactions without tight coupling.
+
+Sagas are the bridge between domains. Each domain has its own aggregate that processes commands, but aggregates don't communicate directly. Instead, sagas listen to events from one domain and generate commands for other domains.
+
+## Single Domain Subscription
+
+**Sagas should subscribe to ONE domain.**
+
+Multi-domain subscription creates:
+- Ordering ambiguity (which event triggers first?)
+- Duplicate processing (same workflow triggered multiple times)
+- Debugging complexity (which event caused which command?)
+- Race conditions (events from different domains arrive simultaneously)
+
+If you need multi-domain subscription, you probably need a **[Process Manager](process-manager.md)**.
+
+---
 
 ## Concepts
 
 | Term | Definition |
 |------|------------|
-| **Saga** | A service that subscribes to events and emits commands to other aggregates. |
+| **Saga / Process Coordinator** | A service that subscribes to events and emits commands to other aggregates. Takes events from one domain and generates commands for target domains. |
 | **Choreography** | Decentralized coordination where services react to events independently. Sagas implement this pattern. |
 | **Orchestration** | Centralized coordinator explicitly directs workflow steps. Alternative to choreography. |
 | **Compensation** | Undo actions when a workflow fails partway through. "Semantic rollback." |
@@ -390,22 +406,8 @@ Commands emitted by sagas have special properties:
 | Property | Purpose |
 |----------|---------|
 | `saga_origin` | Links command to triggering event for compensation |
-| `fact` | When true, indicates the triggering event is committed—command should succeed |
 
-### The `fact` Flag
-
-When a saga reacts to a persisted event, that event is a **fact**—it cannot be undone. Commands derived from facts should also succeed:
-
-```
-TransactionCompleted is a FACT (already in event store)
-    ↓
-AddLoyaltyPoints should succeed (customer must exist)
-    ↓
-If customer aggregate rejects, something is wrong:
-  - Bug in saga logic
-  - Customer was deleted (shouldn't happen)
-  - System inconsistency (needs investigation)
-```
+The `saga_origin` enables the compensation flow when a command is rejected. See [Transactional Guarantees](#transactional-guarantees) for design principles around why saga commands should succeed.
 
 ---
 
@@ -425,22 +427,247 @@ Unlike projectors, sagas typically filter to specific event types in their handl
 
 ---
 
-## Compensation (Planned)
+## Transactional Guarantees
 
-When a saga-initiated command fails, compensation may be needed:
+### No Distributed ACID Transactions
+
+CQRS/ES architectures **cannot provide distributed ACID transactions**. When a saga issues commands to multiple aggregates, there is no atomic commit across domains. Instead, the system accepts eventual consistency and designs for compensation.
+
+This is a fundamental architectural constraint, not a limitation of Angzarr.
+
+### Guarantee by Construction
+
+Angzarr's approach: **design domains such that saga commands cannot legitimately fail**.
+
+When a saga reacts to a persisted event, that event is a **fact**—it already happened and cannot be undone. Commands derived from facts should succeed:
+
+```
+TransactionCompleted is a FACT (persisted in event store)
+    ↓
+AddLoyaltyPoints command targets customer aggregate
+    ↓
+Customer MUST exist (invariant: transactions require valid customers)
+    ↓
+Command succeeds by construction
+```
+
+If a saga command is rejected, something is wrong:
+- Bug in saga logic
+- Domain invariant violated elsewhere
+- System inconsistency requiring investigation
+
+### Domain Design Implications
+
+**Saga commands should only target aggregates that must exist.**
+
+| Triggering Event | Saga Command | Why It Must Succeed |
+|------------------|--------------|---------------------|
+| `OrderPlaced` | `ReserveInventory` | Order validation checked stock availability |
+| `TransactionCompleted` | `AddLoyaltyPoints` | Transaction requires valid customer |
+| `PaymentReceived` | `ConfirmOrder` | Order must exist to receive payment |
+| `OrderShipped` | `NotifyCustomer` | Order requires valid customer |
+
+The triggering aggregate enforces the preconditions. If `OrderPlaced` was valid, then the customer, inventory, and payment method all existed at that moment.
+
+### Signs of Poor Domain Design
+
+If saga commands are frequently rejected, reconsider your boundaries:
+
+| Symptom | Likely Cause | Solution |
+|---------|--------------|----------|
+| Target aggregate doesn't exist | Cross-domain invariant not enforced | Triggering aggregate should validate |
+| Business rule violation | Wrong aggregate owns the rule | Move rule to triggering aggregate |
+| Frequent compensation | Aggregates too granular | Merge into single aggregate |
+| Race conditions on every saga | Missing coordination point | Add orchestrating aggregate |
+
+**Rule of thumb:** If two pieces of state must always be consistent, they belong in the same aggregate. Sagas are for **eventual** consistency across boundaries, not for maintaining invariants.
+
+### When Compensation Is Appropriate
+
+Compensation is for **exceptional cases**, not normal flow:
+
+- **Race conditions**: Customer deleted between `OrderPlaced` and `AddLoyaltyPoints`
+- **External failures**: Payment gateway timeout after order confirmed
+- **Bug recovery**: Saga logic error discovered after events persisted
+- **Manual intervention**: Business decision to reverse a completed workflow
+
+If you're building compensation into every saga path, your domain boundaries are wrong.
+
+---
+
+## Compensation Flow
+
+When a saga command is rejected, Angzarr initiates compensation:
 
 ```mermaid
 flowchart TD
-    E1[1. TransactionCompleted event] --> S[Saga awards points]
-    S --> C[2. AddLoyaltyPoints command]
-    C -->|Fails| F[Customer deleted?]
-    F --> N[3. Saga receives failure notification]
-    N --> Comp[4. Saga emits compensation]
-    Comp --> R1[RefundTransaction]
-    Comp --> R2[Log error for manual resolution]
+    E1[1. TransactionCompleted event] --> S[Saga issues AddLoyaltyPoints]
+    S --> C[2. Command sent to Customer aggregate]
+    C -->|Rejected| R[3. Command rejected: customer not found]
+    R --> Rev[4. RevokeEventCommand sent to Transaction aggregate]
+    Rev --> BL{5. Business logic decides}
+    BL -->|Emit events| Comp[Compensation events recorded]
+    BL -->|Cannot handle| Fall[SagaCompensationFailed event]
+    Fall --> DLQ[Dead letter queue / escalation]
 ```
 
-**Current status:** Saga origin tracking is in the protocol but compensation workflows are not yet implemented in the examples.
+### Compensation Steps
+
+1. **Command rejection detected** — Target aggregate rejects saga command
+2. **RevokeEventCommand built** — Contains saga origin, rejection reason, original command
+3. **Sent to triggering aggregate** — The aggregate that emitted the event triggering the saga
+4. **Business logic decides**:
+   - Emit compensation events (e.g., `TransactionReversed`)
+   - Request system revocation (emit `SagaCompensationFailed`)
+   - Send to dead letter queue for manual review
+   - Trigger escalation (webhook, alerting)
+   - Abort the saga chain
+
+### RevokeEventCommand
+
+```protobuf
+message RevokeEventCommand {
+  uint32 triggering_event_sequence = 1;  // Which event triggered the saga
+  string saga_name = 2;                   // Which saga failed
+  string rejection_reason = 3;           // Why the command was rejected
+  CommandBook rejected_command = 4;      // The command that failed
+}
+```
+
+Business logic handles this like any other command, deciding what compensation events to emit.
+
+### Fallback Domain
+
+When business logic cannot handle compensation (or explicitly requests system handling), a `SagaCompensationFailed` event is emitted to a fallback domain (default: `angzarr.saga-failures`). This domain can be monitored, trigger alerts, or feed manual review queues.
+
+---
+
+## Reservation Pattern
+
+The **reservation pattern** manages scarce resources across aggregate boundaries. Unlike error compensation, releasing reservations is **expected business flow**.
+
+### The Pattern
+
+```
+Reserve → (Commit | Release)
+```
+
+1. **Reserve**: Tentatively allocate a resource (inventory, seat, funds)
+2. **Commit**: Finalize the allocation when the business process completes
+3. **Release**: Return the resource if the process is abandoned or cancelled
+
+### Example: Inventory Reservation
+
+```mermaid
+sequenceDiagram
+    participant Cart as Cart Aggregate
+    participant Saga as Reservation Saga
+    participant Inv as Inventory Aggregate
+
+    Note over Cart: ItemAdded event
+    Cart->>Saga: ItemAdded (product, qty)
+    Saga->>Inv: ReserveStock command
+    Inv-->>Saga: StockReserved event
+
+    alt Checkout completes
+        Note over Cart: CheckedOut event
+        Cart->>Saga: CheckedOut
+        Saga->>Inv: CommitReservation command
+        Inv-->>Saga: ReservationCommitted event
+    else Cart abandoned/cancelled
+        Note over Cart: CartAbandoned event
+        Cart->>Saga: CartAbandoned
+        Saga->>Inv: ReleaseReservation command
+        Inv-->>Saga: ReservationReleased event
+    end
+```
+
+### When to Reserve
+
+| Strategy | Reserve When | Trade-offs |
+|----------|--------------|------------|
+| **Early (Cart Add)** | Item added to cart | Better UX (guaranteed availability), but ties up inventory; requires timeout for abandoned carts |
+| **Late (Checkout)** | User initiates checkout | Maximizes inventory availability, but checkout can fail due to stock changes |
+| **Two-Phase (Payment)** | Payment authorized | Minimizes hold time, but worst UX if item becomes unavailable at last step |
+
+**Recommendation:** Choose based on business context:
+- **Scarce/high-demand items** → Reserve early
+- **Commodity items** → Reserve late
+- **Expensive items** → Two-phase with payment authorization
+
+### Reservation vs Error Compensation
+
+| Aspect | Reservation Release | Error Compensation |
+|--------|--------------------|--------------------|
+| **Trigger** | Business decision (abandon, cancel, timeout) | System failure (command rejected) |
+| **Expected?** | Yes, part of normal flow | No, indicates problem |
+| **Frequency** | Common (many carts abandoned) | Rare (should not happen) |
+| **Design goal** | Handle gracefully | Investigate root cause |
+
+**Key distinction:** If you're releasing reservations frequently, that's normal business. If you're compensating for saga failures frequently, your domain boundaries are wrong.
+
+### Implementing Reservation Sagas
+
+The reservation saga coordinates the lifecycle:
+
+```python
+class InventoryReservationSaga:
+    """Reserves inventory when items added, commits/releases based on outcome."""
+
+    def handle(self, event_book: EventBook) -> SagaResponse:
+        for event in event_book.pages:
+            if is_event(event, "ItemAdded"):
+                return self._reserve(event)
+            elif is_event(event, "CheckedOut"):
+                return self._commit(event)
+            elif is_event(event, "CartAbandoned") or is_event(event, "ItemRemoved"):
+                return self._release(event)
+        return SagaResponse(commands=[])
+
+    def _reserve(self, event) -> SagaResponse:
+        return SagaResponse(commands=[
+            SagaCommand(
+                cover=Cover(domain="inventory", root=product_root(event)),
+                pages=[CommandPage(command=ReserveStock(
+                    quantity=event.quantity,
+                    order_id=event.cart_id,
+                ))]
+            )
+        ])
+```
+
+### Timeout Handling
+
+Reservations should expire if not committed:
+
+| Approach | Implementation | Trade-offs |
+|----------|----------------|------------|
+| **Saga timer** | Saga schedules release after N minutes | Saga must track state |
+| **Inventory TTL** | Inventory auto-releases after N minutes | Simpler saga, inventory complexity |
+| **External scheduler** | Cron job queries stale reservations | Decoupled, but eventual consistency |
+
+**Angzarr pattern:** Emit a `ReservationExpired` event from the inventory domain (via scheduled job or TTL), which triggers the cancellation saga to clean up related state.
+
+### Inventory State Model
+
+The inventory aggregate tracks both physical and logical stock:
+
+```protobuf
+message InventoryState {
+  int32 on_hand = 1;       // Physical stock in warehouse
+  int32 reserved = 2;      // Allocated to pending orders
+  // Derived: available = on_hand - reserved
+  map<string, int32> reservations = 3;  // order_id -> quantity
+}
+```
+
+| Field | Updated By |
+|-------|------------|
+| `on_hand` | `StockReceived` (+), `ReservationCommitted` (-) |
+| `reserved` | `StockReserved` (+), `ReservationReleased` (-), `ReservationCommitted` (-) |
+| `available` | Derived: `on_hand - reserved` |
+
+See [inventory.feature](../examples/features/inventory.feature) for complete behavior specification.
 
 ---
 
@@ -481,15 +708,33 @@ Scenario: Award loyalty points when transaction completes
 
 | Scenario | Behavior |
 |----------|----------|
-| Saga throws exception | Event may be redelivered. Log error. |
-| Command rejected by target | (Planned) Trigger compensation. Currently logged. |
-| Target aggregate not found | Command fails. Saga may retry or compensate. |
+| Saga throws exception | Event redelivered. Log error. |
+| Sequence conflict | Retry with fresh destination state (automatic) |
+| Command rejected (retryable) | Fetch fresh state, re-run saga Execute, retry command |
+| Command rejected (non-retryable) | Initiate compensation flow |
+| Target aggregate not found | Non-retryable rejection → compensation |
+| Compensation fails | Emit `SagaCompensationFailed` to fallback domain |
 
-Best practices:
-- Make saga logic idempotent (may receive same event twice)
-- Handle sequence conflict errors by fetching fresh state and retrying
-- Log saga origin for debugging failed workflows
-- Design for eventual consistency
+### Retry Logic
+
+Angzarr automatically retries saga commands on sequence conflicts:
+
+1. Command rejected with sequence mismatch
+2. Call `Prepare()` again to get destination covers
+3. Fetch fresh EventBooks for all destinations
+4. Call `Execute()` with updated state
+5. Retry commands with corrected sequences
+6. Exponential backoff between attempts
+
+This handles concurrent modifications without manual intervention.
+
+### Best Practices
+
+- **Idempotent saga logic** — May receive same event twice on redelivery
+- **Include saga_origin** — Enables compensation flow on rejection
+- **Design for success** — Saga commands should not fail under normal operation
+- **Monitor fallback domain** — `SagaCompensationFailed` events indicate systemic issues
+- **Log correlation IDs** — Trace workflows across domains
 
 ---
 

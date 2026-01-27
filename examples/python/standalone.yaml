@@ -1,0 +1,72 @@
+# Standalone mode configuration for Python examples
+# Run with: ANGZARR_CONFIG=examples/python/standalone.yaml cargo run --bin angzarr-standalone
+
+# Default storage (used when aggregate doesn't specify its own)
+storage:
+  type: sqlite
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+messaging:
+  type: ipc
+  ipc:
+    base_path: /tmp/angzarr
+
+standalone:
+  aggregates:
+    - domain: customer
+      command: ["uv", "run", "--directory", "examples/python/customer", "python", "server.py"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/customer.db
+    - domain: product
+      command: ["uv", "run", "--directory", "examples/python/product", "python", "server.py"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/product.db
+    - domain: inventory
+      command: ["uv", "run", "--directory", "examples/python/inventory", "python", "server.py"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/inventory.db
+    - domain: order
+      command: ["uv", "run", "--directory", "examples/python/order", "python", "server.py"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/order.db
+    - domain: cart
+      command: ["uv", "run", "--directory", "examples/python/cart", "python", "server.py"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/cart.db
+    - domain: fulfillment
+      command: ["uv", "run", "--directory", "examples/python/fulfillment", "python", "server.py"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/fulfillment.db
+
+  sagas:
+    - domain: fulfillment
+      listen_domain: order
+      command: ["uv", "run", "--directory", "examples/python/saga-fulfillment", "python", "server.py"]
+    - domain: cancellation
+      listen_domain: order
+      command: ["uv", "run", "--directory", "examples/python/saga-cancellation", "python", "server.py"]
+    - domain: loyalty-earn
+      listen_domain: fulfillment
+      command: ["uv", "run", "--directory", "examples/python/saga-loyalty-earn", "python", "server.py"]
+
+  projectors: []
+
+  gateway:
+    enabled: true
+    port: 1350

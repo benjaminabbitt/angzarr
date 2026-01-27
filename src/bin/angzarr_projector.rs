@@ -28,7 +28,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::Config;
@@ -54,31 +54,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .ok_or("Projector sidecar requires 'target' configuration")?;
 
-    // Extract projector name for socket naming (use domain if set, otherwise derive from address)
-    let projector_name = target
-        .domain
-        .as_deref()
-        .unwrap_or("projector");
+    // Extract projector name for socket naming
+    let projector_name = &target.domain;
 
-    info!("Target projector: {} (name: {})", target.address, projector_name);
+    // Resolve address: use explicit if set, otherwise derive from transport
+    let address = target.resolve_address(&config.transport, "projector");
+
+    info!("Target projector: {} (name: {})", address, projector_name);
+
+    // Get command: prefer env var (for standalone mode), fall back to config
+    let command = match std::env::var("ANGZARR__TARGET__COMMAND_JSON") {
+        Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
+            warn!("Failed to parse ANGZARR__TARGET__COMMAND_JSON, falling back to config");
+            target.command.clone()
+        }),
+        Err(_) => target.command.clone(),
+    };
 
     // Spawn projector process if command is configured (embedded mode)
-    let _managed_process = if let Some(ref command) = target.command {
+    let _managed_process = if !command.is_empty() {
         // Extract service_name and domain from target address for socket naming
         // e.g., "/tmp/angzarr/projector-logging-customer.sock" -> service_name="projector-logging", domain="customer"
-        let (service_name, domain) = extract_socket_names(&target.address);
+        let (service_name, domain) = extract_socket_names(&address);
         let env = ProcessEnv::from_transport(&config.transport, &service_name, Some(&domain));
-        let process = ManagedProcess::spawn(
-            command,
-            target.working_dir.as_deref(),
-            &env,
-        )
-        .await?;
+        let process =
+            ManagedProcess::spawn(&command, target.working_dir.as_deref(), &env, None).await?;
 
         // Wait for the service to be ready
         info!("Waiting for projector to be ready...");
         wait_for_ready(
-            &target.address,
+            &address,
             Duration::from_secs(30),
             Duration::from_millis(500),
         )
@@ -102,8 +107,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(false);
 
     // Connect to projector service with retry
-    let projector_addr = target.address.clone();
-    let projector_client = connect_with_retry("projector", &target.address, || {
+    let projector_addr = address.clone();
+    let projector_client = connect_with_retry("projector", &address, || {
         let addr = projector_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
@@ -115,8 +120,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create publisher if streaming is enabled
     let publisher = if stream_output {
         info!("Streaming output enabled - projector results will be published");
-        Some(init_event_bus(messaging, EventBusMode::Publisher).await
-            .map_err(|e| -> Box<dyn std::error::Error> { e })?)
+        Some(
+            init_event_bus(messaging, EventBusMode::Publisher)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e })?,
+        )
     } else {
         info!("Streaming output disabled - projector results will not be published");
         None
@@ -125,7 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create subscriber
     let queue_name = format!("projector-{}", projector_name);
     let subscriber_mode = EventBusMode::SubscriberAll { queue: queue_name };
-    let subscriber = init_event_bus(messaging, subscriber_mode).await
+    let subscriber = init_event_bus(messaging, subscriber_mode)
+        .await
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
     // Create handler with or without streaming capability
@@ -135,11 +144,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ProjectorEventHandler::new(projector_client)
     };
 
-    subscriber.subscribe(Box::new(handler)).await
+    subscriber
+        .subscribe(Box::new(handler))
+        .await
         .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
     // Start consuming (no-op for AMQP/Kafka, spawns reader for IPC)
-    subscriber.start_consuming().await
+    subscriber
+        .start_consuming()
+        .await
         .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
     info!("Projector sidecar running, press Ctrl+C to exit");

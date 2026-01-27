@@ -1,6 +1,6 @@
 """Cart command handlers."""
 
-from .errors import CommandRejectedError
+from .errors import CommandRejectedError, errmsg
 from .create_cart import handle_create_cart
 from .add_item import handle_add_item
 from .update_quantity import handle_update_quantity
@@ -11,6 +11,7 @@ from .checkout import handle_checkout
 
 __all__ = [
     "CommandRejectedError",
+    "errmsg",
     "handle_create_cart",
     "handle_add_item",
     "handle_update_quantity",

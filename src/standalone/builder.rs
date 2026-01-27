@@ -11,9 +11,7 @@ use crate::storage::{SqliteConfig, StorageConfig, StorageType};
 use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
 use super::runtime::Runtime;
-use super::traits::{
-    AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler,
-};
+use super::traits::{AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler};
 
 /// Configuration for optional gateway exposure.
 #[derive(Debug, Clone, Default)]
@@ -54,8 +52,10 @@ impl GatewayConfig {
 ///     .await?;
 /// ```
 pub struct RuntimeBuilder {
-    /// Storage configuration.
+    /// Default storage configuration (used when no per-domain config).
     storage: StorageConfig,
+    /// Per-domain storage configurations.
+    domain_storage: HashMap<String, StorageConfig>,
     /// Messaging configuration.
     messaging: MessagingConfig,
     /// Transport configuration.
@@ -95,6 +95,7 @@ impl RuntimeBuilder {
                 sqlite: SqliteConfig::default(),
                 ..Default::default()
             },
+            domain_storage: HashMap::new(),
             messaging: MessagingConfig {
                 messaging_type: MessagingType::Channel,
                 ..Default::default()
@@ -149,6 +150,15 @@ impl RuntimeBuilder {
     /// Use custom storage configuration.
     pub fn with_storage(mut self, config: StorageConfig) -> Self {
         self.storage = config;
+        self
+    }
+
+    /// Set storage configuration for a specific domain.
+    ///
+    /// This allows each domain to have its own isolated storage.
+    /// Domains without explicit storage configs will use the default.
+    pub fn with_domain_storage(mut self, domain: impl Into<String>, config: StorageConfig) -> Self {
+        self.domain_storage.insert(domain.into(), config);
         self
     }
 
@@ -337,12 +347,12 @@ impl RuntimeBuilder {
             .unwrap_or_else(|| Arc::new(ChannelEventBus::new(ChannelConfig::publisher())));
 
         // Use custom event bus if provided, otherwise use the channel bus directly
-        let event_bus: Arc<dyn EventBus> = self
-            .custom_event_bus
-            .unwrap_or_else(|| channel_bus.clone());
+        let event_bus: Arc<dyn EventBus> =
+            self.custom_event_bus.unwrap_or_else(|| channel_bus.clone());
 
         Runtime::new(
             self.storage,
+            self.domain_storage,
             self.messaging,
             self.transport,
             self.gateway,

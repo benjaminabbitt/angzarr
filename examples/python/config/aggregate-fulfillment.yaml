@@ -1,4 +1,4 @@
-# Fulfillment aggregate sidecar configuration (embedded mode)
+# Fulfillment aggregate sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -10,4 +10,4 @@ transport:
 target:
   address: /tmp/angzarr/business-fulfillment.sock
   domain: fulfillment
-  command: uv run --directory fulfillment python server.py
+  command: ["uv", "run", "--directory", "fulfillment", "python", "server.py"]

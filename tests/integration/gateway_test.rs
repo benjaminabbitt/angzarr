@@ -7,8 +7,7 @@
 mod common;
 
 use common::{
-    build_command_book, build_query, create_gateway_client, create_query_client,
-    extract_event_type,
+    build_command_book, build_query, create_gateway_client, create_query_client, extract_event_type,
 };
 use uuid::Uuid;
 
@@ -20,8 +19,19 @@ mod examples_proto {
 
 use examples_proto::CreateCustomer;
 
+/// Returns true if container tests should run.
+fn should_run_container_tests() -> bool {
+    std::env::var("ANGZARR_TEST_MODE")
+        .map(|v| v.to_lowercase() == "container")
+        .unwrap_or(false)
+}
+
 #[tokio::test]
 async fn test_execute_command_creates_event() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -57,6 +67,10 @@ async fn test_execute_command_creates_event() {
 
 #[tokio::test]
 async fn test_execute_command_returns_projections() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut client = create_gateway_client().await;
     let customer_id = Uuid::new_v4();
 
@@ -90,6 +104,10 @@ async fn test_execute_command_returns_projections() {
 
 #[tokio::test]
 async fn test_query_events_after_command() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -132,6 +150,10 @@ async fn test_query_events_after_command() {
 
 #[tokio::test]
 async fn test_multiple_commands_sequence_events() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();

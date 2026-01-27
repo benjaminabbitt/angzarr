@@ -30,10 +30,7 @@ impl WebProjectorService {
 
 #[tonic::async_trait]
 impl ProjectorService for WebProjectorService {
-    async fn handle(
-        &self,
-        request: Request<EventBook>,
-    ) -> Result<Response<Projection>, Status> {
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
         let book = request.into_inner();
 
         match self.projector.handle(&book).await {
@@ -56,8 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Get database URL from environment
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     // Connect to PostgreSQL
     info!(database = %database_url, "Connecting to database");

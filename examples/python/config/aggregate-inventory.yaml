@@ -1,4 +1,4 @@
-# Inventory aggregate sidecar configuration (embedded mode)
+# Inventory aggregate sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -10,4 +10,4 @@ transport:
 target:
   address: /tmp/angzarr/business-inventory.sock
   domain: inventory
-  command: uv run --directory inventory python server.py
+  command: ["uv", "run", "--directory", "inventory", "python", "server.py"]

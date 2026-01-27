@@ -22,12 +22,12 @@ pub mod mock;
 pub mod mongodb;
 #[cfg(feature = "postgres")]
 pub mod postgres;
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
 #[cfg(feature = "redis")]
 pub mod redis;
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod schema;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 
 // Re-exports
 pub use mock::{MockEventStore, MockSnapshotStore};
@@ -95,7 +95,14 @@ pub trait EventStore: Send + Sync {
     ///
     /// Events are appended to the existing event stream for this root.
     /// Sequence numbers are validated for consistency.
-    async fn add(&self, domain: &str, root: Uuid, events: Vec<EventPage>) -> Result<()>;
+    /// The correlation_id links related events across aggregates for tracing.
+    async fn add(
+        &self,
+        domain: &str,
+        root: Uuid,
+        events: Vec<EventPage>,
+        correlation_id: &str,
+    ) -> Result<()>;
 
     /// Retrieve all events for an aggregate.
     async fn get(&self, domain: &str, root: Uuid) -> Result<Vec<EventPage>>;
@@ -120,6 +127,15 @@ pub trait EventStore: Send + Sync {
 
     /// Get the next sequence number for an aggregate.
     async fn get_next_sequence(&self, domain: &str, root: Uuid) -> Result<u32>;
+
+    /// Retrieve all events with a given correlation ID across all domains.
+    ///
+    /// Used for tracing related events across aggregates during saga workflows.
+    /// Returns EventBooks grouped by domain/root.
+    async fn get_by_correlation(
+        &self,
+        correlation_id: &str,
+    ) -> Result<Vec<crate::proto::EventBook>>;
 }
 
 /// Interface for snapshot persistence.
@@ -378,9 +394,11 @@ pub async fn init_storage(
                 // Configure SQLite for concurrent access:
                 // - WAL mode: allows concurrent readers during writes
                 // - busy_timeout: wait instead of failing on lock contention
+                // - create_if_missing: create database file if it doesn't exist
                 let connect_options = SqliteConnectOptions::from_str(&uri)?
                     .journal_mode(SqliteJournalMode::Wal)
-                    .busy_timeout(Duration::from_secs(30));
+                    .busy_timeout(Duration::from_secs(30))
+                    .create_if_missing(true);
 
                 let pool = SqlitePoolOptions::new()
                     .max_connections(5)
@@ -398,7 +416,10 @@ pub async fn init_storage(
 
             #[cfg(not(feature = "sqlite"))]
             {
-                Err("SQLite support requires the 'sqlite' feature. Rebuild with --features sqlite".into())
+                Err(
+                    "SQLite support requires the 'sqlite' feature. Rebuild with --features sqlite"
+                        .into(),
+                )
             }
         }
         StorageType::Redis => {

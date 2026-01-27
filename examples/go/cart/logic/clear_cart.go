@@ -8,10 +8,10 @@ import (
 
 func (l *DefaultCartLogic) HandleClearCart(state *CartState) (*examples.CartCleared, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Cart does not exist")
+		return nil, NewFailedPrecondition(ErrMsgCartNotFound)
 	}
 	if !state.IsActive() {
-		return nil, NewFailedPrecondition("Cart is already checked out")
+		return nil, NewFailedPrecondition(ErrMsgCartCheckedOut)
 	}
 
 	return &examples.CartCleared{

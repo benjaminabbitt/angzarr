@@ -12,6 +12,236 @@ Angzarr provides the infrastructure layer for event-sourced systems:
 
 Business logic runs as external gRPC services, so teams can use whatever language fits their needs.
 
+## Why Angzarr
+
+CQRS/Event Sourcing delivers powerful benefits—complete audit trails, temporal queries, scalable read models—but the infrastructure complexity is prohibitive. Teams need expertise in event stores, snapshot optimization, distributed messaging, saga coordination, and concurrency control before writing a single line of business logic.
+
+Angzarr inverts this equation: **business logic becomes the only thing you write**.
+
+### The Core Insight
+
+Business logic should be pure functions: `(state, command) → events`. When you strip away infrastructure concerns, what remains is exactly what junior developers and AI code generators excel at:
+
+- Clear input/output contracts (protobuf schemas)
+- No side effects to reason about
+- No concurrency bugs possible (single aggregate, sequential events)
+- Testable in isolation with simple assertions
+
+### The Pit of Success
+
+The architecture makes incorrect code difficult to write. A developer literally *cannot*:
+
+| Mistake | Why It's Impossible |
+|---------|---------------------|
+| Introduce race conditions | Single aggregate processes commands sequentially |
+| Corrupt database transactions | Angzarr manages all persistence |
+| Create connection pool exhaustion | No direct database access |
+| Accidentally expose internal state | State is reconstructed from events |
+| Break other aggregates | Aggregates are isolated by design |
+
+They write a function. It either returns the correct events or it doesn't. That's testable with unit tests against the handler alone.
+
+### What Junior Devs and AIs Write
+
+Every handler follows the same mechanical pattern:
+
+```
+1. GUARD:    Check preconditions against current state
+2. VALIDATE: Check command field validity
+3. COMPUTE:  Calculate derived values (pure math)
+4. EMIT:     Return event(s) describing what happened
+```
+
+Here's the same business logic in three languages—notice the structural identity:
+
+**Go** (24 lines of logic):
+```go
+func (l *DefaultCartLogic) HandleAddItem(state *CartState, productID, name string,
+    quantity, unitPriceCents int32) (*examples.ItemAdded, error) {
+    // GUARD
+    if !state.Exists() {
+        return nil, NewFailedPrecondition(ErrMsgCartNotFound)
+    }
+    if !state.IsActive() {
+        return nil, NewFailedPrecondition(ErrMsgCartCheckedOut)
+    }
+    // VALIDATE
+    if productID == "" {
+        return nil, NewInvalidArgument(ErrMsgProductIDRequired)
+    }
+    if quantity <= 0 {
+        return nil, NewInvalidArgument(ErrMsgQuantityPositive)
+    }
+    // COMPUTE + EMIT
+    newSubtotal := state.SubtotalCents + (quantity * unitPriceCents)
+    return &examples.ItemAdded{
+        ProductId:      productID,
+        Name:           name,
+        Quantity:       quantity,
+        UnitPriceCents: unitPriceCents,
+        NewSubtotal:    newSubtotal,
+        AddedAt:        timestamppb.Now(),
+    }, nil
+}
+```
+
+**Python** (25 lines of logic):
+```python
+def handle_add_item(command_book, command_any, state: CartState, seq: int, log):
+    # GUARD
+    if not state.exists():
+        raise CommandRejectedError(errmsg.CART_NOT_FOUND)
+    if not state.is_active():
+        raise CommandRejectedError(errmsg.CART_CHECKED_OUT)
+
+    cmd = domains.AddItem()
+    command_any.Unpack(cmd)
+
+    # VALIDATE
+    if not cmd.product_id:
+        raise CommandRejectedError(errmsg.PRODUCT_ID_REQUIRED)
+    if cmd.quantity <= 0:
+        raise CommandRejectedError(errmsg.QUANTITY_POSITIVE)
+
+    # COMPUTE + EMIT
+    new_subtotal = state.subtotal_cents + (cmd.quantity * cmd.unit_price_cents)
+    event = domains.ItemAdded(
+        product_id=cmd.product_id,
+        name=cmd.name,
+        quantity=cmd.quantity,
+        unit_price_cents=cmd.unit_price_cents,
+        new_subtotal=new_subtotal,
+        added_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+    )
+    # ... return EventBook with event
+```
+
+**Rust** (similar structure, ~40 lines with protobuf encoding)
+
+### Error Messages are Pre-defined Constants
+
+Handlers choose from a vocabulary of domain-specific errors:
+
+```python
+class errmsg:
+    CART_NOT_FOUND = "Cart does not exist"
+    CART_CHECKED_OUT = "Cart is already checked out"
+    QUANTITY_POSITIVE = "Quantity must be positive"
+    PRODUCT_ID_REQUIRED = "Product ID is required"
+```
+
+```go
+const (
+    ErrMsgCartNotFound      = "Cart does not exist"
+    ErrMsgCartCheckedOut    = "Cart is already checked out"
+    ErrMsgQuantityPositive  = "Quantity must be positive"
+    ErrMsgProductIDRequired = "Product ID is required"
+)
+```
+
+### Why This is AI-Friendly
+
+LLMs excel at pattern matching from examples and pure transformations. They struggle with distributed system edge cases, concurrency reasoning, and infrastructure configuration. Angzarr puts all the hard stuff in a layer LLMs don't touch.
+
+**Prompt to generate a new handler:**
+
+> "Write a `RemoveItem` handler for the cart aggregate. It should:
+> - Reject if cart doesn't exist
+> - Reject if cart is checked out
+> - Reject if item not in cart
+> - Emit `ItemRemoved` event with product_id and new_subtotal
+>
+> Follow the same pattern as `AddItem`."
+
+An LLM produces correct code because:
+- **Clear contract**: Input and output types are schema-defined
+- **Examples to follow**: Every handler has identical structure
+- **No hidden state**: Functions are pure
+- **Finite error space**: Pick from predefined constants
+- **Testable assertion**: Given state X and command Y, expect event Z
+
+### The Testing Story
+
+Unit tests require no infrastructure mocking:
+
+```python
+def test_add_item_to_nonexistent_cart_rejected():
+    state = CartState()  # empty, doesn't exist
+    cmd = AddItem(product_id="sku-1", quantity=1, unit_price_cents=999)
+
+    with pytest.raises(CommandRejectedError) as exc:
+        handle_add_item(mock_book, cmd, state, 1, log)
+
+    assert exc.value.args[0] == errmsg.CART_NOT_FOUND
+```
+
+```go
+func TestAddItemToNonexistentCart(t *testing.T) {
+    state := &CartState{} // empty
+    _, err := logic.HandleAddItem(state, "sku-1", "Widget", 1, 999)
+
+    assert.Equal(t, ErrMsgCartNotFound, err.Error())
+}
+```
+
+No database setup. No container spinning. No network mocking. Pure function in, assertion out.
+
+### What Angzarr Handles (So You Don't)
+
+| Concern | Handled By |
+|---------|------------|
+| Database transactions | Angzarr |
+| Optimistic concurrency | Angzarr |
+| Event ordering | Angzarr |
+| Retry logic | Angzarr |
+| Network failures | Angzarr |
+| Service discovery | Angzarr |
+| Load balancing | Angzarr |
+| State hydration | Angzarr |
+| Snapshot management | Angzarr |
+| Message serialization | Protobuf |
+| Schema evolution | Protobuf |
+| Deployment | DevOps/Helm |
+| Scaling | K8s/DevOps |
+
+### The Staffing Model
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    SENIOR / DEVOPS                       │
+│  - Schema design (protobuf)                             │
+│  - Saga orchestration                                   │
+│  - Infrastructure (helm, k8s, messaging)                │
+│  - Cross-cutting concerns                               │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           │ defines contracts
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│               JUNIOR DEVS / AI AGENTS                    │
+│                                                          │
+│   handle_create_cart()    handle_add_item()             │
+│   handle_remove_item()    handle_checkout()             │
+│   handle_apply_coupon()   handle_clear_cart()           │
+│                                                          │
+│   (pure functions, ~30 lines each, unit testable)       │
+└─────────────────────────────────────────────────────────┘
+```
+
+The senior defines the **what** (schemas, aggregates, events). Juniors and AIs implement the **how** (business rules). Neither touches the **where** (infrastructure) during normal development.
+
+### Deployment Options
+
+Adapting Angzarr to your infrastructure requires a one-time DevOps effort:
+
+| Environment | Effort |
+|-------------|--------|
+| AWS/GCP managed services | Configuration only |
+| Existing Kubernetes cluster | Helm install to namespace |
+| Custom infrastructure | Integrate storage/messaging backends |
+
+Once deployed, business logic development requires zero infrastructure knowledge.
+
 ## Installation
 
 ### Helm Chart (Recommended)
@@ -74,23 +304,28 @@ module "redis" {
 
 ## Documentation
 
+- **[TOOLING.md](TOOLING.md)** — Development tools setup (just, bacon, mold, sccache, Kind)
 - **[docs/](docs/)** — Architecture guides and pattern documentation
   - [CQRS and Event Sourcing Concepts](docs/cqrs-event-sourcing.md) — Background for newcomers
-  - [Entities (Aggregates)](docs/entities.md) — Processing commands, emitting events
-  - [Projectors](docs/projectors.md) — Building read models from event streams
-  - [Sagas](docs/sagas.md) — Orchestrating workflows across aggregates
+  - [Command Handlers (Aggregates)](docs/command-handlers.md) — Processing commands, emitting events
+  - [Projectors](docs/projectors.md) — Building read models and performing side effects
+  - [Sagas (Process Coordinators)](docs/sagas.md) — Orchestrating workflows across aggregates
 
 ## Getting Started
 
 ### Prerequisites
 
 - Rust 1.70+
-- Podman or Docker (for Kubernetes development)
+- [Podman](https://podman.io/) or Docker (for Kubernetes development)
+- [Kind](https://kind.sigs.k8s.io/) - local Kubernetes clusters
 - [just](https://github.com/casey/just) - command runner (see below)
+- [bacon](https://github.com/Canop/bacon) - background code checker (see below)
 - [Helm](https://helm.sh/) - Kubernetes package manager
 - [mold](https://github.com/rui314/mold) - fast linker (recommended)
 - [sccache](https://github.com/mozilla/sccache) - compilation cache (recommended)
 - grpcurl (optional, for debugging)
+
+See [TOOLING.md](TOOLING.md) for detailed setup instructions and usage guides.
 
 #### Fast Build Setup (Recommended)
 
@@ -149,6 +384,60 @@ just examples helm-lint
 
 View any `justfile` in the repository to see what commands do - they're self-documenting with comments.
 
+### About `bacon`
+
+[Bacon](https://github.com/Canop/bacon) is a background Rust code checker that watches for file changes and runs cargo commands automatically. It provides instant feedback without manually re-running builds.
+
+**Why bacon over `cargo watch`:**
+- Smarter output: only shows errors/warnings, not successful build noise
+- Keyboard shortcuts: switch between check/build/test/clippy without restarting
+- Job configuration: project-specific jobs in `bacon.toml`
+
+**Install bacon:**
+```bash
+cargo install bacon
+```
+
+**Basic usage:**
+```bash
+# Start bacon with default job (check)
+bacon
+
+# Start with a specific job
+bacon clippy
+bacon test
+
+# Switch jobs with keybindings while running:
+#   c = check
+#   b = build
+#   t = test
+#   l = clippy
+#   f = fmt
+```
+
+**Project jobs** (defined in `bacon.toml`):
+
+| Job | Description |
+|-----|-------------|
+| `check` | Fast compile check (default) |
+| `build` | Full release build with standalone features |
+| `test` | Run unit tests |
+| `clippy` | Lint with warnings as errors |
+| `fmt` | Format code |
+| `proto` | Regenerate protobuf bindings |
+| `ex-cart` | Check cart example |
+| `ex-rust` | Check all Rust examples |
+| `bin-standalone` | Build standalone binary |
+
+**Typical workflow:**
+1. Start `bacon` in a terminal - leave it running
+2. Edit code in your editor
+3. Bacon automatically rebuilds on save
+4. Fix errors as they appear
+5. Press `t` to run tests, `l` for clippy
+
+This tight feedback loop catches errors seconds after you introduce them, before context-switching away from the problem.
+
 ### 1. Clone and Build
 
 ```bash
@@ -174,24 +463,24 @@ just run
 cargo test --test acceptance
 ```
 
-### 3. Embedded Mode (Local Multi-Process)
+### 3. Standalone Mode (Local Multi-Process)
 
 For development that mirrors production architecture without external infrastructure:
 
 ```bash
-# Build with embedded features (SQLite + Channel bus + UDS)
-cargo build --features embedded
+# Build with standalone features (SQLite + Channel bus + UDS)
+cargo build --features standalone
 
-# Copy the embedded config template
-cp config.embedded.yaml config.yaml
+# Copy the standalone config template
+cp config.standalone.yaml config.yaml
 
 # Start services (each in separate terminals)
-cargo run --features embedded --bin angzarr-aggregate
-cargo run --features embedded --bin angzarr-stream
-cargo run --features embedded --bin angzarr-log
+cargo run --features standalone --bin angzarr-aggregate
+cargo run --features standalone --bin angzarr-stream
+cargo run --features standalone --bin angzarr-log
 ```
 
-Embedded mode uses:
+Standalone mode uses:
 - **SQLite** for event storage (in-memory by default, or file-based)
 - **Channel event bus** for in-process pub/sub (replaces AMQP/Kafka)
 - **Unix domain sockets** for gRPC transport (replaces TCP ports)
@@ -765,7 +1054,7 @@ Features to reach parity with mature frameworks like Axon:
 
 ## License
 
-BSD-3-Clause
+SSPL (Server Side Public License)
 
 ---
 

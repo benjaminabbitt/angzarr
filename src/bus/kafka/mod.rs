@@ -210,10 +210,8 @@ impl KafkaEventBus {
 
         // Create consumer if group_id is configured
         let consumer = if config.group_id.is_some() {
-            let consumer: StreamConsumer = config
-                .build_consumer_config()
-                .create()
-                .map_err(|e| {
+            let consumer: StreamConsumer =
+                config.build_consumer_config().create().map_err(|e| {
                     BusError::Connection(format!("Failed to create Kafka consumer: {}", e))
                 })?;
             Some(Arc::new(consumer))
@@ -248,7 +246,9 @@ impl KafkaEventBus {
             .consumer
             .as_ref()
             .ok_or_else(|| {
-                BusError::Subscribe("No consumer configured. Use KafkaEventBusConfig::subscriber()".to_string())
+                BusError::Subscribe(
+                    "No consumer configured. Use KafkaEventBusConfig::subscriber()".to_string(),
+                )
             })?
             .clone();
 
@@ -267,9 +267,9 @@ impl KafkaEventBus {
         };
 
         let topic_refs: Vec<&str> = topics.iter().map(|s| s.as_str()).collect();
-        consumer.subscribe(&topic_refs).map_err(|e| {
-            BusError::Subscribe(format!("Failed to subscribe to topics: {}", e))
-        })?;
+        consumer
+            .subscribe(&topic_refs)
+            .map_err(|e| BusError::Subscribe(format!("Failed to subscribe to topics: {}", e)))?;
 
         info!(topics = ?topics, "Subscribed to Kafka topics");
 
@@ -312,14 +312,17 @@ impl KafkaEventBus {
                                 }
 
                                 // Commit offset after successful processing
-                                if let Err(e) = consumer.commit_message(&message, rdkafka::consumer::CommitMode::Async) {
+                                if let Err(e) = consumer
+                                    .commit_message(&message, rdkafka::consumer::CommitMode::Async)
+                                {
                                     error!(error = %e, "Failed to commit offset");
                                 }
                             }
                             Err(e) => {
                                 error!(error = %e, "Failed to decode event book");
                                 // Still commit to avoid reprocessing malformed messages
-                                let _ = consumer.commit_message(&message, rdkafka::consumer::CommitMode::Async);
+                                let _ = consumer
+                                    .commit_message(&message, rdkafka::consumer::CommitMode::Async);
                             }
                         }
                     }
@@ -337,9 +340,8 @@ impl KafkaEventBus {
 #[async_trait]
 impl EventBus for KafkaEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        let domain = Self::extract_domain(&book).ok_or_else(|| {
-            BusError::Publish("EventBook missing cover/domain".to_string())
-        })?;
+        let domain = Self::extract_domain(&book)
+            .ok_or_else(|| BusError::Publish("EventBook missing cover/domain".to_string()))?;
 
         let topic = self.config.topic_for_domain(domain);
         let key = Self::message_key(&book);
@@ -369,7 +371,8 @@ impl EventBus for KafkaEventBus {
     async fn subscribe(&self, handler: Box<dyn EventHandler>) -> Result<()> {
         if self.consumer.is_none() {
             return Err(BusError::Subscribe(
-                "Cannot subscribe: no consumer configured. Use KafkaEventBusConfig::subscriber()".to_string(),
+                "Cannot subscribe: no consumer configured. Use KafkaEventBusConfig::subscriber()"
+                    .to_string(),
             ));
         }
 
@@ -414,8 +417,7 @@ mod tests {
 
     #[test]
     fn test_topic_with_custom_prefix() {
-        let config = KafkaEventBusConfig::publisher("localhost:9092")
-            .with_topic_prefix("myapp");
+        let config = KafkaEventBusConfig::publisher("localhost:9092").with_topic_prefix("myapp");
         assert_eq!(config.topic_for_domain("orders"), "myapp.events.orders");
     }
 
@@ -440,8 +442,11 @@ mod tests {
 
     #[test]
     fn test_sasl_config() {
-        let config = KafkaEventBusConfig::publisher("localhost:9092")
-            .with_sasl("user", "pass", "SCRAM-SHA-256");
+        let config = KafkaEventBusConfig::publisher("localhost:9092").with_sasl(
+            "user",
+            "pass",
+            "SCRAM-SHA-256",
+        );
         assert_eq!(config.sasl_username, Some("user".to_string()));
         assert_eq!(config.sasl_password, Some("pass".to_string()));
         assert_eq!(config.sasl_mechanism, Some("SCRAM-SHA-256".to_string()));

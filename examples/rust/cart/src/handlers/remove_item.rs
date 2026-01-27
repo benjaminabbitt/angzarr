@@ -2,9 +2,9 @@
 
 use prost::Message;
 
-use common::{BusinessError, Result};
 use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
 use common::proto::{CartItem, CartState, ItemRemoved, RemoveItem};
+use common::{BusinessError, Result};
 
 use crate::errmsg;
 use crate::state::{calculate_subtotal, now};

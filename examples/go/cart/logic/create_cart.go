@@ -8,10 +8,10 @@ import (
 
 func (l *DefaultCartLogic) HandleCreateCart(state *CartState, customerID string) (*examples.CartCreated, error) {
 	if state.Exists() {
-		return nil, NewFailedPrecondition("Cart already exists")
+		return nil, NewFailedPrecondition(ErrMsgCartExists)
 	}
 	if customerID == "" {
-		return nil, NewInvalidArgument("Customer ID is required")
+		return nil, NewInvalidArgument(ErrMsgCustomerIDRequired)
 	}
 
 	return &examples.CartCreated{

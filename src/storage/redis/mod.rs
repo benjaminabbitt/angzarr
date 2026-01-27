@@ -80,7 +80,13 @@ impl RedisEventStore {
 
 #[async_trait]
 impl EventStore for RedisEventStore {
-    async fn add(&self, domain: &str, root: Uuid, events: Vec<EventPage>) -> Result<()> {
+    async fn add(
+        &self,
+        domain: &str,
+        root: Uuid,
+        events: Vec<EventPage>,
+        _correlation_id: &str,
+    ) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -220,6 +226,14 @@ impl EventStore for RedisEventStore {
 
         Ok(max_seq.map(|s| s as u32 + 1).unwrap_or(0))
     }
+
+    async fn get_by_correlation(
+        &self,
+        _correlation_id: &str,
+    ) -> Result<Vec<crate::proto::EventBook>> {
+        // Not implemented for Redis - correlation_id not indexed
+        Ok(vec![])
+    }
 }
 
 /// Redis snapshot store.
@@ -328,7 +342,7 @@ mod tests {
 
         // Add events
         store
-            .add(domain, root, events.clone())
+            .add(domain, root, events.clone(), "")
             .await
             .expect("Failed to add events");
 

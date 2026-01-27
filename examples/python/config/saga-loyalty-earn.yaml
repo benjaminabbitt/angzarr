@@ -1,4 +1,4 @@
-# Loyalty earn saga sidecar configuration (embedded mode)
+# Loyalty earn saga sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -16,4 +16,4 @@ messaging:
 target:
   address: /tmp/angzarr/saga-loyalty-earn.sock
   domain: loyalty-earn
-  command: uv run --directory saga-loyalty-earn python server.py
+  command: ["uv", "run", "--directory", "saga-loyalty-earn", "python", "server.py"]

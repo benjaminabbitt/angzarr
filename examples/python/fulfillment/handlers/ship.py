@@ -9,22 +9,22 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 
 from .state import FulfillmentState
-from handlers.exceptions import CommandRejectedError
+from handlers.exceptions import CommandRejectedError, errmsg
 
 
 def handle_ship(command_book, command_any, state: FulfillmentState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Shipment does not exist")
+        raise CommandRejectedError(errmsg.SHIPMENT_NOT_FOUND)
     if not state.is_packing():
-        raise CommandRejectedError(f"Cannot ship in {state.status} state")
+        raise CommandRejectedError(errmsg.NOT_PACKED)
 
     cmd = domains.Ship()
     command_any.Unpack(cmd)
 
     if not cmd.carrier:
-        raise CommandRejectedError("Carrier is required")
+        raise CommandRejectedError(errmsg.CARRIER_REQUIRED)
     if not cmd.tracking_number:
-        raise CommandRejectedError("Tracking number is required")
+        raise CommandRejectedError(errmsg.TRACKING_NUMBER_REQUIRED)
 
     log.info("shipping", carrier=cmd.carrier, tracking_number=cmd.tracking_number)
 

@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use tonic::{Response, Status};
 
-use crate::bus::PublishResult;
 use crate::bus::EventBus;
+use crate::bus::PublishResult;
 use crate::proto::{business_response, BusinessResponse, CommandBook, CommandResponse, EventBook};
 
 /// Generates a correlation ID for a command if one is not already provided.
@@ -24,8 +24,14 @@ use crate::proto::{business_response, BusinessResponse, CommandBook, CommandResp
 /// # Returns
 /// The existing correlation ID if present, otherwise a newly generated one.
 pub fn generate_correlation_id(command_book: &CommandBook) -> Result<String, Status> {
-    if !command_book.correlation_id.is_empty() {
-        return Ok(command_book.correlation_id.clone());
+    let existing = command_book
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.as_str())
+        .unwrap_or("");
+
+    if !existing.is_empty() {
+        return Ok(existing.to_string());
     }
 
     use prost::Message;
@@ -66,14 +72,17 @@ pub fn extract_events_from_response(
                 cover: None,
                 pages: vec![],
                 snapshot: None,
-                correlation_id: String::new(),
                 snapshot_state: None,
             }
         }
     };
 
-    // Propagate correlation ID from command to events
-    events.correlation_id = correlation_id;
+    // Propagate correlation ID from command to events via cover
+    if let Some(ref mut cover) = events.cover {
+        if cover.correlation_id.is_empty() {
+            cover.correlation_id = correlation_id;
+        }
+    }
 
     Ok(events)
 }
@@ -126,8 +135,8 @@ pub fn build_command_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{CommandPage, Cover, RevocationResponse, Uuid as ProtoUuid};
     use crate::bus::MockEventBus;
+    use crate::proto::{CommandPage, Cover, RevocationResponse, Uuid as ProtoUuid};
     use prost_types::Any;
 
     fn make_command_book(with_correlation: bool) -> CommandBook {
@@ -137,6 +146,11 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: if with_correlation {
+                    "test-correlation-id".to_string()
+                } else {
+                    String::new()
+                },
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -145,14 +159,7 @@ mod tests {
                     value: vec![],
                 }),
             }],
-            correlation_id: if with_correlation {
-                "test-correlation-id".to_string()
-            } else {
-                String::new()
-            },
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
@@ -188,10 +195,13 @@ mod tests {
     #[test]
     fn test_extract_events_from_response_with_events() {
         let event_book = EventBook {
-            cover: None,
+            cover: Some(Cover {
+                domain: "test".to_string(),
+                root: None,
+                correlation_id: String::new(),
+            }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
         let response = BusinessResponse {
@@ -201,7 +211,11 @@ mod tests {
         let result = extract_events_from_response(response, "test-correlation".to_string());
         assert!(result.is_ok());
         let events = result.unwrap();
-        assert_eq!(events.correlation_id, "test-correlation");
+        // Correlation ID should be set on cover
+        assert_eq!(
+            events.cover.as_ref().unwrap().correlation_id,
+            "test-correlation"
+        );
     }
 
     #[test]
@@ -231,17 +245,20 @@ mod tests {
         assert!(result.is_ok());
         let events = result.unwrap();
         assert!(events.pages.is_empty());
-        assert_eq!(events.correlation_id, "test-correlation");
+        // No cover means no correlation ID - that's expected for empty responses
     }
 
     #[tokio::test]
     async fn test_publish_and_build_response_success() {
         let event_bus: Arc<dyn EventBus> = Arc::new(MockEventBus::new());
         let event_book = EventBook {
-            cover: None,
+            cover: Some(Cover {
+                domain: "test".to_string(),
+                root: None,
+                correlation_id: "test-correlation".to_string(),
+            }),
             pages: vec![],
             snapshot: None,
-            correlation_id: "test-correlation".to_string(),
             snapshot_state: None,
         };
 
@@ -250,7 +267,11 @@ mod tests {
 
         let response = result.unwrap().into_inner();
         assert!(response.events.is_some());
-        assert_eq!(response.events.unwrap().correlation_id, "test-correlation");
+        let events = response.events.unwrap();
+        assert_eq!(
+            events.cover.as_ref().unwrap().correlation_id,
+            "test-correlation"
+        );
     }
 
     #[tokio::test]
@@ -263,7 +284,6 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 

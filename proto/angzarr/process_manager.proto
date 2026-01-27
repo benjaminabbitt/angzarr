@@ -1,0 +1,93 @@
+syntax = "proto3";
+package angzarr;
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_package = "dev.angzarr";
+option java_multiple_files = true;
+
+import "angzarr/types.proto";
+import "google/protobuf/timestamp.proto";
+
+// ProcessManager: stateful coordinator for long-running workflows across multiple aggregates.
+//
+// WARNING: Only use when saga + queries is insufficient. Consider:
+// - Can a simple saga + destination queries solve this?
+// - Is the "state" you want to track already derivable from existing aggregates?
+// - Are you adding Process Manager because the workflow is genuinely complex?
+//
+// Process Manager is warranted when:
+// - Workflow state is NOT derivable from aggregates (PM owns unique state)
+// - You need to query workflow status independently ("show all pending fulfillments")
+// - Timeout/scheduling logic is complex enough to merit its own aggregate
+// - You must react to events from MULTIPLE domains (saga recommends single domain)
+//
+// Process Manager IS an aggregate with its own domain, events, and state.
+// It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
+service ProcessManager {
+  // Get subscription filters - called at startup to configure event routing.
+  // PM business logic defines which domains/events it subscribes to.
+  rpc GetSubscriptions (GetSubscriptionsRequest) returns (GetSubscriptionsResponse);
+
+  // Phase 1: Declare which additional destinations are needed beyond the trigger.
+  // PM automatically receives triggering event's domain state.
+  rpc Prepare (ProcessManagerPrepareRequest) returns (ProcessManagerPrepareResponse);
+
+  // Phase 2: Handle with trigger + process state + fetched destinations.
+  // Returns commands for other aggregates and events for the PM's own domain.
+  rpc Handle (ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
+}
+
+// Subscription configuration request - fetched from PM at startup.
+message GetSubscriptionsRequest {}
+
+// Subscription configuration response.
+message GetSubscriptionsResponse {
+  repeated Subscription subscriptions = 1;
+}
+
+// Event subscription filter.
+message Subscription {
+  string domain = 1;
+  repeated string event_types = 2;  // Empty = all events from domain
+}
+
+// Phase 1 request: PM declares additional destinations needed.
+message ProcessManagerPrepareRequest {
+  // Full state of triggering domain (by correlation_id).
+  EventBook trigger = 1;
+  // Current process manager state (by correlation_id). May be empty for new workflow.
+  EventBook process_state = 2;
+}
+
+// Phase 1 response: destinations to fetch before Handle.
+message ProcessManagerPrepareResponse {
+  // Additional aggregates needed beyond trigger. Query by correlation_id.
+  // Minimize fetches - only declare what's actually needed.
+  repeated Cover destinations = 1;
+}
+
+// Phase 2 request: full context for PM decision.
+message ProcessManagerHandleRequest {
+  // Full state of triggering domain.
+  EventBook trigger = 1;
+  // Current process manager state (event-sourced).
+  EventBook process_state = 2;
+  // Additional destinations fetched per Prepare response.
+  repeated EventBook destinations = 3;
+}
+
+// Phase 2 response: commands and PM events.
+message ProcessManagerHandleResponse {
+  // Commands to issue to other aggregates.
+  repeated CommandBook commands = 1;
+  // Events for the process manager's own domain (non-duplicative workflow state).
+  // These are persisted via AggregateCoordinator to the PM's domain.
+  EventBook process_events = 2;
+}
+
+// System event for process timeout - emitted by TimeoutScheduler.
+message ProcessTimeout {
+  string correlation_id = 1;
+  string process_type = 2;     // e.g., "order-fulfillment"
+  string timeout_type = 3;     // e.g., "payment", "reservation"
+  google.protobuf.Timestamp deadline = 4;
+}

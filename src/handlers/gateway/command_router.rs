@@ -27,17 +27,25 @@ impl CommandRouter {
     /// Generate or use existing correlation ID.
     #[allow(clippy::result_large_err)]
     pub fn ensure_correlation_id(command_book: &mut CommandBook) -> Result<String, Status> {
-        if command_book.correlation_id.is_empty() {
+        let current_correlation_id = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
+
+        if current_correlation_id.is_empty() {
             let mut buf = Vec::new();
             command_book
                 .encode(&mut buf)
                 .map_err(|e| Status::internal(format!("Failed to encode command: {e}")))?;
             let angzarr_ns = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev");
             let generated = uuid::Uuid::new_v5(&angzarr_ns, &buf).to_string();
-            command_book.correlation_id = generated.clone();
+            if let Some(ref mut cover) = command_book.cover {
+                cover.correlation_id = generated.clone();
+            }
             Ok(generated)
         } else {
-            Ok(command_book.correlation_id.clone())
+            Ok(current_correlation_id)
         }
     }
 
@@ -173,34 +181,40 @@ mod tests {
                 root: Some(crate::proto::Uuid {
                     value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
-            correlation_id: String::new(),
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
     #[tokio::test]
     async fn test_ensure_correlation_id_generates_when_empty() {
         let mut command = make_test_command("orders");
-        assert!(command.correlation_id.is_empty());
+        assert!(command.cover.as_ref().unwrap().correlation_id.is_empty());
 
         let correlation_id = CommandRouter::ensure_correlation_id(&mut command).unwrap();
 
         assert!(!correlation_id.is_empty());
-        assert_eq!(command.correlation_id, correlation_id);
+        assert_eq!(
+            command.cover.as_ref().unwrap().correlation_id,
+            correlation_id
+        );
     }
 
     #[tokio::test]
     async fn test_ensure_correlation_id_preserves_existing() {
         let mut command = make_test_command("orders");
-        command.correlation_id = "my-custom-id".to_string();
+        if let Some(ref mut cover) = command.cover {
+            cover.correlation_id = "my-custom-id".to_string();
+        }
 
         let correlation_id = CommandRouter::ensure_correlation_id(&mut command).unwrap();
 
         assert_eq!(correlation_id, "my-custom-id");
-        assert_eq!(command.correlation_id, "my-custom-id");
+        assert_eq!(
+            command.cover.as_ref().unwrap().correlation_id,
+            "my-custom-id"
+        );
     }
 }

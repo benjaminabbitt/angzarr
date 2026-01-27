@@ -14,6 +14,7 @@ message UUID {
 message Cover {
   string domain = 2;
   UUID root = 1;
+  string correlation_id = 3;  // Workflow correlation - flows through all commands/events
 }
 
 // Controls synchronous processing behavior
@@ -43,7 +44,7 @@ message EventBook {
   Cover cover = 1;
   Snapshot snapshot = 2;                    // Framework-populated when loading (has sequence)
   repeated EventPage pages = 3;
-  string correlation_id = 4;
+  // Field 4 removed: correlation_id moved to Cover
   // Business logic sets this; framework computes sequence.
   // State must be a protobuf Message for serialization into Any.
   google.protobuf.Any snapshot_state = 5;
@@ -70,6 +71,29 @@ message CommandResponse {
 // Response from saga - commands for other aggregates
 message SagaResponse {
   repeated CommandBook commands = 1;  // Commands to execute on other aggregates
+  repeated EventBook events = 2;      // Events to publish directly
+}
+
+// Two-phase saga protocol messages
+message SagaPrepareRequest {
+  EventBook source = 1;  // Source events that triggered the saga
+}
+
+message SagaPrepareResponse {
+  repeated Cover destinations = 1;  // Destination aggregates the saga needs to read
+}
+
+message SagaExecuteRequest {
+  EventBook source = 1;             // Source events (same as prepare)
+  repeated EventBook destinations = 2;  // Fetched destination state
+}
+
+message SagaRetryRequest {
+  EventBook source = 1;
+  repeated EventBook destinations = 2;
+  CommandBook rejected_command = 3;
+  string rejection_reason = 4;
+  uint32 attempt = 5;
 }
 
 // Track saga command origin for compensation flow
@@ -126,13 +150,9 @@ message CommandPage {
 message CommandBook {
   Cover cover = 1;
   repeated CommandPage pages = 2;
-  string correlation_id = 3;
+  // Field 3 removed: correlation_id moved to Cover
   SagaCommandOrigin saga_origin = 4;  // Tracks origin for compensation flow
-  // Skip sequence pre-validation and rely on write-time conflict detection.
-  // Use sparingly: intended for saga-generated commands where the outcome
-  // is predetermined by events that have already occurred.
-  bool auto_resequence = 5;
-  bool fact = 6;                      // Business logic should try hard to succeed
+  // Field 5 removed: 'fact' was unused
 }
 
 message SyncCommandBook {
@@ -152,11 +172,25 @@ message SyncContextualCommand {
 }
 
 // Query types
+message SequenceRange {
+  uint32 lower = 1;
+  optional uint32 upper = 2;  // If not set, query to latest
+}
+
+message SequenceSet {
+  repeated uint32 values = 1;
+}
+
 message Query {
-  string domain = 1;
-  UUID root = 2;
-  uint32 lower_bound = 3;
-  uint32 upper_bound = 4;
+  // Cover identifies the aggregate: domain + (root | correlation_id | both)
+  // Query by root: Cover { domain, root }
+  // Query by correlation: Cover { domain, correlation_id }
+  Cover cover = 1;
+  oneof selection {
+    SequenceRange range = 3;
+    SequenceSet sequences = 4;
+  }
+  // Fields 2, 5 removed: now use cover.root and cover.correlation_id
 }
 
 message AggregateRoot {

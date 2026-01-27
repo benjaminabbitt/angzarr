@@ -6,7 +6,9 @@ use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
 
-use angzarr::proto::{event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid as ProtoUuid};
+use angzarr::proto::{
+    event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid as ProtoUuid,
+};
 use common::proto::{AddLoyaltyPoints, OrderCompleted, OrderCreated};
 use saga_loyalty_earn::{LoyaltyEarnSaga, SOURCE_DOMAIN};
 

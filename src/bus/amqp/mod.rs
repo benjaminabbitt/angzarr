@@ -326,10 +326,10 @@ mod tests {
                 root: Some(Uuid {
                     value: b"test-123".to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 

@@ -270,9 +270,7 @@ where
                 "Server listening"
             );
 
-            router
-                .serve_with_incoming_shutdown(stream, signal)
-                .await?;
+            router.serve_with_incoming_shutdown(stream, signal).await?;
         }
     }
 
@@ -297,9 +295,7 @@ pub fn is_uds_address(address: &str) -> bool {
 /// This allows config files to use either:
 /// - `address: /tmp/angzarr/business-orders.sock` (UDS)
 /// - `address: localhost:50051` (TCP)
-pub async fn connect_to_address(
-    address: &str,
-) -> Result<Channel, Box<dyn std::error::Error>> {
+pub async fn connect_to_address(address: &str) -> Result<Channel, Box<dyn std::error::Error>> {
     if address.starts_with('/') || address.starts_with("./") {
         // UDS path
         let socket_path = PathBuf::from(address);
@@ -443,13 +439,7 @@ impl ServiceEndpointConfig {
         transport: &TransportConfig,
     ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
         let tcp_addr = self.address.as_deref().unwrap_or("localhost:50051");
-        connect_with_transport(
-            transport,
-            &self.name,
-            self.qualifier.as_deref(),
-            tcp_addr,
-        )
-        .await
+        connect_with_transport(transport, &self.name, self.qualifier.as_deref(), tcp_addr).await
     }
 }
 

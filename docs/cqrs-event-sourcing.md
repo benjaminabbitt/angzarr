@@ -43,9 +43,11 @@ This guide introduces the patterns underlying Angzarr. If you're already familia
 
 | Term | Definition |
 |------|------------|
-| **Aggregate** | Service that processes commands for a domain. Validates against current state, emits events. Also called Command Handler in CQRS terminology. |
-| **Projector** | Service that subscribes to events and builds read models (projections). Can be synchronous or asynchronous. |
-| **Saga** | Service that subscribes to events and emits commands to other aggregates. Orchestrates multi-step workflows. |
+| **Domain** | A bounded context representing a business capability (e.g., "flights", "customers", "inventory"). Each domain has exactly one aggregate codebase. |
+| **Aggregate** | Service that processes commands for a domain. Validates against current state, emits events. Also called Command Handler in CQRS terminology. One aggregate codebase per domain, though it scales horizontally across many processes. |
+| **Aggregate Root** | The identity of a specific instance within a domain. Computed as a hash of business keys (e.g., for flights: hash of flight number + date + origin airport). Each root has its own event stream. |
+| **Projector** | Service that subscribes to events and performs side effects—typically building read models, writing to databases, or streaming to web clients. Can be synchronous or asynchronous. |
+| **Saga** | Service that subscribes to events and emits commands to other aggregates. Also called **Process Coordinator**. Orchestrates multi-step workflows that span domains. |
 | **Projection** | A read model built by a projector. Optimized for queries, denormalized. |
 | **Snapshot** | Cached aggregate state at a point in time. Optimization to avoid replaying all events. |
 
@@ -86,7 +88,7 @@ Different communities use different terms for the same concepts. This table maps
 | State Change | **Domain Event** | Event | EventBook/EventPage | Immutable fact that happened; past tense |
 | Command Processing | **Aggregate Method** | Command Handler | Aggregate (BusinessLogic) | Validates commands, produces events |
 | Read Model | — | Projection | Projector output | Denormalized query-optimized view |
-| Process Manager | — | Saga | Saga | Long-running workflow coordinator |
+| Process Manager | — | Saga / Process Coordinator | Saga | Long-running workflow coordinator |
 | Event Distribution | — | Event Bus | AMQP Bus | Event distribution mechanism |
 | Event Persistence | **Repository** | Event Store | EventStore trait | Append-only event storage |
 | Current State | **Entity State** | Aggregate State | Snapshot | Materialized state at point in time |
@@ -113,6 +115,88 @@ Angzarr prefers single-word terms to keep technical vocabulary terse. We use **A
 - [CQRS Documents](https://cqrs.files.wordpress.com/2010/11/cqrs_documents.pdf) — Greg Young's foundational paper (PDF)
 - [Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) — Martin Fowler's pattern description
 - [Versioning in an Event Sourced System](https://leanpub.com/esversioning) — Greg Young (free ebook)
+
+---
+
+## System Architecture
+
+### Domains and Aggregates
+
+A **domain** represents a business capability—"flights", "customers", "inventory", "orders". Each domain has exactly **one aggregate codebase** that handles all commands for that domain.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              "flights" domain                           │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Aggregate Codebase (one)                     │   │
+│  │                                                                 │   │
+│  │  Commands: CreateFlight, BoardPassenger, DepartFlight, ...    │   │
+│  │  Events: FlightCreated, PassengerBoarded, FlightDeparted, ... │   │
+│  │  State: FlightState { passengers, status, gate, ... }         │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                               │                                         │
+│              ┌────────────────┼────────────────┐                        │
+│              ▼                ▼                ▼                        │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐        │
+│  │ Process Instance │ │ Process Instance │ │ Process Instance │ ...    │
+│  │ (horizontal      │ │ (horizontal      │ │ (horizontal      │        │
+│  │  scaling)        │ │  scaling)        │ │  scaling)        │        │
+│  └──────────────────┘ └──────────────────┘ └──────────────────┘        │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+The aggregate codebase scales horizontally across many processes, but the business logic is defined once.
+
+### Aggregate Roots
+
+Within a domain, the **aggregate root** identifies a specific instance. It's computed as a hash of the domain's business keys:
+
+| Domain | Business Keys | Aggregate Root |
+|--------|---------------|----------------|
+| flights | flight number + date + origin | `hash("AA123" + "2024-01-15" + "JFK")` |
+| customers | email | `hash("alice@example.com")` |
+| inventory | SKU | `hash("WIDGET-001")` |
+| orders | order ID | `hash("ord-abc-123")` |
+
+Each aggregate root has its own event stream. The same aggregate codebase handles all roots in the domain.
+
+### Cross-Domain Communication
+
+When business logic needs to coordinate across domains, **sagas** (also called **process coordinators**) bridge the gap:
+
+```
+┌──────────────┐                    ┌──────────────┐
+│   orders     │                    │  inventory   │
+│   domain     │                    │   domain     │
+│              │                    │              │
+│ OrderPlaced  │──────┐             │              │
+│    event     │      │             │              │
+└──────────────┘      │             └──────────────┘
+                      ▼                     ▲
+               ┌──────────────┐            │
+               │ Fulfillment  │            │
+               │    Saga      │────────────┘
+               │  (process    │  ReserveStock
+               │ coordinator) │    command
+               └──────────────┘
+```
+
+Sagas subscribe to events from one domain and emit commands to other domains. The aggregate in each domain doesn't know about the others—the saga provides loose coupling.
+
+### Side Effects via Projectors
+
+**Projectors** subscribe to event streams and perform side effects:
+
+| Projector | Subscribes To | Side Effect |
+|-----------|---------------|-------------|
+| Search indexer | product.* | Writes to Elasticsearch |
+| Receipt printer | transaction.TransactionCompleted | Generates PDF, sends email |
+| Dashboard stream | *.* | Pushes to WebSocket clients |
+| Analytics ETL | *.* | Writes to data warehouse |
+| Cache warmer | customer.* | Updates Redis cache |
+
+Projectors are read-only from the aggregate's perspective—they observe events but never send commands back to the aggregate.
 
 ---
 
@@ -332,6 +416,7 @@ CustomerState {
 
 ## Next Steps
 
+- [Patterns](patterns.md) — Outbox, upcasting, process manager, temporal query
 - [Command Handlers](command-handlers.md) — Implementing aggregates
 - [Projectors](projectors.md) — Building read models
 - [Sagas](sagas.md) — Cross-aggregate workflows

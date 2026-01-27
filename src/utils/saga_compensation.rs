@@ -65,12 +65,17 @@ impl CompensationContext {
     /// (indicating it's not a saga-issued command).
     pub fn from_rejected_command(command: &CommandBook, rejection_reason: String) -> Option<Self> {
         let saga_origin = command.saga_origin.as_ref()?.clone();
+        let correlation_id = command
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
 
         Some(Self {
             saga_origin,
             rejection_reason,
             rejected_command: command.clone(),
-            correlation_id: command.correlation_id.clone(),
+            correlation_id,
         })
     }
 }
@@ -98,8 +103,14 @@ pub fn build_revoke_command_book(context: &CompensationContext) -> Result<Comman
 
     let revoke_cmd = build_revoke_command(context);
 
+    // Clone triggering aggregate and set correlation_id on cover
+    let mut cover = triggering_aggregate.clone();
+    if cover.correlation_id.is_empty() {
+        cover.correlation_id = context.correlation_id.clone();
+    }
+
     Ok(CommandBook {
-        cover: Some(triggering_aggregate.clone()),
+        cover: Some(cover),
         pages: vec![crate::proto::CommandPage {
             sequence: 0,
             command: Some(prost_types::Any {
@@ -107,10 +118,7 @@ pub fn build_revoke_command_book(context: &CompensationContext) -> Result<Comman
                 value: revoke_cmd.encode_to_vec(),
             }),
         }],
-        correlation_id: context.correlation_id.clone(),
-        saga_origin: None,     // Revoke commands don't have their own saga origin
-        auto_resequence: true, // Should retry on sequence conflicts
-        fact: true,            // The triggering event already happened
+        saga_origin: None, // Revoke commands don't have their own saga origin
     })
 }
 
@@ -150,6 +158,7 @@ pub fn build_compensation_failed_event_book(
             root: Some(ProtoUuid {
                 value: fallback_root.as_bytes().to_vec(),
             }),
+            correlation_id: context.correlation_id.clone(),
         }),
         pages: vec![EventPage {
             sequence: Some(crate::proto::event_page::Sequence::Num(0)),
@@ -160,7 +169,6 @@ pub fn build_compensation_failed_event_book(
             }),
         }],
         snapshot: None,
-        correlation_id: context.correlation_id.clone(),
         snapshot_state: None,
     }
 }
@@ -359,6 +367,7 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             triggering_event_sequence: 5,
         }
@@ -371,6 +380,7 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: "corr-123".to_string(),
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -379,10 +389,7 @@ mod tests {
                     value: vec![],
                 }),
             }],
-            correlation_id: "corr-123".to_string(),
             saga_origin: Some(make_saga_origin()),
-            auto_resequence: true,
-            fact: true,
         }
     }
 
@@ -437,8 +444,6 @@ mod tests {
         assert!(command_book.cover.is_some());
         let cover = command_book.cover.unwrap();
         assert_eq!(cover.domain, "orders");
-        assert!(command_book.auto_resequence);
-        assert!(command_book.fact);
         assert!(command_book.saga_origin.is_none());
     }
 
@@ -476,7 +481,7 @@ mod tests {
         let cover = event_book.cover.unwrap();
         assert_eq!(cover.domain, "angzarr.saga-failures");
         assert_eq!(event_book.pages.len(), 1);
-        assert_eq!(event_book.correlation_id, "corr-123");
+        assert_eq!(cover.correlation_id, "corr-123");
     }
 
     #[test]
@@ -489,6 +494,7 @@ mod tests {
                 cover: Some(Cover {
                     domain: "orders".to_string(),
                     root: None,
+                    correlation_id: "corr-123".to_string(),
                 }),
                 pages: vec![EventPage {
                     sequence: Some(crate::proto::event_page::Sequence::Num(6)),
@@ -499,7 +505,6 @@ mod tests {
                     }),
                 }],
                 snapshot: None,
-                correlation_id: "corr-123".to_string(),
                 snapshot_state: None,
             })),
         });
@@ -521,7 +526,6 @@ mod tests {
                 cover: None,
                 pages: vec![], // Empty!
                 snapshot: None,
-                correlation_id: String::new(),
                 snapshot_state: None,
             })),
         });

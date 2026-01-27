@@ -36,7 +36,11 @@ impl EventQuery for EventQueryProxy {
     /// Get a single EventBook for the domain/root.
     async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
         let query = request.into_inner();
-        let domain = &query.domain;
+        let domain = query
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
 
         debug!(domain = %domain, "Proxying GetEventBook query");
 
@@ -56,7 +60,11 @@ impl EventQuery for EventQueryProxy {
         request: Request<Query>,
     ) -> Result<Response<Self::GetEventsStream>, Status> {
         let query = request.into_inner();
-        let domain = query.domain.clone();
+        let domain = query
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_default();
 
         debug!(domain = %domain, "Proxying GetEvents query");
 
@@ -94,7 +102,11 @@ impl EventQuery for EventQueryProxy {
             None => return Err(Status::invalid_argument("No queries provided")),
         };
 
-        let domain = first_query.domain.clone();
+        let domain = first_query
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_default();
         debug!(domain = %domain, "Proxying Synchronize stream");
 
         let mut client = self

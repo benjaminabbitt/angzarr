@@ -9,20 +9,20 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 
 from .state import FulfillmentState
-from handlers.exceptions import CommandRejectedError
+from handlers.exceptions import CommandRejectedError, errmsg
 
 
 def handle_mark_picked(command_book, command_any, state: FulfillmentState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Shipment does not exist")
+        raise CommandRejectedError(errmsg.SHIPMENT_NOT_FOUND)
     if not state.is_pending():
-        raise CommandRejectedError(f"Cannot pick items in {state.status} state")
+        raise CommandRejectedError(errmsg.NOT_PENDING)
 
     cmd = domains.MarkPicked()
     command_any.Unpack(cmd)
 
     if not cmd.picker_id:
-        raise CommandRejectedError("Picker ID is required")
+        raise CommandRejectedError(errmsg.PICKER_ID_REQUIRED)
 
     log.info("marking_picked", picker_id=cmd.picker_id)
 

@@ -189,7 +189,6 @@ mod tests {
                         created_at: None,
                     }],
                     snapshot: None,
-                    correlation_id: cmd.correlation_id.clone(),
                     snapshot_state: None,
                 });
 
@@ -256,7 +255,10 @@ mod tests {
             tokio::spawn(async move {
                 for mut event in events {
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                    event.correlation_id = correlation_id.clone();
+                    // Set correlation_id on cover
+                    if let Some(ref mut cover) = event.cover {
+                        cover.correlation_id = correlation_id.clone();
+                    }
                     if tx.send(Ok(event)).await.is_err() {
                         break;
                     }
@@ -294,7 +296,9 @@ mod tests {
         // Start coordinator server
         let coord_handle = tokio::spawn(async move {
             Server::builder()
-                .add_service(AggregateCoordinatorServer::new(coord_clone.as_ref().clone()))
+                .add_service(AggregateCoordinatorServer::new(
+                    coord_clone.as_ref().clone(),
+                ))
                 .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
                     coord_listener,
                 ))
@@ -343,12 +347,10 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
-            correlation_id: String::new(),
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
@@ -393,7 +395,7 @@ mod tests {
         let (gateway, _mock_coord, _mock_stream, handles) = setup_test_gateway().await;
 
         let command = make_test_command("orders");
-        assert!(command.correlation_id.is_empty());
+        assert!(command.cover.as_ref().unwrap().correlation_id.is_empty());
 
         let response = gateway.execute(Request::new(command)).await.unwrap();
         let cmd_response = response.into_inner();
@@ -419,14 +421,12 @@ mod tests {
                     cover: None,
                     pages: vec![],
                     snapshot: None,
-                    correlation_id: String::new(),
                     snapshot_state: None,
                 },
                 EventBook {
                     cover: None,
                     pages: vec![],
                     snapshot: None,
-                    correlation_id: String::new(),
                     snapshot_state: None,
                 },
             ])
@@ -457,7 +457,9 @@ mod tests {
         let (gateway, _mock_coord, _mock_stream, handles) = setup_test_gateway().await;
 
         let mut command = make_test_command("orders");
-        command.correlation_id = "my-custom-correlation-id".to_string();
+        if let Some(ref mut cover) = command.cover {
+            cover.correlation_id = "my-custom-correlation-id".to_string();
+        }
 
         let response = gateway.execute(Request::new(command)).await.unwrap();
         let cmd_response = response.into_inner();
@@ -488,10 +490,7 @@ mod tests {
         mock_stream.set_delay(50).await;
 
         let command = make_test_command("orders");
-        let response = gateway
-            .execute_stream(Request::new(command))
-            .await
-            .unwrap();
+        let response = gateway.execute_stream(Request::new(command)).await.unwrap();
         let mut stream = response.into_inner();
 
         // Read only the first event (sync response)
@@ -523,10 +522,7 @@ mod tests {
         mock_stream.set_delay(5000).await; // 5 second delay
 
         let command = make_test_command("orders");
-        let response = gateway
-            .execute_stream(Request::new(command))
-            .await
-            .unwrap();
+        let response = gateway.execute_stream(Request::new(command)).await.unwrap();
         let mut stream = response.into_inner();
 
         // Read the sync response

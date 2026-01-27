@@ -133,8 +133,6 @@ impl InventoryAcceptanceWorld {
             }],
             correlation_id,
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 

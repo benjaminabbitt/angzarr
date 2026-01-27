@@ -137,10 +137,7 @@ impl LogService {
             // Event header
             println!();
             println!("{BOLD}{}{RESET}", "─".repeat(60));
-            println!(
-                "{DIM}{}:{}:{:010}{RESET}",
-                cover.domain, root_id, sequence
-            );
+            println!("{DIM}{}:{}:{:010}{RESET}", cover.domain, root_id, sequence);
             println!("{BOLD}{color}{event_type}{RESET}");
             println!("{}", "─".repeat(60));
 

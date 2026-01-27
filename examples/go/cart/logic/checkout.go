@@ -8,13 +8,13 @@ import (
 
 func (l *DefaultCartLogic) HandleCheckout(state *CartState) (*examples.CartCheckedOut, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Cart does not exist")
+		return nil, NewFailedPrecondition(ErrMsgCartNotFound)
 	}
 	if !state.IsActive() {
-		return nil, NewFailedPrecondition("Cart is already checked out")
+		return nil, NewFailedPrecondition(ErrMsgCartCheckedOut)
 	}
 	if len(state.Items) == 0 {
-		return nil, NewFailedPrecondition("Cart is empty")
+		return nil, NewFailedPrecondition(ErrMsgCartEmpty)
 	}
 
 	return &examples.CartCheckedOut{

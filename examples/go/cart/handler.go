@@ -20,7 +20,7 @@ func (s *server) Handle(ctx context.Context, req *angzarr.ContextualCommand) (*a
 	priorEvents := req.Events
 
 	if cmdBook == nil || len(cmdBook.Pages) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "CommandBook has no pages")
+		return nil, status.Error(codes.InvalidArgument, logic.ErrMsgNoCommandPages)
 	}
 
 	cmdPage := cmdBook.Pages[0]

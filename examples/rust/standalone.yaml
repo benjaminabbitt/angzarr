@@ -1,0 +1,137 @@
+# Standalone mode configuration for Rust examples
+# Run with: ANGZARR_CONFIG=examples/rust/standalone.yaml cargo run --bin angzarr-standalone
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+messaging:
+  type: ipc
+  ipc:
+    base_path: /tmp/angzarr
+
+standalone:
+  aggregates:
+    - domain: customer
+      command: ["./target/debug/customer-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/customer.db
+    - domain: product
+      command: ["./target/debug/product-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/product.db
+    - domain: inventory
+      command: ["./target/debug/inventory-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/inventory.db
+    - domain: order
+      command: ["./target/debug/order-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/order.db
+    - domain: cart
+      command: ["./target/debug/cart-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/cart.db
+    - domain: fulfillment
+      command: ["./target/debug/fulfillment-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/fulfillment.db
+
+  sagas:
+    - domain: fulfillment
+      listen_domain: order
+      command: ["./target/debug/saga-fulfillment-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/saga-fulfillment.db
+    - domain: cancellation
+      listen_domain: order
+      command: ["./target/debug/saga-cancellation-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/saga-cancellation.db
+    - domain: loyalty-earn
+      listen_domain: fulfillment
+      command: ["./target/debug/saga-loyalty-earn-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/saga-loyalty-earn.db
+
+  projectors:
+    - name: logging
+      domain: customer
+      listen_domain: customer
+      command: ["./target/debug/projector-logging-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-logging-customer.db
+    - name: logging
+      domain: product
+      listen_domain: product
+      command: ["./target/debug/projector-logging-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-logging-product.db
+    - name: logging
+      domain: inventory
+      listen_domain: inventory
+      command: ["./target/debug/projector-logging-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-logging-inventory.db
+    - name: logging
+      domain: order
+      listen_domain: order
+      command: ["./target/debug/projector-logging-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-logging-order.db
+    - name: logging
+      domain: cart
+      listen_domain: cart
+      command: ["./target/debug/projector-logging-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-logging-cart.db
+    - name: logging
+      domain: fulfillment
+      listen_domain: fulfillment
+      command: ["./target/debug/projector-logging-server"]
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-logging-fulfillment.db
+    # Stream projector - forwards all events to stream service for gateway streaming
+    - name: stream
+      domain: stream
+      listen_domain: "#"
+      address: /tmp/angzarr/stream.sock
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/projector-stream.db
+
+  gateway:
+    enabled: true
+    port: 1350

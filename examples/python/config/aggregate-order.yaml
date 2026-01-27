@@ -1,4 +1,4 @@
-# Order aggregate sidecar configuration (embedded mode)
+# Order aggregate sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -10,4 +10,4 @@ transport:
 target:
   address: /tmp/angzarr/business-order.sock
   domain: order
-  command: uv run --directory order python server.py
+  command: ["uv", "run", "--directory", "order", "python", "server.py"]

@@ -17,8 +17,14 @@ const (
 )
 
 // FulfillmentSagaLogic processes OrderCompleted events to create shipments.
+// Two-phase protocol: Prepare declares needed destinations, Execute produces commands.
 type FulfillmentSagaLogic interface {
-	ProcessEvents(eventBook *angzarr.EventBook) []*angzarr.CommandBook
+	// Prepare examines source events and returns destination covers needed.
+	// Returns the fulfillment aggregate cover for optimistic concurrency.
+	Prepare(source *angzarr.EventBook) []*angzarr.Cover
+
+	// Execute produces commands given source events and destination state.
+	Execute(source *angzarr.EventBook, destinations []*angzarr.EventBook) []*angzarr.CommandBook
 }
 
 type DefaultFulfillmentSagaLogic struct{}
@@ -27,14 +33,53 @@ func NewFulfillmentSagaLogic() FulfillmentSagaLogic {
 	return &DefaultFulfillmentSagaLogic{}
 }
 
-func (l *DefaultFulfillmentSagaLogic) ProcessEvents(eventBook *angzarr.EventBook) []*angzarr.CommandBook {
-	if eventBook == nil || len(eventBook.Pages) == 0 {
+// Prepare returns the fulfillment aggregate cover for optimistic concurrency.
+func (l *DefaultFulfillmentSagaLogic) Prepare(source *angzarr.EventBook) []*angzarr.Cover {
+	if source == nil || len(source.Pages) == 0 {
 		return nil
+	}
+
+	// Check if any page has OrderCompleted event
+	hasOrderCompleted := false
+	for _, page := range source.Pages {
+		if page.Event != nil && strings.HasSuffix(page.Event.TypeUrl, "OrderCompleted") {
+			hasOrderCompleted = true
+			break
+		}
+	}
+
+	if !hasOrderCompleted {
+		return nil
+	}
+
+	// Request the fulfillment aggregate state (same root as order)
+	if source.Cover != nil && source.Cover.Root != nil {
+		return []*angzarr.Cover{
+			{
+				Domain: TargetDomain,
+				Root:   source.Cover.Root,
+			},
+		}
+	}
+
+	return nil
+}
+
+// Execute processes source events and produces CreateShipment commands.
+func (l *DefaultFulfillmentSagaLogic) Execute(source *angzarr.EventBook, destinations []*angzarr.EventBook) []*angzarr.CommandBook {
+	if source == nil || len(source.Pages) == 0 {
+		return nil
+	}
+
+	// Calculate target sequence from destination state
+	var targetSequence uint32 = 0
+	if len(destinations) > 0 && destinations[0] != nil {
+		targetSequence = uint32(len(destinations[0].Pages))
 	}
 
 	var commands []*angzarr.CommandBook
 
-	for _, page := range eventBook.Pages {
+	for _, page := range source.Pages {
 		if page.Event == nil {
 			continue
 		}
@@ -52,8 +97,8 @@ func (l *DefaultFulfillmentSagaLogic) ProcessEvents(eventBook *angzarr.EventBook
 
 		// Get order ID from root
 		orderID := ""
-		if eventBook.Cover != nil && eventBook.Cover.Root != nil {
-			orderID = hex.EncodeToString(eventBook.Cover.Root.Value)
+		if source.Cover != nil && source.Cover.Root != nil {
+			orderID = hex.EncodeToString(source.Cover.Root.Value)
 		}
 		if orderID == "" {
 			continue
@@ -72,16 +117,15 @@ func (l *DefaultFulfillmentSagaLogic) ProcessEvents(eventBook *angzarr.EventBook
 		cmdBook := &angzarr.CommandBook{
 			Cover: &angzarr.Cover{
 				Domain: TargetDomain,
-				Root:   eventBook.Cover.Root,
+				Root:   source.Cover.Root,
 			},
 			Pages: []*angzarr.CommandPage{
 				{
-					Sequence:    0,
-					SyncMode: angzarr.SyncMode_SYNC_MODE_NONE,
-					Command:     cmdAny,
+					Sequence: targetSequence,
+					Command:  cmdAny,
 				},
 			},
-			CorrelationId: eventBook.CorrelationId,
+			CorrelationId: source.CorrelationId,
 		}
 
 		commands = append(commands, cmdBook)

@@ -1,4 +1,4 @@
-# Cancellation saga sidecar configuration (embedded mode)
+# Cancellation saga sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -16,4 +16,4 @@ messaging:
 target:
   address: /tmp/angzarr/saga-cancellation.sock
   domain: cancellation
-  command: uv run --directory saga-cancellation python server.py
+  command: ["uv", "run", "--directory", "saga-cancellation", "python", "server.py"]

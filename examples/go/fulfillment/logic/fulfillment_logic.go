@@ -93,10 +93,10 @@ func (l *DefaultFulfillmentLogic) RebuildState(eventBook *angzarr.EventBook) *Fu
 
 func (l *DefaultFulfillmentLogic) HandleCreateShipment(state *FulfillmentState, orderID string) (*examples.ShipmentCreated, error) {
 	if state.Exists() {
-		return nil, NewFailedPrecondition("Shipment already exists")
+		return nil, NewFailedPrecondition(ErrMsgShipmentExists)
 	}
 	if orderID == "" {
-		return nil, NewInvalidArgument("Order ID is required")
+		return nil, NewInvalidArgument(ErrMsgOrderIDRequired)
 	}
 
 	return &examples.ShipmentCreated{
@@ -108,13 +108,13 @@ func (l *DefaultFulfillmentLogic) HandleCreateShipment(state *FulfillmentState, 
 
 func (l *DefaultFulfillmentLogic) HandleMarkPicked(state *FulfillmentState, pickerID string) (*examples.ItemsPicked, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Shipment does not exist")
+		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsPending() {
-		return nil, NewFailedPreconditionf("Cannot pick items in %s state", state.Status)
+		return nil, NewFailedPrecondition(ErrMsgNotPending)
 	}
 	if pickerID == "" {
-		return nil, NewInvalidArgument("Picker ID is required")
+		return nil, NewInvalidArgument(ErrMsgPickerIDRequired)
 	}
 
 	return &examples.ItemsPicked{
@@ -125,13 +125,13 @@ func (l *DefaultFulfillmentLogic) HandleMarkPicked(state *FulfillmentState, pick
 
 func (l *DefaultFulfillmentLogic) HandleMarkPacked(state *FulfillmentState, packerID string) (*examples.ItemsPacked, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Shipment does not exist")
+		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsPicking() {
-		return nil, NewFailedPreconditionf("Cannot pack items in %s state", state.Status)
+		return nil, NewFailedPrecondition(ErrMsgNotPicked)
 	}
 	if packerID == "" {
-		return nil, NewInvalidArgument("Packer ID is required")
+		return nil, NewInvalidArgument(ErrMsgPackerIDRequired)
 	}
 
 	return &examples.ItemsPacked{
@@ -142,16 +142,16 @@ func (l *DefaultFulfillmentLogic) HandleMarkPacked(state *FulfillmentState, pack
 
 func (l *DefaultFulfillmentLogic) HandleShip(state *FulfillmentState, carrier, trackingNumber string) (*examples.Shipped, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Shipment does not exist")
+		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsPacking() {
-		return nil, NewFailedPreconditionf("Cannot ship in %s state", state.Status)
+		return nil, NewFailedPrecondition(ErrMsgNotPacked)
 	}
 	if carrier == "" {
-		return nil, NewInvalidArgument("Carrier is required")
+		return nil, NewInvalidArgument(ErrMsgCarrierRequired)
 	}
 	if trackingNumber == "" {
-		return nil, NewInvalidArgument("Tracking number is required")
+		return nil, NewInvalidArgument(ErrMsgTrackingNumRequired)
 	}
 
 	return &examples.Shipped{
@@ -163,10 +163,10 @@ func (l *DefaultFulfillmentLogic) HandleShip(state *FulfillmentState, carrier, t
 
 func (l *DefaultFulfillmentLogic) HandleRecordDelivery(state *FulfillmentState, signature string) (*examples.Delivered, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Shipment does not exist")
+		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsShipped() {
-		return nil, NewFailedPreconditionf("Cannot record delivery in %s state", state.Status)
+		return nil, NewFailedPrecondition(ErrMsgNotShipped)
 	}
 
 	return &examples.Delivered{

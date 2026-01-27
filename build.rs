@@ -4,8 +4,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/aggregate.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/projector.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/saga.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/process_manager.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/query.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/gateway.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/upcaster.proto");
     println!("cargo:rerun-if-changed=proto/examples/customer.proto");
     println!("cargo:rerun-if-changed=proto/examples/product.proto");
     println!("cargo:rerun-if-changed=proto/examples/inventory.proto");
@@ -23,8 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/aggregate.proto",
                 "proto/angzarr/projector.proto",
                 "proto/angzarr/saga.proto",
+                "proto/angzarr/process_manager.proto",
                 "proto/angzarr/query.proto",
                 "proto/angzarr/gateway.proto",
+                "proto/angzarr/upcaster.proto",
                 "proto/examples/customer.proto",
                 "proto/examples/product.proto",
                 "proto/examples/inventory.proto",

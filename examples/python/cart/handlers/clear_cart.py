@@ -9,14 +9,14 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 from .state import CartState
 
-from .errors import CommandRejectedError
+from .errors import CommandRejectedError, errmsg
 
 
 def handle_clear_cart(command_book, command_any, state: CartState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Cart does not exist")
+        raise CommandRejectedError(errmsg.CART_NOT_FOUND)
     if not state.is_active():
-        raise CommandRejectedError("Cart is already checked out")
+        raise CommandRejectedError(errmsg.CART_CHECKED_OUT)
 
     log.info("clearing_cart")
 

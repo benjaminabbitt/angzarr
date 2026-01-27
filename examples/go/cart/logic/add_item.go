@@ -8,16 +8,16 @@ import (
 
 func (l *DefaultCartLogic) HandleAddItem(state *CartState, productID, name string, quantity, unitPriceCents int32) (*examples.ItemAdded, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Cart does not exist")
+		return nil, NewFailedPrecondition(ErrMsgCartNotFound)
 	}
 	if !state.IsActive() {
-		return nil, NewFailedPrecondition("Cart is already checked out")
+		return nil, NewFailedPrecondition(ErrMsgCartCheckedOut)
 	}
 	if productID == "" {
-		return nil, NewInvalidArgument("Product ID is required")
+		return nil, NewInvalidArgument(ErrMsgProductIDRequired)
 	}
 	if quantity <= 0 {
-		return nil, NewInvalidArgument("Quantity must be positive")
+		return nil, NewInvalidArgument(ErrMsgQuantityPositive)
 	}
 
 	newSubtotal := state.SubtotalCents + (quantity * unitPriceCents)

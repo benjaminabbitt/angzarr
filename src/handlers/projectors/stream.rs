@@ -48,12 +48,13 @@ impl StreamService {
     /// Used by the Projector gRPC service to receive events from the projector sidecar.
     pub async fn handle(&self, book: &EventBook) {
         // Skip events without correlation ID
-        if book.correlation_id.is_empty() {
-            debug!("Dropping event without correlation_id");
-            return;
-        }
-
-        let correlation_id = &book.correlation_id;
+        let correlation_id = match book.cover.as_ref() {
+            Some(c) if !c.correlation_id.is_empty() => &c.correlation_id,
+            _ => {
+                debug!("Dropping event without correlation_id");
+                return;
+            }
+        };
 
         let mut subs = self.subscriptions.write().await;
         if let Some(subscribers) = subs.get_mut(correlation_id) {
@@ -211,12 +212,13 @@ impl EventHandler for StreamEventHandler {
 
         Box::pin(async move {
             // Skip events without correlation ID
-            if book.correlation_id.is_empty() {
-                debug!("Dropping event without correlation_id");
-                return Ok(());
-            }
-
-            let correlation_id = &book.correlation_id;
+            let correlation_id = match book.cover.as_ref() {
+                Some(c) if !c.correlation_id.is_empty() => &c.correlation_id,
+                _ => {
+                    debug!("Dropping event without correlation_id");
+                    return Ok(());
+                }
+            };
 
             // Look up subscribers
             let mut subs = subscriptions.write().await;
@@ -292,6 +294,7 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: correlation_id.to_string(),
             }),
             pages: vec![EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(0)),
@@ -302,7 +305,6 @@ mod tests {
                 created_at: None,
             }],
             snapshot: None,
-            correlation_id: correlation_id.to_string(),
             snapshot_state: None,
         }
     }
@@ -393,7 +395,10 @@ mod tests {
 
         assert!(received.is_some());
         let event_book = received.unwrap().unwrap();
-        assert_eq!(event_book.correlation_id, "delivery-test");
+        assert_eq!(
+            event_book.cover.as_ref().unwrap().correlation_id,
+            "delivery-test"
+        );
     }
 
     #[tokio::test]

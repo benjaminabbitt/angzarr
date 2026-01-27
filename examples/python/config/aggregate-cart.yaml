@@ -1,4 +1,4 @@
-# Cart aggregate sidecar configuration (embedded mode)
+# Cart aggregate sidecar configuration (standalone mode)
 storage:
   type: sqlite
 
@@ -10,4 +10,4 @@ transport:
 target:
   address: /tmp/angzarr/business-cart.sock
   domain: cart
-  command: uv run --directory cart python server.py
+  command: ["uv", "run", "--directory", "cart", "python", "server.py"]

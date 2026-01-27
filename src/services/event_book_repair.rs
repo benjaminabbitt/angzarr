@@ -95,12 +95,14 @@ pub async fn fetch_complete(
     root: Uuid,
 ) -> Result<EventBook> {
     let query = Query {
-        domain: domain.to_string(),
-        root: Some(ProtoUuid {
-            value: root.as_bytes().to_vec(),
+        cover: Some(crate::proto::Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
         }),
-        lower_bound: 0,
-        upper_bound: 0,
+        selection: None, // Full query - all events
     };
 
     let response = client.get_events(query).await?;
@@ -179,6 +181,11 @@ impl EventBookRepairer {
         repair_if_needed(&mut self.client, book).await
     }
 
+    /// Fetch a complete EventBook by domain and root.
+    pub async fn fetch_full(&mut self, domain: &str, root: Uuid) -> Result<EventBook> {
+        fetch_complete(&mut self.client, domain, root).await
+    }
+
     /// Check if an EventBook is complete.
     pub fn is_complete(&self, book: &EventBook) -> bool {
         is_complete(book)
@@ -208,6 +215,7 @@ mod tests {
             root: Some(ProtoUuid {
                 value: Uuid::new_v4().as_bytes().to_vec(),
             }),
+            correlation_id: String::new(),
         }
     }
 
@@ -217,7 +225,6 @@ mod tests {
             cover: Some(make_cover("test")),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -233,7 +240,6 @@ mod tests {
                 sequence: 5,
                 state: None,
             }),
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -246,7 +252,6 @@ mod tests {
             cover: Some(make_cover("test")),
             pages: vec![make_event(0), make_event(1), make_event(2)],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -259,7 +264,6 @@ mod tests {
             cover: Some(make_cover("test")),
             pages: vec![make_event(5), make_event(6)], // Missing 0-4
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -272,7 +276,6 @@ mod tests {
             cover: Some(make_cover("test")),
             pages: vec![make_event(3)], // Missing 0-2
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -288,10 +291,10 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -306,7 +309,6 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -320,10 +322,10 @@ mod tests {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: None,
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -333,11 +335,11 @@ mod tests {
 
     mod grpc_integration {
         use super::*;
-        use crate::storage::EventStore;
         use crate::proto::event_query_server::EventQueryServer;
         use crate::proto::Snapshot;
         use crate::services::EventQueryService;
         use crate::storage::mock::{MockEventStore, MockSnapshotStore};
+        use crate::storage::EventStore;
         use prost_types::Timestamp;
         use std::net::SocketAddr;
         use std::sync::Arc;
@@ -364,6 +366,7 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }
         }
 
@@ -372,7 +375,6 @@ mod tests {
                 cover: Some(make_cover(domain, root)),
                 snapshot: None,
                 pages: events,
-                correlation_id: String::new(),
                 snapshot_state: None,
             }
         }
@@ -425,6 +427,7 @@ mod tests {
                         test_event(3, "ItemAdded"),
                         test_event(4, "Completed"),
                     ],
+                    "",
                 )
                 .await
                 .unwrap();
@@ -476,7 +479,7 @@ mod tests {
             let events: Vec<EventPage> = (0..10)
                 .map(|i| test_event(i, &format!("Event{}", i)))
                 .collect();
-            event_store.add(domain, root, events).await.unwrap();
+            event_store.add(domain, root, events, "").await.unwrap();
 
             use crate::storage::SnapshotStore;
             snapshot_store

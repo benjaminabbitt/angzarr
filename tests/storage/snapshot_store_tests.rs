@@ -39,10 +39,7 @@ pub async fn test_get_nonexistent<S: SnapshotStore>(store: &S) {
     let domain = "test_snap_nonexist";
     let root = Uuid::new_v4();
 
-    let snapshot = store
-        .get(domain, root)
-        .await
-        .expect("get should succeed");
+    let snapshot = store.get(domain, root).await.expect("get should succeed");
     assert!(snapshot.is_none(), "nonexistent snapshot should be None");
 }
 

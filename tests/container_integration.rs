@@ -124,6 +124,7 @@ impl ContainerWorld {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id,
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -132,10 +133,7 @@ impl ContainerWorld {
                     value: command.encode_to_vec(),
                 }),
             }],
-            correlation_id,
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
@@ -228,12 +226,14 @@ async fn when_query_customer_events(world: &mut ContainerWorld) {
     let customer_id = world.current_customer_id.expect("No customer ID set");
 
     let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: customer_id.as_bytes().to_vec(),
+        cover: Some(Cover {
+            domain: "customer".to_string(),
+            root: Some(ProtoUuid {
+                value: customer_id.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
         }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
+        selection: None,
     };
 
     let client = world.get_query_client().await;
@@ -290,12 +290,14 @@ async fn then_aggregate_has_events(world: &mut ContainerWorld, domain: &str, exp
     .expect("No aggregate ID set");
 
     let query = Query {
-        domain: domain.to_string(),
-        root: Some(ProtoUuid {
-            value: root.as_bytes().to_vec(),
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
         }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
+        selection: None,
     };
 
     let client = world.get_query_client().await;
@@ -414,7 +416,11 @@ async fn when_create_customer_via_gateway(world: &mut ContainerWorld, name: Stri
         world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
     // Store correlation ID for later verification
-    let correlation_id = command_book.correlation_id.clone();
+    let correlation_id = command_book
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.clone())
+        .unwrap_or_default();
     world.correlation_ids.write().await.push(correlation_id);
 
     let client = world.get_gateway_client().await;
@@ -475,7 +481,9 @@ async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
     };
     let mut command_book =
         world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
-    command_book.correlation_id = "non-matching-correlation-id".to_string();
+    if let Some(ref mut cover) = command_book.cover {
+        cover.correlation_id = "non-matching-correlation-id".to_string();
+    }
 
     // This should timeout or return empty
     let client = world.get_gateway_client().await;
@@ -530,12 +538,21 @@ async fn then_same_correlation_id(world: &mut ContainerWorld) {
         return; // No events to check
     }
 
-    let first_corr_id = &events[0].correlation_id;
+    let first_corr_id = events[0]
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.as_str())
+        .unwrap_or("");
     for event in events.iter() {
+        let event_corr_id = event
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
         assert_eq!(
-            &event.correlation_id, first_corr_id,
+            event_corr_id, first_corr_id,
             "Expected all events to have correlation ID '{}', but found '{}'",
-            first_corr_id, event.correlation_id
+            first_corr_id, event_corr_id
         );
     }
 }

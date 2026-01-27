@@ -44,6 +44,9 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/accounting/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/logging/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projectors/web/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/e2e/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/e2e/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/process-manager-fulfillment/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/examples/rust/customer/target" />

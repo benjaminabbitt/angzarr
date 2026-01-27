@@ -4,7 +4,6 @@
 
 use prost::Message;
 
-use common::{AggregateLogic, BusinessError, Result};
 use angzarr::proto::{
     business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
     EventBook, EventPage,
@@ -14,6 +13,7 @@ use common::proto::{
     CreateShipment, Delivered, FulfillmentState, ItemsPacked, ItemsPicked, MarkPacked, MarkPicked,
     RecordDelivery, Ship, ShipmentCreated, Shipped,
 };
+use common::{AggregateLogic, BusinessError, Result};
 
 pub mod errmsg {
     pub const SHIPMENT_EXISTS: &str = "Shipment already exists";
@@ -448,7 +448,10 @@ impl FulfillmentLogic {
 
 #[tonic::async_trait]
 impl AggregateLogic for FulfillmentLogic {
-    async fn handle(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, tonic::Status> {
+    async fn handle(
+        &self,
+        cmd: ContextualCommand,
+    ) -> std::result::Result<BusinessResponse, tonic::Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -456,9 +459,7 @@ impl AggregateLogic for FulfillmentLogic {
         let next_seq = next_sequence(prior_events);
 
         let Some(cb) = command_book else {
-            return Err(BusinessError::Rejected(
-                errmsg::NO_COMMAND_PAGES.to_string(),
-            ).into());
+            return Err(BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()).into());
         };
 
         let command_page = cb
@@ -486,7 +487,8 @@ impl AggregateLogic for FulfillmentLogic {
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )).into());
+            ))
+            .into());
         };
 
         Ok(BusinessResponse {

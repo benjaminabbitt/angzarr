@@ -17,12 +17,12 @@ use uuid::Uuid;
 
 use angzarr::bus::ipc::{IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus};
 use angzarr::bus::{EventBus, EventHandler};
-use angzarr::embedded::{
-    AggregateHandler, ProjectorConfig, ProjectorHandler, RuntimeBuilder, SagaConfig, SagaHandler,
-};
 use angzarr::proto::{
     event_page, CommandBook, CommandPage, ContextualCommand, Cover, EventBook, EventPage,
     Projection, SagaResponse, Uuid as ProtoUuid,
+};
+use angzarr::standalone::{
+    AggregateHandler, ProjectorConfig, ProjectorHandler, RuntimeBuilder, SagaConfig, SagaHandler,
 };
 
 // ============================================================================
@@ -85,7 +85,6 @@ impl AggregateHandler for EchoAggregate {
             cover,
             pages: event_pages,
             snapshot: None,
-            correlation_id: command_book.correlation_id.clone(),
             snapshot_state: None,
         })
     }
@@ -148,6 +147,7 @@ fn create_test_command(domain: &str, root: Uuid, data: &[u8]) -> CommandBook {
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
+            correlation_id: Uuid::new_v4().to_string(),
         }),
         pages: vec![CommandPage {
             sequence: 0,
@@ -156,10 +156,7 @@ fn create_test_command(domain: &str, root: Uuid, data: &[u8]) -> CommandBook {
                 value: data.to_vec(),
             }),
         }],
-        correlation_id: Uuid::new_v4().to_string(),
         saga_origin: None,
-        auto_resequence: true,
-        fact: false,
     }
 }
 
@@ -170,6 +167,7 @@ fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventBook 
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
+            correlation_id: Uuid::new_v4().to_string(),
         }),
         pages: vec![EventPage {
             sequence: Some(event_page::Sequence::Num(sequence)),
@@ -180,7 +178,6 @@ fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventBook 
             created_at: None,
         }],
         snapshot: None,
-        correlation_id: Uuid::new_v4().to_string(),
         snapshot_state: None,
     }
 }
@@ -276,9 +273,13 @@ mod ipc_event_bus {
             .unwrap();
 
         // Create subscriber bus and handler
-        let subscriber = IpcEventBus::subscriber(base_path.clone(), "test-sub", vec!["orders".to_string()]);
+        let subscriber =
+            IpcEventBus::subscriber(base_path.clone(), "test-sub", vec!["orders".to_string()]);
         let handler_state = RecordingHandlerState::new();
-        subscriber.subscribe(Box::new(RecordingHandler::new(handler_state.clone()))).await.unwrap();
+        subscriber
+            .subscribe(Box::new(RecordingHandler::new(handler_state.clone())))
+            .await
+            .unwrap();
 
         // Start consumer in background (blocks until writer connects)
         let sub_clone = Arc::new(subscriber);
@@ -291,7 +292,8 @@ mod ipc_event_bus {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Create publisher with subscriber info
-        let publisher_config = IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
+        let publisher_config =
+            IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
         let publisher = IpcEventBus::new(publisher_config);
 
         // Publish event
@@ -323,9 +325,13 @@ mod ipc_event_bus {
             .unwrap();
 
         // Create subscriber
-        let subscriber = IpcEventBus::subscriber(base_path.clone(), "orders-only", vec!["orders".to_string()]);
+        let subscriber =
+            IpcEventBus::subscriber(base_path.clone(), "orders-only", vec!["orders".to_string()]);
         let handler_state = RecordingHandlerState::new();
-        subscriber.subscribe(Box::new(RecordingHandler::new(handler_state.clone()))).await.unwrap();
+        subscriber
+            .subscribe(Box::new(RecordingHandler::new(handler_state.clone())))
+            .await
+            .unwrap();
 
         let sub_clone = Arc::new(subscriber);
         let sub_for_task = sub_clone.clone();
@@ -336,7 +342,8 @@ mod ipc_event_bus {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Create publisher
-        let publisher_config = IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
+        let publisher_config =
+            IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
         let publisher = IpcEventBus::new(publisher_config);
 
         // Publish event to "orders" domain (should be received)
@@ -378,9 +385,13 @@ mod ipc_event_bus {
             .unwrap();
 
         // Create subscriber with wildcard
-        let subscriber = IpcEventBus::subscriber(base_path.clone(), "all-events", vec!["#".to_string()]);
+        let subscriber =
+            IpcEventBus::subscriber(base_path.clone(), "all-events", vec!["#".to_string()]);
         let handler_state = RecordingHandlerState::new();
-        subscriber.subscribe(Box::new(RecordingHandler::new(handler_state.clone()))).await.unwrap();
+        subscriber
+            .subscribe(Box::new(RecordingHandler::new(handler_state.clone())))
+            .await
+            .unwrap();
 
         let sub_clone = Arc::new(subscriber);
         let sub_for_task = sub_clone.clone();
@@ -391,7 +402,8 @@ mod ipc_event_bus {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Create publisher
-        let publisher_config = IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
+        let publisher_config =
+            IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
         let publisher = IpcEventBus::new(publisher_config);
 
         // Publish to multiple domains
@@ -427,13 +439,21 @@ mod ipc_event_bus {
             .unwrap();
 
         // Create subscribers
-        let subscriber_a = IpcEventBus::subscriber(base_path.clone(), "sub-a", vec!["orders".to_string()]);
+        let subscriber_a =
+            IpcEventBus::subscriber(base_path.clone(), "sub-a", vec!["orders".to_string()]);
         let handler_state_a = RecordingHandlerState::new();
-        subscriber_a.subscribe(Box::new(RecordingHandler::new(handler_state_a.clone()))).await.unwrap();
+        subscriber_a
+            .subscribe(Box::new(RecordingHandler::new(handler_state_a.clone())))
+            .await
+            .unwrap();
 
-        let subscriber_b = IpcEventBus::subscriber(base_path.clone(), "sub-b", vec!["orders".to_string()]);
+        let subscriber_b =
+            IpcEventBus::subscriber(base_path.clone(), "sub-b", vec!["orders".to_string()]);
         let handler_state_b = RecordingHandlerState::new();
-        subscriber_b.subscribe(Box::new(RecordingHandler::new(handler_state_b.clone()))).await.unwrap();
+        subscriber_b
+            .subscribe(Box::new(RecordingHandler::new(handler_state_b.clone())))
+            .await
+            .unwrap();
 
         // Start consumers
         let sub_a_clone = Arc::new(subscriber_a);
@@ -506,7 +526,8 @@ mod embedded_runtime {
 
         // Verify event was persisted
         let stored = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Failed to get events");
@@ -568,7 +589,11 @@ mod embedded_runtime {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let count = handler_state.received_count().await;
-        assert!(count >= 1, "Events should be published to channel bus (got {})", count);
+        assert!(
+            count >= 1,
+            "Events should be published to channel bus (got {})",
+            count
+        );
     }
 
     #[tokio::test]
@@ -587,13 +612,21 @@ mod embedded_runtime {
         // Execute commands on different aggregates
         for domain in ["orders", "products", "customers"] {
             let cmd = create_test_command(domain, Uuid::new_v4(), b"test");
-            let resp = client.execute(cmd).await.expect(&format!("{} command failed", domain));
+            let resp = client
+                .execute(cmd)
+                .await
+                .expect(&format!("{} command failed", domain));
             assert!(resp.events.is_some(), "{} should return events", domain);
         }
 
         // Verify events persisted in each domain
         for domain in ["orders", "products", "customers"] {
-            let roots = runtime.event_store().list_roots(domain).await.unwrap();
+            let roots = runtime
+                .event_store(domain)
+                .unwrap()
+                .list_roots(domain)
+                .await
+                .unwrap();
             assert_eq!(roots.len(), 1, "{} should have 1 aggregate root", domain);
         }
     }
@@ -618,7 +651,12 @@ mod embedded_runtime {
         }
 
         // Verify all events persisted with correct sequences
-        let events = runtime.event_store().get("orders", root).await.unwrap();
+        let events = runtime
+            .event_store("orders")
+            .unwrap()
+            .get("orders", root)
+            .await
+            .unwrap();
         assert_eq!(events.len(), 5, "Should have 5 events");
 
         // Verify sequences are 0-4
@@ -649,7 +687,8 @@ mod embedded_runtime {
 
         // Verify stored
         let stored = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Failed to get events");
@@ -670,13 +709,16 @@ mod embedded_runtime {
         let correlation_id = "test-correlation-123";
         let root = Uuid::new_v4();
         let mut command = create_test_command("orders", root, b"test");
-        command.correlation_id = correlation_id.to_string();
+        if let Some(ref mut cover) = command.cover {
+            cover.correlation_id = correlation_id.to_string();
+        }
 
         let response = client.execute(command).await.expect("Command failed");
 
         let events = response.events.expect("Should have events");
         assert_eq!(
-            events.correlation_id, correlation_id,
+            events.cover.as_ref().map(|c| c.correlation_id.as_str()).unwrap_or(""),
+            correlation_id,
             "Correlation ID should propagate to events"
         );
     }
@@ -774,7 +816,7 @@ mod event_book_repair {
         let events: Vec<EventPage> = (0..5)
             .map(|i| test_event(i, &format!("Event{}", i)))
             .collect();
-        event_store.add(domain, root, events).await.unwrap();
+        event_store.add(domain, root, events, "").await.unwrap();
 
         // Start EventQuery server
         let addr = start_event_query_server(event_store, snapshot_store).await;
@@ -791,10 +833,10 @@ mod event_book_repair {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![test_event(4, "Event4")],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -834,10 +876,10 @@ mod event_book_repair {
                 root: Some(ProtoUuid {
                     value: Uuid::new_v4().as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![test_event(0, "Created"), test_event(1, "Updated")],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -845,7 +887,10 @@ mod event_book_repair {
         assert!(repairer.is_complete(&complete));
 
         // Repair should return same book
-        let result = repairer.repair(complete.clone()).await.expect("Repair failed");
+        let result = repairer
+            .repair(complete.clone())
+            .await
+            .expect("Repair failed");
         assert_eq!(result.pages.len(), 2, "Should pass through unchanged");
     }
 
@@ -868,10 +913,10 @@ mod event_book_repair {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![test_event(5, "LateEvent")], // Missing 0-4
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -880,7 +925,10 @@ mod event_book_repair {
 
         // Empty book is considered complete
         assert!(repairer.is_complete(&repaired));
-        assert!(repaired.pages.is_empty(), "Should return empty for non-existent aggregate");
+        assert!(
+            repaired.pages.is_empty(),
+            "Should return empty for non-existent aggregate"
+        );
     }
 
     #[tokio::test]
@@ -898,7 +946,7 @@ mod event_book_repair {
         let events: Vec<EventPage> = (0..3)
             .map(|i| test_event(i, &format!("Event{}", i)))
             .collect();
-        event_store.add(domain, root, events).await.unwrap();
+        event_store.add(domain, root, events, "").await.unwrap();
 
         // Start EventQuery server
         let addr = start_event_query_server(event_store, snapshot_store).await;
@@ -922,10 +970,10 @@ mod event_book_repair {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![test_event(2, "Event2")],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -934,7 +982,11 @@ mod event_book_repair {
             .await
             .expect("Repair failed");
 
-        assert_eq!(repaired.pages.len(), 3, "Should have all 3 events after repair");
+        assert_eq!(
+            repaired.pages.len(),
+            3,
+            "Should have all 3 events after repair"
+        );
 
         // Clean up env var
         std::env::remove_var("EVENT_QUERY_ADDRESS");
@@ -955,7 +1007,7 @@ mod event_book_repair {
         let events: Vec<EventPage> = (0..2)
             .map(|i| test_event(i, &format!("ProductEvent{}", i)))
             .collect();
-        event_store.add(domain, root, events).await.unwrap();
+        event_store.add(domain, root, events, "").await.unwrap();
 
         // Start EventQuery server
         let addr = start_event_query_server(event_store, snapshot_store).await;
@@ -979,10 +1031,10 @@ mod event_book_repair {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![test_event(1, "ProductEvent1")],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -991,7 +1043,11 @@ mod event_book_repair {
             .await
             .expect("Repair failed");
 
-        assert_eq!(repaired.pages.len(), 2, "Should have all 2 events after repair");
+        assert_eq!(
+            repaired.pages.len(),
+            2,
+            "Should have all 2 events after repair"
+        );
     }
 }
 
@@ -1036,7 +1092,6 @@ impl AggregateHandler for MultiEventAggregate {
             cover,
             pages,
             snapshot: None,
-            correlation_id: command_book.correlation_id.clone(),
             snapshot_state: None,
         })
     }
@@ -1090,7 +1145,6 @@ mod grpc_over_uds {
                     created_at: None,
                 }],
                 snapshot: None,
-                correlation_id: cmd.correlation_id,
                 snapshot_state: None,
             };
 
@@ -1117,7 +1171,6 @@ mod grpc_over_uds {
                     created_at: None,
                 }],
                 snapshot: None,
-                correlation_id: cmd.correlation_id,
                 snapshot_state: None,
             };
 
@@ -1199,8 +1252,11 @@ mod grpc_over_uds {
                     .expect("Failed to connect");
                 let mut client = AggregateCoordinatorClient::new(channel);
 
-                let command =
-                    create_test_command("orders", Uuid::new_v4(), format!("request-{}", i).as_bytes());
+                let command = create_test_command(
+                    "orders",
+                    Uuid::new_v4(),
+                    format!("request-{}", i).as_bytes(),
+                );
                 client.handle(command).await.expect("RPC failed")
             });
             handles.push(handle);
@@ -1239,7 +1295,8 @@ mod grpc_over_uds {
         }
 
         // Socket file may still exist - prepare_uds_socket should clean it up
-        let _guard = prepare_uds_socket(&socket_path).expect("Should be able to prepare socket again");
+        let _guard =
+            prepare_uds_socket(&socket_path).expect("Should be able to prepare socket again");
         let uds = UnixListener::bind(&socket_path).expect("Should be able to bind again");
         let uds_stream = UnixListenerStream::new(uds);
 
@@ -1259,7 +1316,10 @@ mod grpc_over_uds {
         let mut client = AggregateCoordinatorClient::new(channel);
 
         let command = create_test_command("orders", Uuid::new_v4(), b"after-restart");
-        let response = client.handle(command).await.expect("RPC to restarted server failed");
+        let response = client
+            .handle(command)
+            .await
+            .expect("RPC to restarted server failed");
         assert!(response.into_inner().events.is_some());
 
         server_task.abort();
@@ -1273,8 +1333,8 @@ mod grpc_over_uds {
 
 mod saga_activation {
     use super::*;
-    use angzarr::embedded::{SagaConfig, SagaHandler};
     use angzarr::proto::SagaResponse;
+    use angzarr::standalone::{SagaConfig, SagaHandler};
     use std::sync::atomic::AtomicBool;
 
     /// Saga that produces a command when it sees an OrderPlaced event.
@@ -1298,22 +1358,35 @@ mod saga_activation {
 
     #[async_trait]
     impl SagaHandler for FulfillmentSaga {
-        async fn handle(&self, events: &EventBook) -> Result<SagaResponse, Status> {
+        /// This saga doesn't need destination state - returns empty covers
+        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+            Ok(vec![])
+        }
+
+        async fn execute(
+            &self,
+            source: &EventBook,
+            _destinations: &[EventBook],
+        ) -> Result<SagaResponse, Status> {
             self.triggered.store(true, Ordering::SeqCst);
 
             let mut commands = Vec::new();
 
             // For each event, produce a command to another domain
-            for page in &events.pages {
+            let source_correlation_id = source
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.clone())
+                .unwrap_or_default();
+
+            for page in &source.pages {
                 if let Some(event) = &page.event {
                     if event.type_url.contains("OrderPlaced") {
                         let cmd = CommandBook {
                             cover: Some(Cover {
                                 domain: self.command_domain.clone(),
-                                root: events
-                                    .cover
-                                    .as_ref()
-                                    .and_then(|c| c.root.clone()),
+                                root: source.cover.as_ref().and_then(|c| c.root.clone()),
+                                correlation_id: source_correlation_id.clone(),
                             }),
                             pages: vec![CommandPage {
                                 sequence: 0,
@@ -1322,10 +1395,7 @@ mod saga_activation {
                                     value: event.value.clone(),
                                 }),
                             }],
-                            correlation_id: events.correlation_id.clone(),
-                            saga_origin: None,
-                            auto_resequence: true,
-                            fact: false,
+                            ..Default::default()
                         };
                         commands.push(cmd);
                     }
@@ -1351,7 +1421,7 @@ mod saga_activation {
             .register_saga(
                 "fulfillment",
                 SagaWrapper(saga_clone),
-                SagaConfig::default().with_domains(vec!["orders".to_string()]),
+                SagaConfig::new("orders", "inventory"),
             )
             .build()
             .await
@@ -1423,12 +1493,12 @@ mod saga_activation {
             .register_saga(
                 "orders-saga",
                 SagaWrapper(orders_saga_clone),
-                SagaConfig::default().with_domains(vec!["orders".to_string()]),
+                SagaConfig::new("orders", "inventory"),
             )
             .register_saga(
                 "products-saga",
                 SagaWrapper(products_saga_clone),
-                SagaConfig::default().with_domains(vec!["products".to_string()]),
+                SagaConfig::new("products", "warehouse"),
             )
             .build()
             .await
@@ -1445,7 +1515,10 @@ mod saga_activation {
             type_url: "orders.OrderPlaced".to_string(),
             value: b"order".to_vec(),
         });
-        client.execute(orders_cmd).await.expect("Orders command failed");
+        client
+            .execute(orders_cmd)
+            .await
+            .expect("Orders command failed");
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -1490,7 +1563,7 @@ mod saga_activation {
             .register_saga(
                 "fulfillment",
                 SagaWrapper(saga_clone),
-                SagaConfig::default().with_domains(vec!["orders".to_string()]),
+                SagaConfig::new("orders", "inventory"),
             )
             .build()
             .await
@@ -1512,7 +1585,9 @@ mod saga_activation {
 
         let correlation_id = "saga-correlation-test-123";
         let mut command = create_test_command("orders", Uuid::new_v4(), b"order");
-        command.correlation_id = correlation_id.to_string();
+        if let Some(ref mut cover) = command.cover {
+            cover.correlation_id = correlation_id.to_string();
+        }
         command.pages[0].command = Some(Any {
             type_url: "orders.OrderPlaced".to_string(),
             value: b"order".to_vec(),
@@ -1525,8 +1600,13 @@ mod saga_activation {
 
         // All events (from both orders and inventory) should have same correlation ID
         for event in &events {
+            let event_correlation_id = event
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.as_str())
+                .unwrap_or("");
             assert_eq!(
-                event.correlation_id, correlation_id,
+                event_correlation_id, correlation_id,
                 "All events should preserve correlation ID"
             );
         }
@@ -1537,9 +1617,590 @@ mod saga_activation {
 
     #[async_trait]
     impl SagaHandler for SagaWrapper {
-        async fn handle(&self, events: &EventBook) -> Result<SagaResponse, Status> {
-            self.0.handle(events).await
+        async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
+            self.0.prepare(source).await
         }
+
+        async fn execute(
+            &self,
+            source: &EventBook,
+            destinations: &[EventBook],
+        ) -> Result<SagaResponse, Status> {
+            self.0.execute(source, destinations).await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_saga_rejects_command_to_wrong_output_domain() {
+        // Saga configured to output to "inventory" but tries to send to "shipping"
+        let saga = Arc::new(FulfillmentSaga::new("shipping")); // produces commands to "shipping"
+        let saga_clone = saga.clone();
+
+        let mut runtime = RuntimeBuilder::new()
+            .with_sqlite_memory()
+            .register_aggregate("orders", EchoAggregate::new())
+            .register_aggregate("shipping", EchoAggregate::new())
+            .register_saga(
+                "fulfillment",
+                SagaWrapper(saga_clone),
+                SagaConfig::new("orders", "inventory"), // but config says output to "inventory"
+            )
+            .build()
+            .await
+            .expect("Failed to build runtime");
+
+        runtime.start().await.expect("Failed to start runtime");
+
+        // Record events to verify shipping doesn't receive commands
+        let channel_bus = runtime.channel_bus();
+        let handler_state = RecordingHandlerState::new();
+        let subscriber = channel_bus.with_config(angzarr::bus::ChannelConfig::subscriber_all());
+        subscriber
+            .subscribe(Box::new(RecordingHandler::new(handler_state.clone())))
+            .await
+            .unwrap();
+        subscriber.start_consuming().await.unwrap();
+
+        let client = runtime.command_client();
+
+        // Execute command that triggers saga
+        let mut cmd = create_test_command("orders", Uuid::new_v4(), b"order");
+        cmd.pages[0].command = Some(Any {
+            type_url: "orders.OrderPlaced".to_string(),
+            value: b"order".to_vec(),
+        });
+        client.execute(cmd).await.expect("Command failed");
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Verify that shipping did NOT receive any events
+        // (the saga command should have been rejected due to domain mismatch)
+        let events = handler_state.get_events().await;
+        let shipping_events: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                e.cover
+                    .as_ref()
+                    .map(|c| c.domain == "shipping")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        assert!(
+            shipping_events.is_empty(),
+            "Shipping should NOT receive events when saga targets wrong output domain"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_saga_only_receives_events_from_input_domain() {
+        let orders_saga = Arc::new(FulfillmentSaga::new("inventory"));
+        let orders_saga_clone = orders_saga.clone();
+
+        let mut runtime = RuntimeBuilder::new()
+            .with_sqlite_memory()
+            .register_aggregate("orders", EchoAggregate::new())
+            .register_aggregate("products", EchoAggregate::new())
+            .register_aggregate("inventory", EchoAggregate::new())
+            .register_saga(
+                "orders-saga",
+                SagaWrapper(orders_saga_clone),
+                SagaConfig::new("orders", "inventory"), // only listens to "orders"
+            )
+            .build()
+            .await
+            .expect("Failed to build runtime");
+
+        runtime.start().await.expect("Failed to start runtime");
+
+        let client = runtime.command_client();
+
+        // Execute command on "products" domain (saga should NOT be triggered)
+        let mut products_cmd = create_test_command("products", Uuid::new_v4(), b"product");
+        products_cmd.pages[0].command = Some(Any {
+            type_url: "products.OrderPlaced".to_string(), // Even with matching event type
+            value: b"product".to_vec(),
+        });
+        client
+            .execute(products_cmd)
+            .await
+            .expect("Products command failed");
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Saga should NOT have been triggered (wrong input domain)
+        assert!(
+            !orders_saga.was_triggered(),
+            "Saga should NOT be triggered for products domain (input_domain is 'orders')"
+        );
+
+        // Now execute on "orders" domain
+        let mut orders_cmd = create_test_command("orders", Uuid::new_v4(), b"order");
+        orders_cmd.pages[0].command = Some(Any {
+            type_url: "orders.OrderPlaced".to_string(),
+            value: b"order".to_vec(),
+        });
+        client
+            .execute(orders_cmd)
+            .await
+            .expect("Orders command failed");
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Now saga should have been triggered
+        assert!(
+            orders_saga.was_triggered(),
+            "Saga SHOULD be triggered for orders domain"
+        );
+    }
+
+    // ========================================================================
+    // Two-Phase Protocol Tests: Demonstrating Three Saga Outcomes
+    // ========================================================================
+
+    /// Outcome 1: Saga needs destination state
+    /// - prepare() returns covers of aggregates to fetch
+    /// - framework fetches those EventBooks from event store
+    /// - execute() receives source + destinations
+    #[tokio::test]
+    async fn test_two_phase_saga_fetches_destinations() {
+        use std::sync::atomic::AtomicBool;
+
+        // Track whether prepare and execute were called with correct data
+        let prepare_called = Arc::new(AtomicBool::new(false));
+        let execute_called = Arc::new(AtomicBool::new(false));
+        let destinations_received = Arc::new(AtomicBool::new(false));
+
+        let prepare_called_clone = prepare_called.clone();
+        let execute_called_clone = execute_called.clone();
+        let destinations_received_clone = destinations_received.clone();
+
+        /// Saga that needs to check inventory state before reserving
+        struct InventoryCheckingSaga {
+            prepare_called: Arc<AtomicBool>,
+            execute_called: Arc<AtomicBool>,
+            destinations_received: Arc<AtomicBool>,
+            inventory_root: Uuid,
+        }
+
+        #[async_trait]
+        impl SagaHandler for InventoryCheckingSaga {
+            async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
+                self.prepare_called.store(true, Ordering::SeqCst);
+
+                // Check if this is an OrderPlaced event
+                let has_order_placed = source.pages.iter().any(|p| {
+                    p.event
+                        .as_ref()
+                        .map(|e| e.type_url.contains("OrderPlaced"))
+                        .unwrap_or(false)
+                });
+
+                if has_order_placed {
+                    // Request the inventory aggregate's current state
+                    Ok(vec![Cover {
+                        domain: "inventory".to_string(),
+                        root: Some(ProtoUuid {
+                            value: self.inventory_root.as_bytes().to_vec(),
+                        }),
+                        correlation_id: String::new(),
+                    }])
+                } else {
+                    Ok(vec![])
+                }
+            }
+
+            async fn execute(
+                &self,
+                source: &EventBook,
+                destinations: &[EventBook],
+            ) -> Result<SagaResponse, Status> {
+                self.execute_called.store(true, Ordering::SeqCst);
+
+                // Verify we received the correct destination state
+                if !destinations.is_empty() {
+                    self.destinations_received.store(true, Ordering::SeqCst);
+
+                    // Validate the destination is the inventory aggregate we requested
+                    let dest = &destinations[0];
+                    let cover = dest.cover.as_ref().expect("Destination should have cover");
+                    assert_eq!(cover.domain, "inventory", "Should fetch inventory domain");
+
+                    let root = cover.root.as_ref().expect("Destination should have root");
+                    let fetched_root = Uuid::from_slice(&root.value).unwrap();
+                    assert_eq!(
+                        fetched_root, self.inventory_root,
+                        "Should fetch the exact aggregate we requested in prepare()"
+                    );
+
+                    // Verify it has the event we created earlier
+                    assert!(
+                        !dest.pages.is_empty(),
+                        "Destination should have events from the inventory aggregate we created"
+                    );
+                    let first_event = dest.pages[0].event.as_ref().expect("Should have event");
+                    assert!(
+                        first_event.type_url.contains("CreateProduct"),
+                        "Fetched inventory should contain the CreateProduct event we stored"
+                    );
+                }
+
+                // Generate reservation command based on inventory state
+                let has_order_placed = source.pages.iter().any(|p| {
+                    p.event
+                        .as_ref()
+                        .map(|e| e.type_url.contains("OrderPlaced"))
+                        .unwrap_or(false)
+                });
+
+                if has_order_placed {
+                    let source_correlation_id = source
+                        .cover
+                        .as_ref()
+                        .map(|c| c.correlation_id.clone())
+                        .unwrap_or_default();
+                    Ok(SagaResponse {
+                        commands: vec![CommandBook {
+                            cover: Some(Cover {
+                                domain: "inventory".to_string(),
+                                root: source.cover.as_ref().and_then(|c| c.root.clone()),
+                                correlation_id: source_correlation_id,
+                            }),
+                            pages: vec![CommandPage {
+                                sequence: 0,
+                                command: Some(Any {
+                                    type_url: "inventory.Reserve".to_string(),
+                                    value: b"reserve".to_vec(),
+                                }),
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    })
+                } else {
+                    Ok(SagaResponse::default())
+                }
+            }
+        }
+
+        let inventory_root = Uuid::new_v4();
+        let saga = InventoryCheckingSaga {
+            prepare_called: prepare_called_clone,
+            execute_called: execute_called_clone,
+            destinations_received: destinations_received_clone,
+            inventory_root,
+        };
+
+        let mut runtime = RuntimeBuilder::new()
+            .with_sqlite_memory()
+            .register_aggregate("orders", EchoAggregate::new())
+            .register_aggregate("inventory", EchoAggregate::new())
+            .register_saga(
+                "inventory-checker",
+                saga,
+                SagaConfig::new("orders", "inventory"),
+            )
+            .build()
+            .await
+            .expect("Failed to build runtime");
+
+        runtime.start().await.expect("Failed to start runtime");
+
+        // First, create some inventory state so there's something to fetch
+        let client = runtime.command_client();
+        let inv_cmd = CommandBook {
+            cover: Some(Cover {
+                domain: "inventory".to_string(),
+                root: Some(ProtoUuid {
+                    value: inventory_root.as_bytes().to_vec(),
+                }),
+                correlation_id: "setup".to_string(),
+            }),
+            pages: vec![CommandPage {
+                sequence: 0,
+                command: Some(Any {
+                    type_url: "inventory.CreateProduct".to_string(),
+                    value: b"product-data".to_vec(),
+                }),
+            }],
+            ..Default::default()
+        };
+        client
+            .execute(inv_cmd)
+            .await
+            .expect("Inventory setup failed");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Now execute an order (triggers saga)
+        let mut order_cmd = create_test_command("orders", Uuid::new_v4(), b"order-data");
+        order_cmd.pages[0].command = Some(Any {
+            type_url: "orders.OrderPlaced".to_string(),
+            value: b"order-data".to_vec(),
+        });
+        client.execute(order_cmd).await.expect("Order failed");
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Verify two-phase protocol was followed
+        assert!(
+            prepare_called.load(Ordering::SeqCst),
+            "prepare() should have been called"
+        );
+        assert!(
+            execute_called.load(Ordering::SeqCst),
+            "execute() should have been called"
+        );
+        assert!(
+            destinations_received.load(Ordering::SeqCst),
+            "execute() should have received destination EventBooks from prepare()"
+        );
+    }
+
+    /// Outcome 2: Saga doesn't need destination state
+    /// - prepare() returns empty vec
+    /// - framework calls execute() immediately (no fetch)
+    /// - execute() produces commands from source events only
+    #[tokio::test]
+    async fn test_two_phase_saga_no_destinations_needed() {
+        use std::sync::atomic::AtomicBool;
+
+        let prepare_called = Arc::new(AtomicBool::new(false));
+        let execute_called = Arc::new(AtomicBool::new(false));
+
+        let prepare_called_clone = prepare_called.clone();
+        let execute_called_clone = execute_called.clone();
+
+        /// Simple saga that doesn't need any destination state
+        struct SimpleFulfillmentSaga {
+            prepare_called: Arc<AtomicBool>,
+            execute_called: Arc<AtomicBool>,
+        }
+
+        #[async_trait]
+        impl SagaHandler for SimpleFulfillmentSaga {
+            async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+                self.prepare_called.store(true, Ordering::SeqCst);
+                // No destinations needed - we just react to events
+                Ok(vec![])
+            }
+
+            async fn execute(
+                &self,
+                source: &EventBook,
+                destinations: &[EventBook],
+            ) -> Result<SagaResponse, Status> {
+                self.execute_called.store(true, Ordering::SeqCst);
+
+                // Verify no destinations were passed (since we didn't request any)
+                assert!(
+                    destinations.is_empty(),
+                    "Should receive no destinations when prepare() returns empty"
+                );
+
+                // Produce command based only on source events
+                let has_order = source.pages.iter().any(|p| {
+                    p.event
+                        .as_ref()
+                        .map(|e| e.type_url.contains("OrderPlaced"))
+                        .unwrap_or(false)
+                });
+
+                if has_order {
+                    let source_correlation_id = source
+                        .cover
+                        .as_ref()
+                        .map(|c| c.correlation_id.clone())
+                        .unwrap_or_default();
+                    Ok(SagaResponse {
+                        commands: vec![CommandBook {
+                            cover: Some(Cover {
+                                domain: "shipping".to_string(),
+                                root: source.cover.as_ref().and_then(|c| c.root.clone()),
+                                correlation_id: source_correlation_id,
+                            }),
+                            pages: vec![CommandPage {
+                                sequence: 0,
+                                command: Some(Any {
+                                    type_url: "shipping.CreateShipment".to_string(),
+                                    value: b"ship".to_vec(),
+                                }),
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    })
+                } else {
+                    Ok(SagaResponse::default())
+                }
+            }
+        }
+
+        let saga = SimpleFulfillmentSaga {
+            prepare_called: prepare_called_clone,
+            execute_called: execute_called_clone,
+        };
+
+        let mut runtime = RuntimeBuilder::new()
+            .with_sqlite_memory()
+            .register_aggregate("orders", EchoAggregate::new())
+            .register_aggregate("shipping", EchoAggregate::new())
+            .register_saga(
+                "simple-fulfillment",
+                saga,
+                SagaConfig::new("orders", "shipping"),
+            )
+            .build()
+            .await
+            .expect("Failed to build runtime");
+
+        runtime.start().await.expect("Failed to start runtime");
+
+        let client = runtime.command_client();
+        let mut cmd = create_test_command("orders", Uuid::new_v4(), b"order");
+        cmd.pages[0].command = Some(Any {
+            type_url: "orders.OrderPlaced".to_string(),
+            value: b"order".to_vec(),
+        });
+        client.execute(cmd).await.expect("Command failed");
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        assert!(
+            prepare_called.load(Ordering::SeqCst),
+            "prepare() should have been called"
+        );
+        assert!(
+            execute_called.load(Ordering::SeqCst),
+            "execute() should have been called"
+        );
+    }
+
+    /// Outcome 3: Saga doesn't act on this event (no-op)
+    /// - prepare() may or may not be called
+    /// - execute() returns empty commands vec
+    /// - No commands are executed
+    #[tokio::test]
+    async fn test_two_phase_saga_noop_returns_empty_commands() {
+        use std::sync::atomic::AtomicBool;
+
+        let execute_called = Arc::new(AtomicBool::new(false));
+        let execute_called_clone = execute_called.clone();
+
+        /// Saga that only acts on specific events - returns empty for others
+        struct SelectiveSaga {
+            execute_called: Arc<AtomicBool>,
+        }
+
+        #[async_trait]
+        impl SagaHandler for SelectiveSaga {
+            async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+                Ok(vec![])
+            }
+
+            async fn execute(
+                &self,
+                source: &EventBook,
+                _destinations: &[EventBook],
+            ) -> Result<SagaResponse, Status> {
+                self.execute_called.store(true, Ordering::SeqCst);
+
+                // Only act on "SpecialEvent", ignore everything else
+                let has_special = source.pages.iter().any(|p| {
+                    p.event
+                        .as_ref()
+                        .map(|e| e.type_url.contains("SpecialEvent"))
+                        .unwrap_or(false)
+                });
+
+                if has_special {
+                    let source_correlation_id = source
+                        .cover
+                        .as_ref()
+                        .map(|c| c.correlation_id.clone())
+                        .unwrap_or_default();
+                    Ok(SagaResponse {
+                        commands: vec![CommandBook {
+                            cover: Some(Cover {
+                                domain: "target".to_string(),
+                                root: source.cover.as_ref().and_then(|c| c.root.clone()),
+                                correlation_id: source_correlation_id,
+                            }),
+                            pages: vec![CommandPage {
+                                sequence: 0,
+                                command: Some(Any {
+                                    type_url: "target.DoSomething".to_string(),
+                                    value: b"data".to_vec(),
+                                }),
+                            }],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    })
+                } else {
+                    // No-op: return empty commands
+                    Ok(SagaResponse::default())
+                }
+            }
+        }
+
+        let saga = SelectiveSaga {
+            execute_called: execute_called_clone,
+        };
+
+        let mut runtime = RuntimeBuilder::new()
+            .with_sqlite_memory()
+            .register_aggregate("orders", EchoAggregate::new())
+            .register_aggregate("target", EchoAggregate::new())
+            .register_saga("selective-saga", saga, SagaConfig::new("orders", "target"))
+            .build()
+            .await
+            .expect("Failed to build runtime");
+
+        runtime.start().await.expect("Failed to start runtime");
+
+        // Record events to verify no target commands were executed
+        let channel_bus = runtime.channel_bus();
+        let handler_state = RecordingHandlerState::new();
+        let subscriber = channel_bus.with_config(angzarr::bus::ChannelConfig::subscriber_all());
+        subscriber
+            .subscribe(Box::new(RecordingHandler::new(handler_state.clone())))
+            .await
+            .unwrap();
+        subscriber.start_consuming().await.unwrap();
+
+        let client = runtime.command_client();
+
+        // Execute a non-special event
+        let mut cmd = create_test_command("orders", Uuid::new_v4(), b"regular");
+        cmd.pages[0].command = Some(Any {
+            type_url: "orders.RegularEvent".to_string(), // NOT "SpecialEvent"
+            value: b"regular".to_vec(),
+        });
+        client.execute(cmd).await.expect("Command failed");
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        assert!(
+            execute_called.load(Ordering::SeqCst),
+            "execute() should still be called even for no-op"
+        );
+
+        // Verify no commands went to target domain
+        let events = handler_state.get_events().await;
+        let target_events: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                e.cover
+                    .as_ref()
+                    .map(|c| c.domain == "target")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        assert!(
+            target_events.is_empty(),
+            "No events should go to target domain when saga returns empty commands (no-op)"
+        );
     }
 }
 
@@ -1549,8 +2210,8 @@ mod saga_activation {
 
 mod projector_activation {
     use super::*;
-    use angzarr::embedded::{ProjectorConfig, ProjectorHandler};
     use angzarr::proto::Projection;
+    use angzarr::standalone::{ProjectorConfig, ProjectorHandler};
     use std::sync::atomic::AtomicBool;
 
     /// Projector that records events for verification.
@@ -1765,8 +2426,16 @@ mod projector_activation {
         let mut runtime = RuntimeBuilder::new()
             .with_sqlite_memory()
             .register_aggregate("orders", EchoAggregate::new())
-            .register_projector("projector-a", ProjectorWrapper(clone_a), ProjectorConfig::async_())
-            .register_projector("projector-b", ProjectorWrapper(clone_b), ProjectorConfig::async_())
+            .register_projector(
+                "projector-a",
+                ProjectorWrapper(clone_a),
+                ProjectorConfig::async_(),
+            )
+            .register_projector(
+                "projector-b",
+                ProjectorWrapper(clone_b),
+                ProjectorConfig::async_(),
+            )
             .build()
             .await
             .expect("Failed to build runtime");
@@ -1788,8 +2457,16 @@ mod projector_activation {
         let count_a = projector_a.received_count().await;
         let count_b = projector_b.received_count().await;
 
-        assert!(count_a >= 1, "Projector A should receive event (got {})", count_a);
-        assert!(count_b >= 1, "Projector B should receive event (got {})", count_b);
+        assert!(
+            count_a >= 1,
+            "Projector A should receive event (got {})",
+            count_a
+        );
+        assert!(
+            count_b >= 1,
+            "Projector B should receive event (got {})",
+            count_b
+        );
     }
 
     #[tokio::test]
@@ -1826,7 +2503,10 @@ mod projector_activation {
         );
 
         let projection = &response.projections[0];
-        assert_eq!(projection.projector, "output", "Projector name should match");
+        assert_eq!(
+            projection.projector, "output",
+            "Projector name should match"
+        );
     }
 
     /// Wrapper for RecordingProjector.
@@ -1856,8 +2536,8 @@ mod projector_activation {
 
 mod streaming {
     use super::*;
-    use angzarr::embedded::{ProjectorConfig, ProjectorHandler};
     use angzarr::proto::Projection;
+    use angzarr::standalone::{ProjectorConfig, ProjectorHandler};
 
     /// Projector that produces streaming output.
     struct StreamingProjector;
@@ -1903,7 +2583,8 @@ mod streaming {
 
         // Execute multiple commands
         for i in 0..3 {
-            let cmd = create_test_command("orders", Uuid::new_v4(), format!("stream-{}", i).as_bytes());
+            let cmd =
+                create_test_command("orders", Uuid::new_v4(), format!("stream-{}", i).as_bytes());
             client.execute(cmd).await.expect("Command failed");
         }
 
@@ -1911,7 +2592,12 @@ mod streaming {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let events = handler_state.get_events().await;
-        assert_eq!(events.len(), 3, "Should receive all 3 events for streaming (got {})", events.len());
+        assert_eq!(
+            events.len(),
+            3,
+            "Should receive all 3 events for streaming (got {})",
+            events.len()
+        );
     }
 
     #[tokio::test]
@@ -1937,23 +2623,33 @@ mod streaming {
 
         let correlation_id = "streaming-correlation-123";
         let mut command = create_test_command("orders", Uuid::new_v4(), b"stream-test");
-        command.correlation_id = correlation_id.to_string();
+        if let Some(ref mut cover) = command.cover {
+            cover.correlation_id = correlation_id.to_string();
+        }
 
         let response = client.execute(command).await.expect("Command failed");
 
         // Response events should have correlation ID
-        assert_eq!(
-            response.events.as_ref().unwrap().correlation_id,
-            correlation_id
-        );
+        let response_correlation_id = response
+            .events
+            .as_ref()
+            .and_then(|e| e.cover.as_ref())
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
+        assert_eq!(response_correlation_id, correlation_id);
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Events on bus should have correlation ID
         let events = handler_state.get_events().await;
         for event in &events {
+            let event_correlation_id = event
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.as_str())
+                .unwrap_or("");
             assert_eq!(
-                event.correlation_id, correlation_id,
+                event_correlation_id, correlation_id,
                 "Streamed events should preserve correlation ID"
             );
         }
@@ -2047,43 +2743,6 @@ mod concurrent_commands {
     use super::*;
 
     #[tokio::test]
-    async fn test_sequential_commands_same_aggregate_auto_resequence() {
-        // Test auto_resequence with sequential commands to same aggregate
-        let runtime = RuntimeBuilder::new()
-            .with_sqlite_memory()
-            .register_aggregate("orders", EchoAggregate::new())
-            .build()
-            .await
-            .expect("Failed to build runtime");
-
-        let client = runtime.command_client();
-        let root = Uuid::new_v4();
-
-        // Execute commands sequentially with auto_resequence enabled
-        let total = 10;
-        for i in 0..total {
-            let mut cmd = create_test_command("orders", root, format!("seq-{}", i).as_bytes());
-            cmd.auto_resequence = true;
-            client.execute(cmd).await.expect(&format!("Command {} failed", i));
-        }
-
-        let events = runtime.event_store().get("orders", root).await.unwrap();
-        assert_eq!(events.len(), total, "Should have {} events", total);
-
-        // Verify sequences are unique and contiguous
-        let mut seqs: Vec<u32> = events
-            .iter()
-            .filter_map(|e| match &e.sequence {
-                Some(event_page::Sequence::Num(n)) => Some(*n),
-                _ => None,
-            })
-            .collect();
-        seqs.sort();
-        let expected: Vec<u32> = (0..total as u32).collect();
-        assert_eq!(seqs, expected, "Sequences should be 0-{}", total - 1);
-    }
-
-    #[tokio::test]
     async fn test_sequential_commands_different_aggregates() {
         // Test commands to different aggregates execute independently
         let runtime = RuntimeBuilder::new()
@@ -2110,7 +2769,12 @@ mod concurrent_commands {
 
         // Verify each aggregate has exactly one event at sequence 0
         for (root, _) in &results {
-            let events = runtime.event_store().get("orders", *root).await.unwrap();
+            let events = runtime
+                .event_store("orders")
+                .unwrap()
+                .get("orders", *root)
+                .await
+                .unwrap();
             assert_eq!(events.len(), 1);
             if let Some(event_page::Sequence::Num(seq)) = &events[0].sequence {
                 assert_eq!(*seq, 0, "First event should be sequence 0");
@@ -2133,10 +2797,18 @@ mod concurrent_commands {
         // Execute commands rapidly in sequence (no sleep between)
         for i in 0..50 {
             let cmd = create_test_command("orders", root, format!("rapid-{}", i).as_bytes());
-            client.execute(cmd).await.expect(&format!("Command {} failed", i));
+            client
+                .execute(cmd)
+                .await
+                .expect(&format!("Command {} failed", i));
         }
 
-        let events = runtime.event_store().get("orders", root).await.unwrap();
+        let events = runtime
+            .event_store("orders")
+            .unwrap()
+            .get("orders", root)
+            .await
+            .unwrap();
         assert_eq!(events.len(), 50, "Should have 50 events");
     }
 }
@@ -2148,8 +2820,7 @@ mod concurrent_commands {
 mod lossy_bus {
     use super::*;
     use angzarr::bus::{
-        ChannelConfig, ChannelEventBus, EventBus, EventHandler, PublishResult,
-        Result as BusResult,
+        ChannelConfig, ChannelEventBus, EventBus, EventHandler, PublishResult, Result as BusResult,
     };
     use std::sync::atomic::AtomicUsize;
 
@@ -2241,7 +2912,8 @@ mod lossy_bus {
 
         // Execute commands
         for i in 0..10 {
-            let cmd = create_test_command("orders", Uuid::new_v4(), format!("lossy-{}", i).as_bytes());
+            let cmd =
+                create_test_command("orders", Uuid::new_v4(), format!("lossy-{}", i).as_bytes());
             client.execute(cmd).await.expect("Command failed");
         }
 
@@ -2249,7 +2921,10 @@ mod lossy_bus {
 
         // With passthrough, all events should be received
         let count = handler_state.received_count().await;
-        assert_eq!(count, 10, "All events should be received in passthrough mode");
+        assert_eq!(
+            count, 10,
+            "All events should be received in passthrough mode"
+        );
     }
 
     #[tokio::test]
@@ -2285,19 +2960,28 @@ mod lossy_bus {
 
         // Execute 10 commands
         for i in 0..10 {
-            let cmd = create_test_command("orders", Uuid::new_v4(), format!("lossy-{}", i).as_bytes());
+            let cmd =
+                create_test_command("orders", Uuid::new_v4(), format!("lossy-{}", i).as_bytes());
             client.execute(cmd).await.expect("Command failed");
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Events should still be persisted (lossy is only for pub/sub, not storage)
-        let roots = runtime.event_store().list_roots("orders").await.unwrap();
+        let roots = runtime
+            .event_store("orders")
+            .unwrap()
+            .list_roots("orders")
+            .await
+            .unwrap();
         assert_eq!(roots.len(), 10, "All events should be persisted to storage");
 
         // Exactly half should be received (deterministic: drop every 2nd)
         let received = handler_state.received_count().await;
-        assert_eq!(received, 5, "Should receive exactly 5 events (every other dropped)");
+        assert_eq!(
+            received, 5,
+            "Should receive exactly 5 events (every other dropped)"
+        );
     }
 
     #[tokio::test]
@@ -2317,13 +3001,26 @@ mod lossy_bus {
         let client = runtime.command_client();
 
         for i in 0..5 {
-            let cmd = create_test_command("orders", Uuid::new_v4(), format!("drop-all-{}", i).as_bytes());
+            let cmd = create_test_command(
+                "orders",
+                Uuid::new_v4(),
+                format!("drop-all-{}", i).as_bytes(),
+            );
             let result = client.execute(cmd).await;
-            assert!(result.is_ok(), "Command {} should succeed even with lossy bus", i);
+            assert!(
+                result.is_ok(),
+                "Command {} should succeed even with lossy bus",
+                i
+            );
         }
 
         // Events should still be persisted to storage
-        let roots = runtime.event_store().list_roots("orders").await.unwrap();
+        let roots = runtime
+            .event_store("orders")
+            .unwrap()
+            .list_roots("orders")
+            .await
+            .unwrap();
         assert_eq!(roots.len(), 5, "Events should still be persisted");
     }
 }
@@ -2445,7 +3142,10 @@ mod error_handling {
             type_url: "GoodCommand".to_string(),
             value: vec![],
         });
-        client.execute(cmd1).await.expect("Good command should succeed");
+        client
+            .execute(cmd1)
+            .await
+            .expect("Good command should succeed");
 
         // Second command fails
         let mut cmd2 = create_test_command("orders", root2, b"bad");
@@ -2462,13 +3162,26 @@ mod error_handling {
             type_url: "AnotherGoodCommand".to_string(),
             value: vec![],
         });
-        client.execute(cmd3).await.expect("Another good command should succeed");
+        client
+            .execute(cmd3)
+            .await
+            .expect("Another good command should succeed");
 
         // Verify events
-        let events1 = runtime.event_store().get("orders", root1).await.unwrap();
+        let events1 = runtime
+            .event_store("orders")
+            .unwrap()
+            .get("orders", root1)
+            .await
+            .unwrap();
         assert_eq!(events1.len(), 2, "First aggregate should have 2 events");
 
-        let events2 = runtime.event_store().get("orders", root2).await.unwrap();
+        let events2 = runtime
+            .event_store("orders")
+            .unwrap()
+            .get("orders", root2)
+            .await
+            .unwrap();
         assert_eq!(events2.len(), 0, "Failed aggregate should have 0 events");
     }
 
@@ -2487,10 +3200,7 @@ mod error_handling {
         let cmd = CommandBook {
             cover: None,
             pages: vec![],
-            correlation_id: String::new(),
             saga_origin: None,
-            auto_resequence: true,
-            fact: false,
         };
 
         let result = client.execute(cmd).await;
@@ -2513,12 +3223,10 @@ mod error_handling {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: None,
+                correlation_id: String::new(),
             }),
             pages: vec![],
-            correlation_id: String::new(),
             saga_origin: None,
-            auto_resequence: true,
-            fact: false,
         };
 
         let result = client.execute(cmd).await;
@@ -2532,48 +3240,50 @@ mod error_handling {
 
 mod e2e_saga_workflow {
     use super::*;
-    use angzarr::embedded::{SagaConfig, SagaHandler};
     use angzarr::proto::SagaResponse;
+    use angzarr::standalone::{SagaConfig, SagaHandler};
     use std::sync::atomic::AtomicU32;
 
-    /// Saga that chains commands across domains.
-    /// Orders -> Inventory -> Shipping
-    struct OrderFulfillmentSaga {
-        step_count: AtomicU32,
+    /// Saga that handles orders -> inventory.
+    struct OrdersToInventorySaga {
+        step_count: Arc<AtomicU32>,
     }
 
-    impl OrderFulfillmentSaga {
-        fn new() -> Self {
-            Self {
-                step_count: AtomicU32::new(0),
-            }
-        }
-
-        fn steps(&self) -> u32 {
-            self.step_count.load(Ordering::SeqCst)
+    impl OrdersToInventorySaga {
+        fn new(step_count: Arc<AtomicU32>) -> Self {
+            Self { step_count }
         }
     }
 
     #[async_trait]
-    impl SagaHandler for OrderFulfillmentSaga {
-        async fn handle(&self, events: &EventBook) -> Result<SagaResponse, Status> {
+    impl SagaHandler for OrdersToInventorySaga {
+        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+            Ok(vec![]) // No destination state needed
+        }
+
+        async fn execute(
+            &self,
+            source: &EventBook,
+            _destinations: &[EventBook],
+        ) -> Result<SagaResponse, Status> {
             self.step_count.fetch_add(1, Ordering::SeqCst);
 
-            let mut commands = Vec::new();
-            let domain = events
+            let source_correlation_id = source
                 .cover
                 .as_ref()
-                .map(|c| c.domain.as_str())
-                .unwrap_or("unknown");
+                .map(|c| c.correlation_id.clone())
+                .unwrap_or_default();
 
-            for page in &events.pages {
+            let mut commands = Vec::new();
+
+            for page in &source.pages {
                 if let Some(event) = &page.event {
-                    // Orders domain triggers Inventory
-                    if domain == "orders" && event.type_url.contains("OrderPlaced") {
+                    if event.type_url.contains("OrderPlaced") {
                         commands.push(CommandBook {
                             cover: Some(Cover {
                                 domain: "inventory".to_string(),
-                                root: events.cover.as_ref().and_then(|c| c.root.clone()),
+                                root: source.cover.as_ref().and_then(|c| c.root.clone()),
+                                correlation_id: source_correlation_id.clone(),
                             }),
                             pages: vec![CommandPage {
                                 sequence: 0,
@@ -2582,31 +3292,7 @@ mod e2e_saga_workflow {
                                     value: event.value.clone(),
                                 }),
                             }],
-                            correlation_id: events.correlation_id.clone(),
-                            saga_origin: None,
-                            auto_resequence: true,
-                            fact: false,
-                        });
-                    }
-
-                    // Inventory domain triggers Shipping
-                    if domain == "inventory" && event.type_url.contains("ReserveStock") {
-                        commands.push(CommandBook {
-                            cover: Some(Cover {
-                                domain: "shipping".to_string(),
-                                root: events.cover.as_ref().and_then(|c| c.root.clone()),
-                            }),
-                            pages: vec![CommandPage {
-                                sequence: 0,
-                                command: Some(prost_types::Any {
-                                    type_url: "shipping.CreateShipment".to_string(),
-                                    value: event.value.clone(),
-                                }),
-                            }],
-                            correlation_id: events.correlation_id.clone(),
-                            saga_origin: None,
-                            auto_resequence: true,
-                            fact: false,
+                            ..Default::default()
                         });
                     }
                 }
@@ -2619,19 +3305,106 @@ mod e2e_saga_workflow {
         }
     }
 
-    struct SagaWrapper(Arc<OrderFulfillmentSaga>);
+    /// Saga that handles inventory -> shipping.
+    struct InventoryToShippingSaga {
+        step_count: Arc<AtomicU32>,
+    }
+
+    impl InventoryToShippingSaga {
+        fn new(step_count: Arc<AtomicU32>) -> Self {
+            Self { step_count }
+        }
+    }
 
     #[async_trait]
-    impl SagaHandler for SagaWrapper {
-        async fn handle(&self, events: &EventBook) -> Result<SagaResponse, Status> {
-            self.0.handle(events).await
+    impl SagaHandler for InventoryToShippingSaga {
+        async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+            Ok(vec![]) // No destination state needed
+        }
+
+        async fn execute(
+            &self,
+            source: &EventBook,
+            _destinations: &[EventBook],
+        ) -> Result<SagaResponse, Status> {
+            self.step_count.fetch_add(1, Ordering::SeqCst);
+
+            let source_correlation_id = source
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.clone())
+                .unwrap_or_default();
+
+            let mut commands = Vec::new();
+
+            for page in &source.pages {
+                if let Some(event) = &page.event {
+                    if event.type_url.contains("ReserveStock") {
+                        commands.push(CommandBook {
+                            cover: Some(Cover {
+                                domain: "shipping".to_string(),
+                                root: source.cover.as_ref().and_then(|c| c.root.clone()),
+                                correlation_id: source_correlation_id.clone(),
+                            }),
+                            pages: vec![CommandPage {
+                                sequence: 0,
+                                command: Some(prost_types::Any {
+                                    type_url: "shipping.CreateShipment".to_string(),
+                                    value: event.value.clone(),
+                                }),
+                            }],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            Ok(SagaResponse {
+                commands,
+                ..Default::default()
+            })
+        }
+    }
+
+    struct OrdersToInventoryWrapper(Arc<OrdersToInventorySaga>);
+
+    #[async_trait]
+    impl SagaHandler for OrdersToInventoryWrapper {
+        async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
+            self.0.prepare(source).await
+        }
+
+        async fn execute(
+            &self,
+            source: &EventBook,
+            destinations: &[EventBook],
+        ) -> Result<SagaResponse, Status> {
+            self.0.execute(source, destinations).await
+        }
+    }
+
+    struct InventoryToShippingWrapper(Arc<InventoryToShippingSaga>);
+
+    #[async_trait]
+    impl SagaHandler for InventoryToShippingWrapper {
+        async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
+            self.0.prepare(source).await
+        }
+
+        async fn execute(
+            &self,
+            source: &EventBook,
+            destinations: &[EventBook],
+        ) -> Result<SagaResponse, Status> {
+            self.0.execute(source, destinations).await
         }
     }
 
     #[tokio::test]
     async fn test_saga_chains_across_three_domains() {
-        let saga = Arc::new(OrderFulfillmentSaga::new());
-        let saga_clone = saga.clone();
+        let step_count = Arc::new(AtomicU32::new(0));
+        let orders_saga = Arc::new(OrdersToInventorySaga::new(step_count.clone()));
+        let inventory_saga = Arc::new(InventoryToShippingSaga::new(step_count.clone()));
 
         let mut runtime = RuntimeBuilder::new()
             .with_sqlite_memory()
@@ -2639,12 +3412,14 @@ mod e2e_saga_workflow {
             .register_aggregate("inventory", EchoAggregate::new())
             .register_aggregate("shipping", EchoAggregate::new())
             .register_saga(
-                "order-fulfillment",
-                SagaWrapper(saga_clone),
-                SagaConfig::default().with_domains(vec![
-                    "orders".to_string(),
-                    "inventory".to_string(),
-                ]),
+                "orders-to-inventory",
+                OrdersToInventoryWrapper(orders_saga),
+                SagaConfig::new("orders", "inventory"),
+            )
+            .register_saga(
+                "inventory-to-shipping",
+                InventoryToShippingWrapper(inventory_saga),
+                SagaConfig::new("inventory", "shipping"),
             )
             .build()
             .await
@@ -2677,18 +3452,20 @@ mod e2e_saga_workflow {
             type_url: "orders.OrderPlaced".to_string(),
             value: b"order-123".to_vec(),
         });
-        cmd.correlation_id = "e2e-test-correlation".to_string();
+        if let Some(ref mut cover) = cmd.cover {
+            cover.correlation_id = "e2e-test-correlation".to_string();
+        }
 
         client.execute(cmd).await.expect("Initial command failed");
 
         // Wait for full saga chain to complete (order -> inventory -> shipping)
         tokio::time::sleep(Duration::from_millis(800)).await;
 
-        // Verify saga was triggered (may not see all triggers due to timing)
-        let steps = saga.steps();
+        // Verify sagas were triggered
+        let steps = step_count.load(Ordering::SeqCst);
         assert!(
             steps >= 1,
-            "Saga should be triggered at least once (got {} steps)",
+            "Sagas should be triggered at least once (got {} steps)",
             steps
         );
 
@@ -2714,16 +3491,36 @@ mod e2e_saga_workflow {
 
         // Verify all events have same correlation ID
         for event in &events {
+            let event_correlation_id = event
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.as_str())
+                .unwrap_or("");
             assert_eq!(
-                event.correlation_id, "e2e-test-correlation",
+                event_correlation_id, "e2e-test-correlation",
                 "All events should preserve correlation ID through saga chain"
             );
         }
 
         // Verify storage has events for each domain with same root
-        let orders_events = runtime.event_store().get("orders", root).await.unwrap();
-        let inventory_events = runtime.event_store().get("inventory", root).await.unwrap();
-        let shipping_events = runtime.event_store().get("shipping", root).await.unwrap();
+        let orders_events = runtime
+            .event_store("orders")
+            .unwrap()
+            .get("orders", root)
+            .await
+            .unwrap();
+        let inventory_events = runtime
+            .event_store("inventory")
+            .unwrap()
+            .get("inventory", root)
+            .await
+            .unwrap();
+        let shipping_events = runtime
+            .event_store("shipping")
+            .unwrap()
+            .get("shipping", root)
+            .await
+            .unwrap();
 
         assert!(!orders_events.is_empty(), "Orders should have events");
         assert!(!inventory_events.is_empty(), "Inventory should have events");
@@ -2733,8 +3530,9 @@ mod e2e_saga_workflow {
     #[tokio::test]
     async fn test_multiple_saga_chains_sequential() {
         // Test multiple saga chains execute correctly when run sequentially
-        let saga = Arc::new(OrderFulfillmentSaga::new());
-        let saga_clone = saga.clone();
+        let step_count = Arc::new(AtomicU32::new(0));
+        let orders_saga = Arc::new(OrdersToInventorySaga::new(step_count.clone()));
+        let inventory_saga = Arc::new(InventoryToShippingSaga::new(step_count.clone()));
 
         let mut runtime = RuntimeBuilder::new()
             .with_sqlite_memory()
@@ -2742,12 +3540,14 @@ mod e2e_saga_workflow {
             .register_aggregate("inventory", EchoAggregate::new())
             .register_aggregate("shipping", EchoAggregate::new())
             .register_saga(
-                "fulfillment",
-                SagaWrapper(saga_clone),
-                SagaConfig::default().with_domains(vec![
-                    "orders".to_string(),
-                    "inventory".to_string(),
-                ]),
+                "orders-to-inventory",
+                OrdersToInventoryWrapper(orders_saga),
+                SagaConfig::new("orders", "inventory"),
+            )
+            .register_saga(
+                "inventory-to-shipping",
+                InventoryToShippingWrapper(inventory_saga),
+                SagaConfig::new("inventory", "shipping"),
             )
             .build()
             .await
@@ -2766,7 +3566,9 @@ mod e2e_saga_workflow {
                 type_url: "orders.OrderPlaced".to_string(),
                 value: format!("order-{}", i).into_bytes(),
             });
-            cmd.correlation_id = format!("sequential-{}", i);
+            if let Some(ref mut cover) = cmd.cover {
+                cover.correlation_id = format!("sequential-{}", i);
+            }
             client.execute(cmd).await.expect("Command failed");
             roots.push(root);
 
@@ -2777,9 +3579,24 @@ mod e2e_saga_workflow {
 
         // Verify each root has events in all three domains
         for (i, root) in roots.iter().enumerate() {
-            let orders_events = runtime.event_store().get("orders", *root).await.unwrap();
-            let inventory_events = runtime.event_store().get("inventory", *root).await.unwrap();
-            let shipping_events = runtime.event_store().get("shipping", *root).await.unwrap();
+            let orders_events = runtime
+                .event_store("orders")
+                .unwrap()
+                .get("orders", *root)
+                .await
+                .unwrap();
+            let inventory_events = runtime
+                .event_store("inventory")
+                .unwrap()
+                .get("inventory", *root)
+                .await
+                .unwrap();
+            let shipping_events = runtime
+                .event_store("shipping")
+                .unwrap()
+                .get("shipping", *root)
+                .await
+                .unwrap();
 
             assert!(
                 !orders_events.is_empty(),
@@ -2879,7 +3696,8 @@ mod gateway_embedded {
 
         // Query events directly from store (like query service would)
         let events = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Query failed");
@@ -2909,7 +3727,8 @@ mod gateway_embedded {
 
         // Query with bounds
         let all_events = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Query all failed");
@@ -2917,7 +3736,8 @@ mod gateway_embedded {
 
         // Query subset (from seq 2)
         let subset = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get_from("orders", root, 2)
             .await
             .expect("Query from failed");
@@ -2925,7 +3745,8 @@ mod gateway_embedded {
 
         // Query range
         let range = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get_from_to("orders", root, 1, 3)
             .await
             .expect("Query range failed");
@@ -2938,11 +3759,7 @@ mod gateway_embedded {
         let mut runtime = RuntimeBuilder::new()
             .with_sqlite_memory()
             .register_aggregate("orders", EchoAggregate::new())
-            .register_projector(
-                "receipt",
-                GatewayTestProjector,
-                ProjectorConfig::sync(),
-            )
+            .register_projector("receipt", GatewayTestProjector, ProjectorConfig::sync())
             .build()
             .await
             .expect("Failed to build runtime");
@@ -3007,7 +3824,8 @@ mod gateway_embedded {
 
         // List roots
         let listed = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .list_roots("orders")
             .await
             .expect("List failed");
@@ -3048,14 +3866,16 @@ mod snapshot_integration {
         };
 
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .put("counters", root, snapshot.clone())
             .await
             .expect("Put failed");
 
         // Retrieve
         let retrieved = runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .get("counters", root)
             .await
             .expect("Get failed");
@@ -3096,25 +3916,29 @@ mod snapshot_integration {
         };
 
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .put("counters", root1, snapshot1)
             .await
             .expect("Put 1 failed");
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .put("counters", root2, snapshot2)
             .await
             .expect("Put 2 failed");
 
         // Verify isolation
         let ret1 = runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .get("counters", root1)
             .await
             .expect("Get 1 failed")
             .expect("Should exist");
         let ret2 = runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .get("counters", root2)
             .await
             .expect("Get 2 failed")
@@ -3154,25 +3978,29 @@ mod snapshot_integration {
         };
 
         runtime
-            .snapshot_store()
+            .snapshot_store("domain_a")
+            .unwrap()
             .put("domain_a", root, snapshot_a)
             .await
             .expect("Put A failed");
         runtime
-            .snapshot_store()
+            .snapshot_store("domain_b")
+            .unwrap()
             .put("domain_b", root, snapshot_b)
             .await
             .expect("Put B failed");
 
         // Verify domain isolation
         let ret_a = runtime
-            .snapshot_store()
+            .snapshot_store("domain_a")
+            .unwrap()
             .get("domain_a", root)
             .await
             .expect("Get A failed")
             .expect("Should exist");
         let ret_b = runtime
-            .snapshot_store()
+            .snapshot_store("domain_b")
+            .unwrap()
             .get("domain_b", root)
             .await
             .expect("Get B failed")
@@ -3203,7 +4031,8 @@ mod snapshot_integration {
         };
 
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .put("counters", root, snapshot1)
             .await
             .expect("Put 1 failed");
@@ -3218,14 +4047,16 @@ mod snapshot_integration {
         };
 
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .put("counters", root, snapshot2)
             .await
             .expect("Put 2 failed");
 
         // Verify updated
         let retrieved = runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .get("counters", root)
             .await
             .expect("Get failed")
@@ -3260,7 +4091,8 @@ mod snapshot_integration {
         };
 
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .put("counters", root, snapshot)
             .await
             .expect("Put failed");
@@ -3268,7 +4100,8 @@ mod snapshot_integration {
         // Verify exists
         assert!(
             runtime
-                .snapshot_store()
+                .snapshot_store("counters")
+                .unwrap()
                 .get("counters", root)
                 .await
                 .expect("Get failed")
@@ -3278,7 +4111,8 @@ mod snapshot_integration {
 
         // Delete
         runtime
-            .snapshot_store()
+            .snapshot_store("counters")
+            .unwrap()
             .delete("counters", root)
             .await
             .expect("Delete failed");
@@ -3286,7 +4120,8 @@ mod snapshot_integration {
         // Verify gone
         assert!(
             runtime
-                .snapshot_store()
+                .snapshot_store("counters")
+                .unwrap()
                 .get("counters", root)
                 .await
                 .expect("Get failed")
@@ -3418,7 +4253,10 @@ mod projector_chaining {
         let projector_received = Arc::new(RwLock::new(Vec::new()));
         let saga_received = Arc::new(RwLock::new(Vec::new()));
 
-        let projector = Arc::new(ChainableProjector::new("projector", projector_received.clone()));
+        let projector = Arc::new(ChainableProjector::new(
+            "projector",
+            projector_received.clone(),
+        ));
 
         // Create a recording saga
         struct RecordingSaga {
@@ -3427,8 +4265,16 @@ mod projector_chaining {
 
         #[async_trait]
         impl SagaHandler for RecordingSaga {
-            async fn handle(&self, events: &EventBook) -> Result<SagaResponse, Status> {
-                if let Some(cover) = &events.cover {
+            async fn prepare(&self, _source: &EventBook) -> Result<Vec<Cover>, Status> {
+                Ok(vec![]) // No destination state needed
+            }
+
+            async fn execute(
+                &self,
+                source: &EventBook,
+                _destinations: &[EventBook],
+            ) -> Result<SagaResponse, Status> {
+                if let Some(cover) = &source.cover {
                     if let Some(proto_uuid) = &cover.root {
                         let root = Uuid::from_slice(&proto_uuid.value).unwrap_or_default();
                         let mut received = self.received.write().await;
@@ -3447,8 +4293,16 @@ mod projector_chaining {
 
         #[async_trait]
         impl SagaHandler for SagaWrapper {
-            async fn handle(&self, events: &EventBook) -> Result<SagaResponse, Status> {
-                self.0.handle(events).await
+            async fn prepare(&self, source: &EventBook) -> Result<Vec<Cover>, Status> {
+                self.0.prepare(source).await
+            }
+
+            async fn execute(
+                &self,
+                source: &EventBook,
+                destinations: &[EventBook],
+            ) -> Result<SagaResponse, Status> {
+                self.0.execute(source, destinations).await
             }
         }
 
@@ -3460,7 +4314,11 @@ mod projector_chaining {
                 ChainableProjectorWrapper(projector.clone()),
                 ProjectorConfig::async_(),
             )
-            .register_saga("saga", SagaWrapper(saga.clone()), SagaConfig::default())
+            .register_saga(
+                "saga",
+                SagaWrapper(saga.clone()),
+                SagaConfig::new("orders", "orders"),
+            )
             .build()
             .await
             .expect("Failed to build runtime");
@@ -3594,7 +4452,6 @@ mod error_recovery {
                     created_at: None,
                 }],
                 snapshot: None,
-                correlation_id: command_book.correlation_id.clone(),
                 snapshot_state: None,
             })
         }
@@ -3632,11 +4489,15 @@ mod error_recovery {
 
         // No events should be persisted
         let events = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Query failed");
-        assert!(events.is_empty(), "Failed command should not persist events");
+        assert!(
+            events.is_empty(),
+            "Failed command should not persist events"
+        );
     }
 
     #[tokio::test]
@@ -3662,7 +4523,8 @@ mod error_recovery {
 
         // Only success event should be persisted
         let events = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Query failed");
@@ -3692,7 +4554,8 @@ mod error_recovery {
 
         // Root1 has no events
         let events1 = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root1)
             .await
             .expect("Query 1 failed");
@@ -3700,7 +4563,8 @@ mod error_recovery {
 
         // Root2 has events
         let events2 = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root2)
             .await
             .expect("Query 2 failed");
@@ -3736,7 +4600,8 @@ mod error_recovery {
 
         // Verify total events
         let events = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Query failed");
@@ -3771,11 +4636,15 @@ mod error_recovery {
         // Command should still succeed even if async projector fails
         let command = create_test_command("orders", root, b"test");
         let result = client.execute(command).await;
-        assert!(result.is_ok(), "Command should succeed despite projector failure");
+        assert!(
+            result.is_ok(),
+            "Command should succeed despite projector failure"
+        );
 
         // Events should be persisted
         let events = runtime
-            .event_store()
+            .event_store("orders")
+            .unwrap()
             .get("orders", root)
             .await
             .expect("Query failed");
@@ -3797,7 +4666,11 @@ mod error_recovery {
         let mut runtime = RuntimeBuilder::new()
             .with_sqlite_memory()
             .register_aggregate("orders", EchoAggregate::new())
-            .register_projector("failing-sync", FailingSyncProjector, ProjectorConfig::sync())
+            .register_projector(
+                "failing-sync",
+                FailingSyncProjector,
+                ProjectorConfig::sync(),
+            )
             .build()
             .await
             .expect("Failed to build runtime");
@@ -3818,7 +4691,8 @@ mod error_recovery {
         if result.is_err() {
             // If command fails, events should not be persisted
             let events = runtime
-                .event_store()
+                .event_store("orders")
+                .unwrap()
                 .get("orders", root)
                 .await
                 .expect("Query failed");

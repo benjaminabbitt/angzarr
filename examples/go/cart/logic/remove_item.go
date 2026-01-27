@@ -8,15 +8,15 @@ import (
 
 func (l *DefaultCartLogic) HandleRemoveItem(state *CartState, productID string) (*examples.ItemRemoved, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Cart does not exist")
+		return nil, NewFailedPrecondition(ErrMsgCartNotFound)
 	}
 	if !state.IsActive() {
-		return nil, NewFailedPrecondition("Cart is already checked out")
+		return nil, NewFailedPrecondition(ErrMsgCartCheckedOut)
 	}
 
 	item, ok := state.Items[productID]
 	if !ok {
-		return nil, NewFailedPrecondition("Item not in cart")
+		return nil, NewFailedPrecondition(ErrMsgItemNotInCart)
 	}
 
 	itemSubtotal := item.Quantity * item.UnitPriceCents

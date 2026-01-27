@@ -5,12 +5,16 @@
 
 mod server;
 
-pub use server::{EmbeddedConfig, GatewayConfig, ServerConfig, ServiceConfig, TargetConfig};
+pub use server::{
+    ConfigError, ExternalServiceConfig, GatewayConfig, HealthCheckConfig, ResolvedStandaloneConfig,
+    ServerConfig, ServiceConfig, ServiceConfigRef, StandaloneConfig, TargetConfig,
+};
 
 use serde::Deserialize;
 
 use crate::bus::MessagingConfig;
-use crate::clients::{SagaCompensationConfig, ServiceEndpoint};
+use crate::clients::{ProcessManagerConfig, SagaCompensationConfig, ServiceEndpoint};
+use crate::services::UpcasterConfig;
 use crate::storage::StorageConfig;
 use crate::transport::TransportConfig;
 
@@ -34,10 +38,14 @@ pub struct Config {
     pub projectors: Option<Vec<ServiceEndpoint>>,
     /// Saga endpoints.
     pub sagas: Option<Vec<ServiceEndpoint>>,
+    /// Process manager configurations.
+    pub process_managers: Option<Vec<ProcessManagerConfig>>,
     /// Saga compensation configuration.
     pub saga_compensation: Option<SagaCompensationConfig>,
-    /// Embedded mode configuration (services, gateway).
-    pub embedded: EmbeddedConfig,
+    /// Standalone mode configuration (services, gateway).
+    pub standalone: StandaloneConfig,
+    /// Upcaster configuration for event version transformation.
+    pub upcaster: UpcasterConfig,
 }
 
 impl Config {
@@ -78,6 +86,20 @@ impl Config {
     /// Create config for testing.
     pub fn for_test() -> Self {
         Self::default()
+    }
+}
+
+/// Get the base directory for resolving file references in configs.
+///
+/// Returns the parent directory of ANGZARR_CONFIG if set, otherwise current directory.
+pub fn config_base_dir() -> std::path::PathBuf {
+    if let Ok(config_path) = std::env::var("ANGZARR_CONFIG") {
+        let path = std::path::Path::new(&config_path);
+        path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+    } else {
+        std::path::PathBuf::from(".")
     }
 }
 

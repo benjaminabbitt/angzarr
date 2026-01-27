@@ -9,12 +9,12 @@ use uuid::Uuid;
 use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
 use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 
-/// Extract domain and root UUID from an EventBook.
-fn extract_cover(book: &EventBook) -> Result<(&str, Uuid)> {
+/// Extract domain, root UUID, and correlation_id from an EventBook.
+fn extract_cover(book: &EventBook) -> Result<(&str, Uuid, &str)> {
     let cover = book.cover.as_ref().ok_or(StorageError::MissingCover)?;
     let root = cover.root.as_ref().ok_or(StorageError::MissingRoot)?;
     let root_uuid = Uuid::from_slice(&root.value)?;
-    Ok((&cover.domain, root_uuid))
+    Ok((&cover.domain, root_uuid, &cover.correlation_id))
 }
 
 /// Repository for EventBook operations.
@@ -80,10 +80,10 @@ impl EventBookRepository {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             snapshot,
             pages: events,
-            correlation_id: String::new(),
             snapshot_state: None,
         })
     }
@@ -104,10 +104,10 @@ impl EventBookRepository {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             snapshot: None,
             pages: events,
-            correlation_id: String::new(),
             snapshot_state: None,
         })
     }
@@ -116,9 +116,9 @@ impl EventBookRepository {
     ///
     /// Stores all events in the event store.
     pub async fn put(&self, book: &EventBook) -> Result<()> {
-        let (domain, root_uuid) = extract_cover(book)?;
+        let (domain, root_uuid, correlation_id) = extract_cover(book)?;
         self.event_store
-            .add(domain, root_uuid, book.pages.clone())
+            .add(domain, root_uuid, book.pages.clone(), correlation_id)
             .await
     }
 }
@@ -168,10 +168,10 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![make_event(0), make_event(1)],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -191,7 +191,7 @@ mod tests {
 
         // Add events 0-4
         event_store
-            .add("orders", root, (0..5).map(make_event).collect())
+            .add("orders", root, (0..5).map(make_event).collect(), "")
             .await
             .unwrap();
 
@@ -225,7 +225,7 @@ mod tests {
         let root = Uuid::new_v4();
 
         event_store
-            .add("orders", root, (0..10).map(make_event).collect())
+            .add("orders", root, (0..10).map(make_event).collect(), "")
             .await
             .unwrap();
 
@@ -245,7 +245,6 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -264,10 +263,10 @@ mod tests {
             cover: Some(Cover {
                 domain: "orders".to_string(),
                 root: None,
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -288,10 +287,10 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: vec![1, 2, 3], // Invalid: not 16 bytes
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -326,10 +325,10 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: vec![],
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -349,7 +348,7 @@ mod tests {
 
         // Add events 0-4
         event_store
-            .add("orders", root, (0..5).map(make_event).collect())
+            .add("orders", root, (0..5).map(make_event).collect(), "")
             .await
             .unwrap();
 
@@ -384,7 +383,7 @@ mod tests {
 
         // Add events 0-4
         event_store
-            .add("orders", root, (0..5).map(make_event).collect())
+            .add("orders", root, (0..5).map(make_event).collect(), "")
             .await
             .unwrap();
 
@@ -422,7 +421,7 @@ mod tests {
         let root = Uuid::new_v4();
 
         event_store
-            .add("orders", root, (0..3).map(make_event).collect())
+            .add("orders", root, (0..3).map(make_event).collect(), "")
             .await
             .unwrap();
 
@@ -481,10 +480,10 @@ mod tests {
                     root: Some(ProtoUuid {
                         value: root.as_bytes().to_vec(),
                     }),
+                    correlation_id: String::new(),
                 }),
                 snapshot: None,
                 pages: events,
-                correlation_id: String::new(),
                 snapshot_state: None,
             }
         }
@@ -557,6 +556,7 @@ mod tests {
                         test_event(3, "Event3"),
                         test_event(4, "Event4"),
                     ],
+                    "",
                 )
                 .await
                 .unwrap();
@@ -595,6 +595,7 @@ mod tests {
                         test_event(3, "Event3"),
                         test_event(4, "Event4"),
                     ],
+                    "",
                 )
                 .await
                 .unwrap();
@@ -649,6 +650,7 @@ mod tests {
                         test_event(3, "Event3"),
                         test_event(4, "Event4"),
                     ],
+                    "",
                 )
                 .await
                 .unwrap();

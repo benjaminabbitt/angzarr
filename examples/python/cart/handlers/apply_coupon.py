@@ -9,33 +9,33 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 from .state import CartState
 
-from .errors import CommandRejectedError
+from .errors import CommandRejectedError, errmsg
 
 
 def handle_apply_coupon(command_book, command_any, state: CartState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Cart does not exist")
+        raise CommandRejectedError(errmsg.CART_NOT_FOUND)
     if not state.is_active():
-        raise CommandRejectedError("Cart is already checked out")
+        raise CommandRejectedError(errmsg.CART_CHECKED_OUT)
     if state.coupon_code:
-        raise CommandRejectedError("Coupon already applied")
+        raise CommandRejectedError(errmsg.COUPON_ALREADY_APPLIED)
 
     cmd = domains.ApplyCoupon()
     command_any.Unpack(cmd)
 
     if not cmd.code:
-        raise CommandRejectedError("Coupon code is required")
+        raise CommandRejectedError(errmsg.COUPON_CODE_REQUIRED)
 
     if cmd.coupon_type == "percentage":
         if cmd.value < 0 or cmd.value > 100:
-            raise CommandRejectedError("Percentage must be 0-100")
+            raise CommandRejectedError(errmsg.PERCENTAGE_RANGE)
         discount_cents = (state.subtotal_cents * cmd.value) // 100
     elif cmd.coupon_type == "fixed":
         if cmd.value < 0:
-            raise CommandRejectedError("Fixed discount cannot be negative")
+            raise CommandRejectedError(errmsg.FIXED_DISCOUNT_NEGATIVE)
         discount_cents = min(cmd.value, state.subtotal_cents)
     else:
-        raise CommandRejectedError("Invalid coupon type")
+        raise CommandRejectedError(errmsg.INVALID_COUPON_TYPE)
 
     log.info("applying_coupon", code=cmd.code, discount_cents=discount_cents)
 

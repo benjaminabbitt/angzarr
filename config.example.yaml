@@ -33,7 +33,7 @@ transport:
   tcp:
     host: 0.0.0.0
     port: 50051
-  # Unix domain sockets (embedded mode):
+  # Unix domain sockets (standalone mode):
   # type: uds
   # uds:
   #   base_path: /tmp/angzarr
@@ -68,7 +68,7 @@ server:
 #   #     - customers
 #   #     - orders
 #
-#   # In-memory channel (embedded mode):
+#   # In-memory channel (standalone mode):
 #   # type: channel
 
 # =============================================================================

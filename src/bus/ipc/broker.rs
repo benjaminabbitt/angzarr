@@ -99,7 +99,7 @@ impl IpcBroker {
             use nix::unistd::mkfifo;
 
             mkfifo(&pipe_path, Mode::S_IRUSR | Mode::S_IWUSR)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
         }
 
         info!(

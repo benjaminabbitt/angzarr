@@ -1,0 +1,47 @@
+# Standalone mode configuration for Go examples
+# Run with: ANGZARR_CONFIG=examples/go/standalone.yaml cargo run --bin angzarr-standalone
+
+storage:
+  type: sqlite
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+messaging:
+  type: ipc
+  ipc:
+    base_path: /tmp/angzarr
+
+standalone:
+  aggregates:
+    - domain: customer
+      command: ["go", "run", "./examples/go/customer"]
+    - domain: product
+      command: ["go", "run", "./examples/go/product"]
+    - domain: inventory
+      command: ["go", "run", "./examples/go/inventory"]
+    - domain: order
+      command: ["go", "run", "./examples/go/order"]
+    - domain: cart
+      command: ["go", "run", "./examples/go/cart"]
+    - domain: fulfillment
+      command: ["go", "run", "./examples/go/fulfillment"]
+
+  sagas:
+    - domain: fulfillment
+      listen_domain: order
+      command: ["go", "run", "./examples/go/saga-fulfillment"]
+    - domain: cancellation
+      listen_domain: order
+      command: ["go", "run", "./examples/go/saga-cancellation"]
+    - domain: loyalty-earn
+      listen_domain: fulfillment
+      command: ["go", "run", "./examples/go/saga-loyalty-earn"]
+
+  projectors: []
+
+  gateway:
+    enabled: true
+    port: 1350

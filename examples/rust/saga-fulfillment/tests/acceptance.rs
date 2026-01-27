@@ -6,7 +6,9 @@ use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
 
-use angzarr::proto::{event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid as ProtoUuid};
+use angzarr::proto::{
+    event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid as ProtoUuid,
+};
 use common::proto::{CreateShipment, OrderCancelled, OrderCompleted, OrderCreated};
 use saga_fulfillment::{FulfillmentSaga, SOURCE_DOMAIN};
 

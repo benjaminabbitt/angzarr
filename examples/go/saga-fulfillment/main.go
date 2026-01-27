@@ -24,10 +24,29 @@ type server struct {
 	angzarr.UnimplementedSagaServer
 }
 
-func (s *server) Handle(ctx context.Context, req *angzarr.EventBook) (*angzarr.SagaResponse, error) {
-	commands := sagaLogic.ProcessEvents(req)
+// Prepare: Phase 1 - declare which destination aggregates are needed.
+func (s *server) Prepare(ctx context.Context, req *angzarr.SagaPrepareRequest) (*angzarr.SagaPrepareResponse, error) {
+	destinations := sagaLogic.Prepare(req.Source)
+	return &angzarr.SagaPrepareResponse{Destinations: destinations}, nil
+}
+
+// Execute: Phase 2 - produce commands given source and destination state.
+func (s *server) Execute(ctx context.Context, req *angzarr.SagaExecuteRequest) (*angzarr.SagaResponse, error) {
+	commands := sagaLogic.Execute(req.Source, req.Destinations)
 	if len(commands) > 0 {
 		logger.Info("processed events",
+			zap.Int("commands_generated", len(commands)))
+	}
+	return &angzarr.SagaResponse{Commands: commands}, nil
+}
+
+// Retry: Phase 2 (alternate) - retry after command rejection.
+func (s *server) Retry(ctx context.Context, req *angzarr.SagaRetryRequest) (*angzarr.SagaResponse, error) {
+	// For simple sagas, retry is the same as execute with updated state
+	commands := sagaLogic.Execute(req.Source, req.Destinations)
+	if len(commands) > 0 {
+		logger.Info("retrying saga",
+			zap.Uint32("attempt", req.Attempt),
 			zap.Int("commands_generated", len(commands)))
 	}
 	return &angzarr.SagaResponse{Commands: commands}, nil

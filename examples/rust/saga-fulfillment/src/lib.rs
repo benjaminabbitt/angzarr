@@ -6,6 +6,7 @@ use prost::Message;
 
 use angzarr::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid as ProtoUuid};
 use common::proto::{CreateShipment, OrderCompleted};
+use common::SagaLogic;
 
 pub const SAGA_NAME: &str = "fulfillment";
 pub const SOURCE_DOMAIN: &str = "order";
@@ -57,9 +58,7 @@ impl FulfillmentSaga {
                 command: Some(cmd_any),
             }],
             correlation_id: correlation_id.to_string(),
-            saga_origin: None,
-            auto_resequence: false,
-            fact: false,
+            ..Default::default()
         })
     }
 
@@ -85,8 +84,13 @@ impl Default for FulfillmentSaga {
     }
 }
 
-impl common::SagaLogic for FulfillmentSaga {
-    fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
-        self.handle(book)
+impl SagaLogic for FulfillmentSaga {
+    /// This saga doesn't need destination state - just produces commands from source events.
+    fn prepare(&self, _source: &EventBook) -> Vec<Cover> {
+        vec![]
+    }
+
+    fn execute(&self, source: &EventBook, _destinations: &[EventBook]) -> Vec<CommandBook> {
+        self.handle(source)
     }
 }

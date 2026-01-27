@@ -9,14 +9,14 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 
 from .state import FulfillmentState
-from handlers.exceptions import CommandRejectedError
+from handlers.exceptions import CommandRejectedError, errmsg
 
 
 def handle_record_delivery(command_book, command_any, state: FulfillmentState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Shipment does not exist")
+        raise CommandRejectedError(errmsg.SHIPMENT_NOT_FOUND)
     if not state.is_shipped():
-        raise CommandRejectedError(f"Cannot record delivery in {state.status} state")
+        raise CommandRejectedError(errmsg.NOT_SHIPPED)
 
     cmd = domains.RecordDelivery()
     command_any.Unpack(cmd)

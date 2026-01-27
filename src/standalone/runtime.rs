@@ -16,25 +16,21 @@ use crate::transport::TransportConfig;
 
 use super::builder::GatewayConfig;
 use super::client::CommandClient;
-use super::router::CommandRouter;
-use super::traits::{
-    AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler,
-};
+use super::router::{CommandRouter, DomainStorage};
+use super::traits::{AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler};
 
 /// Embedded runtime for angzarr.
 ///
 /// Manages all components for running angzarr locally:
-/// - Storage (events and snapshots)
+/// - Storage (events and snapshots per domain)
 /// - Event bus (for pub/sub)
 /// - Aggregate handlers (business logic)
 /// - Projector handlers (read models)
 /// - Saga handlers (cross-aggregate workflows)
 /// - Optional gateway (for external clients)
 pub struct Runtime {
-    /// Event store.
-    event_store: Arc<dyn EventStore>,
-    /// Snapshot store.
-    snapshot_store: Arc<dyn SnapshotStore>,
+    /// Per-domain storage.
+    domain_stores: HashMap<String, DomainStorage>,
     /// Channel event bus for subscription (internal pub/sub).
     channel_bus: Arc<ChannelEventBus>,
     /// Event bus for publishing (may be wrapped with lossy).
@@ -72,7 +68,8 @@ impl Runtime {
     /// Create a new runtime (called by RuntimeBuilder).
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn new(
-        storage_config: StorageConfig,
+        default_storage_config: StorageConfig,
+        domain_storage_configs: HashMap<String, StorageConfig>,
         _messaging_config: MessagingConfig,
         transport_config: TransportConfig,
         gateway_config: GatewayConfig,
@@ -82,26 +79,56 @@ impl Runtime {
         channel_bus: Arc<ChannelEventBus>,
         event_bus: Arc<dyn EventBus>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Initialize storage
-        let (event_store, snapshot_store) = crate::storage::init_storage(&storage_config).await?;
+        // Initialize per-domain storage
+        let mut domain_stores = HashMap::new();
+
+        for domain in aggregates.keys() {
+            // Use domain-specific config if available, otherwise fall back to default
+            let storage_config = domain_storage_configs
+                .get(domain)
+                .unwrap_or(&default_storage_config);
+
+            let (event_store, snapshot_store) =
+                crate::storage::init_storage(storage_config).await?;
+
+            info!(
+                domain = %domain,
+                storage_type = ?storage_config.storage_type,
+                "Initialized storage for domain"
+            );
+
+            domain_stores.insert(
+                domain.clone(),
+                DomainStorage {
+                    event_store,
+                    snapshot_store,
+                },
+            );
+        }
 
         info!(
-            storage_type = ?storage_config.storage_type,
-            aggregates = aggregates.len(),
+            domains = aggregates.len(),
             projectors = projectors.len(),
             sagas = sagas.len(),
             "Runtime initialized"
         );
 
-        // Create command router with the (possibly lossy) event bus
+        // Extract sync projectors for the router
+        let sync_projectors: Vec<(String, Arc<dyn ProjectorHandler>, ProjectorConfig)> = projectors
+            .iter()
+            .filter(|(_, (_, config))| config.synchronous)
+            .map(|(name, (handler, config))| (name.clone(), handler.clone(), config.clone()))
+            .collect();
+
+        // Create command router with per-domain storage and sync projectors
         let router = Arc::new(CommandRouter::new(
             aggregates,
-            event_store.clone(),
-            snapshot_store.clone(),
+            domain_stores.clone(),
             event_bus.clone(),
+            sync_projectors,
         ));
 
-        // Convert projectors to entries
+        // Convert projectors to entries (for async distribution)
         let projector_entries: Vec<ProjectorEntry> = projectors
             .into_iter()
             .map(|(name, (handler, config))| ProjectorEntry {
@@ -122,8 +149,7 @@ impl Runtime {
             .collect();
 
         Ok(Self {
-            event_store,
-            snapshot_store,
+            domain_stores,
             channel_bus,
             event_bus,
             router,
@@ -142,14 +168,28 @@ impl Runtime {
         CommandClient::new(self.router.clone())
     }
 
-    /// Get access to the event store.
-    pub fn event_store(&self) -> Arc<dyn EventStore> {
-        self.event_store.clone()
+    /// Get storage for a specific domain.
+    pub fn storage(&self, domain: &str) -> Option<&DomainStorage> {
+        self.domain_stores.get(domain)
     }
 
-    /// Get access to the snapshot store.
-    pub fn snapshot_store(&self) -> Arc<dyn SnapshotStore> {
-        self.snapshot_store.clone()
+    /// Get the event store for a specific domain.
+    pub fn event_store(&self, domain: &str) -> Option<Arc<dyn EventStore>> {
+        self.domain_stores
+            .get(domain)
+            .map(|s| s.event_store.clone())
+    }
+
+    /// Get the snapshot store for a specific domain.
+    pub fn snapshot_store(&self, domain: &str) -> Option<Arc<dyn SnapshotStore>> {
+        self.domain_stores
+            .get(domain)
+            .map(|s| s.snapshot_store.clone())
+    }
+
+    /// Get all domain stores.
+    pub fn domain_stores(&self) -> &HashMap<String, DomainStorage> {
+        &self.domain_stores
     }
 
     /// Get access to the event bus (for publishing).
@@ -165,6 +205,17 @@ impl Runtime {
     /// Get the command router.
     pub fn router(&self) -> Arc<CommandRouter> {
         self.router.clone()
+    }
+
+    /// Start the runtime without blocking.
+    ///
+    /// This starts event distribution to projectors and sagas.
+    /// Use this for testing or when you need to interact with the runtime
+    /// programmatically after starting.
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.start_event_distribution().await?;
+        info!("Runtime started");
+        Ok(())
     }
 
     /// Run the runtime until Ctrl+C.
@@ -209,15 +260,19 @@ impl Runtime {
         let projectors = self.projectors.clone();
         let sagas = self.sagas.clone();
         let router = self.router.clone();
+        let domain_stores = self.domain_stores.clone();
 
         // Subscribe to events from the channel bus (after lossy layer)
-        let subscriber = self.channel_bus.with_config(crate::bus::ChannelConfig::subscriber_all());
+        let subscriber = self
+            .channel_bus
+            .with_config(crate::bus::ChannelConfig::subscriber_all());
 
         // Create handler that distributes events
         let handler = EventDistributionHandler {
             projectors,
             sagas,
             router,
+            domain_stores,
         };
 
         subscriber.subscribe(Box::new(handler)).await?;
@@ -290,6 +345,7 @@ struct EventDistributionHandler {
     projectors: Arc<RwLock<Vec<ProjectorEntry>>>,
     sagas: Arc<RwLock<Vec<SagaEntry>>>,
     router: Arc<CommandRouter>,
+    domain_stores: HashMap<String, DomainStorage>,
 }
 
 impl crate::bus::EventHandler for EventDistributionHandler {
@@ -300,6 +356,7 @@ impl crate::bus::EventHandler for EventDistributionHandler {
         let projectors = self.projectors.clone();
         let sagas = self.sagas.clone();
         let router = self.router.clone();
+        let domain_stores = self.domain_stores.clone();
 
         Box::pin(async move {
             let domain = book
@@ -333,21 +390,126 @@ impl crate::bus::EventHandler for EventDistributionHandler {
                 }
             }
 
-            // Process sagas
+            // Process sagas using two-phase protocol
             let saga_list = sagas.read().await;
             for entry in saga_list.iter() {
-                // Check domain filter
-                if !entry.config.domains.is_empty()
-                    && !entry.config.domains.iter().any(|d| d == domain)
-                {
+                // Check input domain filter
+                if entry.config.input_domain != domain {
                     continue;
                 }
 
-                match entry.handler.handle(&book).await {
+                // Phase 1: Ask saga which destination aggregates it needs
+                let destination_covers = match entry.handler.prepare(&book).await {
+                    Ok(covers) => covers,
+                    Err(e) => {
+                        error!(
+                            saga = %entry.name,
+                            domain = %domain,
+                            error = %e,
+                            "Saga prepare failed"
+                        );
+                        continue;
+                    }
+                };
+
+                // Fetch destination EventBooks from event store
+                let mut destinations = Vec::new();
+                for cover in &destination_covers {
+                    let dest_domain = &cover.domain;
+                    let root_uuid = match cover.root.as_ref() {
+                        Some(r) => match uuid::Uuid::from_slice(&r.value) {
+                            Ok(u) => u,
+                            Err(e) => {
+                                error!(
+                                    saga = %entry.name,
+                                    error = %e,
+                                    "Invalid destination root UUID"
+                                );
+                                continue;
+                            }
+                        },
+                        None => {
+                            error!(
+                                saga = %entry.name,
+                                "Destination cover missing root UUID"
+                            );
+                            continue;
+                        }
+                    };
+
+                    // Get the domain-specific event store
+                    let dest_store = match domain_stores.get(dest_domain) {
+                        Some(s) => &s.event_store,
+                        None => {
+                            error!(
+                                saga = %entry.name,
+                                destination = %dest_domain,
+                                "No storage configured for destination domain"
+                            );
+                            continue;
+                        }
+                    };
+
+                    // Fetch full event history for destination
+                    match dest_store.get(dest_domain, root_uuid).await {
+                        Ok(pages) => {
+                            let mut dest_cover = cover.clone();
+                            // Propagate correlation_id from source
+                            let source_correlation_id = book
+                                .cover
+                                .as_ref()
+                                .map(|c| c.correlation_id.clone())
+                                .unwrap_or_default();
+                            if dest_cover.correlation_id.is_empty() {
+                                dest_cover.correlation_id = source_correlation_id;
+                            }
+                            destinations.push(EventBook {
+                                cover: Some(dest_cover),
+                                pages,
+                                snapshot: None,
+                                snapshot_state: None,
+                            });
+                        }
+                        Err(e) => {
+                            error!(
+                                saga = %entry.name,
+                                destination = %dest_domain,
+                                error = %e,
+                                "Failed to fetch destination EventBook"
+                            );
+                        }
+                    }
+                }
+
+                // Phase 2: Execute with source + destinations
+                match entry.handler.execute(&book, &destinations).await {
                     Ok(response) => {
                         // Execute saga commands
-                        for command in response.commands {
-                            if let Err(e) = router.execute_command(command).await {
+                        for command_book in response.commands {
+                            // Validate command targets the configured output domain
+                            let target_domain = command_book
+                                .cover
+                                .as_ref()
+                                .map(|c| c.domain.as_str())
+                                .unwrap_or("");
+
+                            if target_domain != entry.config.output_domain {
+                                error!(
+                                    saga = %entry.name,
+                                    expected = %entry.config.output_domain,
+                                    actual = %target_domain,
+                                    "Saga command targets wrong domain"
+                                );
+                                return Err(crate::bus::BusError::SagaFailed {
+                                    name: entry.name.clone(),
+                                    message: format!(
+                                        "command targets domain '{}' but configured output_domain is '{}'",
+                                        target_domain, entry.config.output_domain
+                                    ),
+                                });
+                            }
+
+                            if let Err(e) = router.execute_command(command_book).await {
                                 error!(
                                     saga = %entry.name,
                                     error = %e,
@@ -361,7 +523,7 @@ impl crate::bus::EventHandler for EventDistributionHandler {
                             saga = %entry.name,
                             domain = %domain,
                             error = %e,
-                            "Saga handler failed"
+                            "Saga execute failed"
                         );
                     }
                 }

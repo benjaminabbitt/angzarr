@@ -163,7 +163,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // EventQuery proxy routes queries to appropriate aggregate sidecars by domain
     let event_query_proxy = EventQueryProxy::new(discovery);
 
-    info!(stream_timeout = stream_timeout_secs, "Angzarr gateway starting");
+    info!(
+        stream_timeout = stream_timeout_secs,
+        "Angzarr gateway starting"
+    );
 
     // Create health reporter
     let (mut health_reporter, health_service) = health_reporter();

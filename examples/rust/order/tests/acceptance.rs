@@ -123,8 +123,6 @@ impl OrderAcceptanceWorld {
             }],
             correlation_id,
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
@@ -217,7 +215,10 @@ async fn loyalty_discount_applied_event(world: &mut OrderAcceptanceWorld, points
     let client = world.get_gateway_client().await;
     match client.execute(command_book).await {
         Ok(_) => world.current_sequence += 1,
-        Err(e) => panic!("Given step failed: LoyaltyDiscountApplied - {}", e.message()),
+        Err(e) => panic!(
+            "Given step failed: LoyaltyDiscountApplied - {}",
+            e.message()
+        ),
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }

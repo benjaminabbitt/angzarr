@@ -82,26 +82,32 @@ pub struct ManagedProcess {
 }
 
 impl ManagedProcess {
-    /// Spawn a new process with the given command and environment.
+    /// Spawn a new process with the given command array and environment.
+    ///
+    /// Command is an array where the first element is the executable and
+    /// the rest are arguments. No shell interpretation - direct exec.
+    ///
+    /// Example: `["python", "-m", "myapp", "--port", "8080"]`
     pub async fn spawn(
-        command: &str,
+        command: &[String],
         working_dir: Option<&str>,
         env: &ProcessEnv,
+        extra_env: Option<&HashMap<String, String>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        info!(command = %command, "Spawning business logic process");
+        if command.is_empty() {
+            return Err("Command array cannot be empty".into());
+        }
+
+        let executable = &command[0];
+        let args = &command[1..];
+
+        info!(executable = %executable, ?args, "Spawning business logic process");
 
         let env_vars = env.to_env_vars();
         debug!(?env_vars, "Process environment");
 
-        let mut cmd = if cfg!(target_os = "windows") {
-            let mut c = Command::new("cmd");
-            c.args(["/C", command]);
-            c
-        } else {
-            let mut c = Command::new("sh");
-            c.args(["-c", command]);
-            c
-        };
+        let mut cmd = Command::new(executable);
+        cmd.args(args);
 
         // Set working directory if specified
         if let Some(dir) = working_dir {
@@ -113,9 +119,16 @@ impl ManagedProcess {
             }
         }
 
-        // Set environment variables
+        // Set environment variables from ProcessEnv
         for (key, value) in env_vars {
             cmd.env(&key, &value);
+        }
+
+        // Set extra environment variables from config
+        if let Some(extra) = extra_env {
+            for (key, value) in extra {
+                cmd.env(key, value);
+            }
         }
 
         // Redirect output to inherit (visible in sidecar logs)
@@ -123,7 +136,7 @@ impl ManagedProcess {
         cmd.stderr(Stdio::inherit());
 
         let child = cmd.spawn().map_err(|e| {
-            error!(command = %command, error = %e, "Failed to spawn process");
+            error!(executable = %executable, error = %e, "Failed to spawn process");
             e
         })?;
 
@@ -131,7 +144,7 @@ impl ManagedProcess {
 
         Ok(Self {
             child,
-            command: command.to_string(),
+            command: command.join(" "),
         })
     }
 

@@ -1,8 +1,8 @@
 //! Handler for ConfirmPayment command.
 
-use common::{BusinessError, Result};
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{ConfirmPayment, OrderCompleted, OrderState};
+use common::{BusinessError, Result};
 use prost::Message;
 
 use super::{make_event_book, now};

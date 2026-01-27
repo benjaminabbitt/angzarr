@@ -27,18 +27,26 @@ pub mod kafka;
 #[cfg(feature = "lossy")]
 pub mod lossy;
 pub mod mock;
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
+pub mod outbox;
 
 // Re-exports
 #[cfg(feature = "amqp")]
 pub use amqp::{AmqpConfig, AmqpEventBus};
 pub use channel::{ChannelConfig, ChannelEventBus};
 #[cfg(unix)]
-pub use ipc::{IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus, SubscriberInfo, SUBSCRIBERS_ENV_VAR};
+pub use ipc::{
+    IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus, SubscriberInfo, SUBSCRIBERS_ENV_VAR,
+};
 #[cfg(feature = "kafka")]
 pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
 #[cfg(feature = "lossy")]
 pub use lossy::{LossyConfig, LossyEventBus, LossyStats};
 pub use mock::MockEventBus;
+#[cfg(feature = "postgres")]
+pub use outbox::{OutboxConfig, PostgresOutboxEventBus, RecoveryTaskHandle};
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
+pub use outbox::{OutboxConfig, RecoveryTaskHandle, SqliteOutboxEventBus};
 
 // ============================================================================
 // Traits
@@ -154,6 +162,9 @@ pub struct MessagingConfig {
     /// IPC-specific configuration (for embedded mode).
     #[cfg(unix)]
     pub ipc: IpcBusConfig,
+    /// Outbox pattern configuration for guaranteed delivery.
+    #[cfg(any(feature = "postgres", feature = "sqlite"))]
+    pub outbox: outbox::OutboxConfig,
 }
 
 impl Default for MessagingConfig {
@@ -164,6 +175,8 @@ impl Default for MessagingConfig {
             kafka: KafkaConfig::default(),
             #[cfg(unix)]
             ipc: IpcBusConfig::default(),
+            #[cfg(any(feature = "postgres", feature = "sqlite"))]
+            outbox: outbox::OutboxConfig::default(),
         }
     }
 }
@@ -189,10 +202,12 @@ impl IpcBusConfig {
     pub fn get_domains(&self) -> Vec<String> {
         self.domains
             .clone()
-            .or_else(|| self.domain.as_ref().map(|d| {
-                // Support comma-separated domains in the single domain field
-                d.split(',').map(|s| s.trim().to_string()).collect()
-            }))
+            .or_else(|| {
+                self.domain.as_ref().map(|d| {
+                    // Support comma-separated domains in the single domain field
+                    d.split(',').map(|s| s.trim().to_string()).collect()
+                })
+            })
             .unwrap_or_default()
     }
 }
@@ -315,8 +330,9 @@ pub async fn init_event_bus(
             {
                 let kafka_config = match mode {
                     EventBusMode::Publisher => {
-                        let mut cfg = KafkaEventBusConfig::publisher(&config.kafka.bootstrap_servers)
-                            .with_topic_prefix(&config.kafka.topic_prefix);
+                        let mut cfg =
+                            KafkaEventBusConfig::publisher(&config.kafka.bootstrap_servers)
+                                .with_topic_prefix(&config.kafka.topic_prefix);
                         cfg = apply_kafka_security(cfg, &config.kafka);
                         cfg
                     }
@@ -357,7 +373,10 @@ pub async fn init_event_bus(
 
             #[cfg(not(feature = "kafka"))]
             {
-                Err("Kafka support requires the 'kafka' feature. Rebuild with --features kafka".into())
+                Err(
+                    "Kafka support requires the 'kafka' feature. Rebuild with --features kafka"
+                        .into(),
+                )
             }
         }
         MessagingType::Channel => {
@@ -376,9 +395,11 @@ pub async fn init_event_bus(
             let ipc_config = match mode {
                 EventBusMode::Publisher => IpcConfig::publisher(&config.ipc.base_path),
                 EventBusMode::Subscriber { domain, .. } => {
-                    let name = config.ipc.subscriber_name.clone().unwrap_or_else(|| {
-                        format!("subscriber-{}", domain)
-                    });
+                    let name = config
+                        .ipc
+                        .subscriber_name
+                        .clone()
+                        .unwrap_or_else(|| format!("subscriber-{}", domain));
                     IpcConfig::subscriber(&config.ipc.base_path, name, vec![domain])
                 }
                 EventBusMode::SubscriberAll { queue } => {
@@ -415,7 +436,10 @@ pub enum EventBusMode {
 }
 
 #[cfg(feature = "kafka")]
-fn apply_kafka_security(mut cfg: KafkaEventBusConfig, kafka_cfg: &KafkaConfig) -> KafkaEventBusConfig {
+fn apply_kafka_security(
+    mut cfg: KafkaEventBusConfig,
+    kafka_cfg: &KafkaConfig,
+) -> KafkaEventBusConfig {
     if let (Some(ref user), Some(ref pass), Some(ref mechanism)) = (
         &kafka_cfg.sasl_username,
         &kafka_cfg.sasl_password,

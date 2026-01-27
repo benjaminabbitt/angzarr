@@ -33,12 +33,13 @@ use tracing::{error, info};
 use angzarr::config::Config;
 use angzarr::handlers::projectors::stream::StreamService;
 use angzarr::proto::event_stream_server::EventStreamServer;
-use angzarr::proto::projector_server::{Projector, ProjectorServer};
-use angzarr::proto::{EventBook, Projection};
+use angzarr::proto::projector_coordinator_server::{ProjectorCoordinator, ProjectorCoordinatorServer};
+use angzarr::proto::{EventBook, Projection, SyncEventBook};
 use angzarr::transport::serve_with_transport;
 use angzarr::utils::bootstrap::init_tracing;
 
 /// Projector service that receives events from the projector sidecar.
+/// Implements ProjectorCoordinator (HandleSync) which is what angzarr-projector calls.
 struct StreamProjectorService {
     stream_service: Arc<StreamService>,
 }
@@ -50,13 +51,26 @@ impl StreamProjectorService {
 }
 
 #[tonic::async_trait]
-impl Projector for StreamProjectorService {
-    async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
-        let book = request.into_inner();
-        self.stream_service.handle(&book).await;
+impl ProjectorCoordinator for StreamProjectorService {
+    /// Handle sync event book from projector sidecar.
+    async fn handle_sync(
+        &self,
+        request: Request<SyncEventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        let sync_book = request.into_inner();
+        if let Some(book) = sync_book.events {
+            self.stream_service.handle(&book).await;
+        }
 
         // Stream projector doesn't produce projection output
         Ok(Response::new(Projection::default()))
+    }
+
+    /// Fire-and-forget handle (not used by projector sidecar).
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
+        let book = request.into_inner();
+        self.stream_service.handle(&book).await;
+        Ok(Response::new(()))
     }
 }
 
@@ -73,7 +87,8 @@ impl std::ops::Deref for StreamServiceWrapper {
 
 #[tonic::async_trait]
 impl angzarr::proto::event_stream_server::EventStream for StreamServiceWrapper {
-    type SubscribeStream = <StreamService as angzarr::proto::event_stream_server::EventStream>::SubscribeStream;
+    type SubscribeStream =
+        <StreamService as angzarr::proto::event_stream_server::EventStream>::SubscribeStream;
 
     async fn subscribe(
         &self,
@@ -104,14 +119,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Health reporter
     let (mut health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<ProjectorServer<StreamProjectorService>>()
+        .set_serving::<ProjectorCoordinatorServer<StreamProjectorService>>()
         .await;
 
     info!("angzarr-stream started");
 
     let router = Server::builder()
         .add_service(health_service)
-        .add_service(ProjectorServer::new(projector_service))
+        .add_service(ProjectorCoordinatorServer::new(projector_service))
         .add_service(EventStreamServer::new(event_stream_service));
 
     serve_with_transport(router, &config.transport, "stream", None).await?;

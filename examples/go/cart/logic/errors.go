@@ -9,6 +9,25 @@ const (
 	StatusFailedPrecondition
 )
 
+// Error message constants for cart domain.
+const (
+	ErrMsgCartExists           = "Cart already exists"
+	ErrMsgCartNotFound         = "Cart does not exist"
+	ErrMsgCartCheckedOut       = "Cart is already checked out"
+	ErrMsgCartEmpty            = "Cart is empty"
+	ErrMsgItemNotInCart        = "Item not in cart"
+	ErrMsgQuantityPositive     = "Quantity must be positive"
+	ErrMsgCouponAlreadyApplied = "Coupon already applied"
+	ErrMsgUnknownCommand       = "Unknown command type"
+	ErrMsgNoCommandPages       = "CommandBook has no pages"
+	ErrMsgCustomerIDRequired   = "Customer ID is required"
+	ErrMsgProductIDRequired    = "Product ID is required"
+	ErrMsgCouponCodeRequired   = "Coupon code is required"
+	ErrMsgPercentageRange      = "Percentage must be 0-100"
+	ErrMsgFixedDiscountNeg     = "Fixed discount cannot be negative"
+	ErrMsgInvalidCouponType    = "Invalid coupon type"
+)
+
 func (s StatusCode) String() string {
 	switch s {
 	case StatusInvalidArgument:

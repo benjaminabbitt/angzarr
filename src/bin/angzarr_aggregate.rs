@@ -43,7 +43,7 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
-use angzarr::bus::{AmqpEventBus, EventBus, MessagingType, MockEventBus};
+use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::Config;
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
@@ -74,30 +74,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .ok_or("Aggregate sidecar requires 'target' configuration")?;
 
-    let domain = target
-        .domain
-        .as_ref()
-        .ok_or("Aggregate sidecar requires 'target.domain' configuration")?;
+    let domain = &target.domain;
 
-    info!(
-        "Target business logic: {} (domain: {})",
-        target.address, domain
-    );
+    // Resolve address: use explicit if set, otherwise derive from transport
+    let address = target.resolve_address(&config.transport, "business");
+
+    info!("Target business logic: {} (domain: {})", address, domain);
+
+    // Get command: prefer env var (for standalone mode), fall back to config
+    let command = match std::env::var("ANGZARR__TARGET__COMMAND_JSON") {
+        Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
+            warn!("Failed to parse ANGZARR__TARGET__COMMAND_JSON, falling back to config");
+            target.command.clone()
+        }),
+        Err(_) => target.command.clone(),
+    };
 
     // Spawn business logic process if command is configured (embedded mode)
-    let _managed_process = if let Some(ref command) = target.command {
+    let _managed_process = if !command.is_empty() {
         let env = ProcessEnv::from_transport(&config.transport, "business", Some(domain));
-        let process = ManagedProcess::spawn(
-            command,
-            target.working_dir.as_deref(),
-            &env,
-        )
-        .await?;
+        let process =
+            ManagedProcess::spawn(&command, target.working_dir.as_deref(), &env, None).await?;
 
         // Wait for the service to be ready
         info!("Waiting for business logic to be ready...");
         let channel = wait_for_ready(
-            &target.address,
+            &address,
             Duration::from_secs(30),
             Duration::from_millis(500),
         )
@@ -114,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel.clone()
     } else {
         use angzarr::transport::connect_to_address;
-        connect_to_address(&target.address).await?
+        connect_to_address(&address).await?
     };
 
     let business_client = AggregateClient::new(channel);
@@ -128,8 +130,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let amqp_bus_config = angzarr::bus::AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_bus_config).await?)
         }
+        Some(messaging) if messaging.messaging_type == MessagingType::Ipc => {
+            info!(
+                "Using IPC for event publishing: {}",
+                messaging.ipc.base_path
+            );
+            let ipc_config = angzarr::bus::IpcConfig::publisher(&messaging.ipc.base_path);
+            Arc::new(IpcEventBus::new(ipc_config))
+        }
         _ => {
-            warn!("No AMQP messaging configured, using mock event bus (events not published)");
+            warn!("No messaging configured, using mock event bus (events not published)");
             Arc::new(MockEventBus::new())
         }
     };
@@ -147,7 +157,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(discovery)
         }
         Err(e) => {
-            warn!("Service discovery not available (running outside K8s?): {}", e);
+            warn!(
+                "Service discovery not available (running outside K8s?): {}",
+                e
+            );
             None
         }
     };

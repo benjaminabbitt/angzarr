@@ -17,6 +17,7 @@ from angzarr import angzarr_pb2_grpc
 from handlers.state import rebuild_state, next_sequence
 from handlers import (
     CommandRejectedError,
+    errmsg,
     handle_create_cart,
     handle_add_item,
     handle_update_quantity,
@@ -52,7 +53,7 @@ class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
         prior_events = request.events if request.HasField("events") else None
 
         if not command_book.pages:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "CommandBook has no pages")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, errmsg.NO_COMMAND_PAGES)
 
         command_page = command_book.pages[0]
         command_any = command_page.command
@@ -78,7 +79,7 @@ class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
             elif command_any.type_url.endswith("Checkout"):
                 return handle_checkout(command_book, command_any, state, seq, log)
             else:
-                context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Unknown command type: {command_any.type_url}")
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"{errmsg.UNKNOWN_COMMAND}: {command_any.type_url}")
         except CommandRejectedError as e:
             log.warning("command_rejected", reason=str(e))
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(e))

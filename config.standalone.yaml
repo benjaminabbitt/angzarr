@@ -1,0 +1,134 @@
+# Standalone mode configuration for local development
+#
+# Uses:
+# - SQLite for event storage (configured per-service)
+# - Channel event bus for in-process pub/sub
+# - Unix domain sockets for gRPC transport
+#
+# Usage:
+#   cp config.standalone.yaml config.yaml
+#   cargo run --bin angzarr-standalone
+
+# Storage is configured per-service (aggregates, sagas, projectors, gateway).
+# Each service MUST have explicit storage configuration - no defaults.
+#
+# Example:
+# standalone:
+#   aggregates:
+#     - domain: orders
+#       command: ["./order-service"]
+#       storage:
+#         type: sqlite
+#         sqlite:
+#           path: ./data/orders.db
+#     - domain: customers
+#       command: ["./customer-service"]
+#       storage:
+#         type: sqlite
+#         sqlite:
+#           path: ./data/customers.db
+
+messaging:
+  type: channel
+
+transport:
+  type: uds
+  uds:
+    base_path: /tmp/angzarr
+
+# =============================================================================
+# Service Socket Conventions (UDS mode)
+# =============================================================================
+# Socket paths are derived from base_path + service name + optional qualifier:
+#
+# Infrastructure (singleton):
+#   /tmp/angzarr/gateway.sock     - Command gateway
+#   /tmp/angzarr/stream.sock      - Event streaming
+#   /tmp/angzarr/log.sock         - Logging projector
+#
+# Domain-specific (one per domain):
+#   /tmp/angzarr/aggregate-{domain}.sock    - e.g., aggregate-orders.sock
+#   /tmp/angzarr/business-{domain}.sock     - e.g., business-orders.sock
+#   /tmp/angzarr/projector-{name}.sock      - e.g., projector-accounting.sock
+#   /tmp/angzarr/saga-{name}.sock           - e.g., saga-fulfillment.sock
+
+# =============================================================================
+# Multi-Domain Example
+# =============================================================================
+# To run multiple domains locally, start each aggregate with its own config:
+#
+# Terminal 1 - Orders aggregate:
+#   ANGZARR_TARGET__DOMAIN=orders \
+#   ANGZARR_TARGET__ADDRESS=/tmp/angzarr/business-orders.sock \
+#   cargo run --features standalone --bin angzarr-aggregate
+#
+# Terminal 2 - Customers aggregate:
+#   ANGZARR_TARGET__DOMAIN=customers \
+#   ANGZARR_TARGET__ADDRESS=/tmp/angzarr/business-customers.sock \
+#   cargo run --features standalone --bin angzarr-aggregate
+#
+# Terminal 3 - Business logic (orders):
+#   # Your business logic service listening on /tmp/angzarr/business-orders.sock
+#
+# Terminal 4 - Business logic (customers):
+#   # Your business logic service listening on /tmp/angzarr/business-customers.sock
+
+# =============================================================================
+# Target Service (Sidecar Mode)
+# =============================================================================
+# The target configures which business logic service the sidecar connects to.
+#
+# Basic configuration (external process):
+# target:
+#   address: /tmp/angzarr/business-orders.sock  # UDS path or tcp host:port
+#   domain: orders
+#
+# With process spawning (sidecar starts the business logic):
+# target:
+#   address: /tmp/angzarr/business-orders.sock
+#   domain: orders
+#   command: python examples/python/order/server.py
+#   working_dir: /path/to/project
+#
+# When 'command' is set, the sidecar will:
+# 1. Spawn the business logic process with transport config as env vars:
+#    - TRANSPORT_TYPE=uds
+#    - UDS_BASE_PATH=/tmp/angzarr
+#    - SERVICE_NAME=business
+#    - DOMAIN=orders
+# 2. Wait for it to become ready (health check)
+# 3. Connect and proceed normally
+#
+# This enables single-command startup of the entire stack.
+
+# =============================================================================
+# Business Logic Endpoints (Gateway Mode)
+# =============================================================================
+# For gateway to route commands to aggregates:
+# business_logic:
+#   - domain: orders
+#     address: /tmp/angzarr/aggregate-orders.sock
+#   - domain: customers
+#     address: /tmp/angzarr/aggregate-customers.sock
+#   - domain: inventory
+#     address: /tmp/angzarr/aggregate-inventory.sock
+
+# =============================================================================
+# Projector Endpoints
+# =============================================================================
+# projectors:
+#   - name: accounting
+#     address: /tmp/angzarr/projector-accounting.sock
+#     synchronous: true
+#   - name: web
+#     address: /tmp/angzarr/projector-web.sock
+#     synchronous: false
+
+# =============================================================================
+# Saga Endpoints
+# =============================================================================
+# sagas:
+#   - name: fulfillment
+#     address: /tmp/angzarr/saga-fulfillment.sock
+#   - name: cancellation
+#     address: /tmp/angzarr/saga-cancellation.sock

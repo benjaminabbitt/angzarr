@@ -10,19 +10,25 @@ use tonic::Status;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use tokio::sync::RwLock;
+
 use crate::bus::EventBus;
 use crate::proto::{
-    event_page, CommandBook, CommandResponse, ContextualCommand, Cover, EventBook,
+    event_page, CommandBook, CommandResponse, ContextualCommand, Cover, EventBook, Projection,
     Uuid as ProtoUuid,
 };
 use crate::storage::{EventStore, SnapshotStore, StorageError};
 
-use super::traits::AggregateHandler;
+use super::traits::{AggregateHandler, ProjectorConfig, ProjectorHandler};
 
 use crate::proto::EventPage;
 
-/// Maximum retry attempts for sequence conflicts.
-const MAX_RETRY_ATTEMPTS: u32 = 5;
+/// Entry for a registered sync projector.
+struct SyncProjectorEntry {
+    name: String,
+    handler: Arc<dyn ProjectorHandler>,
+    config: ProjectorConfig,
+}
 
 /// Extract sequence number from an EventPage.
 fn extract_sequence(page: Option<&EventPage>) -> u32 {
@@ -33,40 +39,61 @@ fn extract_sequence(page: Option<&EventPage>) -> u32 {
     .unwrap_or(0)
 }
 
+/// Per-domain storage.
+#[derive(Clone)]
+pub struct DomainStorage {
+    /// Event store for this domain.
+    pub event_store: Arc<dyn EventStore>,
+    /// Snapshot store for this domain.
+    pub snapshot_store: Arc<dyn SnapshotStore>,
+}
+
 /// Command router for embedded runtime.
 ///
 /// Routes commands to registered aggregate handlers based on domain.
+/// Each domain has its own isolated storage.
 #[derive(Clone)]
 pub struct CommandRouter {
     /// Registered handlers by domain.
     handlers: Arc<HashMap<String, Arc<dyn AggregateHandler>>>,
-    /// Event store.
-    event_store: Arc<dyn EventStore>,
-    /// Snapshot store.
-    snapshot_store: Arc<dyn SnapshotStore>,
+    /// Per-domain storage.
+    stores: Arc<HashMap<String, DomainStorage>>,
     /// Event bus for publishing.
     event_bus: Arc<dyn EventBus>,
+    /// Synchronous projectors (called during command execution).
+    sync_projectors: Arc<RwLock<Vec<SyncProjectorEntry>>>,
 }
 
 impl CommandRouter {
-    /// Create a new command router.
+    /// Create a new command router with per-domain storage.
     pub fn new(
         handlers: HashMap<String, Arc<dyn AggregateHandler>>,
-        event_store: Arc<dyn EventStore>,
-        snapshot_store: Arc<dyn SnapshotStore>,
+        stores: HashMap<String, DomainStorage>,
         event_bus: Arc<dyn EventBus>,
+        sync_projectors: Vec<(String, Arc<dyn ProjectorHandler>, ProjectorConfig)>,
     ) -> Self {
         let domains: Vec<_> = handlers.keys().cloned().collect();
         info!(
             domains = ?domains,
+            sync_projectors = sync_projectors.len(),
             "Command router initialized"
         );
 
+        let sync_entries: Vec<SyncProjectorEntry> = sync_projectors
+            .into_iter()
+            .filter(|(_, _, config)| config.synchronous)
+            .map(|(name, handler, config)| SyncProjectorEntry {
+                name,
+                handler,
+                config,
+            })
+            .collect();
+
         Self {
             handlers: Arc::new(handlers),
-            event_store,
-            snapshot_store,
+            stores: Arc::new(stores),
             event_bus,
+            sync_projectors: Arc::new(RwLock::new(sync_entries)),
         }
     }
 
@@ -99,13 +126,11 @@ impl CommandRouter {
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 
         // Get handler for domain
-        let handler = self
-            .handlers
-            .get(domain)
-            .ok_or_else(|| Status::not_found(format!("No handler registered for domain: {}", domain)))?;
+        let handler = self.handlers.get(domain).ok_or_else(|| {
+            Status::not_found(format!("No handler registered for domain: {}", domain))
+        })?;
 
         let correlation_id = self.ensure_correlation_id(&command_book)?;
-        let auto_resequence = command_book.auto_resequence;
 
         debug!(
             domain = %domain,
@@ -114,67 +139,51 @@ impl CommandRouter {
             "Executing command"
         );
 
-        // Retry loop for auto_resequence
-        let mut attempt = 0;
-        loop {
-            attempt += 1;
+        // Load prior events
+        let prior_events = self.load_prior_events(domain, root_uuid).await?;
 
-            // Load prior events
-            let prior_events = self
-                .load_prior_events(domain, root_uuid)
-                .await?;
+        // Create contextual command
+        let contextual_command = ContextualCommand {
+            events: Some(prior_events),
+            command: Some(command_book.clone()),
+        };
 
-            // Create contextual command
-            let contextual_command = ContextualCommand {
-                events: Some(prior_events),
-                command: Some(command_book.clone()),
-            };
+        // Call handler
+        let new_events = handler.handle(contextual_command).await?;
 
-            // Call handler
-            let new_events = handler.handle(contextual_command).await?;
+        // Validate and persist events
+        match self
+            .persist_events(domain, root_uuid, &new_events, &correlation_id)
+            .await
+        {
+            Ok(final_events) => {
+                // Call sync projectors before publishing
+                let projections = self.call_sync_projectors(&final_events).await;
 
-            // Validate and persist events
-            match self.persist_events(domain, root_uuid, &new_events, &correlation_id).await {
-                Ok(final_events) => {
-                    // Publish to event bus
-                    if let Err(e) = self.event_bus.publish(Arc::new(final_events.clone())).await {
-                        warn!(
-                            domain = %domain,
-                            root = %root_uuid,
-                            error = %e,
-                            "Failed to publish events"
-                        );
-                    }
-
-                    return Ok(CommandResponse {
-                        events: Some(final_events),
-                        projections: vec![], // Sync projectors handled separately
-                    });
-                }
-                Err(e) => {
-                    if auto_resequence && attempt < MAX_RETRY_ATTEMPTS {
-                        if let Some(StorageError::SequenceConflict { .. }) =
-                            e.downcast_ref::<StorageError>()
-                        {
-                            debug!(
-                                domain = %domain,
-                                root = %root_uuid,
-                                attempt = attempt,
-                                "Sequence conflict, retrying"
-                            );
-                            continue;
-                        }
-                    }
-
-                    error!(
+                // Publish to event bus for async consumers
+                if let Err(e) = self.event_bus.publish(Arc::new(final_events.clone())).await {
+                    warn!(
                         domain = %domain,
                         root = %root_uuid,
                         error = %e,
-                        "Command execution failed"
+                        "Failed to publish events"
                     );
-
-                    return Err(Status::internal(format!("Command execution failed: {e}")));
                 }
+
+                Ok(CommandResponse {
+                    events: Some(final_events),
+                    projections,
+                })
+            }
+            Err(e) => {
+                error!(
+                    domain = %domain,
+                    root = %root_uuid,
+                    error = %e,
+                    "Command execution failed"
+                );
+
+                Err(Status::internal(format!("Command execution failed: {e}")))
             }
         }
     }
@@ -191,14 +200,20 @@ impl CommandRouter {
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
+    /// Get storage for a domain.
+    #[allow(clippy::result_large_err)]
+    fn get_storage(&self, domain: &str) -> Result<&DomainStorage, Status> {
+        self.stores.get(domain).ok_or_else(|| {
+            Status::not_found(format!("No storage configured for domain: {}", domain))
+        })
+    }
+
     /// Load prior events for an aggregate.
-    async fn load_prior_events(
-        &self,
-        domain: &str,
-        root: Uuid,
-    ) -> Result<EventBook, Status> {
+    async fn load_prior_events(&self, domain: &str, root: Uuid) -> Result<EventBook, Status> {
+        let storage = self.get_storage(domain)?;
+
         // Try to load snapshot first
-        let snapshot = self
+        let snapshot = storage
             .snapshot_store
             .get(domain, root)
             .await
@@ -206,14 +221,14 @@ impl CommandRouter {
 
         let (events, snapshot_data) = if let Some(snap) = snapshot {
             let from_seq = snap.sequence + 1;
-            let events = self
+            let events = storage
                 .event_store
                 .get_from(domain, root, from_seq)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
             (events, Some(snap))
         } else {
-            let events = self
+            let events = storage
                 .event_store
                 .get(domain, root)
                 .await
@@ -227,10 +242,10 @@ impl CommandRouter {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: events,
             snapshot: snapshot_data,
-            correlation_id: String::new(),
             snapshot_state: None,
         })
     }
@@ -245,17 +260,28 @@ impl CommandRouter {
     ) -> Result<EventBook, Box<dyn std::error::Error + Send + Sync>> {
         if events.pages.is_empty() {
             // No events to persist (command was a no-op)
+            // Ensure correlation_id is set on cover
+            let cover = events.cover.clone().map(|mut c| {
+                if c.correlation_id.is_empty() {
+                    c.correlation_id = correlation_id.to_string();
+                }
+                c
+            });
             return Ok(EventBook {
-                cover: events.cover.clone(),
+                cover,
                 pages: vec![],
                 snapshot: None,
-                correlation_id: correlation_id.to_string(),
                 snapshot_state: None,
             });
         }
 
+        let storage = self
+            .stores
+            .get(domain)
+            .ok_or_else(|| format!("No storage configured for domain: {}", domain))?;
+
         // Validate sequence
-        let next_sequence = self.event_store.get_next_sequence(domain, root).await?;
+        let next_sequence = storage.event_store.get_next_sequence(domain, root).await?;
         let first_event_seq = extract_sequence(events.pages.first());
 
         if first_event_seq != next_sequence {
@@ -266,8 +292,9 @@ impl CommandRouter {
         }
 
         // Persist events
-        self.event_store
-            .add(domain, root, events.pages.clone())
+        storage
+            .event_store
+            .add(domain, root, events.pages.clone(), correlation_id)
             .await?;
 
         // Persist snapshot if present
@@ -277,15 +304,20 @@ impl CommandRouter {
                 sequence: last_seq,
                 state: Some(snapshot_state.clone()),
             };
-            self.snapshot_store.put(domain, root, snapshot).await?;
+            storage.snapshot_store.put(domain, root, snapshot).await?;
         }
 
-        // Return events with correlation ID
+        // Return events with correlation ID set on cover
+        let cover = events.cover.clone().map(|mut c| {
+            if c.correlation_id.is_empty() {
+                c.correlation_id = correlation_id.to_string();
+            }
+            c
+        });
         Ok(EventBook {
-            cover: events.cover.clone(),
+            cover,
             pages: events.pages.clone(),
             snapshot: None,
-            correlation_id: correlation_id.to_string(),
             snapshot_state: events.snapshot_state.clone(),
         })
     }
@@ -293,8 +325,14 @@ impl CommandRouter {
     /// Ensure correlation ID exists, generating one if needed.
     #[allow(clippy::result_large_err)]
     fn ensure_correlation_id(&self, command_book: &CommandBook) -> Result<String, Status> {
-        if !command_book.correlation_id.is_empty() {
-            return Ok(command_book.correlation_id.clone());
+        let existing = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
+
+        if !existing.is_empty() {
+            return Ok(existing.to_string());
         }
 
         // Generate deterministic correlation ID from command content
@@ -307,6 +345,42 @@ impl CommandRouter {
         let correlation_id = Uuid::new_v5(&angzarr_ns, &buf).to_string();
 
         Ok(correlation_id)
+    }
+
+    /// Call synchronous projectors and collect their results.
+    async fn call_sync_projectors(&self, events: &EventBook) -> Vec<Projection> {
+        let projectors = self.sync_projectors.read().await;
+        let mut projections = Vec::new();
+
+        let domain = events
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("unknown");
+
+        for entry in projectors.iter() {
+            // Check domain filter
+            if !entry.config.domains.is_empty() && !entry.config.domains.iter().any(|d| d == domain)
+            {
+                continue;
+            }
+
+            match entry.handler.handle(events).await {
+                Ok(projection) => {
+                    projections.push(projection);
+                }
+                Err(e) => {
+                    error!(
+                        projector = %entry.name,
+                        domain = %domain,
+                        error = %e,
+                        "Synchronous projector failed"
+                    );
+                }
+            }
+        }
+
+        projections
     }
 }
 
@@ -324,18 +398,16 @@ pub fn create_command_book(
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
+            correlation_id: String::new(),
         }),
         pages: vec![crate::proto::CommandPage {
-            sequence: 0, // Will be set by router
+            sequence: 0,
             command: Some(prost_types::Any {
                 type_url: command_type.to_string(),
                 value: command_data,
             }),
         }],
-        correlation_id: String::new(),
         saga_origin: None,
-        auto_resequence: true,
-        fact: false,
     }
 }
 
@@ -349,6 +421,7 @@ mod tests {
             root: Some(ProtoUuid {
                 value: root.as_bytes().to_vec(),
             }),
+            correlation_id: String::new(),
         }
     }
 
@@ -359,6 +432,5 @@ mod tests {
 
         assert_eq!(command.cover.as_ref().unwrap().domain, "orders");
         assert!(!command.pages.is_empty());
-        assert!(command.auto_resequence);
     }
 }

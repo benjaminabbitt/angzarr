@@ -97,6 +97,6 @@ func (s *server) dispatchCommand(state *logic.CartState, typeURL string, value [
 		return event, nil
 
 	default:
-		return nil, status.Errorf(codes.InvalidArgument, "Unknown command type: %s", typeURL)
+		return nil, status.Errorf(codes.InvalidArgument, "%s: %s", logic.ErrMsgUnknownCommand, typeURL)
 	}
 }

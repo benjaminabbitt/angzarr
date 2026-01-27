@@ -110,7 +110,11 @@ impl WebProjector {
                     .big_integer()
                     .not_null(),
             )
-            .col(ColumnDef::new(CustomerOrders::ItemCount).integer().not_null())
+            .col(
+                ColumnDef::new(CustomerOrders::ItemCount)
+                    .integer()
+                    .not_null(),
+            )
             .col(
                 ColumnDef::new(CustomerOrders::LoyaltyPointsEarned)
                     .integer()
@@ -191,7 +195,11 @@ impl WebProjector {
             )
             .col(ColumnDef::new(ProductCatalog::Sku).text().not_null())
             .col(ColumnDef::new(ProductCatalog::Name).text().not_null())
-            .col(ColumnDef::new(ProductCatalog::Description).text().not_null())
+            .col(
+                ColumnDef::new(ProductCatalog::Description)
+                    .text()
+                    .not_null(),
+            )
             .col(
                 ColumnDef::new(ProductCatalog::PriceCents)
                     .big_integer()
@@ -325,9 +333,15 @@ impl WebProjector {
         let query = Query::update()
             .table(CustomerOrders::Table)
             .values([
-                (CustomerOrders::Status, OrderStatus::Completed.as_str().into()),
+                (
+                    CustomerOrders::Status,
+                    OrderStatus::Completed.as_str().into(),
+                ),
                 (CustomerOrders::TotalCents, total_cents.into()),
-                (CustomerOrders::LoyaltyPointsEarned, loyalty_points_earned.into()),
+                (
+                    CustomerOrders::LoyaltyPointsEarned,
+                    loyalty_points_earned.into(),
+                ),
                 (CustomerOrders::LastSequence, (sequence as i32).into()),
                 (CustomerOrders::UpdatedAt, now.into()),
             ])
@@ -509,7 +523,10 @@ impl WebProjector {
         let query = Query::update()
             .table(ProductCatalog::Table)
             .values([
-                (ProductCatalog::Status, ProductStatus::Discontinued.as_str().into()),
+                (
+                    ProductCatalog::Status,
+                    ProductStatus::Discontinued.as_str().into(),
+                ),
                 (ProductCatalog::LastSequence, (sequence as i32).into()),
                 (ProductCatalog::UpdatedAt, now.into()),
             ])

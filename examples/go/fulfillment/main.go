@@ -34,7 +34,7 @@ func (s *server) Handle(ctx context.Context, req *angzarr.ContextualCommand) (*a
 	priorEvents := req.Events
 
 	if cmdBook == nil || len(cmdBook.Pages) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "CommandBook has no pages")
+		return nil, status.Error(codes.InvalidArgument, logic.ErrMsgNoCommandPages)
 	}
 
 	cmdPage := cmdBook.Pages[0]
@@ -91,7 +91,7 @@ func (s *server) Handle(ctx context.Context, req *angzarr.ContextualCommand) (*a
 		event, err = s.logic.HandleRecordDelivery(state, cmd.Signature)
 
 	default:
-		return nil, status.Errorf(codes.InvalidArgument, "Unknown command type: %s", typeURL)
+		return nil, status.Errorf(codes.InvalidArgument, "%s: %s", logic.ErrMsgUnknownCommand, typeURL)
 	}
 
 	if err != nil {

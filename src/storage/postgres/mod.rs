@@ -33,6 +33,12 @@ impl PostgresEventStore {
             .col(ColumnDef::new(Events::Sequence).integer().not_null())
             .col(ColumnDef::new(Events::CreatedAt).text().not_null())
             .col(ColumnDef::new(Events::EventData).binary().not_null())
+            .col(
+                ColumnDef::new(Events::CorrelationId)
+                    .text()
+                    .not_null()
+                    .default(""),
+            )
             .primary_key(
                 Index::create()
                     .col(Events::Domain)
@@ -43,7 +49,7 @@ impl PostgresEventStore {
 
         sqlx::query(&create_table).execute(&self.pool).await?;
 
-        // Create index using sea-query
+        // Create index for domain+root lookups
         let create_index = Index::create()
             .if_not_exists()
             .name("idx_events_domain_root")
@@ -54,13 +60,31 @@ impl PostgresEventStore {
 
         sqlx::query(&create_index).execute(&self.pool).await?;
 
+        // Create index for correlation_id lookups (process manager queries)
+        let create_correlation_index = Index::create()
+            .if_not_exists()
+            .name("idx_events_correlation_id")
+            .table(Events::Table)
+            .col(Events::CorrelationId)
+            .to_string(PostgresQueryBuilder);
+
+        sqlx::query(&create_correlation_index)
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 }
 
 #[async_trait]
 impl EventStore for PostgresEventStore {
-    async fn add(&self, domain: &str, root: Uuid, events: Vec<EventPage>) -> Result<()> {
+    async fn add(
+        &self,
+        domain: &str,
+        root: Uuid,
+        events: Vec<EventPage>,
+        correlation_id: &str,
+    ) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -95,7 +119,8 @@ impl EventStore for PostgresEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-            let sequence = super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let sequence =
+                super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
             let created_at = super::helpers::parse_timestamp(&event)?;
 
             let query = Query::insert()
@@ -106,6 +131,7 @@ impl EventStore for PostgresEventStore {
                     Events::Sequence,
                     Events::CreatedAt,
                     Events::EventData,
+                    Events::CorrelationId,
                 ])
                 .values_panic([
                     domain.into(),
@@ -113,6 +139,7 @@ impl EventStore for PostgresEventStore {
                     sequence.into(),
                     created_at.into(),
                     event_data.into(),
+                    correlation_id.into(),
                 ])
                 .to_string(PostgresQueryBuilder);
 
@@ -237,6 +264,68 @@ impl EventStore for PostgresEventStore {
             }
             None => Ok(0),
         }
+    }
+
+    async fn get_by_correlation(
+        &self,
+        correlation_id: &str,
+    ) -> Result<Vec<crate::proto::EventBook>> {
+        use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
+        use std::collections::HashMap;
+
+        if correlation_id.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Query all events with this correlation_id
+        let query = Query::select()
+            .columns([
+                Events::Domain,
+                Events::Root,
+                Events::EventData,
+                Events::Sequence,
+            ])
+            .from(Events::Table)
+            .and_where(Expr::col(Events::CorrelationId).eq(correlation_id))
+            .order_by(Events::Domain, Order::Asc)
+            .order_by(Events::Root, Order::Asc)
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(PostgresQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        // Group events by (domain, root)
+        let mut books_map: HashMap<(String, Uuid), Vec<EventPage>> = HashMap::new();
+
+        for row in rows {
+            let domain: String = row.get("domain");
+            let root_str: String = row.get("root");
+            let event_data: Vec<u8> = row.get("event_data");
+
+            let root = Uuid::parse_str(&root_str)?;
+            let event = EventPage::decode(event_data.as_slice())?;
+
+            books_map.entry((domain, root)).or_default().push(event);
+        }
+
+        // Convert to EventBooks
+        let books = books_map
+            .into_iter()
+            .map(|((domain, root), pages)| EventBook {
+                cover: Some(Cover {
+                    domain,
+                    root: Some(ProtoUuid {
+                        value: root.as_bytes().to_vec(),
+                    }),
+                    correlation_id: correlation_id.to_string(),
+                }),
+                pages,
+                snapshot: None,
+                snapshot_state: None,
+            })
+            .collect();
+
+        Ok(books)
     }
 }
 

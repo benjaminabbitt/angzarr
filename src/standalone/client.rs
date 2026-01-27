@@ -6,9 +6,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::proto::{
-    CommandBook, CommandPage, CommandResponse, Cover, Uuid as ProtoUuid,
-};
+use crate::proto::{CommandBook, CommandPage, CommandResponse, Cover, Uuid as ProtoUuid};
 
 use super::router::CommandRouter;
 
@@ -76,7 +74,6 @@ pub struct CommandBuilder {
     command_type: Option<String>,
     command_data: Option<Vec<u8>>,
     correlation_id: Option<String>,
-    auto_resequence: bool,
     sequence: Option<u32>,
 }
 
@@ -89,7 +86,6 @@ impl CommandBuilder {
             command_type: None,
             command_data: None,
             correlation_id: None,
-            auto_resequence: true,
             sequence: None,
         }
     }
@@ -120,13 +116,7 @@ impl CommandBuilder {
         self
     }
 
-    /// Disable auto-resequencing (fail on sequence conflict instead of retry).
-    pub fn without_auto_resequence(mut self) -> Self {
-        self.auto_resequence = false;
-        self
-    }
-
-    /// Set explicit sequence number (used with auto_resequence=false).
+    /// Set explicit sequence number.
     pub fn with_sequence(mut self, sequence: u32) -> Self {
         self.sequence = Some(sequence);
         self
@@ -134,11 +124,9 @@ impl CommandBuilder {
 
     /// Build the command book without sending.
     pub fn build(self) -> CommandBook {
-        let command = self.command_data.map(|data| {
-            prost_types::Any {
-                type_url: self.command_type.unwrap_or_default(),
-                value: data,
-            }
+        let command = self.command_data.map(|data| prost_types::Any {
+            type_url: self.command_type.unwrap_or_default(),
+            value: data,
         });
 
         CommandBook {
@@ -147,15 +135,13 @@ impl CommandBuilder {
                 root: Some(ProtoUuid {
                     value: self.root.as_bytes().to_vec(),
                 }),
+                correlation_id: self.correlation_id.unwrap_or_default(),
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),
                 command,
             }],
-            correlation_id: self.correlation_id.unwrap_or_default(),
             saga_origin: None,
-            auto_resequence: self.auto_resequence,
-            fact: false,
         }
     }
 
@@ -187,6 +173,7 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: "test-id".to_string(),
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -195,13 +182,11 @@ mod tests {
                     value: vec![1, 2, 3],
                 }),
             }],
-            correlation_id: "test-id".to_string(),
             saga_origin: None,
-            auto_resequence: true,
-            fact: false,
         };
 
-        assert_eq!(command.cover.as_ref().unwrap().domain, "orders");
-        assert_eq!(command.correlation_id, "test-id");
+        let cover = command.cover.as_ref().unwrap();
+        assert_eq!(cover.domain, "orders");
+        assert_eq!(cover.correlation_id, "test-id");
     }
 }

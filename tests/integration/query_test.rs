@@ -20,8 +20,19 @@ mod examples_proto {
 
 use examples_proto::CreateCustomer;
 
+/// Returns true if container tests should run.
+fn should_run_container_tests() -> bool {
+    std::env::var("ANGZARR_TEST_MODE")
+        .map(|v| v.to_lowercase() == "container")
+        .unwrap_or(false)
+}
+
 #[tokio::test]
 async fn test_query_empty_aggregate() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut query_client = create_query_client().await;
     let nonexistent_id = Uuid::new_v4();
 
@@ -43,6 +54,10 @@ async fn test_query_empty_aggregate() {
 
 #[tokio::test]
 async fn test_query_with_bounds() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -60,14 +75,20 @@ async fn test_query_with_bounds() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Query with lower bound = 0, upper bound = 0 (only first event)
+    // Query with range [0, 0] (only first event)
+    use angzarr::proto::{query::Selection, Cover, SequenceRange};
     let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: customer_id.as_bytes().to_vec(),
+        cover: Some(Cover {
+            domain: "customer".to_string(),
+            root: Some(ProtoUuid {
+                value: customer_id.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
         }),
-        lower_bound: 0,
-        upper_bound: 0,
+        selection: Some(Selection::Range(SequenceRange {
+            lower: 0,
+            upper: Some(0),
+        })),
     };
 
     let response = query_client.get_event_book(query).await;
@@ -83,6 +104,10 @@ async fn test_query_with_bounds() {
 
 #[tokio::test]
 async fn test_query_returns_correct_domain() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -118,6 +143,10 @@ async fn test_query_returns_correct_domain() {
 
 #[tokio::test]
 async fn test_query_events_preserve_order() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();
@@ -148,6 +177,10 @@ async fn test_query_events_preserve_order() {
 
 #[tokio::test]
 async fn test_query_event_payloads() {
+    if !should_run_container_tests() {
+        println!("Skipping: set ANGZARR_TEST_MODE=container to run");
+        return;
+    }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
     let customer_id = Uuid::new_v4();

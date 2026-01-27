@@ -58,7 +58,13 @@ impl MongoEventStore {
 
 #[async_trait]
 impl EventStore for MongoEventStore {
-    async fn add(&self, domain: &str, root: Uuid, events: Vec<EventPage>) -> Result<()> {
+    async fn add(
+        &self,
+        domain: &str,
+        root: Uuid,
+        events: Vec<EventPage>,
+        _correlation_id: &str,
+    ) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
@@ -87,7 +93,8 @@ impl EventStore for MongoEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-            let sequence = super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let sequence =
+                super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
             let created_at = super::helpers::parse_timestamp(&event)?;
 
             let doc = doc! {
@@ -101,9 +108,9 @@ impl EventStore for MongoEventStore {
             // Insert with unique index enforcing consistency
             // Duplicate key error indicates concurrent write conflict
             self.events.insert_one(doc).await.map_err(|e| {
-                if let mongodb::error::ErrorKind::Write(
-                    mongodb::error::WriteFailure::WriteError(ref write_err),
-                ) = *e.kind
+                if let mongodb::error::ErrorKind::Write(mongodb::error::WriteFailure::WriteError(
+                    ref write_err,
+                )) = *e.kind
                 {
                     if write_err.code == 11000 {
                         // Duplicate key error - sequence conflict
@@ -269,6 +276,14 @@ impl EventStore for MongoEventStore {
         } else {
             Ok(0)
         }
+    }
+
+    async fn get_by_correlation(
+        &self,
+        _correlation_id: &str,
+    ) -> Result<Vec<crate::proto::EventBook>> {
+        // Not implemented for MongoDB - correlation_id not indexed
+        Ok(vec![])
     }
 }
 

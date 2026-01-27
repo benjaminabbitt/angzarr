@@ -1,6 +1,6 @@
 # Projectors
 
-A **projector** subscribes to domain events and builds **read models** (projections) optimized for queries. Projectors transform the append-only event log into denormalized views suitable for specific use cases.
+A **projector** subscribes to domain events and performs **side effects**—typically building read models, writing to databases, or streaming data to clients. Projectors transform the append-only event log into whatever form is needed: denormalized views for queries, cache entries, search indexes, or real-time streams.
 
 ## Concepts
 

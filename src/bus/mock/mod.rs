@@ -63,6 +63,7 @@ mod tests {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: String::new(),
             }),
             pages: (0..event_count)
                 .map(|i| EventPage {
@@ -75,7 +76,6 @@ mod tests {
                 })
                 .collect(),
             snapshot: None,
-            correlation_id: String::new(),
             snapshot_state: None,
         }
     }
@@ -110,7 +110,8 @@ mod tests {
             fn handle(
                 &self,
                 _book: Arc<EventBook>,
-            ) -> futures::future::BoxFuture<'static, std::result::Result<(), BusError>> {
+            ) -> futures::future::BoxFuture<'static, std::result::Result<(), BusError>>
+            {
                 Box::pin(async { Ok(()) })
             }
         }

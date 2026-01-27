@@ -2,6 +2,8 @@
 
 A **command handler** processes commands for a domain, validates business rules against current state, and emits events. In DDD terminology, this is the **aggregate**—the consistency boundary for a cluster of domain objects.
 
+There is exactly **one aggregate codebase per domain**. The "flights" domain has one aggregate that handles all flight-related commands (CreateFlight, BoardPassenger, DepartFlight, etc.). This single codebase scales horizontally across many processes, but the business logic is defined once.
+
 ## Concepts
 
 | Term | Definition |

@@ -8,18 +8,18 @@ import (
 
 func (l *DefaultCartLogic) HandleUpdateQuantity(state *CartState, productID string, newQuantity int32) (*examples.QuantityUpdated, error) {
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Cart does not exist")
+		return nil, NewFailedPrecondition(ErrMsgCartNotFound)
 	}
 	if !state.IsActive() {
-		return nil, NewFailedPrecondition("Cart is already checked out")
+		return nil, NewFailedPrecondition(ErrMsgCartCheckedOut)
 	}
 
 	item, ok := state.Items[productID]
 	if !ok {
-		return nil, NewFailedPrecondition("Item not in cart")
+		return nil, NewFailedPrecondition(ErrMsgItemNotInCart)
 	}
 	if newQuantity <= 0 {
-		return nil, NewInvalidArgument("Quantity must be positive")
+		return nil, NewInvalidArgument(ErrMsgQuantityPositive)
 	}
 
 	oldSubtotal := item.Quantity * item.UnitPriceCents

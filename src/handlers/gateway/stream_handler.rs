@@ -232,7 +232,10 @@ mod tests {
             tokio::spawn(async move {
                 for mut event in events {
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                    event.correlation_id = correlation_id.clone();
+                    // Set correlation_id on cover
+                    if let Some(ref mut cover) = event.cover {
+                        cover.correlation_id = correlation_id.clone();
+                    }
                     if tx.send(Ok(event)).await.is_err() {
                         break;
                     }

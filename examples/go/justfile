@@ -1,15 +1,12 @@
-# Go examples - gRPC servers
-# Container: podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
-# Run:       podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
+# Go examples for angzarr e-commerce domain
+# Services: customer, product, inventory, order, cart, fulfillment
+# Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
 #
-# Deployment Model:
-#   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm from root justfile
-#   - Application services: Deployed via Skaffold
-#
-# For cluster deployment:
-#   1. From repo root: `just kind-create-registry` - Create Kind cluster
-#   2. From repo root: `just infra-local` - Deploy backing services via Terraform
-#   3. Use `skaffold dev` or `skaffold run` in this directory for application services
+# Deployment modes (use from examples/ directory):
+#   just examples standalone run go     # Run in standalone mode
+#   just examples standalone test go    # Test in standalone mode
+#   just examples k8s deploy go       # Deploy to K8s
+#   just examples k8s test go         # Test in K8s
 
 set shell := ["bash", "-c"]
 
@@ -19,6 +16,50 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
+# ============================================================================
+# Build / Test / Clean
+# ============================================================================
+
+# Build all Go services
+build:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        echo "Building $dir..."; \
+        (cd "{{TOP}}/examples/go/$dir" && go build .) || true; \
+    done
+
+# Run unit tests for all services
+test:
+    for dir in customer product inventory order cart fulfillment; do \
+        echo "Testing $dir..."; \
+        (cd "{{TOP}}/examples/go/$dir" && go test -v ./...) || true; \
+    done
+
+# Clean all Go examples
+clean:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        (cd "{{TOP}}/examples/go/$dir" && go clean) 2>/dev/null || true; \
+    done
+
+# Format all Go code
+fmt:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        (cd "{{TOP}}/examples/go/$dir" && go fmt ./...) 2>/dev/null || true; \
+    done
+
+# Lint all Go code
+lint:
+    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
+        (cd "{{TOP}}/examples/go/$dir" && go vet ./...) 2>/dev/null || true; \
+    done
+
+# Lint Helm chart
+helm-lint:
+    helm lint helm
+
+# ============================================================================
+# Container Images
+# ============================================================================
+
 # Build dev container
 container-build:
     cd {{TOP}} && podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
@@ -27,78 +68,35 @@ container-build:
 container-test:
     cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
 
-# Build all Go examples
-build: build-customer build-transaction build-saga-loyalty build-projector-log-customer build-projector-log-transaction
+# ============================================================================
+# Standalone Mode Shortcuts (delegates to examples/standalone.justfile)
+# ============================================================================
 
-# Build customer bounded context
-build-customer:
-    cd customer && just build
+# Run in standalone mode
+standalone:
+    cd {{TOP}}/examples && just standalone run go
 
-# Build transaction bounded context
-build-transaction:
-    cd transaction && just build
+# Run acceptance tests in standalone mode
+acceptance-standalone:
+    cd {{TOP}}/examples && just standalone test go
 
-# Build saga-loyalty
-build-saga-loyalty:
-    cd saga-loyalty && just build
+# ============================================================================
+# K8s Mode Shortcuts (delegates to examples/k8s.justfile)
+# ============================================================================
 
-# Build projector-log-customer
-build-projector-log-customer:
-    cd projector-log-customer && just build
+# Deploy to K8s
+deploy:
+    cd {{TOP}}/examples && just k8s deploy go
 
-# Build projector-log-transaction
-build-projector-log-transaction:
-    cd projector-log-transaction && just build
+# Run acceptance tests in K8s
+acceptance-k8s:
+    cd {{TOP}}/examples && just k8s test go
 
-# Test all Go examples
-test: test-customer test-transaction test-saga-loyalty test-projector-log-customer test-projector-log-transaction
+# Start dev mode with file watching
+dev:
+    cd {{TOP}}/examples && just k8s dev go
 
-# Test customer
-test-customer: build-customer
-    cd customer && just test
-
-# Test transaction
-test-transaction: build-transaction
-    cd transaction && just test
-
-# Test saga-loyalty
-test-saga-loyalty: build-saga-loyalty
-    cd saga-loyalty && just test || true
-
-# Test projector-log-customer
-test-projector-log-customer: build-projector-log-customer
-    cd projector-log-customer && just test || true
-
-# Test projector-log-transaction
-test-projector-log-transaction: build-projector-log-transaction
-    cd projector-log-transaction && just test || true
-
-# Clean all Go examples
-clean:
-    cd common && just clean || true
-    cd customer && just clean || true
-    cd transaction && just clean || true
-    cd saga-loyalty && just clean || true
-    cd projector-log-customer && just clean || true
-    cd projector-log-transaction && just clean || true
-
-# Format all Go code
-fmt:
-    cd customer && go fmt ./...
-    cd transaction && go fmt ./...
-    cd saga-loyalty && go fmt ./...
-    cd projector-log-customer && go fmt ./...
-    cd projector-log-transaction && go fmt ./...
-
-# Lint all Go code
-lint:
-    cd customer && go vet ./...
-    cd transaction && go vet ./...
-    cd saga-loyalty && go vet ./...
-    cd projector-log-customer && go vet ./...
-    cd projector-log-transaction && go vet ./...
-
-# Lint Helm chart
-helm-lint:
-    helm lint helm
+# Delete K8s deployment
+delete:
+    cd {{TOP}}/examples && just k8s delete go
 

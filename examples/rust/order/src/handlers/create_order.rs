@@ -1,8 +1,8 @@
 //! Handler for CreateOrder command.
 
-use common::{BusinessError, Result};
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateOrder, OrderCreated, OrderState};
+use common::{BusinessError, Result};
 use prost::Message;
 
 use super::{make_event_book, now};

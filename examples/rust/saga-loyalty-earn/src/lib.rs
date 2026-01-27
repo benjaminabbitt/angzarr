@@ -6,6 +6,7 @@ use prost::Message;
 
 use angzarr::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid as ProtoUuid};
 use common::proto::{AddLoyaltyPoints, OrderCompleted};
+use common::SagaLogic;
 
 pub const SAGA_NAME: &str = "loyalty-earn";
 pub const SOURCE_DOMAIN: &str = "order";
@@ -59,9 +60,7 @@ impl LoyaltyEarnSaga {
                 command: Some(cmd_any),
             }],
             correlation_id: correlation_id.to_string(),
-            saga_origin: None, // Set by coordinator
-            auto_resequence: false,
-            fact: false,
+            ..Default::default()
         })
     }
 
@@ -87,9 +86,14 @@ impl Default for LoyaltyEarnSaga {
     }
 }
 
-impl common::SagaLogic for LoyaltyEarnSaga {
-    fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
-        self.handle(book)
+impl SagaLogic for LoyaltyEarnSaga {
+    /// This saga doesn't need destination state - just produces commands from source events.
+    fn prepare(&self, _source: &EventBook) -> Vec<Cover> {
+        vec![]
+    }
+
+    fn execute(&self, source: &EventBook, _destinations: &[EventBook]) -> Vec<CommandBook> {
+        self.handle(source)
     }
 }
 

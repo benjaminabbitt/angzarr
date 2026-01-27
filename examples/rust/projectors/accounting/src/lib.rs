@@ -80,7 +80,11 @@ impl AccountingProjector {
                     .not_null()
                     .primary_key(),
             )
-            .col(ColumnDef::new(AccountingLedger::EntryType).text().not_null())
+            .col(
+                ColumnDef::new(AccountingLedger::EntryType)
+                    .text()
+                    .not_null(),
+            )
             .col(ColumnDef::new(AccountingLedger::OrderId).text())
             .col(ColumnDef::new(AccountingLedger::CustomerId).text())
             .col(
@@ -88,14 +92,22 @@ impl AccountingProjector {
                     .big_integer()
                     .not_null(),
             )
-            .col(ColumnDef::new(AccountingLedger::Description).text().not_null())
+            .col(
+                ColumnDef::new(AccountingLedger::Description)
+                    .text()
+                    .not_null(),
+            )
             .col(ColumnDef::new(AccountingLedger::CorrelationId).text())
             .col(
                 ColumnDef::new(AccountingLedger::EventSequence)
                     .integer()
                     .not_null(),
             )
-            .col(ColumnDef::new(AccountingLedger::CreatedAt).text().not_null())
+            .col(
+                ColumnDef::new(AccountingLedger::CreatedAt)
+                    .text()
+                    .not_null(),
+            )
             .to_string(PostgresQueryBuilder);
 
         sqlx::query(&create_ledger).execute(&self.pool).await?;

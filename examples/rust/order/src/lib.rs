@@ -8,8 +8,8 @@ mod state;
 use angzarr::proto::{
     business_response, BusinessResponse, CommandBook, ContextualCommand, EventBook,
 };
-use common::{next_sequence, AggregateLogic, BusinessError, Result};
 use common::proto::OrderState;
+use common::{next_sequence, AggregateLogic, BusinessError, Result};
 
 // Re-export state functions for tests and external use
 pub use state::{calculate_total, rebuild_state};
@@ -135,7 +135,10 @@ impl OrderLogic {
 
 #[tonic::async_trait]
 impl AggregateLogic for OrderLogic {
-    async fn handle(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, tonic::Status> {
+    async fn handle(
+        &self,
+        cmd: ContextualCommand,
+    ) -> std::result::Result<BusinessResponse, tonic::Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -143,9 +146,7 @@ impl AggregateLogic for OrderLogic {
         let next_seq = next_sequence(prior_events);
 
         let Some(cb) = command_book else {
-            return Err(BusinessError::Rejected(
-                errmsg::NO_COMMAND_PAGES.to_string(),
-            ).into());
+            return Err(BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()).into());
         };
 
         let command_page = cb
@@ -173,7 +174,8 @@ impl AggregateLogic for OrderLogic {
                 "{}: {}",
                 errmsg::UNKNOWN_COMMAND,
                 command_any.type_url
-            )).into());
+            ))
+            .into());
         };
 
         Ok(BusinessResponse {
@@ -206,8 +208,6 @@ mod tests {
             }],
             correlation_id: String::new(),
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 

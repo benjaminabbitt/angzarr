@@ -6,11 +6,8 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::{EventStore, PositionStore, Result, SnapshotStore, StorageError};
+use super::{EventStore, Result, SnapshotStore, StorageError};
 use crate::proto::{Cover, EventBook, EventPage, Snapshot, Uuid as ProtoUuid};
-
-/// Key type for position store: (handler, domain, root).
-type PositionKey = (String, String, Vec<u8>);
 
 /// Stored event with correlation tracking.
 struct StoredEvent {
@@ -178,10 +175,10 @@ impl EventStore for MockEventStore {
                     root: Some(ProtoUuid {
                         value: root.as_bytes().to_vec(),
                     }),
+                    correlation_id: correlation_id.to_string(),
                 }),
                 pages,
                 snapshot: None,
-                correlation_id: correlation_id.to_string(),
                 snapshot_state: None,
             });
         }
@@ -228,40 +225,6 @@ impl SnapshotStore for MockSnapshotStore {
     async fn delete(&self, namespace: &str, root: Uuid) -> Result<()> {
         let key = (namespace.to_string(), root);
         self.snapshots.write().await.remove(&key);
-        Ok(())
-    }
-}
-
-/// Mock position store that stores positions in memory.
-#[derive(Default)]
-pub struct MockPositionStore {
-    positions: RwLock<HashMap<PositionKey, u32>>,
-}
-
-impl MockPositionStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-#[async_trait]
-impl PositionStore for MockPositionStore {
-    async fn get(&self, handler: &str, domain: &str, root: &[u8]) -> Result<Option<u32>> {
-        let key = (handler.to_string(), domain.to_string(), root.to_vec());
-        let store = self.positions.read().await;
-        Ok(store.get(&key).copied())
-    }
-
-    async fn put(&self, handler: &str, domain: &str, root: &[u8], sequence: u32) -> Result<()> {
-        let key = (handler.to_string(), domain.to_string(), root.to_vec());
-        let mut positions = self.positions.write().await;
-
-        // Insert-only: swallow conflicts (deduplication housekeeping)
-        if positions.contains_key(&key) {
-            return Ok(());
-        }
-
-        positions.insert(key, sequence);
         Ok(())
     }
 }

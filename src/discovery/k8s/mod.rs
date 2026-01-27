@@ -1,6 +1,6 @@
 //! K8s label-based service discovery.
 //!
-//! Discovers aggregate, projector, and saga coordinator services by watching
+//! Discovers aggregate and projector coordinator services by watching
 //! K8s Service resources with appropriate labels. Service mesh handles L7
 //! gRPC load balancing—we just connect to Service DNS names.
 //!
@@ -16,12 +16,6 @@
 //! labels:
 //!   app.kubernetes.io/component: projector
 //!   angzarr.io/domain: cart
-//!
-//! # Saga coordinator
-//! labels:
-//!   app.kubernetes.io/component: saga
-//!   angzarr.io/source-domain: order
-//!   angzarr.io/domain: fulfillment
 //! ```
 
 use std::collections::HashMap;
@@ -41,7 +35,6 @@ use tracing::{debug, error, info, warn};
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::event_query_client::EventQueryClient;
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
-use crate::proto::saga_coordinator_client::SagaCoordinatorClient;
 
 /// Label for component type.
 const COMPONENT_LABEL: &str = "app.kubernetes.io/component";
@@ -49,13 +42,9 @@ const COMPONENT_LABEL: &str = "app.kubernetes.io/component";
 /// Label for domain (aggregate and projector).
 const DOMAIN_LABEL: &str = "angzarr.io/domain";
 
-/// Label for source domain (saga - events it listens to).
-const SOURCE_DOMAIN_LABEL: &str = "angzarr.io/source-domain";
-
 /// Component values.
 const COMPONENT_AGGREGATE: &str = "aggregate";
 const COMPONENT_PROJECTOR: &str = "projector";
-const COMPONENT_SAGA: &str = "saga";
 
 /// Default gRPC port.
 const DEFAULT_GRPC_PORT: u16 = 50051;
@@ -91,8 +80,6 @@ pub struct DiscoveredService {
     pub port: u16,
     /// Domain this service handles (angzarr.io/domain).
     pub domain: Option<String>,
-    /// Source domain for sagas (angzarr.io/source-domain).
-    pub source_domain: Option<String>,
 }
 
 impl DiscoveredService {
@@ -169,12 +156,10 @@ pub struct ServiceDiscovery {
     namespace: String,
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     projectors: Arc<RwLock<HashMap<String, DiscoveredService>>>,
-    sagas: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     // Connection caches
     aggregate_clients: Arc<RwLock<HashMap<String, AggregateCoordinatorClient<Channel>>>>,
     event_query_clients: Arc<RwLock<HashMap<String, EventQueryClient<Channel>>>>,
     projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorClient<Channel>>>>,
-    saga_clients: Arc<RwLock<HashMap<String, SagaCoordinatorClient<Channel>>>>,
 }
 
 impl ServiceDiscovery {
@@ -190,11 +175,9 @@ impl ServiceDiscovery {
             namespace,
             aggregates: empty_cache(),
             projectors: empty_cache(),
-            sagas: empty_cache(),
             aggregate_clients: empty_cache(),
             event_query_clients: empty_cache(),
             projector_clients: empty_cache(),
-            saga_clients: empty_cache(),
         })
     }
 
@@ -208,11 +191,9 @@ impl ServiceDiscovery {
             namespace: "static".to_string(),
             aggregates: empty_cache(),
             projectors: empty_cache(),
-            sagas: empty_cache(),
             aggregate_clients: empty_cache(),
             event_query_clients: empty_cache(),
             projector_clients: empty_cache(),
-            saga_clients: empty_cache(),
         }
     }
 
@@ -225,7 +206,6 @@ impl ServiceDiscovery {
             service_address: address.to_string(),
             port,
             domain: Some(domain.to_string()),
-            source_domain: None,
         };
         info!(
             domain = %domain,
@@ -246,7 +226,6 @@ impl ServiceDiscovery {
             service_address: address.to_string(),
             port,
             domain: Some(domain.to_string()),
-            source_domain: None,
         };
         info!(
             name = %name,
@@ -256,36 +235,6 @@ impl ServiceDiscovery {
             "Registered static projector"
         );
         self.projectors
-            .write()
-            .await
-            .insert(service.name.clone(), service);
-    }
-
-    /// Register a saga service manually.
-    pub async fn register_saga(
-        &self,
-        name: &str,
-        domain: &str,
-        source_domain: &str,
-        address: &str,
-        port: u16,
-    ) {
-        let service = DiscoveredService {
-            name: name.to_string(),
-            service_address: address.to_string(),
-            port,
-            domain: Some(domain.to_string()),
-            source_domain: Some(source_domain.to_string()),
-        };
-        info!(
-            name = %name,
-            domain = %domain,
-            source_domain = %source_domain,
-            address = %address,
-            port = port,
-            "Registered static saga"
-        );
-        self.sagas
             .write()
             .await
             .insert(service.name.clone(), service);
@@ -315,42 +264,42 @@ impl ServiceDiscovery {
 
         // Sync aggregates
         let aggregate_list = services
-            .list(&ListParams::default().labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_AGGREGATE)))
+            .list(
+                &ListParams::default()
+                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_AGGREGATE)),
+            )
             .await?;
         for svc in aggregate_list {
             if let Some(discovered) = self.extract_service(&svc) {
-                self.aggregates.write().await.insert(discovered.name.clone(), discovered);
+                self.aggregates
+                    .write()
+                    .await
+                    .insert(discovered.name.clone(), discovered);
             }
         }
 
         // Sync projectors
         let projector_list = services
-            .list(&ListParams::default().labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_PROJECTOR)))
+            .list(
+                &ListParams::default()
+                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_PROJECTOR)),
+            )
             .await?;
         for svc in projector_list {
             if let Some(discovered) = self.extract_service(&svc) {
-                self.projectors.write().await.insert(discovered.name.clone(), discovered);
-            }
-        }
-
-        // Sync sagas
-        let saga_list = services
-            .list(&ListParams::default().labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_SAGA)))
-            .await?;
-        for svc in saga_list {
-            if let Some(discovered) = self.extract_service(&svc) {
-                self.sagas.write().await.insert(discovered.name.clone(), discovered);
+                self.projectors
+                    .write()
+                    .await
+                    .insert(discovered.name.clone(), discovered);
             }
         }
 
         let aggregates = self.aggregates.read().await;
         let projectors = self.projectors.read().await;
-        let sagas = self.sagas.read().await;
 
         info!(
             aggregates = aggregates.len(),
             projectors = projectors.len(),
-            sagas = sagas.len(),
             "Initial sync complete"
         );
 
@@ -364,7 +313,6 @@ impl ServiceDiscovery {
         }
         self.start_watching_component(COMPONENT_AGGREGATE, self.aggregates.clone());
         self.start_watching_component(COMPONENT_PROJECTOR, self.projectors.clone());
-        self.start_watching_component(COMPONENT_SAGA, self.sagas.clone());
     }
 
     fn start_watching_component(
@@ -415,10 +363,12 @@ impl ServiceDiscovery {
                         component = component,
                         service = %discovered.name,
                         domain = ?discovered.domain,
-                        source_domain = ?discovered.source_domain,
                         "Service discovered/updated"
                     );
-                    cache.write().await.insert(discovered.name.clone(), discovered);
+                    cache
+                        .write()
+                        .await
+                        .insert(discovered.name.clone(), discovered);
                 }
             }
             Event::Delete(svc) => {
@@ -450,7 +400,6 @@ impl ServiceDiscovery {
         let labels = svc.metadata.labels.as_ref();
 
         let domain = labels.and_then(|l| l.get(DOMAIN_LABEL)).cloned();
-        let source_domain = labels.and_then(|l| l.get(SOURCE_DOMAIN_LABEL)).cloned();
 
         // Find grpc port
         let port = svc
@@ -473,7 +422,6 @@ impl ServiceDiscovery {
             address = %service_address,
             port = port,
             domain = ?domain,
-            source_domain = ?source_domain,
             "Extracted service"
         );
 
@@ -482,7 +430,6 @@ impl ServiceDiscovery {
             service_address,
             port,
             domain,
-            source_domain,
         })
     }
 
@@ -497,7 +444,11 @@ impl ServiceDiscovery {
         let service = aggregates
             .values()
             .find(|s| s.domain.as_deref() == Some(domain))
-            .or_else(|| aggregates.values().find(|s| s.domain.as_deref() == Some("*")))
+            .or_else(|| {
+                aggregates
+                    .values()
+                    .find(|s| s.domain.as_deref() == Some("*"))
+            })
             .ok_or_else(|| DiscoveryError::DomainNotFound(domain.to_string()))?
             .clone();
 
@@ -522,6 +473,7 @@ impl ServiceDiscovery {
     /// Get event query client by domain.
     ///
     /// EventQuery runs on the same aggregate sidecar, same address/port.
+    /// Falls back to EVENT_QUERY_ADDRESS env var if no aggregate is registered.
     pub async fn get_event_query(
         &self,
         domain: &str,
@@ -532,13 +484,50 @@ impl ServiceDiscovery {
         let service = aggregates
             .values()
             .find(|s| s.domain.as_deref() == Some(domain))
-            .or_else(|| aggregates.values().find(|s| s.domain.as_deref() == Some("*")))
-            .ok_or_else(|| DiscoveryError::DomainNotFound(domain.to_string()))?
-            .clone();
+            .or_else(|| {
+                aggregates
+                    .values()
+                    .find(|s| s.domain.as_deref() == Some("*"))
+            })
+            .cloned();
 
         drop(aggregates);
 
-        self.get_or_create_event_query_client(&service).await
+        if let Some(service) = service {
+            return self.get_or_create_event_query_client(&service).await;
+        }
+
+        // Fallback to EVENT_QUERY_ADDRESS env var
+        if let Ok(addr) = std::env::var("EVENT_QUERY_ADDRESS") {
+            // Parse address - may be "host:port" or "http://host:port"
+            let (host, port) = if addr.starts_with("http://") || addr.starts_with("https://") {
+                // Already a URL, extract host:port
+                let without_scheme = addr
+                    .trim_start_matches("http://")
+                    .trim_start_matches("https://");
+                if let Some((h, p)) = without_scheme.rsplit_once(':') {
+                    (h.to_string(), p.parse().unwrap_or(80))
+                } else {
+                    (without_scheme.to_string(), 80)
+                }
+            } else if let Some((h, p)) = addr.rsplit_once(':') {
+                // host:port format
+                (h.to_string(), p.parse().unwrap_or(80))
+            } else {
+                // Just host, default port
+                (addr, 80)
+            };
+
+            let service = DiscoveredService {
+                name: format!("{}-event-query-fallback", domain),
+                service_address: host,
+                port,
+                domain: Some(domain.to_string()),
+            };
+            return self.get_or_create_event_query_client(&service).await;
+        }
+
+        Err(DiscoveryError::DomainNotFound(domain.to_string()))
     }
 
     async fn get_or_create_event_query_client(
@@ -585,7 +574,9 @@ impl ServiceDiscovery {
         for service in services {
             match self.get_or_create_projector_client(&service).await {
                 Ok(client) => clients.push(client),
-                Err(e) => warn!(service = %service.name, error = %e, "Failed to get projector client"),
+                Err(e) => {
+                    warn!(service = %service.name, error = %e, "Failed to get projector client")
+                }
             }
         }
 
@@ -605,51 +596,6 @@ impl ServiceDiscovery {
         .await
     }
 
-    /// Get saga coordinator clients matching source domain.
-    ///
-    /// Returns clients for sagas that listen to events from the given domain.
-    pub async fn get_sagas_for_source(
-        &self,
-        source_domain: &str,
-    ) -> Result<Vec<SagaCoordinatorClient<Channel>>, DiscoveryError> {
-        let sagas = self.sagas.read().await;
-
-        let matching: Vec<_> = sagas
-            .values()
-            .filter(|s| s.source_domain.as_deref() == Some(source_domain))
-            .cloned()
-            .collect();
-
-        drop(sagas);
-
-        if matching.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut clients = Vec::with_capacity(matching.len());
-        for service in matching {
-            match self.get_or_create_saga_client(&service).await {
-                Ok(client) => clients.push(client),
-                Err(e) => warn!(service = %service.name, error = %e, "Failed to get saga client"),
-            }
-        }
-
-        Ok(clients)
-    }
-
-    async fn get_or_create_saga_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<SagaCoordinatorClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.saga_clients,
-            service,
-            "saga",
-            SagaCoordinatorClient::new,
-        )
-        .await
-    }
-
     /// Check if any aggregates are available.
     pub async fn has_aggregates(&self) -> bool {
         !self.aggregates.read().await.is_empty()
@@ -658,11 +604,6 @@ impl ServiceDiscovery {
     /// Check if any projectors are available.
     pub async fn has_projectors(&self) -> bool {
         !self.projectors.read().await.is_empty()
-    }
-
-    /// Check if any sagas are available.
-    pub async fn has_sagas(&self) -> bool {
-        !self.sagas.read().await.is_empty()
     }
 }
 
@@ -677,16 +618,12 @@ mod tests {
         name: &str,
         component: &str,
         domain: Option<&str>,
-        source_domain: Option<&str>,
         port: i32,
     ) -> Service {
         let mut labels = BTreeMap::new();
         labels.insert(COMPONENT_LABEL.to_string(), component.to_string());
         if let Some(d) = domain {
             labels.insert(DOMAIN_LABEL.to_string(), d.to_string());
-        }
-        if let Some(sd) = source_domain {
-            labels.insert(SOURCE_DOMAIN_LABEL.to_string(), sd.to_string());
         }
 
         Service {
@@ -710,39 +647,25 @@ mod tests {
 
     #[test]
     fn test_extract_aggregate_service() {
-        let svc = make_test_service("cart-agg", COMPONENT_AGGREGATE, Some("cart"), None, 50051);
+        let svc = make_test_service("cart-agg", COMPONENT_AGGREGATE, Some("cart"), 50051);
         let discovered = ServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
 
         assert_eq!(discovered.name, "cart-agg");
-        assert_eq!(discovered.service_address, "cart-agg.test-ns.svc.cluster.local");
+        assert_eq!(
+            discovered.service_address,
+            "cart-agg.test-ns.svc.cluster.local"
+        );
         assert_eq!(discovered.port, 50051);
         assert_eq!(discovered.domain, Some("cart".to_string()));
-        assert_eq!(discovered.source_domain, None);
     }
 
     #[test]
     fn test_extract_projector_service() {
-        let svc = make_test_service("cart-proj", COMPONENT_PROJECTOR, Some("cart"), None, 50052);
+        let svc = make_test_service("cart-proj", COMPONENT_PROJECTOR, Some("cart"), 50052);
         let discovered = ServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
 
         assert_eq!(discovered.name, "cart-proj");
         assert_eq!(discovered.domain, Some("cart".to_string()));
-    }
-
-    #[test]
-    fn test_extract_saga_service() {
-        let svc = make_test_service(
-            "order-saga",
-            COMPONENT_SAGA,
-            Some("fulfillment"),
-            Some("order"),
-            50053,
-        );
-        let discovered = ServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
-
-        assert_eq!(discovered.name, "order-saga");
-        assert_eq!(discovered.domain, Some("fulfillment".to_string()));
-        assert_eq!(discovered.source_domain, Some("order".to_string()));
     }
 
     #[test]
@@ -752,10 +675,12 @@ mod tests {
             service_address: "test-svc.ns.svc.cluster.local".to_string(),
             port: 50051,
             domain: None,
-            source_domain: None,
         };
 
-        assert_eq!(service.grpc_url(), "http://test-svc.ns.svc.cluster.local:50051");
+        assert_eq!(
+            service.grpc_url(),
+            "http://test-svc.ns.svc.cluster.local:50051"
+        );
     }
 
     #[test]

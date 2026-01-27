@@ -1,0 +1,54 @@
+[package]
+name = "e2e"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[test]]
+name = "acceptance"
+path = "tests/acceptance.rs"
+harness = false
+
+[dependencies]
+# Angzarr core (for proto types and clients)
+angzarr = { path = "../../..", features = ["sqlite"] }
+
+# Common proto types
+common = { path = "../common" }
+
+# Async runtime
+tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }
+futures = "0.3"
+
+# gRPC
+tonic = "0.12"
+
+# Protobuf
+prost = "0.13"
+prost-types = "0.13"
+
+# UUID handling
+uuid = { version = "1", features = ["v4", "v5"] }
+
+# SQLite for projector validation
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Cucumber for BDD
+cucumber = { version = "0.21", features = ["macros"] }
+
+# Async trait
+async-trait = "0.1"
+
+# Time handling
+chrono = "0.4"
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# Test utilities
+tempfile = "3"

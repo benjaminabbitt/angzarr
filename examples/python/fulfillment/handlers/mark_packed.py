@@ -9,20 +9,20 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 
 from .state import FulfillmentState
-from handlers.exceptions import CommandRejectedError
+from handlers.exceptions import CommandRejectedError, errmsg
 
 
 def handle_mark_packed(command_book, command_any, state: FulfillmentState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Shipment does not exist")
+        raise CommandRejectedError(errmsg.SHIPMENT_NOT_FOUND)
     if not state.is_picking():
-        raise CommandRejectedError(f"Cannot pack items in {state.status} state")
+        raise CommandRejectedError(errmsg.NOT_PICKED)
 
     cmd = domains.MarkPacked()
     command_any.Unpack(cmd)
 
     if not cmd.packer_id:
-        raise CommandRejectedError("Packer ID is required")
+        raise CommandRejectedError(errmsg.PACKER_ID_REQUIRED)
 
     log.info("marking_packed", packer_id=cmd.packer_id)
 

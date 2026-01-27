@@ -9,22 +9,22 @@ from angzarr import angzarr_pb2 as angzarr
 from proto import domains_pb2 as domains
 from .state import CartState
 
-from .errors import CommandRejectedError
+from .errors import CommandRejectedError, errmsg
 
 
 def handle_update_quantity(command_book, command_any, state: CartState, seq: int, log) -> angzarr.EventBook:
     if not state.exists():
-        raise CommandRejectedError("Cart does not exist")
+        raise CommandRejectedError(errmsg.CART_NOT_FOUND)
     if not state.is_active():
-        raise CommandRejectedError("Cart is already checked out")
+        raise CommandRejectedError(errmsg.CART_CHECKED_OUT)
 
     cmd = domains.UpdateQuantity()
     command_any.Unpack(cmd)
 
     if cmd.product_id not in state.items:
-        raise CommandRejectedError("Item not in cart")
+        raise CommandRejectedError(errmsg.ITEM_NOT_IN_CART)
     if cmd.new_quantity <= 0:
-        raise CommandRejectedError("Quantity must be positive")
+        raise CommandRejectedError(errmsg.QUANTITY_POSITIVE)
 
     item = state.items[cmd.product_id]
     old_subtotal = item.quantity * item.unit_price_cents

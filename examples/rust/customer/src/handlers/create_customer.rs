@@ -1,8 +1,8 @@
 //! Handler for CreateCustomer command.
 
-use common::{BusinessError, Result};
 use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
 use common::proto::{CreateCustomer, CustomerCreated, CustomerState};
+use common::{BusinessError, Result};
 use prost::Message;
 
 use super::{now, CUSTOMER_STATE_TYPE_URL, EVENT_TYPE_PREFIX};

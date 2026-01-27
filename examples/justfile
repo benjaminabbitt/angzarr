@@ -1,19 +1,24 @@
 # Angzarr examples - multi-language gRPC implementations
+#
+# Two deployment modes:
+#   - Standalone: Local development with UDS transport (fast iteration)
+#   - K8s: Kubernetes deployment via Skaffold (production-like)
+#
+# Usage:
+#   just examples standalone run rust      # Run Rust in standalone mode
+#   just examples standalone test rust     # Test Rust in standalone mode
+#   just examples k8s deploy rust          # Deploy Rust to K8s
+#   just examples k8s test rust            # Test Rust in K8s
+#
 # Language-specific commands are in their respective justfiles (e.g., rust/justfile)
-#
-# UNIFIED WORKFLOW:
-#   1. From repo root: `just kind-create-registry && just infra-local` (one-time setup)
-#   2. `just dev rust` - watch mode with auto-rebuild on changes
-#   3. Or commit changes - lefthook triggers deployment automatically
-#
-# All 14 images use sha256 content-based tags.
-# Skaffold caches aggressively - only changed images are rebuilt.
-#
-# For tests, run from repo root: `just integration` or `just acceptance`
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
+
+# Import deployment mode modules
+mod standalone "standalone.justfile"
+mod k8s "k8s.justfile"
 
 # Import language-specific justfiles as modules
 mod rust "rust/justfile"
@@ -28,32 +33,74 @@ default:
 # Proto Management (cross-language)
 # ============================================================================
 
-# Copy canonical proto files to example directories (required before building)
-proto-copy:
-    @mkdir -p "{{TOP}}/examples/go/proto/examples"
-    @mkdir -p "{{TOP}}/examples/python/proto/examples"
-    cp "{{TOP}}/proto/examples/"*.proto "{{TOP}}/examples/go/proto/examples/"
-    cp "{{TOP}}/proto/examples/"*.proto "{{TOP}}/examples/python/proto/examples/"
+# Generate all proto files (Python, Go)
+proto-generate:
+    cd "{{TOP}}" && just proto python
+    cd "{{TOP}}" && just proto go
 
-# Generate protos (required before building non-Rust examples)
-proto: proto-copy
-    cd "{{TOP}}" && just proto-generate
+# Distribute generated Python protos to all Python services
+proto-dist-python:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    GENERATED="{{TOP}}/generated/python/examples"
+    # Aggregates
+    for svc in cart customer product order inventory fulfillment; do
+        mkdir -p "{{TOP}}/examples/python/$svc/proto"
+        touch "{{TOP}}/examples/python/$svc/proto/__init__.py"
+        cp "$GENERATED/domains_pb2.py" "{{TOP}}/examples/python/$svc/proto/"
+        cp "$GENERATED/domains_pb2_grpc.py" "{{TOP}}/examples/python/$svc/proto/"
+    done
+    # Sagas
+    for svc in saga-fulfillment saga-cancellation saga-loyalty-earn; do
+        mkdir -p "{{TOP}}/examples/python/$svc/proto"
+        touch "{{TOP}}/examples/python/$svc/proto/__init__.py"
+        cp "$GENERATED/domains_pb2.py" "{{TOP}}/examples/python/$svc/proto/"
+        cp "$GENERATED/domains_pb2_grpc.py" "{{TOP}}/examples/python/$svc/proto/"
+    done
+    # Projectors
+    for svc in projector-receipt; do
+        mkdir -p "{{TOP}}/examples/python/$svc/proto"
+        touch "{{TOP}}/examples/python/$svc/proto/__init__.py"
+        cp "$GENERATED/domains_pb2.py" "{{TOP}}/examples/python/$svc/proto/"
+        cp "$GENERATED/domains_pb2_grpc.py" "{{TOP}}/examples/python/$svc/proto/"
+    done
+    echo "Python protos distributed to all services"
+
+# Distribute generated Go protos to all Go services
+proto-dist-go:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    GENERATED="{{TOP}}/generated/go"
+    TARGET="{{TOP}}/examples/go/proto"
+    mkdir -p "$TARGET"
+    cp -r "$GENERATED"/* "$TARGET/"
+    echo "Go protos distributed"
+
+# Distribute all generated protos to example services
+proto-dist: proto-dist-python proto-dist-go
+
+# Generate and distribute protos (full workflow)
+proto: proto-generate proto-dist
 
 # ============================================================================
-# Skaffold Shortcuts (delegates to language modules)
+# Quick Access (shortcuts to common operations)
 # ============================================================================
 
-# Start examples with skaffold dev (file watching)
-dev LANG:
-    cd "{{TOP}}/examples/{{LANG}}" && skaffold dev
-
-# Build and deploy examples once
+# Run standalone mode for a language
 run LANG:
-    cd "{{TOP}}/examples/{{LANG}}" && skaffold run
+    just standalone run {{LANG}}
 
-# Delete skaffold deployment
-delete LANG:
-    cd "{{TOP}}/examples/{{LANG}}" && skaffold delete
+# Run acceptance tests in standalone mode
+test LANG:
+    just standalone test {{LANG}}
+
+# Deploy to K8s
+deploy LANG:
+    just k8s deploy {{LANG}}
+
+# Start K8s dev mode with file watching
+dev LANG:
+    just k8s dev {{LANG}}
 
 # ============================================================================
 # Cross-Language Operations

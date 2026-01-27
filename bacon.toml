@@ -1,0 +1,198 @@
+# bacon configuration for angzarr
+# Run with: bacon
+
+[default]
+job = "build"
+
+[jobs.check]
+command = ["cargo", "check", "--lib", "--bins", "--features", "standalone", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.build]
+command = ["cargo", "build", "--lib", "--bins", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.test]
+command = ["cargo", "test", "--lib", "--features", "standalone", "--color", "always"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+
+[jobs.clippy]
+command = ["cargo", "clippy", "--lib", "--bins", "--features", "standalone", "--color", "always", "--", "-D", "warnings"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.doc]
+command = ["cargo", "doc", "--lib", "--features", "standalone", "--no-deps", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# Example: Aggregates
+[jobs.ex-cart]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "cart", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-customer]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "customer", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-fulfillment]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "fulfillment", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-inventory]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "inventory-svc", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-order]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "order", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-product]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "product", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# Example: Projectors
+[jobs.ex-proj-accounting]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "projector-accounting", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-proj-web]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "projector-web", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-proj-logging]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "projector-logging", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# Example: Sagas
+[jobs.ex-saga-cancel]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "saga-cancellation", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-saga-fulfill]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "saga-fulfillment", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-saga-loyalty]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "saga-loyalty-earn", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# Example: E2E
+[jobs.ex-e2e]
+command = ["cargo", "check", "--lib", "-p", "angzarr", "--features", "standalone", "-p", "e2e", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# All examples by language
+[jobs.ex-rust]
+command = ["cargo", "check", "--workspace", "--features", "standalone", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.ex-go]
+command = ["just", "--justfile", "examples/go/justfile", "--working-directory", "examples/go", "build"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+watch = ["examples/go/"]
+
+[jobs.ex-python]
+command = ["just", "--justfile", "examples/python/justfile", "--working-directory", "examples/python", "lint"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+watch = ["examples/python/"]
+
+# Format Rust code
+[jobs.fmt]
+command = ["cargo", "fmt"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# Proto generation - all languages
+[jobs.proto]
+command = ["just", "proto", "generate"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+watch = ["proto/"]
+
+# Proto generation - Rust only
+[jobs.proto-rust]
+command = ["just", "proto", "rust"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+watch = ["proto/"]
+
+# Proto generation - Python only
+[jobs.proto-python]
+command = ["just", "proto", "python"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+watch = ["proto/"]
+
+# Proto generation - Go only
+[jobs.proto-go]
+command = ["just", "proto", "go"]
+need_stdout = true
+on_change_strategy = "kill_then_restart"
+watch = ["proto/"]
+
+# Standalone binaries
+[jobs.bin-standalone]
+command = ["cargo", "build", "--bin", "angzarr-standalone", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.bin-aggregate]
+command = ["cargo", "build", "--bin", "angzarr-aggregate", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.bin-saga]
+command = ["cargo", "build", "--bin", "angzarr-saga", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.bin-projector]
+command = ["cargo", "build", "--bin", "angzarr-projector", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.bin-gateway]
+command = ["cargo", "build", "--bin", "angzarr-gateway", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.bin-stream]
+command = ["cargo", "build", "--bin", "angzarr-stream", "--features", "standalone", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.bin-event-projector]
+command = ["cargo", "build", "--bin", "angzarr-event-projector", "--features", "standalone,postgres", "--release", "--color", "always"]
+need_stdout = false
+on_change_strategy = "kill_then_restart"
+
+# Keybindings
+[keybindings]
+c = "job:check"
+b = "job:build"
+t = "job:test"
+l = "job:clippy"
+d = "job:doc"
+f = "job:fmt"
+p = "job:proto"
+s = "job:bin-standalone"

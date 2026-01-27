@@ -29,8 +29,6 @@ mod traits;
 
 pub use builder::{GatewayConfig, RuntimeBuilder};
 pub use client::{CommandBuilder, CommandClient};
-pub use router::CommandRouter;
+pub use router::{CommandRouter, DomainStorage};
 pub use runtime::Runtime;
-pub use traits::{
-    AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler,
-};
+pub use traits::{AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler};

@@ -294,13 +294,17 @@ async fn test_query_bounds_respect_sequence() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Query only events 1-3
+    use angzarr::proto::{query::Selection, SequenceRange};
     let query = common::Query {
         domain: "customer".to_string(),
         root: Some(common::ProtoUuid {
             value: customer_id.as_bytes().to_vec(),
         }),
-        lower_bound: 1,
-        upper_bound: 3,
+        correlation_id: String::new(),
+        selection: Some(Selection::Range(SequenceRange {
+            lower: 1,
+            upper: Some(3),
+        })),
     };
 
     let event_book = query_client.get_event_book(query).await.unwrap().into_inner();

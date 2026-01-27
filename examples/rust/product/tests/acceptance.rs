@@ -118,8 +118,6 @@ impl ProductAcceptanceWorld {
             }],
             correlation_id,
             saga_origin: None,
-            auto_resequence: false,
-            fact: false,
         }
     }
 
@@ -189,7 +187,10 @@ async fn product_discontinued_event(world: &mut ProductAcceptanceWorld) {
     let client = world.get_gateway_client().await;
     match client.execute(command_book).await {
         Ok(_) => world.current_sequence += 1,
-        Err(status) => panic!("Given step failed: ProductDiscontinued - {}", status.message()),
+        Err(status) => panic!(
+            "Given step failed: ProductDiscontinued - {}",
+            status.message()
+        ),
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
