@@ -11,3 +11,4 @@ pub mod destination;
 pub mod process_manager;
 pub mod projector;
 pub mod saga;
+pub mod shared;

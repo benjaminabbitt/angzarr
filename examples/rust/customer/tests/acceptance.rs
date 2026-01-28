@@ -4,9 +4,7 @@
 //! Run with: cargo test -p customer --test acceptance
 
 use angzarr::proto::CommandResponse;
-use angzarr_client::{
-    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
-};
+use angzarr_client::{type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
@@ -237,10 +235,7 @@ async fn loyalty_points_redeemed_event(
             world.current_sequence += 1;
         }
         Err(e) => {
-            panic!(
-                "Given step failed: LoyaltyPointsRedeemed - {}",
-                e.message()
-            );
+            panic!("Given step failed: LoyaltyPointsRedeemed - {}", e.message());
         }
     }
 

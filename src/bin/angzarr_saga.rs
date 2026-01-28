@@ -34,80 +34,29 @@
 //! - COMMAND_ADDRESS: Single command handler (fallback, no two-phase support)
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
-use angzarr::config::Config;
+use angzarr::clients::SagaCompensationConfig;
 use angzarr::handlers::core::saga::SagaEventHandler;
-use angzarr::orchestration::command::grpc::GrpcCommandExecutor;
+use angzarr::orchestration::command::grpc::SingleClientExecutor;
 use angzarr::orchestration::command::CommandExecutor;
-use angzarr::orchestration::destination::grpc::GrpcDestinationFetcher;
-use angzarr::orchestration::destination::DestinationFetcher;
-use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
+use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use angzarr::proto::event_query_client::EventQueryClient;
 use angzarr::proto::saga_client::SagaClient;
 use angzarr::transport::connect_to_address;
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing, parse_static_endpoints};
+use angzarr::utils::bootstrap::connect_with_retry;
+use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_tracing();
+    let bootstrap = bootstrap_sidecar("saga").await?;
 
-    let config = Config::load().map_err(|e| {
-        error!("Failed to load configuration: {}", e);
-        e
-    })?;
-
-    info!("Starting angzarr-saga sidecar");
-
-    let target = config
-        .target
-        .as_ref()
-        .ok_or("Saga sidecar requires 'target' configuration")?;
-
-    // Extract saga name for socket naming
-    let saga_name = &target.domain;
-
-    // Resolve address: use explicit if set, otherwise derive from transport
-    let address = target.resolve_address(&config.transport, "saga");
-
-    info!("Target saga: {} (name: {})", address, saga_name);
-
-    // Get command: prefer env var (for standalone mode), fall back to config
-    let command = match std::env::var("ANGZARR__TARGET__COMMAND_JSON") {
-        Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
-            warn!("Failed to parse ANGZARR__TARGET__COMMAND_JSON, falling back to config");
-            target.command.clone()
-        }),
-        Err(_) => target.command.clone(),
-    };
-
-    // Spawn saga process if command is configured (embedded mode)
-    let _managed_process = if !command.is_empty() {
-        let env = ProcessEnv::from_transport(&config.transport, "saga", Some(saga_name));
-        let process =
-            ManagedProcess::spawn(&command, target.working_dir.as_deref(), &env, None).await?;
-
-        // Wait for the service to be ready
-        info!("Waiting for saga to be ready...");
-        wait_for_ready(
-            &address,
-            Duration::from_secs(30),
-            Duration::from_millis(500),
-        )
-        .await?;
-
-        Some(process)
-    } else {
-        None
-    };
-
-    let messaging = config
+    let messaging = bootstrap
+        .config
         .messaging
         .as_ref()
         .ok_or("Saga sidecar requires 'messaging' configuration")?;
@@ -115,8 +64,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
 
     // Connect to saga service with retry
-    let saga_addr = address.clone();
-    let saga_client = connect_with_retry("saga", &address, || {
+    let saga_addr = bootstrap.address.clone();
+    let saga_client = connect_with_retry("saga", &bootstrap.address, || {
         let addr = saga_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
@@ -130,64 +79,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
-    // Create subscriber
-    let queue_name = format!("saga-{}", saga_name);
-    let subscriber_mode = EventBusMode::SubscriberAll { queue: queue_name };
-    let subscriber = init_event_bus(messaging, subscriber_mode)
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e })?;
-
-    // Try static endpoints first (multi-domain routing), then COMMAND_ADDRESS (single domain)
+    // Build executor, fetcher, and factory based on configuration mode
     let handler = if let Ok(endpoints_str) = std::env::var("ANGZARR_STATIC_ENDPOINTS") {
         info!("Using static endpoint configuration for two-phase saga routing");
-        let endpoints = parse_static_endpoints(&endpoints_str);
-
-        // Connect to all aggregates - both for commands and event queries
-        // (EventQuery runs on the same aggregate sidecar)
-        let mut command_clients = HashMap::new();
-        let mut query_clients = HashMap::new();
-
-        for (domain, address) in endpoints {
-            // Connect AggregateCoordinator client for commands
-            let addr = address.clone();
-            let cmd_client = connect_with_retry(&format!("aggregate-{}", domain), &address, || {
-                let a = addr.clone();
-                async move {
-                    let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
-                    Ok::<_, String>(AggregateCoordinatorClient::new(channel))
-                }
-            })
-            .await?;
-            command_clients.insert(domain.clone(), cmd_client);
-
-            // Connect EventQuery client for fetching destination state
-            let addr = address.clone();
-            let query_client =
-                connect_with_retry(&format!("event-query-{}", domain), &address, || {
-                    let a = addr.clone();
-                    async move {
-                        let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
-                        Ok::<_, String>(EventQueryClient::new(channel))
-                    }
-                })
-                .await?;
-            query_clients.insert(domain.clone(), query_client);
-
-            info!(domain = %domain, address = %address, "Connected to aggregate (commands + queries)");
-        }
-
-        let command_executor: Arc<dyn CommandExecutor> =
-            Arc::new(GrpcCommandExecutor::new(command_clients));
-        let destination_fetcher: Arc<dyn DestinationFetcher> =
-            Arc::new(GrpcDestinationFetcher::new(query_clients));
-        SagaEventHandler::with_routers(
-            saga_client,
-            command_executor,
-            destination_fetcher,
+        let (executor, fetcher) = connect_endpoints(&endpoints_str).await?;
+        let factory = Arc::new(GrpcSagaContextFactory::new(
+            Arc::new(Mutex::new(saga_client)),
             publisher,
-        )
+            SagaCompensationConfig::default(),
+            None,
+        ));
+        SagaEventHandler::from_factory(factory, executor, Some(fetcher))
     } else if let Ok(command_address) = std::env::var("COMMAND_ADDRESS") {
-        // Fall back to single command handler (no two-phase support)
         let cmd_addr = command_address.clone();
         let client = connect_with_retry("command handler", &command_address, || {
             let addr = cmd_addr.clone();
@@ -198,26 +101,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
         warn!("Using single COMMAND_ADDRESS - two-phase saga protocol not supported");
-        SagaEventHandler::with_command_handler(saga_client, client, publisher)
+        let comp_handler = Arc::new(Mutex::new(client));
+        let executor: Arc<dyn CommandExecutor> =
+            Arc::new(SingleClientExecutor::new(comp_handler.clone()));
+        let factory = Arc::new(GrpcSagaContextFactory::new(
+            Arc::new(Mutex::new(saga_client)),
+            publisher,
+            SagaCompensationConfig::default(),
+            Some(comp_handler),
+        ));
+        SagaEventHandler::from_factory(factory, executor, None)
     } else {
-        warn!("Neither ANGZARR_STATIC_ENDPOINTS nor COMMAND_ADDRESS set - saga-produced commands will not be executed");
-        SagaEventHandler::new(saga_client, publisher)
+        error!("Neither ANGZARR_STATIC_ENDPOINTS nor COMMAND_ADDRESS set - saga cannot execute commands");
+        return Err("Saga sidecar requires ANGZARR_STATIC_ENDPOINTS or COMMAND_ADDRESS".into());
     };
 
-    subscriber
-        .subscribe(Box::new(handler))
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-
-    // Start consuming (no-op for AMQP/Kafka, spawns reader for IPC)
-    subscriber
-        .start_consuming()
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-
-    info!("Saga sidecar running, press Ctrl+C to exit");
-
-    tokio::signal::ctrl_c().await?;
-
-    Ok(())
+    let queue_name = format!("saga-{}", bootstrap.domain);
+    run_subscriber(messaging, queue_name, Box::new(handler)).await
 }

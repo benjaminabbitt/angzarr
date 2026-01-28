@@ -8,8 +8,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::error;
 
-use crate::orchestration::command::{CommandExecutor, CommandOutcome};
-use crate::orchestration::destination::DestinationFetcher;
 use crate::proto::{CommandBook, Cover, EventBook};
 use crate::standalone::SagaHandler;
 
@@ -17,26 +15,17 @@ use super::{SagaContextFactory, SagaRetryContext};
 
 /// In-process saga context.
 ///
-/// Delegates command execution and destination fetching to shared orchestration
-/// traits. Saga prepare/execute calls go directly to the `SagaHandler` impl.
+/// Saga prepare/execute calls go directly to the `SagaHandler` impl.
+/// Command execution and destination fetching are handled externally by the caller.
 pub struct LocalSagaContext {
-    command_executor: Arc<dyn CommandExecutor>,
-    destination_fetcher: Arc<dyn DestinationFetcher>,
     saga_handler: Arc<dyn SagaHandler>,
     source: Arc<EventBook>,
 }
 
 impl LocalSagaContext {
     /// Create a new local saga context for one saga invocation.
-    pub fn new(
-        command_executor: Arc<dyn CommandExecutor>,
-        destination_fetcher: Arc<dyn DestinationFetcher>,
-        saga_handler: Arc<dyn SagaHandler>,
-        source: Arc<EventBook>,
-    ) -> Self {
+    pub fn new(saga_handler: Arc<dyn SagaHandler>, source: Arc<EventBook>) -> Self {
         Self {
-            command_executor,
-            destination_fetcher,
             saga_handler,
             source,
         }
@@ -45,10 +34,6 @@ impl LocalSagaContext {
 
 #[async_trait]
 impl SagaRetryContext for LocalSagaContext {
-    async fn execute_command(&self, command: CommandBook) -> CommandOutcome {
-        self.command_executor.execute(command).await
-    }
-
     async fn prepare_destinations(
         &self,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
@@ -56,10 +41,6 @@ impl SagaRetryContext for LocalSagaContext {
             .prepare(&self.source)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-    }
-
-    async fn fetch_destination(&self, cover: &Cover) -> Option<EventBook> {
-        self.destination_fetcher.fetch(cover).await
     }
 
     async fn re_execute_saga(
@@ -81,36 +62,21 @@ impl SagaRetryContext for LocalSagaContext {
 
 /// Factory that produces `LocalSagaContext` instances for standalone mode.
 ///
-/// Captures in-process saga handler and orchestration dependencies.
-/// Each call to `create()` produces a context for one saga invocation.
+/// Captures in-process saga handler. Command execution and destination
+/// fetching are handled by the event handler, not the factory.
 pub struct LocalSagaContextFactory {
-    command_executor: Arc<dyn CommandExecutor>,
-    destination_fetcher: Arc<dyn DestinationFetcher>,
     saga_handler: Arc<dyn SagaHandler>,
 }
 
 impl LocalSagaContextFactory {
-    /// Create a new factory with the saga handler and orchestration dependencies.
-    pub fn new(
-        command_executor: Arc<dyn CommandExecutor>,
-        destination_fetcher: Arc<dyn DestinationFetcher>,
-        saga_handler: Arc<dyn SagaHandler>,
-    ) -> Self {
-        Self {
-            command_executor,
-            destination_fetcher,
-            saga_handler,
-        }
+    /// Create a new factory with the saga handler.
+    pub fn new(saga_handler: Arc<dyn SagaHandler>) -> Self {
+        Self { saga_handler }
     }
 }
 
 impl SagaContextFactory for LocalSagaContextFactory {
     fn create(&self, source: Arc<EventBook>) -> Box<dyn SagaRetryContext> {
-        Box::new(LocalSagaContext::new(
-            self.command_executor.clone(),
-            self.destination_fetcher.clone(),
-            self.saga_handler.clone(),
-            source,
-        ))
+        Box::new(LocalSagaContext::new(self.saga_handler.clone(), source))
     }
 }

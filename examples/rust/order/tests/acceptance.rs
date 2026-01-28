@@ -4,9 +4,7 @@
 //! Run with: cargo test -p order --test acceptance
 
 use angzarr::proto::CommandResponse;
-use angzarr_client::{
-    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
-};
+use angzarr_client::{type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt};
 use cucumber::{gherkin::Step, given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
@@ -124,8 +122,9 @@ impl OrderAcceptanceWorld {
             for row in table.rows.iter().skip(1) {
                 if row.len() >= 4 {
                     // Generate deterministic product_root from product_id
-                    let product_root =
-                        Uuid::new_v5(&Uuid::NAMESPACE_OID, row[0].as_bytes()).as_bytes().to_vec();
+                    let product_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, row[0].as_bytes())
+                        .as_bytes()
+                        .to_vec();
                     items.push(LineItem {
                         product_id: row[0].clone(),
                         name: row[1].clone(),
@@ -256,9 +255,7 @@ async fn order_cancelled_event(world: &mut OrderAcceptanceWorld) {
     let command = CancelOrder {
         reason: "Setup cancellation".to_string(),
     };
-    let result = world
-        .execute_command(command, "examples.CancelOrder")
-        .await;
+    let result = world.execute_command(command, "examples.CancelOrder").await;
     match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: OrderCancelled - {}", e.message()),
@@ -375,9 +372,7 @@ async fn handle_confirm_payment(world: &mut OrderAcceptanceWorld, payment_refere
 #[when(expr = "I handle a CancelOrder command with reason {string}")]
 async fn handle_cancel_order(world: &mut OrderAcceptanceWorld, reason: String) {
     let command = CancelOrder { reason };
-    let result = world
-        .execute_command(command, "examples.CancelOrder")
-        .await;
+    let result = world.execute_command(command, "examples.CancelOrder").await;
     world.handle_result(result);
 }
 
@@ -385,7 +380,12 @@ async fn handle_cancel_order(world: &mut OrderAcceptanceWorld, reason: String) {
 async fn rebuild_order_state(world: &mut OrderAcceptanceWorld) {
     let order_id = world.order_root();
     let client = world.client().await;
-    let _ = client.query.query("order", order_id).range(0).get_event_book().await;
+    let _ = client
+        .query
+        .query("order", order_id)
+        .range(0)
+        .get_event_book()
+        .await;
 }
 
 // =============================================================================

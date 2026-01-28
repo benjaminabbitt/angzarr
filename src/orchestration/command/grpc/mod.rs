@@ -51,10 +51,7 @@ impl GrpcCommandExecutor {
             .unwrap_or("unknown");
 
         let client = self.clients.get(domain).ok_or_else(|| {
-            tonic::Status::not_found(format!(
-                "No aggregate registered for domain: {}",
-                domain
-            ))
+            tonic::Status::not_found(format!("No aggregate registered for domain: {}", domain))
         })?;
 
         let mut client = client.lock().await;
@@ -89,9 +86,7 @@ pub struct SingleClientExecutor {
 
 impl SingleClientExecutor {
     /// Create with a single gRPC client.
-    pub fn new(
-        client: Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>,
-    ) -> Self {
+    pub fn new(client: Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>) -> Self {
         Self { client }
     }
 }

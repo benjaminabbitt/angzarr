@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use prost::Message;
 use sea_query::{ColumnDef, Expr, Index, OnConflict, Order, Query, SqliteQueryBuilder, Table};
-use sqlx::{Acquire, Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use super::schema::{Events, Snapshots};
@@ -19,6 +19,67 @@ impl SqliteEventStore {
     /// Create a new SQLite event store.
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// Insert events within an already-started transaction.
+    async fn insert_events(
+        conn: &mut SqliteConnection,
+        domain: &str,
+        root_str: &str,
+        events: Vec<EventPage>,
+        correlation_id: &str,
+    ) -> Result<()> {
+        let base_sequence = {
+            let query = Query::select()
+                .expr(Expr::col(Events::Sequence).max())
+                .from(Events::Table)
+                .and_where(Expr::col(Events::Domain).eq(domain))
+                .and_where(Expr::col(Events::Root).eq(root_str))
+                .to_string(SqliteQueryBuilder);
+
+            let row = sqlx::query(&query).fetch_optional(&mut *conn).await?;
+
+            match row {
+                Some(row) => {
+                    let max_seq: Option<i32> = row.get(0);
+                    max_seq.map(|s| s as u32 + 1).unwrap_or(0)
+                }
+                None => 0,
+            }
+        };
+
+        let mut auto_sequence = base_sequence;
+
+        for event in events {
+            let event_data = event.encode_to_vec();
+            let sequence =
+                super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let created_at = super::helpers::parse_timestamp(&event)?;
+
+            let query = Query::insert()
+                .into_table(Events::Table)
+                .columns([
+                    Events::Domain,
+                    Events::Root,
+                    Events::Sequence,
+                    Events::CreatedAt,
+                    Events::EventData,
+                    Events::CorrelationId,
+                ])
+                .values_panic([
+                    domain.into(),
+                    root_str.to_string().into(),
+                    sequence.into(),
+                    created_at.into(),
+                    event_data.into(),
+                    correlation_id.into(),
+                ])
+                .to_string(SqliteQueryBuilder);
+
+            sqlx::query(&query).execute(&mut *conn).await?;
+        }
+
+        Ok(())
     }
 
     /// Initialize the database schema.
@@ -104,65 +165,25 @@ impl EventStore for SqliteEventStore {
 
         let root_str = root.to_string();
 
-        // Use a transaction to ensure atomicity
+        // BEGIN IMMEDIATE acquires the write lock upfront, preventing deadlocks
+        // when concurrent DEFERRED transactions race to upgrade from shared to exclusive.
         let mut conn = self.pool.acquire().await?;
-        let mut tx = conn.begin().await?;
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await?;
 
-        // Get the next sequence number once at the start of the transaction
-        let base_sequence = {
-            let query = Query::select()
-                .expr(Expr::col(Events::Sequence).max())
-                .from(Events::Table)
-                .and_where(Expr::col(Events::Domain).eq(domain))
-                .and_where(Expr::col(Events::Root).eq(&root_str))
-                .to_string(SqliteQueryBuilder);
+        let result = Self::insert_events(&mut conn, domain, &root_str, events, correlation_id).await;
 
-            let row = sqlx::query(&query).fetch_optional(&mut *tx).await?;
-
-            match row {
-                Some(row) => {
-                    let max_seq: Option<i32> = row.get(0);
-                    max_seq.map(|s| s as u32 + 1).unwrap_or(0)
-                }
-                None => 0,
+        match result {
+            Ok(()) => {
+                sqlx::query("COMMIT").execute(&mut *conn).await?;
+                Ok(())
             }
-        };
-
-        let mut auto_sequence = base_sequence;
-
-        for event in events {
-            let event_data = event.encode_to_vec();
-            let sequence =
-                super::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
-            let created_at = super::helpers::parse_timestamp(&event)?;
-
-            let query = Query::insert()
-                .into_table(Events::Table)
-                .columns([
-                    Events::Domain,
-                    Events::Root,
-                    Events::Sequence,
-                    Events::CreatedAt,
-                    Events::EventData,
-                    Events::CorrelationId,
-                ])
-                .values_panic([
-                    domain.into(),
-                    root_str.clone().into(),
-                    sequence.into(),
-                    created_at.into(),
-                    event_data.into(),
-                    correlation_id.into(),
-                ])
-                .to_string(SqliteQueryBuilder);
-
-            sqlx::query(&query).execute(&mut *tx).await?;
+            Err(e) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                Err(e)
+            }
         }
-
-        // Commit the transaction
-        tx.commit().await?;
-
-        Ok(())
     }
 
     async fn get(&self, domain: &str, root: Uuid) -> Result<Vec<EventPage>> {

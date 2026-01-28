@@ -4,9 +4,7 @@
 //! Run with: cargo test -p fulfillment --test acceptance
 
 use angzarr::proto::CommandResponse;
-use angzarr_client::{
-    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
-};
+use angzarr_client::{type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
@@ -154,9 +152,7 @@ async fn items_picked_event(world: &mut FulfillmentAcceptanceWorld) {
     let command = MarkPicked {
         picker_id: "PICKER-TEST".to_string(),
     };
-    let result = world
-        .execute_command(command, "examples.MarkPicked")
-        .await;
+    let result = world.execute_command(command, "examples.MarkPicked").await;
     match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: ItemsPicked - {}", e.message()),
@@ -169,9 +165,7 @@ async fn items_packed_event(world: &mut FulfillmentAcceptanceWorld) {
     let command = MarkPacked {
         packer_id: "PACKER-TEST".to_string(),
     };
-    let result = world
-        .execute_command(command, "examples.MarkPacked")
-        .await;
+    let result = world.execute_command(command, "examples.MarkPacked").await;
     match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: ItemsPacked - {}", e.message()),
@@ -228,18 +222,14 @@ async fn handle_create_shipment(world: &mut FulfillmentAcceptanceWorld, order_id
 #[when(expr = "I handle a MarkPicked command with picker_id {string}")]
 async fn handle_mark_picked(world: &mut FulfillmentAcceptanceWorld, picker_id: String) {
     let command = MarkPicked { picker_id };
-    let result = world
-        .execute_command(command, "examples.MarkPicked")
-        .await;
+    let result = world.execute_command(command, "examples.MarkPicked").await;
     world.handle_result(result);
 }
 
 #[when(expr = "I handle a MarkPacked command with packer_id {string}")]
 async fn handle_mark_packed(world: &mut FulfillmentAcceptanceWorld, packer_id: String) {
     let command = MarkPacked { packer_id };
-    let result = world
-        .execute_command(command, "examples.MarkPacked")
-        .await;
+    let result = world.execute_command(command, "examples.MarkPacked").await;
     world.handle_result(result);
 }
 
@@ -270,7 +260,12 @@ async fn handle_record_delivery(world: &mut FulfillmentAcceptanceWorld, signatur
 async fn rebuild_fulfillment_state(world: &mut FulfillmentAcceptanceWorld) {
     let fulfillment_id = world.fulfillment_root();
     let client = world.client().await;
-    let _ = client.query.query("fulfillment", fulfillment_id).range(0).get_event_book().await;
+    let _ = client
+        .query
+        .query("fulfillment", fulfillment_id)
+        .range(0)
+        .get_event_book()
+        .await;
 }
 
 // =============================================================================

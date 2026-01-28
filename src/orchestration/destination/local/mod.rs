@@ -59,11 +59,7 @@ impl DestinationFetcher for LocalDestinationFetcher {
         }
     }
 
-    async fn fetch_by_correlation(
-        &self,
-        domain: &str,
-        correlation_id: &str,
-    ) -> Option<EventBook> {
+    async fn fetch_by_correlation(&self, domain: &str, correlation_id: &str) -> Option<EventBook> {
         let store = self.domain_stores.get(domain)?;
 
         match store.event_store.get_by_correlation(correlation_id).await {

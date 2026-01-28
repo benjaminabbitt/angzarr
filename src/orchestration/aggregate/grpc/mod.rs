@@ -45,7 +45,10 @@ impl GrpcAggregateContext {
     ) -> Self {
         Self {
             event_store: Arc::clone(&event_store),
-            event_book_repo: Arc::new(EventBookRepository::new(event_store, Arc::clone(&snapshot_store))),
+            event_book_repo: Arc::new(EventBookRepository::new(
+                event_store,
+                Arc::clone(&snapshot_store),
+            )),
             snapshot_store,
             discovery,
             event_bus,
@@ -167,13 +170,16 @@ impl AggregateContext for GrpcAggregateContext {
         _correlation_id: &str,
     ) -> Result<EventBook, Status> {
         // Persist events
-        self.event_book_repo.put(events).await.map_err(|e| match e {
-            StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
-                "Sequence conflict: expected {}, got {}",
-                expected, actual
-            )),
-            _ => Status::internal(format!("Failed to persist events: {e}")),
-        })?;
+        self.event_book_repo
+            .put(events)
+            .await
+            .map_err(|e| match e {
+                StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
+                    "Sequence conflict: expected {}, got {}",
+                    expected, actual
+                )),
+                _ => Status::internal(format!("Failed to persist events: {e}")),
+            })?;
 
         // Persist snapshot if present and enabled
         persist_snapshot_if_present(

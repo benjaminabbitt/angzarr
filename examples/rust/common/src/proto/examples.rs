@@ -136,11 +136,9 @@ pub struct ApplyCoupon {
     pub value: i32,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ClearCart {
-}
+pub struct ClearCart {}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Checkout {
-}
+pub struct Checkout {}
 /// Events
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CartCreated {

@@ -17,10 +17,12 @@ use crate::proto::aggregate_coordinator_server::{
 use crate::proto::aggregate_server::{Aggregate, AggregateServer};
 use crate::proto::business_response::Result as BusinessResult;
 use crate::proto::event_query_server::{EventQuery as EventQueryTrait, EventQueryServer};
-use crate::proto::projector_coordinator_server::{ProjectorCoordinator, ProjectorCoordinatorServer};
+use crate::proto::projector_coordinator_server::{
+    ProjectorCoordinator, ProjectorCoordinatorServer,
+};
 use crate::proto::{
-    AggregateRoot, BusinessResponse, CommandBook, CommandResponse, ContextualCommand, DryRunRequest,
-    EventBook, Projection, Query, SyncCommandBook, SyncEventBook, Uuid as ProtoUuid,
+    AggregateRoot, BusinessResponse, CommandBook, CommandResponse, ContextualCommand,
+    DryRunRequest, EventBook, Projection, Query, SyncCommandBook, SyncEventBook, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
 
@@ -69,10 +71,7 @@ impl ProjectorHandlerBridge {
 
 #[tonic::async_trait]
 impl ProjectorCoordinator for ProjectorHandlerBridge {
-    async fn handle(
-        &self,
-        request: Request<EventBook>,
-    ) -> Result<Response<()>, Status> {
+    async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         let events = request.into_inner();
         // Fire and forget - log errors but don't fail
         if let Err(e) = self.handler.handle(&events).await {
@@ -286,6 +285,7 @@ impl StandaloneEventQueryBridge {
         Self { stores }
     }
 
+    #[allow(clippy::result_large_err)]
     fn get_repo(&self, domain: &str) -> Result<EventBookRepository, Status> {
         let store = self
             .stores
@@ -319,10 +319,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let book = match query.selection {
             Some(crate::proto::query::Selection::Range(ref range)) => {
                 let lower = range.lower;
-                let upper = range
-                    .upper
-                    .map(|u| u.saturating_add(1))
-                    .unwrap_or(u32::MAX);
+                let upper = range.upper.map(|u| u.saturating_add(1)).unwrap_or(u32::MAX);
                 repo.get_from_to(domain, root_uuid, lower, upper).await
             }
             Some(crate::proto::query::Selection::Temporal(ref tq)) => match tq.point_in_time {

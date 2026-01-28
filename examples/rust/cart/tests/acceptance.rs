@@ -4,9 +4,7 @@
 //! Run with: cargo test -p cart --test acceptance
 
 use angzarr::proto::CommandResponse;
-use angzarr_client::{
-    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
-};
+use angzarr_client::{type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
@@ -288,7 +286,12 @@ async fn handle_checkout(world: &mut CartAcceptanceWorld) {
 async fn rebuild_cart_state(world: &mut CartAcceptanceWorld) {
     let cart_id = world.cart_root();
     let client = world.client().await;
-    let _ = client.query.query("cart", cart_id).range(0).get_event_book().await;
+    let _ = client
+        .query
+        .query("cart", cart_id)
+        .range(0)
+        .get_event_book()
+        .await;
 }
 
 // =============================================================================

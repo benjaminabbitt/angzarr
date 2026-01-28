@@ -7,3 +7,4 @@ pub mod response_builder;
 pub mod retry;
 pub mod saga_compensation;
 pub mod sequence_validator;
+pub mod sidecar;

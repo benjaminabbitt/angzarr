@@ -187,11 +187,7 @@ impl AggregateCoordinator for AggregateService {
                     (Some(seq), None)
                 }
                 Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
-                    let ts_str = format!(
-                        "{}.{}",
-                        ts.seconds,
-                        ts.nanos
-                    );
+                    let ts_str = format!("{}.{}", ts.seconds, ts.nanos);
                     (None, Some(ts_str))
                 }
                 None => (None, None),

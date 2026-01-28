@@ -15,9 +15,7 @@ pub trait CoverExt {
 
     /// Get the domain from the cover, or "unknown" if missing.
     fn domain(&self) -> &str {
-        self.cover()
-            .map(|c| c.domain.as_str())
-            .unwrap_or("unknown")
+        self.cover().map(|c| c.domain.as_str()).unwrap_or("unknown")
     }
 
     /// Get the correlation_id from the cover, or empty string if missing.

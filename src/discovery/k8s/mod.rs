@@ -627,7 +627,8 @@ mod tests {
     #[test]
     fn test_extract_aggregate_service() {
         let svc = make_test_service("cart-agg", COMPONENT_AGGREGATE, Some("cart"), 50051);
-        let discovered = K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
+        let discovered =
+            K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
 
         assert_eq!(discovered.name, "cart-agg");
         assert_eq!(
@@ -641,7 +642,8 @@ mod tests {
     #[test]
     fn test_extract_projector_service() {
         let svc = make_test_service("cart-proj", COMPONENT_PROJECTOR, Some("cart"), 50052);
-        let discovered = K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
+        let discovered =
+            K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
 
         assert_eq!(discovered.name, "cart-proj");
         assert_eq!(discovered.domain, Some("cart".to_string()));
@@ -682,7 +684,8 @@ mod tests {
             status: None,
         };
 
-        let discovered = K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
+        let discovered =
+            K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
         assert_eq!(discovered.port, DEFAULT_GRPC_PORT);
     }
 }

@@ -16,6 +16,7 @@ use saga_fulfillment::{FulfillmentSaga, SOURCE_DOMAIN};
 pub struct SagaWorld {
     current_event: Option<prost_types::Any>,
     current_root: Option<ProtoUuid>,
+    current_root_string: String,
     current_correlation_id: String,
     generated_commands: Vec<CommandBook>,
 }
@@ -23,6 +24,14 @@ pub struct SagaWorld {
 impl SagaWorld {
     fn saga(&self) -> FulfillmentSaga {
         FulfillmentSaga::new()
+    }
+
+    fn set_root(&mut self, alias: &str) {
+        let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, alias.as_bytes());
+        self.current_root = Some(ProtoUuid {
+            value: uuid.as_bytes().to_vec(),
+        });
+        self.current_root_string = uuid.to_string();
     }
 }
 
@@ -48,10 +57,7 @@ async fn order_completed_event(world: &mut SagaWorld, order_id: String) {
         value: event.encode_to_vec(),
     });
 
-    // Use order_id as root
-    world.current_root = Some(ProtoUuid {
-        value: order_id.as_bytes().to_vec(),
-    });
+    world.set_root(&order_id);
     world.current_correlation_id = Uuid::new_v4().to_string();
     world.generated_commands.clear();
 }
@@ -72,9 +78,7 @@ async fn order_created_event(world: &mut SagaWorld, order_id: String) {
         value: event.encode_to_vec(),
     });
 
-    world.current_root = Some(ProtoUuid {
-        value: order_id.as_bytes().to_vec(),
-    });
+    world.set_root(&order_id);
     world.current_correlation_id = Uuid::new_v4().to_string();
     world.generated_commands.clear();
 }
@@ -95,9 +99,7 @@ async fn order_cancelled_event(world: &mut SagaWorld, order_id: String) {
         value: event.encode_to_vec(),
     });
 
-    world.current_root = Some(ProtoUuid {
-        value: order_id.as_bytes().to_vec(),
-    });
+    world.set_root(&order_id);
     world.current_correlation_id = Uuid::new_v4().to_string();
     world.generated_commands.clear();
 }
@@ -176,8 +178,8 @@ async fn command_targets_domain(world: &mut SagaWorld, domain: String) {
     assert_eq!(cover.domain, domain);
 }
 
-#[then(expr = "the command has order_id {string}")]
-async fn command_has_order_id(world: &mut SagaWorld, order_id: String) {
+#[then("the command references the source order")]
+async fn command_references_source_order(world: &mut SagaWorld) {
     assert!(
         !world.generated_commands.is_empty(),
         "No commands generated"
@@ -185,7 +187,10 @@ async fn command_has_order_id(world: &mut SagaWorld, order_id: String) {
     let cmd = &world.generated_commands[0];
     let cmd_any = cmd.pages[0].command.as_ref().expect("No command");
     let shipment = CreateShipment::decode(cmd_any.value.as_slice()).expect("Failed to decode");
-    assert_eq!(shipment.order_id, order_id);
+    assert_eq!(
+        shipment.order_id, world.current_root_string,
+        "Command order_id should match source root UUID"
+    );
 }
 
 #[then(expr = "the command has correlation_id {string}")]
@@ -206,6 +211,6 @@ async fn command_has_correlation_id(world: &mut SagaWorld, correlation_id: Strin
 #[tokio::main]
 async fn main() {
     SagaWorld::cucumber()
-        .run("tests/features/saga_fulfillment.feature")
+        .run("../../features/saga_fulfillment.feature")
         .await;
 }

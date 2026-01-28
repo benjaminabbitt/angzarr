@@ -146,27 +146,27 @@ delete:
 
 # ============================================================================
 # Embedded Mode (Local Development with UDS)
-# Runs all services via angzarr-embedded orchestrator
+# Runs all services via angzarr-standalone orchestrator
 # ============================================================================
 
-# Build angzarr binaries for embedded mode
+# Build angzarr binaries for standalone mode
 build-angzarr:
-    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-gateway --bin angzarr_embedded
+    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-gateway --bin angzarr-standalone
 
 # Clean up stale UDS sockets
 clean-sockets:
     mkdir -p /tmp/angzarr
     rm -f /tmp/angzarr/*.sock 2>/dev/null || true
 
-# Run all services in embedded mode (single command)
+# Run all services in standalone mode (single command)
 embedded: build-angzarr clean-sockets build
-    cd {{TOP}}/examples/rust && ANGZARR_CONFIG=config/embedded.yaml {{TOP}}/target/debug/angzarr_embedded
+    cd {{TOP}}/examples/rust && ANGZARR_CONFIG=config/standalone.yaml {{TOP}}/target/debug/angzarr-standalone
 
 # Kill any stale embedded processes
 kill-embedded:
     #!/usr/bin/env bash
     # Use pgrep to find exact binary matches, then kill
-    for proc in angzarr_embedded angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
+    for proc in angzarr-standalone angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
         pids=$(pgrep -x "$proc" 2>/dev/null || true)
         if [ -n "$pids" ]; then
             echo "$pids" | xargs kill -9 2>/dev/null || true
@@ -184,7 +184,7 @@ acceptance-embedded: build-angzarr kill-embedded clean-sockets build
     # Cleanup function
     cleanup() {
         echo "Cleaning up..."
-        for proc in angzarr_embedded angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
+        for proc in angzarr-standalone angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
             pids=$(pgrep -x "$proc" 2>/dev/null || true)
             if [ -n "$pids" ]; then
                 echo "$pids" | xargs kill -9 2>/dev/null || true
@@ -194,9 +194,9 @@ acceptance-embedded: build-angzarr kill-embedded clean-sockets build
     }
     trap cleanup EXIT
 
-    # Start embedded runtime in background
-    echo "Starting embedded runtime..."
-    ANGZARR_CONFIG=config/embedded.yaml "{{TOP}}/target/debug/angzarr_embedded" &
+    # Start standalone runtime in background
+    echo "Starting standalone runtime..."
+    ANGZARR_CONFIG=config/standalone.yaml "{{TOP}}/target/debug/angzarr-standalone" &
     EMBEDDED_PID=$!
 
     # Wait for services to be ready (gateway on port 1350)

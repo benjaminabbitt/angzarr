@@ -95,11 +95,7 @@ impl WebProjector {
         Ok(())
     }
 
-    async fn handle_status_update(
-        &self,
-        order_id: &str,
-        status: &str,
-    ) -> Result<(), sqlx::Error> {
+    async fn handle_status_update(&self, order_id: &str, status: &str) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE customer_orders SET status = ? WHERE order_id = ?")
             .bind(status)
             .bind(order_id)
@@ -216,9 +212,7 @@ impl AccountingProjector {
     async fn process_event(&self, event: &prost_types::Any, root_id: &str, domain: &str) {
         let event_type = extract_event_type(event);
         let result = match (domain, event_type) {
-            ("order", "examples.OrderCreated") => {
-                self.handle_order_created(event, root_id).await
-            }
+            ("order", "examples.OrderCreated") => self.handle_order_created(event, root_id).await,
             ("order", "examples.LoyaltyDiscountApplied") => {
                 self.handle_discount(event, root_id).await
             }
@@ -388,9 +382,6 @@ pub async fn create_projector_pool(name: &str) -> Result<SqlitePool, sqlx::Error
 
     SqlitePoolOptions::new()
         .max_connections(1)
-        .connect(&format!(
-            "sqlite:file:{}?mode=memory&cache=shared",
-            name
-        ))
+        .connect(&format!("sqlite:file:{}?mode=memory&cache=shared", name))
         .await
 }

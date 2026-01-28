@@ -7,7 +7,7 @@ Feature: Fulfillment Saga
     When I process the fulfillment saga
     Then a CreateShipment command is generated
     And the command targets "fulfillment" domain
-    And the command has order_id "ORD-001"
+    And the command references the source order
 
   Scenario: Ignore OrderCreated events
     Given an OrderCreated event for order "ORD-002"

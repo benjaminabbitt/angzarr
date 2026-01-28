@@ -4,9 +4,7 @@
 //! Run with: cargo test -p product --test acceptance
 
 use angzarr::proto::CommandResponse;
-use angzarr_client::{
-    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
-};
+use angzarr_client::{type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
@@ -143,7 +141,9 @@ async fn product_created_event(
         description: String::new(),
         price_cents,
     };
-    let result = world.execute_command(command, "examples.CreateProduct").await;
+    let result = world
+        .execute_command(command, "examples.CreateProduct")
+        .await;
     match result {
         Ok(response) => {
             world.last_response = Some(response);
@@ -162,9 +162,7 @@ async fn product_discontinued_event(world: &mut ProductAcceptanceWorld) {
     let command = Discontinue {
         reason: "setup".to_string(),
     };
-    let result = world
-        .execute_command(command, "examples.Discontinue")
-        .await;
+    let result = world.execute_command(command, "examples.Discontinue").await;
     match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: ProductDiscontinued - {}", e.message()),
@@ -224,7 +222,9 @@ async fn handle_create_product(
         description,
         price_cents,
     };
-    let result = world.execute_command(command, "examples.CreateProduct").await;
+    let result = world
+        .execute_command(command, "examples.CreateProduct")
+        .await;
     world.handle_result(result);
 }
 
@@ -251,9 +251,7 @@ async fn handle_set_price(world: &mut ProductAcceptanceWorld, price_cents: i32) 
 #[when(expr = "I handle a Discontinue command with reason {string}")]
 async fn handle_discontinue(world: &mut ProductAcceptanceWorld, reason: String) {
     let command = Discontinue { reason };
-    let result = world
-        .execute_command(command, "examples.Discontinue")
-        .await;
+    let result = world.execute_command(command, "examples.Discontinue").await;
     world.handle_result(result);
 }
 
@@ -261,7 +259,12 @@ async fn handle_discontinue(world: &mut ProductAcceptanceWorld, reason: String) 
 async fn rebuild_product_state(world: &mut ProductAcceptanceWorld) {
     let product_id = world.product_root();
     let client = world.client().await;
-    let _ = client.query.query("product", product_id).range(0).get_event_book().await;
+    let _ = client
+        .query
+        .query("product", product_id)
+        .range(0)
+        .get_event_book()
+        .await;
 }
 
 // =============================================================================

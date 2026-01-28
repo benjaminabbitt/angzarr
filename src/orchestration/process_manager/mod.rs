@@ -145,18 +145,8 @@ pub async fn orchestrate_pm(
         );
 
         // Fetch additional destinations
-        let mut destinations = Vec::with_capacity(destination_covers.len());
-        for cover in &destination_covers {
-            if let Some(event_book) = fetcher.fetch(cover).await {
-                destinations.push(event_book);
-            } else {
-                warn!(
-                    correlation_id = %correlation_id,
-                    domain = %cover.domain,
-                    "Failed to fetch destination, skipping"
-                );
-            }
-        }
+        let destinations =
+            super::shared::fetch_destinations(fetcher, &destination_covers, correlation_id).await;
 
         // Phase 2: Handle — produce commands + PM events
         let response = ctx
@@ -197,8 +187,7 @@ pub async fn orchestrate_pm(
                         attempt += 1;
                         continue;
                     }
-                    CommandOutcome::Retryable { reason, .. }
-                    | CommandOutcome::Rejected(reason) => {
+                    CommandOutcome::Retryable { reason, .. } | CommandOutcome::Rejected(reason) => {
                         error!(
                             correlation_id = %correlation_id,
                             domain = %pm_domain,
@@ -212,52 +201,7 @@ pub async fn orchestrate_pm(
         }
 
         // Execute commands produced by process manager
-        for mut command_book in response.commands {
-            if let Some(ref mut cover) = command_book.cover {
-                if cover.correlation_id.is_empty() {
-                    cover.correlation_id = correlation_id.to_string();
-                }
-            }
-
-            let cmd_domain = command_book
-                .cover
-                .as_ref()
-                .map(|c| c.domain.clone())
-                .unwrap_or_else(|| "unknown".to_string());
-
-            debug!(
-                correlation_id = %correlation_id,
-                domain = %cmd_domain,
-                "Executing process manager command"
-            );
-
-            match executor.execute(command_book).await {
-                CommandOutcome::Success(cmd_response) => {
-                    debug!(
-                        correlation_id = %correlation_id,
-                        domain = %cmd_domain,
-                        has_events = cmd_response.events.is_some(),
-                        "Process manager command executed successfully"
-                    );
-                }
-                CommandOutcome::Retryable { reason, .. } => {
-                    warn!(
-                        correlation_id = %correlation_id,
-                        domain = %cmd_domain,
-                        error = %reason,
-                        "Command sequence conflict, will retry on next trigger"
-                    );
-                }
-                CommandOutcome::Rejected(reason) => {
-                    error!(
-                        correlation_id = %correlation_id,
-                        domain = %cmd_domain,
-                        error = %reason,
-                        "Process manager command failed (non-retryable)"
-                    );
-                }
-            }
-        }
+        super::shared::execute_commands(executor, response.commands, correlation_id).await;
 
         // Success — exit retry loop
         break;

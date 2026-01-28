@@ -12,8 +12,6 @@ use tracing::{debug, error, info, warn};
 
 use crate::bus::EventBus;
 use crate::clients::SagaCompensationConfig;
-use crate::orchestration::command::{CommandExecutor, CommandOutcome};
-use crate::orchestration::destination::DestinationFetcher;
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::saga_client::SagaClient;
 use crate::proto::{CommandBook, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest};
@@ -23,25 +21,20 @@ use super::{SagaContextFactory, SagaRetryContext};
 
 /// gRPC saga context.
 ///
-/// Delegates command execution and destination fetching to shared orchestration
-/// traits. Saga prepare/execute calls go to a remote `SagaClient` via gRPC.
+/// Saga prepare/execute calls go to a remote `SagaClient` via gRPC.
 /// Compensation for rejected commands uses a separate `AggregateCoordinatorClient`.
+/// Command execution and destination fetching are handled externally by the caller.
 pub struct GrpcSagaContext {
-    command_executor: Arc<dyn CommandExecutor>,
-    destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
     saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
-    compensation_handler:
-        Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
+    compensation_handler: Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
     source: EventBook,
 }
 
 impl GrpcSagaContext {
     /// Create a new gRPC saga context for one saga invocation.
     pub fn new(
-        command_executor: Arc<dyn CommandExecutor>,
-        destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
         saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
         publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
@@ -51,8 +44,6 @@ impl GrpcSagaContext {
         source: EventBook,
     ) -> Self {
         Self {
-            command_executor,
-            destination_fetcher,
             saga_client,
             publisher,
             compensation_config,
@@ -64,10 +55,6 @@ impl GrpcSagaContext {
 
 #[async_trait]
 impl SagaRetryContext for GrpcSagaContext {
-    async fn execute_command(&self, command: CommandBook) -> CommandOutcome {
-        self.command_executor.execute(command).await
-    }
-
     async fn prepare_destinations(
         &self,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
@@ -80,11 +67,6 @@ impl SagaRetryContext for GrpcSagaContext {
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         Ok(response.into_inner().destinations)
-    }
-
-    async fn fetch_destination(&self, cover: &Cover) -> Option<EventBook> {
-        let fetcher = self.destination_fetcher.as_ref()?;
-        fetcher.fetch(cover).await
     }
 
     async fn re_execute_saga(
@@ -167,8 +149,13 @@ async fn handle_command_rejection(
                 error = %e,
                 "Failed to build revoke command, emitting fallback event"
             );
-            emit_fallback_event(&context, "Failed to build revoke command", publisher, config)
-                .await;
+            emit_fallback_event(
+                &context,
+                "Failed to build revoke command",
+                publisher,
+                config,
+            )
+            .await;
             return;
         }
     };
@@ -222,23 +209,19 @@ async fn handle_command_rejection(
 
 /// Factory that produces `GrpcSagaContext` instances for distributed mode.
 ///
-/// Captures long-lived gRPC clients and orchestration dependencies.
+/// Captures long-lived gRPC clients for saga invocation and compensation.
 /// Each call to `create()` produces a context for one saga invocation.
+/// Command execution and destination fetching are handled by the event handler.
 pub struct GrpcSagaContextFactory {
-    command_executor: Arc<dyn CommandExecutor>,
-    destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
     saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
-    compensation_handler:
-        Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
+    compensation_handler: Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
 }
 
 impl GrpcSagaContextFactory {
-    /// Create a new factory with full configuration.
+    /// Create a new factory with saga client and compensation configuration.
     pub fn new(
-        command_executor: Arc<dyn CommandExecutor>,
-        destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
         saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
         publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
@@ -247,8 +230,6 @@ impl GrpcSagaContextFactory {
         >,
     ) -> Self {
         Self {
-            command_executor,
-            destination_fetcher,
             saga_client,
             publisher,
             compensation_config,
@@ -260,8 +241,6 @@ impl GrpcSagaContextFactory {
 impl SagaContextFactory for GrpcSagaContextFactory {
     fn create(&self, source: Arc<EventBook>) -> Box<dyn SagaRetryContext> {
         Box::new(GrpcSagaContext::new(
-            self.command_executor.clone(),
-            self.destination_fetcher.clone(),
             self.saga_client.clone(),
             self.publisher.clone(),
             self.compensation_config.clone(),

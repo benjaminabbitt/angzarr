@@ -9,13 +9,14 @@ use uuid::Uuid;
 use angzarr::proto::{
     event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid as ProtoUuid,
 };
-use common::proto::{OrderCancelled, OrderCreated, ReleaseReservation};
+use common::proto::{LineItem, OrderCancelled, OrderCreated, ReleaseReservation};
 use saga_cancellation::{CancellationSaga, SOURCE_DOMAIN};
 
 #[derive(Debug, Default, World)]
 pub struct SagaWorld {
     current_event: Option<prost_types::Any>,
     current_root: Option<ProtoUuid>,
+    current_root_string: String,
     current_correlation_id: String,
     generated_commands: Vec<CommandBook>,
 }
@@ -23,6 +24,22 @@ pub struct SagaWorld {
 impl SagaWorld {
     fn saga(&self) -> CancellationSaga {
         CancellationSaga::new()
+    }
+
+    fn set_root(&mut self, alias: &str) {
+        let uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, alias.as_bytes());
+        self.current_root = Some(ProtoUuid {
+            value: uuid.as_bytes().to_vec(),
+        });
+        self.current_root_string = uuid.to_string();
+    }
+
+    fn test_product_root() -> Vec<u8> {
+        Uuid::new_v5(&Uuid::NAMESPACE_OID, b"test-product").as_bytes().to_vec()
+    }
+
+    fn test_customer_root() -> Vec<u8> {
+        Uuid::new_v5(&Uuid::NAMESPACE_OID, b"test-customer").as_bytes().to_vec()
     }
 }
 
@@ -37,8 +54,14 @@ async fn order_cancelled_with_reason(world: &mut SagaWorld, order_id: String, re
         loyalty_points_used: 0,
         cancelled_at: None,
         customer_root: vec![],
-        items: vec![],
-        cart_root: vec![],
+        items: vec![LineItem {
+            product_id: "SKU-001".to_string(),
+            name: "Test Product".to_string(),
+            quantity: 1,
+            unit_price_cents: 1000,
+            product_root: SagaWorld::test_product_root(),
+        }],
+        cart_root: vec![], // Empty cart_root → saga uses source_root for order_id
     };
 
     world.current_event = Some(prost_types::Any {
@@ -46,9 +69,7 @@ async fn order_cancelled_with_reason(world: &mut SagaWorld, order_id: String, re
         value: event.encode_to_vec(),
     });
 
-    world.current_root = Some(ProtoUuid {
-        value: order_id.as_bytes().to_vec(),
-    });
+    world.set_root(&order_id);
     world.current_correlation_id = Uuid::new_v4().to_string();
     world.generated_commands.clear();
 }
@@ -59,9 +80,15 @@ async fn order_cancelled_with_points(world: &mut SagaWorld, order_id: String, po
         reason: "Test cancellation".to_string(),
         loyalty_points_used: points,
         cancelled_at: None,
-        customer_root: vec![],
-        items: vec![],
-        cart_root: vec![],
+        customer_root: SagaWorld::test_customer_root(),
+        items: vec![LineItem {
+            product_id: "SKU-001".to_string(),
+            name: "Test Product".to_string(),
+            quantity: 1,
+            unit_price_cents: 1000,
+            product_root: SagaWorld::test_product_root(),
+        }],
+        cart_root: vec![], // Empty cart_root → saga uses source_root for order_id
     };
 
     world.current_event = Some(prost_types::Any {
@@ -69,9 +96,7 @@ async fn order_cancelled_with_points(world: &mut SagaWorld, order_id: String, po
         value: event.encode_to_vec(),
     });
 
-    world.current_root = Some(ProtoUuid {
-        value: order_id.as_bytes().to_vec(),
-    });
+    world.set_root(&order_id);
     world.current_correlation_id = Uuid::new_v4().to_string();
     world.generated_commands.clear();
 }
@@ -92,9 +117,7 @@ async fn order_created_event(world: &mut SagaWorld, order_id: String) {
         value: event.encode_to_vec(),
     });
 
-    world.current_root = Some(ProtoUuid {
-        value: order_id.as_bytes().to_vec(),
-    });
+    world.set_root(&order_id);
     world.current_correlation_id = Uuid::new_v4().to_string();
     world.generated_commands.clear();
 }
@@ -166,8 +189,8 @@ async fn command_targets_domain(world: &mut SagaWorld, domain: String) {
     assert_eq!(cover.domain, domain);
 }
 
-#[then(expr = "the command has order_id {string}")]
-async fn command_has_order_id(world: &mut SagaWorld, order_id: String) {
+#[then("the command references the source order")]
+async fn command_references_source_order(world: &mut SagaWorld) {
     assert!(
         !world.generated_commands.is_empty(),
         "No commands generated"
@@ -175,7 +198,10 @@ async fn command_has_order_id(world: &mut SagaWorld, order_id: String) {
     let cmd = &world.generated_commands[0];
     let cmd_any = cmd.pages[0].command.as_ref().expect("No command");
     let release = ReleaseReservation::decode(cmd_any.value.as_slice()).expect("Failed to decode");
-    assert_eq!(release.order_id, order_id);
+    assert_eq!(
+        release.order_id, world.current_root_string,
+        "Command order_id should match source root UUID"
+    );
 }
 
 #[then(expr = "commands are generated for {string} and {string} domains")]
@@ -253,6 +279,6 @@ async fn all_commands_have_correlation_id(world: &mut SagaWorld, correlation_id:
 #[tokio::main]
 async fn main() {
     SagaWorld::cucumber()
-        .run("tests/features/saga_cancellation.feature")
+        .run("../../features/saga_cancellation.feature")
         .await;
 }

@@ -19,9 +19,5 @@ pub trait DestinationFetcher: Send + Sync {
     async fn fetch(&self, cover: &Cover) -> Option<EventBook>;
 
     /// Fetch state by correlation ID within a specific domain.
-    async fn fetch_by_correlation(
-        &self,
-        domain: &str,
-        correlation_id: &str,
-    ) -> Option<EventBook>;
+    async fn fetch_by_correlation(&self, domain: &str, correlation_id: &str) -> Option<EventBook>;
 }

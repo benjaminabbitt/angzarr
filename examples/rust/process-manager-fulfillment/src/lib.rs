@@ -320,7 +320,9 @@ mod tests {
             cover: Some(Cover {
                 domain: domain.to_string(),
                 root: Some(ProtoUuid {
-                    value: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"order-123").as_bytes().to_vec(),
+                    value: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"order-123")
+                        .as_bytes()
+                        .to_vec(),
                 }),
                 correlation_id: correlation_id.to_string(),
             }),
@@ -444,7 +446,9 @@ mod tests {
             cover: Some(Cover {
                 domain: PM_DOMAIN.to_string(),
                 root: Some(ProtoUuid {
-                    value: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"order-123").as_bytes().to_vec(),
+                    value: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"order-123")
+                        .as_bytes()
+                        .to_vec(),
                 }),
                 correlation_id: "corr-1".to_string(),
             }),

@@ -13,7 +13,9 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::local::LocalAggregateContext;
-use crate::orchestration::aggregate::{execute_command_pipeline, parse_command_cover, PipelineMode};
+use crate::orchestration::aggregate::{
+    execute_command_pipeline, parse_command_cover, PipelineMode,
+};
 use crate::proto::aggregate_client::AggregateClient;
 use crate::proto::{CommandBook, CommandResponse, Cover, Uuid as ProtoUuid};
 use crate::storage::{EventStore, SnapshotStore};
@@ -110,15 +112,13 @@ impl CommandRouter {
             "Executing command via gRPC"
         );
 
-        let client = self
-            .business_clients
-            .get(&domain)
-            .ok_or_else(|| Status::not_found(format!("No handler registered for domain: {domain}")))?;
+        let client = self.business_clients.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No handler registered for domain: {domain}"))
+        })?;
 
-        let storage = self
-            .stores
-            .get(&domain)
-            .ok_or_else(|| Status::not_found(format!("No storage configured for domain: {domain}")))?;
+        let storage = self.stores.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No storage configured for domain: {domain}"))
+        })?;
 
         let ctx = LocalAggregateContext::new(
             storage.clone(),
@@ -155,15 +155,13 @@ impl CommandRouter {
             "Dry-run command via gRPC"
         );
 
-        let client = self
-            .business_clients
-            .get(&domain)
-            .ok_or_else(|| Status::not_found(format!("No handler registered for domain: {domain}")))?;
+        let client = self.business_clients.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No handler registered for domain: {domain}"))
+        })?;
 
-        let storage = self
-            .stores
-            .get(&domain)
-            .ok_or_else(|| Status::not_found(format!("No storage configured for domain: {domain}")))?;
+        let storage = self.stores.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No storage configured for domain: {domain}"))
+        })?;
 
         let ctx = LocalAggregateContext::new(
             storage.clone(),
@@ -186,9 +184,9 @@ impl CommandRouter {
     /// Get storage for a domain.
     #[allow(clippy::result_large_err)]
     pub fn get_storage(&self, domain: &str) -> Result<&DomainStorage, Status> {
-        self.stores.get(domain).ok_or_else(|| {
-            Status::not_found(format!("No storage configured for domain: {domain}"))
-        })
+        self.stores
+            .get(domain)
+            .ok_or_else(|| Status::not_found(format!("No storage configured for domain: {domain}")))
     }
 }
 

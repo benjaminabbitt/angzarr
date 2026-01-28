@@ -257,10 +257,7 @@ impl E2EWorld {
 
     /// Query all events across domains for a given correlation ID.
     /// Returns (domain, event_type, root) tuples.
-    pub async fn query_by_correlation(
-        &self,
-        correlation_id: &str,
-    ) -> Vec<(String, String, Uuid)> {
+    pub async fn query_by_correlation(&self, correlation_id: &str) -> Vec<(String, String, Uuid)> {
         self.backend
             .query_by_correlation(correlation_id)
             .await

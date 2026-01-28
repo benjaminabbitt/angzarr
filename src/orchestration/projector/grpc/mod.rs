@@ -19,9 +19,7 @@ pub struct GrpcProjectorContext {
 
 impl GrpcProjectorContext {
     /// Create with a gRPC ProjectorCoordinator client.
-    pub fn new(
-        client: Arc<Mutex<ProjectorCoordinatorClient<tonic::transport::Channel>>>,
-    ) -> Self {
+    pub fn new(client: Arc<Mutex<ProjectorCoordinatorClient<tonic::transport::Channel>>>) -> Self {
         Self { client }
     }
 }

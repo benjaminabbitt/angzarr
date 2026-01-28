@@ -211,6 +211,6 @@ async fn command_has_correlation_id(world: &mut SagaWorld, correlation_id: Strin
 #[tokio::main]
 async fn main() {
     SagaWorld::cucumber()
-        .run("tests/features/saga_loyalty_earn.feature")
+        .run("../../features/saga_loyalty_earn.feature")
         .await;
 }

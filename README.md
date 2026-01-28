@@ -118,27 +118,6 @@ def handle_add_item(command_book, command_any, state: CartState, seq: int, log):
 
 **Rust** (similar structure, ~40 lines with protobuf encoding)
 
-### Error Messages are Pre-defined Constants
-
-Handlers choose from a vocabulary of domain-specific errors:
-
-```python
-class errmsg:
-    CART_NOT_FOUND = "Cart does not exist"
-    CART_CHECKED_OUT = "Cart is already checked out"
-    QUANTITY_POSITIVE = "Quantity must be positive"
-    PRODUCT_ID_REQUIRED = "Product ID is required"
-```
-
-```go
-const (
-    ErrMsgCartNotFound      = "Cart does not exist"
-    ErrMsgCartCheckedOut    = "Cart is already checked out"
-    ErrMsgQuantityPositive  = "Quantity must be positive"
-    ErrMsgProductIDRequired = "Product ID is required"
-)
-```
-
 ### Why This is AI-Friendly
 
 LLMs excel at pattern matching from examples and pure transformations. They struggle with distributed system edge cases, concurrency reasoning, and infrastructure configuration. Angzarr puts all the hard stuff in a layer LLMs don't touch.
@@ -157,7 +136,6 @@ An LLM produces correct code because:
 - **Clear contract**: Input and output types are schema-defined
 - **Examples to follow**: Every handler has identical structure
 - **No hidden state**: Functions are pure
-- **Finite error space**: Pick from predefined constants
 - **Testable assertion**: Given state X and command Y, expect event Z
 
 ### The Testing Story
@@ -659,7 +637,7 @@ CQRS/Event Sourcing systems are notoriously complex—event stores, snapshot opt
 
 ### What You Write
 
-**Entities** — Pure functions that validate commands against current state and emit events:
+**Aggregates** — Pure functions that validate commands against current state and emit events:
 
 ```python
 def handle_create_customer(command, state):
@@ -707,7 +685,7 @@ class LoyaltyPointsSaga:
 
 ### Language Agnostic
 
-Since Angzarr communicates via gRPC, each component can be written in whatever language makes sense. Data scientists might write projectors in Python while backend engineers implement entities in Go or Java—they interoperate seamlessly.
+Since Angzarr communicates via gRPC, each component can be written in whatever language makes sense. Data scientists might write projectors in Python while backend engineers implement entities in Go or Java—they interoperate seamlessly.  Your front-end engineers can even jump in and write in Typescript, if they prefer.
 
 The `examples/` directory provides working implementations in several languages with all the gRPC/protobuf boilerplate handled. Copy an example, write your business logic, and deploy. If you find the examples can be improved, contributions are welcome.
 

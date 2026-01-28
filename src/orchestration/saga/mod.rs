@@ -22,7 +22,8 @@ use crate::proto::{CommandBook, Cover, EventBook};
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::RetryConfig;
 
-use super::command::CommandOutcome;
+use super::command::{CommandExecutor, CommandOutcome};
+use super::destination::DestinationFetcher;
 
 /// Validator for saga output domain routing.
 pub type OutputDomainValidator = dyn Fn(&CommandBook) -> Result<(), String> + Send + Sync;
@@ -39,21 +40,19 @@ pub trait SagaContextFactory: Send + Sync {
 
 /// Operations needed by the saga retry loop.
 ///
-/// Each transport mode implements this trait to provide its own command execution,
-/// state fetching, and saga invocation. One instance per saga invocation — captures
-/// the per-invocation context (source event book, saga handler, etc.)
+/// Each transport mode implements this trait to provide saga-specific
+/// invocation (prepare, execute, compensation). Command execution and
+/// destination fetching are passed separately to `orchestrate_saga`
+/// and `execute_with_retry`, matching the PM pattern.
+///
+/// One instance per saga invocation — captures the per-invocation context
+/// (source event book, saga handler, etc.)
 #[async_trait]
 pub trait SagaRetryContext: Send + Sync {
-    /// Execute a single saga-produced command.
-    async fn execute_command(&self, command: CommandBook) -> CommandOutcome;
-
     /// Re-invoke the saga's prepare phase to get destination covers.
     async fn prepare_destinations(
         &self,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>>;
-
-    /// Fetch current state for a destination aggregate.
-    async fn fetch_destination(&self, cover: &Cover) -> Option<EventBook>;
 
     /// Re-invoke the saga's execute phase with fresh destination state.
     /// Returns new commands to execute.
@@ -76,6 +75,8 @@ pub trait SagaRetryContext: Send + Sync {
 /// that state is cached and reused during retry to avoid redundant fetches.
 pub async fn execute_with_retry(
     context: &dyn SagaRetryContext,
+    executor: &dyn CommandExecutor,
+    fetcher: Option<&dyn DestinationFetcher>,
     initial_commands: Vec<CommandBook>,
     correlation_id: &str,
     config: &RetryConfig,
@@ -114,7 +115,7 @@ pub async fn execute_with_retry(
                 "Executing saga command"
             );
 
-            match context.execute_command(command.clone()).await {
+            match executor.execute(command.clone()).await {
                 CommandOutcome::Success(_) => {
                     debug!(
                         correlation_id = %correlation_id,
@@ -200,9 +201,11 @@ pub async fn execute_with_retry(
                 );
                 destinations.push(cached);
                 cached_count += 1;
-            } else if let Some(dest) = context.fetch_destination(cover).await {
-                destinations.push(dest);
-                fetched_count += 1;
+            } else if let Some(f) = fetcher {
+                if let Some(dest) = f.fetch(cover).await {
+                    destinations.push(dest);
+                    fetched_count += 1;
+                }
             }
         }
 
@@ -248,6 +251,8 @@ pub async fn execute_with_retry(
 /// 5. Execute commands with retry
 pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
+    executor: &dyn CommandExecutor,
+    fetcher: Option<&dyn DestinationFetcher>,
     correlation_id: &str,
     output_domain_validator: Option<&OutputDomainValidator>,
     retry_config: &RetryConfig,
@@ -265,12 +270,11 @@ pub async fn orchestrate_saga(
     );
 
     // Phase 2: Fetch destination EventBooks
-    let mut destinations = Vec::with_capacity(destination_covers.len());
-    for cover in &destination_covers {
-        if let Some(dest) = ctx.fetch_destination(cover).await {
-            destinations.push(dest);
-        }
-    }
+    let destinations = if let Some(f) = fetcher {
+        super::shared::fetch_destinations(f, &destination_covers, correlation_id).await
+    } else {
+        vec![]
+    };
 
     // Phase 3: Execute saga with source + destinations
     let commands = ctx
@@ -297,7 +301,15 @@ pub async fn orchestrate_saga(
     }
 
     // Phase 5: Execute commands with retry
-    execute_with_retry(ctx, commands, correlation_id, retry_config).await;
+    execute_with_retry(
+        ctx,
+        executor,
+        fetcher,
+        commands,
+        correlation_id,
+        retry_config,
+    )
+    .await;
 
     Ok(())
 }
@@ -311,20 +323,17 @@ mod tests {
     use crate::proto::CommandResponse;
     use crate::proto_ext::CoverExt;
 
+    use super::super::command::CommandExecutor;
+    use super::super::destination::DestinationFetcher;
+
     struct AlwaysSucceeds;
 
     #[async_trait]
     impl SagaRetryContext for AlwaysSucceeds {
-        async fn execute_command(&self, _command: CommandBook) -> CommandOutcome {
-            CommandOutcome::Success(CommandResponse::default())
-        }
         async fn prepare_destinations(
             &self,
         ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
             Ok(vec![])
-        }
-        async fn fetch_destination(&self, _cover: &Cover) -> Option<EventBook> {
-            None
         }
         async fn re_execute_saga(
             &self,
@@ -335,33 +344,15 @@ mod tests {
         async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     }
 
-    struct SucceedsAfterRetries {
-        failures_remaining: AtomicU32,
-        execute_count: AtomicU32,
-    }
+    /// Context that always re-produces a single command on retry.
+    struct RetryingSagaContext;
 
     #[async_trait]
-    impl SagaRetryContext for SucceedsAfterRetries {
-        async fn execute_command(&self, _command: CommandBook) -> CommandOutcome {
-            self.execute_count.fetch_add(1, Ordering::SeqCst);
-            let remaining = self.failures_remaining.load(Ordering::SeqCst);
-            if remaining > 0 {
-                self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
-                CommandOutcome::Retryable {
-                    reason: "Sequence conflict".to_string(),
-                    current_state: None,
-                }
-            } else {
-                CommandOutcome::Success(CommandResponse::default())
-            }
-        }
+    impl SagaRetryContext for RetryingSagaContext {
         async fn prepare_destinations(
             &self,
         ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
             Ok(vec![])
-        }
-        async fn fetch_destination(&self, _cover: &Cover) -> Option<EventBook> {
-            None
         }
         async fn re_execute_saga(
             &self,
@@ -378,16 +369,10 @@ mod tests {
 
     #[async_trait]
     impl SagaRetryContext for AlwaysRejects {
-        async fn execute_command(&self, _command: CommandBook) -> CommandOutcome {
-            CommandOutcome::Rejected("Business rule violation".to_string())
-        }
         async fn prepare_destinations(
             &self,
         ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
             Ok(vec![])
-        }
-        async fn fetch_destination(&self, _cover: &Cover) -> Option<EventBook> {
-            None
         }
         async fn re_execute_saga(
             &self,
@@ -397,6 +382,49 @@ mod tests {
         }
         async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
             self.rejection_count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// Executor that always succeeds.
+    struct SuccessExecutor;
+
+    #[async_trait]
+    impl CommandExecutor for SuccessExecutor {
+        async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+            CommandOutcome::Success(CommandResponse::default())
+        }
+    }
+
+    /// Executor that tracks call count and fails N times before succeeding.
+    struct CountingExecutor {
+        failures_remaining: AtomicU32,
+        execute_count: AtomicU32,
+    }
+
+    #[async_trait]
+    impl CommandExecutor for CountingExecutor {
+        async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+            self.execute_count.fetch_add(1, Ordering::SeqCst);
+            let remaining = self.failures_remaining.load(Ordering::SeqCst);
+            if remaining > 0 {
+                self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
+                CommandOutcome::Retryable {
+                    reason: "Sequence conflict".to_string(),
+                    current_state: None,
+                }
+            } else {
+                CommandOutcome::Success(CommandResponse::default())
+            }
+        }
+    }
+
+    /// Executor that always rejects.
+    struct RejectingExecutor;
+
+    #[async_trait]
+    impl CommandExecutor for RejectingExecutor {
+        async fn execute(&self, _command: CommandBook) -> CommandOutcome {
+            CommandOutcome::Rejected("Business rule violation".to_string())
         }
     }
 
@@ -412,27 +440,54 @@ mod tests {
     #[tokio::test]
     async fn test_execute_success_no_retry() {
         let ctx = AlwaysSucceeds;
+        let executor = SuccessExecutor;
         let commands = vec![CommandBook::default()];
-        execute_with_retry(&ctx, commands, "corr-1", &fast_retry_config()).await;
+        execute_with_retry(
+            &ctx,
+            &executor,
+            None,
+            commands,
+            "corr-1",
+            &fast_retry_config(),
+        )
+        .await;
     }
 
     #[tokio::test]
     async fn test_execute_empty_commands_noop() {
         let ctx = AlwaysSucceeds;
-        execute_with_retry(&ctx, vec![], "corr-1", &fast_retry_config()).await;
+        let executor = SuccessExecutor;
+        execute_with_retry(
+            &ctx,
+            &executor,
+            None,
+            vec![],
+            "corr-1",
+            &fast_retry_config(),
+        )
+        .await;
     }
 
     #[tokio::test]
     async fn test_execute_retries_then_succeeds() {
-        let ctx = SucceedsAfterRetries {
+        let ctx = RetryingSagaContext;
+        let executor = CountingExecutor {
             failures_remaining: AtomicU32::new(2),
             execute_count: AtomicU32::new(0),
         };
         let commands = vec![CommandBook::default()];
-        execute_with_retry(&ctx, commands, "corr-1", &fast_retry_config()).await;
+        execute_with_retry(
+            &ctx,
+            &executor,
+            None,
+            commands,
+            "corr-1",
+            &fast_retry_config(),
+        )
+        .await;
 
         // Initial attempt + 2 retries = 3 executions
-        assert_eq!(ctx.execute_count.load(Ordering::SeqCst), 3);
+        assert_eq!(executor.execute_count.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
@@ -440,15 +495,25 @@ mod tests {
         let ctx = AlwaysRejects {
             rejection_count: AtomicU32::new(0),
         };
+        let executor = RejectingExecutor;
         let commands = vec![CommandBook::default()];
-        execute_with_retry(&ctx, commands, "corr-1", &fast_retry_config()).await;
+        execute_with_retry(
+            &ctx,
+            &executor,
+            None,
+            commands,
+            "corr-1",
+            &fast_retry_config(),
+        )
+        .await;
 
         assert_eq!(ctx.rejection_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn test_execute_exhausts_retries() {
-        let ctx = SucceedsAfterRetries {
+        let ctx = RetryingSagaContext;
+        let executor = CountingExecutor {
             failures_remaining: AtomicU32::new(100),
             execute_count: AtomicU32::new(0),
         };
@@ -459,15 +524,16 @@ mod tests {
             jitter: 0.0,
         };
         let commands = vec![CommandBook::default()];
-        execute_with_retry(&ctx, commands, "corr-1", &config).await;
+        execute_with_retry(&ctx, &executor, None, commands, "corr-1", &config).await;
 
         // Initial attempt + 3 retries = 4 executions
-        assert_eq!(ctx.execute_count.load(Ordering::SeqCst), 4);
+        assert_eq!(executor.execute_count.load(Ordering::SeqCst), 4);
     }
 
     #[tokio::test]
     async fn test_orchestrate_saga_with_domain_validator() {
         let ctx = AlwaysSucceeds;
+        let executor = SuccessExecutor;
         let validator = |cmd: &CommandBook| -> Result<(), String> {
             let domain = cmd.domain();
             if domain == "forbidden" {
@@ -476,24 +542,30 @@ mod tests {
                 Ok(())
             }
         };
-        let result = orchestrate_saga(&ctx, "corr-1", Some(&validator), &fast_retry_config()).await;
+        let result = orchestrate_saga(
+            &ctx,
+            &executor,
+            None,
+            "corr-1",
+            Some(&validator),
+            &fast_retry_config(),
+        )
+        .await;
         assert!(result.is_ok());
     }
 
-    /// Context that returns state with retryable error, then succeeds.
+    /// Executor that returns state with retryable error, then succeeds.
     /// Used to test the cached state optimization.
-    struct RetryableWithState {
+    struct RetryableWithStateExecutor {
         failures_remaining: AtomicU32,
-        fetch_count: AtomicU32,
     }
 
     #[async_trait]
-    impl SagaRetryContext for RetryableWithState {
-        async fn execute_command(&self, _command: CommandBook) -> CommandOutcome {
+    impl CommandExecutor for RetryableWithStateExecutor {
+        async fn execute(&self, _command: CommandBook) -> CommandOutcome {
             let remaining = self.failures_remaining.load(Ordering::SeqCst);
             if remaining > 0 {
                 self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
-                // Return the current state with the error
                 let state = EventBook {
                     cover: Some(Cover {
                         domain: "test".to_string(),
@@ -514,10 +586,16 @@ mod tests {
                 CommandOutcome::Success(CommandResponse::default())
             }
         }
+    }
+
+    /// Context for cached state test — prepares destinations for retry.
+    struct CachedStateContext;
+
+    #[async_trait]
+    impl SagaRetryContext for CachedStateContext {
         async fn prepare_destinations(
             &self,
         ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-            // Return covers that would normally trigger a fetch
             Ok(vec![Cover {
                 domain: "test".to_string(),
                 root: Some(crate::proto::Uuid {
@@ -525,11 +603,6 @@ mod tests {
                 }),
                 correlation_id: "".to_string(),
             }])
-        }
-        async fn fetch_destination(&self, _cover: &Cover) -> Option<EventBook> {
-            // Track how many fetches were made
-            self.fetch_count.fetch_add(1, Ordering::SeqCst);
-            Some(EventBook::default())
         }
         async fn re_execute_saga(
             &self,
@@ -540,22 +613,53 @@ mod tests {
         async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
     }
 
+    /// Fetcher that tracks fetch count.
+    struct TrackingFetcher {
+        fetch_count: AtomicU32,
+    }
+
+    #[async_trait]
+    impl DestinationFetcher for TrackingFetcher {
+        async fn fetch(&self, _cover: &Cover) -> Option<EventBook> {
+            self.fetch_count.fetch_add(1, Ordering::SeqCst);
+            Some(EventBook::default())
+        }
+        async fn fetch_by_correlation(
+            &self,
+            _domain: &str,
+            _correlation_id: &str,
+        ) -> Option<EventBook> {
+            None
+        }
+    }
+
     #[tokio::test]
     async fn test_execute_uses_cached_state_from_conflict() {
         // Verify that when a Retryable error includes current_state,
         // subsequent retry uses that state instead of fetching
-        let ctx = RetryableWithState {
+        let ctx = CachedStateContext;
+        let executor = RetryableWithStateExecutor {
             failures_remaining: AtomicU32::new(1),
+        };
+        let fetcher = TrackingFetcher {
             fetch_count: AtomicU32::new(0),
         };
         let commands = vec![CommandBook::default()];
-        execute_with_retry(&ctx, commands, "corr-1", &fast_retry_config()).await;
+        execute_with_retry(
+            &ctx,
+            &executor,
+            Some(&fetcher),
+            commands,
+            "corr-1",
+            &fast_retry_config(),
+        )
+        .await;
 
         // Since the conflict included state and prepare_destinations returns a cover
         // with the same domain (but different root), we expect a fetch to occur
         // for any destination not in the cache.
         // The key insight: we're testing that the caching mechanism works
         // without errors, and state is properly used during retry.
-        assert!(ctx.fetch_count.load(Ordering::SeqCst) <= 1);
+        assert!(fetcher.fetch_count.load(Ordering::SeqCst) <= 1);
     }
 }

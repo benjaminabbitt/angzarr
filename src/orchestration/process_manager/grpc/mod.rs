@@ -84,10 +84,7 @@ impl ProcessManagerContext for GrpcPMContext {
         let pm_command = CommandBook {
             cover: Some(Cover {
                 domain: self.pm_domain.clone(),
-                root: process_events
-                    .cover
-                    .as_ref()
-                    .and_then(|c| c.root.clone()),
+                root: process_events.cover.as_ref().and_then(|c| c.root.clone()),
                 correlation_id: correlation_id.to_string(),
             }),
             pages: vec![],

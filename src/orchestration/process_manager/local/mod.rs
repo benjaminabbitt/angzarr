@@ -11,8 +11,8 @@ use tracing::error;
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::{CommandResponse, Cover, EventBook};
-use crate::standalone::ProcessManagerHandler;
 use crate::standalone::DomainStorage;
+use crate::standalone::ProcessManagerHandler;
 
 use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
 

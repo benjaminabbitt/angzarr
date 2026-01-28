@@ -165,7 +165,14 @@ mod tests {
         let points_cmd = &commands[0];
         assert_eq!(points_cmd.cover.as_ref().unwrap().domain, CUSTOMER_DOMAIN);
         assert_eq!(
-            points_cmd.cover.as_ref().unwrap().root.as_ref().unwrap().value,
+            points_cmd
+                .cover
+                .as_ref()
+                .unwrap()
+                .root
+                .as_ref()
+                .unwrap()
+                .value,
             customer_root_bytes
         );
         let cmd_any = points_cmd.pages[0].command.as_ref().unwrap();
@@ -176,7 +183,14 @@ mod tests {
         let commit_cmd = &commands[1];
         assert_eq!(commit_cmd.cover.as_ref().unwrap().domain, INVENTORY_DOMAIN);
         assert_eq!(
-            commit_cmd.cover.as_ref().unwrap().root.as_ref().unwrap().value,
+            commit_cmd
+                .cover
+                .as_ref()
+                .unwrap()
+                .root
+                .as_ref()
+                .unwrap()
+                .value,
             product_root_bytes
         );
         let cmd_any = commit_cmd.pages[0].command.as_ref().unwrap();

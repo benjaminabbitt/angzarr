@@ -31,16 +31,18 @@ post-commit:
         - "examples/rust/**"
         - "deploy/helm/**"
 
-# Pre-commit hooks for code quality (optional - uncomment to enable)
-# pre-commit:
-#   parallel: true
-#   commands:
-#     rust-fmt:
-#       glob: "*.rs"
-#       run: cargo fmt --check
-#     rust-clippy:
-#       glob: "*.rs"
-#       run: cargo clippy -- -D warnings
-#     helm-lint:
-#       glob: "deploy/helm/**"
-#       run: helm lint deploy/helm/angzarr
+pre-commit:
+  parallel: true
+  commands:
+    rust-fmt:
+      glob: "*.rs"
+      run: cargo fmt --check
+    rust-clippy:
+      glob: "*.rs"
+      run: cargo clippy --lib --features standalone -- -D warnings
+    rust-test:
+      glob: "*.rs"
+      run: cargo test --lib --features standalone
+    helm-lint:
+      glob: "deploy/helm/**"
+      run: helm lint deploy/helm/angzarr

@@ -16,9 +16,7 @@ use crate::proto::{
     CommandBook, CommandPage, CommandResponse, Cover, DryRunRequest, EventBook, Query,
     Uuid as ProtoUuid,
 };
-use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
-use crate::storage::EventStore;
 
 use super::router::{CommandRouter, DomainStorage};
 
@@ -113,7 +111,9 @@ impl client_traits::GatewayClient for CommandClient {
                     (Some(seq), None)
                 }
                 Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
-                    (None, Some(ts))
+                    let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(&ts)
+                        .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
+                    (None, Some(rfc3339))
                 }
                 None => (None, None),
             },
@@ -151,22 +151,25 @@ impl client_traits::QueryClient for StandaloneQueryClient {
             .map(|c| c.domain.as_str())
             .unwrap_or("");
 
-        let store = self
-            .domain_stores
-            .get(domain)
-            .ok_or_else(|| ClientError::from(Status::not_found(format!("Unknown domain: {domain}"))))?;
+        let store = self.domain_stores.get(domain).ok_or_else(|| {
+            ClientError::from(Status::not_found(format!("Unknown domain: {domain}")))
+        })?;
 
-        let repo = EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
+        let repo =
+            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
 
-        let root_uuid = query
+        let root_uuid_bytes = query
             .cover
             .as_ref()
             .and_then(|c| c.root.as_ref())
-            .map(|r| r.value.clone())
-            .unwrap_or_default();
+            .map(|r| r.value.as_slice())
+            .unwrap_or(&[]);
+
+        let root_uuid = Uuid::from_slice(root_uuid_bytes)
+            .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
 
         let book = repo
-            .get(&domain.to_string(), &root_uuid)
+            .get(domain, root_uuid)
             .await
             .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
 
@@ -180,24 +183,27 @@ impl client_traits::QueryClient for StandaloneQueryClient {
             .map(|c| c.domain.as_str())
             .unwrap_or("");
 
-        let store = self
-            .domain_stores
-            .get(domain)
-            .ok_or_else(|| ClientError::from(Status::not_found(format!("Unknown domain: {domain}"))))?;
+        let store = self.domain_stores.get(domain).ok_or_else(|| {
+            ClientError::from(Status::not_found(format!("Unknown domain: {domain}")))
+        })?;
 
         // For get_events, we currently return a single EventBook as a vec
         // Full streaming support would require iterating roots
-        let repo = EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
+        let repo =
+            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
 
-        let root_uuid = query
+        let root_uuid_bytes = query
             .cover
             .as_ref()
             .and_then(|c| c.root.as_ref())
-            .map(|r| r.value.clone())
-            .unwrap_or_default();
+            .map(|r| r.value.as_slice())
+            .unwrap_or(&[]);
+
+        let root_uuid = Uuid::from_slice(root_uuid_bytes)
+            .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
 
         let book = repo
-            .get(&domain.to_string(), &root_uuid)
+            .get(domain, root_uuid)
             .await
             .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
 

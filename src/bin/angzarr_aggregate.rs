@@ -144,27 +144,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Load service discovery for sync processing (K8s label-based discovery)
-    let discovery: Arc<dyn ServiceDiscovery> = match K8sServiceDiscovery::from_env().await {
-        Ok(discovery) => {
-            let discovery = Arc::new(discovery);
-            // Perform initial sync and start watching
-            if let Err(e) = discovery.initial_sync().await {
-                warn!("Service discovery initial sync failed: {}", e);
-            }
-            discovery.start_watching();
-            info!("Service discovery initialized");
-            discovery
-        }
-        Err(e) => {
-            warn!(
-                "Service discovery not available (running outside K8s?): {}",
-                e
-            );
-            // Use static discovery as fallback (no projectors registered)
+    // Load service discovery for sync processing
+    // In standalone mode, ANGZARR_DISCOVERY=static skips K8s entirely
+    let discovery: Arc<dyn ServiceDiscovery> =
+        if std::env::var("ANGZARR_DISCOVERY").as_deref() == Ok("static") {
+            info!("Using static service discovery (standalone mode)");
             Arc::new(K8sServiceDiscovery::new_static())
-        }
-    };
+        } else {
+            match K8sServiceDiscovery::from_env().await {
+                Ok(discovery) => {
+                    let discovery = Arc::new(discovery);
+                    if let Err(e) = discovery.initial_sync().await {
+                        warn!("Service discovery initial sync failed: {}", e);
+                    }
+                    discovery.start_watching();
+                    info!("Service discovery initialized");
+                    discovery
+                }
+                Err(e) => {
+                    warn!(
+                        "Service discovery not available (running outside K8s?): {}",
+                        e
+                    );
+                    Arc::new(K8sServiceDiscovery::new_static())
+                }
+            }
+        };
 
     let aggregate_service = AggregateService::new(
         event_store.clone(),

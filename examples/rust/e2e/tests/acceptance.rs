@@ -1230,10 +1230,9 @@ async fn order_with_correlation(
     );
 
     // Store correlation→order mapping for PM steps
-    world.context.insert(
-        format!("order-for-corr:{}", correlation_alias),
-        order_alias,
-    );
+    world
+        .context
+        .insert(format!("order-for-corr:{}", correlation_alias), order_alias);
 }
 
 #[given(regex = r#"^an order "([^"]+)" with items:$"#)]
@@ -1998,9 +1997,10 @@ async fn trigger_pm_prerequisite(world: &mut E2EWorld, event_type: &str, correla
                     "InitializeStock failed: {:?}",
                     world.last_error
                 );
-                world
-                    .context
-                    .insert(format!("inv-init:{}", correlation_alias), "true".to_string());
+                world.context.insert(
+                    format!("inv-init:{}", correlation_alias),
+                    "true".to_string(),
+                );
             }
 
             let reserve_cmd = examples_proto::ReserveStock {
@@ -2163,11 +2163,7 @@ async fn all_prerequisites_received(world: &mut E2EWorld, correlation_alias: Str
 }
 
 #[given(regex = r#"^orders with correlations "([^"]+)" and "([^"]+)"$"#)]
-async fn orders_with_two_correlations(
-    world: &mut E2EWorld,
-    corr_a: String,
-    corr_b: String,
-) {
+async fn orders_with_two_correlations(world: &mut E2EWorld, corr_a: String, corr_b: String) {
     let order_a = format!("ORD-{}", corr_a);
     let order_b = format!("ORD-{}", corr_b);
     order_with_correlation(world, order_a, corr_a).await;
@@ -2282,7 +2278,13 @@ async fn customer_creates_cart_with_product(
         customer_id: customer_alias.clone(),
     };
     let corr = format!("setup-cart-{}", customer_alias);
-    let book = world.build_command("cart", &cart_alias, &corr, "examples.CreateCart", &create_cmd);
+    let book = world.build_command(
+        "cart",
+        &cart_alias,
+        &corr,
+        "examples.CreateCart",
+        &create_cmd,
+    );
     world.execute(book).await;
     assert!(
         world.last_error.is_none(),
@@ -2298,7 +2300,8 @@ async fn customer_creates_cart_with_product(
         ..Default::default()
     };
     let add_corr = format!("add-item-{}", customer_alias);
-    let add_book = world.build_command("cart", &cart_alias, &add_corr, "examples.AddItem", &add_cmd);
+    let add_book =
+        world.build_command("cart", &cart_alias, &add_corr, "examples.AddItem", &add_cmd);
     world.execute(add_book).await;
     assert!(
         world.last_error.is_none(),
@@ -2308,8 +2311,13 @@ async fn customer_creates_cart_with_product(
 
     let checkout_cmd = examples_proto::Checkout {};
     let co_corr = format!("checkout-{}", customer_alias);
-    let co_book =
-        world.build_command("cart", &cart_alias, &co_corr, "examples.Checkout", &checkout_cmd);
+    let co_book = world.build_command(
+        "cart",
+        &cart_alias,
+        &co_corr,
+        "examples.Checkout",
+        &checkout_cmd,
+    );
     world.execute(co_book).await;
     assert!(
         world.last_error.is_none(),
@@ -2595,11 +2603,9 @@ async fn pm_state_shows(world: &mut E2EWorld, step: &Step, correlation_alias: St
             if let Some(event) = &page.event {
                 let event_type = extract_event_type(event);
                 if event_type.contains("PrerequisiteCompleted") {
-                    if let Ok(decoded) =
-                        process_manager_fulfillment::PrerequisiteCompleted::decode(
-                            event.value.as_slice(),
-                        )
-                    {
+                    if let Ok(decoded) = process_manager_fulfillment::PrerequisiteCompleted::decode(
+                        event.value.as_slice(),
+                    ) {
                         completed.insert(decoded.prerequisite.clone());
                     }
                 }
@@ -2621,7 +2627,8 @@ async fn pm_state_shows(world: &mut E2EWorld, step: &Step, correlation_alias: St
         assert!(
             completed.contains(prerequisite.as_str()),
             "Expected prerequisite '{}' to be completed, but it's pending. Completed: {:?}",
-            prerequisite, completed
+            prerequisite,
+            completed
         );
     }
     for prerequisite in &expected_pending {
@@ -2656,11 +2663,9 @@ async fn pm_state_only_payment(world: &mut E2EWorld, correlation_alias: String) 
         if let Some(event) = &page.event {
             let event_type = extract_event_type(event);
             if event_type.contains("PrerequisiteCompleted") {
-                if let Ok(decoded) =
-                    process_manager_fulfillment::PrerequisiteCompleted::decode(
-                        event.value.as_slice(),
-                    )
-                {
+                if let Ok(decoded) = process_manager_fulfillment::PrerequisiteCompleted::decode(
+                    event.value.as_slice(),
+                ) {
                     completed.push(decoded.prerequisite.clone());
                 }
             }
@@ -2935,12 +2940,11 @@ async fn order_with_table_fields(world: &mut E2EWorld, step: &Step, order_alias:
 
     // Reserve stock if requested
     if inventory_reserved {
-        // Use order root UUID string as order_id — matches what the cancellation
-        // saga derives via root_id_as_string(source_root) from the OrderCancelled event.
-        let order_root = world.root(&order_alias);
+        // Use cart_root as order_id — the cancellation saga derives order_id from
+        // cart_root when non-empty (see CancellationSaga::process_event).
         let reserve_cmd = examples_proto::ReserveStock {
             quantity: 1,
-            order_id: order_root.to_string(),
+            order_id: cart_root.to_string(),
         };
         let reserve_corr = format!("reserve-{}", order_alias);
         let reserve_book = world.build_command(
@@ -3017,11 +3021,11 @@ async fn order_with_no_loyalty(world: &mut E2EWorld, order_alias: String) {
     world.execute(init_book).await;
 
     // Reserve stock so cancellation saga can release it.
-    // Use order root UUID string as order_id — matches saga's root_id_as_string.
-    let order_root = world.root(&order_alias);
+    // Use cart_root as order_id — the cancellation saga derives order_id from
+    // cart_root when non-empty (see CancellationSaga::process_event).
     let reserve_cmd = examples_proto::ReserveStock {
         quantity: 1,
-        order_id: order_root.to_string(),
+        order_id: cart_root.to_string(),
     };
     let reserve_corr = format!("reserve-{}", order_alias);
     let reserve_book = world.build_command(

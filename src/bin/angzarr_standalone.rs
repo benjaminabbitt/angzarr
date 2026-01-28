@@ -450,13 +450,8 @@ fn build_aggregate_env(
     let mut env = base.clone();
     let base_path = &config.transport.uds.base_path;
 
-    // Storage is required for each aggregate
-    let storage = svc.storage.as_ref().ok_or_else(|| {
-        format!(
-            "Aggregate '{}' missing required storage configuration",
-            svc.domain
-        )
-    })?;
+    // Storage: per-service override or fall back to root config
+    let storage = svc.storage.as_ref().unwrap_or(&config.storage);
     build_storage_env(&mut env, storage);
 
     // Target configuration
@@ -546,13 +541,8 @@ fn build_saga_env(
     let base_path = &config.transport.uds.base_path;
     let subscriber_name = format!("saga-{}", svc.domain);
 
-    // Storage is required for each saga
-    let storage = svc.storage.as_ref().ok_or_else(|| {
-        format!(
-            "Saga '{}' missing required storage configuration",
-            svc.domain
-        )
-    })?;
+    // Storage: per-service override or fall back to root config
+    let storage = svc.storage.as_ref().unwrap_or(&config.storage);
     build_storage_env(&mut env, storage);
 
     // Target configuration
@@ -639,13 +629,8 @@ fn build_projector_env(
     let mut env = base.clone();
     let base_path = &config.transport.uds.base_path;
 
-    // Storage is required for each projector (tracks sequence position)
-    let storage = svc.storage.as_ref().ok_or_else(|| {
-        format!(
-            "Projector '{}' missing required storage configuration",
-            svc.domain
-        )
-    })?;
+    // Storage: per-service override or fall back to root config
+    let storage = svc.storage.as_ref().unwrap_or(&config.storage);
     build_storage_env(&mut env, storage);
 
     // Subscriber/socket name: use "name-domain" if name is set, otherwise just "domain"

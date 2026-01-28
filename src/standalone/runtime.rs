@@ -18,7 +18,6 @@ use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
 use crate::orchestration::projector::local::LocalProjectorContext;
 use crate::orchestration::saga::local::LocalSagaContextFactory;
-use crate::orchestration::saga::OutputDomainValidator;
 use crate::proto::aggregate_client::AggregateClient;
 use crate::proto::{CommandBook, EventBook};
 use crate::proto_ext::CoverExt;
@@ -63,8 +62,6 @@ pub struct Runtime {
     servers: Vec<ServerInfo>,
     /// Gateway configuration.
     gateway_config: GatewayConfig,
-    /// Transport configuration.
-    transport_config: TransportConfig,
 }
 
 /// Entry for a registered projector.
@@ -81,7 +78,7 @@ impl Runtime {
         default_storage_config: StorageConfig,
         domain_storage_configs: HashMap<String, StorageConfig>,
         _messaging_config: MessagingConfig,
-        transport_config: TransportConfig,
+        _transport_config: TransportConfig,
         gateway_config: GatewayConfig,
         aggregates: HashMap<String, Arc<dyn AggregateHandler>>,
         projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
@@ -182,9 +179,18 @@ impl Runtime {
 
                 // Register with service discovery
                 // Use first domain or "default" if no domain filter
-                let domain = config.domains.first().map(|s| s.as_str()).unwrap_or("default");
+                let domain = config
+                    .domains
+                    .first()
+                    .map(|s| s.as_str())
+                    .unwrap_or("default");
                 discovery
-                    .register_projector(name, domain, &server_info.addr.ip().to_string(), server_info.addr.port())
+                    .register_projector(
+                        name,
+                        domain,
+                        &server_info.addr.ip().to_string(),
+                        server_info.addr.port(),
+                    )
                     .await;
 
                 servers.push(server_info);
@@ -229,14 +235,12 @@ impl Runtime {
 
         // Sagas — domain-filtered subscribers
         for (name, (handler, config)) in sagas {
-            let factory = Arc::new(LocalSagaContextFactory::new(
-                executor.clone(),
-                fetcher.clone(),
-                handler,
-            ));
+            let factory = Arc::new(LocalSagaContextFactory::new(handler));
             let validator = build_output_domain_validator(&name, &config.output_domains);
             let handler = SagaEventHandler::from_factory_with_validator(
                 factory,
+                executor.clone(),
+                Some(fetcher.clone()),
                 Some(Arc::new(validator)),
                 crate::utils::retry::RetryConfig::for_saga_commands(),
             );
@@ -281,7 +285,6 @@ impl Runtime {
             tasks: Vec::new(),
             servers,
             gateway_config,
-            transport_config,
         })
     }
 
@@ -405,12 +408,9 @@ impl Runtime {
         use crate::proto::event_query_server::EventQueryServer;
 
         // Start internal bridge server on random port
-        let bridge_server = start_bridge_server(
-            self.router.clone(),
-            self.domain_stores.clone(),
-        )
-        .await
-        .map_err(|e| format!("Failed to start bridge server: {e}"))?;
+        let bridge_server = start_bridge_server(self.router.clone(), self.domain_stores.clone())
+            .await
+            .map_err(|e| format!("Failed to start bridge server: {e}"))?;
 
         let bridge_addr = bridge_server.addr;
 
@@ -422,11 +422,7 @@ impl Runtime {
         self.servers.push(bridge_server);
 
         // Create gateway service (no streaming in standalone mode)
-        let gateway = GatewayService::new(
-            self.discovery.clone(),
-            None,
-            Duration::from_secs(30),
-        );
+        let gateway = GatewayService::new(self.discovery.clone(), None, Duration::from_secs(30));
         let event_query_proxy = EventQueryProxy::new(self.discovery.clone());
 
         // Build the tonic router

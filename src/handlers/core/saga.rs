@@ -15,18 +15,12 @@
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use tokio::sync::Mutex;
 use tracing::error;
 
-use crate::bus::{BusError, EventBus, EventHandler};
-use crate::clients::SagaCompensationConfig;
-use crate::orchestration::command::grpc::SingleClientExecutor;
+use crate::bus::{BusError, EventHandler};
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
-use crate::orchestration::saga::grpc::GrpcSagaContextFactory;
 use crate::orchestration::saga::{orchestrate_saga, OutputDomainValidator, SagaContextFactory};
-use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use crate::proto::saga_client::SagaClient;
 use crate::proto::EventBook;
 use crate::utils::retry::RetryConfig;
 
@@ -34,17 +28,27 @@ use crate::utils::retry::RetryConfig;
 ///
 /// Uses `SagaContextFactory` to create per-invocation contexts, enabling
 /// the same handler code for both distributed (gRPC) and standalone (local) modes.
+/// Command execution and destination fetching are passed directly to
+/// orchestration functions, matching the PM handler pattern.
 pub struct SagaEventHandler {
     context_factory: Arc<dyn SagaContextFactory>,
+    command_executor: Arc<dyn CommandExecutor>,
+    destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
     output_domain_validator: Option<Arc<OutputDomainValidator>>,
     retry_config: RetryConfig,
 }
 
 impl SagaEventHandler {
-    /// Create from a context factory.
-    pub fn from_factory(context_factory: Arc<dyn SagaContextFactory>) -> Self {
+    /// Create from a context factory with executor and fetcher.
+    pub fn from_factory(
+        context_factory: Arc<dyn SagaContextFactory>,
+        command_executor: Arc<dyn CommandExecutor>,
+        destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
+    ) -> Self {
         Self {
             context_factory,
+            command_executor,
+            destination_fetcher,
             output_domain_validator: None,
             retry_config: RetryConfig::for_saga_commands(),
         }
@@ -53,135 +57,26 @@ impl SagaEventHandler {
     /// Create from a context factory with output domain validation.
     pub fn from_factory_with_validator(
         context_factory: Arc<dyn SagaContextFactory>,
+        command_executor: Arc<dyn CommandExecutor>,
+        destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
         output_domain_validator: Option<Arc<OutputDomainValidator>>,
         retry_config: RetryConfig,
     ) -> Self {
         Self {
             context_factory,
+            command_executor,
+            destination_fetcher,
             output_domain_validator,
             retry_config,
         }
-    }
-
-    // --- Backward-compatible constructors for distributed sidecar binaries ---
-
-    /// Create without command execution capability.
-    ///
-    /// Saga-produced commands will not be executed.
-    pub fn new(
-        client: SagaClient<tonic::transport::Channel>,
-        publisher: Arc<dyn EventBus>,
-    ) -> Self {
-        // No executor means GrpcSagaContext won't execute commands.
-        // Use a stub executor that returns Rejected for any command.
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            Arc::new(StubCommandExecutor),
-            None,
-            Arc::new(Mutex::new(client)),
-            publisher,
-            SagaCompensationConfig::default(),
-            None,
-        ));
-        Self::from_factory(factory)
-    }
-
-    /// Create with a single command handler.
-    ///
-    /// All saga-produced commands go to one aggregate coordinator.
-    /// Compensation is supported via the same handler.
-    pub fn with_command_handler(
-        client: SagaClient<tonic::transport::Channel>,
-        command_handler: AggregateCoordinatorClient<tonic::transport::Channel>,
-        publisher: Arc<dyn EventBus>,
-    ) -> Self {
-        let handler = Arc::new(Mutex::new(command_handler));
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            Arc::new(SingleClientExecutor::new(handler.clone())),
-            None,
-            Arc::new(Mutex::new(client)),
-            publisher,
-            SagaCompensationConfig::default(),
-            Some(handler),
-        ));
-        Self::from_factory(factory)
-    }
-
-    /// Create with multi-domain routing.
-    ///
-    /// Supports full two-phase saga protocol with destination fetching and
-    /// domain-routed command execution.
-    pub fn with_routers(
-        client: SagaClient<tonic::transport::Channel>,
-        command_executor: Arc<dyn CommandExecutor>,
-        destination_fetcher: Arc<dyn DestinationFetcher>,
-        publisher: Arc<dyn EventBus>,
-    ) -> Self {
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            command_executor,
-            Some(destination_fetcher),
-            Arc::new(Mutex::new(client)),
-            publisher,
-            SagaCompensationConfig::default(),
-            None,
-        ));
-        Self::from_factory(factory)
-    }
-
-    /// Create with multi-domain command execution only (no destination fetching).
-    pub fn with_command_executor(
-        client: SagaClient<tonic::transport::Channel>,
-        command_executor: Arc<dyn CommandExecutor>,
-        publisher: Arc<dyn EventBus>,
-    ) -> Self {
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            command_executor,
-            None,
-            Arc::new(Mutex::new(client)),
-            publisher,
-            SagaCompensationConfig::default(),
-            None,
-        ));
-        Self::from_factory(factory)
-    }
-
-    /// Create with full configuration including compensation settings.
-    pub fn with_config(
-        client: SagaClient<tonic::transport::Channel>,
-        command_handler: AggregateCoordinatorClient<tonic::transport::Channel>,
-        publisher: Arc<dyn EventBus>,
-        compensation_config: SagaCompensationConfig,
-    ) -> Self {
-        let handler = Arc::new(Mutex::new(command_handler));
-        let factory = Arc::new(GrpcSagaContextFactory::new(
-            Arc::new(SingleClientExecutor::new(handler.clone())),
-            None,
-            Arc::new(Mutex::new(client)),
-            publisher,
-            compensation_config,
-            Some(handler),
-        ));
-        Self::from_factory(factory)
-    }
-}
-
-/// Stub executor for sagas without command execution capability.
-struct StubCommandExecutor;
-
-#[async_trait::async_trait]
-impl crate::orchestration::command::CommandExecutor for StubCommandExecutor {
-    async fn execute(
-        &self,
-        _command: crate::proto::CommandBook,
-    ) -> crate::orchestration::command::CommandOutcome {
-        crate::orchestration::command::CommandOutcome::Rejected(
-            "No command executor configured".to_string(),
-        )
     }
 }
 
 impl EventHandler for SagaEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
         let factory = self.context_factory.clone();
+        let executor = self.command_executor.clone();
+        let fetcher = self.destination_fetcher.clone();
         let validator = self.output_domain_validator.clone();
         let retry_config = self.retry_config.clone();
 
@@ -194,11 +89,13 @@ impl EventHandler for SagaEventHandler {
 
             let ctx = factory.create(book);
 
-            let validator_ref: Option<&OutputDomainValidator> =
-                validator.as_deref();
+            let validator_ref: Option<&OutputDomainValidator> = validator.as_deref();
+            let fetcher_ref: Option<&dyn DestinationFetcher> = fetcher.as_deref();
 
             if let Err(e) = orchestrate_saga(
                 ctx.as_ref(),
+                executor.as_ref(),
+                fetcher_ref,
                 &correlation_id,
                 validator_ref,
                 &retry_config,

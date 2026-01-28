@@ -144,7 +144,9 @@ impl AggregateContext for LocalAggregateContext {
                     .event_store
                     .get_from_to(domain, root, 0, seq + 1)
                     .await
-                    .map_err(|e| Status::internal(format!("Failed to load temporal events: {e}")))?;
+                    .map_err(|e| {
+                        Status::internal(format!("Failed to load temporal events: {e}"))
+                    })?;
 
                 Ok(EventBook {
                     cover: Some(Cover {
@@ -165,7 +167,9 @@ impl AggregateContext for LocalAggregateContext {
                     .event_store
                     .get_until_timestamp(domain, root, ts)
                     .await
-                    .map_err(|e| Status::internal(format!("Failed to load temporal events: {e}")))?;
+                    .map_err(|e| {
+                        Status::internal(format!("Failed to load temporal events: {e}"))
+                    })?;
 
                 Ok(EventBook {
                     cover: Some(Cover {

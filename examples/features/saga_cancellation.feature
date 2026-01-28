@@ -7,7 +7,7 @@ Feature: Order Cancellation Saga
     When I process the cancellation saga
     Then a ReleaseReservation command is generated
     And the command targets "inventory" domain
-    And the command has order_id "ORD-001"
+    And the command references the source order
 
   Scenario: Reverse loyalty points when order cancelled with points used
     Given an OrderCancelled event for order "ORD-002" with loyalty_points_used 100

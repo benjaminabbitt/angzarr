@@ -4,9 +4,7 @@
 //! Run with: cargo test -p inventory-svc --test acceptance
 
 use angzarr::proto::CommandResponse;
-use angzarr_client::{
-    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
-};
+use angzarr_client::{type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use uuid::Uuid;
@@ -424,7 +422,12 @@ async fn handle_commit_reservation(world: &mut InventoryAcceptanceWorld, order_i
 async fn rebuild_inventory_state(world: &mut InventoryAcceptanceWorld) {
     let inventory_id = world.inventory_root();
     let client = world.client().await;
-    let _ = client.query.query("inventory", inventory_id).range(0).get_event_book().await;
+    let _ = client
+        .query
+        .query("inventory", inventory_id)
+        .range(0)
+        .get_event_book()
+        .await;
 }
 
 // =============================================================================

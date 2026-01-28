@@ -151,7 +151,7 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
         .register_saga(
             "loyalty-earn-saga",
             SagaLogicAdapter::new(LoyaltyEarnSaga::new()),
-            SagaConfig::new("order", "customer"),
+            SagaConfig::new("order", "customer").with_output("inventory"),
         )
         // 1 process manager
         .register_process_manager(
@@ -282,11 +282,9 @@ impl Backend for StandaloneBackend {
 // Gateway Backend
 // ============================================================================
 
-use angzarr::proto::{
-    temporal_query::PointInTime, DryRunRequest, TemporalQuery,
-};
-use angzarr_client::{parse_timestamp, Client, QueryBuilderExt};
+use angzarr::proto::{temporal_query::PointInTime, DryRunRequest, TemporalQuery};
 use angzarr_client::traits::GatewayClient as GatewayClientTrait;
+use angzarr_client::{parse_timestamp, Client, QueryBuilderExt};
 
 /// Remote gRPC gateway backend using angzarr-client.
 struct GatewayBackend {
