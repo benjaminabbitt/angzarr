@@ -2,10 +2,11 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{OrderState, PaymentSubmitted, SubmitPayment};
-use common::{BusinessError, Result};
+use common::{
+    decode_command, make_event_book, now, require_exists, require_status_not, BusinessError, Result,
+};
 use prost::Message;
 
-use super::{make_event_book, now};
 use crate::errmsg;
 use crate::state::calculate_total;
 
@@ -16,20 +17,20 @@ pub fn handle_submit_payment(
     state: &OrderState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::ORDER_NOT_FOUND.to_string()));
-    }
-    if state.status == "payment_submitted" || state.status == "completed" {
-        return Err(BusinessError::Rejected(
-            errmsg::PAYMENT_ALREADY_SUBMITTED.to_string(),
-        ));
-    }
-    if state.status == "cancelled" {
-        return Err(BusinessError::Rejected(errmsg::ORDER_CANCELLED.to_string()));
-    }
+    require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)?;
+    require_status_not(
+        &state.status,
+        "payment_submitted",
+        errmsg::PAYMENT_ALREADY_SUBMITTED,
+    )?;
+    require_status_not(
+        &state.status,
+        "completed",
+        errmsg::PAYMENT_ALREADY_SUBMITTED,
+    )?;
+    require_status_not(&state.status, "cancelled", errmsg::ORDER_CANCELLED)?;
 
-    let cmd =
-        SubmitPayment::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: SubmitPayment = decode_command(command_data)?;
 
     let expected_total = calculate_total(state);
     if cmd.amount_cents != expected_total {
@@ -56,6 +57,8 @@ pub fn handle_submit_payment(
         payment_method: cmd.payment_method,
         payment_reference: state.payment_reference.clone(),
         status: "payment_submitted".to_string(),
+        customer_root: state.customer_root.clone(),
+        cart_root: state.cart_root.clone(),
     };
 
     Ok(make_event_book(
@@ -63,6 +66,7 @@ pub fn handle_submit_payment(
         next_seq,
         "type.examples/examples.PaymentSubmitted",
         event.encode_to_vec(),
+        "type.examples/examples.OrderState",
         new_state.encode_to_vec(),
     ))
 }

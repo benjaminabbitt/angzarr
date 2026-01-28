@@ -1,14 +1,26 @@
-//! In-process command client for embedded runtime.
+//! In-process clients for embedded runtime.
 //!
-//! Provides a simple API for submitting commands programmatically.
+//! `CommandClient` provides the gateway client (command execution).
+//! `StandaloneQueryClient` provides the query client (event retrieval).
+//! Both implement the shared traits from `client_traits`.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use tonic::Status;
 use uuid::Uuid;
 
-use crate::proto::{CommandBook, CommandPage, CommandResponse, Cover, Uuid as ProtoUuid};
+use crate::client_traits::{self, ClientError};
+use crate::proto::{
+    CommandBook, CommandPage, CommandResponse, Cover, DryRunRequest, EventBook, Query,
+    Uuid as ProtoUuid,
+};
+use crate::proto_ext::CoverExt;
+use crate::repository::EventBookRepository;
+use crate::storage::EventStore;
 
-use super::router::CommandRouter;
+use super::router::{CommandRouter, DomainStorage};
 
 /// In-process command client.
 ///
@@ -55,6 +67,21 @@ impl CommandClient {
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
+    /// Dry-run a pre-built command against temporal state.
+    ///
+    /// Executes the command without persisting or publishing. Returns speculative events.
+    pub async fn dry_run(
+        &self,
+        command: CommandBook,
+        as_of_sequence: Option<u32>,
+        as_of_timestamp: Option<&str>,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
+        self.router
+            .dry_run(command, as_of_sequence, as_of_timestamp)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
     /// Check if a domain has a registered handler.
     pub fn has_domain(&self, domain: &str) -> bool {
         self.router.has_handler(domain)
@@ -63,6 +90,118 @@ impl CommandClient {
     /// Get list of registered domains.
     pub fn domains(&self) -> Vec<&str> {
         self.router.domains()
+    }
+}
+
+#[async_trait]
+impl client_traits::GatewayClient for CommandClient {
+    async fn execute(&self, command: CommandBook) -> client_traits::Result<CommandResponse> {
+        self.router
+            .execute(command)
+            .await
+            .map_err(ClientError::from)
+    }
+
+    async fn dry_run(&self, request: DryRunRequest) -> client_traits::Result<CommandResponse> {
+        let command = request.command.ok_or_else(|| {
+            ClientError::InvalidArgument("DryRunRequest missing command".to_string())
+        })?;
+
+        let (as_of_sequence, as_of_timestamp) = match request.point_in_time {
+            Some(temporal) => match temporal.point_in_time {
+                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
+                    (Some(seq), None)
+                }
+                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
+                    (None, Some(ts))
+                }
+                None => (None, None),
+            },
+            None => (None, None),
+        };
+
+        self.router
+            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
+            .await
+            .map_err(ClientError::from)
+    }
+}
+
+/// In-process query client for embedded runtime.
+///
+/// Routes queries by domain to the appropriate storage.
+#[derive(Clone)]
+pub struct StandaloneQueryClient {
+    domain_stores: HashMap<String, DomainStorage>,
+}
+
+impl StandaloneQueryClient {
+    /// Create from domain stores.
+    pub fn new(domain_stores: HashMap<String, DomainStorage>) -> Self {
+        Self { domain_stores }
+    }
+}
+
+#[async_trait]
+impl client_traits::QueryClient for StandaloneQueryClient {
+    async fn get_event_book(&self, query: Query) -> client_traits::Result<EventBook> {
+        let domain = query
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+
+        let store = self
+            .domain_stores
+            .get(domain)
+            .ok_or_else(|| ClientError::from(Status::not_found(format!("Unknown domain: {domain}"))))?;
+
+        let repo = EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
+
+        let root_uuid = query
+            .cover
+            .as_ref()
+            .and_then(|c| c.root.as_ref())
+            .map(|r| r.value.clone())
+            .unwrap_or_default();
+
+        let book = repo
+            .get(&domain.to_string(), &root_uuid)
+            .await
+            .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
+
+        Ok(book)
+    }
+
+    async fn get_events(&self, query: Query) -> client_traits::Result<Vec<EventBook>> {
+        let domain = query
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+
+        let store = self
+            .domain_stores
+            .get(domain)
+            .ok_or_else(|| ClientError::from(Status::not_found(format!("Unknown domain: {domain}"))))?;
+
+        // For get_events, we currently return a single EventBook as a vec
+        // Full streaming support would require iterating roots
+        let repo = EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
+
+        let root_uuid = query
+            .cover
+            .as_ref()
+            .and_then(|c| c.root.as_ref())
+            .map(|r| r.value.clone())
+            .unwrap_or_default();
+
+        let book = repo
+            .get(&domain.to_string(), &root_uuid)
+            .await
+            .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
+
+        Ok(vec![book])
     }
 }
 
@@ -75,6 +214,8 @@ pub struct CommandBuilder {
     command_data: Option<Vec<u8>>,
     correlation_id: Option<String>,
     sequence: Option<u32>,
+    dry_run_sequence: Option<u32>,
+    dry_run_timestamp: Option<String>,
 }
 
 impl CommandBuilder {
@@ -87,6 +228,8 @@ impl CommandBuilder {
             command_data: None,
             correlation_id: None,
             sequence: None,
+            dry_run_sequence: None,
+            dry_run_timestamp: None,
         }
     }
 
@@ -122,6 +265,18 @@ impl CommandBuilder {
         self
     }
 
+    /// Set temporal point by sequence for dry-run execution.
+    pub fn as_of_sequence(mut self, sequence: u32) -> Self {
+        self.dry_run_sequence = Some(sequence);
+        self
+    }
+
+    /// Set temporal point by timestamp for dry-run execution.
+    pub fn as_of_timestamp(mut self, timestamp: impl Into<String>) -> Self {
+        self.dry_run_timestamp = Some(timestamp.into());
+        self
+    }
+
     /// Build the command book without sending.
     pub fn build(self) -> CommandBook {
         let command = self.command_data.map(|data| prost_types::Any {
@@ -152,6 +307,23 @@ impl CommandBuilder {
 
         router
             .execute(command)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    }
+
+    /// Execute as dry-run against temporal state. No persistence, no side effects.
+    ///
+    /// Requires `as_of_sequence()` or `as_of_timestamp()` to be set.
+    pub async fn dry_run(
+        self,
+    ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let router = self.router.clone();
+        let as_of_sequence = self.dry_run_sequence;
+        let as_of_timestamp = self.dry_run_timestamp.clone();
+        let command = self.build();
+
+        router
+            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }

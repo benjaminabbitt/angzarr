@@ -21,6 +21,24 @@ pub fn init_tracing() {
         .init();
 }
 
+/// Parse static endpoints from a comma-separated string.
+///
+/// Format: "domain=address,domain=address,..."
+/// Example: "customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock"
+pub fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
+    endpoints_str
+        .split(',')
+        .filter_map(|pair| {
+            let parts: Vec<&str> = pair.trim().splitn(2, '=').collect();
+            if parts.len() == 2 {
+                Some((parts[0].to_string(), parts[1].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// Connect to a gRPC service with exponential backoff retry.
 ///
 /// # Arguments

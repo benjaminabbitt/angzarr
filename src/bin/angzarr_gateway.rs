@@ -47,33 +47,15 @@ use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
 use angzarr::config::Config;
-use angzarr::discovery::ServiceDiscovery;
+use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::handlers::gateway::{EventQueryProxy, GatewayService};
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::event_stream_client::EventStreamClient;
 use angzarr::transport::{connect_to_address, serve_with_transport};
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
+use angzarr::utils::bootstrap::{connect_with_retry, init_tracing, parse_static_endpoints};
 
 const DEFAULT_STREAM_TIMEOUT_SECS: u64 = 30;
-
-/// Parse static endpoints from environment variable.
-///
-/// Format: "domain=address,domain=address,..."
-/// Example: "customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock"
-fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
-    endpoints_str
-        .split(',')
-        .filter_map(|pair| {
-            let parts: Vec<&str> = pair.trim().splitn(2, '=').collect();
-            if parts.len() == 2 {
-                Some((parts[0].to_string(), parts[1].to_string()))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -87,10 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     // Initialize service discovery - try static endpoints first, then K8s
-    let discovery: Arc<ServiceDiscovery> =
+    let discovery: Arc<dyn ServiceDiscovery> =
         if let Ok(endpoints_str) = std::env::var("ANGZARR_STATIC_ENDPOINTS") {
             info!("Using static endpoint configuration");
-            let discovery = ServiceDiscovery::new_static();
+            let discovery = K8sServiceDiscovery::new_static();
 
             for (domain, address) in parse_static_endpoints(&endpoints_str) {
                 // For UDS addresses, port is 0 (ignored)
@@ -100,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(discovery)
         } else {
             // Fall back to K8s discovery
-            match ServiceDiscovery::from_env().await {
+            match K8sServiceDiscovery::from_env().await {
                 Ok(discovery) => {
                     let discovery = Arc::new(discovery);
 

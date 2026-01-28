@@ -2,10 +2,9 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CancelOrder, OrderCancelled, OrderState};
-use common::{BusinessError, Result};
+use common::{decode_command, make_event_book, now, require_exists, require_status_not, Result};
 use prost::Message;
 
-use super::{make_event_book, now};
 use crate::errmsg;
 
 /// Handle the CancelOrder command.
@@ -15,23 +14,19 @@ pub fn handle_cancel_order(
     state: &OrderState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::ORDER_NOT_FOUND.to_string()));
-    }
-    if state.status == "completed" {
-        return Err(BusinessError::Rejected(errmsg::ORDER_COMPLETED.to_string()));
-    }
-    if state.status == "cancelled" {
-        return Err(BusinessError::Rejected(errmsg::ORDER_CANCELLED.to_string()));
-    }
+    require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)?;
+    require_status_not(&state.status, "completed", errmsg::ORDER_COMPLETED)?;
+    require_status_not(&state.status, "cancelled", errmsg::ORDER_CANCELLED)?;
 
-    let cmd =
-        CancelOrder::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: CancelOrder = decode_command(command_data)?;
 
     let event = OrderCancelled {
         reason: cmd.reason,
         cancelled_at: Some(now()),
         loyalty_points_used: state.loyalty_points_used,
+        customer_root: state.customer_root.clone(),
+        items: state.items.clone(),
+        cart_root: state.cart_root.clone(),
     };
 
     let new_state = OrderState {
@@ -43,6 +38,8 @@ pub fn handle_cancel_order(
         payment_method: state.payment_method.clone(),
         payment_reference: state.payment_reference.clone(),
         status: "cancelled".to_string(),
+        customer_root: state.customer_root.clone(),
+        cart_root: state.cart_root.clone(),
     };
 
     Ok(make_event_book(
@@ -50,6 +47,7 @@ pub fn handle_cancel_order(
         next_seq,
         "type.examples/examples.OrderCancelled",
         event.encode_to_vec(),
+        "type.examples/examples.OrderState",
         new_state.encode_to_vec(),
     ))
 }

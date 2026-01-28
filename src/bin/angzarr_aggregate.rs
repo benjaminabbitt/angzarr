@@ -45,7 +45,7 @@ use tracing::{error, info, warn};
 
 use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::Config;
-use angzarr::discovery::ServiceDiscovery;
+use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::{
     aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
@@ -145,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Load service discovery for sync processing (K8s label-based discovery)
-    let discovery = match ServiceDiscovery::from_env().await {
+    let discovery: Arc<dyn ServiceDiscovery> = match K8sServiceDiscovery::from_env().await {
         Ok(discovery) => {
             let discovery = Arc::new(discovery);
             // Perform initial sync and start watching
@@ -154,28 +154,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             discovery.start_watching();
             info!("Service discovery initialized");
-            Some(discovery)
+            discovery
         }
         Err(e) => {
             warn!(
                 "Service discovery not available (running outside K8s?): {}",
                 e
             );
-            None
+            // Use static discovery as fallback (no projectors registered)
+            Arc::new(K8sServiceDiscovery::new_static())
         }
     };
 
-    let mut aggregate_service = AggregateService::new(
+    let aggregate_service = AggregateService::new(
         event_store.clone(),
         snapshot_store.clone(),
         business_client,
         event_bus,
+        discovery,
     );
-
-    // Wire up service discovery for sync processing
-    if let Some(discovery) = discovery {
-        aggregate_service = aggregate_service.with_discovery(discovery);
-    }
 
     let event_query = EventQueryService::new(event_store, snapshot_store);
 

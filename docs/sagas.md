@@ -608,32 +608,35 @@ sequenceDiagram
 
 ### Implementing Reservation Sagas
 
-The reservation saga coordinates the lifecycle:
+The reservation saga coordinates the lifecycle. See [`saga-inventory-reservation`](../examples/rust/saga-inventory-reservation/src/lib.rs) for a complete Rust implementation.
 
-```python
-class InventoryReservationSaga:
-    """Reserves inventory when items added, commits/releases based on outcome."""
+**Key design decisions:**
 
-    def handle(self, event_book: EventBook) -> SagaResponse:
-        for event in event_book.pages:
-            if is_event(event, "ItemAdded"):
-                return self._reserve(event)
-            elif is_event(event, "CheckedOut"):
-                return self._commit(event)
-            elif is_event(event, "CartAbandoned") or is_event(event, "ItemRemoved"):
-                return self._release(event)
-        return SagaResponse(commands=[])
+1. **Deterministic product roots** - Use UUID v5 to map `product_id` strings to inventory aggregate roots, ensuring consistent routing without lookups.
 
-    def _reserve(self, event) -> SagaResponse:
-        return SagaResponse(commands=[
-            SagaCommand(
-                cover=Cover(domain="inventory", root=product_root(event)),
-                pages=[CommandPage(command=ReserveStock(
-                    quantity=event.quantity,
-                    order_id=event.cart_id,
-                ))]
-            )
-        ])
+2. **Stateless saga** - Handle item-level events (`ItemAdded`, `ItemRemoved`, `QuantityUpdated`) which include product info. Bulk events (`CartCleared`, `CartCheckedOut`) lack item details and require either:
+   - Stateful saga (tracks items per cart)
+   - Modified events (include cleared/checked-out items)
+   - Process manager with state machine
+
+3. **Quantity updates** - Release old reservation, then reserve new quantity. A production system might use a single `AdjustReservation` command.
+
+```rust
+// From saga-inventory-reservation/src/lib.rs
+fn handle_item_added(&self, event: &ItemAdded, source_root: Option<&ProtoUuid>, correlation_id: &str) -> Vec<CommandBook> {
+    let cart_id = root_id_as_string(source_root);
+    let cmd = ReserveStock {
+        quantity: event.quantity,
+        order_id: cart_id,
+    };
+    vec![build_command_book(
+        TARGET_DOMAIN,
+        Some(product_root(&event.product_id)),
+        correlation_id,
+        "type.examples/examples.ReserveStock",
+        &cmd,
+    )]
+}
 ```
 
 ### Timeout Handling

@@ -22,7 +22,7 @@ use tracing::debug;
 use crate::discovery::ServiceDiscovery;
 use crate::proto::command_gateway_server::CommandGateway;
 use crate::proto::event_stream_client::EventStreamClient;
-use crate::proto::{CommandBook, CommandResponse, EventBook, SyncCommandBook};
+use crate::proto::{CommandBook, CommandResponse, DryRunRequest, EventBook, SyncCommandBook};
 
 /// Command gateway service.
 ///
@@ -38,7 +38,7 @@ impl GatewayService {
     ///
     /// `stream_client` is optional - when `None`, streaming is disabled (embedded mode).
     pub fn new(
-        discovery: Arc<ServiceDiscovery>,
+        discovery: Arc<dyn ServiceDiscovery>,
         stream_client: Option<EventStreamClient<tonic::transport::Channel>>,
         default_stream_timeout: Duration,
     ) -> Self {
@@ -127,6 +127,32 @@ impl CommandGateway for GatewayService {
 
         Ok(Response::new(stream))
     }
+
+    /// Dry-run execute — execute command against temporal state without persisting.
+    async fn dry_run_execute(
+        &self,
+        request: Request<DryRunRequest>,
+    ) -> Result<Response<CommandResponse>, Status> {
+        let mut dry_run_request = request.into_inner();
+
+        // Ensure correlation ID on the embedded command
+        let correlation_id = match dry_run_request.command.as_mut() {
+            Some(cmd) => CommandRouter::ensure_correlation_id(cmd)?,
+            None => {
+                return Err(Status::invalid_argument(
+                    "DryRunRequest must have a command",
+                ))
+            }
+        };
+
+        debug!(correlation_id = %correlation_id, "Executing command (dry-run)");
+
+        let response = self
+            .command_router
+            .forward_dry_run(dry_run_request, &correlation_id)
+            .await?;
+        Ok(Response::new(response))
+    }
 }
 
 #[cfg(test)]
@@ -139,11 +165,12 @@ mod tests {
     use tokio_stream::StreamExt;
     use tonic::transport::Server;
 
+    use crate::discovery::K8sServiceDiscovery;
     use crate::proto::aggregate_coordinator_server::{
         AggregateCoordinator, AggregateCoordinatorServer,
     };
     use crate::proto::event_stream_server::{EventStream, EventStreamServer};
-    use crate::proto::{Cover, EventPage, SyncCommandBook, Uuid as ProtoUuid};
+    use crate::proto::{Cover, DryRunRequest, EventPage, SyncCommandBook, Uuid as ProtoUuid};
 
     /// Mock AggregateCoordinator that returns configurable responses.
     struct MockAggregateCoordinator {
@@ -204,6 +231,17 @@ mod tests {
         ) -> Result<Response<CommandResponse>, Status> {
             let sync_req = request.into_inner();
             let command = sync_req
+                .command
+                .ok_or_else(|| Status::invalid_argument("Missing command"))?;
+            self.handle(Request::new(command)).await
+        }
+
+        async fn dry_run_handle(
+            &self,
+            request: Request<DryRunRequest>,
+        ) -> Result<Response<CommandResponse>, Status> {
+            let dry_run = request.into_inner();
+            let command = dry_run
                 .command
                 .ok_or_else(|| Status::invalid_argument("Missing command"))?;
             self.handle(Request::new(command)).await
@@ -321,7 +359,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         // Create discovery with wildcard endpoint for testing
-        let discovery = Arc::new(ServiceDiscovery::new_static());
+        let discovery = Arc::new(K8sServiceDiscovery::new_static());
         discovery
             .register_aggregate("*", "127.0.0.1", coord_port)
             .await;

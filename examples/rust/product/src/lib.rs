@@ -4,16 +4,16 @@
 
 use prost::Message;
 
-use angzarr::proto::{
-    business_response, event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand,
-    EventBook, EventPage,
-};
-use common::next_sequence;
+use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, EventBook};
 use common::proto::{
     CreateProduct, Discontinue, PriceSet, ProductCreated, ProductDiscontinued, ProductState,
     ProductUpdated, SetPrice, UpdateProduct,
 };
-use common::{AggregateLogic, BusinessError, Result};
+use common::{decode_command, dispatch_aggregate, make_event_book, now, unknown_command};
+use common::{
+    rebuild_from_events, require_exists, require_not_exists, require_positive, require_status_not,
+};
+use common::{AggregateLogic, Result};
 
 pub mod errmsg {
     pub const PRODUCT_EXISTS: &str = "Product already exists";
@@ -23,70 +23,48 @@ pub mod errmsg {
     pub const PRICE_POSITIVE: &str = "Price must be positive";
     pub const PRODUCT_DISCONTINUED: &str = "Product is discontinued";
     pub const ALREADY_DISCONTINUED: &str = "Product is already discontinued";
-    pub const UNKNOWN_COMMAND: &str = "Unknown command type";
-    pub const NO_COMMAND_PAGES: &str = "CommandBook has no pages";
+    pub use common::errmsg::*;
+}
+
+fn apply_event(state: &mut ProductState, event: &prost_types::Any) {
+    if event.type_url.ends_with("ProductCreated") {
+        if let Ok(e) = ProductCreated::decode(event.value.as_slice()) {
+            state.sku = e.sku;
+            state.name = e.name;
+            state.description = e.description;
+            state.price_cents = e.price_cents;
+            state.status = "active".to_string();
+        }
+    } else if event.type_url.ends_with("ProductUpdated") {
+        if let Ok(e) = ProductUpdated::decode(event.value.as_slice()) {
+            state.name = e.name;
+            state.description = e.description;
+        }
+    } else if event.type_url.ends_with("PriceSet") {
+        if let Ok(e) = PriceSet::decode(event.value.as_slice()) {
+            state.price_cents = e.price_cents;
+        }
+    } else if event.type_url.ends_with("ProductDiscontinued") {
+        state.status = "discontinued".to_string();
+    }
 }
 
 /// Business logic for Product aggregate.
-pub struct ProductLogic {
-    domain: String,
-}
+pub struct ProductLogic;
+
+common::define_aggregate!(ProductLogic, "product");
+
+common::expose_handlers!(methods, ProductLogic, ProductState, rebuild: rebuild_state, [
+    (handle_create_product_public, handle_create_product),
+    (handle_update_product_public, handle_update_product),
+    (handle_set_price_public, handle_set_price),
+    (handle_discontinue_public, handle_discontinue),
+]);
 
 impl ProductLogic {
-    pub const DOMAIN: &'static str = "product";
-
-    pub fn new() -> Self {
-        Self {
-            domain: Self::DOMAIN.to_string(),
-        }
-    }
-
     /// Rebuild product state from events.
     fn rebuild_state(&self, event_book: Option<&EventBook>) -> ProductState {
-        let mut state = ProductState::default();
-
-        let Some(book) = event_book else {
-            return state;
-        };
-
-        // Start from snapshot if present
-        if let Some(snapshot) = &book.snapshot {
-            if let Some(snapshot_state) = &snapshot.state {
-                if let Ok(s) = ProductState::decode(snapshot_state.value.as_slice()) {
-                    state = s;
-                }
-            }
-        }
-
-        // Apply events
-        for page in &book.pages {
-            let Some(event) = &page.event else {
-                continue;
-            };
-
-            if event.type_url.ends_with("ProductCreated") {
-                if let Ok(e) = ProductCreated::decode(event.value.as_slice()) {
-                    state.sku = e.sku;
-                    state.name = e.name;
-                    state.description = e.description;
-                    state.price_cents = e.price_cents;
-                    state.status = "active".to_string();
-                }
-            } else if event.type_url.ends_with("ProductUpdated") {
-                if let Ok(e) = ProductUpdated::decode(event.value.as_slice()) {
-                    state.name = e.name;
-                    state.description = e.description;
-                }
-            } else if event.type_url.ends_with("PriceSet") {
-                if let Ok(e) = PriceSet::decode(event.value.as_slice()) {
-                    state.price_cents = e.price_cents;
-                }
-            } else if event.type_url.ends_with("ProductDiscontinued") {
-                state.status = "discontinued".to_string();
-            }
-        }
-
-        state
+        rebuild_from_events(event_book, apply_event)
     }
 
     fn handle_create_product(
@@ -96,22 +74,13 @@ impl ProductLogic {
         state: &ProductState,
         next_seq: u32,
     ) -> Result<EventBook> {
-        if !state.sku.is_empty() {
-            return Err(BusinessError::Rejected(errmsg::PRODUCT_EXISTS.to_string()));
-        }
+        require_not_exists(&state.sku, errmsg::PRODUCT_EXISTS)?;
 
-        let cmd = CreateProduct::decode(command_data)
-            .map_err(|e| BusinessError::Rejected(e.to_string()))?;
+        let cmd: CreateProduct = decode_command(command_data)?;
 
-        if cmd.sku.is_empty() {
-            return Err(BusinessError::Rejected(errmsg::SKU_REQUIRED.to_string()));
-        }
-        if cmd.name.is_empty() {
-            return Err(BusinessError::Rejected(errmsg::NAME_REQUIRED.to_string()));
-        }
-        if cmd.price_cents <= 0 {
-            return Err(BusinessError::Rejected(errmsg::PRICE_POSITIVE.to_string()));
-        }
+        require_exists(&cmd.sku, errmsg::SKU_REQUIRED)?;
+        require_exists(&cmd.name, errmsg::NAME_REQUIRED)?;
+        require_positive(cmd.price_cents, errmsg::PRICE_POSITIVE)?;
 
         let event = ProductCreated {
             sku: cmd.sku.clone(),
@@ -129,23 +98,14 @@ impl ProductLogic {
             status: "active".to_string(),
         };
 
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.ProductCreated".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.ProductState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
+        Ok(make_event_book(
+            command_book.cover.clone(),
+            next_seq,
+            "type.examples/examples.ProductCreated",
+            event.encode_to_vec(),
+            "type.examples/examples.ProductState",
+            new_state.encode_to_vec(),
+        ))
     }
 
     fn handle_update_product(
@@ -155,14 +115,9 @@ impl ProductLogic {
         state: &ProductState,
         next_seq: u32,
     ) -> Result<EventBook> {
-        if state.sku.is_empty() {
-            return Err(BusinessError::Rejected(
-                errmsg::PRODUCT_NOT_FOUND.to_string(),
-            ));
-        }
+        require_exists(&state.sku, errmsg::PRODUCT_NOT_FOUND)?;
 
-        let cmd = UpdateProduct::decode(command_data)
-            .map_err(|e| BusinessError::Rejected(e.to_string()))?;
+        let cmd: UpdateProduct = decode_command(command_data)?;
 
         let event = ProductUpdated {
             name: cmd.name.clone(),
@@ -178,23 +133,14 @@ impl ProductLogic {
             status: state.status.clone(),
         };
 
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.ProductUpdated".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.ProductState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
+        Ok(make_event_book(
+            command_book.cover.clone(),
+            next_seq,
+            "type.examples/examples.ProductUpdated",
+            event.encode_to_vec(),
+            "type.examples/examples.ProductState",
+            new_state.encode_to_vec(),
+        ))
     }
 
     fn handle_set_price(
@@ -204,23 +150,12 @@ impl ProductLogic {
         state: &ProductState,
         next_seq: u32,
     ) -> Result<EventBook> {
-        if state.sku.is_empty() {
-            return Err(BusinessError::Rejected(
-                errmsg::PRODUCT_NOT_FOUND.to_string(),
-            ));
-        }
-        if state.status == "discontinued" {
-            return Err(BusinessError::Rejected(
-                errmsg::PRODUCT_DISCONTINUED.to_string(),
-            ));
-        }
+        require_exists(&state.sku, errmsg::PRODUCT_NOT_FOUND)?;
+        require_status_not(&state.status, "discontinued", errmsg::PRODUCT_DISCONTINUED)?;
 
-        let cmd =
-            SetPrice::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+        let cmd: SetPrice = decode_command(command_data)?;
 
-        if cmd.price_cents <= 0 {
-            return Err(BusinessError::Rejected(errmsg::PRICE_POSITIVE.to_string()));
-        }
+        require_positive(cmd.price_cents, errmsg::PRICE_POSITIVE)?;
 
         let event = PriceSet {
             price_cents: cmd.price_cents,
@@ -236,23 +171,14 @@ impl ProductLogic {
             status: state.status.clone(),
         };
 
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.PriceSet".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.ProductState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
+        Ok(make_event_book(
+            command_book.cover.clone(),
+            next_seq,
+            "type.examples/examples.PriceSet",
+            event.encode_to_vec(),
+            "type.examples/examples.ProductState",
+            new_state.encode_to_vec(),
+        ))
     }
 
     fn handle_discontinue(
@@ -262,19 +188,10 @@ impl ProductLogic {
         state: &ProductState,
         next_seq: u32,
     ) -> Result<EventBook> {
-        if state.sku.is_empty() {
-            return Err(BusinessError::Rejected(
-                errmsg::PRODUCT_NOT_FOUND.to_string(),
-            ));
-        }
-        if state.status == "discontinued" {
-            return Err(BusinessError::Rejected(
-                errmsg::ALREADY_DISCONTINUED.to_string(),
-            ));
-        }
+        require_exists(&state.sku, errmsg::PRODUCT_NOT_FOUND)?;
+        require_status_not(&state.status, "discontinued", errmsg::ALREADY_DISCONTINUED)?;
 
-        let cmd = Discontinue::decode(command_data)
-            .map_err(|e| BusinessError::Rejected(e.to_string()))?;
+        let cmd: Discontinue = decode_command(command_data)?;
 
         let event = ProductDiscontinued {
             reason: cmd.reason,
@@ -289,97 +206,14 @@ impl ProductLogic {
             status: "discontinued".to_string(),
         };
 
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.ProductDiscontinued".to_string(),
-                    value: event.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-            }],
-            correlation_id: String::new(),
-            snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.ProductState".to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
-    }
-}
-
-impl Default for ProductLogic {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// Public test methods for cucumber tests
-impl ProductLogic {
-    /// Public access to rebuild_state for testing.
-    pub fn rebuild_state_public(&self, event_book: Option<&EventBook>) -> ProductState {
-        self.rebuild_state(event_book)
-    }
-
-    /// Public access to handle_create_product for testing.
-    pub fn handle_create_product_public(
-        &self,
-        command_book: &CommandBook,
-        state: &ProductState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        let command_any = command_book
-            .pages
-            .first()
-            .and_then(|p| p.command.as_ref())
-            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_create_product(command_book, &command_any.value, state, next_seq)
-    }
-
-    /// Public access to handle_update_product for testing.
-    pub fn handle_update_product_public(
-        &self,
-        command_book: &CommandBook,
-        state: &ProductState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        let command_any = command_book
-            .pages
-            .first()
-            .and_then(|p| p.command.as_ref())
-            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_update_product(command_book, &command_any.value, state, next_seq)
-    }
-
-    /// Public access to handle_set_price for testing.
-    pub fn handle_set_price_public(
-        &self,
-        command_book: &CommandBook,
-        state: &ProductState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        let command_any = command_book
-            .pages
-            .first()
-            .and_then(|p| p.command.as_ref())
-            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_set_price(command_book, &command_any.value, state, next_seq)
-    }
-
-    /// Public access to handle_discontinue for testing.
-    pub fn handle_discontinue_public(
-        &self,
-        command_book: &CommandBook,
-        state: &ProductState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        let command_any = command_book
-            .pages
-            .first()
-            .and_then(|p| p.command.as_ref())
-            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-        self.handle_discontinue(command_book, &command_any.value, state, next_seq)
+        Ok(make_event_book(
+            command_book.cover.clone(),
+            next_seq,
+            "type.examples/examples.ProductDiscontinued",
+            event.encode_to_vec(),
+            "type.examples/examples.ProductState",
+            new_state.encode_to_vec(),
+        ))
     }
 }
 
@@ -389,90 +223,31 @@ impl AggregateLogic for ProductLogic {
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        let command_book = cmd.command.as_ref();
-        let prior_events = cmd.events.as_ref();
-
-        let state = self.rebuild_state(prior_events);
-        let next_seq = next_sequence(prior_events);
-
-        let Some(cb) = command_book else {
-            return Err(BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()).into());
-        };
-
-        let command_page = cb
-            .pages
-            .first()
-            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-
-        let command_any = command_page
-            .command
-            .as_ref()
-            .ok_or_else(|| BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
-
-        let events = if command_any.type_url.ends_with("CreateProduct") {
-            self.handle_create_product(cb, &command_any.value, &state, next_seq)?
-        } else if command_any.type_url.ends_with("UpdateProduct") {
-            self.handle_update_product(cb, &command_any.value, &state, next_seq)?
-        } else if command_any.type_url.ends_with("SetPrice") {
-            self.handle_set_price(cb, &command_any.value, &state, next_seq)?
-        } else if command_any.type_url.ends_with("Discontinue") {
-            self.handle_discontinue(cb, &command_any.value, &state, next_seq)?
-        } else {
-            return Err(BusinessError::Rejected(format!(
-                "{}: {}",
-                errmsg::UNKNOWN_COMMAND,
-                command_any.type_url
-            ))
-            .into());
-        };
-
-        Ok(BusinessResponse {
-            result: Some(business_response::Result::Events(events)),
-        })
-    }
-}
-
-fn now() -> prost_types::Timestamp {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    prost_types::Timestamp {
-        seconds: now.as_secs() as i64,
-        nanos: now.subsec_nanos() as i32,
+        dispatch_aggregate(
+            cmd,
+            |eb| self.rebuild_state(eb),
+            |cb, command_any, state, next_seq| {
+                if command_any.type_url.ends_with("CreateProduct") {
+                    self.handle_create_product(cb, &command_any.value, state, next_seq)
+                } else if command_any.type_url.ends_with("UpdateProduct") {
+                    self.handle_update_product(cb, &command_any.value, state, next_seq)
+                } else if command_any.type_url.ends_with("SetPrice") {
+                    self.handle_set_price(cb, &command_any.value, state, next_seq)
+                } else if command_any.type_url.ends_with("Discontinue") {
+                    self.handle_discontinue(cb, &command_any.value, state, next_seq)
+                } else {
+                    Err(unknown_command(&command_any.type_url))
+                }
+            },
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use angzarr::proto::{CommandPage, Cover, Uuid as ProtoUuid};
-
-    fn make_command_book(domain: &str, root: &[u8], type_url: &str, value: Vec<u8>) -> CommandBook {
-        CommandBook {
-            cover: Some(Cover {
-                domain: domain.to_string(),
-                root: Some(ProtoUuid {
-                    value: root.to_vec(),
-                }),
-            }),
-            pages: vec![CommandPage {
-                sequence: 0,
-                command: Some(prost_types::Any {
-                    type_url: type_url.to_string(),
-                    value,
-                }),
-            }],
-            correlation_id: String::new(),
-            saga_origin: None,
-        }
-    }
-
-    fn extract_events(response: BusinessResponse) -> EventBook {
-        match response.result {
-            Some(business_response::Result::Events(events)) => events,
-            _ => panic!("Expected events in response"),
-        }
-    }
+    use angzarr::proto::{event_page::Sequence, Cover, EventPage, Uuid as ProtoUuid};
+    use common::testing::{extract_response_events, make_test_command_book};
 
     #[tokio::test]
     async fn test_create_product_success() {
@@ -485,7 +260,7 @@ mod tests {
             price_cents: 1999,
         };
 
-        let command_book = make_command_book(
+        let command_book = make_test_command_book(
             "product",
             &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
             "type.examples/examples.CreateProduct",
@@ -498,7 +273,7 @@ mod tests {
         };
 
         let response = logic.handle(ctx).await.unwrap();
-        let result = extract_events(response);
+        let result = extract_response_events(response);
         assert_eq!(result.pages.len(), 1);
 
         let event =
@@ -517,6 +292,7 @@ mod tests {
             cover: Some(Cover {
                 domain: "product".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
+                correlation_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -534,7 +310,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -545,7 +320,7 @@ mod tests {
             price_cents: 2000,
         };
 
-        let command_book = make_command_book(
+        let command_book = make_test_command_book(
             "product",
             &[1; 16],
             "type.examples/examples.CreateProduct",
@@ -570,6 +345,7 @@ mod tests {
             cover: Some(Cover {
                 domain: "product".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
+                correlation_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -587,13 +363,12 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
         let cmd = SetPrice { price_cents: 1500 };
 
-        let command_book = make_command_book(
+        let command_book = make_test_command_book(
             "product",
             &[1; 16],
             "type.examples/examples.SetPrice",
@@ -606,7 +381,7 @@ mod tests {
         };
 
         let response = logic.handle(ctx).await.unwrap();
-        let result = extract_events(response);
+        let result = extract_response_events(response);
         assert_eq!(result.pages.len(), 1);
 
         let event =
@@ -623,6 +398,7 @@ mod tests {
             cover: Some(Cover {
                 domain: "product".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
+                correlation_id: String::new(),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -640,7 +416,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            correlation_id: String::new(),
             snapshot_state: None,
         };
 
@@ -648,7 +423,7 @@ mod tests {
             reason: "End of life".to_string(),
         };
 
-        let command_book = make_command_book(
+        let command_book = make_test_command_book(
             "product",
             &[1; 16],
             "type.examples/examples.Discontinue",
@@ -661,7 +436,7 @@ mod tests {
         };
 
         let response = logic.handle(ctx).await.unwrap();
-        let result = extract_events(response);
+        let result = extract_response_events(response);
         assert_eq!(result.pages.len(), 1);
 
         let event =

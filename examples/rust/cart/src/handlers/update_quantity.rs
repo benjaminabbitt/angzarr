@@ -2,12 +2,15 @@
 
 use prost::Message;
 
-use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
+use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartState, QuantityUpdated, UpdateQuantity};
-use common::{BusinessError, Result};
+use common::{
+    decode_command, make_event_book, now, require_exists, require_positive, require_status_not,
+    BusinessError, Result,
+};
 
 use crate::errmsg;
-use crate::state::{calculate_subtotal, now};
+use crate::state::calculate_subtotal;
 
 /// Handle the UpdateQuantity command.
 ///
@@ -18,23 +21,12 @@ pub fn handle_update_quantity(
     state: &CartState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CART_NOT_FOUND.to_string()));
-    }
-    if state.status == "checked_out" {
-        return Err(BusinessError::Rejected(
-            errmsg::CART_CHECKED_OUT.to_string(),
-        ));
-    }
+    require_exists(&state.customer_id, errmsg::CART_NOT_FOUND)?;
+    require_status_not(&state.status, "checked_out", errmsg::CART_CHECKED_OUT)?;
 
-    let cmd =
-        UpdateQuantity::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: UpdateQuantity = decode_command(command_data)?;
 
-    if cmd.new_quantity <= 0 {
-        return Err(BusinessError::Rejected(
-            errmsg::QUANTITY_POSITIVE.to_string(),
-        ));
-    }
+    require_positive(cmd.new_quantity, errmsg::QUANTITY_POSITIVE)?;
 
     let item = state
         .items
@@ -68,21 +60,12 @@ pub fn handle_update_quantity(
         status: state.status.clone(),
     };
 
-    Ok(EventBook {
-        cover: command_book.cover.clone(),
-        snapshot: None,
-        pages: vec![EventPage {
-            sequence: Some(Sequence::Num(next_seq)),
-            event: Some(prost_types::Any {
-                type_url: "type.examples/examples.QuantityUpdated".to_string(),
-                value: event.encode_to_vec(),
-            }),
-            created_at: Some(now()),
-        }],
-        correlation_id: String::new(),
-        snapshot_state: Some(prost_types::Any {
-            type_url: "type.examples/examples.CartState".to_string(),
-            value: new_state.encode_to_vec(),
-        }),
-    })
+    Ok(make_event_book(
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.QuantityUpdated",
+        event.encode_to_vec(),
+        "type.examples/examples.CartState",
+        new_state.encode_to_vec(),
+    ))
 }

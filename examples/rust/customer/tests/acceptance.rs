@@ -3,15 +3,13 @@
 //! These tests run against a deployed angzarr system (Kind cluster).
 //! Run with: cargo test -p customer --test acceptance
 
+use angzarr::proto::CommandResponse;
+use angzarr_client::{
+    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
+};
 use cucumber::{given, then, when, World};
 use prost::Message;
-use tonic::transport::Channel;
 use uuid::Uuid;
-
-use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, EventBook, Query, Uuid as ProtoUuid,
-};
 
 use common::identity::customer_root;
 use common::proto::{
@@ -19,7 +17,6 @@ use common::proto::{
     RedeemLoyaltyPoints,
 };
 
-/// Default gateway endpoint for Kind cluster
 /// Default Angzarr port - standard across all languages/containers
 const DEFAULT_ANGZARR_PORT: u16 = 1350;
 
@@ -55,12 +52,7 @@ fn make_unique_email(email: &str) -> String {
 #[derive(World)]
 #[world(init = Self::new)]
 pub struct CustomerAcceptanceWorld {
-    /// Gateway endpoint
-    gateway_endpoint: String,
-
-    /// gRPC clients
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-    query_client: Option<EventQueryClient<Channel>>,
+    client: Option<Client>,
 
     /// Current customer email (used to compute aggregate root)
     current_email: Option<String>,
@@ -72,15 +64,11 @@ pub struct CustomerAcceptanceWorld {
     last_response: Option<CommandResponse>,
     /// Last error message
     last_error: Option<String>,
-
-    /// Events queried for assertions
-    queried_events: Vec<EventBook>,
 }
 
 impl std::fmt::Debug for CustomerAcceptanceWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CustomerAcceptanceWorld")
-            .field("gateway_endpoint", &self.gateway_endpoint)
             .field("current_email", &self.current_email)
             .finish()
     }
@@ -89,39 +77,24 @@ impl std::fmt::Debug for CustomerAcceptanceWorld {
 impl CustomerAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: get_gateway_endpoint(),
-            gateway_client: None,
-            query_client: None,
+            client: None,
             current_email: None,
             current_sequence: 0,
             last_response: None,
             last_error: None,
-            queried_events: Vec::new(),
         }
     }
 
-    async fn get_gateway_client(&mut self) -> &mut CommandGatewayClient<Channel> {
-        if self.gateway_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid gateway endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
+    async fn client(&mut self) -> &Client {
+        if self.client.is_none() {
+            let endpoint = get_gateway_endpoint();
+            self.client = Some(
+                Client::connect(&endpoint)
+                    .await
+                    .expect("Failed to connect to gateway"),
+            );
         }
-        self.gateway_client.as_mut().unwrap()
-    }
-
-    async fn get_query_client(&mut self) -> &mut EventQueryClient<Channel> {
-        if self.query_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid query endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to query service");
-            self.query_client = Some(EventQueryClient::new(channel));
-        }
-        self.query_client.as_mut().unwrap()
+        self.client.as_ref().unwrap()
     }
 
     fn customer_root(&self) -> Uuid {
@@ -129,38 +102,39 @@ impl CustomerAcceptanceWorld {
         customer_root(email)
     }
 
-    fn build_cover(&self) -> Cover {
-        Cover {
-            domain: "customer".to_string(),
-            root: Some(ProtoUuid {
-                value: self.customer_root().as_bytes().to_vec(),
-            }),
-        }
+    async fn execute_command<M: Message>(
+        &mut self,
+        command: M,
+        type_url: &str,
+    ) -> Result<CommandResponse, ClientError> {
+        let root = self.customer_root();
+        let sequence = self.current_sequence;
+        let client = self.client().await;
+
+        client
+            .gateway
+            .command("customer", root)
+            .with_sequence(sequence)
+            .with_command(format!("type.googleapis.com/{}", type_url), &command)
+            .execute()
+            .await
     }
 
-    fn build_command_book(&self, command: impl Message, type_url: &str) -> CommandBook {
-        let correlation_id = Uuid::new_v4().to_string();
-        CommandBook {
-            cover: Some(self.build_cover()),
-            pages: vec![CommandPage {
-                sequence: self.current_sequence,
-                command: Some(prost_types::Any {
-                    type_url: format!("type.googleapis.com/{}", type_url),
-                    value: command.encode_to_vec(),
-                }),
-            }],
-            correlation_id,
-            saga_origin: None,
+    fn handle_result(&mut self, result: Result<CommandResponse, ClientError>) {
+        match result {
+            Ok(response) => {
+                self.last_response = Some(response);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.message());
+                self.last_response = None;
+            }
         }
     }
 
     fn extract_event_type(event: &prost_types::Any) -> String {
-        event
-            .type_url
-            .rsplit('/')
-            .next()
-            .unwrap_or(&event.type_url)
-            .to_string()
+        type_name_from_url(&event.type_url).to_string()
     }
 }
 
@@ -169,9 +143,8 @@ impl CustomerAcceptanceWorld {
 // =============================================================================
 
 #[given(expr = "the angzarr system is running at {string}")]
-async fn given_system_running(world: &mut CustomerAcceptanceWorld, endpoint: String) {
-    world.gateway_endpoint = format!("http://{}", endpoint);
-    let _ = world.get_gateway_client().await;
+async fn given_system_running(world: &mut CustomerAcceptanceWorld, _endpoint: String) {
+    let _ = world.client().await;
 }
 
 // =============================================================================
@@ -185,7 +158,6 @@ async fn no_prior_events(world: &mut CustomerAcceptanceWorld) {
     world.current_sequence = 0;
     world.last_response = None;
     world.last_error = None;
-    world.queried_events.clear();
 }
 
 #[given(expr = "a CustomerCreated event with name {string} and email {string}")]
@@ -200,17 +172,17 @@ async fn customer_created_event(world: &mut CustomerAcceptanceWorld, name: Strin
         name,
         email: unique_email.clone(),
     };
-    let command_book = world.build_command_book(command, "examples.CreateCustomer");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.CreateCustomer")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_sequence += 1;
         }
-        Err(status) => {
-            panic!("Given step failed: CustomerCreated - {}", status.message());
+        Err(e) => {
+            panic!("Given step failed: CustomerCreated - {}", e.message());
         }
     }
 
@@ -228,20 +200,17 @@ async fn loyalty_points_added_event(
         points,
         reason: "setup".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.AddLoyaltyPoints");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.AddLoyaltyPoints")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_sequence += 1;
         }
-        Err(status) => {
-            panic!(
-                "Given step failed: LoyaltyPointsAdded - {}",
-                status.message()
-            );
+        Err(e) => {
+            panic!("Given step failed: LoyaltyPointsAdded - {}", e.message());
         }
     }
 
@@ -258,19 +227,19 @@ async fn loyalty_points_redeemed_event(
         points,
         redemption_type: "setup".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.RedeemLoyaltyPoints");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.RedeemLoyaltyPoints")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_sequence += 1;
         }
-        Err(status) => {
+        Err(e) => {
             panic!(
                 "Given step failed: LoyaltyPointsRedeemed - {}",
-                status.message()
+                e.message()
             );
         }
     }
@@ -300,19 +269,10 @@ async fn handle_create_customer(world: &mut CustomerAcceptanceWorld, name: Strin
         name,
         email: unique_email,
     };
-    let command_book = world.build_command_book(command, "examples.CreateCustomer");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.CreateCustomer")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle an AddLoyaltyPoints command with {int} points and reason {string}")]
@@ -327,19 +287,10 @@ async fn handle_add_loyalty_points(
     }
 
     let command = AddLoyaltyPoints { points, reason };
-    let command_book = world.build_command_book(command, "examples.AddLoyaltyPoints");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.AddLoyaltyPoints")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a RedeemLoyaltyPoints command with {int} points and type {string}")]
@@ -357,40 +308,26 @@ async fn handle_redeem_loyalty_points(
         points,
         redemption_type,
     };
-    let command_book = world.build_command_book(command, "examples.RedeemLoyaltyPoints");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.RedeemLoyaltyPoints")
+        .await;
+    world.handle_result(result);
 }
 
 #[when("I rebuild the customer state")]
 async fn rebuild_customer_state(world: &mut CustomerAcceptanceWorld) {
-    // Query the events for the current aggregate
-    let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: world.customer_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    match client.get_event_book(query).await {
-        Ok(response) => {
-            world.queried_events = vec![response.into_inner()];
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+    let root = world.customer_root();
+    let client = world.client().await;
+    match client
+        .query
+        .query("customer", root)
+        .range(0)
+        .get_event_book()
+        .await
+    {
+        Ok(_) => {}
+        Err(e) => {
+            world.last_error = Some(format!("{}", e));
         }
     }
 }
@@ -565,19 +502,15 @@ async fn event_has_redemption_type(world: &mut CustomerAcceptanceWorld, redempti
 
 #[then(expr = "the state has name {string}")]
 async fn state_has_name(world: &mut CustomerAcceptanceWorld, name: String) {
-    // Query events and verify the latest CustomerCreated has the name
-    let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: world.customer_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let root = world.customer_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("customer", root)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     // Find the CustomerCreated event
     for page in &event_book.pages {
@@ -596,18 +529,15 @@ async fn state_has_name(world: &mut CustomerAcceptanceWorld, name: String) {
 
 #[then(expr = "the state has email {string}")]
 async fn state_has_email(world: &mut CustomerAcceptanceWorld, email: String) {
-    let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: world.customer_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let root = world.customer_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("customer", root)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     // Check that the email starts with the expected local part (before the UUID suffix)
     let expected_prefix = email.split('@').next().unwrap_or(&email);
@@ -633,18 +563,15 @@ async fn state_has_email(world: &mut CustomerAcceptanceWorld, email: String) {
 
 #[then(expr = "the state has loyalty_points {int}")]
 async fn state_has_loyalty_points(world: &mut CustomerAcceptanceWorld, expected_points: i32) {
-    let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: world.customer_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let root = world.customer_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("customer", root)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     // Rebuild balance from events
     let mut balance = 0i32;
@@ -672,18 +599,15 @@ async fn state_has_loyalty_points(world: &mut CustomerAcceptanceWorld, expected_
 
 #[then(expr = "the state has lifetime_points {int}")]
 async fn state_has_lifetime_points(world: &mut CustomerAcceptanceWorld, expected_points: i32) {
-    let query = Query {
-        domain: "customer".to_string(),
-        root: Some(ProtoUuid {
-            value: world.customer_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let root = world.customer_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("customer", root)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     // Sum all points added (lifetime)
     let mut lifetime = 0i32;

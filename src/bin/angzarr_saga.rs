@@ -35,38 +35,24 @@
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
 use std::collections::HashMap;
-
+use std::sync::Arc;
 use std::time::Duration;
 
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::Config;
-use angzarr::handlers::core::saga::{CommandRouter, EventQueryRouter, SagaEventHandler};
+use angzarr::handlers::core::saga::SagaEventHandler;
+use angzarr::orchestration::command::grpc::GrpcCommandExecutor;
+use angzarr::orchestration::command::CommandExecutor;
+use angzarr::orchestration::destination::grpc::GrpcDestinationFetcher;
+use angzarr::orchestration::destination::DestinationFetcher;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::event_query_client::EventQueryClient;
 use angzarr::proto::saga_client::SagaClient;
 use angzarr::transport::connect_to_address;
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
-
-/// Parse static endpoints from environment variable.
-///
-/// Format: "domain=address,domain=address,..."
-/// Example: "customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock"
-fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
-    endpoints_str
-        .split(',')
-        .filter_map(|pair| {
-            let parts: Vec<&str> = pair.trim().splitn(2, '=').collect();
-            if parts.len() == 2 {
-                Some((parts[0].to_string(), parts[1].to_string()))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
+use angzarr::utils::bootstrap::{connect_with_retry, init_tracing, parse_static_endpoints};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -164,15 +150,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (domain, address) in endpoints {
             // Connect AggregateCoordinator client for commands
             let addr = address.clone();
-            let cmd_client =
-                connect_with_retry(&format!("aggregate-{}", domain), &address, || {
-                    let a = addr.clone();
-                    async move {
-                        let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
-                        Ok::<_, String>(AggregateCoordinatorClient::new(channel))
-                    }
-                })
-                .await?;
+            let cmd_client = connect_with_retry(&format!("aggregate-{}", domain), &address, || {
+                let a = addr.clone();
+                async move {
+                    let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
+                    Ok::<_, String>(AggregateCoordinatorClient::new(channel))
+                }
+            })
+            .await?;
             command_clients.insert(domain.clone(), cmd_client);
 
             // Connect EventQuery client for fetching destination state
@@ -191,9 +176,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!(domain = %domain, address = %address, "Connected to aggregate (commands + queries)");
         }
 
-        let command_router = CommandRouter::new(command_clients);
-        let event_query_router = EventQueryRouter::new(query_clients);
-        SagaEventHandler::with_routers(saga_client, command_router, event_query_router, publisher)
+        let command_executor: Arc<dyn CommandExecutor> =
+            Arc::new(GrpcCommandExecutor::new(command_clients));
+        let destination_fetcher: Arc<dyn DestinationFetcher> =
+            Arc::new(GrpcDestinationFetcher::new(query_clients));
+        SagaEventHandler::with_routers(
+            saga_client,
+            command_executor,
+            destination_fetcher,
+            publisher,
+        )
     } else if let Ok(command_address) = std::env::var("COMMAND_ADDRESS") {
         // Fall back to single command handler (no two-phase support)
         let cmd_addr = command_address.clone();

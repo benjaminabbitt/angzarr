@@ -3,15 +3,13 @@
 //! These tests run against a deployed angzarr system (Kind cluster).
 //! Run with: cargo test -p order --test acceptance
 
+use angzarr::proto::CommandResponse;
+use angzarr_client::{
+    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
+};
 use cucumber::{gherkin::Step, given, then, when, World};
 use prost::Message;
-use tonic::transport::Channel;
 use uuid::Uuid;
-
-use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, Query, Uuid as ProtoUuid,
-};
 
 use common::proto::{
     ApplyLoyaltyDiscount, CancelOrder, ConfirmPayment, CreateOrder, LineItem,
@@ -38,9 +36,7 @@ fn get_gateway_endpoint() -> String {
 #[derive(World)]
 #[world(init = Self::new)]
 pub struct OrderAcceptanceWorld {
-    gateway_endpoint: String,
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-    query_client: Option<EventQueryClient<Channel>>,
+    client: Option<Client>,
     current_order_id: Option<Uuid>,
     current_sequence: u32,
     current_subtotal: i32,
@@ -52,7 +48,6 @@ pub struct OrderAcceptanceWorld {
 impl std::fmt::Debug for OrderAcceptanceWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OrderAcceptanceWorld")
-            .field("gateway_endpoint", &self.gateway_endpoint)
             .field("current_order_id", &self.current_order_id)
             .finish()
     }
@@ -61,9 +56,7 @@ impl std::fmt::Debug for OrderAcceptanceWorld {
 impl OrderAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: get_gateway_endpoint(),
-            gateway_client: None,
-            query_client: None,
+            client: None,
             current_order_id: None,
             current_sequence: 0,
             current_subtotal: 0,
@@ -73,66 +66,55 @@ impl OrderAcceptanceWorld {
         }
     }
 
-    async fn get_gateway_client(&mut self) -> &mut CommandGatewayClient<Channel> {
-        if self.gateway_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid gateway endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
+    async fn client(&mut self) -> &Client {
+        if self.client.is_none() {
+            let endpoint = get_gateway_endpoint();
+            self.client = Some(
+                Client::connect(&endpoint)
+                    .await
+                    .expect("Failed to connect to gateway"),
+            );
         }
-        self.gateway_client.as_mut().unwrap()
-    }
-
-    async fn get_query_client(&mut self) -> &mut EventQueryClient<Channel> {
-        if self.query_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid query endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to query service");
-            self.query_client = Some(EventQueryClient::new(channel));
-        }
-        self.query_client.as_mut().unwrap()
+        self.client.as_ref().unwrap()
     }
 
     fn order_root(&self) -> Uuid {
         self.current_order_id.expect("No order ID set")
     }
 
-    fn build_cover(&self) -> Cover {
-        Cover {
-            domain: "order".to_string(),
-            root: Some(ProtoUuid {
-                value: self.order_root().as_bytes().to_vec(),
-            }),
-        }
+    async fn execute_command<M: Message>(
+        &mut self,
+        command: M,
+        type_url: &str,
+    ) -> Result<CommandResponse, ClientError> {
+        let order_id = self.order_root();
+        let sequence = self.current_sequence;
+        let client = self.client().await;
+
+        client
+            .gateway
+            .command("order", order_id)
+            .with_sequence(sequence)
+            .with_command(format!("type.googleapis.com/{}", type_url), &command)
+            .execute()
+            .await
     }
 
-    fn build_command_book(&self, command: impl Message, type_url: &str) -> CommandBook {
-        let correlation_id = Uuid::new_v4().to_string();
-        CommandBook {
-            cover: Some(self.build_cover()),
-            pages: vec![CommandPage {
-                sequence: self.current_sequence,
-                command: Some(prost_types::Any {
-                    type_url: format!("type.googleapis.com/{}", type_url),
-                    value: command.encode_to_vec(),
-                }),
-            }],
-            correlation_id,
-            saga_origin: None,
+    fn handle_result(&mut self, result: Result<CommandResponse, ClientError>) {
+        match result {
+            Ok(response) => {
+                self.last_response = Some(response);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.message());
+                self.last_response = None;
+            }
         }
     }
 
     fn extract_event_type(event: &prost_types::Any) -> String {
-        event
-            .type_url
-            .rsplit('/')
-            .next()
-            .unwrap_or(&event.type_url)
-            .to_string()
+        type_name_from_url(&event.type_url).to_string()
     }
 
     fn parse_items_from_table(step: &Step) -> Vec<LineItem> {
@@ -141,11 +123,15 @@ impl OrderAcceptanceWorld {
             // Skip header row
             for row in table.rows.iter().skip(1) {
                 if row.len() >= 4 {
+                    // Generate deterministic product_root from product_id
+                    let product_root =
+                        Uuid::new_v5(&Uuid::NAMESPACE_OID, row[0].as_bytes()).as_bytes().to_vec();
                     items.push(LineItem {
                         product_id: row[0].clone(),
                         name: row[1].clone(),
                         quantity: row[2].parse().unwrap_or(0),
                         unit_price_cents: row[3].parse().unwrap_or(0),
+                        product_root,
                     });
                 }
             }
@@ -176,6 +162,15 @@ async fn order_created_event(world: &mut OrderAcceptanceWorld, customer_id: Stri
     }
     world.current_subtotal = subtotal;
 
+    // Generate deterministic roots from IDs
+    let customer_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes())
+        .as_bytes()
+        .to_vec();
+    let cart_root = Uuid::new_v4().as_bytes().to_vec();
+    let product_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"SETUP-ITEM")
+        .as_bytes()
+        .to_vec();
+
     // Create a simple order with one item that totals to the subtotal
     let command = CreateOrder {
         customer_id,
@@ -184,19 +179,20 @@ async fn order_created_event(world: &mut OrderAcceptanceWorld, customer_id: Stri
             name: "Setup Item".to_string(),
             quantity: 1,
             unit_price_cents: subtotal,
+            product_root,
         }],
+        customer_root,
+        cart_root,
     };
-    let command_book = world.build_command_book(command, "examples.CreateOrder");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world.execute_command(command, "examples.CreateOrder").await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_sequence += 1;
         }
-        Err(status) => {
-            panic!("Given step failed: OrderCreated - {}", status.message());
+        Err(e) => {
+            panic!("Given step failed: OrderCreated - {}", e.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -210,10 +206,10 @@ async fn loyalty_discount_applied_event(world: &mut OrderAcceptanceWorld, points
         points,
         discount_cents: points,
     };
-    let command_book = world.build_command_book(command, "examples.ApplyLoyaltyDiscount");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.ApplyLoyaltyDiscount")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!(
             "Given step failed: LoyaltyDiscountApplied - {}",
@@ -230,10 +226,10 @@ async fn payment_submitted_event(world: &mut OrderAcceptanceWorld) {
         payment_method: "card".to_string(),
         amount_cents: amount,
     };
-    let command_book = world.build_command_book(command, "examples.SubmitPayment");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.SubmitPayment")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: PaymentSubmitted - {}", e.message()),
     }
@@ -245,10 +241,10 @@ async fn order_completed_event(world: &mut OrderAcceptanceWorld) {
     let command = ConfirmPayment {
         payment_reference: "SETUP-PAY-REF".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.ConfirmPayment");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.ConfirmPayment")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: OrderCompleted - {}", e.message()),
     }
@@ -260,10 +256,10 @@ async fn order_cancelled_event(world: &mut OrderAcceptanceWorld) {
     let command = CancelOrder {
         reason: "Setup cancellation".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.CancelOrder");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.CancelOrder")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: OrderCancelled - {}", e.message()),
     }
@@ -287,20 +283,20 @@ async fn handle_create_order_with_items(
     let items = OrderAcceptanceWorld::parse_items_from_table(step);
     world.current_subtotal = items.iter().map(|i| i.quantity * i.unit_price_cents).sum();
 
-    let command = CreateOrder { customer_id, items };
-    let command_book = world.build_command_book(command, "examples.CreateOrder");
+    // Generate deterministic roots from IDs
+    let customer_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes())
+        .as_bytes()
+        .to_vec();
+    let cart_root = Uuid::new_v4().as_bytes().to_vec();
 
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let command = CreateOrder {
+        customer_id,
+        items,
+        customer_root,
+        cart_root,
+    };
+    let result = world.execute_command(command, "examples.CreateOrder").await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a CreateOrder command with customer_id {string} and no items")]
@@ -309,23 +305,20 @@ async fn handle_create_order_no_items(world: &mut OrderAcceptanceWorld, customer
         world.current_order_id = Some(Uuid::new_v4());
     }
 
+    // Generate deterministic roots from IDs
+    let customer_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes())
+        .as_bytes()
+        .to_vec();
+    let cart_root = Uuid::new_v4().as_bytes().to_vec();
+
     let command = CreateOrder {
         customer_id,
         items: vec![],
+        customer_root,
+        cart_root,
     };
-    let command_book = world.build_command_book(command, "examples.CreateOrder");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world.execute_command(command, "examples.CreateOrder").await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle an ApplyLoyaltyDiscount command with points {int} worth {int} cents")]
@@ -338,17 +331,17 @@ async fn handle_apply_loyalty_discount(
         points,
         discount_cents,
     };
-    let command_book = world.build_command_book(command, "examples.ApplyLoyaltyDiscount");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.ApplyLoyaltyDiscount")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_discount = discount_cents;
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
             world.last_response = None;
         }
     }
@@ -364,70 +357,35 @@ async fn handle_submit_payment(
         payment_method,
         amount_cents,
     };
-    let command_book = world.build_command_book(command, "examples.SubmitPayment");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.SubmitPayment")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a ConfirmPayment command with reference {string}")]
 async fn handle_confirm_payment(world: &mut OrderAcceptanceWorld, payment_reference: String) {
     let command = ConfirmPayment { payment_reference };
-    let command_book = world.build_command_book(command, "examples.ConfirmPayment");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.ConfirmPayment")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a CancelOrder command with reason {string}")]
 async fn handle_cancel_order(world: &mut OrderAcceptanceWorld, reason: String) {
     let command = CancelOrder { reason };
-    let command_book = world.build_command_book(command, "examples.CancelOrder");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.CancelOrder")
+        .await;
+    world.handle_result(result);
 }
 
 #[when("I rebuild the order state")]
 async fn rebuild_order_state(world: &mut OrderAcceptanceWorld) {
-    let query = Query {
-        domain: "order".to_string(),
-        root: Some(ProtoUuid {
-            value: world.order_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let _ = client.get_event_book(query).await;
+    let order_id = world.order_root();
+    let client = world.client().await;
+    let _ = client.query.query("order", order_id).range(0).get_event_book().await;
 }
 
 // =============================================================================
@@ -622,17 +580,16 @@ async fn event_has_reason(world: &mut OrderAcceptanceWorld, reason: String) {
 // State assertions
 #[then(expr = "the order state has customer_id {string}")]
 async fn state_has_customer_id(world: &mut OrderAcceptanceWorld, customer_id: String) {
-    let query = Query {
-        domain: "order".to_string(),
-        root: Some(ProtoUuid {
-            value: world.order_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let order_id = world.order_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("order", order_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
             if OrderAcceptanceWorld::extract_event_type(event_any).contains("OrderCreated") {
@@ -647,17 +604,16 @@ async fn state_has_customer_id(world: &mut OrderAcceptanceWorld, customer_id: St
 
 #[then(expr = "the order state has subtotal_cents {int}")]
 async fn state_has_subtotal_cents(world: &mut OrderAcceptanceWorld, subtotal_cents: i32) {
-    let query = Query {
-        domain: "order".to_string(),
-        root: Some(ProtoUuid {
-            value: world.order_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let order_id = world.order_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("order", order_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
             if OrderAcceptanceWorld::extract_event_type(event_any).contains("OrderCreated") {
@@ -672,17 +628,15 @@ async fn state_has_subtotal_cents(world: &mut OrderAcceptanceWorld, subtotal_cen
 
 #[then(expr = "the order state has status {string}")]
 async fn state_has_status(world: &mut OrderAcceptanceWorld, status: String) {
-    let query = Query {
-        domain: "order".to_string(),
-        root: Some(ProtoUuid {
-            value: world.order_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let order_id = world.order_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("order", order_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut current_status = "pending".to_string();
     for page in &event_book.pages {
@@ -702,17 +656,15 @@ async fn state_has_status(world: &mut OrderAcceptanceWorld, status: String) {
 
 #[then(expr = "the order state has loyalty_points_used {int}")]
 async fn state_has_loyalty_points_used(world: &mut OrderAcceptanceWorld, loyalty_points_used: i32) {
-    let query = Query {
-        domain: "order".to_string(),
-        root: Some(ProtoUuid {
-            value: world.order_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let order_id = world.order_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("order", order_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut points = 0;
     for page in &event_book.pages {
@@ -731,17 +683,15 @@ async fn state_has_loyalty_points_used(world: &mut OrderAcceptanceWorld, loyalty
 
 #[then(expr = "the order state has discount_cents {int}")]
 async fn state_has_discount_cents(world: &mut OrderAcceptanceWorld, discount_cents: i32) {
-    let query = Query {
-        domain: "order".to_string(),
-        root: Some(ProtoUuid {
-            value: world.order_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let order_id = world.order_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("order", order_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut discount = 0;
     for page in &event_book.pages {

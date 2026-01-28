@@ -23,6 +23,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+angzarr-client.workspace = true
 cucumber.workspace = true
 futures.workspace = true
 uuid.workspace = true

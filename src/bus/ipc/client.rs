@@ -200,55 +200,56 @@ impl IpcEventBus {
                         }
                     }
 
-                let len = u32::from_be_bytes(len_buf) as usize;
-                if len > 10 * 1024 * 1024 {
-                    error!(len, "Message too large");
-                    break;
-                }
+                    let len = u32::from_be_bytes(len_buf) as usize;
+                    if len > 10 * 1024 * 1024 {
+                        error!(len, "Message too large");
+                        break;
+                    }
 
-                // Read message body
-                let mut buf = vec![0u8; len];
-                if let Err(e) = file.read_exact(&mut buf) {
-                    error!(error = %e, "Failed to read message body");
-                    break;
-                }
+                    // Read message body
+                    let mut buf = vec![0u8; len];
+                    if let Err(e) = file.read_exact(&mut buf) {
+                        error!(error = %e, "Failed to read message body");
+                        break;
+                    }
 
-                // Decode EventBook
-                let book = match EventBook::decode(&buf[..]) {
-                    Ok(b) => Arc::new(b),
-                    Err(e) => {
-                        error!(error = %e, "Failed to decode EventBook");
+                    // Decode EventBook
+                    let book = match EventBook::decode(&buf[..]) {
+                        Ok(b) => Arc::new(b),
+                        Err(e) => {
+                            error!(error = %e, "Failed to decode EventBook");
+                            continue;
+                        }
+                    };
+
+                    let domain = book
+                        .cover
+                        .as_ref()
+                        .map(|c| c.domain.as_str())
+                        .unwrap_or("unknown");
+
+                    // Check domain filter
+                    let matches =
+                        domains.is_empty() || domains.iter().any(|d| d == "#" || d == domain);
+
+                    if !matches {
                         continue;
                     }
-                };
 
-                let domain = book
-                    .cover
-                    .as_ref()
-                    .map(|c| c.domain.as_str())
-                    .unwrap_or("unknown");
+                    debug!(domain = %domain, "Received event via pipe");
 
-                // Check domain filter
-                let matches = domains.is_empty() || domains.iter().any(|d| d == "#" || d == domain);
-
-                if !matches {
-                    continue;
-                }
-
-                debug!(domain = %domain, "Received event via pipe");
-
-                // Call handlers
-                let handlers_clone = handlers.clone();
-                let book_clone = book.clone();
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async {
-                    let handlers_guard = handlers_clone.read().await;
-                    for handler in handlers_guard.iter() {
-                        if let Err(e) = handler.handle(book_clone.clone()).await {
-                            error!(error = %e, "Handler failed");
+                    // Call handlers
+                    let handlers_clone = handlers.clone();
+                    let book_clone = book.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async {
+                        let handlers_guard = handlers_clone.read().await;
+                        for handler in handlers_guard.iter() {
+                            if let Err(e) = handler.handle(book_clone.clone()).await {
+                                error!(error = %e, "Handler failed");
+                            }
                         }
-                    }
-                });
+                    });
                 }
             }
         });

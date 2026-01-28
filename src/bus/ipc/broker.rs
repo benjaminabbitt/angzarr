@@ -98,8 +98,7 @@ impl IpcBroker {
             use nix::sys::stat::Mode;
             use nix::unistd::mkfifo;
 
-            mkfifo(&pipe_path, Mode::S_IRUSR | Mode::S_IWUSR)
-                .map_err(std::io::Error::other)?;
+            mkfifo(&pipe_path, Mode::S_IRUSR | Mode::S_IWUSR).map_err(std::io::Error::other)?;
         }
 
         info!(

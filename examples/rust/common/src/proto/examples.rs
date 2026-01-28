@@ -201,14 +201,17 @@ pub struct CouponApplied {
     #[prost(message, optional, tag = "5")]
     pub applied_at: ::core::option::Option<super::google::protobuf::Timestamp>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CartCleared {
     #[prost(int32, tag = "1")]
     pub new_subtotal: i32,
     #[prost(message, optional, tag = "2")]
     pub cleared_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+    /// items that were cleared (for inventory release)
+    #[prost(message, repeated, tag = "3")]
+    pub items: ::prost::alloc::vec::Vec<CartItem>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CartCheckedOut {
     #[prost(int32, tag = "1")]
     pub final_subtotal: i32,
@@ -216,6 +219,12 @@ pub struct CartCheckedOut {
     pub discount_cents: i32,
     #[prost(message, optional, tag = "3")]
     pub checked_out_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+    /// customer for order creation
+    #[prost(string, tag = "4")]
+    pub customer_id: ::prost::alloc::string::String,
+    /// items for order creation and inventory commit
+    #[prost(message, repeated, tag = "5")]
+    pub items: ::prost::alloc::vec::Vec<CartItem>,
 }
 /// State (for snapshots)
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -414,6 +423,12 @@ pub struct CreateOrder {
     pub customer_id: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
     pub items: ::prost::alloc::vec::Vec<LineItem>,
+    /// customer aggregate root UUID for saga routing
+    #[prost(bytes = "vec", tag = "3")]
+    pub customer_root: ::prost::alloc::vec::Vec<u8>,
+    /// cart aggregate root UUID for inventory reservation linking
+    #[prost(bytes = "vec", tag = "4")]
+    pub cart_root: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ApplyLoyaltyDiscount {
@@ -455,6 +470,12 @@ pub struct OrderCreated {
     pub subtotal_cents: i32,
     #[prost(message, optional, tag = "4")]
     pub created_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+    /// customer aggregate root UUID
+    #[prost(bytes = "vec", tag = "5")]
+    pub customer_root: ::prost::alloc::vec::Vec<u8>,
+    /// cart aggregate root UUID for inventory reservation linking
+    #[prost(bytes = "vec", tag = "6")]
+    pub cart_root: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct LoyaltyDiscountApplied {
@@ -474,7 +495,7 @@ pub struct PaymentSubmitted {
     #[prost(message, optional, tag = "3")]
     pub submitted_at: ::core::option::Option<super::google::protobuf::Timestamp>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OrderCompleted {
     #[prost(int32, tag = "1")]
     pub final_total_cents: i32,
@@ -487,8 +508,17 @@ pub struct OrderCompleted {
     pub loyalty_points_earned: i32,
     #[prost(message, optional, tag = "5")]
     pub completed_at: ::core::option::Option<super::google::protobuf::Timestamp>,
+    /// customer aggregate root UUID for saga routing
+    #[prost(bytes = "vec", tag = "6")]
+    pub customer_root: ::prost::alloc::vec::Vec<u8>,
+    /// cart aggregate root UUID for inventory reservation commit
+    #[prost(bytes = "vec", tag = "7")]
+    pub cart_root: ::prost::alloc::vec::Vec<u8>,
+    /// order items for inventory saga routing
+    #[prost(message, repeated, tag = "8")]
+    pub items: ::prost::alloc::vec::Vec<LineItem>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OrderCancelled {
     #[prost(string, tag = "1")]
     pub reason: ::prost::alloc::string::String,
@@ -496,6 +526,15 @@ pub struct OrderCancelled {
     pub cancelled_at: ::core::option::Option<super::google::protobuf::Timestamp>,
     #[prost(int32, tag = "3")]
     pub loyalty_points_used: i32,
+    /// customer aggregate root UUID for saga routing
+    #[prost(bytes = "vec", tag = "4")]
+    pub customer_root: ::prost::alloc::vec::Vec<u8>,
+    /// order items for inventory saga routing
+    #[prost(message, repeated, tag = "5")]
+    pub items: ::prost::alloc::vec::Vec<LineItem>,
+    /// cart aggregate root UUID for inventory reservation release
+    #[prost(bytes = "vec", tag = "6")]
+    pub cart_root: ::prost::alloc::vec::Vec<u8>,
 }
 /// Shared types
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -508,6 +547,9 @@ pub struct LineItem {
     pub quantity: i32,
     #[prost(int32, tag = "4")]
     pub unit_price_cents: i32,
+    /// product/inventory aggregate root UUID for saga routing
+    #[prost(bytes = "vec", tag = "5")]
+    pub product_root: ::prost::alloc::vec::Vec<u8>,
 }
 /// State (for snapshots)
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -529,6 +571,12 @@ pub struct OrderState {
     /// "pending", "payment_submitted", "completed", "cancelled"
     #[prost(string, tag = "8")]
     pub status: ::prost::alloc::string::String,
+    /// customer aggregate root UUID
+    #[prost(bytes = "vec", tag = "9")]
+    pub customer_root: ::prost::alloc::vec::Vec<u8>,
+    /// cart aggregate root UUID for inventory reservation linking
+    #[prost(bytes = "vec", tag = "10")]
+    pub cart_root: ::prost::alloc::vec::Vec<u8>,
 }
 // =============================================================================
 // Projections

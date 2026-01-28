@@ -1,0 +1,79 @@
+//! Ergonomic Rust client for Angzarr gRPC services.
+//!
+//! This crate provides typed clients with fluent builder APIs for interacting
+//! with Angzarr gateway and query services.
+//!
+//! # Quick Start
+//!
+//! ```rust,ignore
+//! use angzarr_client::{Client, CommandBuilderExt, QueryBuilderExt};
+//! use uuid::Uuid;
+//!
+//! async fn example() -> angzarr_client::Result<()> {
+//!     // Connect to the server
+//!     let client = Client::connect("http://localhost:50051").await?;
+//!
+//!     // Execute a command
+//!     let cart_id = Uuid::new_v4();
+//!     let response = client.gateway
+//!         .command("cart", cart_id)
+//!         .with_command("type.googleapis.com/examples.CreateCart", &create_cart)
+//!         .execute()
+//!         .await?;
+//!
+//!     // Query events
+//!     let events = client.query
+//!         .query("cart", cart_id)
+//!         .range(0)
+//!         .get_pages()
+//!         .await?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Mocking for Tests
+//!
+//! Implement the `GatewayClient` and `QueryClient` traits to create mock clients:
+//!
+//! ```rust
+//! use angzarr_client::traits::{GatewayClient, QueryClient};
+//! use async_trait::async_trait;
+//!
+//! struct MockGateway;
+//!
+//! #[async_trait]
+//! impl GatewayClient for MockGateway {
+//!     async fn execute(&self, _cmd: angzarr::proto::CommandBook)
+//!         -> angzarr_client::Result<angzarr::proto::CommandResponse>
+//!     {
+//!         // Return mock response
+//!         Ok(angzarr::proto::CommandResponse::default())
+//!     }
+//!
+//!     async fn dry_run(&self, _req: angzarr::proto::DryRunRequest)
+//!         -> angzarr_client::Result<angzarr::proto::CommandResponse>
+//!     {
+//!         Ok(angzarr::proto::CommandResponse::default())
+//!     }
+//! }
+//! ```
+
+pub mod builder;
+pub mod client;
+pub mod convert;
+pub mod error;
+pub mod traits;
+
+// Re-export main types at crate root
+pub use client::{Client, GatewayClient, QueryClient};
+pub use error::{ClientError, Result};
+
+// Re-export builder extension traits for fluent API
+pub use builder::{CommandBuilderExt, QueryBuilderExt};
+
+// Re-export helpers
+pub use builder::{decode_event, events_from_response, root_from_cover};
+pub use convert::{
+    now, parse_timestamp, proto_to_uuid, type_name_from_url, type_url, type_url_matches,
+    uuid_to_proto, TYPE_URL_PREFIX,
+};

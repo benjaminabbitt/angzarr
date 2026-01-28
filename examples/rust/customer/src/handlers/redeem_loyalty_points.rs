@@ -1,11 +1,12 @@
 //! Handler for RedeemLoyaltyPoints command.
 
-use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
+use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CustomerState, LoyaltyPointsRedeemed, RedeemLoyaltyPoints};
-use common::{BusinessError, Result};
+use common::{
+    decode_command, make_event_book, require_exists, require_positive, BusinessError, Result,
+};
 use prost::Message;
 
-use super::{now, CUSTOMER_STATE_TYPE_URL, EVENT_TYPE_PREFIX};
 use crate::errmsg;
 
 /// Handle the RedeemLoyaltyPoints command.
@@ -19,18 +20,11 @@ pub fn handle_redeem_loyalty_points(
     state: &CustomerState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.name.is_empty() {
-        return Err(BusinessError::Rejected(
-            errmsg::CUSTOMER_NOT_FOUND.to_string(),
-        ));
-    }
+    require_exists(&state.name, errmsg::CUSTOMER_NOT_FOUND)?;
 
-    let cmd = RedeemLoyaltyPoints::decode(command_data)
-        .map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: RedeemLoyaltyPoints = decode_command(command_data)?;
 
-    if cmd.points <= 0 {
-        return Err(BusinessError::Rejected(errmsg::POINTS_POSITIVE.to_string()));
-    }
+    require_positive(cmd.points, errmsg::POINTS_POSITIVE)?;
     if cmd.points > state.loyalty_points {
         return Err(BusinessError::Rejected(format!(
             "{}: have {}, need {}",
@@ -56,21 +50,12 @@ pub fn handle_redeem_loyalty_points(
         lifetime_points: state.lifetime_points,
     };
 
-    Ok(EventBook {
-        cover: command_book.cover.clone(),
-        snapshot: None,
-        pages: vec![EventPage {
-            sequence: Some(Sequence::Num(next_seq)),
-            event: Some(prost_types::Any {
-                type_url: format!("{}LoyaltyPointsRedeemed", EVENT_TYPE_PREFIX),
-                value: event.encode_to_vec(),
-            }),
-            created_at: Some(now()),
-        }],
-        correlation_id: String::new(),
-        snapshot_state: Some(prost_types::Any {
-            type_url: CUSTOMER_STATE_TYPE_URL.to_string(),
-            value: new_state.encode_to_vec(),
-        }),
-    })
+    Ok(make_event_book(
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.LoyaltyPointsRedeemed",
+        event.encode_to_vec(),
+        "type.examples/examples.CustomerState",
+        new_state.encode_to_vec(),
+    ))
 }

@@ -241,6 +241,6 @@ mod tests {
         let vars = env.to_env_vars();
         assert_eq!(vars.get("TRANSPORT_TYPE"), Some(&"tcp".to_string()));
         assert_eq!(vars.get("PORT"), Some(&"50051".to_string()));
-        assert!(vars.get("UDS_BASE_PATH").is_none());
+        assert!(!vars.contains_key("UDS_BASE_PATH"));
     }
 }

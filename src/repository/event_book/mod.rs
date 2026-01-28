@@ -122,7 +122,10 @@ impl EventBookRepository {
         root: Uuid,
         until: &str,
     ) -> Result<EventBook> {
-        let events = self.event_store.get_until_timestamp(domain, root, until).await?;
+        let events = self
+            .event_store
+            .get_until_timestamp(domain, root, until)
+            .await?;
 
         Ok(EventBook {
             cover: Some(Cover {

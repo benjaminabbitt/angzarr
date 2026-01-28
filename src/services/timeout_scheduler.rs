@@ -219,8 +219,10 @@ fn correlation_to_uuid(correlation_id: &str) -> uuid::Uuid {
 
     // Hash to UUID v5 (deterministic)
     // Using a namespace UUID specific to process managers
-    const PROCESS_MANAGER_NAMESPACE: uuid::Uuid =
-        uuid::Uuid::from_bytes([0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8]);
+    const PROCESS_MANAGER_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
+        0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
+        0xc8,
+    ]);
 
     uuid::Uuid::new_v5(&PROCESS_MANAGER_NAMESPACE, correlation_id.as_bytes())
 }

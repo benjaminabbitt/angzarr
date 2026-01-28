@@ -30,6 +30,7 @@ use super::{
     FailedMessage, PublishResult, Result,
 };
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 
 /// Attribute name for domain (for filtering).
 const DOMAIN_ATTR: &str = "domain";
@@ -253,26 +254,13 @@ impl PubSubEventBus {
 
         Ok(publisher)
     }
-
-    /// Extract domain from event book.
-    fn extract_domain(book: &EventBook) -> Option<&str> {
-        book.cover.as_ref().map(|c| c.domain.as_str())
-    }
-
-    /// Extract root ID from event book (hex-encoded).
-    fn extract_root_id(book: &EventBook) -> Option<String> {
-        book.cover
-            .as_ref()
-            .and_then(|c| c.root.as_ref())
-            .map(|u| hex::encode(&u.value))
-    }
 }
 
 #[async_trait]
 impl EventBus for PubSubEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        let domain = Self::extract_domain(&book).unwrap_or("unknown");
-        let root_id = Self::extract_root_id(&book).unwrap_or_default();
+        let domain = book.domain();
+        let root_id = book.root_id_hex().unwrap_or_default();
         let correlation_id = book.correlation_id.clone();
 
         let publisher = self.get_publisher(domain).await?;

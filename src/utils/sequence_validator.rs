@@ -63,11 +63,7 @@ pub fn sequence_mismatch_error_with_state(
     // Serialize EventBook to binary for status details
     let details = current_state.encode_to_vec();
 
-    Status::with_details(
-        tonic::Code::FailedPrecondition,
-        message,
-        details.into(),
-    )
+    Status::with_details(tonic::Code::FailedPrecondition, message, details.into())
 }
 
 /// Extract EventBook from status details if present.
@@ -81,7 +77,6 @@ pub fn extract_event_book_from_status(status: &Status) -> Option<EventBook> {
 
     EventBook::decode(details).ok()
 }
-
 
 /// Outcome of handling a storage error during event persistence.
 #[derive(Debug)]
@@ -99,7 +94,11 @@ pub enum StorageErrorOutcome {
 ///
 /// # Returns
 /// `StorageErrorOutcome::Abort` with a Status error.
-pub fn handle_storage_error(error: StorageError, _domain: &str, _root_uuid: Uuid) -> StorageErrorOutcome {
+pub fn handle_storage_error(
+    error: StorageError,
+    _domain: &str,
+    _root_uuid: Uuid,
+) -> StorageErrorOutcome {
     match error {
         StorageError::SequenceConflict { expected, actual } => {
             StorageErrorOutcome::Abort(Status::aborted(format!(

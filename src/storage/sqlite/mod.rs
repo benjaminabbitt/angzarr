@@ -347,10 +347,7 @@ impl EventStore for SqliteEventStore {
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map
-                .entry((domain, root))
-                .or_default()
-                .push(event);
+            books_map.entry((domain, root)).or_default().push(event);
         }
 
         // Convert to EventBooks

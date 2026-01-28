@@ -25,10 +25,14 @@ mod builder;
 mod client;
 mod router;
 mod runtime;
+mod server;
 mod traits;
 
 pub use builder::{GatewayConfig, RuntimeBuilder};
-pub use client::{CommandBuilder, CommandClient};
+pub use client::{CommandBuilder, CommandClient, StandaloneQueryClient};
 pub use router::{CommandRouter, DomainStorage};
 pub use runtime::Runtime;
-pub use traits::{AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler};
+pub use traits::{
+    AggregateHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig,
+    ProjectorHandler, SagaConfig, SagaHandler,
+};

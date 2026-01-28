@@ -36,6 +36,9 @@ async fn order_cancelled_with_reason(world: &mut SagaWorld, order_id: String, re
         reason,
         loyalty_points_used: 0,
         cancelled_at: None,
+        customer_root: vec![],
+        items: vec![],
+        cart_root: vec![],
     };
 
     world.current_event = Some(prost_types::Any {
@@ -56,6 +59,9 @@ async fn order_cancelled_with_points(world: &mut SagaWorld, order_id: String, po
         reason: "Test cancellation".to_string(),
         loyalty_points_used: points,
         cancelled_at: None,
+        customer_root: vec![],
+        items: vec![],
+        cart_root: vec![],
     };
 
     world.current_event = Some(prost_types::Any {
@@ -77,6 +83,8 @@ async fn order_created_event(world: &mut SagaWorld, order_id: String) {
         items: Vec::new(),
         subtotal_cents: 0,
         created_at: None,
+        customer_root: vec![],
+        cart_root: vec![],
     };
 
     world.current_event = Some(prost_types::Any {
@@ -110,13 +118,13 @@ async fn process_saga(world: &mut SagaWorld) {
         cover: Some(Cover {
             domain: SOURCE_DOMAIN.to_string(),
             root: world.current_root.clone(),
+            correlation_id: world.current_correlation_id.clone(),
         }),
         pages: vec![EventPage {
             sequence: Some(Sequence::Num(1)),
             created_at: None,
             event: Some(event.clone()),
         }],
-        correlation_id: world.current_correlation_id.clone(),
         snapshot: None,
         snapshot_state: None,
     };
@@ -229,10 +237,15 @@ async fn all_commands_have_correlation_id(world: &mut SagaWorld, correlation_id:
     );
 
     for cmd in &world.generated_commands {
+        let cmd_correlation_id = cmd
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
         assert_eq!(
-            cmd.correlation_id, correlation_id,
+            cmd_correlation_id, correlation_id,
             "Command has correlation_id '{}', expected '{}'",
-            cmd.correlation_id, correlation_id
+            cmd_correlation_id, correlation_id
         );
     }
 }

@@ -1,6 +1,7 @@
 //! Shared utilities for integration tests.
 //!
 //! Provides gRPC client helpers for testing against a deployed Kind cluster.
+#![allow(unused)]
 
 use prost::Message;
 use tonic::transport::Channel;

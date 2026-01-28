@@ -17,6 +17,7 @@ use tracing::{debug, error, info, warn};
 
 use super::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 
 /// Configuration for Kafka connection.
 #[derive(Clone, Debug)]
@@ -227,19 +228,6 @@ impl KafkaEventBus {
         })
     }
 
-    /// Extract message key from event book (hex-encoded root ID).
-    fn message_key(book: &EventBook) -> Option<String> {
-        book.cover
-            .as_ref()
-            .and_then(|c| c.root.as_ref())
-            .map(|u| hex::encode(&u.value))
-    }
-
-    /// Extract domain from event book.
-    fn extract_domain(book: &EventBook) -> Option<&str> {
-        book.cover.as_ref().map(|c| c.domain.as_str())
-    }
-
     /// Start consuming messages (call after subscribe).
     pub async fn start_consuming(&self) -> Result<()> {
         let consumer = self
@@ -340,11 +328,13 @@ impl KafkaEventBus {
 #[async_trait]
 impl EventBus for KafkaEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        let domain = Self::extract_domain(&book)
+        let domain = book
+            .cover()
+            .map(|c| c.domain.as_str())
             .ok_or_else(|| BusError::Publish("EventBook missing cover/domain".to_string()))?;
 
         let topic = self.config.topic_for_domain(domain);
-        let key = Self::message_key(&book);
+        let key = book.root_id_hex();
         let payload = book.encode_to_vec();
 
         let mut record = FutureRecord::to(&topic).payload(&payload);

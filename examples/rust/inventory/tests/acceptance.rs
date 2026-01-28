@@ -3,15 +3,13 @@
 //! These tests run against a deployed angzarr system (Kind cluster).
 //! Run with: cargo test -p inventory-svc --test acceptance
 
+use angzarr::proto::CommandResponse;
+use angzarr_client::{
+    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
+};
 use cucumber::{given, then, when, World};
 use prost::Message;
-use tonic::transport::Channel;
 use uuid::Uuid;
-
-use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, Query, Uuid as ProtoUuid,
-};
 
 use common::proto::{
     CommitReservation, InitializeStock, LowStockAlert, ReceiveStock, ReleaseReservation,
@@ -38,9 +36,7 @@ fn get_gateway_endpoint() -> String {
 #[derive(World)]
 #[world(init = Self::new)]
 pub struct InventoryAcceptanceWorld {
-    gateway_endpoint: String,
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-    query_client: Option<EventQueryClient<Channel>>,
+    client: Option<Client>,
     current_inventory_id: Option<Uuid>,
     last_response: Option<CommandResponse>,
     last_error: Option<String>,
@@ -53,7 +49,6 @@ pub struct InventoryAcceptanceWorld {
 impl std::fmt::Debug for InventoryAcceptanceWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InventoryAcceptanceWorld")
-            .field("gateway_endpoint", &self.gateway_endpoint)
             .field("current_inventory_id", &self.current_inventory_id)
             .finish()
     }
@@ -62,9 +57,7 @@ impl std::fmt::Debug for InventoryAcceptanceWorld {
 impl InventoryAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: get_gateway_endpoint(),
-            gateway_client: None,
-            query_client: None,
+            client: None,
             current_inventory_id: None,
             last_response: None,
             last_error: None,
@@ -83,66 +76,55 @@ impl InventoryAcceptanceWorld {
         }
     }
 
-    async fn get_gateway_client(&mut self) -> &mut CommandGatewayClient<Channel> {
-        if self.gateway_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid gateway endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
+    async fn client(&mut self) -> &Client {
+        if self.client.is_none() {
+            let endpoint = get_gateway_endpoint();
+            self.client = Some(
+                Client::connect(&endpoint)
+                    .await
+                    .expect("Failed to connect to gateway"),
+            );
         }
-        self.gateway_client.as_mut().unwrap()
-    }
-
-    async fn get_query_client(&mut self) -> &mut EventQueryClient<Channel> {
-        if self.query_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid query endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to query service");
-            self.query_client = Some(EventQueryClient::new(channel));
-        }
-        self.query_client.as_mut().unwrap()
+        self.client.as_ref().unwrap()
     }
 
     fn inventory_root(&self) -> Uuid {
         self.current_inventory_id.expect("No inventory ID set")
     }
 
-    fn build_cover(&self) -> Cover {
-        Cover {
-            domain: "inventory".to_string(),
-            root: Some(ProtoUuid {
-                value: self.inventory_root().as_bytes().to_vec(),
-            }),
-        }
+    async fn execute_command<M: Message>(
+        &mut self,
+        command: M,
+        type_url: &str,
+    ) -> Result<CommandResponse, ClientError> {
+        let inventory_id = self.inventory_root();
+        let sequence = self.current_sequence;
+        let client = self.client().await;
+
+        client
+            .gateway
+            .command("inventory", inventory_id)
+            .with_sequence(sequence)
+            .with_command(format!("type.googleapis.com/{}", type_url), &command)
+            .execute()
+            .await
     }
 
-    fn build_command_book(&self, command: impl Message, type_url: &str) -> CommandBook {
-        let correlation_id = Uuid::new_v4().to_string();
-        CommandBook {
-            cover: Some(self.build_cover()),
-            pages: vec![CommandPage {
-                sequence: self.current_sequence,
-                command: Some(prost_types::Any {
-                    type_url: format!("type.googleapis.com/{}", type_url),
-                    value: command.encode_to_vec(),
-                }),
-            }],
-            correlation_id,
-            saga_origin: None,
+    fn handle_result(&mut self, result: Result<CommandResponse, ClientError>) {
+        match result {
+            Ok(response) => {
+                self.last_response = Some(response);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.message());
+                self.last_response = None;
+            }
         }
     }
 
     fn extract_event_type(event: &prost_types::Any) -> String {
-        event
-            .type_url
-            .rsplit('/')
-            .next()
-            .unwrap_or(&event.type_url)
-            .to_string()
+        type_name_from_url(&event.type_url).to_string()
     }
 }
 
@@ -176,18 +158,18 @@ async fn stock_initialized_event(
         quantity,
         low_stock_threshold: 0,
     };
-    let command_book = world.build_command_book(command, "examples.InitializeStock");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.InitializeStock")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_on_hand = quantity;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -212,18 +194,18 @@ async fn stock_initialized_event_with_threshold(
         quantity,
         low_stock_threshold,
     };
-    let command_book = world.build_command_book(command, "examples.InitializeStock");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.InitializeStock")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_on_hand = quantity;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -235,11 +217,11 @@ async fn stock_received_event(world: &mut InventoryAcceptanceWorld, quantity: i3
         quantity,
         reference: "PO-TEST".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.ReceiveStock");
-
-    let client = world.get_gateway_client().await;
-    if let Ok(response) = client.execute(command_book).await {
-        world.last_response = Some(response.into_inner());
+    let result = world
+        .execute_command(command, "examples.ReceiveStock")
+        .await;
+    if let Ok(response) = result {
+        world.last_response = Some(response);
         world.update_sequence_from_response();
     }
     world.current_on_hand += quantity;
@@ -256,12 +238,11 @@ async fn stock_reserved_event(
         quantity,
         order_id: order_id.clone(),
     };
-    let command_book = world.build_command_book(command, "examples.ReserveStock");
-
-    let client = world.get_gateway_client().await;
-    if let Ok(response) = client.execute(command_book).await {
-        let resp = response.into_inner();
-        if let Some(events) = &resp.events {
+    let result = world
+        .execute_command(command, "examples.ReserveStock")
+        .await;
+    if let Ok(response) = result {
+        if let Some(events) = &response.events {
             eprintln!(
                 "DEBUG Given StockReserved: {} events returned, order_id={}, seq={}, inventory_id={:?}",
                 events.pages.len(),
@@ -270,7 +251,7 @@ async fn stock_reserved_event(
                 world.current_inventory_id
             );
         }
-        world.last_response = Some(resp);
+        world.last_response = Some(response);
         world.update_sequence_from_response();
     }
     world.current_reserved += quantity;
@@ -280,11 +261,11 @@ async fn stock_reserved_event(
 #[given(expr = "a ReservationCommitted event with order_id {string}")]
 async fn reservation_committed_event(world: &mut InventoryAcceptanceWorld, order_id: String) {
     let command = CommitReservation { order_id };
-    let command_book = world.build_command_book(command, "examples.CommitReservation");
-
-    let client = world.get_gateway_client().await;
-    if let Ok(response) = client.execute(command_book).await {
-        world.last_response = Some(response.into_inner());
+    let result = world
+        .execute_command(command, "examples.CommitReservation")
+        .await;
+    if let Ok(response) = result {
+        world.last_response = Some(response);
         world.update_sequence_from_response();
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -293,11 +274,11 @@ async fn reservation_committed_event(world: &mut InventoryAcceptanceWorld, order
 #[given(expr = "a ReservationReleased event with order_id {string}")]
 async fn reservation_released_event(world: &mut InventoryAcceptanceWorld, order_id: String) {
     let command = ReleaseReservation { order_id };
-    let command_book = world.build_command_book(command, "examples.ReleaseReservation");
-
-    let client = world.get_gateway_client().await;
-    if let Ok(response) = client.execute(command_book).await {
-        world.last_response = Some(response.into_inner());
+    let result = world
+        .execute_command(command, "examples.ReleaseReservation")
+        .await;
+    if let Ok(response) = result {
+        world.last_response = Some(response);
         world.update_sequence_from_response();
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -323,17 +304,17 @@ async fn handle_initialize_stock(
         quantity,
         low_stock_threshold: 0,
     };
-    let command_book = world.build_command_book(command, "examples.InitializeStock");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.InitializeStock")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
             world.last_response = None;
         }
     }
@@ -349,17 +330,17 @@ async fn handle_receive_stock(
         quantity,
         reference,
     };
-    let command_book = world.build_command_book(command, "examples.ReceiveStock");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.ReceiveStock")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
             world.last_response = None;
         }
     }
@@ -379,17 +360,17 @@ async fn handle_reserve_stock(
         quantity,
         order_id: order_id.clone(),
     };
-    let command_book = world.build_command_book(command, "examples.ReserveStock");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.ReserveStock")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
             world.last_response = None;
         }
     }
@@ -404,17 +385,17 @@ async fn handle_release_reservation(world: &mut InventoryAcceptanceWorld, order_
     let command = ReleaseReservation {
         order_id: order_id.clone(),
     };
-    let command_book = world.build_command_book(command, "examples.ReleaseReservation");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.ReleaseReservation")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
             world.last_response = None;
         }
     }
@@ -423,17 +404,17 @@ async fn handle_release_reservation(world: &mut InventoryAcceptanceWorld, order_
 #[when(expr = "I handle a CommitReservation command with order_id {string}")]
 async fn handle_commit_reservation(world: &mut InventoryAcceptanceWorld, order_id: String) {
     let command = CommitReservation { order_id };
-    let command_book = world.build_command_book(command, "examples.CommitReservation");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.CommitReservation")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.update_sequence_from_response();
         }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
+        Err(e) => {
+            world.last_error = Some(e.message());
             world.last_response = None;
         }
     }
@@ -441,17 +422,9 @@ async fn handle_commit_reservation(world: &mut InventoryAcceptanceWorld, order_i
 
 #[when("I rebuild the inventory state")]
 async fn rebuild_inventory_state(world: &mut InventoryAcceptanceWorld) {
-    let query = Query {
-        domain: "inventory".to_string(),
-        root: Some(ProtoUuid {
-            value: world.inventory_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let _ = client.get_event_book(query).await;
+    let inventory_id = world.inventory_root();
+    let client = world.client().await;
+    let _ = client.query.query("inventory", inventory_id).range(0).get_event_book().await;
 }
 
 // =============================================================================
@@ -690,17 +663,15 @@ async fn low_stock_alert_emitted(world: &mut InventoryAcceptanceWorld) {
 
 #[then(expr = "the inventory state has product_id {string}")]
 async fn state_has_product_id(world: &mut InventoryAcceptanceWorld, product_id: String) {
-    let query = Query {
-        domain: "inventory".to_string(),
-        root: Some(ProtoUuid {
-            value: world.inventory_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let inventory_id = world.inventory_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("inventory", inventory_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
@@ -718,17 +689,15 @@ async fn state_has_product_id(world: &mut InventoryAcceptanceWorld, product_id: 
 
 #[then(expr = "the inventory state has on_hand {int}")]
 async fn state_has_on_hand(world: &mut InventoryAcceptanceWorld, on_hand: i32) {
-    let query = Query {
-        domain: "inventory".to_string(),
-        root: Some(ProtoUuid {
-            value: world.inventory_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let inventory_id = world.inventory_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("inventory", inventory_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut current_on_hand = 0;
     for page in &event_book.pages {
@@ -752,17 +721,15 @@ async fn state_has_on_hand(world: &mut InventoryAcceptanceWorld, on_hand: i32) {
 
 #[then(expr = "the inventory state has reserved {int}")]
 async fn state_has_reserved(world: &mut InventoryAcceptanceWorld, reserved: i32) {
-    let query = Query {
-        domain: "inventory".to_string(),
-        root: Some(ProtoUuid {
-            value: world.inventory_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let inventory_id = world.inventory_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("inventory", inventory_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut current_reserved = 0;
     for page in &event_book.pages {
@@ -789,17 +756,15 @@ async fn state_has_reserved(world: &mut InventoryAcceptanceWorld, reserved: i32)
 
 #[then(expr = "the inventory state has available {int}")]
 async fn state_has_available(world: &mut InventoryAcceptanceWorld, available: i32) {
-    let query = Query {
-        domain: "inventory".to_string(),
-        root: Some(ProtoUuid {
-            value: world.inventory_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let inventory_id = world.inventory_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("inventory", inventory_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut current_on_hand = 0;
     let mut current_reserved = 0;

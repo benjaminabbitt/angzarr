@@ -2,12 +2,14 @@
 
 use prost::Message;
 
-use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
+use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{ApplyCoupon, CartState, CouponApplied};
-use common::{BusinessError, Result};
+use common::{
+    decode_command, make_event_book, now, require_exists, require_not_empty, require_not_exists,
+    require_status_not, Result,
+};
 
 use crate::errmsg;
-use crate::state::now;
 
 /// Handle the ApplyCoupon command.
 ///
@@ -18,25 +20,12 @@ pub fn handle_apply_coupon(
     state: &CartState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CART_NOT_FOUND.to_string()));
-    }
-    if state.status == "checked_out" {
-        return Err(BusinessError::Rejected(
-            errmsg::CART_CHECKED_OUT.to_string(),
-        ));
-    }
-    if !state.coupon_code.is_empty() {
-        return Err(BusinessError::Rejected(
-            errmsg::COUPON_ALREADY_APPLIED.to_string(),
-        ));
-    }
-    if state.items.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CART_EMPTY.to_string()));
-    }
+    require_exists(&state.customer_id, errmsg::CART_NOT_FOUND)?;
+    require_status_not(&state.status, "checked_out", errmsg::CART_CHECKED_OUT)?;
+    require_not_exists(&state.coupon_code, errmsg::COUPON_ALREADY_APPLIED)?;
+    require_not_empty(&state.items, errmsg::CART_EMPTY)?;
 
-    let cmd =
-        ApplyCoupon::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: ApplyCoupon = decode_command(command_data)?;
 
     let discount_cents = if cmd.coupon_type == "percentage" {
         (state.subtotal_cents * cmd.value) / 100
@@ -62,21 +51,12 @@ pub fn handle_apply_coupon(
         status: state.status.clone(),
     };
 
-    Ok(EventBook {
-        cover: command_book.cover.clone(),
-        snapshot: None,
-        pages: vec![EventPage {
-            sequence: Some(Sequence::Num(next_seq)),
-            event: Some(prost_types::Any {
-                type_url: "type.examples/examples.CouponApplied".to_string(),
-                value: event.encode_to_vec(),
-            }),
-            created_at: Some(now()),
-        }],
-        correlation_id: String::new(),
-        snapshot_state: Some(prost_types::Any {
-            type_url: "type.examples/examples.CartState".to_string(),
-            value: new_state.encode_to_vec(),
-        }),
-    })
+    Ok(make_event_book(
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.CouponApplied",
+        event.encode_to_vec(),
+        "type.examples/examples.CartState",
+        new_state.encode_to_vec(),
+    ))
 }

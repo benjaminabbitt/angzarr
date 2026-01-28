@@ -5,7 +5,9 @@
 use async_trait::async_trait;
 use tonic::Status;
 
-use crate::proto::{ContextualCommand, Cover, EventBook, Projection, SagaResponse};
+use crate::proto::{
+    CommandBook, ContextualCommand, Cover, EventBook, Projection, SagaResponse, Subscription,
+};
 
 /// Business logic handler for a domain aggregate.
 ///
@@ -226,16 +228,105 @@ impl ProjectorConfig {
 pub struct SagaConfig {
     /// Domain to subscribe to for events.
     pub input_domain: String,
-    /// Domain that saga commands must target.
-    pub output_domain: String,
+    /// Domains that saga commands may target.
+    pub output_domains: Vec<String>,
 }
 
 impl SagaConfig {
-    /// Create a saga config with input and output domains.
+    /// Create a saga config with a single output domain.
     pub fn new(input_domain: impl Into<String>, output_domain: impl Into<String>) -> Self {
         Self {
             input_domain: input_domain.into(),
-            output_domain: output_domain.into(),
+            output_domains: vec![output_domain.into()],
+        }
+    }
+
+    /// Add an additional output domain.
+    pub fn with_output(mut self, domain: impl Into<String>) -> Self {
+        self.output_domains.push(domain.into());
+        self
+    }
+}
+
+/// Process manager handler for stateful cross-domain coordination.
+///
+/// Process managers ARE aggregates — they have their own domain, event-sourced state,
+/// and storage. The runtime triggers PM logic when matching events arrive on the bus,
+/// persists PM events to the PM's aggregate domain, and executes resulting commands.
+///
+/// # Two-Phase Protocol
+///
+/// Phase 1 (`prepare`): PM examines trigger event + its own state, declares
+/// additional destination aggregates it needs. Return empty if PM only uses its own state.
+///
+/// Phase 2 (`handle`): PM receives trigger + PM state + fetched destinations,
+/// returns commands to issue and PM events to persist.
+///
+/// # Example
+///
+/// ```ignore
+/// use angzarr::standalone::ProcessManagerHandler;
+/// use angzarr::proto::{CommandBook, Cover, EventBook, Subscription};
+///
+/// struct OrderFulfillmentPM;
+///
+/// impl ProcessManagerHandler for OrderFulfillmentPM {
+///     fn subscriptions(&self) -> Vec<Subscription> {
+///         vec![
+///             Subscription { domain: "order".into(), event_types: vec!["PaymentSubmitted".into()] },
+///             Subscription { domain: "inventory".into(), event_types: vec!["StockReserved".into()] },
+///         ]
+///     }
+///
+///     fn prepare(&self, _trigger: &EventBook, _state: Option<&EventBook>) -> Vec<Cover> {
+///         vec![] // Only needs PM state
+///     }
+///
+///     fn handle(
+///         &self,
+///         trigger: &EventBook,
+///         process_state: Option<&EventBook>,
+///         _destinations: &[EventBook],
+///     ) -> (Vec<CommandBook>, Option<EventBook>) {
+///         // Pure computation: examine trigger + state, produce commands + PM events
+///         (vec![], None)
+///     }
+/// }
+/// ```
+pub trait ProcessManagerHandler: Send + Sync + 'static {
+    /// Declare event subscriptions (domains + event types).
+    ///
+    /// Called at startup to configure event routing to this PM.
+    fn subscriptions(&self) -> Vec<Subscription>;
+
+    /// Phase 1: Declare additional destinations needed beyond trigger + PM state.
+    ///
+    /// Most PMs return empty — they only need their own state.
+    fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover>;
+
+    /// Phase 2: Produce commands + PM events given trigger, PM state, and destinations.
+    ///
+    /// Returns (commands to execute, optional PM events to persist).
+    fn handle(
+        &self,
+        trigger: &EventBook,
+        process_state: Option<&EventBook>,
+        destinations: &[EventBook],
+    ) -> (Vec<CommandBook>, Option<EventBook>);
+}
+
+/// Configuration for a process manager.
+#[derive(Debug, Clone)]
+pub struct ProcessManagerConfig {
+    /// The PM's own aggregate domain for state storage.
+    pub domain: String,
+}
+
+impl ProcessManagerConfig {
+    /// Create a process manager config with the PM's domain.
+    pub fn new(domain: impl Into<String>) -> Self {
+        Self {
+            domain: domain.into(),
         }
     }
 }

@@ -1,0 +1,33 @@
+[package]
+name = "saga-inventory-reservation"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "saga-inventory-reservation-server"
+path = "src/main.rs"
+
+[dependencies]
+angzarr.workspace = true
+common.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+async-trait.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+cucumber.workspace = true
+futures.workspace = true
+tokio-stream.workspace = true
+
+[[test]]
+name = "acceptance"
+harness = false

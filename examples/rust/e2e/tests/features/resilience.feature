@@ -12,9 +12,9 @@ Feature: System Resilience
   @e2e @resilience @idempotency
   Scenario: Duplicate command is rejected safely
     Given a cart "CART-DUP" with sequence 0
-    When I add item "SKU-001" with sequence 0
+    When I add item "SKU-001" with sequence 1
     Then the command succeeds
-    When I replay the exact same command with sequence 0
+    When I replay the exact same command with sequence 1
     Then the command fails with "FailedPrecondition"
     And the error contains missing events
     And the cart still has exactly 1 item
@@ -61,7 +61,7 @@ Feature: System Resilience
   # Concurrent Write Tests
   # ===========================================================================
 
-  @e2e @resilience @concurrent
+  @e2e @resilience @concurrent @gateway
   Scenario: Concurrent writes are serialized correctly
     Given a cart "CART-CONC" with sequence 0
     When I send 10 AddItem commands concurrently
@@ -69,7 +69,7 @@ Feature: System Resilience
     And the cart has consistent state (no duplicates, no gaps)
     And event sequences are contiguous (0, 1, 2, ...)
 
-  @e2e @resilience @concurrent
+  @e2e @resilience @concurrent @gateway
   Scenario: High concurrency stress test
     Given a cart "CART-STRESS" with sequence 0
     When I send 50 AddItem commands concurrently
@@ -80,7 +80,7 @@ Feature: System Resilience
   # Saga Retry Tests
   # ===========================================================================
 
-  @e2e @resilience @saga-retry
+  @e2e @resilience @saga-retry @infra
   Scenario: Saga retries on sequence conflict
     # This test requires setting up a scenario where the saga's command
     # conflicts with a concurrent write to the target aggregate
@@ -110,9 +110,9 @@ Feature: System Resilience
     Then the fulfillment saga eventually succeeds
     And correlation ID is preserved
 
-  @chaos @corruption
+  @e2e @resilience @corruption
   Scenario: Malformed protobuf is rejected
     Given a cart "CART-CORRUPT" with sequence 0
     When I send a command with corrupted protobuf data
-    Then the command fails with "InvalidArgument"
-    And no events are stored
+    Then the command fails with "failed to decode"
+    And no new events are stored

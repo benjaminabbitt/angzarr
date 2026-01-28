@@ -2,10 +2,9 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{ApplyLoyaltyDiscount, LoyaltyDiscountApplied, OrderState};
-use common::{BusinessError, Result};
+use common::{decode_command, make_event_book, now, require_exists, BusinessError, Result};
 use prost::Message;
 
-use super::{make_event_book, now};
 use crate::errmsg;
 
 /// Handle the ApplyLoyaltyDiscount command.
@@ -15,17 +14,14 @@ pub fn handle_apply_loyalty_discount(
     state: &OrderState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::ORDER_NOT_FOUND.to_string()));
-    }
+    require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)?;
     if state.loyalty_points_used > 0 {
         return Err(BusinessError::Rejected(
             errmsg::LOYALTY_ALREADY_APPLIED.to_string(),
         ));
     }
 
-    let cmd = ApplyLoyaltyDiscount::decode(command_data)
-        .map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: ApplyLoyaltyDiscount = decode_command(command_data)?;
 
     let event = LoyaltyDiscountApplied {
         points_used: cmd.points,
@@ -42,6 +38,8 @@ pub fn handle_apply_loyalty_discount(
         payment_method: state.payment_method.clone(),
         payment_reference: state.payment_reference.clone(),
         status: state.status.clone(),
+        customer_root: state.customer_root.clone(),
+        cart_root: state.cart_root.clone(),
     };
 
     Ok(make_event_book(
@@ -49,6 +47,7 @@ pub fn handle_apply_loyalty_discount(
         next_seq,
         "type.examples/examples.LoyaltyDiscountApplied",
         event.encode_to_vec(),
+        "type.examples/examples.OrderState",
         new_state.encode_to_vec(),
     ))
 }

@@ -10,17 +10,17 @@ use tonic::{Request, Status};
 use tracing::{debug, warn};
 
 use crate::discovery::{DiscoveryError, ServiceDiscovery};
-use crate::proto::{CommandBook, CommandResponse, SyncCommandBook};
+use crate::proto::{CommandBook, CommandResponse, DryRunRequest, SyncCommandBook};
 
 /// Command router for forwarding commands to aggregate services.
 #[derive(Clone)]
 pub struct CommandRouter {
-    discovery: Arc<ServiceDiscovery>,
+    discovery: Arc<dyn ServiceDiscovery>,
 }
 
 impl CommandRouter {
     /// Create a new command router with service discovery.
-    pub fn new(discovery: Arc<ServiceDiscovery>) -> Self {
+    pub fn new(discovery: Arc<dyn ServiceDiscovery>) -> Self {
         Self { discovery }
     }
 
@@ -83,6 +83,46 @@ impl CommandRouter {
                     domain = %domain,
                     error = %e,
                     "Command failed"
+                );
+                e
+            })
+    }
+
+    /// Forward dry-run request to aggregate coordinator based on domain.
+    pub async fn forward_dry_run(
+        &self,
+        dry_run_request: DryRunRequest,
+        correlation_id: &str,
+    ) -> Result<CommandResponse, Status> {
+        let domain = dry_run_request
+            .command
+            .as_ref()
+            .and_then(|c| c.cover.as_ref())
+            .map(|c| c.domain.clone())
+            .unwrap_or_else(|| "*".to_string());
+
+        debug!(
+            correlation_id = %correlation_id,
+            domain = %domain,
+            "Routing dry-run to domain"
+        );
+
+        let mut client = self
+            .discovery
+            .get_aggregate(&domain)
+            .await
+            .map_err(map_discovery_error)?;
+
+        client
+            .dry_run_handle(Request::new(dry_run_request))
+            .await
+            .map(|r| r.into_inner())
+            .map_err(|e| {
+                warn!(
+                    correlation_id = %correlation_id,
+                    domain = %domain,
+                    error = %e,
+                    "Dry-run command failed"
                 );
                 e
             })

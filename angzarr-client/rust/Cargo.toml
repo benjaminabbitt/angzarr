@@ -1,0 +1,17 @@
+[package]
+name = "angzarr-client"
+version = "0.1.0"
+edition = "2021"
+description = "Ergonomic Rust client for Angzarr gRPC services"
+license-file = "../../LICENSE"
+
+[dependencies]
+angzarr.workspace = true
+tonic.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+tokio.workspace = true

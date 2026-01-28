@@ -526,7 +526,7 @@ async fn then_streamed_events_include_type(world: &mut ContainerWorld, expected_
             .iter()
             .flat_map(|b| b.pages.iter())
             .filter_map(|p| p.event.as_ref())
-            .map(|e| ContainerWorld::extract_event_type(e))
+            .map(ContainerWorld::extract_event_type)
             .collect::<Vec<_>>()
     );
 }

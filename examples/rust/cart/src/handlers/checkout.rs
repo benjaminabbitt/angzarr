@@ -2,12 +2,11 @@
 
 use prost::Message;
 
-use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
+use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartCheckedOut, CartState};
-use common::{BusinessError, Result};
+use common::{make_event_book, now, require_exists, require_not_empty, require_status_not, Result};
 
 use crate::errmsg;
-use crate::state::now;
 
 /// Handle the Checkout command.
 ///
@@ -18,22 +17,16 @@ pub fn handle_checkout(
     state: &CartState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CART_NOT_FOUND.to_string()));
-    }
-    if state.status == "checked_out" {
-        return Err(BusinessError::Rejected(
-            errmsg::CART_CHECKED_OUT.to_string(),
-        ));
-    }
-    if state.items.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CART_EMPTY.to_string()));
-    }
+    require_exists(&state.customer_id, errmsg::CART_NOT_FOUND)?;
+    require_status_not(&state.status, "checked_out", errmsg::CART_CHECKED_OUT)?;
+    require_not_empty(&state.items, errmsg::CART_EMPTY)?;
 
     let event = CartCheckedOut {
         final_subtotal: state.subtotal_cents,
         discount_cents: state.discount_cents,
         checked_out_at: Some(now()),
+        customer_id: state.customer_id.clone(),
+        items: state.items.clone(),
     };
 
     let new_state = CartState {
@@ -45,21 +38,12 @@ pub fn handle_checkout(
         status: "checked_out".to_string(),
     };
 
-    Ok(EventBook {
-        cover: command_book.cover.clone(),
-        snapshot: None,
-        pages: vec![EventPage {
-            sequence: Some(Sequence::Num(next_seq)),
-            event: Some(prost_types::Any {
-                type_url: "type.examples/examples.CartCheckedOut".to_string(),
-                value: event.encode_to_vec(),
-            }),
-            created_at: Some(now()),
-        }],
-        correlation_id: String::new(),
-        snapshot_state: Some(prost_types::Any {
-            type_url: "type.examples/examples.CartState".to_string(),
-            value: new_state.encode_to_vec(),
-        }),
-    })
+    Ok(make_event_book(
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.CartCheckedOut",
+        event.encode_to_vec(),
+        "type.examples/examples.CartState",
+        new_state.encode_to_vec(),
+    ))
 }

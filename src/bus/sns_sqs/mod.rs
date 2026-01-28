@@ -25,6 +25,7 @@ use super::{
     FailedMessage, PublishResult, Result,
 };
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 
 /// Message attribute name for domain (for filtering).
 const DOMAIN_ATTR: &str = "domain";
@@ -330,26 +331,13 @@ impl SnsSqsEventBus {
         debug!(queue_arn = %queue_arn, topic_arn = %topic_arn, "Subscribed queue to topic");
         Ok(())
     }
-
-    /// Extract domain from event book.
-    fn extract_domain(book: &EventBook) -> Option<&str> {
-        book.cover.as_ref().map(|c| c.domain.as_str())
-    }
-
-    /// Extract root ID from event book (hex-encoded).
-    fn extract_root_id(book: &EventBook) -> Option<String> {
-        book.cover
-            .as_ref()
-            .and_then(|c| c.root.as_ref())
-            .map(|u| hex::encode(&u.value))
-    }
 }
 
 #[async_trait]
 impl EventBus for SnsSqsEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        let domain = Self::extract_domain(&book).unwrap_or("unknown");
-        let root_id = Self::extract_root_id(&book).unwrap_or_default();
+        let domain = book.domain();
+        let root_id = book.root_id_hex().unwrap_or_default();
         let correlation_id = book.correlation_id.clone();
 
         let topic_arn = self.get_or_create_topic(domain).await?;

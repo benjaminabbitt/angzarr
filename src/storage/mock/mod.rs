@@ -136,8 +136,7 @@ impl EventStore for MockEventStore {
             .into_iter()
             .filter(|e| {
                 if let Some(ref ts) = e.created_at {
-                    if let Some(dt) =
-                        chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+                    if let Some(dt) = chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
                     {
                         return dt <= until_dt;
                     }

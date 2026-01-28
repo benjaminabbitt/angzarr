@@ -165,9 +165,13 @@ mod tests {
 
     #[test]
     fn test_is_retryable_status() {
-        assert!(is_retryable_status(&Status::failed_precondition("Sequence mismatch")));
+        assert!(is_retryable_status(&Status::failed_precondition(
+            "Sequence mismatch"
+        )));
         assert!(is_retryable_status(&Status::aborted("Sequence conflict")));
-        assert!(!is_retryable_status(&Status::invalid_argument("Invalid command")));
+        assert!(!is_retryable_status(&Status::invalid_argument(
+            "Invalid command"
+        )));
         assert!(!is_retryable_status(&Status::not_found("Not found")));
         assert!(!is_retryable_status(&Status::internal("Internal error")));
     }

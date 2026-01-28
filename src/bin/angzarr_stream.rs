@@ -33,7 +33,9 @@ use tracing::{error, info};
 use angzarr::config::Config;
 use angzarr::handlers::projectors::stream::StreamService;
 use angzarr::proto::event_stream_server::EventStreamServer;
-use angzarr::proto::projector_coordinator_server::{ProjectorCoordinator, ProjectorCoordinatorServer};
+use angzarr::proto::projector_coordinator_server::{
+    ProjectorCoordinator, ProjectorCoordinatorServer,
+};
 use angzarr::proto::{EventBook, Projection, SyncEventBook};
 use angzarr::transport::serve_with_transport;
 use angzarr::utils::bootstrap::init_tracing;

@@ -208,6 +208,12 @@ message AggregateRoot {
   UUID root = 2;
 }
 
+// Request for dry-run command execution against temporal state.
+message DryRunRequest {
+  CommandBook command = 1;
+  TemporalQuery point_in_time = 2;
+}
+
 // Subscription filter for event streaming
 message EventStreamFilter {
   string correlation_id = 1;

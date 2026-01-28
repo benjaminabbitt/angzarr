@@ -52,7 +52,9 @@ pub fn parse_timestamp(event: &EventPage) -> Result<String> {
 }
 
 /// Convert a protobuf Timestamp to RFC3339 string.
-pub fn timestamp_to_rfc3339(ts: &prost_types::Timestamp) -> std::result::Result<String, StorageError> {
+pub fn timestamp_to_rfc3339(
+    ts: &prost_types::Timestamp,
+) -> std::result::Result<String, StorageError> {
     let dt = chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32).ok_or(
         StorageError::InvalidTimestamp {
             seconds: ts.seconds,

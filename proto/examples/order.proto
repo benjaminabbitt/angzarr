@@ -16,6 +16,8 @@ import "google/protobuf/timestamp.proto";
 message CreateOrder {
   string customer_id = 1;
   repeated LineItem items = 2;
+  bytes customer_root = 3;         // customer aggregate root UUID for saga routing
+  bytes cart_root = 4;             // cart aggregate root UUID for inventory reservation linking
 }
 
 message ApplyLoyaltyDiscount {
@@ -42,6 +44,8 @@ message OrderCreated {
   repeated LineItem items = 2;
   int32 subtotal_cents = 3;
   google.protobuf.Timestamp created_at = 4;
+  bytes customer_root = 5;         // customer aggregate root UUID
+  bytes cart_root = 6;             // cart aggregate root UUID for inventory reservation linking
 }
 
 message LoyaltyDiscountApplied {
@@ -62,12 +66,18 @@ message OrderCompleted {
   string payment_reference = 3;
   int32 loyalty_points_earned = 4;  // Points to award customer (1 point per $1)
   google.protobuf.Timestamp completed_at = 5;
+  bytes customer_root = 6;         // customer aggregate root UUID for saga routing
+  bytes cart_root = 7;             // cart aggregate root UUID for inventory reservation commit
+  repeated LineItem items = 8;     // order items for inventory saga routing
 }
 
 message OrderCancelled {
   string reason = 1;
   google.protobuf.Timestamp cancelled_at = 2;
   int32 loyalty_points_used = 3;
+  bytes customer_root = 4;         // customer aggregate root UUID for saga routing
+  repeated LineItem items = 5;     // order items for inventory saga routing
+  bytes cart_root = 6;             // cart aggregate root UUID for inventory reservation release
 }
 
 // Shared types
@@ -76,6 +86,7 @@ message LineItem {
   string name = 2;
   int32 quantity = 3;
   int32 unit_price_cents = 4;
+  bytes product_root = 5;         // product/inventory aggregate root UUID for saga routing
 }
 
 // State (for snapshots)
@@ -88,4 +99,6 @@ message OrderState {
   string payment_method = 6;
   string payment_reference = 7;
   string status = 8;  // "pending", "payment_submitted", "completed", "cancelled"
+  bytes customer_root = 9;        // customer aggregate root UUID
+  bytes cart_root = 10;           // cart aggregate root UUID for inventory reservation linking
 }

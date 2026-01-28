@@ -64,11 +64,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use prost::Message;
-use sea_query::{ColumnDef, Expr, Iden, Index, Query, Table};
 #[cfg(feature = "postgres")]
 use sea_query::PostgresQueryBuilder;
 #[cfg(feature = "sqlite")]
 use sea_query::SqliteQueryBuilder;
+use sea_query::{ColumnDef, Expr, Iden, Index, Query, Table};
 use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -209,10 +209,7 @@ impl PostgresOutboxEventBus {
         let select = Query::select()
             .columns([Outbox::Id, Outbox::EventData, Outbox::RetryCount])
             .from(Outbox::Table)
-            .and_where(
-                Expr::col(Outbox::CreatedAt)
-                    .lt(Expr::cust("NOW() - INTERVAL '30 seconds'")),
-            )
+            .and_where(Expr::col(Outbox::CreatedAt).lt(Expr::cust("NOW() - INTERVAL '30 seconds'")))
             .and_where(Expr::col(Outbox::RetryCount).lt(self.config.max_retries as i32))
             .limit(100)
             .to_string(PostgresQueryBuilder);
@@ -268,7 +265,10 @@ impl PostgresOutboxEventBus {
         }
 
         if recovered > 0 {
-            info!(recovered = recovered, "Recovered orphaned events from outbox");
+            info!(
+                recovered = recovered,
+                "Recovered orphaned events from outbox"
+            );
         }
 
         Ok(recovered)
@@ -418,8 +418,7 @@ impl SqliteOutboxEventBus {
             .columns([Outbox::Id, Outbox::EventData, Outbox::RetryCount])
             .from(Outbox::Table)
             .and_where(
-                Expr::col(Outbox::CreatedAt)
-                    .lt(Expr::cust("datetime('now', '-30 seconds')")),
+                Expr::col(Outbox::CreatedAt).lt(Expr::cust("datetime('now', '-30 seconds')")),
             )
             .and_where(Expr::col(Outbox::RetryCount).lt(self.config.max_retries as i32))
             .limit(100)
@@ -434,33 +433,31 @@ impl SqliteOutboxEventBus {
             let retry_count: i32 = row.get("retry_count");
 
             match EventBook::decode(event_data.as_slice()) {
-                Ok(book) => {
-                    match self.inner.publish(Arc::new(book)).await {
-                        Ok(_) => {
-                            let delete = Query::delete()
-                                .from_table(Outbox::Table)
-                                .and_where(Expr::col(Outbox::Id).eq(id.clone()))
-                                .to_string(SqliteQueryBuilder);
+                Ok(book) => match self.inner.publish(Arc::new(book)).await {
+                    Ok(_) => {
+                        let delete = Query::delete()
+                            .from_table(Outbox::Table)
+                            .and_where(Expr::col(Outbox::Id).eq(id.clone()))
+                            .to_string(SqliteQueryBuilder);
 
-                            if let Err(e) = sqlx::query(&delete).execute(&self.pool).await {
-                                error!(id = %id, error = %e, "Failed to delete recovered event from outbox");
-                            } else {
-                                recovered += 1;
-                                debug!(id = %id, "Recovered orphaned event");
-                            }
-                        }
-                        Err(e) => {
-                            warn!(id = %id, retry_count = retry_count + 1, error = %e, "Failed to recover event");
-                            let update = Query::update()
-                                .table(Outbox::Table)
-                                .value(Outbox::RetryCount, retry_count + 1)
-                                .and_where(Expr::col(Outbox::Id).eq(id))
-                                .to_string(SqliteQueryBuilder);
-
-                            let _ = sqlx::query(&update).execute(&self.pool).await;
+                        if let Err(e) = sqlx::query(&delete).execute(&self.pool).await {
+                            error!(id = %id, error = %e, "Failed to delete recovered event from outbox");
+                        } else {
+                            recovered += 1;
+                            debug!(id = %id, "Recovered orphaned event");
                         }
                     }
-                }
+                    Err(e) => {
+                        warn!(id = %id, retry_count = retry_count + 1, error = %e, "Failed to recover event");
+                        let update = Query::update()
+                            .table(Outbox::Table)
+                            .value(Outbox::RetryCount, retry_count + 1)
+                            .and_where(Expr::col(Outbox::Id).eq(id))
+                            .to_string(SqliteQueryBuilder);
+
+                        let _ = sqlx::query(&update).execute(&self.pool).await;
+                    }
+                },
                 Err(e) => {
                     error!(id = %id, error = %e, "Failed to decode orphaned event");
                     let delete = Query::delete()
@@ -474,7 +471,10 @@ impl SqliteOutboxEventBus {
         }
 
         if recovered > 0 {
-            info!(recovered = recovered, "Recovered orphaned events from outbox");
+            info!(
+                recovered = recovered,
+                "Recovered orphaned events from outbox"
+            );
         }
 
         Ok(recovered)
@@ -578,7 +578,10 @@ pub fn spawn_postgres_recovery_task(
 
     tokio::spawn(async move {
         let interval = std::time::Duration::from_secs(interval_secs);
-        info!(interval_secs = interval_secs, "Outbox recovery task started");
+        info!(
+            interval_secs = interval_secs,
+            "Outbox recovery task started"
+        );
 
         loop {
             tokio::select! {
@@ -610,7 +613,10 @@ pub fn spawn_sqlite_recovery_task(
 
     tokio::spawn(async move {
         let interval = std::time::Duration::from_secs(interval_secs);
-        info!(interval_secs = interval_secs, "Outbox recovery task started");
+        info!(
+            interval_secs = interval_secs,
+            "Outbox recovery task started"
+        );
 
         loop {
             tokio::select! {

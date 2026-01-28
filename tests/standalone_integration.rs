@@ -1,7 +1,8 @@
 //! Embedded mode integration tests.
 //!
 //! Tests the IPC event bus, gRPC over UDS, and embedded runtime integration.
-//! Run with: cargo test --test embedded_integration --features sqlite
+//! Run with: cargo test --test standalone_integration --features sqlite
+#![cfg(feature = "sqlite")]
 
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
@@ -717,7 +718,11 @@ mod embedded_runtime {
 
         let events = response.events.expect("Should have events");
         assert_eq!(
-            events.cover.as_ref().map(|c| c.correlation_id.as_str()).unwrap_or(""),
+            events
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.as_str())
+                .unwrap_or(""),
             correlation_id,
             "Correlation ID should propagate to events"
         );
@@ -933,7 +938,7 @@ mod event_book_repair {
 
     #[tokio::test]
     async fn test_discovery_resolves_event_query_via_env_var() {
-        use angzarr::discovery::ServiceDiscovery;
+        use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 
         // Set up event store with full history
         let event_store = Arc::new(MockEventStore::new());
@@ -955,7 +960,7 @@ mod event_book_repair {
         std::env::set_var("EVENT_QUERY_ADDRESS", addr.to_string());
 
         // Create static discovery (no K8s, will use env var fallback)
-        let discovery = ServiceDiscovery::new_static();
+        let discovery = K8sServiceDiscovery::new_static();
 
         // Resolve EventQuery for domain - should use env var
         let mut eq_client = discovery
@@ -994,7 +999,7 @@ mod event_book_repair {
 
     #[tokio::test]
     async fn test_discovery_resolves_registered_aggregate() {
-        use angzarr::discovery::ServiceDiscovery;
+        use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 
         // Set up event store with full history
         let event_store = Arc::new(MockEventStore::new());
@@ -1013,7 +1018,7 @@ mod event_book_repair {
         let addr = start_event_query_server(event_store, snapshot_store).await;
 
         // Create discovery and register aggregate
-        let discovery = ServiceDiscovery::new_static();
+        let discovery = K8sServiceDiscovery::new_static();
         discovery
             .register_aggregate(domain, &addr.ip().to_string(), addr.port())
             .await;
@@ -1178,6 +1183,15 @@ mod grpc_over_uds {
                 events: Some(events),
                 projections: Vec::new(),
             }))
+        }
+
+        async fn dry_run_handle(
+            &self,
+            request: Request<angzarr::proto::DryRunRequest>,
+        ) -> Result<Response<CommandResponse>, Status> {
+            let dry_run = request.into_inner();
+            let cmd = dry_run.command.unwrap_or_default();
+            self.handle(Request::new(cmd)).await
         }
     }
 

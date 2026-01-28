@@ -11,6 +11,7 @@ use tracing::{debug, error, info};
 
 use super::{EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 
 /// Channel capacity for broadcast.
 const CHANNEL_CAPACITY: usize = 1024;
@@ -127,14 +128,6 @@ impl ChannelEventBus {
         }
     }
 
-    /// Extract domain from event book.
-    fn get_domain(book: &EventBook) -> &str {
-        book.cover
-            .as_ref()
-            .map(|c| c.domain.as_str())
-            .unwrap_or("unknown")
-    }
-
     /// Start consuming messages (call after subscribe).
     pub async fn start_consuming(&self) -> Result<()> {
         // Check if already consuming
@@ -155,7 +148,7 @@ impl ChannelEventBus {
             loop {
                 match receiver.recv().await {
                     Ok(book) => {
-                        let domain = Self::get_domain(&book);
+                        let domain = book.domain();
 
                         // Check domain filter (hierarchical matching)
                         let matches = match &domain_filter {
@@ -203,7 +196,7 @@ impl ChannelEventBus {
 #[async_trait]
 impl EventBus for ChannelEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        let domain = Self::get_domain(&book).to_string();
+        let domain = book.domain().to_string();
 
         // Send to channel (ignore error if no receivers)
         match self.sender.send(book) {

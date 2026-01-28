@@ -402,10 +402,7 @@ fn build_base_env(config: &Config) -> HashMap<String, String> {
 }
 
 /// Build storage environment variables from StorageConfig.
-fn build_storage_env(
-    env: &mut HashMap<String, String>,
-    storage: &angzarr::storage::StorageConfig,
-) {
+fn build_storage_env(env: &mut HashMap<String, String>, storage: &angzarr::storage::StorageConfig) {
     use angzarr::storage::StorageType;
 
     env.insert(

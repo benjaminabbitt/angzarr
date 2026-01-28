@@ -151,7 +151,7 @@ fn empty_cache<K, V>() -> Arc<RwLock<HashMap<K, V>>> {
 /// K8s label-based service discovery.
 ///
 /// Mesh handles L7 load balancing—we just connect to Service names.
-pub struct ServiceDiscovery {
+pub struct K8sServiceDiscovery {
     client: Option<Client>,
     namespace: String,
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
@@ -162,7 +162,7 @@ pub struct ServiceDiscovery {
     projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorClient<Channel>>>>,
 }
 
-impl ServiceDiscovery {
+impl K8sServiceDiscovery {
     /// Create a new service discovery instance.
     pub async fn new(namespace: impl Into<String>) -> Result<Self, DiscoveryError> {
         let client = Client::try_default().await?;
@@ -197,49 +197,6 @@ impl ServiceDiscovery {
         }
     }
 
-    /// Register an aggregate service manually.
-    ///
-    /// Used for static discovery in embedded mode.
-    pub async fn register_aggregate(&self, domain: &str, address: &str, port: u16) {
-        let service = DiscoveredService {
-            name: format!("{}-aggregate", domain),
-            service_address: address.to_string(),
-            port,
-            domain: Some(domain.to_string()),
-        };
-        info!(
-            domain = %domain,
-            address = %address,
-            port = port,
-            "Registered static aggregate"
-        );
-        self.aggregates
-            .write()
-            .await
-            .insert(service.name.clone(), service);
-    }
-
-    /// Register a projector service manually.
-    pub async fn register_projector(&self, name: &str, domain: &str, address: &str, port: u16) {
-        let service = DiscoveredService {
-            name: name.to_string(),
-            service_address: address.to_string(),
-            port,
-            domain: Some(domain.to_string()),
-        };
-        info!(
-            name = %name,
-            domain = %domain,
-            address = %address,
-            port = port,
-            "Registered static projector"
-        );
-        self.projectors
-            .write()
-            .await
-            .insert(service.name.clone(), service);
-    }
-
     /// Create from environment variables.
     ///
     /// Reads namespace from NAMESPACE or POD_NAMESPACE env vars.
@@ -249,70 +206,6 @@ impl ServiceDiscovery {
             .unwrap_or_else(|_| "default".to_string());
 
         Self::new(namespace).await
-    }
-
-    /// Perform initial sync of all services.
-    pub async fn initial_sync(&self) -> Result<(), DiscoveryError> {
-        let client = match &self.client {
-            Some(c) => c.clone(),
-            None => return Ok(()), // Test mode - no K8s sync
-        };
-
-        info!("Performing initial service sync");
-
-        let services: Api<Service> = Api::namespaced(client, &self.namespace);
-
-        // Sync aggregates
-        let aggregate_list = services
-            .list(
-                &ListParams::default()
-                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_AGGREGATE)),
-            )
-            .await?;
-        for svc in aggregate_list {
-            if let Some(discovered) = self.extract_service(&svc) {
-                self.aggregates
-                    .write()
-                    .await
-                    .insert(discovered.name.clone(), discovered);
-            }
-        }
-
-        // Sync projectors
-        let projector_list = services
-            .list(
-                &ListParams::default()
-                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_PROJECTOR)),
-            )
-            .await?;
-        for svc in projector_list {
-            if let Some(discovered) = self.extract_service(&svc) {
-                self.projectors
-                    .write()
-                    .await
-                    .insert(discovered.name.clone(), discovered);
-            }
-        }
-
-        let aggregates = self.aggregates.read().await;
-        let projectors = self.projectors.read().await;
-
-        info!(
-            aggregates = aggregates.len(),
-            projectors = projectors.len(),
-            "Initial sync complete"
-        );
-
-        Ok(())
-    }
-
-    /// Start watching for service changes in the background.
-    pub fn start_watching(&self) {
-        if self.client.is_none() {
-            return; // Test mode - no K8s watching
-        }
-        self.start_watching_component(COMPONENT_AGGREGATE, self.aggregates.clone());
-        self.start_watching_component(COMPONENT_PROJECTOR, self.projectors.clone());
     }
 
     fn start_watching_component(
@@ -433,8 +326,88 @@ impl ServiceDiscovery {
         })
     }
 
-    /// Get aggregate coordinator client by domain.
-    pub async fn get_aggregate(
+    async fn get_or_create_aggregate_client(
+        &self,
+        service: &DiscoveredService,
+    ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError> {
+        get_or_create_client(
+            &self.aggregate_clients,
+            service,
+            "aggregate",
+            AggregateCoordinatorClient::new,
+        )
+        .await
+    }
+
+    async fn get_or_create_event_query_client(
+        &self,
+        service: &DiscoveredService,
+    ) -> Result<EventQueryClient<Channel>, DiscoveryError> {
+        get_or_create_client(
+            &self.event_query_clients,
+            service,
+            "event_query",
+            EventQueryClient::new,
+        )
+        .await
+    }
+
+    async fn get_or_create_projector_client(
+        &self,
+        service: &DiscoveredService,
+    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError> {
+        get_or_create_client(
+            &self.projector_clients,
+            service,
+            "projector",
+            ProjectorCoordinatorClient::new,
+        )
+        .await
+    }
+}
+
+#[async_trait::async_trait]
+impl super::ServiceDiscovery for K8sServiceDiscovery {
+    async fn register_aggregate(&self, domain: &str, address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: format!("{}-aggregate", domain),
+            service_address: address.to_string(),
+            port,
+            domain: Some(domain.to_string()),
+        };
+        info!(
+            domain = %domain,
+            address = %address,
+            port = port,
+            "Registered static aggregate"
+        );
+        self.aggregates
+            .write()
+            .await
+            .insert(service.name.clone(), service);
+    }
+
+    async fn register_projector(&self, name: &str, domain: &str, address: &str, port: u16) {
+        let service = DiscoveredService {
+            name: name.to_string(),
+            service_address: address.to_string(),
+            port,
+            domain: Some(domain.to_string()),
+        };
+        info!(
+            name = %name,
+            domain = %domain,
+            address = %address,
+            port = port,
+            "Registered static projector"
+        );
+        self.projectors
+            .write()
+            .await
+            .insert(service.name.clone(), service);
+    }
+
+    async fn get_aggregate(
         &self,
         domain: &str,
     ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError> {
@@ -457,24 +430,7 @@ impl ServiceDiscovery {
         self.get_or_create_aggregate_client(&service).await
     }
 
-    async fn get_or_create_aggregate_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.aggregate_clients,
-            service,
-            "aggregate",
-            AggregateCoordinatorClient::new,
-        )
-        .await
-    }
-
-    /// Get event query client by domain.
-    ///
-    /// EventQuery runs on the same aggregate sidecar, same address/port.
-    /// Falls back to EVENT_QUERY_ADDRESS env var if no aggregate is registered.
-    pub async fn get_event_query(
+    async fn get_event_query(
         &self,
         domain: &str,
     ) -> Result<EventQueryClient<Channel>, DiscoveryError> {
@@ -530,35 +486,7 @@ impl ServiceDiscovery {
         Err(DiscoveryError::DomainNotFound(domain.to_string()))
     }
 
-    async fn get_or_create_event_query_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<EventQueryClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.event_query_clients,
-            service,
-            "event_query",
-            EventQueryClient::new,
-        )
-        .await
-    }
-
-    /// Get all aggregate domains.
-    ///
-    /// Returns the domains for all registered aggregate services.
-    pub async fn aggregate_domains(&self) -> Vec<String> {
-        self.aggregates
-            .read()
-            .await
-            .values()
-            .filter_map(|s| s.domain.clone())
-            .collect()
-    }
-
-    /// Get all projector coordinator clients.
-    ///
-    /// Returns one client per projector service. Mesh handles pod-level LB.
-    pub async fn get_all_projectors(
+    async fn get_all_projectors(
         &self,
     ) -> Result<Vec<ProjectorCoordinatorClient<Channel>>, DiscoveryError> {
         let projectors = self.projectors.read().await;
@@ -583,27 +511,83 @@ impl ServiceDiscovery {
         Ok(clients)
     }
 
-    async fn get_or_create_projector_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.projector_clients,
-            service,
-            "projector",
-            ProjectorCoordinatorClient::new,
-        )
-        .await
+    async fn aggregate_domains(&self) -> Vec<String> {
+        self.aggregates
+            .read()
+            .await
+            .values()
+            .filter_map(|s| s.domain.clone())
+            .collect()
     }
 
-    /// Check if any aggregates are available.
-    pub async fn has_aggregates(&self) -> bool {
+    async fn has_aggregates(&self) -> bool {
         !self.aggregates.read().await.is_empty()
     }
 
-    /// Check if any projectors are available.
-    pub async fn has_projectors(&self) -> bool {
+    async fn has_projectors(&self) -> bool {
         !self.projectors.read().await.is_empty()
+    }
+
+    async fn initial_sync(&self) -> Result<(), DiscoveryError> {
+        let client = match &self.client {
+            Some(c) => c.clone(),
+            None => return Ok(()), // Test mode - no K8s sync
+        };
+
+        info!("Performing initial service sync");
+
+        let services: Api<Service> = Api::namespaced(client, &self.namespace);
+
+        // Sync aggregates
+        let aggregate_list = services
+            .list(
+                &ListParams::default()
+                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_AGGREGATE)),
+            )
+            .await?;
+        for svc in aggregate_list {
+            if let Some(discovered) = self.extract_service(&svc) {
+                self.aggregates
+                    .write()
+                    .await
+                    .insert(discovered.name.clone(), discovered);
+            }
+        }
+
+        // Sync projectors
+        let projector_list = services
+            .list(
+                &ListParams::default()
+                    .labels(&format!("{}={}", COMPONENT_LABEL, COMPONENT_PROJECTOR)),
+            )
+            .await?;
+        for svc in projector_list {
+            if let Some(discovered) = self.extract_service(&svc) {
+                self.projectors
+                    .write()
+                    .await
+                    .insert(discovered.name.clone(), discovered);
+            }
+        }
+
+        let aggregates = self.aggregates.read().await;
+        let projectors = self.projectors.read().await;
+
+        info!(
+            aggregates = aggregates.len(),
+            projectors = projectors.len(),
+            "Initial sync complete"
+        );
+
+        Ok(())
+    }
+
+    fn start_watching(&self) {
+        if self.client.is_none() {
+            return; // Test mode - no K8s watching
+        }
+        self.start_watching_component(COMPONENT_AGGREGATE, self.aggregates.clone());
+        self.start_watching_component(COMPONENT_PROJECTOR, self.projectors.clone());
     }
 }
 
@@ -614,12 +598,7 @@ mod tests {
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
     use std::collections::BTreeMap;
 
-    fn make_test_service(
-        name: &str,
-        component: &str,
-        domain: Option<&str>,
-        port: i32,
-    ) -> Service {
+    fn make_test_service(name: &str, component: &str, domain: Option<&str>, port: i32) -> Service {
         let mut labels = BTreeMap::new();
         labels.insert(COMPONENT_LABEL.to_string(), component.to_string());
         if let Some(d) = domain {
@@ -648,7 +627,7 @@ mod tests {
     #[test]
     fn test_extract_aggregate_service() {
         let svc = make_test_service("cart-agg", COMPONENT_AGGREGATE, Some("cart"), 50051);
-        let discovered = ServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
+        let discovered = K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
 
         assert_eq!(discovered.name, "cart-agg");
         assert_eq!(
@@ -662,7 +641,7 @@ mod tests {
     #[test]
     fn test_extract_projector_service() {
         let svc = make_test_service("cart-proj", COMPONENT_PROJECTOR, Some("cart"), 50052);
-        let discovered = ServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
+        let discovered = K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
 
         assert_eq!(discovered.name, "cart-proj");
         assert_eq!(discovered.domain, Some("cart".to_string()));
@@ -703,7 +682,7 @@ mod tests {
             status: None,
         };
 
-        let discovered = ServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
+        let discovered = K8sServiceDiscovery::extract_service_with_namespace(&svc, "test-ns").unwrap();
         assert_eq!(discovered.port, DEFAULT_GRPC_PORT);
     }
 }

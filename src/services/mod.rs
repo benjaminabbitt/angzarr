@@ -17,5 +17,7 @@ pub use aggregate::AggregateService;
 pub use event_book_repair::{EventBookRepairer, RepairError};
 pub use event_query::EventQueryService;
 pub use projector_coord::ProjectorCoordinatorService;
-pub use timeout_scheduler::{StaleProcess, StaleProcessQuery, TimeoutScheduler, TimeoutSchedulerConfig};
+pub use timeout_scheduler::{
+    StaleProcess, StaleProcessQuery, TimeoutScheduler, TimeoutSchedulerConfig,
+};
 pub use upcaster::{Upcaster, UpcasterConfig};

@@ -28,11 +28,10 @@ use angzarr::proto::process_manager_server::{
 use angzarr::proto::projector_server::{Projector as ProjectorService, ProjectorServer};
 use angzarr::proto::saga_server::{Saga as SagaService, SagaServer};
 use angzarr::proto::{
-    BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook,
-    GetSubscriptionsRequest, GetSubscriptionsResponse, Projection,
-    ProcessManagerHandleRequest, ProcessManagerHandleResponse,
-    ProcessManagerPrepareRequest, ProcessManagerPrepareResponse, Subscription,
-    SagaExecuteRequest, SagaPrepareRequest, SagaPrepareResponse, SagaResponse,
+    BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook, GetSubscriptionsRequest,
+    GetSubscriptionsResponse, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
+    ProcessManagerPrepareRequest, ProcessManagerPrepareResponse, Projection, SagaExecuteRequest,
+    SagaPrepareRequest, SagaPrepareResponse, SagaResponse, Subscription,
 };
 
 /// Initialize JSON tracing subscriber.
@@ -168,8 +167,10 @@ pub async fn run_aggregate_server<T: AggregateLogic + 'static>(
 /// Phase 2 (Execute): Saga receives source + destination state, produces commands.
 pub trait SagaLogic: Send + Sync {
     /// Phase 1: Examine source events, return covers of destination aggregates needed.
-    /// Return empty vec if saga doesn't need to read other aggregates.
-    fn prepare(&self, source: &EventBook) -> Vec<Cover>;
+    /// Default returns empty vec for stateless sagas that don't need destination state.
+    fn prepare(&self, _source: &EventBook) -> Vec<Cover> {
+        vec![]
+    }
 
     /// Phase 2: Given source and destination state, produce commands.
     fn execute(&self, source: &EventBook, destinations: &[EventBook]) -> Vec<CommandBook>;
@@ -320,7 +321,9 @@ impl<T: ProcessManagerLogic + 'static> ProcessManagerService for ProcessManagerW
             .trigger
             .ok_or_else(|| Status::invalid_argument("Prepare requires trigger"))?;
         let destinations = self.logic.prepare(&trigger, req.process_state.as_ref());
-        Ok(Response::new(ProcessManagerPrepareResponse { destinations }))
+        Ok(Response::new(ProcessManagerPrepareResponse {
+            destinations,
+        }))
     }
 
     async fn handle(

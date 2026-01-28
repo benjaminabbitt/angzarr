@@ -409,7 +409,11 @@ impl AccountingProjector {
             .map(|r| hex::encode(&r.value))
             .unwrap_or_else(|| "unknown".to_string());
 
-        let correlation_id = &book.correlation_id;
+        let correlation_id = book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.as_str())
+            .unwrap_or("");
 
         for page in &book.pages {
             let sequence = match &page.sequence {

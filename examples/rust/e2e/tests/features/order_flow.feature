@@ -139,4 +139,4 @@ Feature: Complete Order Lifecycle
   Scenario: Remove non-existent item fails
     Given a cart "CART-NO-ITEM" with item "WIDGET-001" quantity 1
     When I remove item "GHOST-ITEM" from cart "CART-NO-ITEM"
-    Then the command fails with "item not found"
+    Then the command fails with "Item not in cart"

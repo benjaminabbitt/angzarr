@@ -1,110 +1,120 @@
-//! Loyalty Earn Saga - awards loyalty points when orders complete.
+//! Loyalty Earn Saga - awards loyalty points and commits inventory when orders complete.
 //!
-//! Listens to OrderCompleted events and generates AddLoyaltyPoints commands.
+//! Listens to OrderCompleted events and generates:
+//! - AddLoyaltyPoints command (to customer)
+//! - CommitReservation commands (to inventory, for each item)
 
-use prost::Message;
-
-use angzarr::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid as ProtoUuid};
-use common::proto::{AddLoyaltyPoints, OrderCompleted};
-use common::SagaLogic;
+use angzarr::proto::{CommandBook, EventBook, Uuid as ProtoUuid};
+use common::proto::{AddLoyaltyPoints, CommitReservation, OrderCompleted};
+use common::{build_command_book, decode_event, process_event_pages, root_id_as_string};
 
 pub const SAGA_NAME: &str = "loyalty-earn";
 pub const SOURCE_DOMAIN: &str = "order";
-pub const TARGET_DOMAIN: &str = "customer";
+pub const CUSTOMER_DOMAIN: &str = "customer";
+pub const INVENTORY_DOMAIN: &str = "inventory";
 
 /// Loyalty Earn Saga implementation.
 pub struct LoyaltyEarnSaga;
+common::define_saga!(LoyaltyEarnSaga);
 
 impl LoyaltyEarnSaga {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Process a single event page and generate a command if applicable.
+    /// Process a single event page and generate commands if applicable.
     fn process_event(
         &self,
         event: &prost_types::Any,
-        source_root: Option<&ProtoUuid>,
+        _source_root: Option<&ProtoUuid>,
         correlation_id: &str,
-    ) -> Option<CommandBook> {
+    ) -> Vec<CommandBook> {
         // Only process OrderCompleted events
-        if !event.type_url.ends_with("OrderCompleted") {
-            return None;
-        }
-
-        let completed = OrderCompleted::decode(event.value.as_slice()).ok()?;
-
-        // Don't generate command for zero points
-        if completed.loyalty_points_earned <= 0 {
-            return None;
-        }
-
-        // Generate AddLoyaltyPoints command targeting customer domain
-        let cmd = AddLoyaltyPoints {
-            points: completed.loyalty_points_earned,
-            reason: format!("order:{}", correlation_id),
+        let Some(completed) = decode_event::<OrderCompleted>(event, "OrderCompleted") else {
+            return vec![];
         };
 
-        let cmd_any = prost_types::Any {
-            type_url: "type.examples/examples.AddLoyaltyPoints".to_string(),
-            value: cmd.encode_to_vec(),
+        let mut commands = Vec::new();
+
+        // Generate AddLoyaltyPoints command if points > 0
+        if completed.loyalty_points_earned > 0 {
+            let customer_root = if completed.customer_root.is_empty() {
+                None
+            } else {
+                Some(ProtoUuid {
+                    value: completed.customer_root.clone(),
+                })
+            };
+
+            let points_cmd = AddLoyaltyPoints {
+                points: completed.loyalty_points_earned,
+                reason: format!("order:{}", correlation_id),
+            };
+
+            commands.push(build_command_book(
+                CUSTOMER_DOMAIN,
+                customer_root,
+                correlation_id,
+                "type.examples/examples.AddLoyaltyPoints",
+                &points_cmd,
+            ));
+        }
+
+        // Generate CommitReservation commands for each item (using cart_root as order_id)
+        // The reservations were created with cart_root when items were added to cart
+        let order_id = if completed.cart_root.is_empty() {
+            // Fallback: no cart_root means no reservations to commit
+            return commands;
+        } else {
+            let cart_uuid = ProtoUuid {
+                value: completed.cart_root.clone(),
+            };
+            root_id_as_string(Some(&cart_uuid))
         };
 
-        Some(CommandBook {
-            cover: Some(Cover {
-                domain: TARGET_DOMAIN.to_string(),
-                root: source_root.cloned(),
-            }),
-            pages: vec![CommandPage {
-                sequence: 0,
-                command: Some(cmd_any),
-            }],
-            correlation_id: correlation_id.to_string(),
-            ..Default::default()
-        })
+        for item in &completed.items {
+            let product_root = if item.product_root.is_empty() {
+                None
+            } else {
+                Some(ProtoUuid {
+                    value: item.product_root.clone(),
+                })
+            };
+
+            let commit_cmd = CommitReservation {
+                order_id: order_id.clone(),
+            };
+
+            commands.push(build_command_book(
+                INVENTORY_DOMAIN,
+                product_root,
+                correlation_id,
+                "type.examples/examples.CommitReservation",
+                &commit_cmd,
+            ));
+        }
+
+        commands
     }
 
     /// Handle an event book, producing commands for any relevant events.
     pub fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
-        let source_root = book.cover.as_ref().and_then(|c| c.root.as_ref());
-        let correlation_id = &book.correlation_id;
-
-        book.pages
-            .iter()
-            .filter_map(|page| {
-                page.event
-                    .as_ref()
-                    .and_then(|e| self.process_event(e, source_root, correlation_id))
-            })
-            .collect()
-    }
-}
-
-impl Default for LoyaltyEarnSaga {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SagaLogic for LoyaltyEarnSaga {
-    /// This saga doesn't need destination state - just produces commands from source events.
-    fn prepare(&self, _source: &EventBook) -> Vec<Cover> {
-        vec![]
-    }
-
-    fn execute(&self, source: &EventBook, _destinations: &[EventBook]) -> Vec<CommandBook> {
-        self.handle(source)
+        process_event_pages(book, |event, root, corr_id| {
+            self.process_event(event, root, corr_id)
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use angzarr::proto::EventPage;
+    use angzarr::proto::{Cover, EventPage};
+    use common::proto::LineItem;
+    use prost::Message;
 
     #[test]
-    fn test_process_order_completed() {
+    fn test_process_order_completed_with_items() {
         let saga = LoyaltyEarnSaga::new();
+
+        let customer_root_bytes = vec![10; 16];
+        let cart_root_bytes = vec![20; 16];
+        let product_root_bytes = vec![30; 16];
 
         let event = OrderCompleted {
             final_total_cents: 5000,
@@ -112,6 +122,15 @@ mod tests {
             payment_reference: "PAY-001".to_string(),
             loyalty_points_earned: 50,
             completed_at: None,
+            customer_root: customer_root_bytes.clone(),
+            cart_root: cart_root_bytes.clone(),
+            items: vec![LineItem {
+                product_id: "SKU-001".to_string(),
+                name: "Widget".to_string(),
+                quantity: 2,
+                unit_price_cents: 2500,
+                product_root: product_root_bytes.clone(),
+            }],
         };
 
         let event_any = prost_types::Any {
@@ -119,14 +138,15 @@ mod tests {
             value: event.encode_to_vec(),
         };
 
-        let root = ProtoUuid {
+        let order_root = ProtoUuid {
             value: vec![1, 2, 3, 4],
         };
 
         let book = EventBook {
             cover: Some(Cover {
                 domain: SOURCE_DOMAIN.to_string(),
-                root: Some(root),
+                root: Some(order_root),
+                correlation_id: "CORR-001".to_string(),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -134,26 +154,43 @@ mod tests {
                 sequence: Some(angzarr::proto::event_page::Sequence::Num(1)),
                 event: Some(event_any),
             }],
-            correlation_id: "CORR-001".to_string(),
             snapshot_state: None,
         };
 
         let commands = saga.handle(&book);
-        assert_eq!(commands.len(), 1);
+        // Should generate: 1 AddLoyaltyPoints + 1 CommitReservation
+        assert_eq!(commands.len(), 2);
 
-        let cmd = &commands[0];
-        assert_eq!(cmd.cover.as_ref().unwrap().domain, TARGET_DOMAIN);
-        assert_eq!(cmd.correlation_id, "CORR-001");
-
-        let cmd_any = cmd.pages[0].command.as_ref().unwrap();
+        // First command: AddLoyaltyPoints
+        let points_cmd = &commands[0];
+        assert_eq!(points_cmd.cover.as_ref().unwrap().domain, CUSTOMER_DOMAIN);
+        assert_eq!(
+            points_cmd.cover.as_ref().unwrap().root.as_ref().unwrap().value,
+            customer_root_bytes
+        );
+        let cmd_any = points_cmd.pages[0].command.as_ref().unwrap();
         let add_points = AddLoyaltyPoints::decode(cmd_any.value.as_slice()).expect("Should decode");
         assert_eq!(add_points.points, 50);
-        assert!(add_points.reason.contains("order"));
+
+        // Second command: CommitReservation
+        let commit_cmd = &commands[1];
+        assert_eq!(commit_cmd.cover.as_ref().unwrap().domain, INVENTORY_DOMAIN);
+        assert_eq!(
+            commit_cmd.cover.as_ref().unwrap().root.as_ref().unwrap().value,
+            product_root_bytes
+        );
+        let cmd_any = commit_cmd.pages[0].command.as_ref().unwrap();
+        let commit = CommitReservation::decode(cmd_any.value.as_slice()).expect("Should decode");
+        // order_id should be derived from cart_root
+        assert!(!commit.order_id.is_empty());
     }
 
     #[test]
-    fn test_ignore_zero_points() {
+    fn test_ignore_zero_points_but_commit_inventory() {
         let saga = LoyaltyEarnSaga::new();
+
+        let cart_root_bytes = vec![20; 16];
+        let product_root_bytes = vec![30; 16];
 
         let event = OrderCompleted {
             final_total_cents: 50, // Only 50 cents = 0 points
@@ -161,6 +198,15 @@ mod tests {
             payment_reference: "PAY-002".to_string(),
             loyalty_points_earned: 0,
             completed_at: None,
+            customer_root: vec![],
+            cart_root: cart_root_bytes,
+            items: vec![LineItem {
+                product_id: "SKU-001".to_string(),
+                name: "Widget".to_string(),
+                quantity: 1,
+                unit_price_cents: 50,
+                product_root: product_root_bytes,
+            }],
         };
 
         let event_any = prost_types::Any {
@@ -172,6 +218,7 @@ mod tests {
             cover: Some(Cover {
                 domain: SOURCE_DOMAIN.to_string(),
                 root: None,
+                correlation_id: "CORR-002".to_string(),
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -179,7 +226,47 @@ mod tests {
                 sequence: Some(angzarr::proto::event_page::Sequence::Num(1)),
                 event: Some(event_any),
             }],
-            correlation_id: "CORR-002".to_string(),
+            snapshot_state: None,
+        };
+
+        let commands = saga.handle(&book);
+        // Should only generate CommitReservation (no loyalty points)
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].cover.as_ref().unwrap().domain, INVENTORY_DOMAIN);
+    }
+
+    #[test]
+    fn test_no_commands_when_no_cart_root_and_no_points() {
+        let saga = LoyaltyEarnSaga::new();
+
+        let event = OrderCompleted {
+            final_total_cents: 50,
+            payment_method: "card".to_string(),
+            payment_reference: "PAY-003".to_string(),
+            loyalty_points_earned: 0,
+            completed_at: None,
+            customer_root: vec![],
+            cart_root: vec![], // No cart_root = no inventory to commit
+            items: vec![],
+        };
+
+        let event_any = prost_types::Any {
+            type_url: "type.examples/examples.OrderCompleted".to_string(),
+            value: event.encode_to_vec(),
+        };
+
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: SOURCE_DOMAIN.to_string(),
+                root: None,
+                correlation_id: "CORR-003".to_string(),
+            }),
+            snapshot: None,
+            pages: vec![EventPage {
+                created_at: None,
+                sequence: Some(angzarr::proto::event_page::Sequence::Num(1)),
+                event: Some(event_any),
+            }],
             snapshot_state: None,
         };
 

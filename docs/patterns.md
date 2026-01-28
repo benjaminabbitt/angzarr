@@ -528,107 +528,168 @@ For full details, see [Process Manager](process-manager.md).
 - **Compliance:** Prove what data existed at time of transaction
 - **Analytics:** Historical trend analysis
 
-#### Implementation
-
-```rust
-impl EventStore {
-    /// Query state at a specific point in time.
-    pub async fn get_state_at(
-        &self,
-        aggregate_id: &Uuid,
-        as_of: DateTime<Utc>,
-    ) -> Result<AggregateState> {
-        // Fetch events up to timestamp
-        let events = self.get_events(Query {
-            aggregate_id: Some(*aggregate_id),
-            until_timestamp: Some(as_of),
-            ..Default::default()
-        }).await?;
-
-        // Replay to build state
-        let mut state = AggregateState::default();
-        for event in events {
-            state.apply(&event);
-        }
-
-        Ok(state)
-    }
-
-    /// Query state at a specific sequence number.
-    pub async fn get_state_at_sequence(
-        &self,
-        aggregate_id: &Uuid,
-        sequence: u32,
-    ) -> Result<AggregateState> {
-        let events = self.get_events(Query {
-            aggregate_id: Some(*aggregate_id),
-            until_sequence: Some(sequence),
-            ..Default::default()
-        }).await?;
-
-        let mut state = AggregateState::default();
-        for event in events {
-            state.apply(&event);
-        }
-
-        Ok(state)
-    }
-}
-```
-
 #### Query API
+
+Temporal queries are a first-class selection mode in the `Query` message:
 
 ```protobuf
 message TemporalQuery {
-  string domain = 1;
-  Uuid root = 2;
-
   oneof point_in_time {
-    google.protobuf.Timestamp as_of_time = 3;
-    uint32 as_of_sequence = 4;
+    google.protobuf.Timestamp as_of_time = 1;  // Events with created_at <= this
+    uint32 as_of_sequence = 2;                  // Events with sequence <= this
+  }
+}
+
+message Query {
+  Cover cover = 1;
+  oneof selection {
+    SequenceRange range = 3;
+    SequenceSet sequences = 4;
+    TemporalQuery temporal = 5;   // Point-in-time query
   }
 }
 ```
 
-#### With Snapshots
+Two modes:
+- **`as_of_time`** — Returns all events with `created_at` <= the specified timestamp. Use when you need state at a real-world point in time (audit, compliance).
+- **`as_of_sequence`** — Returns all events with sequence <= the specified number. Use when you need state at a logical point (debugging, replay).
 
-For performance, combine with snapshots:
+Both modes replay from sequence 0 without snapshots, ensuring correct historical reconstruction.
 
-```rust
-pub async fn get_state_at(
-    &self,
-    aggregate_id: &Uuid,
-    as_of: DateTime<Utc>,
-) -> Result<AggregateState> {
-    // Find latest snapshot before target time
-    let snapshot = self.snapshot_store
-        .get_latest_before(aggregate_id, as_of)
-        .await?;
+#### gRPC Usage
 
-    let (mut state, start_sequence) = match snapshot {
-        Some(s) => (s.state, s.sequence + 1),
-        None => (AggregateState::default(), 0),
-    };
+Query through the `EventQuery` service:
 
-    // Replay events from snapshot to target time
-    let events = self.get_events(Query {
-        aggregate_id: Some(*aggregate_id),
-        from_sequence: Some(start_sequence),
-        until_timestamp: Some(as_of),
-        ..Default::default()
-    }).await?;
-
-    for event in events {
-        state.apply(&event);
-    }
-
-    Ok(state)
+```protobuf
+service EventQuery {
+  rpc GetEventBook (Query) returns (EventBook);       // Unary
+  rpc GetEvents (Query) returns (stream EventBook);    // Server streaming
+  rpc Synchronize (stream Query) returns (stream EventBook);  // Bidirectional
 }
 ```
 
+**By timestamp** — "What was this cart's state at midnight Jan 2, 2025?"
+
+```bash
+grpcurl -plaintext -d '{
+  "cover": {
+    "domain": "cart",
+    "root": {"value": "BASE64_ENCODED_UUID"}
+  },
+  "temporal": {
+    "as_of_time": "2025-01-02T00:00:00Z"
+  }
+}' localhost:50052 angzarr.EventQuery/GetEventBook
+```
+
+**By sequence** — "What was this cart's state after the 3rd event?"
+
+```bash
+grpcurl -plaintext -d '{
+  "cover": {
+    "domain": "cart",
+    "root": {"value": "BASE64_ENCODED_UUID"}
+  },
+  "temporal": {
+    "as_of_sequence": 2
+  }
+}' localhost:50052 angzarr.EventQuery/GetEventBook
+```
+
+Sequences are zero-indexed: `as_of_sequence: 2` returns events 0, 1, 2.
+
+#### Programmatic Usage
+
+**Rust:**
+```rust
+use angzarr::proto::{Cover, Query, TemporalQuery};
+use angzarr::proto::query::Selection;
+use angzarr::proto::temporal_query::PointInTime;
+
+let query = Query {
+    cover: Some(Cover {
+        domain: "cart".to_string(),
+        root: Some(proto_uuid),
+        correlation_id: String::new(),
+    }),
+    selection: Some(Selection::Temporal(TemporalQuery {
+        point_in_time: Some(PointInTime::AsOfTime(prost_types::Timestamp {
+            seconds: 1735776000, // 2025-01-02T00:00:00Z
+            nanos: 0,
+        })),
+    })),
+};
+
+let response = event_query_client.get_event_book(query).await?;
+let book = response.into_inner();
+// book.pages contains events up to the specified timestamp
+// book.snapshot is None (temporal queries skip snapshots)
+```
+
+**Python:**
+```python
+from angzarr import angzarr_pb2 as angzarr
+from google.protobuf.timestamp_pb2 import Timestamp
+
+query = angzarr.Query(
+    cover=angzarr.Cover(domain="cart", root=angzarr.Uuid(value=root_bytes)),
+    temporal=angzarr.TemporalQuery(
+        as_of_time=Timestamp(seconds=1735776000),
+    ),
+)
+
+response = event_query_stub.GetEventBook(query)
+# response.pages contains events up to the specified timestamp
+```
+
+**Go:**
+```go
+query := &pb.Query{
+    Cover: &pb.Cover{
+        Domain: "cart",
+        Root:   &pb.Uuid{Value: rootBytes},
+    },
+    Selection: &pb.Query_Temporal{
+        Temporal: &pb.TemporalQuery{
+            PointInTime: &pb.TemporalQuery_AsOfTime{
+                AsOfTime: timestamppb.New(time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)),
+            },
+        },
+    },
+}
+
+response, err := eventQueryClient.GetEventBook(ctx, query)
+// response.Pages contains events up to the specified timestamp
+```
+
+#### How It Works Internally
+
+1. The `EventQuery` service receives the `Query` with `TemporalQuery` selection
+2. Angzarr routes to the appropriate repository method:
+   - `as_of_time` → `get_temporal_by_time()` — filters by `created_at <= timestamp`
+   - `as_of_sequence` → `get_temporal_by_sequence()` — filters by `sequence <= n`
+3. Events are replayed from sequence 0 (snapshots are intentionally skipped)
+4. The returned `EventBook` contains only events up to the specified point
+5. The client reconstructs state by applying events in order
+
+Snapshots are skipped because a snapshot may have been taken *after* the requested point in time, which would produce incorrect historical state.
+
+#### Performance
+
+All storage backends maintain indexes for temporal queries:
+
+| Backend | Index |
+|---------|-------|
+| PostgreSQL | `(domain, root, created_at)` |
+| SQLite | `(domain, root, created_at)` |
+| MongoDB | `created_at` field index |
+| Redis | Sorted set with timestamp scores |
+
+For aggregates with many events, temporal queries replay from the beginning. If this becomes a bottleneck, build temporal projections (see below).
+
 #### Temporal Projections
 
-For frequently-queried historical data, build temporal projections:
+For frequently-queried historical data, build a projector that materializes snapshots:
 
 ```sql
 -- Daily balance snapshots for reporting
@@ -640,7 +701,7 @@ CREATE TABLE account_balance_history (
 );
 ```
 
-Projector populates at end of each day or on-demand.
+A projector populates this at end of each day or on-demand. This shifts the cost from query time to write time — appropriate when the same historical points are queried repeatedly.
 
 ---
 

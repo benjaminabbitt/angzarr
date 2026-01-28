@@ -1,6 +1,7 @@
 [workspace]
 members = [
     ".",
+    "angzarr-client/rust",
     "examples/rust/common",
     "examples/rust/customer",
     "examples/rust/product",
@@ -11,6 +12,7 @@ members = [
     "examples/rust/saga-loyalty-earn",
     "examples/rust/saga-fulfillment",
     "examples/rust/saga-cancellation",
+    "examples/rust/saga-inventory-reservation",
     "examples/rust/process-manager-fulfillment",
     "examples/rust/projectors/accounting",
     "examples/rust/projectors/logging",
@@ -56,6 +58,7 @@ sea-query-binder-sqlite = { package = "sea-query-binder", version = "0.7", featu
 
 # Local crates
 angzarr = { path = "." }
+angzarr-client = { path = "angzarr-client/rust" }
 common = { path = "examples/rust/common" }
 
 [package]

@@ -84,12 +84,15 @@ message CouponApplied {
 message CartCleared {
   int32 new_subtotal = 1;
   google.protobuf.Timestamp cleared_at = 2;
+  repeated CartItem items = 3;   // items that were cleared (for inventory release)
 }
 
 message CartCheckedOut {
   int32 final_subtotal = 1;
   int32 discount_cents = 2;
   google.protobuf.Timestamp checked_out_at = 3;
+  string customer_id = 4;          // customer for order creation
+  repeated CartItem items = 5;     // items for order creation and inventory commit
 }
 
 // State (for snapshots)

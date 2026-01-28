@@ -11,39 +11,9 @@ use tonic::{Response, Status};
 
 use crate::bus::EventBus;
 use crate::bus::PublishResult;
-use crate::proto::{business_response, BusinessResponse, CommandBook, CommandResponse, EventBook};
+use crate::proto::{business_response, BusinessResponse, CommandResponse, EventBook};
 
-/// Generates a correlation ID for a command if one is not already provided.
-///
-/// Uses UUIDv5 with the angzarr namespace to generate a deterministic but unique
-/// ID based on the command content.
-///
-/// # Arguments
-/// * `command_book` - The command book to generate a correlation ID for
-///
-/// # Returns
-/// The existing correlation ID if present, otherwise a newly generated one.
-pub fn generate_correlation_id(command_book: &CommandBook) -> Result<String, Status> {
-    let existing = command_book
-        .cover
-        .as_ref()
-        .map(|c| c.correlation_id.as_str())
-        .unwrap_or("");
-
-    if !existing.is_empty() {
-        return Ok(existing.to_string());
-    }
-
-    use prost::Message;
-    let mut buf = Vec::new();
-    command_book.encode(&mut buf).map_err(|e| {
-        Status::internal(format!("Failed to encode command for correlation ID: {e}"))
-    })?;
-
-    // Create angzarr namespace from DNS namespace
-    let angzarr_ns = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev");
-    Ok(uuid::Uuid::new_v5(&angzarr_ns, &buf).to_string())
-}
+pub use crate::orchestration::correlation::ensure_correlation_id as generate_correlation_id;
 
 /// Extracts events from a BusinessResponse, handling revocation and empty responses.
 ///
@@ -136,7 +106,7 @@ pub fn build_command_response(
 mod tests {
     use super::*;
     use crate::bus::MockEventBus;
-    use crate::proto::{CommandPage, Cover, RevocationResponse, Uuid as ProtoUuid};
+    use crate::proto::{CommandBook, CommandPage, Cover, RevocationResponse, Uuid as ProtoUuid};
     use prost_types::Any;
 
     fn make_command_book(with_correlation: bool) -> CommandBook {

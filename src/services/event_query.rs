@@ -61,9 +61,7 @@ impl EventQueryTrait for EventQueryService {
         let cover = query.cover.as_ref();
 
         // Extract correlation_id from cover
-        let correlation_id = cover
-            .map(|c| c.correlation_id.as_str())
-            .unwrap_or("");
+        let correlation_id = cover.map(|c| c.correlation_id.as_str()).unwrap_or("");
 
         // Correlation ID query: returns first matching EventBook across all domains
         // Useful for sagas that need to find related events without knowing the root ID
@@ -171,9 +169,7 @@ impl EventQueryTrait for EventQueryService {
         let cover = query.cover.as_ref();
 
         // Extract correlation_id from cover
-        let correlation_id = cover
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let correlation_id = cover.map(|c| c.correlation_id.clone()).unwrap_or_default();
 
         // Correlation ID query: streams ALL matching EventBooks across all domains
         if !correlation_id.is_empty() {
@@ -243,9 +239,7 @@ impl EventQueryTrait for EventQueryService {
                             Some(c) => c,
                             None => {
                                 let _ = tx
-                                    .send(Err(Status::invalid_argument(
-                                        "Query must have a cover",
-                                    )))
+                                    .send(Err(Status::invalid_argument("Query must have a cover")))
                                     .await;
                                 continue;
                             }
@@ -287,40 +281,36 @@ impl EventQueryTrait for EventQueryService {
                                 // TODO: Implement specific sequence fetching
                                 event_book_repo.get(&domain, root).await
                             }
-                            Some(Selection::Temporal(ref tq)) => {
-                                match tq.point_in_time {
-                                    Some(PointInTime::AsOfTime(ref ts)) => {
-                                        match crate::storage::helpers::timestamp_to_rfc3339(ts) {
-                                            Ok(rfc3339) => {
-                                                event_book_repo
-                                                    .get_temporal_by_time(&domain, root, &rfc3339)
-                                                    .await
-                                            }
-                                            Err(e) => {
-                                                let _ = tx
-                                                    .send(Err(Status::invalid_argument(
-                                                        e.to_string(),
-                                                    )))
-                                                    .await;
-                                                continue;
-                                            }
+                            Some(Selection::Temporal(ref tq)) => match tq.point_in_time {
+                                Some(PointInTime::AsOfTime(ref ts)) => {
+                                    match crate::storage::helpers::timestamp_to_rfc3339(ts) {
+                                        Ok(rfc3339) => {
+                                            event_book_repo
+                                                .get_temporal_by_time(&domain, root, &rfc3339)
+                                                .await
+                                        }
+                                        Err(e) => {
+                                            let _ = tx
+                                                .send(Err(Status::invalid_argument(e.to_string())))
+                                                .await;
+                                            continue;
                                         }
                                     }
-                                    Some(PointInTime::AsOfSequence(seq)) => {
-                                        event_book_repo
-                                            .get_temporal_by_sequence(&domain, root, seq)
-                                            .await
-                                    }
-                                    None => {
-                                        let _ = tx
+                                }
+                                Some(PointInTime::AsOfSequence(seq)) => {
+                                    event_book_repo
+                                        .get_temporal_by_sequence(&domain, root, seq)
+                                        .await
+                                }
+                                None => {
+                                    let _ = tx
                                             .send(Err(Status::invalid_argument(
                                                 "TemporalQuery must specify as_of_time or as_of_sequence",
                                             )))
                                             .await;
-                                        continue;
-                                    }
+                                    continue;
                                 }
-                            }
+                            },
                             None => event_book_repo.get(&domain, root).await,
                         };
 

@@ -22,36 +22,25 @@
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::Config;
-use angzarr::handlers::core::saga::{CommandRouter, EventQueryRouter};
 use angzarr::handlers::core::ProcessManagerEventHandler;
+use angzarr::orchestration::command::grpc::GrpcCommandExecutor;
+use angzarr::orchestration::command::CommandExecutor;
+use angzarr::orchestration::destination::grpc::GrpcDestinationFetcher;
+use angzarr::orchestration::destination::DestinationFetcher;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::event_query_client::EventQueryClient;
 use angzarr::proto::process_manager_client::ProcessManagerClient;
 use angzarr::proto::GetSubscriptionsRequest;
 use angzarr::transport::connect_to_address;
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
-
-/// Parse static endpoints from environment variable.
-fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
-    endpoints_str
-        .split(',')
-        .filter_map(|pair| {
-            let parts: Vec<&str> = pair.trim().splitn(2, '=').collect();
-            if parts.len() == 2 {
-                Some((parts[0].to_string(), parts[1].to_string()))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
+use angzarr::utils::bootstrap::{connect_with_retry, init_tracing, parse_static_endpoints};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -147,8 +136,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Get static endpoints for multi-domain routing
-    let endpoints_str = std::env::var("ANGZARR_STATIC_ENDPOINTS")
-        .map_err(|_| "Process manager requires ANGZARR_STATIC_ENDPOINTS for multi-domain routing")?;
+    let endpoints_str = std::env::var("ANGZARR_STATIC_ENDPOINTS").map_err(|_| {
+        "Process manager requires ANGZARR_STATIC_ENDPOINTS for multi-domain routing"
+    })?;
 
     let endpoints = parse_static_endpoints(&endpoints_str);
 
@@ -159,47 +149,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (domain, endpoint_address) in endpoints {
         // Connect AggregateCoordinator client
         let addr = endpoint_address.clone();
-        let cmd_client = connect_with_retry(&format!("aggregate-{}", domain), &endpoint_address, || {
-            let a = addr.clone();
-            async move {
-                let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
-                Ok::<_, String>(AggregateCoordinatorClient::new(channel))
-            }
-        })
-        .await?;
+        let cmd_client =
+            connect_with_retry(&format!("aggregate-{}", domain), &endpoint_address, || {
+                let a = addr.clone();
+                async move {
+                    let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
+                    Ok::<_, String>(AggregateCoordinatorClient::new(channel))
+                }
+            })
+            .await?;
         command_clients.insert(domain.clone(), cmd_client);
 
         // Connect EventQuery client
         let addr = endpoint_address.clone();
-        let query_client =
-            connect_with_retry(&format!("event-query-{}", domain), &endpoint_address, || {
+        let query_client = connect_with_retry(
+            &format!("event-query-{}", domain),
+            &endpoint_address,
+            || {
                 let a = addr.clone();
                 async move {
                     let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
                     Ok::<_, String>(EventQueryClient::new(channel))
                 }
-            })
-            .await?;
+            },
+        )
+        .await?;
         query_clients.insert(domain.clone(), query_client);
 
         info!(domain = %domain, address = %endpoint_address, "Connected to aggregate");
     }
 
-    let command_router = CommandRouter::new(command_clients);
-    let event_query_router = EventQueryRouter::new(query_clients);
-
-    // Create publisher for events
-    let publisher = init_event_bus(messaging, EventBusMode::Publisher)
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e })?;
+    let command_executor: Arc<dyn CommandExecutor> =
+        Arc::new(GrpcCommandExecutor::new(command_clients));
+    let destination_fetcher: Arc<dyn DestinationFetcher> =
+        Arc::new(GrpcDestinationFetcher::new(query_clients));
 
     // Create handler
     let handler = ProcessManagerEventHandler::new(
         pm_client,
         pm_domain.clone(),
-        event_query_router,
-        command_router,
-        publisher,
+        destination_fetcher,
+        command_executor,
     );
 
     // Subscribe to events from declared domains

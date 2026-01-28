@@ -2,10 +2,12 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateOrder, OrderCreated, OrderState};
-use common::{BusinessError, Result};
+use common::{
+    decode_command, make_event_book, now, require_not_empty, require_not_exists, require_positive,
+    Result,
+};
 use prost::Message;
 
-use super::{make_event_book, now};
 use crate::errmsg;
 
 /// Handle the CreateOrder command.
@@ -15,23 +17,13 @@ pub fn handle_create_order(
     state: &OrderState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if !state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::ORDER_EXISTS.to_string()));
-    }
+    require_not_exists(&state.customer_id, errmsg::ORDER_EXISTS)?;
 
-    let cmd =
-        CreateOrder::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: CreateOrder = decode_command(command_data)?;
 
-    if cmd.items.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::ITEMS_REQUIRED.to_string()));
-    }
-
+    require_not_empty(&cmd.items, errmsg::ITEMS_REQUIRED)?;
     for item in &cmd.items {
-        if item.quantity <= 0 {
-            return Err(BusinessError::Rejected(
-                errmsg::QUANTITY_POSITIVE.to_string(),
-            ));
-        }
+        require_positive(item.quantity, errmsg::QUANTITY_POSITIVE)?;
     }
 
     let subtotal: i32 = cmd
@@ -45,6 +37,8 @@ pub fn handle_create_order(
         items: cmd.items.clone(),
         subtotal_cents: subtotal,
         created_at: Some(now()),
+        customer_root: cmd.customer_root.clone(),
+        cart_root: cmd.cart_root.clone(),
     };
 
     let new_state = OrderState {
@@ -56,6 +50,8 @@ pub fn handle_create_order(
         payment_method: String::new(),
         payment_reference: String::new(),
         status: "pending".to_string(),
+        customer_root: cmd.customer_root,
+        cart_root: cmd.cart_root,
     };
 
     Ok(make_event_book(
@@ -63,6 +59,7 @@ pub fn handle_create_order(
         next_seq,
         "type.examples/examples.OrderCreated",
         event.encode_to_vec(),
+        "type.examples/examples.OrderState",
         new_state.encode_to_vec(),
     ))
 }

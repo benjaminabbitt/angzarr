@@ -3,15 +3,13 @@
 //! These tests run against a deployed angzarr system (Kind cluster).
 //! Run with: cargo test -p product --test acceptance
 
+use angzarr::proto::CommandResponse;
+use angzarr_client::{
+    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
+};
 use cucumber::{given, then, when, World};
 use prost::Message;
-use tonic::transport::Channel;
 use uuid::Uuid;
-
-use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, Query, Uuid as ProtoUuid,
-};
 
 use common::proto::{
     CreateProduct, Discontinue, PriceSet, ProductCreated, ProductDiscontinued, ProductUpdated,
@@ -37,9 +35,7 @@ fn get_gateway_endpoint() -> String {
 #[derive(World)]
 #[world(init = Self::new)]
 pub struct ProductAcceptanceWorld {
-    gateway_endpoint: String,
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-    query_client: Option<EventQueryClient<Channel>>,
+    client: Option<Client>,
     current_product_id: Option<Uuid>,
     current_sequence: u32,
     last_response: Option<CommandResponse>,
@@ -49,7 +45,6 @@ pub struct ProductAcceptanceWorld {
 impl std::fmt::Debug for ProductAcceptanceWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ProductAcceptanceWorld")
-            .field("gateway_endpoint", &self.gateway_endpoint)
             .field("current_product_id", &self.current_product_id)
             .finish()
     }
@@ -58,9 +53,7 @@ impl std::fmt::Debug for ProductAcceptanceWorld {
 impl ProductAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: get_gateway_endpoint(),
-            gateway_client: None,
-            query_client: None,
+            client: None,
             current_product_id: None,
             current_sequence: 0,
             last_response: None,
@@ -68,66 +61,55 @@ impl ProductAcceptanceWorld {
         }
     }
 
-    async fn get_gateway_client(&mut self) -> &mut CommandGatewayClient<Channel> {
-        if self.gateway_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid gateway endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
+    async fn client(&mut self) -> &Client {
+        if self.client.is_none() {
+            let endpoint = get_gateway_endpoint();
+            self.client = Some(
+                Client::connect(&endpoint)
+                    .await
+                    .expect("Failed to connect to gateway"),
+            );
         }
-        self.gateway_client.as_mut().unwrap()
-    }
-
-    async fn get_query_client(&mut self) -> &mut EventQueryClient<Channel> {
-        if self.query_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid query endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to query service");
-            self.query_client = Some(EventQueryClient::new(channel));
-        }
-        self.query_client.as_mut().unwrap()
+        self.client.as_ref().unwrap()
     }
 
     fn product_root(&self) -> Uuid {
         self.current_product_id.expect("No product ID set")
     }
 
-    fn build_cover(&self) -> Cover {
-        Cover {
-            domain: "product".to_string(),
-            root: Some(ProtoUuid {
-                value: self.product_root().as_bytes().to_vec(),
-            }),
-        }
+    async fn execute_command<M: Message>(
+        &mut self,
+        command: M,
+        type_url: &str,
+    ) -> Result<CommandResponse, ClientError> {
+        let product_id = self.product_root();
+        let sequence = self.current_sequence;
+        let client = self.client().await;
+
+        client
+            .gateway
+            .command("product", product_id)
+            .with_sequence(sequence)
+            .with_command(format!("type.googleapis.com/{}", type_url), &command)
+            .execute()
+            .await
     }
 
-    fn build_command_book(&self, command: impl Message, type_url: &str) -> CommandBook {
-        let correlation_id = Uuid::new_v4().to_string();
-        CommandBook {
-            cover: Some(self.build_cover()),
-            pages: vec![CommandPage {
-                sequence: self.current_sequence,
-                command: Some(prost_types::Any {
-                    type_url: format!("type.googleapis.com/{}", type_url),
-                    value: command.encode_to_vec(),
-                }),
-            }],
-            correlation_id,
-            saga_origin: None,
+    fn handle_result(&mut self, result: Result<CommandResponse, ClientError>) {
+        match result {
+            Ok(response) => {
+                self.last_response = Some(response);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.message());
+                self.last_response = None;
+            }
         }
     }
 
     fn extract_event_type(event: &prost_types::Any) -> String {
-        event
-            .type_url
-            .rsplit('/')
-            .next()
-            .unwrap_or(&event.type_url)
-            .to_string()
+        type_name_from_url(&event.type_url).to_string()
     }
 }
 
@@ -161,17 +143,15 @@ async fn product_created_event(
         description: String::new(),
         price_cents,
     };
-    let command_book = world.build_command_book(command, "examples.CreateProduct");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world.execute_command(command, "examples.CreateProduct").await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_sequence += 1;
         }
-        Err(status) => {
-            panic!("Given step failed: ProductCreated - {}", status.message());
+        Err(e) => {
+            panic!("Given step failed: ProductCreated - {}", e.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -182,15 +162,12 @@ async fn product_discontinued_event(world: &mut ProductAcceptanceWorld) {
     let command = Discontinue {
         reason: "setup".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.Discontinue");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.Discontinue")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
-        Err(status) => panic!(
-            "Given step failed: ProductDiscontinued - {}",
-            status.message()
-        ),
+        Err(e) => panic!("Given step failed: ProductDiscontinued - {}", e.message()),
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
@@ -198,12 +175,10 @@ async fn product_discontinued_event(world: &mut ProductAcceptanceWorld) {
 #[given(expr = "a PriceSet event with price_cents {int}")]
 async fn price_set_event(world: &mut ProductAcceptanceWorld, price_cents: i32) {
     let command = SetPrice { price_cents };
-    let command_book = world.build_command_book(command, "examples.SetPrice");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world.execute_command(command, "examples.SetPrice").await;
+    match result {
         Ok(_) => world.current_sequence += 1,
-        Err(status) => panic!("Given step failed: PriceSet - {}", status.message()),
+        Err(e) => panic!("Given step failed: PriceSet - {}", e.message()),
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
@@ -215,12 +190,12 @@ async fn product_updated_event(
     description: String,
 ) {
     let command = UpdateProduct { name, description };
-    let command_book = world.build_command_book(command, "examples.UpdateProduct");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.UpdateProduct")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
-        Err(status) => panic!("Given step failed: ProductUpdated - {}", status.message()),
+        Err(e) => panic!("Given step failed: ProductUpdated - {}", e.message()),
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 }
@@ -249,19 +224,8 @@ async fn handle_create_product(
         description,
         price_cents,
     };
-    let command_book = world.build_command_book(command, "examples.CreateProduct");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world.execute_command(command, "examples.CreateProduct").await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle an UpdateProduct command with name {string} and description {string}")]
@@ -271,70 +235,33 @@ async fn handle_update_product(
     description: String,
 ) {
     let command = UpdateProduct { name, description };
-    let command_book = world.build_command_book(command, "examples.UpdateProduct");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.UpdateProduct")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a SetPrice command with price_cents {int}")]
 async fn handle_set_price(world: &mut ProductAcceptanceWorld, price_cents: i32) {
     let command = SetPrice { price_cents };
-    let command_book = world.build_command_book(command, "examples.SetPrice");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world.execute_command(command, "examples.SetPrice").await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a Discontinue command with reason {string}")]
 async fn handle_discontinue(world: &mut ProductAcceptanceWorld, reason: String) {
     let command = Discontinue { reason };
-    let command_book = world.build_command_book(command, "examples.Discontinue");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.Discontinue")
+        .await;
+    world.handle_result(result);
 }
 
 #[when("I rebuild the product state")]
 async fn rebuild_product_state(world: &mut ProductAcceptanceWorld) {
-    let query = Query {
-        domain: "product".to_string(),
-        root: Some(ProtoUuid {
-            value: world.product_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let _ = client.get_event_book(query).await;
+    let product_id = world.product_root();
+    let client = world.client().await;
+    let _ = client.query.query("product", product_id).range(0).get_event_book().await;
 }
 
 // =============================================================================
@@ -494,17 +421,16 @@ async fn event_has_reason(world: &mut ProductAcceptanceWorld, reason: String) {
 
 #[then(expr = "the product state has sku {string}")]
 async fn state_has_sku(world: &mut ProductAcceptanceWorld, sku: String) {
-    let query = Query {
-        domain: "product".to_string(),
-        root: Some(ProtoUuid {
-            value: world.product_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let product_id = world.product_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("product", product_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
             if ProductAcceptanceWorld::extract_event_type(event_any).contains("ProductCreated") {
@@ -519,17 +445,16 @@ async fn state_has_sku(world: &mut ProductAcceptanceWorld, sku: String) {
 
 #[then(expr = "the product state has name {string}")]
 async fn state_has_name(world: &mut ProductAcceptanceWorld, name: String) {
-    let query = Query {
-        domain: "product".to_string(),
-        root: Some(ProtoUuid {
-            value: world.product_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let product_id = world.product_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("product", product_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     let mut latest_name = String::new();
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
@@ -548,17 +473,16 @@ async fn state_has_name(world: &mut ProductAcceptanceWorld, name: String) {
 
 #[then(expr = "the product state has description {string}")]
 async fn state_has_description(world: &mut ProductAcceptanceWorld, description: String) {
-    let query = Query {
-        domain: "product".to_string(),
-        root: Some(ProtoUuid {
-            value: world.product_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let product_id = world.product_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("product", product_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     let mut latest_desc = String::new();
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
@@ -577,17 +501,16 @@ async fn state_has_description(world: &mut ProductAcceptanceWorld, description: 
 
 #[then(expr = "the product state has price_cents {int}")]
 async fn state_has_price_cents(world: &mut ProductAcceptanceWorld, price_cents: i32) {
-    let query = Query {
-        domain: "product".to_string(),
-        root: Some(ProtoUuid {
-            value: world.product_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let product_id = world.product_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("product", product_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     let mut latest_price = 0;
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
@@ -606,17 +529,16 @@ async fn state_has_price_cents(world: &mut ProductAcceptanceWorld, price_cents: 
 
 #[then(expr = "the product state has status {string}")]
 async fn state_has_status(world: &mut ProductAcceptanceWorld, status: String) {
-    let query = Query {
-        domain: "product".to_string(),
-        root: Some(ProtoUuid {
-            value: world.product_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let product_id = world.product_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("product", product_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
+
     let mut is_discontinued = false;
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {

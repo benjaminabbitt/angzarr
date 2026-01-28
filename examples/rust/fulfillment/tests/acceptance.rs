@@ -3,15 +3,13 @@
 //! These tests run against a deployed angzarr system (Kind cluster).
 //! Run with: cargo test -p fulfillment --test acceptance
 
+use angzarr::proto::CommandResponse;
+use angzarr_client::{
+    type_name_from_url, Client, ClientError, CommandBuilderExt, QueryBuilderExt,
+};
 use cucumber::{given, then, when, World};
 use prost::Message;
-use tonic::transport::Channel;
 use uuid::Uuid;
-
-use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, Query, Uuid as ProtoUuid,
-};
 
 use common::proto::{
     CreateShipment, Delivered, ItemsPacked, ItemsPicked, MarkPacked, MarkPicked, RecordDelivery,
@@ -37,9 +35,7 @@ fn get_gateway_endpoint() -> String {
 #[derive(World)]
 #[world(init = Self::new)]
 pub struct FulfillmentAcceptanceWorld {
-    gateway_endpoint: String,
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-    query_client: Option<EventQueryClient<Channel>>,
+    client: Option<Client>,
     current_fulfillment_id: Option<Uuid>,
     current_sequence: u32,
     last_response: Option<CommandResponse>,
@@ -49,7 +45,6 @@ pub struct FulfillmentAcceptanceWorld {
 impl std::fmt::Debug for FulfillmentAcceptanceWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FulfillmentAcceptanceWorld")
-            .field("gateway_endpoint", &self.gateway_endpoint)
             .field("current_fulfillment_id", &self.current_fulfillment_id)
             .finish()
     }
@@ -58,9 +53,7 @@ impl std::fmt::Debug for FulfillmentAcceptanceWorld {
 impl FulfillmentAcceptanceWorld {
     async fn new() -> Self {
         Self {
-            gateway_endpoint: get_gateway_endpoint(),
-            gateway_client: None,
-            query_client: None,
+            client: None,
             current_fulfillment_id: None,
             current_sequence: 0,
             last_response: None,
@@ -68,66 +61,55 @@ impl FulfillmentAcceptanceWorld {
         }
     }
 
-    async fn get_gateway_client(&mut self) -> &mut CommandGatewayClient<Channel> {
-        if self.gateway_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid gateway endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
+    async fn client(&mut self) -> &Client {
+        if self.client.is_none() {
+            let endpoint = get_gateway_endpoint();
+            self.client = Some(
+                Client::connect(&endpoint)
+                    .await
+                    .expect("Failed to connect to gateway"),
+            );
         }
-        self.gateway_client.as_mut().unwrap()
-    }
-
-    async fn get_query_client(&mut self) -> &mut EventQueryClient<Channel> {
-        if self.query_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid query endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to query service");
-            self.query_client = Some(EventQueryClient::new(channel));
-        }
-        self.query_client.as_mut().unwrap()
+        self.client.as_ref().unwrap()
     }
 
     fn fulfillment_root(&self) -> Uuid {
         self.current_fulfillment_id.expect("No fulfillment ID set")
     }
 
-    fn build_cover(&self) -> Cover {
-        Cover {
-            domain: "fulfillment".to_string(),
-            root: Some(ProtoUuid {
-                value: self.fulfillment_root().as_bytes().to_vec(),
-            }),
-        }
+    async fn execute_command<M: Message>(
+        &mut self,
+        command: M,
+        type_url: &str,
+    ) -> Result<CommandResponse, ClientError> {
+        let fulfillment_id = self.fulfillment_root();
+        let sequence = self.current_sequence;
+        let client = self.client().await;
+
+        client
+            .gateway
+            .command("fulfillment", fulfillment_id)
+            .with_sequence(sequence)
+            .with_command(format!("type.googleapis.com/{}", type_url), &command)
+            .execute()
+            .await
     }
 
-    fn build_command_book(&self, command: impl Message, type_url: &str) -> CommandBook {
-        let correlation_id = Uuid::new_v4().to_string();
-        CommandBook {
-            cover: Some(self.build_cover()),
-            pages: vec![CommandPage {
-                sequence: self.current_sequence,
-                command: Some(prost_types::Any {
-                    type_url: format!("type.googleapis.com/{}", type_url),
-                    value: command.encode_to_vec(),
-                }),
-            }],
-            correlation_id,
-            saga_origin: None,
+    fn handle_result(&mut self, result: Result<CommandResponse, ClientError>) {
+        match result {
+            Ok(response) => {
+                self.last_response = Some(response);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.message());
+                self.last_response = None;
+            }
         }
     }
 
     fn extract_event_type(event: &prost_types::Any) -> String {
-        event
-            .type_url
-            .rsplit('/')
-            .next()
-            .unwrap_or(&event.type_url)
-            .to_string()
+        type_name_from_url(&event.type_url).to_string()
     }
 }
 
@@ -151,17 +133,17 @@ async fn shipment_created_event(world: &mut FulfillmentAcceptanceWorld, order_id
     }
 
     let command = CreateShipment { order_id };
-    let command_book = world.build_command_book(command, "examples.CreateShipment");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.CreateShipment")
+        .await;
+    match result {
         Ok(response) => {
-            world.last_response = Some(response.into_inner());
+            world.last_response = Some(response);
             world.last_error = None;
             world.current_sequence += 1;
         }
-        Err(status) => {
-            panic!("Given step failed: ShipmentCreated - {}", status.message());
+        Err(e) => {
+            panic!("Given step failed: ShipmentCreated - {}", e.message());
         }
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -172,10 +154,10 @@ async fn items_picked_event(world: &mut FulfillmentAcceptanceWorld) {
     let command = MarkPicked {
         picker_id: "PICKER-TEST".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.MarkPicked");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.MarkPicked")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: ItemsPicked - {}", e.message()),
     }
@@ -187,10 +169,10 @@ async fn items_packed_event(world: &mut FulfillmentAcceptanceWorld) {
     let command = MarkPacked {
         packer_id: "PACKER-TEST".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.MarkPacked");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.MarkPacked")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: ItemsPacked - {}", e.message()),
     }
@@ -203,10 +185,8 @@ async fn shipped_event(world: &mut FulfillmentAcceptanceWorld) {
         carrier: "TestCarrier".to_string(),
         tracking_number: "TRACK-TEST".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.Ship");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world.execute_command(command, "examples.Ship").await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: Shipped - {}", e.message()),
     }
@@ -218,10 +198,10 @@ async fn delivered_event(world: &mut FulfillmentAcceptanceWorld) {
     let command = RecordDelivery {
         signature: "Test Signature".to_string(),
     };
-    let command_book = world.build_command_book(command, "examples.RecordDelivery");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    let result = world
+        .execute_command(command, "examples.RecordDelivery")
+        .await;
+    match result {
         Ok(_) => world.current_sequence += 1,
         Err(e) => panic!("Given step failed: Delivered - {}", e.message()),
     }
@@ -239,55 +219,28 @@ async fn handle_create_shipment(world: &mut FulfillmentAcceptanceWorld, order_id
     }
 
     let command = CreateShipment { order_id };
-    let command_book = world.build_command_book(command, "examples.CreateShipment");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.CreateShipment")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a MarkPicked command with picker_id {string}")]
 async fn handle_mark_picked(world: &mut FulfillmentAcceptanceWorld, picker_id: String) {
     let command = MarkPicked { picker_id };
-    let command_book = world.build_command_book(command, "examples.MarkPicked");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.MarkPicked")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a MarkPacked command with packer_id {string}")]
 async fn handle_mark_packed(world: &mut FulfillmentAcceptanceWorld, packer_id: String) {
     let command = MarkPacked { packer_id };
-    let command_book = world.build_command_book(command, "examples.MarkPacked");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.MarkPacked")
+        .await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a Ship command with carrier {string} and tracking_number {string}")]
@@ -300,52 +253,24 @@ async fn handle_ship(
         carrier,
         tracking_number,
     };
-    let command_book = world.build_command_book(command, "examples.Ship");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world.execute_command(command, "examples.Ship").await;
+    world.handle_result(result);
 }
 
 #[when(expr = "I handle a RecordDelivery command with signature {string}")]
 async fn handle_record_delivery(world: &mut FulfillmentAcceptanceWorld, signature: String) {
     let command = RecordDelivery { signature };
-    let command_book = world.build_command_book(command, "examples.RecordDelivery");
-
-    let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
-        Ok(response) => {
-            world.last_response = Some(response.into_inner());
-            world.last_error = None;
-        }
-        Err(status) => {
-            world.last_error = Some(status.message().to_string());
-            world.last_response = None;
-        }
-    }
+    let result = world
+        .execute_command(command, "examples.RecordDelivery")
+        .await;
+    world.handle_result(result);
 }
 
 #[when("I rebuild the fulfillment state")]
 async fn rebuild_fulfillment_state(world: &mut FulfillmentAcceptanceWorld) {
-    let query = Query {
-        domain: "fulfillment".to_string(),
-        root: Some(ProtoUuid {
-            value: world.fulfillment_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-
-    let client = world.get_query_client().await;
-    let _ = client.get_event_book(query).await;
+    let fulfillment_id = world.fulfillment_root();
+    let client = world.client().await;
+    let _ = client.query.query("fulfillment", fulfillment_id).range(0).get_event_book().await;
 }
 
 // =============================================================================
@@ -512,17 +437,15 @@ async fn event_has_signature(world: &mut FulfillmentAcceptanceWorld, signature: 
 
 #[then(expr = "the fulfillment state has order_id {string}")]
 async fn state_has_order_id(world: &mut FulfillmentAcceptanceWorld, order_id: String) {
-    let query = Query {
-        domain: "fulfillment".to_string(),
-        root: Some(ProtoUuid {
-            value: world.fulfillment_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let fulfillment_id = world.fulfillment_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("fulfillment", fulfillment_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     for page in &event_book.pages {
         if let Some(event_any) = &page.event {
@@ -540,17 +463,15 @@ async fn state_has_order_id(world: &mut FulfillmentAcceptanceWorld, order_id: St
 
 #[then(expr = "the fulfillment state has status {string}")]
 async fn state_has_status(world: &mut FulfillmentAcceptanceWorld, status: String) {
-    let query = Query {
-        domain: "fulfillment".to_string(),
-        root: Some(ProtoUuid {
-            value: world.fulfillment_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let fulfillment_id = world.fulfillment_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("fulfillment", fulfillment_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut current_status = String::new();
     for page in &event_book.pages {
@@ -577,17 +498,15 @@ async fn state_has_tracking_number(
     world: &mut FulfillmentAcceptanceWorld,
     tracking_number: String,
 ) {
-    let query = Query {
-        domain: "fulfillment".to_string(),
-        root: Some(ProtoUuid {
-            value: world.fulfillment_root().as_bytes().to_vec(),
-        }),
-        lower_bound: 0,
-        upper_bound: u32::MAX,
-    };
-    let client = world.get_query_client().await;
-    let response = client.get_event_book(query).await.expect("Query failed");
-    let event_book = response.into_inner();
+    let fulfillment_id = world.fulfillment_root();
+    let client = world.client().await;
+    let event_book = client
+        .query
+        .query("fulfillment", fulfillment_id)
+        .range(0)
+        .get_event_book()
+        .await
+        .expect("Query failed");
 
     let mut current_tracking = String::new();
     for page in &event_book.pages {

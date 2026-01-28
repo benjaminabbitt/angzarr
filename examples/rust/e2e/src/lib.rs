@@ -1,7 +1,11 @@
 //! E2E Test Infrastructure for Angzarr Examples
 //!
-//! This crate provides the test world and utilities for comprehensive
-//! end-to-end testing of the angzarr event sourcing system.
+//! Provides a unified test world that works with both standalone (in-process)
+//! and gateway (gRPC) backends. Backend selection via `ANGZARR_TEST_MODE` env var.
+
+pub mod adapters;
+pub mod backend;
+pub mod projectors;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,23 +15,20 @@ use cucumber::World;
 use prost::Message;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use tokio::sync::RwLock;
-use tonic::transport::Channel;
 use uuid::Uuid;
 
 use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_page::Sequence,
-    event_query_client::EventQueryClient, CommandBook, CommandPage, CommandResponse, Cover,
-    EventPage, Query, Uuid as ProtoUuid,
+    event_page::Sequence, CommandBook, CommandPage, CommandResponse, Cover, EventPage,
+    Uuid as ProtoUuid,
 };
+
+use backend::Backend;
 
 // Re-export proto types for step definitions
 pub use angzarr::proto;
 pub use common::proto as examples_proto;
 
-/// Default gateway port for standalone mode
-const DEFAULT_GATEWAY_PORT: u16 = 1350;
-
-/// Projector database paths in standalone mode
+/// Projector database paths in gateway mode
 const PROJECTOR_DB_PATH: &str = "/tmp/angzarr/projectors";
 
 // ============================================================================
@@ -36,31 +37,21 @@ const PROJECTOR_DB_PATH: &str = "/tmp/angzarr/projectors";
 
 /// Main test world struct for E2E acceptance tests.
 ///
-/// Manages gateway connections, tracks correlation IDs across scenarios,
-/// and provides projector state validation via SQLite.
-#[derive(World, Debug)]
+/// Uses a `Backend` abstraction to work with both standalone and gateway modes.
+/// Backend selection is via `ANGZARR_TEST_MODE` env var:
+/// - `standalone` (default): In-process runtime with SQLite memory storage
+/// - `gateway`: Remote gRPC gateway at `ANGZARR_ENDPOINT`
+#[derive(World)]
 #[world(init = Self::new)]
 pub struct E2EWorld {
-    /// Gateway endpoint URL
-    pub gateway_endpoint: String,
-
-    /// Lazy-loaded gateway client
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-
-    /// Lazy-loaded query client
-    query_client: Option<EventQueryClient<Channel>>,
+    /// Unified backend for command execution and event queries
+    backend: Arc<dyn Backend>,
 
     /// Map of human-readable names to aggregate root UUIDs
-    /// e.g., "ALICE" -> Uuid, "WIDGET" -> Uuid
     pub roots: HashMap<String, Uuid>,
 
     /// Map of correlation ID aliases to actual correlation IDs
-    /// e.g., "ORDER-001" -> "550e8400-e29b-41d4-a716-446655440000"
     pub correlation_ids: HashMap<String, String>,
-
-    /// Current sequence number per domain/root combination
-    /// Key: "domain:root_uuid"
-    sequences: HashMap<String, u32>,
 
     /// Last command response (for assertion in Then steps)
     pub last_response: Option<CommandResponse>,
@@ -68,15 +59,36 @@ pub struct E2EWorld {
     /// Last error (for assertion in Then steps)
     pub last_error: Option<String>,
 
+    /// Last temporal query result (for Then steps)
+    pub last_temporal_events: Option<Vec<EventPage>>,
+
+    /// Captured event timestamps per cart alias (for timestamp-based scenarios)
+    pub captured_timestamps: HashMap<String, Vec<prost_types::Timestamp>>,
+
+    /// Event count snapshot before a dry-run (for verifying no persistence)
+    pub event_count_before_dry_run: Option<usize>,
+
     /// Recorded events for async validation
-    /// Populated by subscribing to the event bus
     recorded_events: Arc<RwLock<Vec<RecordedEvent>>>,
 
-    /// SQLite pool for web projector
+    /// SQLite pool for web projector (gateway mode)
     web_db: Option<SqlitePool>,
 
-    /// SQLite pool for accounting projector
+    /// SQLite pool for accounting projector (gateway mode)
     accounting_db: Option<SqlitePool>,
+
+    /// Generic key-value context for multi-step scenarios (PM, saga).
+    pub context: HashMap<String, String>,
+}
+
+// cucumber::World derive requires Debug
+impl std::fmt::Debug for E2EWorld {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("E2EWorld")
+            .field("roots", &self.roots)
+            .field("last_error", &self.last_error)
+            .finish()
+    }
 }
 
 /// A recorded event for async validation
@@ -91,47 +103,29 @@ pub struct RecordedEvent {
 }
 
 impl E2EWorld {
-    /// Create a new E2E test world
+    /// Create a new E2E test world with the appropriate backend.
     async fn new() -> Self {
+        let result = backend::create_backend().await;
+
         Self {
-            gateway_endpoint: get_gateway_endpoint(),
-            gateway_client: None,
-            query_client: None,
+            backend: result.backend,
             roots: HashMap::new(),
             correlation_ids: HashMap::new(),
-            sequences: HashMap::new(),
             last_response: None,
             last_error: None,
+            last_temporal_events: None,
+            captured_timestamps: HashMap::new(),
+            event_count_before_dry_run: None,
             recorded_events: Arc::new(RwLock::new(Vec::new())),
-            web_db: None,
-            accounting_db: None,
+            web_db: result.web_db,
+            accounting_db: result.accounting_db,
+            context: HashMap::new(),
         }
     }
 
-    /// Get or create the gateway client
-    pub async fn gateway(&mut self) -> &mut CommandGatewayClient<Channel> {
-        if self.gateway_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid gateway endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
-        }
-        self.gateway_client.as_mut().unwrap()
-    }
-
-    /// Get or create the query client
-    pub async fn query(&mut self) -> &mut EventQueryClient<Channel> {
-        if self.query_client.is_none() {
-            let channel = Channel::from_shared(self.gateway_endpoint.clone())
-                .expect("Invalid query endpoint")
-                .connect()
-                .await
-                .expect("Failed to connect to query service");
-            self.query_client = Some(EventQueryClient::new(channel));
-        }
-        self.query_client.as_mut().unwrap()
+    /// Get the backend (for advanced usage)
+    pub fn backend(&self) -> &dyn Backend {
+        self.backend.as_ref()
     }
 
     /// Get or create a root UUID for a given alias
@@ -150,22 +144,10 @@ impl E2EWorld {
             .clone()
     }
 
-    /// Get the current sequence for a domain/root combination
-    pub fn current_sequence(&self, domain: &str, root: Uuid) -> u32 {
-        let key = format!("{}:{}", domain, root);
-        *self.sequences.get(&key).unwrap_or(&0)
-    }
-
-    /// Increment and get the next sequence for a domain/root combination
-    pub fn next_sequence(&mut self, domain: &str, root: Uuid) -> u32 {
-        let key = format!("{}:{}", domain, root);
-        let seq = self.sequences.entry(key).or_insert(0);
-        let current = *seq;
-        *seq += 1;
-        current
-    }
-
-    /// Build a command book for sending to the gateway
+    /// Build a command book for sending via the backend.
+    ///
+    /// Sequence is set to 0 as a placeholder. `execute()` queries the store
+    /// for the actual next sequence before sending.
     pub fn build_command<M: Message>(
         &mut self,
         domain: &str,
@@ -176,7 +158,6 @@ impl E2EWorld {
     ) -> CommandBook {
         let root = self.root(root_alias);
         let correlation_id = self.correlation(correlation_alias);
-        let sequence = self.next_sequence(domain, root);
 
         CommandBook {
             cover: Some(Cover {
@@ -184,15 +165,15 @@ impl E2EWorld {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id,
             }),
             pages: vec![CommandPage {
-                sequence,
+                sequence: 0,
                 command: Some(prost_types::Any {
                     type_url: format!("type.examples/{}", type_url),
                     value: command.encode_to_vec(),
                 }),
             }],
-            correlation_id,
             saga_origin: None,
         }
     }
@@ -213,6 +194,7 @@ impl E2EWorld {
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
+                correlation_id: correlation_id.to_string(),
             }),
             pages: vec![CommandPage {
                 sequence,
@@ -221,45 +203,118 @@ impl E2EWorld {
                     value: command.encode_to_vec(),
                 }),
             }],
-            correlation_id: correlation_id.to_string(),
             saga_origin: None,
         }
     }
 
-    /// Execute a command and store the result
-    pub async fn execute(&mut self, command_book: CommandBook) {
-        let client = self.gateway().await;
-        match client.execute(command_book).await {
+    /// Execute a command, auto-filling the sequence from the store.
+    ///
+    /// Queries the actual event count for the target aggregate and sets
+    /// the command's sequence accordingly. This eliminates the need for
+    /// callers to track sequences locally.
+    pub async fn execute(&mut self, mut command_book: CommandBook) {
+        // Auto-fill sequence from store
+        if let Some(cover) = &command_book.cover {
+            let domain = &cover.domain;
+            if let Some(root_proto) = &cover.root {
+                if let Ok(root) = Uuid::from_slice(&root_proto.value) {
+                    let events = self.query_events(domain, root).await;
+                    let next_seq = events.len() as u32;
+                    if let Some(page) = command_book.pages.first_mut() {
+                        page.sequence = next_seq;
+                    }
+                }
+            }
+        }
+
+        self.execute_raw(command_book).await;
+    }
+
+    /// Execute a command with the exact sequence as provided.
+    ///
+    /// Use this for resilience tests that need to send specific (possibly wrong)
+    /// sequence numbers to test validation behavior.
+    pub async fn execute_raw(&mut self, command_book: CommandBook) {
+        match self.backend.execute(command_book).await {
             Ok(response) => {
-                self.last_response = Some(response.into_inner());
+                self.last_response = Some(response);
                 self.last_error = None;
             }
-            Err(status) => {
-                self.last_error = Some(status.message().to_string());
+            Err(e) => {
+                self.last_error = Some(e.to_string());
                 self.last_response = None;
             }
         }
     }
 
     /// Query events for a domain/root
-    pub async fn query_events(&mut self, domain: &str, root: Uuid) -> Vec<EventPage> {
-        let query = Query {
-            domain: domain.to_string(),
-            root: Some(ProtoUuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            selection: None, // None means all events
-            correlation_id: String::new(),
-        };
+    pub async fn query_events(&self, domain: &str, root: Uuid) -> Vec<EventPage> {
+        self.backend
+            .query_events(domain, root)
+            .await
+            .unwrap_or_default()
+    }
 
-        let client = self.query().await;
-        match client.get_event_book(query).await {
-            Ok(response) => response.into_inner().pages,
-            Err(_) => vec![],
+    /// Query all events across domains for a given correlation ID.
+    /// Returns (domain, event_type, root) tuples.
+    pub async fn query_by_correlation(
+        &self,
+        correlation_id: &str,
+    ) -> Vec<(String, String, Uuid)> {
+        self.backend
+            .query_by_correlation(correlation_id)
+            .await
+            .unwrap_or_default()
+    }
+
+    /// Query events at a temporal point and store as last_temporal_events
+    pub async fn query_events_temporal(
+        &mut self,
+        domain: &str,
+        root: Uuid,
+        as_of_sequence: Option<u32>,
+        as_of_timestamp: Option<&str>,
+    ) {
+        match self
+            .backend
+            .query_events_temporal(domain, root, as_of_sequence, as_of_timestamp)
+            .await
+        {
+            Ok(events) => {
+                self.last_temporal_events = Some(events);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.to_string());
+                self.last_temporal_events = None;
+            }
         }
     }
 
-    /// Connect to projector SQLite databases
+    /// Dry-run a command at a temporal point
+    pub async fn dry_run(
+        &mut self,
+        command_book: CommandBook,
+        as_of_sequence: Option<u32>,
+        as_of_timestamp: Option<&str>,
+    ) {
+        match self
+            .backend
+            .dry_run(command_book, as_of_sequence, as_of_timestamp)
+            .await
+        {
+            Ok(response) => {
+                self.last_response = Some(response);
+                self.last_error = None;
+            }
+            Err(e) => {
+                self.last_error = Some(e.to_string());
+                self.last_response = None;
+            }
+        }
+    }
+
+    /// Connect to projector SQLite databases (gateway mode)
     pub async fn connect_projector_dbs(&mut self) -> Result<(), sqlx::Error> {
         let web_path = format!("{}/web.db", PROJECTOR_DB_PATH);
         let accounting_path = format!("{}/accounting.db", PROJECTOR_DB_PATH);
@@ -322,19 +377,6 @@ impl E2EWorld {
 // Helper Functions
 // ============================================================================
 
-/// Get the gateway endpoint from environment or use default
-fn get_gateway_endpoint() -> String {
-    if let Ok(endpoint) = std::env::var("ANGZARR_ENDPOINT") {
-        return endpoint;
-    }
-    let host = std::env::var("ANGZARR_HOST").unwrap_or_else(|_| "localhost".to_string());
-    let port: u16 = std::env::var("ANGZARR_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(DEFAULT_GATEWAY_PORT);
-    format!("http://{}:{}", host, port)
-}
-
 /// Extract event type from a protobuf Any type_url
 pub fn extract_event_type(event: &prost_types::Any) -> String {
     event
@@ -350,7 +392,7 @@ pub fn extract_event_type(event: &prost_types::Any) -> String {
 pub fn extract_sequence(page: &EventPage) -> Option<u32> {
     match &page.sequence {
         Some(Sequence::Num(n)) => Some(*n),
-        Some(Sequence::Force(_)) => None, // Forced events don't have a sequence
+        Some(Sequence::Force(_)) => None,
         None => Some(0),
     }
 }

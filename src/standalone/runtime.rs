@@ -5,19 +5,34 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
-use crate::bus::{ChannelEventBus, EventBus, MessagingConfig, PublishResult};
-use crate::proto::EventBook;
+use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, PublishResult};
+use crate::discovery::k8s::K8sServiceDiscovery;
+use crate::discovery::ServiceDiscovery;
+use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
+use crate::orchestration::command::local::LocalCommandExecutor;
+use crate::orchestration::destination::local::LocalDestinationFetcher;
+use crate::orchestration::process_manager::local::LocalPMContextFactory;
+use crate::orchestration::projector::local::LocalProjectorContext;
+use crate::orchestration::saga::local::LocalSagaContextFactory;
+use crate::orchestration::saga::OutputDomainValidator;
+use crate::proto::aggregate_client::AggregateClient;
+use crate::proto::{CommandBook, EventBook};
+use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
 
 use super::builder::GatewayConfig;
 use super::client::CommandClient;
 use super::router::{CommandRouter, DomainStorage};
-use super::traits::{AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler};
+use super::server::{start_aggregate_server, start_projector_server, ServerInfo};
+use super::traits::{
+    AggregateHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig,
+    ProjectorHandler, SagaConfig, SagaHandler,
+};
 
 /// Embedded runtime for angzarr.
 ///
@@ -37,12 +52,15 @@ pub struct Runtime {
     event_bus: Arc<dyn EventBus>,
     /// Command router for dispatching commands to aggregates.
     router: Arc<CommandRouter>,
-    /// Projector handlers.
+    /// Service discovery for projectors.
+    #[allow(dead_code)]
+    discovery: Arc<dyn ServiceDiscovery>,
+    /// Projector entries (needed for sync projector iteration in publish_events).
     projectors: Arc<RwLock<Vec<ProjectorEntry>>>,
-    /// Saga handlers.
-    sagas: Arc<RwLock<Vec<SagaEntry>>>,
     /// Background task handles.
     tasks: Vec<JoinHandle<()>>,
+    /// gRPC servers for cleanup on shutdown.
+    servers: Vec<ServerInfo>,
     /// Gateway configuration.
     gateway_config: GatewayConfig,
     /// Transport configuration.
@@ -54,14 +72,6 @@ struct ProjectorEntry {
     name: String,
     handler: Arc<dyn ProjectorHandler>,
     config: ProjectorConfig,
-}
-
-/// Entry for a registered saga.
-struct SagaEntry {
-    name: String,
-    handler: Arc<dyn SagaHandler>,
-    #[allow(dead_code)]
-    config: SagaConfig,
 }
 
 impl Runtime {
@@ -76,6 +86,7 @@ impl Runtime {
         aggregates: HashMap<String, Arc<dyn AggregateHandler>>,
         projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
+        process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         channel_bus: Arc<ChannelEventBus>,
         event_bus: Arc<dyn EventBus>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -106,29 +117,89 @@ impl Runtime {
             );
         }
 
+        // Initialize storage for process manager domains (PMs are aggregates)
+        for (name, (_, config)) in &process_managers {
+            if !domain_stores.contains_key(&config.domain) {
+                let storage_config = domain_storage_configs
+                    .get(&config.domain)
+                    .unwrap_or(&default_storage_config);
+
+                let (event_store, snapshot_store) =
+                    crate::storage::init_storage(storage_config).await?;
+
+                info!(
+                    pm = %name,
+                    domain = %config.domain,
+                    storage_type = ?storage_config.storage_type,
+                    "Initialized storage for process manager domain"
+                );
+
+                domain_stores.insert(
+                    config.domain.clone(),
+                    DomainStorage {
+                        event_store,
+                        snapshot_store,
+                    },
+                );
+            }
+        }
+
         info!(
             domains = aggregates.len(),
             projectors = projectors.len(),
             sagas = sagas.len(),
+            process_managers = process_managers.len(),
             "Runtime initialized"
         );
 
-        // Extract sync projectors for the router
-        let sync_projectors: Vec<(String, Arc<dyn ProjectorHandler>, ProjectorConfig)> = projectors
-            .iter()
-            .filter(|(_, (_, config))| config.synchronous)
-            .map(|(name, (handler, config))| (name.clone(), handler.clone(), config.clone()))
-            .collect();
+        // Start gRPC servers for each aggregate and create clients
+        let mut servers = Vec::new();
+        let mut business_clients = HashMap::new();
 
-        // Create command router with per-domain storage and sync projectors
+        for (domain, handler) in aggregates {
+            let server_info = start_aggregate_server(&domain, handler)
+                .await
+                .map_err(|e| format!("Failed to start aggregate server for {}: {}", domain, e))?;
+
+            let addr = format!("http://{}", server_info.addr);
+            let client = AggregateClient::connect(addr)
+                .await
+                .map_err(|e| format!("Failed to connect to aggregate {}: {}", domain, e))?;
+
+            business_clients.insert(domain, Arc::new(Mutex::new(client)));
+            servers.push(server_info);
+        }
+
+        // Create service discovery for projectors
+        let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
+
+        // Start gRPC servers for sync projectors and register with discovery
+        for (name, (handler, config)) in &projectors {
+            if config.synchronous {
+                let server_info = start_projector_server(name, handler.clone())
+                    .await
+                    .map_err(|e| format!("Failed to start projector server for {}: {}", name, e))?;
+
+                // Register with service discovery
+                // Use first domain or "default" if no domain filter
+                let domain = config.domains.first().map(|s| s.as_str()).unwrap_or("default");
+                discovery
+                    .register_projector(name, domain, &server_info.addr.ip().to_string(), server_info.addr.port())
+                    .await;
+
+                servers.push(server_info);
+            }
+        }
+
+        // Create command router with gRPC clients
         let router = Arc::new(CommandRouter::new(
-            aggregates,
+            business_clients,
             domain_stores.clone(),
+            discovery.clone(),
             event_bus.clone(),
-            sync_projectors,
         ));
 
-        // Convert projectors to entries (for async distribution)
+        // Convert projectors to entries (kept for sync projector iteration in publish_events)
         let projector_entries: Vec<ProjectorEntry> = projectors
             .into_iter()
             .map(|(name, (handler, config))| ProjectorEntry {
@@ -138,24 +209,77 @@ impl Runtime {
             })
             .collect();
 
-        // Convert sagas to entries
-        let saga_entries: Vec<SagaEntry> = sagas
-            .into_iter()
-            .map(|(name, (handler, config))| SagaEntry {
-                name,
+        // Start event distribution for sagas, PMs, and async projectors
+        let executor = Arc::new(LocalCommandExecutor::new(router.clone()));
+        let fetcher = Arc::new(LocalDestinationFetcher::new(domain_stores.clone()));
+
+        // Async projectors — each gets its own subscriber
+        for entry in &projector_entries {
+            let ctx = Arc::new(LocalProjectorContext::new(entry.handler.clone()));
+            let handler = ProjectorEventHandler::with_config(
+                ctx,
+                None,
+                entry.config.domains.clone(),
+                entry.config.synchronous,
+            );
+            let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
+            sub.subscribe(Box::new(handler)).await?;
+            sub.start_consuming().await?;
+        }
+
+        // Sagas — domain-filtered subscribers
+        for (name, (handler, config)) in sagas {
+            let factory = Arc::new(LocalSagaContextFactory::new(
+                executor.clone(),
+                fetcher.clone(),
                 handler,
-                config,
-            })
-            .collect();
+            ));
+            let validator = build_output_domain_validator(&name, &config.output_domains);
+            let handler = SagaEventHandler::from_factory_with_validator(
+                factory,
+                Some(Arc::new(validator)),
+                crate::utils::retry::RetryConfig::for_saga_commands(),
+            );
+            let sub = channel_bus.with_config(ChannelConfig::subscriber(config.input_domain));
+            sub.subscribe(Box::new(handler)).await?;
+            sub.start_consuming().await?;
+        }
+
+        // Process managers — subscriber_all with handler-level subscription filtering
+        for (_name, (handler, config)) in process_managers {
+            let subscriptions = handler.subscriptions();
+            let pm_store = match domain_stores.get(&config.domain) {
+                Some(store) => store.clone(),
+                None => continue,
+            };
+            let factory = Arc::new(LocalPMContextFactory::new(
+                handler,
+                config.domain,
+                pm_store,
+                event_bus.clone(),
+            ));
+            let pm_handler = ProcessManagerEventHandler::from_factory(
+                factory,
+                fetcher.clone(),
+                executor.clone(),
+            )
+            .with_subscriptions(subscriptions);
+            let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
+            sub.subscribe(Box::new(pm_handler)).await?;
+            sub.start_consuming().await?;
+        }
+
+        info!("Event distribution started");
 
         Ok(Self {
             domain_stores,
             channel_bus,
             event_bus,
             router,
+            discovery,
             projectors: Arc::new(RwLock::new(projector_entries)),
-            sagas: Arc::new(RwLock::new(saga_entries)),
             tasks: Vec::new(),
+            servers,
             gateway_config,
             transport_config,
         })
@@ -164,8 +288,17 @@ impl Runtime {
     /// Get a command client for programmatic command submission.
     ///
     /// The client can be cloned and shared across tasks.
+    /// Implements `GatewayClient` for unified API.
     pub fn command_client(&self) -> CommandClient {
         CommandClient::new(self.router.clone())
+    }
+
+    /// Get a query client for programmatic event retrieval.
+    ///
+    /// Routes queries by domain to the appropriate storage.
+    /// Implements `QueryClient` for unified API.
+    pub fn query_client(&self) -> super::client::StandaloneQueryClient {
+        super::client::StandaloneQueryClient::new(self.domain_stores.clone())
     }
 
     /// Get storage for a specific domain.
@@ -213,7 +346,7 @@ impl Runtime {
     /// Use this for testing or when you need to interact with the runtime
     /// programmatically after starting.
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.start_event_distribution().await?;
+        // Event distribution is now started during construction.
         info!("Runtime started");
         Ok(())
     }
@@ -222,9 +355,6 @@ impl Runtime {
     ///
     /// This starts all background tasks and waits for shutdown signal.
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Start event distribution
-        self.start_event_distribution().await?;
-
         // Start gateway if configured
         match &self.gateway_config {
             GatewayConfig::None => {
@@ -252,54 +382,111 @@ impl Runtime {
             task.abort();
         }
 
-        Ok(())
-    }
-
-    /// Start event distribution to projectors and sagas.
-    async fn start_event_distribution(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let projectors = self.projectors.clone();
-        let sagas = self.sagas.clone();
-        let router = self.router.clone();
-        let domain_stores = self.domain_stores.clone();
-
-        // Subscribe to events from the channel bus (after lossy layer)
-        let subscriber = self
-            .channel_bus
-            .with_config(crate::bus::ChannelConfig::subscriber_all());
-
-        // Create handler that distributes events
-        let handler = EventDistributionHandler {
-            projectors,
-            sagas,
-            router,
-            domain_stores,
-        };
-
-        subscriber.subscribe(Box::new(handler)).await?;
-        subscriber.start_consuming().await?;
-
-        info!("Event distribution started");
+        // Shutdown gRPC servers
+        for server in self.servers {
+            server.shutdown();
+        }
 
         Ok(())
     }
 
     /// Start the gateway server.
+    ///
+    /// 1. Starts an internal bridge server (AggregateCoordinator + EventQuery)
+    /// 2. Registers it with discovery as wildcard domain
+    /// 3. Creates GatewayService + EventQueryProxy using discovery
+    /// 4. Serves both on the configured TCP port or UDS path
     async fn start_gateway(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Gateway implementation will be added in Phase 4
-        // For now, just log that it would start
+        use std::time::Duration;
+
+        use super::server::start_bridge_server;
+        use crate::handlers::gateway::{EventQueryProxy, GatewayService};
+        use crate::proto::command_gateway_server::CommandGatewayServer;
+        use crate::proto::event_query_server::EventQueryServer;
+
+        // Start internal bridge server on random port
+        let bridge_server = start_bridge_server(
+            self.router.clone(),
+            self.domain_stores.clone(),
+        )
+        .await
+        .map_err(|e| format!("Failed to start bridge server: {e}"))?;
+
+        let bridge_addr = bridge_server.addr;
+
+        // Register bridge with discovery as wildcard domain
+        self.discovery
+            .register_aggregate("*", &bridge_addr.ip().to_string(), bridge_addr.port())
+            .await;
+
+        self.servers.push(bridge_server);
+
+        // Create gateway service (no streaming in standalone mode)
+        let gateway = GatewayService::new(
+            self.discovery.clone(),
+            None,
+            Duration::from_secs(30),
+        );
+        let event_query_proxy = EventQueryProxy::new(self.discovery.clone());
+
+        // Build the tonic router
+        let router = tonic::transport::Server::builder()
+            .add_service(CommandGatewayServer::new(gateway))
+            .add_service(EventQueryServer::new(event_query_proxy));
+
+        // Serve on configured transport
         match &self.gateway_config {
             GatewayConfig::None => {}
             GatewayConfig::Tcp(port) => {
-                info!(port = %port, "Gateway would start on TCP (not yet implemented)");
+                let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
+                let listener = tokio::net::TcpListener::bind(addr).await?;
+                let local_addr = listener.local_addr()?;
+
+                info!(addr = %local_addr, "Gateway listening on TCP");
+
+                let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+                let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+
+                tokio::spawn(async move {
+                    let server = router.serve_with_incoming_shutdown(incoming, async {
+                        let _ = shutdown_rx.await;
+                    });
+                    if let Err(e) = server.await {
+                        error!(error = %e, "Gateway server error");
+                    }
+                });
+
+                self.servers.push(super::server::ServerInfo::from_parts(
+                    local_addr,
+                    shutdown_tx,
+                ));
             }
             GatewayConfig::Uds(path) => {
-                info!(
-                    path = %path.display(),
-                    transport = ?self.transport_config.transport_type,
-                    "Gateway would start on UDS (not yet implemented)"
-                );
+                let _guard = crate::transport::prepare_uds_socket(path)?;
+                let uds = tokio::net::UnixListener::bind(path)?;
+                let stream = tokio_stream::wrappers::UnixListenerStream::new(uds);
+
+                info!(path = %path.display(), "Gateway listening on UDS");
+
+                let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
+                tokio::spawn(async move {
+                    let server = router.serve_with_incoming_shutdown(stream, async {
+                        let _ = shutdown_rx.await;
+                    });
+                    if let Err(e) = server.await {
+                        error!(error = %e, "Gateway server error");
+                    }
+                });
+
+                // UDS doesn't have a meaningful SocketAddr; use the unspecified address
+                self.servers.push(super::server::ServerInfo::from_parts(
+                    "0.0.0.0:0".parse().unwrap(),
+                    shutdown_tx,
+                ));
             }
         }
+
         Ok(())
     }
 
@@ -340,196 +527,22 @@ impl Runtime {
     }
 }
 
-/// Handler for distributing events to projectors and sagas.
-struct EventDistributionHandler {
-    projectors: Arc<RwLock<Vec<ProjectorEntry>>>,
-    sagas: Arc<RwLock<Vec<SagaEntry>>>,
-    router: Arc<CommandRouter>,
-    domain_stores: HashMap<String, DomainStorage>,
-}
-
-impl crate::bus::EventHandler for EventDistributionHandler {
-    fn handle(
-        &self,
-        book: Arc<EventBook>,
-    ) -> futures::future::BoxFuture<'static, Result<(), crate::bus::BusError>> {
-        let projectors = self.projectors.clone();
-        let sagas = self.sagas.clone();
-        let router = self.router.clone();
-        let domain_stores = self.domain_stores.clone();
-
-        Box::pin(async move {
-            let domain = book
-                .cover
-                .as_ref()
-                .map(|c| c.domain.as_str())
-                .unwrap_or("unknown");
-
-            // Process async projectors
-            let projector_list = projectors.read().await;
-            for entry in projector_list.iter() {
-                // Skip synchronous projectors (already processed)
-                if entry.config.synchronous {
-                    continue;
-                }
-
-                // Check domain filter
-                if !entry.config.domains.is_empty()
-                    && !entry.config.domains.iter().any(|d| d == domain)
-                {
-                    continue;
-                }
-
-                if let Err(e) = entry.handler.handle(&book).await {
-                    error!(
-                        projector = %entry.name,
-                        domain = %domain,
-                        error = %e,
-                        "Async projector failed"
-                    );
-                }
-            }
-
-            // Process sagas using two-phase protocol
-            let saga_list = sagas.read().await;
-            for entry in saga_list.iter() {
-                // Check input domain filter
-                if entry.config.input_domain != domain {
-                    continue;
-                }
-
-                // Phase 1: Ask saga which destination aggregates it needs
-                let destination_covers = match entry.handler.prepare(&book).await {
-                    Ok(covers) => covers,
-                    Err(e) => {
-                        error!(
-                            saga = %entry.name,
-                            domain = %domain,
-                            error = %e,
-                            "Saga prepare failed"
-                        );
-                        continue;
-                    }
-                };
-
-                // Fetch destination EventBooks from event store
-                let mut destinations = Vec::new();
-                for cover in &destination_covers {
-                    let dest_domain = &cover.domain;
-                    let root_uuid = match cover.root.as_ref() {
-                        Some(r) => match uuid::Uuid::from_slice(&r.value) {
-                            Ok(u) => u,
-                            Err(e) => {
-                                error!(
-                                    saga = %entry.name,
-                                    error = %e,
-                                    "Invalid destination root UUID"
-                                );
-                                continue;
-                            }
-                        },
-                        None => {
-                            error!(
-                                saga = %entry.name,
-                                "Destination cover missing root UUID"
-                            );
-                            continue;
-                        }
-                    };
-
-                    // Get the domain-specific event store
-                    let dest_store = match domain_stores.get(dest_domain) {
-                        Some(s) => &s.event_store,
-                        None => {
-                            error!(
-                                saga = %entry.name,
-                                destination = %dest_domain,
-                                "No storage configured for destination domain"
-                            );
-                            continue;
-                        }
-                    };
-
-                    // Fetch full event history for destination
-                    match dest_store.get(dest_domain, root_uuid).await {
-                        Ok(pages) => {
-                            let mut dest_cover = cover.clone();
-                            // Propagate correlation_id from source
-                            let source_correlation_id = book
-                                .cover
-                                .as_ref()
-                                .map(|c| c.correlation_id.clone())
-                                .unwrap_or_default();
-                            if dest_cover.correlation_id.is_empty() {
-                                dest_cover.correlation_id = source_correlation_id;
-                            }
-                            destinations.push(EventBook {
-                                cover: Some(dest_cover),
-                                pages,
-                                snapshot: None,
-                                snapshot_state: None,
-                            });
-                        }
-                        Err(e) => {
-                            error!(
-                                saga = %entry.name,
-                                destination = %dest_domain,
-                                error = %e,
-                                "Failed to fetch destination EventBook"
-                            );
-                        }
-                    }
-                }
-
-                // Phase 2: Execute with source + destinations
-                match entry.handler.execute(&book, &destinations).await {
-                    Ok(response) => {
-                        // Execute saga commands
-                        for command_book in response.commands {
-                            // Validate command targets the configured output domain
-                            let target_domain = command_book
-                                .cover
-                                .as_ref()
-                                .map(|c| c.domain.as_str())
-                                .unwrap_or("");
-
-                            if target_domain != entry.config.output_domain {
-                                error!(
-                                    saga = %entry.name,
-                                    expected = %entry.config.output_domain,
-                                    actual = %target_domain,
-                                    "Saga command targets wrong domain"
-                                );
-                                return Err(crate::bus::BusError::SagaFailed {
-                                    name: entry.name.clone(),
-                                    message: format!(
-                                        "command targets domain '{}' but configured output_domain is '{}'",
-                                        target_domain, entry.config.output_domain
-                                    ),
-                                });
-                            }
-
-                            if let Err(e) = router.execute_command(command_book).await {
-                                error!(
-                                    saga = %entry.name,
-                                    error = %e,
-                                    "Saga command execution failed"
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            saga = %entry.name,
-                            domain = %domain,
-                            error = %e,
-                            "Saga execute failed"
-                        );
-                    }
-                }
-            }
-
+/// Build output domain validator for a saga.
+fn build_output_domain_validator(
+    saga_name: &str,
+    output_domains: &[String],
+) -> impl Fn(&CommandBook) -> Result<(), String> + Send + Sync {
+    let name = saga_name.to_string();
+    let domains = output_domains.to_vec();
+    move |cmd: &CommandBook| -> Result<(), String> {
+        let target = cmd.domain();
+        if domains.iter().any(|d| d == target) {
             Ok(())
-        })
+        } else {
+            Err(format!(
+                "saga '{}': command targets domain '{}' but configured output_domains are {:?}",
+                name, target, domains
+            ))
+        }
     }
 }

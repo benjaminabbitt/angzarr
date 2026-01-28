@@ -1,11 +1,10 @@
 //! Handler for CreateCustomer command.
 
-use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
+use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateCustomer, CustomerCreated, CustomerState};
-use common::{BusinessError, Result};
+use common::{decode_command, make_event_book, now, require_exists, require_not_exists, Result};
 use prost::Message;
 
-use super::{now, CUSTOMER_STATE_TYPE_URL, EVENT_TYPE_PREFIX};
 use crate::errmsg;
 
 /// Handle the CreateCustomer command.
@@ -18,19 +17,12 @@ pub fn handle_create_customer(
     state: &CustomerState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if !state.name.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CUSTOMER_EXISTS.to_string()));
-    }
+    require_not_exists(&state.name, errmsg::CUSTOMER_EXISTS)?;
 
-    let cmd =
-        CreateCustomer::decode(command_data).map_err(|e| BusinessError::Rejected(e.to_string()))?;
+    let cmd: CreateCustomer = decode_command(command_data)?;
 
-    if cmd.name.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::NAME_REQUIRED.to_string()));
-    }
-    if cmd.email.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::EMAIL_REQUIRED.to_string()));
-    }
+    require_exists(&cmd.name, errmsg::NAME_REQUIRED)?;
+    require_exists(&cmd.email, errmsg::EMAIL_REQUIRED)?;
 
     let event = CustomerCreated {
         name: cmd.name.clone(),
@@ -46,21 +38,12 @@ pub fn handle_create_customer(
         lifetime_points: 0,
     };
 
-    Ok(EventBook {
-        cover: command_book.cover.clone(),
-        snapshot: None,
-        pages: vec![EventPage {
-            sequence: Some(Sequence::Num(next_seq)),
-            event: Some(prost_types::Any {
-                type_url: format!("{}CustomerCreated", EVENT_TYPE_PREFIX),
-                value: event.encode_to_vec(),
-            }),
-            created_at: Some(now()),
-        }],
-        correlation_id: String::new(),
-        snapshot_state: Some(prost_types::Any {
-            type_url: CUSTOMER_STATE_TYPE_URL.to_string(),
-            value: new_state.encode_to_vec(),
-        }),
-    })
+    Ok(make_event_book(
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.CustomerCreated",
+        event.encode_to_vec(),
+        "type.examples/examples.CustomerState",
+        new_state.encode_to_vec(),
+    ))
 }

@@ -13,7 +13,7 @@
 //! ## Subscribed Domains
 //! - `order` - Listens for PaymentSubmitted
 //! - `inventory` - Listens for StockReserved
-//! - `fulfillment` - Listens for ShipmentCreated
+//! - `fulfillment` - Listens for ItemsPacked
 //!
 //! ## Workflow
 //! When all three events arrive (any order), emits a Ship command to fulfillment.
@@ -21,10 +21,11 @@
 use prost::Message;
 
 use angzarr::proto::{
-    event_page::Sequence, CommandBook, CommandPage, Cover, EventBook, EventPage, Subscription,
+    event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Subscription, Uuid as ProtoUuid,
 };
-use common::proto::{PaymentSubmitted, ShipmentCreated, Ship, StockReserved};
-use common::ProcessManagerLogic;
+use common::proto::{ItemsPacked, PaymentSubmitted, Ship, StockReserved};
+use common::{build_command_book, now, root_id_as_string, ProcessManagerLogic};
+use uuid::Uuid;
 
 pub const PM_NAME: &str = "order-fulfillment";
 pub const PM_DOMAIN: &str = "order-fulfillment";
@@ -61,8 +62,8 @@ impl OrderFulfillmentProcess {
             StockReserved::decode(event.value.as_slice())
                 .ok()
                 .map(|_| PREREQ_INVENTORY)
-        } else if event.type_url.ends_with("ShipmentCreated") {
-            ShipmentCreated::decode(event.value.as_slice())
+        } else if event.type_url.ends_with("ItemsPacked") {
+            ItemsPacked::decode(event.value.as_slice())
                 .ok()
                 .map(|_| PREREQ_FULFILLMENT)
         } else {
@@ -126,7 +127,7 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
             },
             Subscription {
                 domain: FULFILLMENT_DOMAIN.to_string(),
-                event_types: vec!["ShipmentCreated".to_string()],
+                event_types: vec!["ItemsPacked".to_string()],
             },
         ]
     }
@@ -179,7 +180,13 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
         };
 
         // Build PM events
-        let pm_root = trigger.cover.as_ref().and_then(|c| c.root.clone());
+        // Derive a deterministic root from correlation_id so all trigger events
+        // (from different domains with different roots) map to the same PM aggregate.
+        let pm_root = Some(ProtoUuid {
+            value: Uuid::new_v5(&Uuid::NAMESPACE_OID, correlation_id.as_bytes())
+                .as_bytes()
+                .to_vec(),
+        });
         let next_seq = process_state
             .and_then(|s| s.pages.last())
             .and_then(|p| match &p.sequence {
@@ -204,10 +211,7 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
 
         pm_events.push(EventPage {
             sequence: Some(Sequence::Num(next_seq)),
-            created_at: Some(prost_types::Timestamp {
-                seconds: chrono::Utc::now().timestamp(),
-                nanos: chrono::Utc::now().timestamp_subsec_nanos() as i32,
-            }),
+            created_at: Some(now()),
             event: Some(prost_types::Any {
                 type_url: "type.examples/examples.PrerequisiteCompleted".to_string(),
                 value: prereq_event.encode_to_vec(),
@@ -223,10 +227,7 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
 
             pm_events.push(EventPage {
                 sequence: Some(Sequence::Num(next_seq + 1)),
-                created_at: Some(prost_types::Timestamp {
-                    seconds: chrono::Utc::now().timestamp(),
-                    nanos: chrono::Utc::now().timestamp_subsec_nanos() as i32,
-                }),
+                created_at: Some(now()),
                 event: Some(prost_types::Any {
                     type_url: "type.examples/examples.DispatchIssued".to_string(),
                     value: dispatch_event.encode_to_vec(),
@@ -234,35 +235,20 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
             });
 
             // Emit Ship command to fulfillment domain
-            let order_id = trigger
-                .cover
-                .as_ref()
-                .and_then(|c| c.root.as_ref())
-                .map(|r| String::from_utf8_lossy(&r.value).to_string())
-                .unwrap_or_default();
+            let order_id = root_id_as_string(trigger.cover.as_ref().and_then(|c| c.root.as_ref()));
 
             let ship_cmd = Ship {
                 carrier: format!("auto-{order_id}"),
                 tracking_number: String::new(),
             };
 
-            let cmd_any = prost_types::Any {
-                type_url: "type.examples/examples.Ship".to_string(),
-                value: ship_cmd.encode_to_vec(),
-            };
-
-            commands.push(CommandBook {
-                cover: Some(Cover {
-                    domain: FULFILLMENT_DOMAIN.to_string(),
-                    root: trigger.cover.as_ref().and_then(|c| c.root.clone()),
-                    correlation_id: correlation_id.to_string(),
-                }),
-                pages: vec![CommandPage {
-                    sequence: 0,
-                    command: Some(cmd_any),
-                }],
-                saga_origin: None,
-            });
+            commands.push(build_command_book(
+                FULFILLMENT_DOMAIN,
+                trigger.cover.as_ref().and_then(|c| c.root.clone()),
+                correlation_id,
+                "type.examples/examples.Ship",
+                &ship_cmd,
+            ));
         }
 
         let pm_event_book = if pm_events.is_empty() {
@@ -281,6 +267,27 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
         };
 
         (commands, pm_event_book)
+    }
+}
+
+// Standalone runtime support — delegates to ProcessManagerLogic methods.
+#[cfg(feature = "standalone")]
+impl angzarr::standalone::ProcessManagerHandler for OrderFulfillmentProcess {
+    fn subscriptions(&self) -> Vec<Subscription> {
+        ProcessManagerLogic::subscriptions(self)
+    }
+
+    fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover> {
+        ProcessManagerLogic::prepare(self, trigger, process_state)
+    }
+
+    fn handle(
+        &self,
+        trigger: &EventBook,
+        process_state: Option<&EventBook>,
+        destinations: &[EventBook],
+    ) -> (Vec<CommandBook>, Option<EventBook>) {
+        ProcessManagerLogic::handle(self, trigger, process_state, destinations)
     }
 }
 
@@ -307,14 +314,13 @@ pub struct DispatchIssued {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use angzarr::proto::Uuid as ProtoUuid;
 
     fn make_event_book(domain: &str, event: prost_types::Any, correlation_id: &str) -> EventBook {
         EventBook {
             cover: Some(Cover {
                 domain: domain.to_string(),
                 root: Some(ProtoUuid {
-                    value: b"order-123".to_vec(),
+                    value: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"order-123").as_bytes().to_vec(),
                 }),
                 correlation_id: correlation_id.to_string(),
             }),
@@ -357,11 +363,10 @@ mod tests {
 
     fn shipment_event() -> prost_types::Any {
         prost_types::Any {
-            type_url: "type.examples/examples.ShipmentCreated".to_string(),
-            value: ShipmentCreated {
-                order_id: "order-123".to_string(),
-                status: "created".to_string(),
-                created_at: None,
+            type_url: "type.examples/examples.ItemsPacked".to_string(),
+            value: ItemsPacked {
+                packer_id: "packer-1".to_string(),
+                packed_at: None,
             }
             .encode_to_vec(),
         }
@@ -439,7 +444,7 @@ mod tests {
             cover: Some(Cover {
                 domain: PM_DOMAIN.to_string(),
                 root: Some(ProtoUuid {
-                    value: b"order-123".to_vec(),
+                    value: Uuid::new_v5(&Uuid::NAMESPACE_OID, b"order-123").as_bytes().to_vec(),
                 }),
                 correlation_id: "corr-1".to_string(),
             }),
@@ -508,6 +513,7 @@ mod tests {
         assert_eq!(subs[0].domain, ORDER_DOMAIN);
         assert_eq!(subs[1].domain, INVENTORY_DOMAIN);
         assert_eq!(subs[2].domain, FULFILLMENT_DOMAIN);
+        assert_eq!(subs[2].event_types, vec!["ItemsPacked"]);
     }
 
     /// Merge two PM state EventBooks (simulating persisted state accumulation).

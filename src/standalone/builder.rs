@@ -11,7 +11,10 @@ use crate::storage::{SqliteConfig, StorageConfig, StorageType};
 use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
 use super::runtime::Runtime;
-use super::traits::{AggregateHandler, ProjectorConfig, ProjectorHandler, SagaConfig, SagaHandler};
+use super::traits::{
+    AggregateHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectorConfig,
+    ProjectorHandler, SagaConfig, SagaHandler,
+};
 
 /// Configuration for optional gateway exposure.
 #[derive(Debug, Clone, Default)]
@@ -68,6 +71,8 @@ pub struct RuntimeBuilder {
     projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
     /// Registered saga handlers by name.
     sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
+    /// Registered process manager handlers by name.
+    process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
     /// Optional custom channel bus (base pub/sub bus for subscriptions).
     custom_channel_bus: Option<Arc<ChannelEventBus>>,
     /// Optional custom event bus (wrapper around channel bus for publishing).
@@ -109,6 +114,7 @@ impl RuntimeBuilder {
             aggregates: HashMap::new(),
             projectors: HashMap::new(),
             sagas: HashMap::new(),
+            process_managers: HashMap::new(),
             custom_channel_bus: None,
             custom_event_bus: None,
         }
@@ -332,6 +338,27 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Register a process manager handler.
+    ///
+    /// Process managers are aggregates that coordinate across domains.
+    /// They subscribe to events, maintain event-sourced state in their
+    /// own domain, and produce commands for other aggregates.
+    ///
+    /// The PM domain gets its own aggregate storage automatically.
+    pub fn register_process_manager<H>(
+        mut self,
+        name: impl Into<String>,
+        handler: H,
+        config: ProcessManagerConfig,
+    ) -> Self
+    where
+        H: ProcessManagerHandler,
+    {
+        self.process_managers
+            .insert(name.into(), (Arc::new(handler), config));
+        self
+    }
+
     // ========================================================================
     // Build
     // ========================================================================
@@ -359,6 +386,7 @@ impl RuntimeBuilder {
             self.aggregates,
             self.projectors,
             self.sagas,
+            self.process_managers,
             channel_bus,
             event_bus,
         )
@@ -397,6 +425,11 @@ impl RuntimeBuilder {
     /// Get the registered saga names.
     pub fn saga_names(&self) -> Vec<&str> {
         self.sagas.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Get the registered process manager names.
+    pub fn process_manager_names(&self) -> Vec<&str> {
+        self.process_managers.keys().map(|s| s.as_str()).collect()
     }
 }
 

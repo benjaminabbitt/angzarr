@@ -21,12 +21,12 @@ use super::map_discovery_error;
 
 /// Event query proxy that routes queries to aggregate sidecars based on domain.
 pub struct EventQueryProxy {
-    discovery: Arc<ServiceDiscovery>,
+    discovery: Arc<dyn ServiceDiscovery>,
 }
 
 impl EventQueryProxy {
     /// Create a new event query proxy with service discovery for domain routing.
-    pub fn new(discovery: Arc<ServiceDiscovery>) -> Self {
+    pub fn new(discovery: Arc<dyn ServiceDiscovery>) -> Self {
         Self { discovery }
     }
 }

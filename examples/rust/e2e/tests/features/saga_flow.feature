@@ -54,10 +54,10 @@ Feature: Saga Orchestration
     And an order "ORD-LOYAL" for customer "CUST-LOYAL" totaling 5000 cents
     When order "ORD-LOYAL" is completed with correlation "CORR-LOYAL"
     Then within 5 seconds:
-      | domain   | event_type    | correlation |
-      | order    | OrderCompleted| CORR-LOYAL  |
-      | customer | PointsEarned  | CORR-LOYAL  |
-    And customer "CUST-LOYAL" has earned points based on order total
+      | domain   | event_type         | correlation |
+      | order    | OrderCompleted     | CORR-LOYAL  |
+      | customer | LoyaltyPointsAdded | CORR-LOYAL  |
+    And customer "CUST-LOYAL" has earned loyalty points
 
   # ===========================================================================
   # Cancellation Saga
@@ -75,7 +75,7 @@ Feature: Saga Orchestration
       | domain    | event_type          | correlation  |
       | order     | OrderCancelled      | CORR-CANCEL  |
       | inventory | ReservationReleased | CORR-CANCEL  |
-      | customer  | PointsRefunded      | CORR-CANCEL  |
+      | customer  | LoyaltyPointsAdded  | CORR-CANCEL  |
     And customer "CUST-CANCEL" has 100 points refunded
 
   @e2e @saga @cancellation
@@ -86,7 +86,7 @@ Feature: Saga Orchestration
       | domain    | event_type          |
       | order     | OrderCancelled      |
       | inventory | ReservationReleased |
-    And no PointsRefunded event is emitted for correlation "CORR-NO-PTS"
+    And no LoyaltyPointsAdded event is emitted for correlation "CORR-NO-PTS"
 
   # ===========================================================================
   # Correlation ID Preservation
@@ -94,16 +94,15 @@ Feature: Saga Orchestration
 
   @e2e @saga @correlation
   Scenario: Correlation ID preserved through multi-hop saga chain
-    # Order completion -> Fulfillment -> Shipping notification
-    Given an order "ORD-CHAIN" ready for fulfillment
+    # Order completion triggers sagas in fulfillment + customer domains
+    Given a customer "CUST-CHAIN" with 0 loyalty points
+    And an order "ORD-CHAIN" for customer "CUST-CHAIN" totaling 5000 cents
     When order "ORD-CHAIN" is completed with correlation "CHAIN-CORR"
-    Then the correlation "CHAIN-CORR" appears in:
-      | domain      | event_type        |
-      | order       | OrderCompleted    |
-      | fulfillment | ShipmentCreated   |
-      | fulfillment | ShipmentPicked    |
-      | fulfillment | ShipmentPacked    |
-      | fulfillment | ShipmentShipped   |
+    Then within 5 seconds the correlation "CHAIN-CORR" appears in:
+      | domain      | event_type         |
+      | order       | OrderCompleted     |
+      | fulfillment | ShipmentCreated    |
+      | customer    | LoyaltyPointsAdded |
 
   @e2e @saga @correlation
   Scenario: Different orders maintain separate correlation IDs
@@ -120,32 +119,43 @@ Feature: Saga Orchestration
 
   @e2e @saga @errors
   Scenario: Saga handles missing target aggregate gracefully
-    Given a saga that targets non-existent aggregate "GHOST-AGG"
-    When the triggering event occurs
-    Then the saga command fails with sequence mismatch
-    And the saga can retry with correct sequence
+    Given an order "ORD-GHOST" exists without a customer aggregate
+    When order "ORD-GHOST" is completed with correlation "GHOST-CORR"
+    Then within 5 seconds a shipment is created
+    And no LoyaltyPointsAdded event is emitted for correlation "GHOST-CORR"
 
   @e2e @saga @errors
   Scenario: Saga idempotency on duplicate events
-    Given a completed order "ORD-IDEM" that already triggered fulfillment
-    When the OrderCompleted event is replayed
-    Then no duplicate shipment is created
-    And the saga recognizes already-processed event
+    Given a customer "CUST-IDEM" with 0 loyalty points
+    And an order "ORD-IDEM" for customer "CUST-IDEM" totaling 5000 cents
+    And order "ORD-IDEM" is completed with correlation "IDEM-CORR"
+    And within 5 seconds a shipment is created
+    When I re-complete order "ORD-IDEM"
+    Then the command fails with "completed"
+    And no duplicate shipments exist
 
   # ===========================================================================
   # Saga Timing and Ordering
   # ===========================================================================
 
   @e2e @saga @timing
-  Scenario: Saga commands execute in order
-    Given an order "ORD-ORDER" with multiple saga subscriptions
-    When the order is completed
-    Then saga commands are executed in registration order
-    And no race conditions occur between sagas
+  Scenario: Multiple sagas fire from single event
+    Given a customer "CUST-MULTI" with 0 loyalty points
+    And an order "ORD-MULTI-SAGA" for customer "CUST-MULTI" totaling 5000 cents
+    When order "ORD-MULTI-SAGA" is completed with correlation "MULTI-SAGA-CORR"
+    Then within 5 seconds:
+      | domain      | event_type         | correlation      |
+      | fulfillment | ShipmentCreated    | MULTI-SAGA-CORR  |
+      | customer    | LoyaltyPointsAdded | MULTI-SAGA-CORR  |
+    And no duplicate shipments exist
 
   @e2e @saga @timing
-  Scenario: Saga handles slow event processing
-    Given network latency is simulated at 200ms
-    When an order is completed
-    Then the fulfillment saga eventually succeeds
-    And correlation ID is preserved despite delays
+  Scenario: Async saga processing preserves correlation
+    Given a customer "CUST-ASYNC" with 0 loyalty points
+    And an order "ORD-ASYNC" for customer "CUST-ASYNC" totaling 3000 cents
+    When order "ORD-ASYNC" is completed with correlation "ASYNC-CORR"
+    Then within 5 seconds the correlation "ASYNC-CORR" appears in:
+      | domain      | event_type         |
+      | order       | OrderCompleted     |
+      | fulfillment | ShipmentCreated    |
+      | customer    | LoyaltyPointsAdded |

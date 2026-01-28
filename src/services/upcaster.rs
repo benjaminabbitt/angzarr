@@ -90,7 +90,9 @@ impl Upcaster {
     /// Create a new upcaster client.
     ///
     /// If upcaster is disabled, creates a passthrough client that returns events unchanged.
-    pub async fn new(config: UpcasterConfig) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(
+        config: UpcasterConfig,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if !config.is_enabled() {
             info!("Upcaster disabled");
             return Ok(Self {

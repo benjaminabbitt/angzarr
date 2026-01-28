@@ -2,12 +2,11 @@
 
 use prost::Message;
 
-use angzarr::proto::{event_page::Sequence, CommandBook, EventBook, EventPage};
+use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartCleared, CartState};
-use common::{BusinessError, Result};
+use common::{make_event_book, now, require_exists, require_status_not, Result};
 
 use crate::errmsg;
-use crate::state::now;
 
 /// Handle the ClearCart command.
 ///
@@ -18,18 +17,13 @@ pub fn handle_clear_cart(
     state: &CartState,
     next_seq: u32,
 ) -> Result<EventBook> {
-    if state.customer_id.is_empty() {
-        return Err(BusinessError::Rejected(errmsg::CART_NOT_FOUND.to_string()));
-    }
-    if state.status == "checked_out" {
-        return Err(BusinessError::Rejected(
-            errmsg::CART_CHECKED_OUT.to_string(),
-        ));
-    }
+    require_exists(&state.customer_id, errmsg::CART_NOT_FOUND)?;
+    require_status_not(&state.status, "checked_out", errmsg::CART_CHECKED_OUT)?;
 
     let event = CartCleared {
         new_subtotal: 0,
         cleared_at: Some(now()),
+        items: state.items.clone(),
     };
 
     let new_state = CartState {
@@ -41,21 +35,12 @@ pub fn handle_clear_cart(
         status: state.status.clone(),
     };
 
-    Ok(EventBook {
-        cover: command_book.cover.clone(),
-        snapshot: None,
-        pages: vec![EventPage {
-            sequence: Some(Sequence::Num(next_seq)),
-            event: Some(prost_types::Any {
-                type_url: "type.examples/examples.CartCleared".to_string(),
-                value: event.encode_to_vec(),
-            }),
-            created_at: Some(now()),
-        }],
-        correlation_id: String::new(),
-        snapshot_state: Some(prost_types::Any {
-            type_url: "type.examples/examples.CartState".to_string(),
-            value: new_state.encode_to_vec(),
-        }),
-    })
+    Ok(make_event_book(
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.CartCleared",
+        event.encode_to_vec(),
+        "type.examples/examples.CartState",
+        new_state.encode_to_vec(),
+    ))
 }

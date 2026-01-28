@@ -36,12 +36,18 @@ async fn order_completed_event(
     loyalty_points_earned: i32,
     customer_id: String,
 ) {
+    // Derive aggregate root from customer_id
+    let root_uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes());
+
     let event = OrderCompleted {
         final_total_cents: loyalty_points_earned * 100,
         payment_method: "card".to_string(),
         payment_reference: "PAY-TEST".to_string(),
         loyalty_points_earned,
         completed_at: None,
+        customer_root: root_uuid.as_bytes().to_vec(),
+        cart_root: vec![],
+        items: vec![],
     };
 
     world.current_event = Some(prost_types::Any {
@@ -49,8 +55,6 @@ async fn order_completed_event(
         value: event.encode_to_vec(),
     });
 
-    // Derive aggregate root from customer_id
-    let root_uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes());
     world.current_root = Some(ProtoUuid {
         value: root_uuid.as_bytes().to_vec(),
     });
@@ -60,11 +64,15 @@ async fn order_completed_event(
 
 #[given(expr = "an OrderCreated event for customer {string}")]
 async fn order_created_event(world: &mut SagaWorld, customer_id: String) {
+    let root_uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes());
+
     let event = OrderCreated {
         customer_id: customer_id.clone(),
         items: Vec::new(),
         subtotal_cents: 0,
         created_at: None,
+        customer_root: root_uuid.as_bytes().to_vec(),
+        cart_root: vec![],
     };
 
     world.current_event = Some(prost_types::Any {
@@ -72,7 +80,6 @@ async fn order_created_event(world: &mut SagaWorld, customer_id: String) {
         value: event.encode_to_vec(),
     });
 
-    let root_uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, customer_id.as_bytes());
     world.current_root = Some(ProtoUuid {
         value: root_uuid.as_bytes().to_vec(),
     });
@@ -99,13 +106,13 @@ async fn process_saga(world: &mut SagaWorld) {
         cover: Some(Cover {
             domain: SOURCE_DOMAIN.to_string(),
             root: world.current_root.clone(),
+            correlation_id: world.current_correlation_id.clone(),
         }),
         pages: vec![EventPage {
             sequence: Some(Sequence::Num(1)),
             created_at: None,
             event: Some(event.clone()),
         }],
-        correlation_id: world.current_correlation_id.clone(),
         snapshot: None,
         snapshot_state: None,
     };
@@ -193,7 +200,12 @@ async fn command_has_correlation_id(world: &mut SagaWorld, correlation_id: Strin
         "No commands generated"
     );
     let cmd = &world.generated_commands[0];
-    assert_eq!(cmd.correlation_id, correlation_id);
+    let cmd_correlation_id = cmd
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.as_str())
+        .unwrap_or("");
+    assert_eq!(cmd_correlation_id, correlation_id);
 }
 
 #[tokio::main]

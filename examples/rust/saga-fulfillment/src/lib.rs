@@ -2,11 +2,9 @@
 //!
 //! Listens to OrderCompleted events and generates CreateShipment commands.
 
-use prost::Message;
-
-use angzarr::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid as ProtoUuid};
+use angzarr::proto::{CommandBook, EventBook, Uuid as ProtoUuid};
 use common::proto::{CreateShipment, OrderCompleted};
-use common::SagaLogic;
+use common::{build_command_book, decode_event, process_event_pages, root_id_as_string};
 
 pub const SAGA_NAME: &str = "fulfillment";
 pub const SOURCE_DOMAIN: &str = "order";
@@ -14,83 +12,38 @@ pub const TARGET_DOMAIN: &str = "fulfillment";
 
 /// Fulfillment Saga implementation.
 pub struct FulfillmentSaga;
+common::define_saga!(FulfillmentSaga);
 
 impl FulfillmentSaga {
-    pub fn new() -> Self {
-        Self
-    }
-
     fn process_event(
         &self,
         event: &prost_types::Any,
         source_root: Option<&ProtoUuid>,
         correlation_id: &str,
-    ) -> Option<CommandBook> {
-        // Only process OrderCompleted events
-        if !event.type_url.ends_with("OrderCompleted") {
-            return None;
-        }
+    ) -> Vec<CommandBook> {
+        let Some(_) = decode_event::<OrderCompleted>(event, "OrderCompleted") else {
+            return vec![];
+        };
 
-        // Verify it decodes correctly
-        OrderCompleted::decode(event.value.as_slice()).ok()?;
-
-        // Use root ID as order ID (convert bytes to UTF-8 string)
-        let order_id = source_root
-            .map(|r| String::from_utf8_lossy(&r.value).to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let order_id = root_id_as_string(source_root);
 
         let cmd = CreateShipment {
             order_id: order_id.clone(),
         };
 
-        let cmd_any = prost_types::Any {
-            type_url: "type.examples/examples.CreateShipment".to_string(),
-            value: cmd.encode_to_vec(),
-        };
-
-        Some(CommandBook {
-            cover: Some(Cover {
-                domain: TARGET_DOMAIN.to_string(),
-                root: source_root.cloned(),
-            }),
-            pages: vec![CommandPage {
-                sequence: 0,
-                command: Some(cmd_any),
-            }],
-            correlation_id: correlation_id.to_string(),
-            ..Default::default()
-        })
+        vec![build_command_book(
+            TARGET_DOMAIN,
+            source_root.cloned(),
+            correlation_id,
+            "type.examples/examples.CreateShipment",
+            &cmd,
+        )]
     }
 
     /// Handle an event book, producing commands for any relevant events.
     pub fn handle(&self, book: &EventBook) -> Vec<CommandBook> {
-        let source_root = book.cover.as_ref().and_then(|c| c.root.as_ref());
-        let correlation_id = &book.correlation_id;
-
-        book.pages
-            .iter()
-            .filter_map(|page| {
-                page.event
-                    .as_ref()
-                    .and_then(|e| self.process_event(e, source_root, correlation_id))
-            })
-            .collect()
-    }
-}
-
-impl Default for FulfillmentSaga {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SagaLogic for FulfillmentSaga {
-    /// This saga doesn't need destination state - just produces commands from source events.
-    fn prepare(&self, _source: &EventBook) -> Vec<Cover> {
-        vec![]
-    }
-
-    fn execute(&self, source: &EventBook, _destinations: &[EventBook]) -> Vec<CommandBook> {
-        self.handle(source)
+        process_event_pages(book, |event, root, corr_id| {
+            self.process_event(event, root, corr_id)
+        })
     }
 }

@@ -19,4 +19,6 @@ service AggregateCoordinator {
   rpc Handle (CommandBook) returns (CommandResponse);
   // Sync processing - waits for completion based on sync_mode
   rpc HandleSync (SyncCommandBook) returns (CommandResponse);
+  // Dry-run: execute against temporal state without persisting.
+  rpc DryRunHandle (DryRunRequest) returns (CommandResponse);
 }

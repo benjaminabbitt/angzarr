@@ -47,6 +47,9 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/e2e/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/e2e/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/process-manager-fulfillment/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/angzarr-client/rust/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-inventory-reservation/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-inventory-reservation/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/examples/rust/customer/target" />
