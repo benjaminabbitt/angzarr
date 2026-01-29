@@ -24,6 +24,7 @@
 //! 4. Projectors/sagas use `IpcEventBus::subscriber()` to read from pipes
 
 mod broker;
+pub(crate) mod checkpoint;
 mod client;
 
 pub use broker::{IpcBroker, IpcBrokerConfig, SubscriberInfo};

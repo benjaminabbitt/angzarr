@@ -21,6 +21,9 @@ pub mod storage;
 pub mod transport;
 pub mod utils;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 pub mod proto {
     tonic::include_proto!("angzarr");
 }

@@ -18,9 +18,10 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use super::broker::SubscriberInfo;
+use super::checkpoint::{Checkpoint, CheckpointConfig};
 use super::{DEFAULT_BASE_PATH, SUBSCRIBER_PIPE_PREFIX};
 use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
-use crate::proto::EventBook;
+use crate::proto::{event_page, EventBook};
 
 /// Env var name for subscriber list (set by orchestrator).
 pub const SUBSCRIBERS_ENV_VAR: &str = "ANGZARR_IPC_SUBSCRIBERS";
@@ -36,6 +37,9 @@ pub struct IpcConfig {
     pub domains: Vec<String>,
     /// Subscriber list (for publisher mode, loaded from env var).
     pub subscribers: Vec<SubscriberInfo>,
+    /// Enable checkpoint persistence for subscribers.
+    /// Tracks last-processed sequence per (domain, root) for crash recovery.
+    pub checkpoint_enabled: bool,
 }
 
 impl Default for IpcConfig {
@@ -45,6 +49,7 @@ impl Default for IpcConfig {
             subscriber_name: None,
             domains: Vec::new(),
             subscribers: Vec::new(),
+            checkpoint_enabled: false,
         }
     }
 }
@@ -58,6 +63,7 @@ impl IpcConfig {
             subscriber_name: None,
             domains: Vec::new(),
             subscribers,
+            checkpoint_enabled: false,
         }
     }
 
@@ -71,10 +77,11 @@ impl IpcConfig {
             subscriber_name: None,
             domains: Vec::new(),
             subscribers,
+            checkpoint_enabled: false,
         }
     }
 
-    /// Create subscriber config.
+    /// Create subscriber config with checkpointing enabled.
     pub fn subscriber(
         base_path: impl Into<PathBuf>,
         name: impl Into<String>,
@@ -85,6 +92,7 @@ impl IpcConfig {
             subscriber_name: Some(name.into()),
             domains,
             subscribers: Vec::new(),
+            checkpoint_enabled: true,
         }
     }
 
@@ -118,12 +126,19 @@ pub struct IpcEventBus {
     handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
     /// Consumer task handle.
     consumer_task: Arc<RwLock<Option<JoinHandle<()>>>>,
+    /// Tracks last-processed sequence for crash recovery.
+    checkpoint: Arc<Checkpoint>,
 }
 
 impl IpcEventBus {
     /// Create a new IPC event bus.
     pub fn new(config: IpcConfig) -> Self {
+        let checkpoint_config = match (&config.subscriber_name, config.checkpoint_enabled) {
+            (Some(name), true) => CheckpointConfig::for_subscriber(&config.base_path, name),
+            _ => CheckpointConfig::disabled(),
+        };
         Self {
+            checkpoint: Arc::new(Checkpoint::new(checkpoint_config)),
             config,
             handlers: Arc::new(RwLock::new(Vec::new())),
             consumer_task: Arc::new(RwLock::new(None)),
@@ -163,13 +178,21 @@ impl IpcEventBus {
             }
         }
 
+        // Load persisted checkpoint positions before starting consumer
+        if let Err(e) = self.checkpoint.load().await {
+            warn!(error = %e, "Failed to load checkpoint, starting fresh");
+        }
+
         let handlers = self.handlers.clone();
         let domains = self.config.domains.clone();
+        let checkpoint = self.checkpoint.clone();
 
         info!(pipe = %pipe_path.display(), "Starting IPC consumer");
 
         // Spawn blocking task for pipe reading (pipes are blocking I/O)
         let handle = tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+
             // Outer loop: reopen pipe after EOF (writers may close and reopen)
             loop {
                 // Open pipe for reading (blocks until writer opens)
@@ -190,7 +213,12 @@ impl IpcEventBus {
                     match file.read_exact(&mut len_buf) {
                         Ok(_) => {}
                         Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                            // Pipe closed by writers, reopen and wait for more
+                            // Pipe closed by writers — flush checkpoint before reopening
+                            rt.block_on(async {
+                                if let Err(e) = checkpoint.flush().await {
+                                    warn!(error = %e, "Failed to flush checkpoint on pipe EOF");
+                                }
+                            });
                             debug!(pipe = %pipe_path.display(), "Pipe EOF, reopening");
                             break; // Break inner loop, continue outer to reopen
                         }
@@ -236,18 +264,42 @@ impl IpcEventBus {
                         continue;
                     }
 
+                    // Extract root and max sequence for checkpoint
+                    let root_bytes = book
+                        .cover
+                        .as_ref()
+                        .and_then(|c| c.root.as_ref())
+                        .map(|r| r.value.as_slice());
+                    let max_sequence = max_page_sequence(&book);
+
+                    // Skip if already processed (checkpoint deduplication)
+                    if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
+                        let dominated = rt.block_on(async {
+                            !checkpoint.should_process(domain, root, seq).await
+                        });
+                        if dominated {
+                            debug!(domain = %domain, sequence = seq, "Skipping checkpointed event");
+                            continue;
+                        }
+                    }
+
                     debug!(domain = %domain, "Received event via pipe");
 
                     // Call handlers
                     let handlers_clone = handlers.clone();
                     let book_clone = book.clone();
-                    let rt = tokio::runtime::Handle::current();
+                    let checkpoint_clone = checkpoint.clone();
                     rt.block_on(async {
                         let handlers_guard = handlers_clone.read().await;
                         for handler in handlers_guard.iter() {
                             if let Err(e) = handler.handle(book_clone.clone()).await {
                                 error!(error = %e, "Handler failed");
                             }
+                        }
+
+                        // Update checkpoint after successful handler dispatch
+                        if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
+                            checkpoint_clone.update(domain, root, seq).await;
                         }
                     });
                 }
@@ -357,6 +409,14 @@ impl EventBus for IpcEventBus {
     }
 }
 
+/// Extract the highest sequence number from an EventBook's pages.
+fn max_page_sequence(book: &EventBook) -> Option<u32> {
+    book.pages.iter().filter_map(|p| match p.sequence {
+        Some(event_page::Sequence::Num(n)) => Some(n),
+        _ => None,
+    }).max()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,5 +449,72 @@ mod tests {
         }];
         let config = IpcConfig::publisher_with_subscribers("/tmp/test", subs);
         assert_eq!(config.subscribers.len(), 1);
+    }
+
+    #[test]
+    fn test_subscriber_config_enables_checkpoint() {
+        let config = IpcConfig::subscriber("/tmp/test", "my-saga", vec![]);
+        assert!(config.checkpoint_enabled);
+    }
+
+    #[test]
+    fn test_publisher_config_disables_checkpoint() {
+        let config = IpcConfig::publisher("/tmp/test");
+        assert!(!config.checkpoint_enabled);
+    }
+
+    #[test]
+    fn test_max_page_sequence_empty() {
+        let book = EventBook {
+            cover: None,
+            pages: vec![],
+            snapshot: None,
+            snapshot_state: None,
+        };
+        assert_eq!(max_page_sequence(&book), None);
+    }
+
+    #[test]
+    fn test_max_page_sequence_single_page() {
+        use crate::proto::EventPage;
+        let book = EventBook {
+            cover: None,
+            pages: vec![EventPage {
+                sequence: Some(event_page::Sequence::Num(5)),
+                event: None,
+                created_at: None,
+            }],
+            snapshot: None,
+            snapshot_state: None,
+        };
+        assert_eq!(max_page_sequence(&book), Some(5));
+    }
+
+    #[test]
+    fn test_max_page_sequence_multiple_pages() {
+        use crate::proto::EventPage;
+        let book = EventBook {
+            cover: None,
+            pages: vec![
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(2)),
+                    event: None,
+                    created_at: None,
+                },
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(7)),
+                    event: None,
+                    created_at: None,
+                },
+                EventPage {
+                    sequence: Some(event_page::Sequence::Num(4)),
+                    event: None,
+                    created_at: None,
+                },
+            ],
+            snapshot: None,
+            snapshot_state: None,
+        };
+        assert_eq!(max_page_sequence(&book), Some(7));
     }
 }
