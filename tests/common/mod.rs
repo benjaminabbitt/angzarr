@@ -12,8 +12,8 @@ pub use angzarr::proto::{
     CommandBook, CommandPage, CommandResponse, Cover, EventBook, Query, Uuid as ProtoUuid,
 };
 
-/// Default Angzarr gateway port - exposed via NodePort 31350 -> hostPort 1350
-pub const DEFAULT_ANGZARR_PORT: u16 = 1350;
+/// Default Angzarr gateway port - exposed via NodePort 30084 -> hostPort 9084
+pub const DEFAULT_ANGZARR_PORT: u16 = 9084;
 
 /// Builds the gateway endpoint URL from environment or default.
 /// Uses ANGZARR_PORT as the standard env var.
@@ -87,6 +87,7 @@ pub fn build_command_book_at_sequence(
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id,
+            edition: None,
         }),
         pages: vec![CommandPage {
             sequence,
@@ -118,6 +119,7 @@ pub fn build_query(domain: &str, root: Uuid) -> Query {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     }

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use backon::Retryable;
 use tracing::{error, info, warn};
 
 use crate::bus::{init_event_bus, EventBusMode, EventHandler, MessagingConfig};
@@ -19,7 +20,8 @@ use crate::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::event_query_client::EventQueryClient;
 use crate::transport::connect_to_address;
-use crate::utils::bootstrap::{connect_with_retry, init_tracing, parse_static_endpoints};
+use crate::utils::bootstrap::{init_tracing, parse_static_endpoints};
+use crate::utils::retry::connection_backoff;
 
 /// Result of bootstrapping a sidecar binary.
 ///
@@ -105,23 +107,33 @@ pub async fn connect_endpoints(
 
     for (domain, address) in endpoints {
         let addr = address.clone();
-        let cmd_client = connect_with_retry(&format!("aggregate-{}", domain), &address, || {
+        let svc = format!("aggregate-{}", domain);
+        let cmd_client = (|| {
             let a = addr.clone();
             async move {
                 let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
                 Ok::<_, String>(AggregateCoordinatorClient::new(channel))
             }
         })
+        .retry(connection_backoff())
+        .notify(|err: &String, dur: Duration| {
+            warn!(service = %svc, error = %err, delay = ?dur, "Connection failed, retrying");
+        })
         .await?;
         command_clients.insert(domain.clone(), cmd_client);
 
         let addr = address.clone();
-        let query_client = connect_with_retry(&format!("event-query-{}", domain), &address, || {
+        let svc = format!("event-query-{}", domain);
+        let query_client = (|| {
             let a = addr.clone();
             async move {
                 let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
                 Ok::<_, String>(EventQueryClient::new(channel))
             }
+        })
+        .retry(connection_backoff())
+        .notify(|err: &String, dur: Duration| {
+            warn!(service = %svc, error = %err, delay = ?dur, "Connection failed, retrying");
         })
         .await?;
         query_clients.insert(domain.clone(), query_client);

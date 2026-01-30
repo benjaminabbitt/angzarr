@@ -14,6 +14,7 @@ members = [
     "examples/rust/saga-cancellation",
     "examples/rust/saga-inventory-reservation",
     "examples/rust/process-manager-fulfillment",
+    "examples/rust/process-manager-order-status",
     "examples/rust/projectors/accounting",
     "examples/rust/projectors/logging",
     "examples/rust/projectors/web",
@@ -82,9 +83,14 @@ channel = []  # In-memory event bus, no external deps
 
 # Storage backends
 mongodb = ["dep:mongodb"]
-postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/postgres", "sea-query-binder/sqlx-postgres"]
-sqlite = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/sqlite", "sea-query-binder/sqlx-sqlite"]
+postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/postgres", "sqlx/migrate", "sqlx/uuid", "sea-query-binder/sqlx-postgres"]
+sqlite = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/sqlite", "sqlx/migrate", "sea-query-binder/sqlx-sqlite"]
 redis = ["dep:redis"]
+bigtable = []    # placeholder, no deps yet
+dynamo = []      # placeholder, no deps yet
+
+# OpenTelemetry observability
+otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-opentelemetry"]
 
 # Testing utilities
 lossy = ["dep:rand"]
@@ -93,7 +99,7 @@ lossy = ["dep:rand"]
 standalone = ["sqlite", "channel"]
 
 # All features for development
-full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "lossy"]
+full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "bigtable", "dynamo", "lossy", "otel"]
 
 [dependencies]
 # gRPC
@@ -103,6 +109,10 @@ prost = "0.13"
 prost-types = "0.13"
 tokio-stream = { version = "0.1", features = ["net"] }
 tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+http = "1"
+http-body = "1"
+bytes = "1"
 hyper-util = { version = "0.1", features = ["tokio"] }
 
 # Async runtime
@@ -112,6 +122,9 @@ tokio = { version = "1", features = ["full"] }
 sea-query = { version = "0.32", optional = true }
 sea-query-binder = { version = "0.7", optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio"], optional = true }
+
+# Retry with backoff
+backon = "1"
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
@@ -129,8 +142,12 @@ prost-reflect = { version = "0.14", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Metrics (OpenTelemetry-compatible via metrics-exporter-otlp)
-metrics = "0.24"
+# OpenTelemetry (optional, feature-gated)
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["tonic", "metrics", "logs"], optional = true }
+opentelemetry-appender-tracing = { version = "0.27", optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
 
 # Configuration
 config = "0.14"
@@ -205,6 +222,7 @@ path = "src/bin/angzarr_log.rs"
 [[bin]]
 name = "angzarr-standalone"
 path = "src/bin/angzarr_standalone.rs"
+required-features = ["standalone"]
 
 [[bin]]
 name = "angzarr-event-projector"

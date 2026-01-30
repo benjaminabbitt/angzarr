@@ -60,6 +60,26 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+OTel environment variables for angzarr sidecar containers.
+Usage: {{- include "angzarr.otel-env" (dict "root" $ "service" "aggregate" "domain" .domain) | nindent 12 }}
+*/}}
+{{- define "angzarr.otel-env" -}}
+{{- if .root.Values.observability.enabled }}
+# OpenTelemetry configuration
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .root.Values.observability.otlp.endpoint | quote }}
+- name: OTEL_SERVICE_NAME
+  {{- if .domain }}
+  value: "angzarr-{{ .service }}-{{ .domain }}"
+  {{- else }}
+  value: "angzarr-{{ .service }}"
+  {{- end }}
+- name: OTEL_RESOURCE_ATTRIBUTES
+  value: {{ printf "deployment.environment=%s,service.namespace=angzarr,service.version=%s" .root.Values.observability.environment (.root.Chart.AppVersion | default "0.1.0") | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 Container security context with optional debug capabilities
 runAsNonRoot is hardcoded - never allow running as root
 */}}

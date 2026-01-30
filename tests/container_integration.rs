@@ -125,6 +125,7 @@ impl ContainerWorld {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id,
+                edition: None,
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -232,6 +233,7 @@ async fn when_query_customer_events(world: &mut ContainerWorld) {
                 value: customer_id.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -296,6 +298,7 @@ async fn then_aggregate_has_events(world: &mut ContainerWorld, domain: &str, exp
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };

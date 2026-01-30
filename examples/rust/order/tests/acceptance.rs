@@ -16,7 +16,7 @@ use common::proto::{
 };
 
 /// Default Angzarr port - standard across all languages/containers
-const DEFAULT_ANGZARR_PORT: u16 = 1350;
+const DEFAULT_ANGZARR_PORT: u16 = 9084;
 
 /// Get gateway endpoint from environment or default
 fn get_gateway_endpoint() -> String {
@@ -166,11 +166,10 @@ async fn order_created_event(world: &mut OrderAcceptanceWorld, customer_id: Stri
         .as_bytes()
         .to_vec();
     let cart_root = Uuid::new_v4().as_bytes().to_vec();
-    let product_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"SETUP-ITEM")
-        .as_bytes()
-        .to_vec();
 
-    // Create a simple order with one item that totals to the subtotal
+    // Create a simple order with one item that totals to the subtotal.
+    // product_root intentionally empty — these order-only tests don't set up
+    // inventory aggregates, so the cancellation saga will skip inventory commands.
     let command = CreateOrder {
         customer_id,
         items: vec![LineItem {
@@ -178,7 +177,7 @@ async fn order_created_event(world: &mut OrderAcceptanceWorld, customer_id: Stri
             name: "Setup Item".to_string(),
             quantity: 1,
             unit_price_cents: subtotal,
-            product_root,
+            ..Default::default()
         }],
         customer_root,
         cart_root,

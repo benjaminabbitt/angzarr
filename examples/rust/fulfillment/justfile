@@ -1,43 +1,5 @@
-# Fulfillment Business Logic - Rust gRPC Server
+PKG := "fulfillment"
+BIN_PKG := PKG
+BIN := PKG + "-server"
 
-set shell := ["bash", "-c"]
-
-TOP := `git rev-parse --show-toplevel`
-
-default:
-    @just --list
-
-build:
-    cargo build -p fulfillment --bin fulfillment-server
-
-build-release:
-    cargo build -p fulfillment --bin fulfillment-server --release
-
-run: build
-    cargo run -p fulfillment --bin fulfillment-server
-
-run-port port:
-    PORT={{port}} cargo run -p fulfillment --bin fulfillment-server
-
-copy-features:
-    rm -rf tests/features
-    cp -r {{TOP}}/examples/features tests/
-
-unit:
-    cargo test -p fulfillment --lib
-
-acceptance: copy-features
-    cargo test -p fulfillment --test acceptance
-
-test: unit acceptance
-
-test-unit: unit
-
-clean:
-    cargo clean -p fulfillment
-
-check:
-    cargo check -p fulfillment
-
-lint:
-    cargo clippy -p fulfillment -- -D warnings
+import "../service.justfile"

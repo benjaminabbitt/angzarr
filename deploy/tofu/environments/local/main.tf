@@ -177,6 +177,32 @@ module "redis" {
   metrics_enabled = false
 }
 
+# Observability - Grafana + Tempo + Prometheus + Loki + OTel Collector
+module "observability" {
+  count  = var.enable_observability ? 1 : 0
+  source = "../../modules/observability"
+
+  namespace      = "monitoring"
+  release_prefix = "angzarr"
+
+  grafana_admin_password = "angzarr"
+  grafana_service_type   = "NodePort"
+  grafana_node_port      = 30300
+
+  otel_collector_node_port = 30417
+
+  resources = {
+    requests = {
+      memory = "128Mi"
+      cpu    = "50m"
+    }
+    limits = {
+      memory = "512Mi"
+      cpu    = "500m"
+    }
+  }
+}
+
 # Service Mesh - Linkerd for local (lightweight, optional)
 module "mesh" {
   count  = var.enable_mesh ? 1 : 0

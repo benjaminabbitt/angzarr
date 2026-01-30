@@ -13,6 +13,7 @@ use crate::proto::process_manager_client::ProcessManagerClient;
 use crate::proto::{
     CommandBook, Cover, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest,
 };
+use crate::proto_ext::{correlated_request, CoverExt};
 
 use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
 
@@ -45,13 +46,17 @@ impl ProcessManagerContext for GrpcPMContext {
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
+        let correlation_id = trigger.correlation_id();
         let request = ProcessManagerPrepareRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
         };
 
         let mut client = self.client.lock().await;
-        let response = client.prepare(request).await?.into_inner();
+        let response = client
+            .prepare(correlated_request(request, correlation_id))
+            .await?
+            .into_inner();
         Ok(response.destinations)
     }
 
@@ -61,6 +66,7 @@ impl ProcessManagerContext for GrpcPMContext {
         pm_state: Option<&EventBook>,
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let correlation_id = trigger.correlation_id();
         let request = ProcessManagerHandleRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
@@ -68,7 +74,10 @@ impl ProcessManagerContext for GrpcPMContext {
         };
 
         let mut client = self.client.lock().await;
-        let response = client.handle(request).await?.into_inner();
+        let response = client
+            .handle(correlated_request(request, correlation_id))
+            .await?
+            .into_inner();
 
         Ok(PmHandleResponse {
             commands: response.commands,
@@ -86,6 +95,7 @@ impl ProcessManagerContext for GrpcPMContext {
                 domain: self.pm_domain.clone(),
                 root: process_events.cover.as_ref().and_then(|c| c.root.clone()),
                 correlation_id: correlation_id.to_string(),
+                edition: None,
             }),
             pages: vec![],
             saga_origin: None,
@@ -102,6 +112,7 @@ impl ProcessManagerContext for GrpcPMContext {
 pub struct GrpcPMContextFactory {
     client: Arc<Mutex<ProcessManagerClient<tonic::transport::Channel>>>,
     command_executor: Arc<dyn CommandExecutor>,
+    name: String,
     pm_domain: String,
 }
 
@@ -110,11 +121,13 @@ impl GrpcPMContextFactory {
     pub fn new(
         client: Arc<Mutex<ProcessManagerClient<tonic::transport::Channel>>>,
         command_executor: Arc<dyn CommandExecutor>,
+        name: String,
         pm_domain: String,
     ) -> Self {
         Self {
             client,
             command_executor,
+            name,
             pm_domain,
         }
     }
@@ -131,5 +144,9 @@ impl PMContextFactory for GrpcPMContextFactory {
 
     fn pm_domain(&self) -> &str {
         &self.pm_domain
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }

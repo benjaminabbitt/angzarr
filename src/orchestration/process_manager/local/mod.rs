@@ -2,6 +2,8 @@
 //!
 //! Delegates prepare/handle to in-process `ProcessManagerHandler`.
 //! Persists PM events directly to the event store and publishes to the bus.
+//! PM events bypass the command pipeline, so this module passes the default
+//! edition directly to storage.
 
 use std::sync::Arc;
 
@@ -9,6 +11,7 @@ use async_trait::async_trait;
 use tracing::error;
 
 use crate::bus::EventBus;
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::{CommandResponse, Cover, EventBook};
 use crate::standalone::DomainStorage;
@@ -76,12 +79,14 @@ impl ProcessManagerContext for LocalPMContext {
             .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
             .unwrap_or_else(uuid::Uuid::nil);
 
+        // PM events bypass the command pipeline, so we pass the default edition directly.
         // Persist to event store
         if let Err(e) = self
             .pm_store
             .event_store
             .add(
                 &self.pm_domain,
+                DEFAULT_EDITION,
                 pm_root,
                 process_events.pages.clone(),
                 correlation_id,
@@ -95,7 +100,7 @@ impl ProcessManagerContext for LocalPMContext {
         match self
             .pm_store
             .event_store
-            .get(&self.pm_domain, pm_root)
+            .get(&self.pm_domain, DEFAULT_EDITION, pm_root)
             .await
         {
             Ok(pages) => {
@@ -132,6 +137,7 @@ impl ProcessManagerContext for LocalPMContext {
 /// Each call to `create()` produces a context for one PM invocation.
 pub struct LocalPMContextFactory {
     handler: Arc<dyn ProcessManagerHandler>,
+    name: String,
     pm_domain: String,
     pm_store: DomainStorage,
     event_bus: Arc<dyn EventBus>,
@@ -141,12 +147,14 @@ impl LocalPMContextFactory {
     /// Create a new factory with PM handler and domain dependencies.
     pub fn new(
         handler: Arc<dyn ProcessManagerHandler>,
+        name: String,
         pm_domain: String,
         pm_store: DomainStorage,
         event_bus: Arc<dyn EventBus>,
     ) -> Self {
         Self {
             handler,
+            name,
             pm_domain,
             pm_store,
             event_bus,
@@ -166,5 +174,9 @@ impl PMContextFactory for LocalPMContextFactory {
 
     fn pm_domain(&self) -> &str {
         &self.pm_domain
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }

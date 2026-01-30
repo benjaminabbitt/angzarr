@@ -32,15 +32,11 @@ impl LoyaltyEarnSaga {
 
         let mut commands = Vec::new();
 
-        // Generate AddLoyaltyPoints command if points > 0
-        if completed.loyalty_points_earned > 0 {
-            let customer_root = if completed.customer_root.is_empty() {
-                None
-            } else {
-                Some(ProtoUuid {
-                    value: completed.customer_root.clone(),
-                })
-            };
+        // Generate AddLoyaltyPoints command if points > 0 and customer root is known
+        if completed.loyalty_points_earned > 0 && !completed.customer_root.is_empty() {
+            let customer_root = Some(ProtoUuid {
+                value: completed.customer_root.clone(),
+            });
 
             let points_cmd = AddLoyaltyPoints {
                 points: completed.loyalty_points_earned,
@@ -69,13 +65,13 @@ impl LoyaltyEarnSaga {
         };
 
         for item in &completed.items {
-            let product_root = if item.product_root.is_empty() {
-                None
-            } else {
-                Some(ProtoUuid {
-                    value: item.product_root.clone(),
-                })
-            };
+            if item.product_root.is_empty() {
+                continue;
+            }
+
+            let product_root = Some(ProtoUuid {
+                value: item.product_root.clone(),
+            });
 
             let commit_cmd = CommitReservation {
                 order_id: order_id.clone(),
@@ -147,6 +143,7 @@ mod tests {
                 domain: SOURCE_DOMAIN.to_string(),
                 root: Some(order_root),
                 correlation_id: "CORR-001".to_string(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -233,6 +230,7 @@ mod tests {
                 domain: SOURCE_DOMAIN.to_string(),
                 root: None,
                 correlation_id: "CORR-002".to_string(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -274,6 +272,7 @@ mod tests {
                 domain: SOURCE_DOMAIN.to_string(),
                 root: None,
                 correlation_id: "CORR-003".to_string(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {

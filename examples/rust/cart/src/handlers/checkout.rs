@@ -1,12 +1,11 @@
 //! Checkout command handler.
 
-use prost::Message;
-
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartCheckedOut, CartState};
-use common::{make_event_book, now, require_exists, require_not_empty, require_status_not, Result};
+use common::{now, require_exists, require_not_empty, require_status_not, Result};
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the Checkout command.
 ///
@@ -29,21 +28,11 @@ pub fn handle_checkout(
         items: state.items.clone(),
     };
 
-    let new_state = CartState {
-        customer_id: state.customer_id.clone(),
-        items: state.items.clone(),
-        subtotal_cents: state.subtotal_cents,
-        coupon_code: state.coupon_code.clone(),
-        discount_cents: state.discount_cents,
-        status: "checked_out".to_string(),
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.CartCheckedOut",
-        event.encode_to_vec(),
-        "type.examples/examples.CartState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

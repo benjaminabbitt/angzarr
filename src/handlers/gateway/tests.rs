@@ -227,6 +227,7 @@ fn make_test_command(domain: &str) -> CommandBook {
                 value: uuid::Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         saga_origin: None,

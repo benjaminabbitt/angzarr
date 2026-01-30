@@ -1,4 +1,4 @@
-//! In-process clients for embedded runtime.
+//! In-process clients for standalone runtime.
 //!
 //! `CommandClient` provides the gateway client (command execution).
 //! `StandaloneQueryClient` provides the query client (event retrieval).
@@ -18,7 +18,10 @@ use crate::proto::{
 };
 use crate::repository::EventBookRepository;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
+
 use super::router::{CommandRouter, DomainStorage};
+use super::speculative::{DomainStateSpec, PmSpeculativeResult, SpeculativeExecutor};
 
 /// In-process command client.
 ///
@@ -65,9 +68,13 @@ impl CommandClient {
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
-    /// Dry-run a pre-built command against temporal state.
+    /// Speculatively execute a command against temporal state (dry-run).
     ///
-    /// Executes the command without persisting or publishing. Returns speculative events.
+    /// Runs the aggregate handler at a historical point in time and returns the
+    /// events that *would* be produced. This is purely speculative: no events are
+    /// persisted to the store, no events are published to the bus, and no sagas
+    /// or projectors are triggered. Use this to validate business rules or
+    /// explore "what-if" scenarios without side effects.
     pub async fn dry_run(
         &self,
         command: CommandBook,
@@ -127,7 +134,7 @@ impl client_traits::GatewayClient for CommandClient {
     }
 }
 
-/// In-process query client for embedded runtime.
+/// In-process query client for standalone runtime.
 ///
 /// Routes queries by domain to the appropriate storage.
 #[derive(Clone)]
@@ -145,14 +152,14 @@ impl StandaloneQueryClient {
 #[async_trait]
 impl client_traits::QueryClient for StandaloneQueryClient {
     async fn get_event_book(&self, query: Query) -> client_traits::Result<EventBook> {
-        let domain = query
+        let bare_domain = query
             .cover
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("");
 
-        let store = self.domain_stores.get(domain).ok_or_else(|| {
-            ClientError::from(Status::not_found(format!("Unknown domain: {domain}")))
+        let store = self.domain_stores.get(bare_domain).ok_or_else(|| {
+            ClientError::from(Status::not_found(format!("Unknown domain: {bare_domain}")))
         })?;
 
         let repo =
@@ -169,7 +176,7 @@ impl client_traits::QueryClient for StandaloneQueryClient {
             .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
 
         let book = repo
-            .get(domain, root_uuid)
+            .get(bare_domain, DEFAULT_EDITION, root_uuid)
             .await
             .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
 
@@ -177,18 +184,16 @@ impl client_traits::QueryClient for StandaloneQueryClient {
     }
 
     async fn get_events(&self, query: Query) -> client_traits::Result<Vec<EventBook>> {
-        let domain = query
+        let bare_domain = query
             .cover
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("");
 
-        let store = self.domain_stores.get(domain).ok_or_else(|| {
-            ClientError::from(Status::not_found(format!("Unknown domain: {domain}")))
+        let store = self.domain_stores.get(bare_domain).ok_or_else(|| {
+            ClientError::from(Status::not_found(format!("Unknown domain: {bare_domain}")))
         })?;
 
-        // For get_events, we currently return a single EventBook as a vec
-        // Full streaming support would require iterating roots
         let repo =
             EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
 
@@ -203,11 +208,138 @@ impl client_traits::QueryClient for StandaloneQueryClient {
             .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
 
         let book = repo
-            .get(domain, root_uuid)
+            .get(bare_domain, DEFAULT_EDITION, root_uuid)
             .await
             .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
 
         Ok(vec![book])
+    }
+}
+
+/// Client for speculative (dry-run) execution of projectors, sagas, and PMs.
+///
+/// Wraps a `SpeculativeExecutor` with the same handler instances registered
+/// in the runtime. All methods invoke real business logic without side effects.
+#[derive(Clone)]
+pub struct SpeculativeClient {
+    executor: Arc<SpeculativeExecutor>,
+}
+
+impl SpeculativeClient {
+    /// Create from a speculative executor.
+    pub(crate) fn new(executor: Arc<SpeculativeExecutor>) -> Self {
+        Self { executor }
+    }
+
+    /// Speculatively run a projector against events.
+    ///
+    /// Returns the `Projection` computed by the handler without persisting
+    /// to any read model.
+    pub async fn projector(
+        &self,
+        name: &str,
+        events: &EventBook,
+    ) -> Result<crate::proto::Projection, Status> {
+        self.executor.speculate_projector(name, events).await
+    }
+
+    /// Speculatively run a saga against source events.
+    ///
+    /// Returns the commands the saga would produce without executing them.
+    pub async fn saga(
+        &self,
+        name: &str,
+        source: &EventBook,
+        domain_specs: &HashMap<String, DomainStateSpec>,
+    ) -> Result<Vec<CommandBook>, Status> {
+        self.executor
+            .speculate_saga(name, source, domain_specs)
+            .await
+    }
+
+    /// Speculatively run a process manager against a trigger event.
+    ///
+    /// Returns commands + PM events without persisting PM events or
+    /// executing commands.
+    pub async fn process_manager(
+        &self,
+        name: &str,
+        trigger: &EventBook,
+        domain_specs: &HashMap<String, DomainStateSpec>,
+    ) -> Result<PmSpeculativeResult, Status> {
+        self.executor
+            .speculate_pm(name, trigger, domain_specs)
+            .await
+    }
+}
+
+/// Client for edition lifecycle management (create, delete, list, execute).
+///
+/// Wraps an `EditionManager` to provide a convenient API for managing
+/// diverged event timelines.
+#[derive(Clone)]
+pub struct EditionClient {
+    manager: Arc<super::edition::EditionManager>,
+}
+
+impl EditionClient {
+    /// Create from an edition manager.
+    pub(crate) fn new(manager: Arc<super::edition::EditionManager>) -> Self {
+        Self { manager }
+    }
+
+    /// Create a new edition at the given divergence point.
+    pub async fn create(
+        &self,
+        name: impl Into<String>,
+        divergence: super::edition::DivergencePoint,
+        description: impl Into<String>,
+    ) -> Result<super::edition::EditionMetadata, Status> {
+        self.manager
+            .create_edition(name.into(), divergence, description.into())
+            .await
+    }
+
+    /// Delete an edition by name.
+    pub async fn delete(&self, name: &str) -> Result<(), Status> {
+        self.manager.delete_edition(name).await
+    }
+
+    /// List all active editions.
+    pub async fn list(&self) -> Vec<super::edition::EditionMetadata> {
+        self.manager.list_editions().await
+    }
+
+    /// Execute a command on a specific edition.
+    pub async fn execute(
+        &self,
+        edition_name: &str,
+        command: CommandBook,
+    ) -> Result<CommandResponse, Status> {
+        self.manager.execute(edition_name, command).await
+    }
+
+    /// Query events for a domain/root through an edition's composite store.
+    ///
+    /// Returns events from the main timeline up to divergence plus
+    /// edition-specific events after divergence.
+    pub async fn query_events(
+        &self,
+        edition_name: &str,
+        domain: &str,
+        root: Uuid,
+    ) -> Result<Vec<crate::proto::EventPage>, Status> {
+        let stores = self.manager.get_stores(edition_name).await.ok_or_else(|| {
+            Status::not_found(format!("Edition not found: {edition_name}"))
+        })?;
+        let storage = stores.get(domain).ok_or_else(|| {
+            Status::not_found(format!("No storage for domain: {domain}"))
+        })?;
+        storage
+            .event_store
+            .get(edition_name, domain, root)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))
     }
 }
 
@@ -220,6 +352,7 @@ pub struct CommandBuilder {
     command_data: Option<Vec<u8>>,
     correlation_id: Option<String>,
     sequence: Option<u32>,
+    edition: Option<String>,
     dry_run_sequence: Option<u32>,
     dry_run_timestamp: Option<String>,
 }
@@ -234,6 +367,7 @@ impl CommandBuilder {
             command_data: None,
             correlation_id: None,
             sequence: None,
+            edition: None,
             dry_run_sequence: None,
             dry_run_timestamp: None,
         }
@@ -271,13 +405,27 @@ impl CommandBuilder {
         self
     }
 
-    /// Set temporal point by sequence for dry-run execution.
+    /// Target an edition (diverged timeline) instead of the main timeline.
+    ///
+    /// Commands with an edition set are routed to the edition's command
+    /// router, which uses edition-aware storage and bus subscriptions.
+    pub fn with_edition(mut self, edition: impl Into<String>) -> Self {
+        self.edition = Some(edition.into());
+        self
+    }
+
+    /// Set temporal point by sequence for speculative (dry-run) execution.
+    ///
+    /// The aggregate state will be reconstructed from events `0..=sequence`.
     pub fn as_of_sequence(mut self, sequence: u32) -> Self {
         self.dry_run_sequence = Some(sequence);
         self
     }
 
-    /// Set temporal point by timestamp for dry-run execution.
+    /// Set temporal point by timestamp for speculative (dry-run) execution.
+    ///
+    /// The aggregate state will be reconstructed from events created at or
+    /// before this timestamp (RFC 3339 format).
     pub fn as_of_timestamp(mut self, timestamp: impl Into<String>) -> Self {
         self.dry_run_timestamp = Some(timestamp.into());
         self
@@ -297,6 +445,7 @@ impl CommandBuilder {
                     value: self.root.as_bytes().to_vec(),
                 }),
                 correlation_id: self.correlation_id.unwrap_or_default(),
+                edition: self.edition,
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),
@@ -317,9 +466,14 @@ impl CommandBuilder {
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
-    /// Execute as dry-run against temporal state. No persistence, no side effects.
+    /// Speculatively execute against temporal state (dry-run).
     ///
-    /// Requires `as_of_sequence()` or `as_of_timestamp()` to be set.
+    /// Runs the aggregate handler at the temporal point set via
+    /// [`as_of_sequence`](Self::as_of_sequence) or
+    /// [`as_of_timestamp`](Self::as_of_timestamp) and returns the events that
+    /// *would* be produced. This is purely speculative: no events are persisted,
+    /// published, or routed to sagas/projectors. Use this to validate business
+    /// rules or explore "what-if" scenarios without side effects.
     pub async fn dry_run(
         self,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
@@ -352,6 +506,7 @@ mod tests {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: "test-id".to_string(),
+                edition: None,
             }),
             pages: vec![CommandPage {
                 sequence: 0,

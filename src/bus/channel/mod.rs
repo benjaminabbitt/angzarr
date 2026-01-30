@@ -129,7 +129,7 @@ impl ChannelEventBus {
     }
 
     /// Start consuming messages (call after subscribe).
-    pub async fn start_consuming(&self) -> Result<()> {
+    async fn start_consuming_impl(&self) -> Result<()> {
         // Check if already consuming
         {
             let mut consuming = self.consuming.write().await;
@@ -195,6 +195,7 @@ impl ChannelEventBus {
 
 #[async_trait]
 impl EventBus for ChannelEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let domain = book.domain().to_string();
 
@@ -227,6 +228,22 @@ impl EventBus for ChannelEventBus {
         info!(handler_count = count, "Handler subscribed to channel bus");
 
         Ok(())
+    }
+
+    async fn start_consuming(&self) -> Result<()> {
+        self.start_consuming_impl().await
+    }
+
+    async fn create_subscriber(
+        &self,
+        _name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        let config = match domain_filter {
+            Some(d) => ChannelConfig::subscriber(d),
+            None => ChannelConfig::subscriber_all(),
+        };
+        Ok(Arc::new(self.with_config(config)))
     }
 }
 

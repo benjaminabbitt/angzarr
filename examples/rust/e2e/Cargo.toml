@@ -33,8 +33,9 @@ saga-fulfillment = { path = "../saga-fulfillment" }
 saga-cancellation = { path = "../saga-cancellation" }
 saga-loyalty-earn = { path = "../saga-loyalty-earn" }
 
-# Process manager crate
+# Process manager crates
 process-manager-fulfillment = { path = "../process-manager-fulfillment", features = ["standalone"] }
+process-manager-order-status = { path = "../process-manager-order-status", features = ["standalone"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }

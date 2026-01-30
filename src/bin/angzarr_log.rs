@@ -29,7 +29,7 @@ use tracing::{error, info};
 use angzarr::config::Config;
 use angzarr::handlers::projectors::log::{LogService, LogServiceHandle};
 use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
-use angzarr::transport::serve_with_transport;
+use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::init_tracing;
 
 #[tokio::main]
@@ -54,6 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("angzarr-log started");
 
     let router = Server::builder()
+        .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(ProjectorCoordinatorServer::new(projector_service));
 

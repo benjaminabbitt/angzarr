@@ -10,6 +10,7 @@ fn make_command_book(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![CommandPage {
             sequence,
@@ -45,6 +46,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages,
         snapshot: None,
@@ -83,6 +85,7 @@ fn test_parse_command_cover_missing_root() {
             domain: "orders".to_string(),
             root: None,
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         saga_origin: None,

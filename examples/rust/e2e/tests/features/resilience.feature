@@ -15,7 +15,7 @@ Feature: System Resilience
     When I add item "SKU-001" with sequence 1
     Then the command succeeds
     When I replay the exact same command with sequence 1
-    Then the command fails with "FailedPrecondition"
+    Then the command fails with "Aborted"
     And the error contains missing events
     And the cart still has exactly 1 item
 
@@ -23,7 +23,7 @@ Feature: System Resilience
   Scenario: Duplicate command returns correct missing events
     Given a cart "CART-DUP-2" at sequence 3
     When I add item "SKU-002" with sequence 0
-    Then the command fails with "FailedPrecondition"
+    Then the command fails with "Aborted"
     And the error contains events 0-2
 
   # ===========================================================================
@@ -34,7 +34,7 @@ Feature: System Resilience
   Scenario: Out-of-order command is rejected
     Given a cart "CART-SEQ" at sequence 2
     When I send a command expecting sequence 5
-    Then the command fails with "FailedPrecondition"
+    Then the command fails with "Aborted"
     And the error contains events 2-4
     And no new events are stored
 
@@ -42,7 +42,7 @@ Feature: System Resilience
   Scenario: High sequence on new aggregate is rejected
     Given no aggregate exists for root "NEW-AGG-001"
     When I send a command expecting sequence 100
-    Then the command fails with "FailedPrecondition"
+    Then the command fails with "Aborted"
     And the error indicates expected=100 actual=0
 
   @e2e @resilience @sequence

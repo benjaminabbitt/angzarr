@@ -41,15 +41,15 @@ impl CancellationSaga {
 
         let mut commands = Vec::new();
 
-        // Release inventory reservation per product
+        // Release inventory reservation per product (skip items without product_root)
         for item in &cancelled.items {
-            let product_root = if item.product_root.is_empty() {
-                None
-            } else {
-                Some(ProtoUuid {
-                    value: item.product_root.clone(),
-                })
-            };
+            if item.product_root.is_empty() {
+                continue;
+            }
+
+            let product_root = Some(ProtoUuid {
+                value: item.product_root.clone(),
+            });
 
             let release_cmd = ReleaseReservation {
                 order_id: order_id.clone(),

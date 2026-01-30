@@ -6,19 +6,25 @@ A technical comparison for architects evaluating event sourcing infrastructure.
 
 ## Comparison Matrix
 
-| Capability | ⍼ Angzarr | AWS Lambda + Step Functions | GCP Cloud Run + Workflows | Axon Framework | EventStoreDB | Kafka + Custom |
-|------------|------------|----------------------------|---------------------------|----------------|--------------|----------------|
-| **Schema** | Protobuf-first, enforced | Application-defined | Application-defined | Java classes | JSON/binary | Application-defined |
-| **Event Store** | Pluggable (MongoDB, PostgreSQL) | DynamoDB/custom | Firestore/custom | Axon Server or custom | Native | Custom |
-| **Optimistic Concurrency** | Native (sequence validation) | Manual | Manual | Native | Native | Manual |
-| **Snapshots** | Built-in | Manual | Manual | Built-in | Manual (projections) | Manual |
-| **Saga Orchestration** | Built-in | Step Functions | Workflows | Built-in | Manual | Manual |
-| **Projectors** | Built-in (sync/async) | Lambda triggers | Pub/Sub triggers | Built-in | Projections | Consumers |
-| **Multi-Language** | Native gRPC boundary | Any (containers) | Any (containers) | Java (primary) | Client libraries | Any |
-| **Deployment** | K8s sidecar (~8MB) | Managed | Managed | Self-hosted/Cloud | Self-hosted/Cloud | Self-hosted |
+| Capability | ⍼ Angzarr | AWS Lambda + Step Functions | GCP Cloud Run + Workflows | Axon Framework | Kafka + Custom |
+|------------|------------|----------------------------|---------------------------|----------------|----------------|
+| **Schema** | Protobuf-first, enforced | Application-defined | Application-defined | Java classes | Application-defined |
+| **Event Store** | Pluggable (MongoDB, PostgreSQL†, SQLite, Redis†) | DynamoDB/custom | Firestore/custom | Axon Server or custom | Custom |
+| **Optimistic Concurrency** | Native (sequence validation) | Manual | Manual | Native | Manual |
+| **Snapshots** | Built-in | Manual | Manual | Built-in | Manual |
+| **Saga Orchestration** | Built-in | Step Functions | Workflows | Built-in | Manual |
+| **Process Managers** | Built-in | Step Functions | Workflows | Built-in | Manual |
+| **Projectors** | Built-in (sync/async) | Lambda triggers | Pub/Sub triggers | Built-in | Consumers |
+| **Event Streaming** | Built-in (correlation-based) | EventBridge | Pub/Sub | Built-in | Native |
+| **Event Upcasting** | Built-in (sidecar service) | Manual | Manual | Built-in | Manual |
+| **Temporal Queries** | Built-in (time + sequence) | Manual | Manual | Not built-in | Manual |
+| **Language** | Any gRPC language | Any (containers) | Any (containers) | Java (primary) | Any |
+| **Deployment** | K8s sidecar (~8MB) or standalone | Managed | Managed | Self-hosted/Cloud | Self-hosted |
 | **Vendor Lock-in** | None | AWS | GCP | Axon (partial) | EventStore Ltd | None |
 | **Operational Model** | You run K8s | Fully managed | Fully managed | You run or pay | You run or pay | You run |
 | **Cost Model** | Compute only | Per invocation | Per invocation | License/Cloud | License/Cloud | Compute only |
+
+†[PostgreSQL](../src/storage/postgres/README.md) and [Redis](../src/storage/redis/README.md) storage backends and the [Kafka](../src/bus/kafka/README.md) event bus are implemented but not yet integration tested. MongoDB, SQLite, and RabbitMQ are the tested backends.
 
 ---
 
@@ -34,12 +40,12 @@ API Gateway → Lambda → DynamoDB (events) → EventBridge → Lambda (project
 
 **Angzarr Approach:**
 ```
-gRPC → Angzarr Sidecar → Your Function → Postgres (events) → Projectors/Sagas
+gRPC → Angzarr Sidecar → Your Function → Storage (events) → Projectors/Sagas/PMs
 ```
 
 | Aspect | AWS | Angzarr |
 |--------|-----|------------|
-| **Event Store** | You build (DynamoDB streams, custom schema) | Built-in with sequence validation |
+| **Event Store** | You build (DynamoDB streams, custom schema) | Built-in with sequence validation (4 backends) |
 | **Optimistic Concurrency** | You implement (conditional writes) | Automatic |
 | **Snapshots** | You build | Automatic |
 | **Saga Coordination** | Step Functions (state machine DSL) | Code-based (your language) |
@@ -74,7 +80,7 @@ Cloud Endpoints → Cloud Run → Firestore (events) → Pub/Sub → Cloud Run (
 | Aspect | GCP | Angzarr |
 |--------|-----|------------|
 | **Event Store** | Firestore (document model, you design) | Purpose-built with ES semantics |
-| **Pub/Sub** | Managed, at-least-once | RabbitMQ/Kafka (configurable) |
+| **Pub/Sub** | Managed, at-least-once | RabbitMQ, Kafka†, Pub/Sub, SNS/SQS (configurable) |
 | **Workflows** | YAML DSL, managed | Code-based sagas (your language) |
 | **Consistency** | Eventual (Pub/Sub) | Configurable sync/async |
 | **Replay** | Manual (query Firestore) | Built-in commands |
@@ -119,10 +125,10 @@ def handle(self, ctx: ContextualCommand) -> EventBook:
 
 | Aspect | Axon | Angzarr |
 |--------|------|------------|
-| **Language** | Java (primary), Kotlin | Rust, Go, Python, Java, C# |
+| **Language** | Java (primary), Kotlin | Any gRPC language |
 | **Aggregate Model** | Annotation-driven, framework manages | Function-based, you manage state |
-| **Event Store** | Axon Server or JPA-based | MongoDB, PostgreSQL, EventStoreDB |
-| **Deployment** | Axon Server (managed or self-hosted) | K8s sidecars (self-hosted) |
+| **Event Store** | Axon Server or JPA-based | MongoDB, PostgreSQL†, SQLite, Redis† |
+| **Deployment** | Axon Server (managed or self-hosted) | K8s sidecars or standalone mode |
 | **Saga Model** | Annotation-driven (@SagaEventHandler) | Interface-based (gRPC) |
 | **Learning Curve** | Steep (annotations, lifecycle) | Shallow (functions) |
 | **Vendor Lock-in** | Axon ecosystem | None |
@@ -135,46 +141,10 @@ def handle(self, ctx: ContextualCommand) -> EventBook:
 - Can use Axon Cloud or run Axon Server
 
 **When to choose Angzarr:**
-- Polyglot organization
+- Want to use your team's preferred language (any gRPC language works)
 - Prefer explicit over magic (no annotations)
 - Want infrastructure layer, not full framework
 - Need lightweight, function-based model
-
----
-
-### vs EventStoreDB
-
-**EventStoreDB Approach:**
-```
-Your App → EventStoreDB (gRPC/HTTP) → Subscriptions → Your Projector
-```
-
-EventStoreDB is a **database**, not a framework. You still build:
-- Command handling
-- Aggregate loading
-- Saga orchestration
-- Projection coordination
-
-| Aspect | EventStoreDB | Angzarr |
-|--------|--------------|------------|
-| **What It Is** | Event store database | Infrastructure framework |
-| **Event Store** | Native (purpose-built) | Pluggable (MongoDB, etc.) |
-| **Command Handling** | You build | Built-in |
-| **Aggregate Loading** | You build | Built-in |
-| **Sagas** | You build | Built-in |
-| **Projections** | Built-in (JS-based) | Built-in (any language) |
-| **Multi-Language** | Client libraries | Native gRPC services |
-| **Operational** | Database to run | Application sidecars |
-
-**When to choose EventStoreDB:**
-- Want best-in-class event database
-- Will build coordination layer yourself
-- Need EventStoreDB-specific features (projections DSL)
-
-**When to choose Angzarr:**
-- Want infrastructure layer, not just database
-- Need saga/projector coordination out of box
-- Prefer using existing databases (MongoDB, PostgreSQL)
 
 ---
 
@@ -189,7 +159,7 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 
 | Aspect | Kafka + Custom | Angzarr |
 |--------|---------------|------------|
-| **Event Log** | Kafka topics | MongoDB/SQLite/Redis |
+| **Event Log** | Kafka topics | MongoDB/PostgreSQL†/SQLite/Redis† |
 | **Optimistic Concurrency** | You build (or accept none) | Native |
 | **Aggregate Queries** | You build (DB + Kafka) | Built-in |
 | **Snapshots** | You build | Built-in |
@@ -197,15 +167,15 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 | **Complexity** | High (Kafka + DB + custom code) | Low (framework handles) |
 | **Kafka Expertise** | Required | Not required |
 
-**When to choose Kafka:**
+**When to choose Kafka + Custom:**
 - Already have Kafka expertise and infrastructure
 - Need Kafka-specific features (log compaction, massive scale)
 - Building stream processing (not just event sourcing)
 
 **When to choose Angzarr:**
-- Want event sourcing without Kafka complexity
+- Want event sourcing patterns built-in (not DIY on top of Kafka)
 - Need aggregate-centric model (not just event log)
-- Prefer simpler operational model
+- Can still use Kafka as the event bus backend if needed
 
 ---
 
@@ -213,9 +183,9 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 
 | Aspect | Marten | Angzarr |
 |--------|--------|------------|
-| **Language** | C# / .NET | Rust, Go, Python, Java, C# |
-| **Database** | PostgreSQL (required) | MongoDB, PostgreSQL, EventStoreDB, Redis |
-| **Model** | Library (embedded) | Distributed sidecars |
+| **Language** | C# / .NET | Any (gRPC boundary) |
+| **Database** | PostgreSQL (required) | MongoDB, PostgreSQL†, SQLite, Redis† |
+| **Model** | Library (embedded) | Distributed sidecars or standalone |
 | **Sagas** | Wolverine integration | Built-in |
 | **Projections** | Built-in (inline, async) | Built-in (sync, async) |
 
@@ -225,7 +195,7 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 - Want embedded library, not distributed
 
 **When to choose Angzarr:**
-- Polyglot organization
+- Want to use your team's preferred language (not locked to .NET)
 - Need distributed deployment
 - Want database flexibility
 
@@ -235,12 +205,13 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 
 ### Choose Angzarr if you need:
 
-1. **Multi-language business logic** - Teams write in their preferred language
-2. **Infrastructure abstraction** - Swap storage/bus without code changes
-3. **Built-in ES patterns** - Optimistic concurrency, snapshots, sagas, projectors
-4. **Kubernetes-native** - Sidecar pattern, horizontal scaling
-5. **Vendor independence** - Run anywhere, no cloud lock-in
+1. **Language freedom** - Write business logic in any gRPC-supported language; most teams pick one, but the choice is theirs
+2. **Infrastructure abstraction** - Swap storage/bus without code changes (4 storage backends, 6 bus implementations)
+3. **Built-in ES patterns** - Optimistic concurrency, snapshots, sagas, projectors, process managers, event upcasting
+4. **Flexible deployment** - K8s sidecars for distributed, standalone mode for development/simple deployments
+5. **Vendor independence** - Run anywhere; supports AWS, GCP, and self-hosted infrastructure
 6. **Function-based model** - Like Lambda, but for event sourcing
+7. **Temporal queries** - Reconstruct historical state by time or sequence
 
 ### Choose managed cloud services (Lambda/Cloud Run) if you need:
 
@@ -254,12 +225,6 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 1. **Java ecosystem** - All-in on JVM
 2. **Full framework** - Want opinionated, annotation-driven approach
 3. **Axon Cloud** - Managed infrastructure option
-
-### Choose EventStoreDB if you need:
-
-1. **Best event database** - Purpose-built for event storage
-2. **Build own coordination** - Will implement sagas/projectors yourself
-3. **EventStoreDB features** - Projections DSL, subscriptions
 
 ---
 
@@ -279,16 +244,13 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
                         │                                       │
                         │              Angzarr               │
                         │         (infrastructure layer,        │
-                        │          multi-language,              │
+                        │          language-agnostic,            │
                         │          K8s-native)                  │
                         │                                       │
-                        │                      EventStoreDB     │
-                        │                   (database only,     │
-                        │                    build the rest)    │
                         │                                       │
 ```
 
-**Angzarr occupies a unique position:** infrastructure-layer abstraction (not full framework), multi-language native (not just clients), self-hosted but simple (K8s sidecars, not complex clustering).
+**Angzarr occupies a unique position:** infrastructure-layer abstraction (not full framework), language-agnostic via gRPC (use any language, not locked to one ecosystem), flexible deployment (K8s sidecars or standalone), with pluggable storage and messaging across cloud providers.
 
 ---
 
@@ -299,33 +261,32 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 | Monolith | Deploy sidecars, wrap existing logic as gRPC services | Medium |
 | Lambda + custom ES | Replace storage/coordination, keep functions | Medium |
 | Axon | Rewrite aggregates as functions, migrate events | Medium-High |
-| EventStoreDB | Keep or migrate storage, add coordination layer | Medium |
-| Kafka + custom | Replace custom code with framework, optional Kafka bus | Medium |
+| Kafka + custom | Replace custom code with framework, use Kafka as event bus | Medium |
 
 ---
 
 ## Total Cost of Ownership
 
-| Factor | Lambda/Cloud Run | Axon | EventStoreDB | Angzarr |
-|--------|-----------------|------|--------------|------------|
-| **Licensing** | None | Commercial options | Commercial options | Open source |
-| **Compute** | Per-invocation | Cluster | Cluster | K8s pods |
-| **Storage** | DynamoDB/Firestore | Included or external | Included | Your choice |
-| **Operations** | Managed | You or Axon Cloud | You or managed | You (K8s) |
-| **Expertise** | Cloud-specific | Axon + Java | EventStoreDB | K8s + your languages |
-| **Lock-in Cost** | High (cloud) | Medium (ecosystem) | Medium (database) | Low (portable) |
+| Factor | Lambda/Cloud Run | Axon | Angzarr |
+|--------|-----------------|------|------------|
+| **Licensing** | None | Commercial options | Open source |
+| **Compute** | Per-invocation | Cluster | K8s pods |
+| **Storage** | DynamoDB/Firestore | Included or external | Your choice (4 backends) |
+| **Operations** | Managed | You or Axon Cloud | You (K8s) |
+| **Expertise** | Cloud-specific | Axon + Java | K8s + your languages |
+| **Lock-in Cost** | High (cloud) | Medium (ecosystem) | Low (portable) |
 
 ---
 
 ## Honest Assessment: Angzarr Gaps and Limitations
 
-No framework is perfect. Here's what Angzarr doesn't do well (yet), and what you should consider before adopting.
+No framework is perfect. Here's what to consider before adopting.
 
 ### Maturity
 
 | Concern | Reality |
 |---------|---------|
-| **Production deployments** | Limited. Newer project with fewer battle-tested deployments than Axon or EventStoreDB |
+| **Production deployments** | Limited. Newer project with fewer battle-tested deployments than Axon |
 | **Community size** | Small. You won't find Stack Overflow answers or extensive blog posts |
 | **Enterprise support** | None. No commercial support option, no SLAs |
 | **Documentation** | Incomplete. Examples exist, but gaps in advanced scenarios |
@@ -334,29 +295,38 @@ No framework is perfect. Here's what Angzarr doesn't do well (yet), and what you
 
 ### No Managed Option
 
-Unlike Axon Cloud, EventStoreDB Cloud, or AWS/GCP managed services:
+Unlike Axon Cloud or AWS/GCP managed services:
 
-- **You run Kubernetes** - No serverless/managed deployment option
-- **You manage infrastructure** - MongoDB, RabbitMQ, etc.
+- **You run infrastructure** - K8s for distributed, or standalone mode for simpler deployments
+- **You manage backing services** - Storage and messaging backends
 - **You handle upgrades** - No automated platform updates
 
-**If you need managed:** Consider Axon Cloud or cloud-native alternatives.
+**Standalone mode** reduces the operational bar significantly for development and simpler use cases (embedded SQLite + in-memory bus, single binary).
 
-### Missing Features (Roadmap Items)
+**If you need fully managed:** Consider Axon Cloud or cloud-native alternatives.
 
-| Feature | Status | Impact |
-|---------|--------|--------|
-| **Event upcasting / schema evolution** | Not implemented | Must handle event versioning manually |
-| **Automatic snapshotting** | Not implemented | Must trigger snapshots explicitly |
-| **PostgreSQL backend** | Implemented | Available alongside MongoDB |
-| **Kafka event bus** | Planned | RabbitMQ only for distributed deployments |
-| **Projection replay/reset** | Not implemented | Cannot rebuild read models from scratch |
-| **Subscription queries** | Not implemented | No live query updates |
-| **Deadline management** | Not implemented | No scheduled/delayed commands |
-| **Distributed command routing** | Not implemented | No consistent hashing for aggregate affinity |
-| **Event store clustering** | Not implemented | Single-node event store (rely on MongoDB clustering) |
+### Feature Status
 
-**Reality check:** If you need these today, you'll either build them yourself or choose a more mature alternative.
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Event upcasting / schema evolution** | Implemented | External upcaster sidecar via gRPC, configurable per deployment |
+| **Automatic snapshotting** | Implemented | Automatic when business logic returns snapshot state; configurable read/write toggles |
+| **[PostgreSQL backend](../src/storage/postgres/README.md)** | Implemented (untested) | Full EventStore + SnapshotStore with sea-query; not yet integration tested |
+| **SQLite backend** | Implemented | Full EventStore + SnapshotStore with sqlx migrations; standalone and embedded modes |
+| **[Redis backend](../src/storage/redis/README.md)** | Implemented (untested) | Full EventStore + SnapshotStore with sorted sets; not yet integration tested |
+| **[Kafka event bus](../src/bus/kafka/README.md)** | Implemented (untested) | Consumer groups, SASL auth, SSL/TLS, topic-per-domain; not yet integration tested |
+| **AWS SNS/SQS event bus** | Implemented | SNS publish, SQS subscribe, DLQ support, LocalStack testing |
+| **Google Pub/Sub event bus** | Implemented | ADC auth, ordering keys, DLQ support |
+| **Event streaming** | Implemented | Correlation-based streaming with client disconnect detection |
+| **Temporal queries** | Implemented | Point-in-time by timestamp (as_of_time) and by sequence (as_of_sequence) |
+| **Deadline management** | Implemented | Timeout scheduler for process managers; emits ProcessTimeout events |
+| **Distributed command routing** | Implemented | Gateway with domain-based routing and service discovery (K8s, DNS, env) |
+| **Process managers** | Implemented | Event-driven orchestration with two-phase prepare/execute protocol |
+| **Standalone mode** | Implemented | Single-process embedded runtime with SQLite + channel bus |
+| **Projection replay/reset** | Partial | Synchronize stream can replay events to projectors; no automated state reset |
+| **Event store clustering** | Not implemented | Relies on backing store clustering (MongoDB replica sets, etc.) |
+
+**Remaining gaps:** Event store clustering and automated projection state reset. [PostgreSQL](../src/storage/postgres/README.md), [Redis](../src/storage/redis/README.md), and [Kafka](../src/bus/kafka/README.md) adapters are implemented but not yet integration tested — MongoDB, SQLite, and RabbitMQ are the tested backends.
 
 ### Operational Complexity
 
@@ -391,36 +361,35 @@ Unlike Axon Cloud, EventStoreDB Cloud, or AWS/GCP managed services:
 
 1. **Need managed/serverless** - No operational burden tolerance
 2. **Need enterprise support** - Require vendor SLAs and support contracts
-3. **Need features on roadmap today** - Event upcasting, Kafka, PostgreSQL
-4. **Small team, no K8s expertise** - Operational overhead too high
-5. **Proven at massive scale required** - Need battle-tested at millions of events/second
-6. **Regulatory compliance** - Need vendor certifications (SOC2, HIPAA, etc.)
+3. **Small team, no K8s expertise** - Standalone mode reduces this, but distributed deployment needs K8s
+4. **Proven at massive scale required** - Need battle-tested at millions of events/second
+5. **Regulatory compliance** - Need vendor certifications (SOC2, HIPAA, etc.)
 
-### Comparison: Feature Gaps vs Alternatives
+### Comparison: Remaining Gaps vs Alternatives
 
-| Gap | Axon | EventStoreDB | Lambda+Custom |
-|-----|------|--------------|---------------|
-| Event upcasting | Built-in | Manual | Manual |
-| Automatic snapshots | Built-in | N/A (projections) | Manual |
-| Managed option | Axon Cloud | EventStoreDB Cloud | Native |
-| Enterprise support | Yes | Yes | AWS/GCP support |
-| Production maturity | High | High | High |
+| Gap | Axon | Lambda+Custom |
+|-----|------|---------------|
+| Managed option | Axon Cloud | Native |
+| Enterprise support | Yes | AWS/GCP support |
+| Production maturity | High | High |
+| Projection state reset | Built-in | Manual |
+| Event store clustering | Built-in (Axon Server) | DynamoDB Streams |
 
 ---
 
 ## Summary: Right Tool for the Job
 
 **Angzarr is a good fit when:**
-- You value polyglot flexibility over ecosystem maturity
-- You have Kubernetes expertise and operational capacity
-- You prefer infrastructure-layer abstraction over full framework
+- You want language freedom — use any gRPC-supported language without framework lock-in
+- You want infrastructure-layer abstraction over full framework
+- You need pluggable storage and messaging across cloud providers
 - You can tolerate building on a newer project
 - Your scale requirements are moderate (thousands, not millions, of events/second)
 - You want vendor independence over managed convenience
+- You need standalone mode for development and K8s for production
 
 **Angzarr is a poor fit when:**
 - You need battle-tested production maturity today
 - You require commercial support and SLAs
-- You lack Kubernetes operational expertise
-- You need specific roadmap features immediately
-- You prefer managed services over self-hosted
+- You prefer fully managed services over self-hosted
+- You need event store clustering beyond what backing stores provide

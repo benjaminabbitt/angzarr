@@ -131,6 +131,7 @@ pub fn build_command_book(
             domain: domain.to_string(),
             root,
             correlation_id: correlation_id.to_string(),
+            edition: None,
         }),
         pages: vec![CommandPage {
             sequence: 0,

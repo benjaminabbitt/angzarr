@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = []
 # ///
 """Create a kind cluster with a local container registry.
 
@@ -9,26 +9,20 @@ Creates a kind cluster configured to use a local registry for faster
 image pulls. Uses podman as the container runtime.
 
 Based on: https://github.com/bkuzmic/skaffold-podman-kind
+
+Cluster configuration (ports, mounts, containerd patches) lives in
+kind-config.yaml at the repo root. This script handles lifecycle
+orchestration only.
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-
-@dataclass
-class PortMapping:
-    """Port mapping from host to container."""
-
-    container_port: int
-    host_port: int
-    comment: str
-    protocol: str = "TCP"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass
@@ -41,33 +35,21 @@ class Config:
     # Use k8s 1.31 for better rootless podman compatibility (1.35 has issues)
     node_image: str = "kindest/node:v1.31.4"
 
-    # Port scheme: 10-port ranges per component
-    # Gateway: 1350 (NodePort 31350), Stream: 1340 (NodePort 31340)
-    port_mappings: list[PortMapping] = field(default_factory=lambda: [
-        PortMapping(80, 8080, "Ingress HTTP"),
-        PortMapping(443, 8443, "Ingress HTTPS"),
-        PortMapping(31350, 1350, "Angzarr gateway (commands + queries)"),
-        PortMapping(31340, 1340, "Angzarr stream"),
-        PortMapping(31310, 1310, "Angzarr aggregate sidecar"),
-        PortMapping(30672, 5672, "RabbitMQ AMQP"),
-        PortMapping(31672, 15672, "RabbitMQ Management"),
-        PortMapping(30379, 6379, "Redis"),
-    ])
-
 
 def run(
     *args: str,
     capture: bool = False,
     check: bool = True,
     env: dict[str, str] | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """Run a command."""
     full_env = {**os.environ, **(env or {})}
     if capture:
         return subprocess.run(
-            args, capture_output=True, text=True, check=check, env=full_env
+            args, capture_output=True, text=True, check=check, env=full_env, cwd=cwd
         )
-    return subprocess.run(args, check=check, env=full_env)
+    return subprocess.run(args, check=check, env=full_env, cwd=cwd)
 
 
 def podman(*args: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess:
@@ -75,16 +57,23 @@ def podman(*args: str, capture: bool = False, check: bool = True) -> subprocess.
     return run("podman", *args, capture=capture, check=check)
 
 
-def kind(*args: str, capture: bool = False, check: bool = True, use_scope: bool = False) -> subprocess.CompletedProcess:
+def kind(
+    *args: str,
+    capture: bool = False,
+    check: bool = True,
+    use_scope: bool = False,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess:
     """Run kind command with podman provider.
 
     Args:
         use_scope: Wrap with systemd-run --user --scope for rootless cgroup delegation.
+        cwd: Working directory for the command.
     """
     env = {"KIND_EXPERIMENTAL_PROVIDER": "podman"}
     if use_scope and os.getuid() != 0:
-        return run("systemd-run", "--user", "--scope", "kind", *args, capture=capture, check=check, env=env)
-    return run("kind", *args, capture=capture, check=check, env=env)
+        return run("systemd-run", "--user", "--scope", "kind", *args, capture=capture, check=check, env=env, cwd=cwd)
+    return run("kind", *args, capture=capture, check=check, env=env, cwd=cwd)
 
 
 def kubectl(*args: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess:
@@ -152,35 +141,6 @@ def ensure_registry(cfg: Config) -> None:
     podman("network", "connect", "kind", cfg.registry_name, check=False, capture=True)
 
 
-def generate_kind_config(cfg: Config) -> str:
-    """Generate kind cluster configuration YAML."""
-    port_mappings_yaml = "\n".join(
-        f"""      # {pm.comment}
-      - containerPort: {pm.container_port}
-        hostPort: {pm.host_port}
-        protocol: {pm.protocol}"""
-        for pm in cfg.port_mappings
-    )
-
-    return f"""kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-containerdConfigPatches:
-  - |-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:{cfg.registry_port}"]
-      endpoint = ["http://{cfg.registry_name}:5000"]
-nodes:
-  - role: control-plane
-    kubeadmConfigPatches:
-      - |
-        kind: InitConfiguration
-        nodeRegistration:
-          kubeletExtraArgs:
-            node-labels: "ingress-ready=true"
-    extraPortMappings:
-{port_mappings_yaml}
-"""
-
-
 def create_registry_configmap(cfg: Config) -> None:
     """Create ConfigMap documenting the local registry."""
     configmap_yaml = f"""apiVersion: v1
@@ -205,22 +165,22 @@ data:
 
 
 def create_cluster(cfg: Config) -> None:
-    """Create the kind cluster."""
-    # Generate config
-    config_yaml = generate_kind_config(cfg)
+    """Create the kind cluster using kind-config.yaml from the repo root.
 
-    # Write to temp file
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-        f.write(config_yaml)
-        config_path = f.name
+    The config file uses extraMounts with a relative hostPath
+    (.kind-registry-config), so we run kind from the repo root to
+    resolve it correctly.
+    """
+    config_path = REPO_ROOT / "kind-config.yaml"
+    if not config_path.exists():
+        print(f"Error: {config_path} not found", file=sys.stderr)
+        sys.exit(1)
 
-    try:
-        print(f"Creating kind cluster '{cfg.cluster_name}' with {cfg.node_image}...")
-        # Use systemd scope for rootless podman cgroup delegation
-        kind("create", "cluster", "--name", cfg.cluster_name, "--config", config_path,
-             "--image", cfg.node_image, use_scope=True)
-    finally:
-        Path(config_path).unlink(missing_ok=True)
+    print(f"Creating kind cluster '{cfg.cluster_name}' with {cfg.node_image}...")
+    # Run from repo root so extraMounts relative hostPath resolves correctly
+    kind("create", "cluster", "--name", cfg.cluster_name,
+         "--config", str(config_path), "--image", cfg.node_image,
+         use_scope=True, cwd=REPO_ROOT)
 
     # Connect registry to kind network
     print("Connecting registry to kind network...")

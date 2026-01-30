@@ -17,6 +17,7 @@ use crate::proto::{
     projector_client::ProjectorClient, projector_coordinator_server::ProjectorCoordinator,
     EventBook, Projection, SyncEventBook,
 };
+use crate::proto_ext::{correlated_request, CoverExt};
 use crate::services::event_book_repair::EventBookRepairer;
 
 /// Connected projector client.
@@ -112,8 +113,9 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
         };
 
         // Return the first successful projection
+        let correlation_id = event_book.correlation_id().to_string();
         if let Some((config, mut client)) = connections.into_iter().next() {
-            let req = Request::new(event_book.clone());
+            let req = correlated_request(event_book.clone(), &correlation_id);
             match client.handle(req).await {
                 Ok(response) => {
                     info!(projector.name = %config.name, "Synchronous projection completed");
@@ -164,8 +166,9 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
                 .collect()
         };
 
+        let correlation_id = event_book.correlation_id().to_string();
         for (config, mut client) in connections {
-            let req = Request::new(event_book.clone());
+            let req = correlated_request(event_book.clone(), &correlation_id);
             match client.handle(req).await {
                 Ok(_) => info!(projector.name = %config.name, "Async projection queued"),
                 Err(e) => {
@@ -195,6 +198,7 @@ mod tests {
                 domain: "orders".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             pages: vec![],
             snapshot: None,

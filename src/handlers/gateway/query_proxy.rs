@@ -16,6 +16,7 @@ use tracing::{debug, info, warn};
 use crate::discovery::ServiceDiscovery;
 use crate::proto::event_query_server::EventQuery;
 use crate::proto::{AggregateRoot, EventBook, Query};
+use crate::proto_ext::correlated_request;
 
 use super::map_discovery_error;
 
@@ -41,6 +42,11 @@ impl EventQuery for EventQueryProxy {
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("");
+        let correlation_id = query
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
 
         debug!(domain = %domain, "Proxying GetEventBook query");
 
@@ -49,7 +55,9 @@ impl EventQuery for EventQueryProxy {
             .get_event_query(domain)
             .await
             .map_err(map_discovery_error)?;
-        client.get_event_book(Request::new(query)).await
+        client
+            .get_event_book(correlated_request(query, &correlation_id))
+            .await
     }
 
     type GetEventsStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
@@ -65,6 +73,11 @@ impl EventQuery for EventQueryProxy {
             .as_ref()
             .map(|c| c.domain.clone())
             .unwrap_or_default();
+        let correlation_id = query
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
 
         debug!(domain = %domain, "Proxying GetEvents query");
 
@@ -73,7 +86,9 @@ impl EventQuery for EventQueryProxy {
             .get_event_query(&domain)
             .await
             .map_err(map_discovery_error)?;
-        let response = client.get_events(Request::new(query)).await?;
+        let response = client
+            .get_events(correlated_request(query, &correlation_id))
+            .await?;
 
         // Re-box the stream to match our return type
         let stream = response.into_inner();
@@ -106,6 +121,11 @@ impl EventQuery for EventQueryProxy {
             .cover
             .as_ref()
             .map(|c| c.domain.clone())
+            .unwrap_or_default();
+        let correlation_id = first_query
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
             .unwrap_or_default();
         debug!(domain = %domain, "Proxying Synchronize stream");
 
@@ -149,7 +169,9 @@ impl EventQuery for EventQueryProxy {
         });
 
         let outbound = ReceiverStream::new(query_rx);
-        let response = client.synchronize(Request::new(outbound)).await?;
+        let response = client
+            .synchronize(correlated_request(outbound, &correlation_id))
+            .await?;
 
         Ok(Response::new(Box::pin(response.into_inner())))
     }

@@ -101,9 +101,9 @@ infrastructure:
   gateway:
     enabled: true
     replicas: 1
-    port: 1350
+    port: 9084
     serviceType: NodePort
-    nodePort: 31350
+    nodePort: 30084
     streamService: "angzarr-stream:1340"
     streamTimeoutSecs: 30
     resources:

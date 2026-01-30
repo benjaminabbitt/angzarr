@@ -28,6 +28,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use backon::Retryable;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
@@ -36,7 +37,8 @@ use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use angzarr::transport::connect_to_address;
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing};
+use angzarr::utils::bootstrap::init_tracing;
+use angzarr::utils::retry::connection_backoff;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -108,12 +110,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to projector service with retry
     let projector_addr = address.clone();
-    let projector_client = connect_with_retry("projector", &address, || {
+    let projector_client = (|| {
         let addr = projector_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
             Ok::<_, String>(ProjectorCoordinatorClient::new(channel))
         }
+    })
+    .retry(connection_backoff())
+    .notify(|err: &String, dur: Duration| {
+        warn!(service = "projector", error = %err, delay = ?dur, "Connection failed, retrying");
     })
     .await?;
 
@@ -139,9 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create handler with or without streaming capability
     let handler = if let Some(pub_bus) = publisher {
-        ProjectorEventHandler::with_publisher(projector_client, pub_bus)
+        ProjectorEventHandler::with_publisher(projector_client, pub_bus, projector_name.to_string())
     } else {
-        ProjectorEventHandler::new(projector_client)
+        ProjectorEventHandler::new(projector_client, projector_name.to_string())
     };
 
     subscriber

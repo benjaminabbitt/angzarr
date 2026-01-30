@@ -8,9 +8,10 @@
 
 use std::sync::Arc;
 
+use backon::ExponentialBuilder;
 use futures::future::BoxFuture;
 use tokio::sync::Mutex;
-use tracing::{debug, error};
+use tracing::{debug, error, Instrument};
 
 use crate::bus::{BusError, EventHandler};
 use crate::orchestration::command::CommandExecutor;
@@ -19,7 +20,7 @@ use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::proto::process_manager_client::ProcessManagerClient;
 use crate::proto::{EventBook, Subscription};
-use crate::utils::retry::RetryConfig;
+use crate::utils::retry::saga_backoff;
 
 /// Event handler that orchestrates process manager execution via a context factory.
 ///
@@ -32,7 +33,7 @@ pub struct ProcessManagerEventHandler {
     /// Subscription filter — only handle events matching these subscriptions.
     /// Empty means handle all events (distributed mode uses bus-level filtering).
     subscriptions: Vec<Subscription>,
-    retry_config: RetryConfig,
+    backoff: ExponentialBuilder,
 }
 
 impl ProcessManagerEventHandler {
@@ -47,7 +48,7 @@ impl ProcessManagerEventHandler {
             destination_fetcher,
             command_executor,
             subscriptions: Vec::new(),
-            retry_config: RetryConfig::for_saga_commands(),
+            backoff: saga_backoff(),
         }
     }
 
@@ -57,13 +58,11 @@ impl ProcessManagerEventHandler {
         self
     }
 
-    /// Create with custom retry configuration.
-    pub fn with_retry_config(mut self, retry_config: RetryConfig) -> Self {
-        self.retry_config = retry_config;
+    /// Create with custom backoff configuration.
+    pub fn with_backoff(mut self, backoff: ExponentialBuilder) -> Self {
+        self.backoff = backoff;
         self
     }
-
-    // --- Backward-compatible constructor for distributed sidecar binaries ---
 
     /// Create a new process manager event handler using gRPC client.
     pub fn new(
@@ -75,6 +74,7 @@ impl ProcessManagerEventHandler {
         let factory = Arc::new(GrpcPMContextFactory::new(
             Arc::new(Mutex::new(client)),
             command_executor.clone(),
+            process_domain.clone(),
             process_domain,
         ));
         Self {
@@ -82,7 +82,7 @@ impl ProcessManagerEventHandler {
             destination_fetcher,
             command_executor,
             subscriptions: Vec::new(),
-            retry_config: RetryConfig::for_saga_commands(),
+            backoff: saga_backoff(),
         }
     }
 }
@@ -96,18 +96,22 @@ impl EventHandler for ProcessManagerEventHandler {
             return Box::pin(async { Ok(()) });
         }
 
+        let correlation_id = book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
+        let pm_name = self.context_factory.name().to_string();
+        let pm_domain = self.context_factory.pm_domain().to_string();
+        let span = tracing::info_span!("pm.handle", %pm_name, %correlation_id, %pm_domain);
+
         let factory = self.context_factory.clone();
         let destination_fetcher = self.destination_fetcher.clone();
         let command_executor = self.command_executor.clone();
-        let retry_config = self.retry_config.clone();
+        let backoff = self.backoff;
 
         Box::pin(async move {
             let book_owned = (*book).clone();
-            let correlation_id = book_owned
-                .cover
-                .as_ref()
-                .map(|c| c.correlation_id.clone())
-                .unwrap_or_default();
 
             if correlation_id.is_empty() {
                 debug!("Event has no correlation_id, skipping process manager");
@@ -115,7 +119,6 @@ impl EventHandler for ProcessManagerEventHandler {
             }
 
             let ctx = factory.create();
-            let pm_domain = factory.pm_domain().to_string();
 
             if let Err(e) = orchestrate_pm(
                 ctx.as_ref(),
@@ -124,12 +127,11 @@ impl EventHandler for ProcessManagerEventHandler {
                 &book_owned,
                 &pm_domain,
                 &correlation_id,
-                &retry_config,
+                backoff,
             )
             .await
             {
                 error!(
-                    correlation_id = %correlation_id,
                     error = %e,
                     "Process manager orchestration failed"
                 );
@@ -137,6 +139,6 @@ impl EventHandler for ProcessManagerEventHandler {
             }
 
             Ok(())
-        })
+        }.instrument(span))
     }
 }

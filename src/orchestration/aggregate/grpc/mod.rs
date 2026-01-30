@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::proto::{EventBook, Projection, SyncEventBook};
+use crate::proto_ext::{correlated_request, CoverExt};
 use crate::repository::EventBookRepository;
 use crate::services::snapshot_handler::persist_snapshot_if_present;
 use crate::services::upcaster::Upcaster;
@@ -99,6 +100,7 @@ impl GrpcAggregateContext {
     }
 
     /// Call sync projectors via K8s service discovery.
+    #[tracing::instrument(name = "aggregate.sync_projectors", skip_all)]
     async fn call_sync_projectors(
         &self,
         events: &EventBook,
@@ -113,12 +115,16 @@ impl GrpcAggregateContext {
             return Ok(vec![]);
         }
 
+        let correlation_id = events.correlation_id();
         let mut projections = Vec::new();
         for mut client in clients {
-            let request = tonic::Request::new(SyncEventBook {
-                events: Some(events.clone()),
-                sync_mode: sync_mode.into(),
-            });
+            let request = correlated_request(
+                SyncEventBook {
+                    events: Some(events.clone()),
+                    sync_mode: sync_mode.into(),
+                },
+                correlation_id,
+            );
             match client.handle_sync(request).await {
                 Ok(response) => projections.push(response.into_inner()),
                 Err(e) if e.code() == tonic::Code::NotFound => {
@@ -137,41 +143,45 @@ impl GrpcAggregateContext {
 
 #[async_trait]
 impl AggregateContext for GrpcAggregateContext {
+    #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
     async fn load_prior_events(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
     ) -> Result<EventBook, Status> {
         match temporal {
             TemporalQuery::Current => self
                 .event_book_repo
-                .get(domain, root)
+                .get(domain, edition, root)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load events: {e}"))),
             TemporalQuery::AsOfSequence(seq) => self
                 .event_book_repo
-                .get_temporal_by_sequence(domain, root, *seq)
+                .get_temporal_by_sequence(domain, edition, root, *seq)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load temporal events: {e}"))),
             TemporalQuery::AsOfTimestamp(ts) => self
                 .event_book_repo
-                .get_temporal_by_time(domain, root, ts)
+                .get_temporal_by_time(domain, edition, root, ts)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load temporal events: {e}"))),
         }
     }
 
+    #[tracing::instrument(name = "aggregate.persist", skip_all, fields(%domain, %root))]
     async fn persist_events(
         &self,
         events: &EventBook,
         domain: &str,
+        edition: &str,
         root: Uuid,
         _correlation_id: &str,
     ) -> Result<EventBook, Status> {
         // Persist events
         self.event_book_repo
-            .put(events)
+            .put(edition, events)
             .await
             .map_err(|e| match e {
                 StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
@@ -186,6 +196,7 @@ impl AggregateContext for GrpcAggregateContext {
             &self.snapshot_store,
             events,
             domain,
+            edition,
             root,
             self.snapshot_write_enabled,
         )
@@ -194,6 +205,7 @@ impl AggregateContext for GrpcAggregateContext {
         Ok(events.clone())
     }
 
+    #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
         // Call sync projectors if sync_mode is set
         let projections = if let Some(mode) = self.sync_mode {
@@ -202,15 +214,43 @@ impl AggregateContext for GrpcAggregateContext {
             vec![]
         };
 
-        // Publish to event bus for async consumers
-        if let Err(e) = self.event_bus.publish(Arc::new(events.clone())).await {
-            let domain = events
-                .cover
-                .as_ref()
-                .map(|c| c.domain.as_str())
-                .unwrap_or("unknown");
+        // Build bus-routable domain: "{edition}.{bare_domain}"
+        let cover = events.cover.as_ref();
+        let edition = cover
+            .and_then(|c| c.edition.as_deref())
+            .unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION);
+        let bare_domain = cover.map(|c| c.domain.as_str()).unwrap_or("unknown");
+        let bus_domain = format!("{edition}.{bare_domain}");
+
+        let mut bus_events = events.clone();
+        if let Some(ref mut c) = bus_events.cover {
+            c.domain = bus_domain.clone();
+        }
+
+        #[cfg(feature = "otel")]
+        let publish_start = std::time::Instant::now();
+
+        let publish_result = self.event_bus.publish(Arc::new(bus_events)).await;
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, BUS_PUBLISH_DURATION, BUS_PUBLISH_TOTAL};
+            let outcome = if publish_result.is_ok() { "success" } else { "error" };
+            BUS_PUBLISH_DURATION.record(publish_start.elapsed().as_secs_f64(), &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&bus_domain),
+                metrics::outcome_attr(outcome),
+            ]);
+            BUS_PUBLISH_TOTAL.add(1, &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&bus_domain),
+                metrics::outcome_attr(outcome),
+            ]);
+        }
+
+        if let Err(e) = publish_result {
             warn!(
-                domain = %domain,
+                domain = %bus_domain,
                 error = %e,
                 "Failed to publish events"
             );
@@ -219,15 +259,17 @@ impl AggregateContext for GrpcAggregateContext {
         Ok(projections)
     }
 
+    #[tracing::instrument(name = "aggregate.pre_validate", skip_all, fields(%domain, %root, %expected))]
     async fn pre_validate_sequence(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         expected: u32,
     ) -> Result<(), Status> {
         let next_sequence = self
             .event_store
-            .get_next_sequence(domain, root)
+            .get_next_sequence(domain, edition, root)
             .await
             .map_err(|e| Status::internal(format!("Failed to get sequence: {e}")))?;
 
@@ -235,7 +277,7 @@ impl AggregateContext for GrpcAggregateContext {
             // Load EventBook and return with error so caller can retry without extra fetch
             let prior_events = self
                 .event_book_repo
-                .get(domain, root)
+                .get(domain, edition, root)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
             return Err(sequence_mismatch_error_with_state(
@@ -248,6 +290,7 @@ impl AggregateContext for GrpcAggregateContext {
         Ok(())
     }
 
+    #[tracing::instrument(name = "aggregate.transform", skip_all, fields(%domain))]
     async fn transform_events(
         &self,
         domain: &str,

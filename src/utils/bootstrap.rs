@@ -2,23 +2,167 @@
 //!
 //! Shared initialization code for all angzarr sidecar binaries.
 
-use std::future::Future;
-use std::time::Duration;
-
-use tracing::warn;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Initialize tracing with ANGZARR_LOG environment variable.
+/// Global handle to the LoggerProvider so it stays alive for the process lifetime.
+///
+/// The batch exporter lives inside the provider — dropping it kills log export.
+#[cfg(feature = "otel")]
+static LOG_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::logs::LoggerProvider> =
+    std::sync::OnceLock::new();
+
+/// Initialize tracing and metrics with ANGZARR_LOG environment variable.
 ///
 /// Defaults to "info" level if ANGZARR_LOG is not set.
+///
+/// When the `otel` feature is enabled, configures:
+/// - OTLP trace exporter (spans → OTel Collector)
+/// - OTLP log exporter (tracing events → OTel Collector)
+/// - OTLP metrics exporter (counters/histograms → OTel Collector)
+/// - W3C TraceContext propagator for distributed tracing
+///
+/// Configuration via environment variables:
+/// - `OTEL_EXPORTER_OTLP_ENDPOINT` — Collector endpoint (default: `http://localhost:4317`)
+/// - `OTEL_SERVICE_NAME` — Service name for resource attribution
+/// - `OTEL_RESOURCE_ATTRIBUTES` — Additional resource key=value pairs
 pub fn init_tracing() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_env("ANGZARR_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let env_filter = tracing_subscriber::EnvFilter::try_from_env("ANGZARR_LOG")
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    #[cfg(feature = "otel")]
+    {
+        use opentelemetry::trace::TracerProvider;
+
+        // W3C TraceContext propagator for distributed trace context
+        opentelemetry::global::set_text_map_propagator(
+            opentelemetry_sdk::propagation::TraceContextPropagator::new(),
+        );
+
+        // OTLP trace exporter
+        let trace_exporter = match opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .build()
+        {
+            Ok(exporter) => exporter,
+            Err(e) => {
+                eprintln!("Failed to init OTLP trace exporter: {e}");
+                // Fall back to non-OTel tracing
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer)
+                    .init();
+                return;
+            }
+        };
+
+        let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
+            .with_batch_exporter(trace_exporter, opentelemetry_sdk::runtime::Tokio)
+            .with_resource(otel_resource())
+            .build();
+
+        opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+
+        let otel_trace_layer = tracing_opentelemetry::layer()
+            .with_tracer(tracer_provider.tracer("angzarr"));
+
+        // OTLP log exporter — provider stored in LOG_PROVIDER static to keep
+        // the batch exporter alive for the process lifetime.
+        let log_layer = match opentelemetry_otlp::LogExporter::builder()
+            .with_tonic()
+            .build()
+        {
+            Ok(log_exporter) => {
+                let log_provider = opentelemetry_sdk::logs::LoggerProvider::builder()
+                    .with_batch_exporter(log_exporter, opentelemetry_sdk::runtime::Tokio)
+                    .with_resource(otel_resource())
+                    .build();
+                let layer = opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(
+                    &log_provider,
+                );
+                let _ = LOG_PROVIDER.set(log_provider);
+                Some(layer)
+            }
+            Err(e) => {
+                eprintln!("Failed to init OTLP log exporter: {e}");
+                None
+            }
+        };
+
+        // OTLP metrics exporter
+        match opentelemetry_otlp::MetricExporter::builder()
+            .with_tonic()
+            .with_temporality(opentelemetry_sdk::metrics::Temporality::Cumulative)
+            .build()
+        {
+            Ok(metrics_exporter) => {
+                let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(
+                    metrics_exporter,
+                    opentelemetry_sdk::runtime::Tokio,
+                )
+                .build();
+
+                let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+                    .with_reader(reader)
+                    .with_resource(otel_resource())
+                    .build();
+
+                opentelemetry::global::set_meter_provider(meter_provider);
+            }
+            Err(e) => {
+                eprintln!("Failed to init OTLP metrics exporter: {e}");
+            }
+        }
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .with(otel_trace_layer)
+            .with(log_layer)
+            .init();
+
+        tracing::info!("OpenTelemetry tracing initialized");
+    }
+
+    #[cfg(not(feature = "otel"))]
+    {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .init();
+    }
+}
+
+/// Build the OpenTelemetry resource from environment variables.
+///
+/// Uses `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` per OTel spec.
+#[cfg(feature = "otel")]
+fn otel_resource() -> opentelemetry_sdk::Resource {
+    use opentelemetry::KeyValue;
+    use opentelemetry_sdk::Resource;
+
+    let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "angzarr".to_string());
+
+    Resource::new(vec![
+        KeyValue::new("service.name", service_name),
+    ])
+}
+
+/// Graceful shutdown of OpenTelemetry providers.
+///
+/// Call this before process exit to flush pending spans/logs/metrics.
+pub fn shutdown_telemetry() {
+    #[cfg(feature = "otel")]
+    {
+        opentelemetry::global::shutdown_tracer_provider();
+        if let Some(provider) = LOG_PROVIDER.get() {
+            if let Err(e) = provider.shutdown() {
+                eprintln!("Failed to shut down log provider: {e}");
+            }
+        }
+        tracing::info!("OpenTelemetry providers shut down");
+    }
 }
 
 /// Parse static endpoints from a comma-separated string.
@@ -37,58 +181,4 @@ pub fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
             }
         })
         .collect()
-}
-
-/// Connect to a gRPC service with exponential backoff retry.
-///
-/// # Arguments
-/// * `service_name` - Human-readable name for logging (e.g., "projector", "saga")
-/// * `address` - The gRPC address to connect to
-/// * `connect` - Async function that attempts to establish a connection
-///
-/// # Returns
-/// The connected client on success, or the last error after max retries.
-pub async fn connect_with_retry<T, E, F, Fut>(
-    service_name: &str,
-    address: &str,
-    connect: F,
-) -> Result<T, E>
-where
-    E: std::fmt::Display,
-    F: Fn() -> Fut,
-    Fut: Future<Output = Result<T, E>>,
-{
-    const MAX_RETRIES: u32 = 30;
-    const INITIAL_DELAY: Duration = Duration::from_millis(100);
-    const MAX_DELAY: Duration = Duration::from_secs(5);
-
-    let mut delay = INITIAL_DELAY;
-    let mut attempt = 0;
-
-    loop {
-        attempt += 1;
-        match connect().await {
-            Ok(client) => {
-                tracing::info!("Connected to {} at {}", service_name, address);
-                return Ok(client);
-            }
-            Err(e) if attempt < MAX_RETRIES => {
-                warn!(
-                    "Failed to connect to {} (attempt {}/{}): {}. Retrying in {:?}...",
-                    service_name, attempt, MAX_RETRIES, e, delay
-                );
-                tokio::time::sleep(delay).await;
-                delay = std::cmp::min(delay * 2, MAX_DELAY);
-            }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to connect to {} after {} attempts: {}",
-                    service_name,
-                    MAX_RETRIES,
-                    e
-                );
-                return Err(e);
-            }
-        }
-    }
 }

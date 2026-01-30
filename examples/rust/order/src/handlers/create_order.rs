@@ -2,13 +2,10 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateOrder, OrderCreated, OrderState};
-use common::{
-    decode_command, make_event_book, now, require_not_empty, require_not_exists, require_positive,
-    Result,
-};
-use prost::Message;
+use common::{decode_command, now, require_not_empty, require_not_exists, require_positive, Result};
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the CreateOrder command.
 pub fn handle_create_order(
@@ -41,25 +38,11 @@ pub fn handle_create_order(
         cart_root: cmd.cart_root.clone(),
     };
 
-    let new_state = OrderState {
-        customer_id: cmd.customer_id,
-        items: cmd.items,
-        subtotal_cents: subtotal,
-        discount_cents: 0,
-        loyalty_points_used: 0,
-        payment_method: String::new(),
-        payment_reference: String::new(),
-        status: "pending".to_string(),
-        customer_root: cmd.customer_root,
-        cart_root: cmd.cart_root,
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.OrderCreated",
-        event.encode_to_vec(),
-        "type.examples/examples.OrderState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

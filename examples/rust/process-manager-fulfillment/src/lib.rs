@@ -259,6 +259,7 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
                     domain: PM_DOMAIN.to_string(),
                     root: pm_root,
                     correlation_id: correlation_id.to_string(),
+                    edition: None,
                 }),
                 pages: pm_events,
                 snapshot: None,
@@ -325,6 +326,7 @@ mod tests {
                         .to_vec(),
                 }),
                 correlation_id: correlation_id.to_string(),
+                edition: None,
             }),
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(0)),
@@ -451,6 +453,7 @@ mod tests {
                         .to_vec(),
                 }),
                 correlation_id: "corr-1".to_string(),
+                edition: None,
             }),
             pages: vec![
                 EventPage {

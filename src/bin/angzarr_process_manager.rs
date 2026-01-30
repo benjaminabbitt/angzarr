@@ -21,13 +21,16 @@
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
-use tracing::info;
+use std::time::Duration;
+
+use backon::Retryable;
+use tracing::{info, warn};
 
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::proto::process_manager_client::ProcessManagerClient;
 use angzarr::proto::GetSubscriptionsRequest;
 use angzarr::transport::connect_to_address;
-use angzarr::utils::bootstrap::connect_with_retry;
+use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
 
 #[tokio::main]
@@ -44,12 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to process manager service
     let pm_addr = bootstrap.address.clone();
-    let mut pm_client = connect_with_retry("process-manager", &bootstrap.address, || {
+    let mut pm_client = (|| {
         let addr = pm_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
             Ok::<_, String>(ProcessManagerClient::new(channel))
         }
+    })
+    .retry(connection_backoff())
+    .notify(|err: &String, dur: Duration| {
+        warn!(service = "process-manager", error = %err, delay = ?dur, "Connection failed, retrying");
     })
     .await?;
 

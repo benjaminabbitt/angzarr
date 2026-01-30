@@ -26,6 +26,7 @@ impl LocalProjectorContext {
 #[async_trait]
 impl ProjectorContext for LocalProjectorContext {
     async fn handle_events(&self, events: &EventBook) -> Result<Projection, tonic::Status> {
-        self.handler.handle(events).await
+        use crate::standalone::ProjectionMode;
+        self.handler.handle(events, ProjectionMode::Execute).await
     }
 }

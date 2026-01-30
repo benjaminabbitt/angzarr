@@ -9,6 +9,7 @@ use crate::proto::{
     event_query_server::EventQuery as EventQueryTrait, query::Selection,
     temporal_query::PointInTime, AggregateRoot, EventBook, Query, Uuid as ProtoUuid,
 };
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::repository::EventBookRepository;
 use crate::storage::EventStore;
 use crate::storage::SnapshotStore;
@@ -22,12 +23,14 @@ pub struct EventQueryService {
 }
 
 impl EventQueryService {
-    /// Create a new event query service with snapshot optimization enabled.
+    /// Create a new event query service with snapshot optimization disabled.
     ///
-    /// Snapshots are enabled by default because sagas benefit from the
-    /// optimization (snapshot + events after snapshot vs all events).
+    /// Snapshots are disabled because the EventQuery service returns event
+    /// history — callers expect all events in `pages`, not a snapshot plus
+    /// subsequent events. Snapshot optimization is for aggregate state
+    /// reconstruction (AggregateCoordinator), not event queries.
     pub fn new(event_store: Arc<dyn EventStore>, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
-        Self::with_options(event_store, snapshot_store, true)
+        Self::with_options(event_store, snapshot_store, false)
     }
 
     /// Create a new event query service with configurable snapshot reading.
@@ -95,9 +98,12 @@ impl EventQueryTrait for EventQueryService {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
 
+        let edition = cover.edition.as_deref().filter(|e| !e.is_empty()).unwrap_or(DEFAULT_EDITION);
+
         info!(
             domain = %domain,
             root = %root_uuid,
+            edition = %edition,
             selection = ?query.selection,
             "GetEventBook starting query"
         );
@@ -114,14 +120,14 @@ impl EventQueryTrait for EventQueryService {
                     .unwrap_or(u32::MAX);
                 info!(domain = %domain, root = %root_uuid, lower = lower, upper = upper, "GetEventBook range query");
                 self.event_book_repo
-                    .get_from_to(&domain, root_uuid, lower, upper)
+                    .get_from_to(&domain, edition, root_uuid, lower, upper)
                     .await
             }
             Some(Selection::Sequences(ref seq_set)) => {
                 // TODO: Implement specific sequence fetching
                 // For now, fall back to full query
                 info!(domain = %domain, root = %root_uuid, sequences = ?seq_set.values, "GetEventBook sequences query (not yet implemented, using full)");
-                self.event_book_repo.get(&domain, root_uuid).await
+                self.event_book_repo.get(&domain, edition, root_uuid).await
             }
             Some(Selection::Temporal(ref tq)) => {
                 match tq.point_in_time {
@@ -130,13 +136,13 @@ impl EventQueryTrait for EventQueryService {
                             .map_err(|e| Status::invalid_argument(e.to_string()))?;
                         info!(domain = %domain, root = %root_uuid, as_of = %rfc3339, "GetEventBook temporal time query");
                         self.event_book_repo
-                            .get_temporal_by_time(&domain, root_uuid, &rfc3339)
+                            .get_temporal_by_time(&domain, edition, root_uuid, &rfc3339)
                             .await
                     }
                     Some(PointInTime::AsOfSequence(seq)) => {
                         info!(domain = %domain, root = %root_uuid, as_of_sequence = seq, "GetEventBook temporal sequence query");
                         self.event_book_repo
-                            .get_temporal_by_sequence(&domain, root_uuid, seq)
+                            .get_temporal_by_sequence(&domain, edition, root_uuid, seq)
                             .await
                     }
                     None => {
@@ -148,7 +154,7 @@ impl EventQueryTrait for EventQueryService {
             }
             None => {
                 info!(domain = %domain, root = %root_uuid, "GetEventBook full query");
-                self.event_book_repo.get(&domain, root_uuid).await
+                self.event_book_repo.get(&domain, edition, root_uuid).await
             }
         }
         .map_err(|e| {
@@ -208,7 +214,7 @@ impl EventQueryTrait for EventQueryService {
         let event_book_repo = self.event_book_repo.clone();
 
         tokio::spawn(async move {
-            match event_book_repo.get(&domain, root_uuid).await {
+            match event_book_repo.get(&domain, DEFAULT_EDITION, root_uuid).await {
                 Ok(book) => {
                     let _ = tx.send(Ok(book)).await;
                 }
@@ -245,6 +251,7 @@ impl EventQueryTrait for EventQueryService {
                             }
                         };
                         let domain = cover.domain.clone();
+                        let edition = cover.edition.as_deref().filter(|e| !e.is_empty()).unwrap_or(DEFAULT_EDITION);
                         let root = match cover.root.as_ref() {
                             Some(r) => match uuid::Uuid::from_slice(&r.value) {
                                 Ok(uuid) => uuid,
@@ -274,19 +281,19 @@ impl EventQueryTrait for EventQueryService {
                                 let lower = range.lower;
                                 let upper = range.upper.unwrap_or(u32::MAX);
                                 event_book_repo
-                                    .get_from_to(&domain, root, lower, upper)
+                                    .get_from_to(&domain, edition, root, lower, upper)
                                     .await
                             }
                             Some(Selection::Sequences(_)) => {
                                 // TODO: Implement specific sequence fetching
-                                event_book_repo.get(&domain, root).await
+                                event_book_repo.get(&domain, edition, root).await
                             }
                             Some(Selection::Temporal(ref tq)) => match tq.point_in_time {
                                 Some(PointInTime::AsOfTime(ref ts)) => {
                                     match crate::storage::helpers::timestamp_to_rfc3339(ts) {
                                         Ok(rfc3339) => {
                                             event_book_repo
-                                                .get_temporal_by_time(&domain, root, &rfc3339)
+                                                .get_temporal_by_time(&domain, edition, root, &rfc3339)
                                                 .await
                                         }
                                         Err(e) => {
@@ -299,7 +306,7 @@ impl EventQueryTrait for EventQueryService {
                                 }
                                 Some(PointInTime::AsOfSequence(seq)) => {
                                     event_book_repo
-                                        .get_temporal_by_sequence(&domain, root, seq)
+                                        .get_temporal_by_sequence(&domain, edition, root, seq)
                                         .await
                                 }
                                 None => {
@@ -311,7 +318,7 @@ impl EventQueryTrait for EventQueryService {
                                     continue;
                                 }
                             },
-                            None => event_book_repo.get(&domain, root).await,
+                            None => event_book_repo.get(&domain, edition, root).await,
                         };
 
                         match result {
@@ -360,7 +367,7 @@ impl EventQueryTrait for EventQueryService {
             };
 
             for domain in domains {
-                match event_store.list_roots(&domain).await {
+                match event_store.list_roots(&domain, DEFAULT_EDITION).await {
                     Ok(roots) => {
                         for root in roots {
                             let aggregate = AggregateRoot {

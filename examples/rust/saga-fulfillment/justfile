@@ -1,43 +1,5 @@
-# Saga Fulfillment - Rust gRPC Server
+PKG := "saga-fulfillment"
+BIN_PKG := PKG
+BIN := PKG + "-server"
 
-set shell := ["bash", "-c"]
-
-TOP := `git rev-parse --show-toplevel`
-
-default:
-    @just --list
-
-build:
-    cargo build -p saga-fulfillment --bin saga-fulfillment-server
-
-build-release:
-    cargo build -p saga-fulfillment --bin saga-fulfillment-server --release
-
-run: build
-    cargo run -p saga-fulfillment --bin saga-fulfillment-server
-
-run-port port:
-    PORT={{port}} cargo run -p saga-fulfillment --bin saga-fulfillment-server
-
-copy-features:
-    rm -rf tests/features
-    cp -r {{TOP}}/examples/features tests/
-
-unit:
-    cargo test -p saga-fulfillment --lib
-
-acceptance: copy-features
-    cargo test -p saga-fulfillment --test acceptance
-
-test: unit acceptance
-
-test-unit: unit
-
-clean:
-    cargo clean -p saga-fulfillment
-
-check:
-    cargo check -p saga-fulfillment
-
-lint:
-    cargo clippy -p saga-fulfillment -- -D warnings
+import "../service.justfile"

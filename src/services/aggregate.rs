@@ -2,31 +2,34 @@
 
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
 use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::grpc::GrpcAggregateContext;
-use crate::orchestration::aggregate::{execute_command_pipeline, PipelineMode};
+use crate::orchestration::aggregate::{
+    execute_command_pipeline, BusinessLogic, GrpcBusinessLogic, PipelineMode,
+};
 use crate::proto::{
     aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinator,
     CommandBook, CommandResponse, DryRunRequest, SyncCommandBook,
 };
+#[cfg(feature = "otel")]
+use crate::proto_ext::CoverExt;
 use crate::services::upcaster::Upcaster;
 use crate::storage::{EventStore, SnapshotStore};
 
 /// Aggregate service.
 ///
-/// Receives commands, loads prior state, calls business logic via gRPC,
+/// Receives commands, loads prior state, calls business logic,
 /// persists new events, and notifies projectors.
 ///
 /// Uses the shared aggregate pipeline for both async and sync operations.
 pub struct AggregateService {
     event_store: Arc<dyn EventStore>,
     snapshot_store: Arc<dyn SnapshotStore>,
-    business_client: Arc<Mutex<AggregateClient<Channel>>>,
+    business: Arc<dyn BusinessLogic>,
     event_bus: Arc<dyn EventBus>,
     /// When false, snapshots are not written even if business logic returns snapshot_state.
     snapshot_write_enabled: bool,
@@ -50,7 +53,7 @@ impl AggregateService {
         Self {
             event_store,
             snapshot_store,
-            business_client: Arc::new(Mutex::new(business_client)),
+            business: Arc::new(GrpcBusinessLogic::new(business_client)),
             event_bus,
             snapshot_write_enabled: true,
             snapshot_read_enabled: true,
@@ -72,7 +75,7 @@ impl AggregateService {
         Self {
             event_store,
             snapshot_store,
-            business_client: Arc::new(Mutex::new(business_client)),
+            business: Arc::new(GrpcBusinessLogic::new(business_client)),
             event_bus,
             snapshot_write_enabled,
             snapshot_read_enabled,
@@ -124,27 +127,51 @@ impl AggregateService {
 #[tonic::async_trait]
 impl AggregateCoordinator for AggregateService {
     /// Handle command asynchronously - publishes to bus, doesn't wait for projectors.
+    #[tracing::instrument(name = "aggregate.handle", skip_all)]
     async fn handle(
         &self,
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let command_book = request.into_inner();
+
+        #[cfg(feature = "otel")]
+        let domain = command_book.domain().to_string();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
         let ctx = self.create_async_context();
 
-        let response = execute_command_pipeline(
+        let result = execute_command_pipeline(
             &ctx,
-            &self.business_client,
+            &*self.business,
             command_book,
             PipelineMode::Execute {
                 validate_sequence: true,
             },
         )
-        .await?;
+        .await;
 
-        Ok(Response::new(response))
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, COMMAND_DURATION, COMMAND_TOTAL};
+            let outcome = if result.is_ok() { "success" } else { "error" };
+            COMMAND_DURATION.record(start.elapsed().as_secs_f64(), &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&domain),
+                metrics::outcome_attr(outcome),
+            ]);
+            COMMAND_TOTAL.add(1, &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&domain),
+                metrics::outcome_attr(outcome),
+            ]);
+        }
+
+        Ok(Response::new(result?))
     }
 
     /// Handle command synchronously - waits for projectors to complete.
+    #[tracing::instrument(name = "aggregate.handle_sync", skip_all)]
     async fn handle_sync(
         &self,
         request: Request<SyncCommandBook>,
@@ -156,22 +183,44 @@ impl AggregateCoordinator for AggregateService {
             .command
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
 
+        #[cfg(feature = "otel")]
+        let domain = command_book.domain().to_string();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
         let ctx = self.create_sync_context(sync_mode);
 
-        let response = execute_command_pipeline(
+        let result = execute_command_pipeline(
             &ctx,
-            &self.business_client,
+            &*self.business,
             command_book,
             PipelineMode::Execute {
                 validate_sequence: true,
             },
         )
-        .await?;
+        .await;
 
-        Ok(Response::new(response))
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, COMMAND_DURATION, COMMAND_TOTAL};
+            let outcome = if result.is_ok() { "success" } else { "error" };
+            COMMAND_DURATION.record(start.elapsed().as_secs_f64(), &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&domain),
+                metrics::outcome_attr(outcome),
+            ]);
+            COMMAND_TOTAL.add(1, &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&domain),
+                metrics::outcome_attr(outcome),
+            ]);
+        }
+
+        Ok(Response::new(result?))
     }
 
     /// Dry-run: execute command against temporal state without persisting.
+    #[tracing::instrument(name = "aggregate.dry_run_handle", skip_all)]
     async fn dry_run_handle(
         &self,
         request: Request<DryRunRequest>,
@@ -199,7 +248,7 @@ impl AggregateCoordinator for AggregateService {
 
         let response = execute_command_pipeline(
             &ctx,
-            &self.business_client,
+            &*self.business,
             command_book,
             PipelineMode::DryRun {
                 as_of_sequence,

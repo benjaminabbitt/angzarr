@@ -3,8 +3,9 @@
 //! `AggregateContext` trait + `execute_command_pipeline` for the shared
 //! command execution flow (parse → load → validate → invoke → persist → publish).
 //!
-//! Business logic invocation is always via gRPC `AggregateClient`.
-//! The trait covers storage access, post-persist behavior, and optional hooks.
+//! Business logic invocation is via the `BusinessLogic` trait, decoupling the
+//! pipeline from transport (gRPC over TCP, UDS, or in-process calls).
+//! The `AggregateContext` trait covers storage access, post-persist behavior, and optional hooks.
 //! - `local/`: SQLite-backed storage with static service discovery
 //! - `grpc/`: Remote storage with K8s service discovery
 
@@ -18,12 +19,11 @@ pub mod local;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tonic::Status;
-use tracing::debug;
 use uuid::Uuid;
 
 use crate::proto::{
-    aggregate_client::AggregateClient, event_page, CommandBook, CommandResponse, ContextualCommand,
-    EventBook, Projection,
+    aggregate_client::AggregateClient, event_page, BusinessResponse, CommandBook, CommandResponse,
+    ContextualCommand, EventBook, Projection,
 };
 use crate::utils::response_builder::extract_events_from_response;
 
@@ -57,12 +57,17 @@ pub enum PipelineMode {
 ///
 /// Implementations provide storage access and post-persist behavior.
 /// Business logic invocation is always via gRPC and handled by the pipeline.
+///
+/// All domain-scoped methods take `domain` and `edition` as separate parameters.
+/// Domain is the bare aggregate domain (`"order"`, `"cart"`).
+/// Edition identifies the timeline (`"angzarr"` for main, named editions for forks).
 #[async_trait]
 pub trait AggregateContext: Send + Sync {
     /// Load prior events for the aggregate.
     async fn load_prior_events(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
     ) -> Result<EventBook, Status>;
@@ -72,6 +77,7 @@ pub trait AggregateContext: Send + Sync {
         &self,
         events: &EventBook,
         domain: &str,
+        edition: &str,
         root: Uuid,
         correlation_id: &str,
     ) -> Result<EventBook, Status>;
@@ -85,6 +91,7 @@ pub trait AggregateContext: Send + Sync {
     async fn pre_validate_sequence(
         &self,
         _domain: &str,
+        _edition: &str,
         _root: Uuid,
         _expected: u32,
     ) -> Result<(), Status> {
@@ -98,6 +105,39 @@ pub trait AggregateContext: Send + Sync {
         events: EventBook,
     ) -> Result<EventBook, Status> {
         Ok(events)
+    }
+}
+
+/// Abstraction for aggregate business logic invocation.
+///
+/// Decouples the command pipeline from the transport used to call business logic.
+/// Implementations may use gRPC (over TCP, UDS), in-process trait calls, etc.
+#[async_trait]
+pub trait BusinessLogic: Send + Sync {
+    /// Invoke business logic with prior events and a command.
+    async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
+}
+
+/// Business logic invocation via gRPC `AggregateClient`.
+///
+/// Wraps a tonic `AggregateClient` channel (TCP, UDS, or duplex).
+pub struct GrpcBusinessLogic {
+    client: Mutex<AggregateClient<tonic::transport::Channel>>,
+}
+
+impl GrpcBusinessLogic {
+    /// Wrap a gRPC aggregate client as a `BusinessLogic` implementation.
+    pub fn new(client: AggregateClient<tonic::transport::Channel>) -> Self {
+        Self {
+            client: Mutex::new(client),
+        }
+    }
+}
+
+#[async_trait]
+impl BusinessLogic for GrpcBusinessLogic {
+    async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
+        Ok(self.client.lock().await.handle(cmd).await?.into_inner())
     }
 }
 
@@ -138,18 +178,37 @@ pub fn compute_next_sequence(events: &EventBook) -> u32 {
         .unwrap_or(0)
 }
 
+/// Default edition name for the canonical (main) timeline.
+pub const DEFAULT_EDITION: &str = "angzarr";
+
+/// Extract edition from a CommandBook's Cover.
+///
+/// Returns the edition from `Cover.edition`, defaulting to [`DEFAULT_EDITION`]
+/// when absent or empty.
+fn extract_edition(command_book: &CommandBook) -> String {
+    command_book
+        .cover
+        .as_ref()
+        .and_then(|c| c.edition.as_deref())
+        .filter(|e| !e.is_empty())
+        .unwrap_or(DEFAULT_EDITION)
+        .to_string()
+}
+
 /// Execute the aggregate command pipeline.
 ///
 /// Flow:
-/// - **Execute**: parse → correlation_id → pre-validate → load → transform →
-///   validate sequence → invoke (gRPC) → persist → post-persist → response
-/// - **DryRun**: parse → load temporal → transform → invoke (gRPC) → response (no persist)
+/// - **Execute**: parse → extract edition → correlation_id → pre-validate → load →
+///   transform → validate sequence → invoke → persist → post-persist → response
+/// - **DryRun**: parse → extract edition → load temporal → transform → invoke →
+///   response (no persist)
 pub async fn execute_command_pipeline(
     ctx: &dyn AggregateContext,
-    business_client: &Mutex<AggregateClient<tonic::transport::Channel>>,
+    business: &dyn BusinessLogic,
     command_book: CommandBook,
     mode: PipelineMode,
 ) -> Result<CommandResponse, Status> {
+    let edition = extract_edition(&command_book);
     let (domain, root_uuid) = parse_command_cover(&command_book)?;
     let correlation_id = crate::orchestration::correlation::ensure_correlation_id(&command_book)?;
 
@@ -157,9 +216,10 @@ pub async fn execute_command_pipeline(
         PipelineMode::Execute { validate_sequence } => {
             execute_mode(
                 ctx,
-                business_client,
+                business,
                 command_book,
                 &domain,
+                &edition,
                 root_uuid,
                 &correlation_id,
                 validate_sequence,
@@ -172,9 +232,10 @@ pub async fn execute_command_pipeline(
         } => {
             dry_run_mode(
                 ctx,
-                business_client,
+                business,
                 command_book,
                 &domain,
+                &edition,
                 root_uuid,
                 as_of_sequence,
                 as_of_timestamp,
@@ -184,32 +245,28 @@ pub async fn execute_command_pipeline(
     }
 }
 
+#[tracing::instrument(name = "aggregate.execute", skip_all, fields(%domain, %edition, %root_uuid, %correlation_id))]
 async fn execute_mode(
     ctx: &dyn AggregateContext,
-    business_client: &Mutex<AggregateClient<tonic::transport::Channel>>,
+    business: &dyn BusinessLogic,
     command_book: CommandBook,
     domain: &str,
+    edition: &str,
     root_uuid: Uuid,
     correlation_id: &str,
     validate_sequence: bool,
 ) -> Result<CommandResponse, Status> {
-    debug!(
-        domain = %domain,
-        root = %root_uuid,
-        correlation_id = %correlation_id,
-        "Executing command"
-    );
 
     // Pre-validate sequence (gRPC fast-path, no-op for local)
     if validate_sequence {
         let expected = extract_command_sequence(&command_book);
-        ctx.pre_validate_sequence(domain, root_uuid, expected)
+        ctx.pre_validate_sequence(domain, edition, root_uuid, expected)
             .await?;
     }
 
     // Load prior events
     let prior_events = ctx
-        .load_prior_events(domain, root_uuid, &TemporalQuery::Current)
+        .load_prior_events(domain, edition, root_uuid, &TemporalQuery::Current)
         .await?;
 
     // Transform events (upcasting)
@@ -220,30 +277,24 @@ async fn execute_mode(
         let expected = extract_command_sequence(&command_book);
         let actual = compute_next_sequence(&prior_events);
         if expected != actual {
-            return Err(Status::failed_precondition(format!(
+            return Err(Status::aborted(format!(
                 "Sequence mismatch: command expects {expected}, aggregate at {actual}"
             )));
         }
     }
 
-    // Invoke business logic via gRPC
+    // Invoke business logic
     let contextual_command = ContextualCommand {
         events: Some(prior_events),
         command: Some(command_book),
     };
 
-    let response = business_client
-        .lock()
-        .await
-        .handle(contextual_command)
-        .await?
-        .into_inner();
-
+    let response = business.invoke(contextual_command).await?;
     let new_events = extract_events_from_response(response, correlation_id.to_string())?;
 
     // Persist
     let persisted = ctx
-        .persist_events(&new_events, domain, root_uuid, correlation_id)
+        .persist_events(&new_events, domain, edition, root_uuid, correlation_id)
         .await?;
 
     // Post-persist: publish + sync projectors
@@ -255,22 +306,17 @@ async fn execute_mode(
     })
 }
 
+#[tracing::instrument(name = "aggregate.dry_run", skip_all, fields(%domain, %edition, %root_uuid, ?as_of_sequence, ?as_of_timestamp))]
 async fn dry_run_mode(
     ctx: &dyn AggregateContext,
-    business_client: &Mutex<AggregateClient<tonic::transport::Channel>>,
+    business: &dyn BusinessLogic,
     command_book: CommandBook,
     domain: &str,
+    edition: &str,
     root_uuid: Uuid,
     as_of_sequence: Option<u32>,
     as_of_timestamp: Option<String>,
 ) -> Result<CommandResponse, Status> {
-    debug!(
-        domain = %domain,
-        root = %root_uuid,
-        ?as_of_sequence,
-        ?as_of_timestamp,
-        "Dry-run command"
-    );
 
     let temporal = match (as_of_sequence, as_of_timestamp) {
         (Some(seq), _) => TemporalQuery::AsOfSequence(seq),
@@ -282,7 +328,7 @@ async fn dry_run_mode(
         }
     };
 
-    let prior_events = ctx.load_prior_events(domain, root_uuid, &temporal).await?;
+    let prior_events = ctx.load_prior_events(domain, edition, root_uuid, &temporal).await?;
     let prior_events = ctx.transform_events(domain, prior_events).await?;
 
     let contextual_command = ContextualCommand {
@@ -290,12 +336,7 @@ async fn dry_run_mode(
         command: Some(command_book),
     };
 
-    let response = business_client
-        .lock()
-        .await
-        .handle(contextual_command)
-        .await?
-        .into_inner();
+    let response = business.invoke(contextual_command).await?;
 
     // For dry-run, extract events but don't set correlation_id (speculative)
     let speculative_events = extract_events_from_response(response, String::new())?;

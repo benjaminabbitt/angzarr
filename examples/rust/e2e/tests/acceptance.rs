@@ -673,6 +673,7 @@ async fn send_corrupted_protobuf(world: &mut E2EWorld) {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: "corrupt-test".to_string(),
+            edition: None,
         }),
         pages: vec![proto::CommandPage {
             sequence: next_seq,
@@ -728,6 +729,7 @@ async fn send_concurrent_commands(world: &mut E2EWorld, count: u32) {
                     domain: "cart".to_string(),
                     root: Some(proto::Uuid { value: root_bytes }),
                     correlation_id: format!("conc-{}", i),
+                    edition: None,
                 }),
                 pages: vec![proto::CommandPage {
                     sequence: 0, // All start at 0, will conflict
@@ -3311,6 +3313,7 @@ fn build_dry_run_command_book(
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: format!("dryrun-{}", Uuid::new_v4()),
+            edition: None,
         }),
         pages: vec![proto::CommandPage {
             sequence,
@@ -5114,6 +5117,983 @@ async fn loyalty_balance_shows(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+// ============================================================================
+// Order Status Process Manager Steps
+// ============================================================================
+
+/// Query order-status PM state and return current status + all transitions.
+async fn query_order_status_pm(
+    world: &E2EWorld,
+    correlation_id: &str,
+) -> (String, Vec<process_manager_order_status::OrderStatusChanged>) {
+    let pm_root = Uuid::new_v5(&Uuid::NAMESPACE_OID, correlation_id.as_bytes());
+    let pm_events = world.query_events("order-status", pm_root).await;
+
+    let mut transitions = Vec::new();
+    for page in &pm_events {
+        if let Some(event) = &page.event {
+            if let Ok(decoded) =
+                process_manager_order_status::OrderStatusChanged::decode(event.value.as_slice())
+            {
+                transitions.push(decoded);
+            }
+        }
+    }
+
+    let current_status = transitions
+        .last()
+        .map(|t| t.to_status.clone())
+        .unwrap_or_default();
+
+    (current_status, transitions)
+}
+
+#[given(regex = r#"^an order "([^"]+)" with correlation "([^"]+)" is paid$"#)]
+async fn order_with_correlation_is_paid(
+    world: &mut E2EWorld,
+    order_alias: String,
+    correlation_alias: String,
+) {
+    // Create order
+    order_with_correlation(world, order_alias, correlation_alias.clone()).await;
+    // Submit payment
+    trigger_pm_prerequisite(world, "PaymentSubmitted", &correlation_alias).await;
+}
+
+#[given(regex = r#"^an order "([^"]+)" with correlation "([^"]+)" is completed$"#)]
+async fn order_with_correlation_is_completed(
+    world: &mut E2EWorld,
+    order_alias: String,
+    correlation_alias: String,
+) {
+    // Create order
+    order_with_correlation(world, order_alias.clone(), correlation_alias.clone()).await;
+    // Submit payment
+    trigger_pm_prerequisite(world, "PaymentSubmitted", &correlation_alias).await;
+    // Confirm payment → OrderCompleted
+    let confirm_cmd = examples_proto::ConfirmPayment {
+        payment_reference: format!("PAY-REF-{}", Uuid::new_v4()),
+    };
+    let cmd_book = world.build_command(
+        "order",
+        &order_alias,
+        &correlation_alias,
+        "examples.ConfirmPayment",
+        &confirm_cmd,
+    );
+    world.execute(cmd_book).await;
+    assert!(
+        world.last_error.is_none(),
+        "ConfirmPayment failed in setup: {:?}",
+        world.last_error
+    );
+}
+
+#[when(regex = r#"^the order "([^"]+)" is cancelled with correlation "([^"]+)"$"#)]
+async fn os_cancel_order(
+    world: &mut E2EWorld,
+    order_alias: String,
+    correlation_alias: String,
+) {
+    let cancel_cmd = examples_proto::CancelOrder {
+        reason: "test cancellation".to_string(),
+    };
+    let cmd_book = world.build_command(
+        "order",
+        &order_alias,
+        &correlation_alias,
+        "examples.CancelOrder",
+        &cancel_cmd,
+    );
+    world.execute(cmd_book).await;
+    assert!(
+        world.last_error.is_none(),
+        "CancelOrder failed: {:?}",
+        world.last_error
+    );
+}
+
+#[when(regex = r#"^a shipment is created for correlation "([^"]+)"$"#)]
+async fn shipment_created_for_correlation(world: &mut E2EWorld, correlation_alias: String) {
+    let order_alias = world
+        .context
+        .get(&format!("order-for-corr:{}", correlation_alias))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "No order found for correlation '{}'. Use Given step first.",
+                correlation_alias
+            )
+        });
+
+    let fulfillment_alias = format!("fulfill-os-{}", correlation_alias);
+    let order_root = world.root(&order_alias);
+    world.roots.insert(fulfillment_alias.clone(), order_root);
+
+    let create_cmd = examples_proto::CreateShipment {
+        order_id: order_alias,
+    };
+    let cmd_book = world.build_command(
+        "fulfillment",
+        &fulfillment_alias,
+        &correlation_alias,
+        "examples.CreateShipment",
+        &create_cmd,
+    );
+    world.execute(cmd_book).await;
+    assert!(
+        world.last_error.is_none(),
+        "CreateShipment failed: {:?}",
+        world.last_error
+    );
+}
+
+#[then(regex = r#"^within (\d+) seconds the order status PM shows "([^"]+)" for correlation "([^"]+)"$"#)]
+async fn order_status_pm_shows(
+    world: &mut E2EWorld,
+    timeout_secs: u64,
+    expected_status: String,
+    correlation_alias: String,
+) {
+    let correlation_id = world.correlation(&correlation_alias);
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+
+    loop {
+        let (current_status, _) = query_order_status_pm(world, &correlation_id).await;
+        if current_status == expected_status {
+            return;
+        }
+        if Instant::now() > deadline {
+            panic!(
+                "Order status PM did not reach '{}' for correlation '{}' within {} seconds. Current: '{}'",
+                expected_status, correlation_alias, timeout_secs, current_status
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[then(regex = r#"^within (\d+) seconds the order status PM has (\d+) transitions for correlation "([^"]+)"$"#)]
+async fn order_status_pm_transition_count(
+    world: &mut E2EWorld,
+    timeout_secs: u64,
+    expected_count: usize,
+    correlation_alias: String,
+) {
+    let correlation_id = world.correlation(&correlation_alias);
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+
+    loop {
+        let (_, transitions) = query_order_status_pm(world, &correlation_id).await;
+        if transitions.len() == expected_count {
+            // Store transitions for subsequent assertion steps
+            let status_list: Vec<String> = transitions.iter().map(|t| t.to_status.clone()).collect();
+            world.context.insert(
+                format!("os-transitions:{}", correlation_alias),
+                status_list.join(","),
+            );
+            return;
+        }
+        if Instant::now() > deadline {
+            panic!(
+                "Order status PM has {} transitions for '{}', expected {}. Statuses: {:?}",
+                transitions.len(),
+                correlation_alias,
+                expected_count,
+                transitions
+                    .iter()
+                    .map(|t| t.to_status.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[then(regex = r#"^the transitions include "([^"]+)" and "([^"]+)" and "([^"]+)"$"#)]
+async fn transitions_include_three(
+    world: &mut E2EWorld,
+    status_a: String,
+    status_b: String,
+    status_c: String,
+) {
+    // Find the most recent transitions stored by the count step
+    let stored = world
+        .context
+        .iter()
+        .find(|(k, _)| k.starts_with("os-transitions:"))
+        .map(|(_, v)| v.clone())
+        .expect("No transitions stored. Run transition count step first.");
+
+    let statuses: Vec<&str> = stored.split(',').collect();
+    for expected in [&status_a, &status_b, &status_c] {
+        assert!(
+            statuses.contains(&expected.as_str()),
+            "Expected transition '{}' not found in {:?}",
+            expected,
+            statuses
+        );
+    }
+}
+
+// ============================================================================
+// Temporal Order Cancellation Steps
+// ============================================================================
+
+#[when(regex = r#"^I query order "([^"]+)" events at sequence (\d+)$"#)]
+async fn query_order_at_sequence(world: &mut E2EWorld, order_alias: String, sequence: u32) {
+    let root = world.root(&order_alias);
+    world
+        .query_events_temporal("order", root, Some(sequence), None)
+        .await;
+}
+
+#[when(regex = r#"^I query order "([^"]+)" all events$"#)]
+async fn query_order_all_events(world: &mut E2EWorld, order_alias: String) {
+    let root = world.root(&order_alias);
+    let events = world.query_events("order", root).await;
+    world.last_temporal_events = Some(events);
+}
+
+#[then(regex = r#"^the temporal result has (\d+) events?$"#)]
+async fn temporal_result_has_n_events(world: &mut E2EWorld, count: usize) {
+    let events = world
+        .last_temporal_events
+        .as_ref()
+        .expect("No temporal query result");
+    assert_eq!(
+        events.len(),
+        count,
+        "Expected {} temporal events, got {}",
+        count,
+        events.len()
+    );
+}
+
+#[then(regex = r#"^the temporal event at index (\d+) is "([^"]+)"$"#)]
+async fn temporal_event_at_index_is(world: &mut E2EWorld, index: usize, expected_type: String) {
+    let events = world
+        .last_temporal_events
+        .as_ref()
+        .expect("No temporal query result");
+    assert!(
+        index < events.len(),
+        "Index {} out of bounds (have {} events)",
+        index,
+        events.len()
+    );
+    let event = events[index]
+        .event
+        .as_ref()
+        .expect("Event page has no event");
+    let actual_type = extract_event_type(event);
+    assert!(
+        actual_type.contains(&expected_type),
+        "Expected event at index {} to be '{}', got '{}'",
+        index,
+        expected_type,
+        actual_type
+    );
+}
+
+#[then(regex = r#"^the order has (\d+) total events$"#)]
+async fn order_has_total_events(world: &mut E2EWorld, count: usize) {
+    let events = world
+        .last_temporal_events
+        .as_ref()
+        .expect("No temporal query result");
+    assert_eq!(
+        events.len(),
+        count,
+        "Expected {} total events, got {}",
+        count,
+        events.len()
+    );
+}
+
+#[when(
+    regex = r#"^I dry-run cancel order "([^"]+)" at sequence (\d+) with reason "([^"]+)"$"#
+)]
+async fn dry_run_cancel_order_at_sequence(
+    world: &mut E2EWorld,
+    order_alias: String,
+    sequence: u32,
+    reason: String,
+) {
+    let root = world.root(&order_alias);
+
+    // Record current event count to verify no mutation
+    let current_events = world.query_events("order", root).await;
+    world.event_count_before_dry_run = Some(current_events.len());
+
+    let command = examples_proto::CancelOrder { reason };
+    let correlation = format!("dryrun-cancel-{}", Uuid::new_v4());
+    let cmd_book = proto::CommandBook {
+        cover: Some(proto::Cover {
+            domain: "order".to_string(),
+            root: Some(proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: correlation,
+            edition: None,
+        }),
+        pages: vec![proto::CommandPage {
+            sequence,
+            command: Some(prost_types::Any {
+                type_url: "type.examples/examples.CancelOrder".to_string(),
+                value: command.encode_to_vec(),
+            }),
+        }],
+        saga_origin: None,
+    };
+
+    world.dry_run(cmd_book, Some(sequence), None).await;
+}
+
+#[then(regex = r#"^querying order "([^"]+)" still returns exactly (\d+) events$"#)]
+async fn order_still_has_n_events(world: &mut E2EWorld, order_alias: String, count: usize) {
+    let root = world.root(&order_alias);
+    let events = world.query_events("order", root).await;
+    assert_eq!(
+        events.len(),
+        count,
+        "Expected order to still have {} events (no mutation), got {}",
+        count,
+        events.len()
+    );
+}
+
+// ============================================================================
+// Speculative Component Execution Steps
+// ============================================================================
+
+/// Build a synthetic OrderCompleted event from existing order events.
+///
+/// Extracts customer_root, cart_root, items, and subtotal from the OrderCreated
+/// event in the pages. Used by speculative saga tests to simulate "what if this
+/// order completed?" without actually confirming payment through the event bus
+/// (which would trigger the real saga and create side effects).
+fn build_synthetic_order_completed(events: &[angzarr::proto::EventPage]) -> angzarr::proto::EventPage {
+    let mut customer_root = vec![];
+    let mut cart_root = vec![];
+    let mut items = vec![];
+    let mut subtotal_cents = 1000i32;
+
+    for page in events {
+        if let Some(event) = &page.event {
+            if event.type_url.ends_with("OrderCreated") {
+                if let Ok(created) =
+                    <examples_proto::OrderCreated as prost::Message>::decode(event.value.as_slice())
+                {
+                    customer_root = created.customer_root;
+                    cart_root = created.cart_root;
+                    subtotal_cents = created.subtotal_cents;
+                    items = created
+                        .items
+                        .into_iter()
+                        .map(|i| examples_proto::LineItem {
+                            product_id: i.product_id,
+                            name: i.name,
+                            quantity: i.quantity,
+                            unit_price_cents: i.unit_price_cents,
+                            product_root: i.product_root,
+                        })
+                        .collect();
+                }
+            }
+        }
+    }
+
+    let completed = examples_proto::OrderCompleted {
+        final_total_cents: subtotal_cents,
+        payment_method: "card".to_string(),
+        payment_reference: "PAY-REF-SPEC".to_string(),
+        loyalty_points_earned: subtotal_cents / 100,
+        completed_at: None,
+        customer_root,
+        cart_root,
+        items,
+    };
+
+    angzarr::proto::EventPage {
+        sequence: Some(angzarr::proto::event_page::Sequence::Num(events.len() as u32)),
+        created_at: None,
+        event: Some(prost_types::Any {
+            type_url: "type.examples/examples.OrderCompleted".to_string(),
+            value: <examples_proto::OrderCompleted as prost::Message>::encode_to_vec(&completed),
+        }),
+    }
+}
+
+#[given(regex = r#"^an order "([^"]+)" exists with subtotal (\d+) cents$"#)]
+async fn order_exists_with_subtotal(
+    world: &mut E2EWorld,
+    order_alias: String,
+    subtotal_cents: i32,
+) {
+    let command = examples_proto::CreateOrder {
+        customer_id: format!("CUST-{}", order_alias),
+        items: vec![examples_proto::LineItem {
+            product_id: "SKU-SPEC".to_string(),
+            name: "Speculative Test Item".to_string(),
+            quantity: 1,
+            unit_price_cents: subtotal_cents,
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let correlation = format!("setup-spec-order-{}", order_alias);
+    let cmd_book = world.build_command(
+        "order",
+        &order_alias,
+        &correlation,
+        "examples.CreateOrder",
+        &command,
+    );
+    world.execute(cmd_book).await;
+    assert!(
+        world.last_error.is_none(),
+        "Failed to create order: {:?}",
+        world.last_error
+    );
+}
+
+#[when(regex = r#"^I speculatively run the "([^"]+)" projector against order "([^"]+)" events$"#)]
+async fn speculative_projector(world: &mut E2EWorld, projector_name: String, order_alias: String) {
+    let root = world.root(&order_alias);
+
+    // Allow async projector to finish processing before we snapshot DB state
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // Snapshot web projector DB state before speculative execution
+    let order_id = root.to_string();
+    let projection_before = world.query_order_projection(&order_id).await;
+    world.context.insert(
+        "web_db_had_entry_before".to_string(),
+        projection_before.is_some().to_string(),
+    );
+    if let Some(ref p) = projection_before {
+        world.context.insert(
+            "web_db_status_before".to_string(),
+            p.status.clone(),
+        );
+        world.context.insert(
+            "web_db_total_before".to_string(),
+            p.total_cents.to_string(),
+        );
+    }
+
+    let events = world.query_events("order", root).await;
+
+    let event_book = angzarr::proto::EventBook {
+        cover: Some(angzarr::proto::Cover {
+            domain: "order".to_string(),
+            root: Some(angzarr::proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        snapshot: None,
+        pages: events,
+        snapshot_state: None,
+    };
+
+    match world.speculative().projector(&projector_name, &event_book).await {
+        Ok(_projection) => {
+            world.last_error = None;
+            world
+                .context
+                .insert("speculative_success".to_string(), "true".to_string());
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+        }
+    }
+}
+
+#[then(regex = r#"^the speculative projection succeeds$"#)]
+async fn speculative_projection_succeeds(world: &mut E2EWorld) {
+    assert!(
+        world.last_error.is_none(),
+        "Speculative projection failed: {:?}",
+        world.last_error
+    );
+    assert_eq!(
+        world.context.get("speculative_success").map(|s| s.as_str()),
+        Some("true"),
+        "Speculative projection did not complete"
+    );
+}
+
+#[then(regex = r#"^speculative execution did not modify the web projector for "([^"]+)"$"#)]
+async fn speculative_did_not_modify_web_projector(world: &mut E2EWorld, order_alias: String) {
+    let root = world.root(&order_alias);
+    let order_id = root.to_string();
+
+    let projection_after = world.query_order_projection(&order_id).await;
+
+    let had_entry_before = world
+        .context
+        .get("web_db_had_entry_before")
+        .map(|s| s == "true")
+        .unwrap_or(false);
+
+    if had_entry_before {
+        // Entry existed before speculative run — verify it wasn't modified
+        let after = projection_after.expect("Entry disappeared after speculative execution");
+        let status_before = world.context.get("web_db_status_before").cloned().unwrap_or_default();
+        let total_before = world.context.get("web_db_total_before").cloned().unwrap_or_default();
+        assert_eq!(
+            after.status, status_before,
+            "Speculative execution modified web projector status"
+        );
+        assert_eq!(
+            after.total_cents.to_string(), total_before,
+            "Speculative execution modified web projector total_cents"
+        );
+    } else {
+        // No entry before — speculative execution should not have created one
+        assert!(
+            projection_after.is_none(),
+            "Speculative execution created a web projector entry for {}",
+            order_alias
+        );
+    }
+}
+
+#[when(
+    regex = r#"^I speculatively run the "([^"]+)" against order "([^"]+)" completion events$"#
+)]
+async fn speculative_saga(world: &mut E2EWorld, saga_name: String, order_alias: String) {
+    let root = world.root(&order_alias);
+    let mut events = world.query_events("order", root).await;
+
+    // Sagas react to OrderCompleted. Append a synthetic OrderCompleted event
+    // to simulate "what if this order completed?" — the order is only created
+    // and paid in the Given step, not confirmed via the event bus (which would
+    // trigger the real saga and create side effects we're trying to avoid).
+    events.push(build_synthetic_order_completed(&events));
+
+    let event_book = angzarr::proto::EventBook {
+        cover: Some(angzarr::proto::Cover {
+            domain: "order".to_string(),
+            root: Some(angzarr::proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: format!("spec-saga-{}", order_alias),
+            edition: None,
+        }),
+        snapshot: None,
+        pages: events,
+        snapshot_state: None,
+    };
+
+    let domain_specs = std::collections::HashMap::new();
+    match world
+        .speculative()
+        .saga(&saga_name, &event_book, &domain_specs)
+        .await
+    {
+        Ok(commands) => {
+            world.last_error = None;
+            world.context.insert(
+                "speculative_command_count".to_string(),
+                commands.len().to_string(),
+            );
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+        }
+    }
+}
+
+#[when(
+    regex = r#"^I speculatively run the "([^"]+)" against order "([^"]+)" completion events with current state$"#
+)]
+async fn speculative_saga_with_current_state(
+    world: &mut E2EWorld,
+    saga_name: String,
+    order_alias: String,
+) {
+    let root = world.root(&order_alias);
+    let mut events = world.query_events("order", root).await;
+
+    // Append synthetic OrderCompleted (see speculative_saga step for rationale)
+    events.push(build_synthetic_order_completed(&events));
+
+    let event_book = angzarr::proto::EventBook {
+        cover: Some(angzarr::proto::Cover {
+            domain: "order".to_string(),
+            root: Some(angzarr::proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: format!("spec-saga-{}", order_alias),
+            edition: None,
+        }),
+        snapshot: None,
+        pages: events,
+        snapshot_state: None,
+    };
+
+    let mut domain_specs = std::collections::HashMap::new();
+    domain_specs.insert(
+        "customer".to_string(),
+        angzarr::standalone::DomainStateSpec::Current,
+    );
+
+    match world
+        .speculative()
+        .saga(&saga_name, &event_book, &domain_specs)
+        .await
+    {
+        Ok(commands) => {
+            world.last_error = None;
+            world.context.insert(
+                "speculative_command_count".to_string(),
+                commands.len().to_string(),
+            );
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+        }
+    }
+}
+
+#[then(regex = r#"^the speculative saga produces commands$"#)]
+async fn speculative_saga_produces_commands(world: &mut E2EWorld) {
+    assert!(
+        world.last_error.is_none(),
+        "Speculative saga failed: {:?}",
+        world.last_error
+    );
+    let count: usize = world
+        .context
+        .get("speculative_command_count")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    assert!(
+        count > 0,
+        "Speculative saga should produce commands, but got 0"
+    );
+}
+
+#[then(regex = r#"^no fulfillment events exist for "([^"]+)"$"#)]
+async fn no_fulfillment_events(world: &mut E2EWorld, order_alias: String) {
+    let root = world.root(&order_alias);
+    let events = world.query_events("fulfillment", root).await;
+    assert!(
+        events.is_empty(),
+        "Expected no fulfillment events after speculative execution, but found {}",
+        events.len()
+    );
+}
+
+#[then(regex = r#"^customer "([^"]+)" loyalty points are unchanged$"#)]
+async fn customer_loyalty_unchanged(world: &mut E2EWorld, customer_alias: String) {
+    let root = world.root(&customer_alias);
+    let events = world.query_events("customer", root).await;
+
+    // The customer should have the same events as before speculative execution
+    // (CreateCustomer + AddLoyaltyPoints). No additional events from saga speculation.
+    let loyalty_add_count = events
+        .iter()
+        .filter(|e| {
+            e.event
+                .as_ref()
+                .map(|ev| extract_event_type(ev).contains("LoyaltyPointsAdded"))
+                .unwrap_or(false)
+        })
+        .count();
+
+    // Only the initial AddLoyaltyPoints from setup (500 points)
+    assert_eq!(
+        loyalty_add_count, 1,
+        "Customer should have exactly 1 LoyaltyPointsAdded (from setup), got {}",
+        loyalty_add_count
+    );
+}
+
+#[when(
+    regex = r#"^I speculatively run the "([^"]+)" PM against order "([^"]+)" completion events$"#
+)]
+async fn speculative_pm(world: &mut E2EWorld, pm_name: String, order_alias: String) {
+    let root = world.root(&order_alias);
+    let events = world.query_events("order", root).await;
+
+    let event_book = angzarr::proto::EventBook {
+        cover: Some(angzarr::proto::Cover {
+            domain: "order".to_string(),
+            root: Some(angzarr::proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        snapshot: None,
+        pages: events,
+        snapshot_state: None,
+    };
+
+    let domain_specs = std::collections::HashMap::new();
+    match world
+        .speculative()
+        .process_manager(&pm_name, &event_book, &domain_specs)
+        .await
+    {
+        Ok(result) => {
+            world.last_error = None;
+            world.context.insert(
+                "speculative_pm_command_count".to_string(),
+                result.commands.len().to_string(),
+            );
+            world.context.insert(
+                "speculative_pm_has_events".to_string(),
+                result.process_events.is_some().to_string(),
+            );
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+        }
+    }
+}
+
+#[then(regex = r#"^the speculative PM produces a result$"#)]
+async fn speculative_pm_produces_result(world: &mut E2EWorld) {
+    assert!(
+        world.last_error.is_none(),
+        "Speculative PM failed: {:?}",
+        world.last_error
+    );
+}
+
+#[then(regex = r#"^no process manager events are persisted for "([^"]+)"$"#)]
+async fn no_pm_events_persisted(world: &mut E2EWorld, order_alias: String) {
+    // PM events are stored in the PM's own domain. The PM domain names are
+    // "order-fulfillment" and "order-status". After speculative execution,
+    // no new PM events should have been written.
+    let root = world.root(&order_alias);
+
+    // Check both PM domains
+    for pm_domain in &["order-fulfillment", "order-status"] {
+        let events = world.query_events(pm_domain, root).await;
+        assert!(
+            events.is_empty(),
+            "Expected no PM events in domain '{}' after speculative execution, but found {}",
+            pm_domain,
+            events.len()
+        );
+    }
+}
+
+#[given(regex = r#"^I record the event count for order "([^"]+)"$"#)]
+async fn record_order_event_count(world: &mut E2EWorld, order_alias: String) {
+    let root = world.root(&order_alias);
+    let events = world.query_events("order", root).await;
+    world.event_count_before_dry_run = Some(events.len());
+    world
+        .context
+        .insert("spec_order_alias".to_string(), order_alias);
+}
+
+#[then(regex = r#"^the event count for order "([^"]+)" is unchanged$"#)]
+async fn order_event_count_unchanged(world: &mut E2EWorld, order_alias: String) {
+    let root = world.root(&order_alias);
+    let events = world.query_events("order", root).await;
+
+    if let Some(expected) = world.event_count_before_dry_run {
+        assert_eq!(
+            events.len(),
+            expected,
+            "Order event count changed after speculative execution: expected {}, got {}",
+            expected,
+            events.len()
+        );
+    }
+}
+
+// ============================================================================
+// Edition Steps
+// ============================================================================
+
+#[when(expr = "I create edition {string} diverging at sequence {int} for domain {string}")]
+async fn create_edition(
+    world: &mut E2EWorld,
+    edition_name: String,
+    sequence: u32,
+    _domain: String,
+) {
+    use angzarr::standalone::DivergencePoint;
+
+    let result = world
+        .edition()
+        .create(
+            &edition_name,
+            DivergencePoint::AtSequence(sequence),
+            format!("Test edition {}", edition_name),
+        )
+        .await;
+    match result {
+        Ok(_) => {
+            world.last_error = None;
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+        }
+    }
+}
+
+#[when(expr = "I try to create edition {string} diverging at sequence {int} for domain {string}")]
+async fn try_create_edition(
+    world: &mut E2EWorld,
+    edition_name: String,
+    sequence: u32,
+    domain: String,
+) {
+    create_edition(world, edition_name, sequence, domain).await;
+}
+
+#[when(expr = "I delete edition {string}")]
+async fn delete_edition(world: &mut E2EWorld, edition_name: String) {
+    let result = world.edition().delete(&edition_name).await;
+    match result {
+        Ok(()) => {
+            world.last_error = None;
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+        }
+    }
+}
+
+#[when(
+    expr = "I execute on edition {string} an AddItem for cart {string} with product {string} quantity {int}"
+)]
+async fn execute_edition_add_item(
+    world: &mut E2EWorld,
+    edition_name: String,
+    cart_alias: String,
+    product_id: String,
+    quantity: i32,
+) {
+    let command = examples_proto::AddItem {
+        product_id: product_id.clone(),
+        name: product_id,
+        quantity,
+        unit_price_cents: 1000,
+        ..Default::default()
+    };
+
+    let correlation = format!("edition-{}-add-item", edition_name);
+    let mut cmd_book = world.build_edition_command(
+        "cart",
+        &cart_alias,
+        &correlation,
+        "examples.AddItem",
+        &command,
+        &edition_name,
+    );
+
+    // Auto-fill sequence from edition's composite store
+    let root = world.root(&cart_alias);
+    if let Ok(events) = world
+        .edition()
+        .query_events(&edition_name, "cart", root)
+        .await
+    {
+        if let Some(page) = cmd_book.pages.first_mut() {
+            page.sequence = events.len() as u32;
+        }
+    }
+
+    let result = world.edition().execute(&edition_name, cmd_book).await;
+    match result {
+        Ok(response) => {
+            world.last_response = Some(response);
+            world.last_error = None;
+        }
+        Err(e) => {
+            world.last_error = Some(e.to_string());
+            world.last_response = None;
+        }
+    }
+}
+
+#[then(expr = "edition {string} should have {int} events for domain {string} root {string}")]
+async fn edition_event_count(
+    world: &mut E2EWorld,
+    edition_name: String,
+    expected: usize,
+    domain: String,
+    root_alias: String,
+) {
+    let root = world.root(&root_alias);
+    let events = world
+        .edition()
+        .query_events(&edition_name, &domain, root)
+        .await
+        .unwrap_or_else(|e| panic!("Failed to query edition events: {}", e));
+
+    assert_eq!(
+        events.len(),
+        expected,
+        "Expected {} events for edition '{}' domain '{}' root '{}', got {}",
+        expected,
+        edition_name,
+        domain,
+        root_alias,
+        events.len()
+    );
+}
+
+// Re-implement using the edition manager directly
+#[then(expr = "the main timeline should have {int} events for domain {string} root {string}")]
+async fn main_timeline_event_count(
+    world: &mut E2EWorld,
+    expected: usize,
+    domain: String,
+    root_alias: String,
+) {
+    let root = world.root(&root_alias);
+    let events = world.query_events(&domain, root).await;
+    assert_eq!(
+        events.len(),
+        expected,
+        "Expected {} main timeline events for {}/{}, got {}",
+        expected,
+        domain,
+        root_alias,
+        events.len()
+    );
+}
+
+#[then(expr = "listing editions should show {int} active editions")]
+async fn list_editions_count(world: &mut E2EWorld, expected: usize) {
+    let editions = world.edition().list().await;
+    assert_eq!(
+        editions.len(),
+        expected,
+        "Expected {} active editions, got {}",
+        expected,
+        editions.len()
+    );
+}
+
+#[then(expr = "the edition creation should fail with {string}")]
+async fn edition_creation_fails_with(world: &mut E2EWorld, expected: String) {
+    let error = world
+        .last_error
+        .as_ref()
+        .expect("Expected edition creation to fail");
+    assert!(
+        error.contains(&expected),
+        "Expected error to contain '{}', got: {}",
+        expected,
+        error
+    );
 }
 
 // ============================================================================

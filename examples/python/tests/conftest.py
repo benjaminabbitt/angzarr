@@ -20,7 +20,7 @@ def get_angzarr_endpoint() -> str:
     if endpoint := os.environ.get("ANGZARR_ENDPOINT"):
         return endpoint
     host = os.environ.get("ANGZARR_HOST", "localhost")
-    port = os.environ.get("ANGZARR_PORT", "1350")
+    port = os.environ.get("ANGZARR_PORT", "9084")
     return f"{host}:{port}"
 
 

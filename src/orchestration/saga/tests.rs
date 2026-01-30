@@ -2,6 +2,8 @@ use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+use backon::ExponentialBuilder;
+
 use crate::proto::CommandResponse;
 use crate::proto_ext::CoverExt;
 
@@ -110,13 +112,11 @@ impl CommandExecutor for RejectingExecutor {
     }
 }
 
-fn fast_retry_config() -> RetryConfig {
-    RetryConfig {
-        base_delay: Duration::from_millis(1),
-        max_delay: Duration::from_millis(10),
-        max_retries: 5,
-        jitter: 0.0,
-    }
+fn fast_backoff() -> ExponentialBuilder {
+    ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(1))
+        .with_max_delay(Duration::from_millis(10))
+        .with_max_times(5)
 }
 
 #[tokio::test]
@@ -129,8 +129,9 @@ async fn test_execute_success_no_retry() {
         &executor,
         None,
         commands,
+        "test-saga",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 }
@@ -144,8 +145,9 @@ async fn test_execute_empty_commands_noop() {
         &executor,
         None,
         vec![],
+        "test-saga",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 }
@@ -163,8 +165,9 @@ async fn test_execute_retries_then_succeeds() {
         &executor,
         None,
         commands,
+        "test-saga",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 
@@ -184,8 +187,9 @@ async fn test_execute_non_retryable_calls_rejection_handler() {
         &executor,
         None,
         commands,
+        "test-saga",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 
@@ -199,14 +203,12 @@ async fn test_execute_exhausts_retries() {
         failures_remaining: AtomicU32::new(100),
         execute_count: AtomicU32::new(0),
     };
-    let config = RetryConfig {
-        base_delay: Duration::from_millis(1),
-        max_delay: Duration::from_millis(10),
-        max_retries: 3,
-        jitter: 0.0,
-    };
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(1))
+        .with_max_delay(Duration::from_millis(10))
+        .with_max_times(3);
     let commands = vec![CommandBook::default()];
-    execute_with_retry(&ctx, &executor, None, commands, "corr-1", &config).await;
+    execute_with_retry(&ctx, &executor, None, commands, "test-saga", "corr-1", backoff).await;
 
     // Initial attempt + 3 retries = 4 executions
     assert_eq!(executor.execute_count.load(Ordering::SeqCst), 4);
@@ -228,9 +230,10 @@ async fn test_orchestrate_saga_with_domain_validator() {
         &ctx,
         &executor,
         None,
+        "test-saga",
         "corr-1",
         Some(&validator),
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
     assert!(result.is_ok());
@@ -255,6 +258,7 @@ impl CommandExecutor for RetryableWithStateExecutor {
                         value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                     }),
                     correlation_id: "corr-1".to_string(),
+                    edition: None,
                 }),
                 pages: vec![],
                 snapshot: None,
@@ -284,6 +288,7 @@ impl SagaRetryContext for CachedStateContext {
                 value: uuid::Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: "".to_string(),
+            edition: None,
         }])
     }
     async fn re_execute_saga(
@@ -332,8 +337,9 @@ async fn test_execute_uses_cached_state_from_conflict() {
         &executor,
         Some(&fetcher),
         commands,
+        "test-saga",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 

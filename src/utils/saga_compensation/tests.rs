@@ -10,6 +10,7 @@ fn make_saga_origin() -> SagaCommandOrigin {
                 value: Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         triggering_event_sequence: 5,
     }
@@ -23,6 +24,7 @@ fn make_test_command() -> CommandBook {
                 value: Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: "corr-123".to_string(),
+            edition: None,
         }),
         pages: vec![CommandPage {
             sequence: 0,
@@ -137,6 +139,7 @@ fn test_handle_business_response_with_events() {
                 domain: "orders".to_string(),
                 root: None,
                 correlation_id: "corr-123".to_string(),
+                edition: None,
             }),
             pages: vec![EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(6)),

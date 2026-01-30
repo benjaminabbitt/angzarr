@@ -186,6 +186,7 @@ impl TimeoutScheduler {
                     value: root_uuid.as_bytes().to_vec(),
                 }),
                 correlation_id: process.correlation_id.clone(),
+                edition: None,
             }),
             pages: vec![event_page],
             snapshot: None,

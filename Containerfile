@@ -24,16 +24,23 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
+COPY angzarr-client/ ./angzarr-client/
 COPY examples/rust examples/rust/
 
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
-    echo "fn main() {}" > tests/container_integration.rs && \
-    echo "fn main() {}" > tests/mongodb_debug.rs
+RUN mkdir -p tests/integration && \
+    for f in acceptance container_integration mongodb_debug \
+             storage_mongodb storage_redis storage_postgres storage_sqlite \
+             standalone_integration; do \
+      echo "fn main() {}" > tests/$f.rs; \
+    done && \
+    for f in gateway_test streaming_test query_test; do \
+      echo "fn main() {}" > tests/integration/$f.rs; \
+    done
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/target \
-    cargo build --profile container-dev \
+    --mount=type=cache,id=framework-target,target=/app/target \
+    cargo build --profile container-dev --features otel \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
@@ -41,6 +48,17 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-gateway \
     --bin angzarr-log && \
     cp target/container-dev/angzarr-* /tmp/
+
+# Generate protobuf FileDescriptorSet for runtime event decoding
+RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
+    -I proto \
+    proto/examples/customer.proto \
+    proto/examples/product.proto \
+    proto/examples/inventory.proto \
+    proto/examples/order.proto \
+    proto/examples/cart.proto \
+    proto/examples/fulfillment.proto \
+    proto/examples/projections.proto
 
 # =============================================================================
 # Release builder - musl static, multi-arch (small images, all features)
@@ -76,11 +94,18 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
+COPY angzarr-client/ ./angzarr-client/
 COPY examples/rust examples/rust/
 
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
-    echo "fn main() {}" > tests/container_integration.rs && \
-    echo "fn main() {}" > tests/mongodb_debug.rs
+RUN mkdir -p tests/integration && \
+    for f in acceptance container_integration mongodb_debug \
+             storage_mongodb storage_redis storage_postgres storage_sqlite \
+             standalone_integration; do \
+      echo "fn main() {}" > tests/$f.rs; \
+    done && \
+    for f in gateway_test streaming_test query_test; do \
+      echo "fn main() {}" > tests/integration/$f.rs; \
+    done
 
 # Build with full features and production optimization
 # Uses TARGETARCH to select the correct musl target
@@ -99,6 +124,17 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-gateway \
     --bin angzarr-log && \
     cp target/$TARGET/production/angzarr-* /tmp/
+
+# Generate protobuf FileDescriptorSet for runtime event decoding
+RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
+    -I proto \
+    proto/examples/customer.proto \
+    proto/examples/product.proto \
+    proto/examples/inventory.proto \
+    proto/examples/order.proto \
+    proto/examples/cart.proto \
+    proto/examples/fulfillment.proto \
+    proto/examples/projections.proto
 
 # =============================================================================
 # Runtime bases
@@ -146,6 +182,8 @@ ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS angzarr-log-dev
 COPY --from=builder-dev /tmp/angzarr-log ./server
+COPY --from=builder-dev /tmp/descriptors.pb ./descriptors.pb
+ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
 ENTRYPOINT ["./server"]
 
@@ -178,5 +216,7 @@ ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS angzarr-log
 COPY --from=builder-release /tmp/angzarr-log ./server
+COPY --from=builder-release /tmp/descriptors.pb ./descriptors.pb
+ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
 ENTRYPOINT ["./server"]

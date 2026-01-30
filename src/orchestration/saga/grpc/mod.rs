@@ -15,6 +15,7 @@ use crate::clients::SagaCompensationConfig;
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::saga_client::SagaClient;
 use crate::proto::{CommandBook, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest};
+use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::saga_compensation::{build_revoke_command_book, CompensationContext};
 
 use super::{SagaContextFactory, SagaRetryContext};
@@ -58,12 +59,13 @@ impl SagaRetryContext for GrpcSagaContext {
     async fn prepare_destinations(
         &self,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
+        let correlation_id = self.source.correlation_id();
         let mut client = self.saga_client.lock().await;
         let request = SagaPrepareRequest {
             source: Some(self.source.clone()),
         };
         let response = client
-            .prepare(request)
+            .prepare(correlated_request(request, correlation_id))
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         Ok(response.into_inner().destinations)
@@ -73,13 +75,14 @@ impl SagaRetryContext for GrpcSagaContext {
         &self,
         destinations: Vec<EventBook>,
     ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
+        let correlation_id = self.source.correlation_id();
         let mut client = self.saga_client.lock().await;
         let request = SagaExecuteRequest {
             source: Some(self.source.clone()),
             destinations,
         };
         let response = client
-            .execute(request)
+            .execute(correlated_request(request, correlation_id))
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         Ok(response.into_inner().commands)
@@ -166,13 +169,22 @@ async fn handle_command_rejection(
         .map(|c| c.domain.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
+    let correlation_id = revoke_command
+        .cover
+        .as_ref()
+        .map(|c| c.correlation_id.clone())
+        .unwrap_or_default();
+
     info!(
         saga = %saga_name,
         triggering_domain = %triggering_domain,
         "Sending RevokeEventCommand to triggering aggregate"
     );
 
-    match handler.handle(revoke_command).await {
+    match handler
+        .handle(correlated_request(revoke_command, &correlation_id))
+        .await
+    {
         Ok(response) => {
             let sync_resp = response.into_inner();
             if sync_resp.events.is_some() {
@@ -217,6 +229,7 @@ pub struct GrpcSagaContextFactory {
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
     compensation_handler: Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
+    name: String,
 }
 
 impl GrpcSagaContextFactory {
@@ -228,12 +241,14 @@ impl GrpcSagaContextFactory {
         compensation_handler: Option<
             Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>,
         >,
+        name: String,
     ) -> Self {
         Self {
             saga_client,
             publisher,
             compensation_config,
             compensation_handler,
+            name,
         }
     }
 }
@@ -247,6 +262,10 @@ impl SagaContextFactory for GrpcSagaContextFactory {
             self.compensation_handler.clone(),
             (*source).clone(),
         ))
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 

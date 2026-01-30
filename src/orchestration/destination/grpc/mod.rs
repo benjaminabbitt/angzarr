@@ -11,6 +11,7 @@ use tracing::warn;
 
 use crate::proto::event_query_client::EventQueryClient;
 use crate::proto::{Cover, EventBook, Query};
+use crate::proto_ext::correlated_request;
 
 use super::DestinationFetcher;
 
@@ -37,6 +38,7 @@ impl GrpcDestinationFetcher {
     /// Exposed as a direct method for callers that need `Result` rather than `Option`.
     pub async fn fetch_result(&self, cover: &Cover) -> Result<EventBook, tonic::Status> {
         let domain = &cover.domain;
+        let correlation_id = &cover.correlation_id;
         let root = cover
             .root
             .as_ref()
@@ -50,13 +52,17 @@ impl GrpcDestinationFetcher {
             cover: Some(Cover {
                 domain: domain.clone(),
                 root: Some(root.clone()),
-                correlation_id: String::new(),
+                correlation_id: correlation_id.clone(),
+                edition: None,
             }),
             selection: None,
         };
 
         let mut client = client.lock().await;
-        let event_book = client.get_event_book(query).await?.into_inner();
+        let event_book = client
+            .get_event_book(correlated_request(query, correlation_id))
+            .await?
+            .into_inner();
 
         Ok(event_book)
     }
@@ -86,12 +92,16 @@ impl DestinationFetcher for GrpcDestinationFetcher {
                 domain: domain.to_string(),
                 root: None,
                 correlation_id: correlation_id.to_string(),
+                edition: None,
             }),
             selection: None,
         };
 
         let mut client = client.lock().await;
-        match client.get_event_book(query).await {
+        match client
+            .get_event_book(correlated_request(query, correlation_id))
+            .await
+        {
             Ok(resp) => Some(resp.into_inner()),
             Err(e) => {
                 warn!(

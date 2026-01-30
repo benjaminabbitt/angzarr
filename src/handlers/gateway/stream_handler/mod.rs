@@ -9,11 +9,12 @@ use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tonic::{Request, Status};
+use tonic::Status;
 use tracing::{debug, error, info};
 
 use crate::proto::event_stream_client::EventStreamClient;
 use crate::proto::{CommandResponse, EventBook, EventStreamFilter};
+use crate::proto_ext::correlated_request;
 
 /// Stream handler for managing event subscriptions and forwarding.
 #[derive(Clone)]
@@ -50,7 +51,7 @@ impl StreamHandler {
 
         let mut stream_client = self.stream_client.clone();
         stream_client
-            .subscribe(Request::new(filter))
+            .subscribe(correlated_request(filter, correlation_id))
             .await
             .map(|r| r.into_inner())
             .map_err(|e| {

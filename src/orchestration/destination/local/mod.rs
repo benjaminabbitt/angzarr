@@ -1,12 +1,14 @@
 //! Local (in-process) destination fetcher.
 //!
 //! Reads aggregate state directly from in-process `DomainStorage` maps.
+//! Passes the default edition to storage calls for domain-scoped queries.
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
 use tracing::error;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
 use crate::standalone::DomainStorage;
 
@@ -35,14 +37,15 @@ impl DestinationFetcher for LocalDestinationFetcher {
 
         let store = self.domain_stores.get(domain)?;
 
-        match store.event_store.get(domain, root_uuid).await {
+        match store.event_store.get(domain, DEFAULT_EDITION, root_uuid).await {
             Ok(pages) => Some(EventBook {
                 cover: Some(Cover {
-                    domain: domain.clone(),
+                    domain: domain.to_string(),
                     root: Some(ProtoUuid {
                         value: root_uuid.as_bytes().to_vec(),
                     }),
                     correlation_id: cover.correlation_id.clone(),
+                    edition: Some(DEFAULT_EDITION.to_string()),
                 }),
                 pages,
                 snapshot: None,

@@ -13,7 +13,7 @@ use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::ClientConfig;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Instrument};
 
 use super::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
@@ -228,8 +228,8 @@ impl KafkaEventBus {
         })
     }
 
-    /// Start consuming messages (call after subscribe).
-    pub async fn start_consuming(&self) -> Result<()> {
+    /// Subscribe to topics and start consuming messages.
+    async fn consume(&self) -> Result<()> {
         let consumer = self
             .consumer
             .as_ref()
@@ -290,14 +290,26 @@ impl KafkaEventBus {
                                     "Received event book"
                                 );
 
-                                let book = Arc::new(book);
-                                let handlers_guard = handlers.read().await;
+                                let consume_span = tracing::info_span!("bus.consume",
+                                    topic = %message.topic(),
+                                    partition = message.partition());
 
-                                for handler in handlers_guard.iter() {
-                                    if let Err(e) = handler.handle(Arc::clone(&book)).await {
-                                        error!(error = %e, "Handler failed");
+                                #[cfg(feature = "otel")]
+                                kafka_extract_trace_context(&message, &consume_span);
+
+                                let book = Arc::new(book);
+                                let handlers_ref = &handlers;
+                                let book_ref = &book;
+                                async {
+                                    let handlers_guard = handlers_ref.read().await;
+                                    for handler in handlers_guard.iter() {
+                                        if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
+                                            error!(error = %e, "Handler failed");
+                                        }
                                     }
                                 }
+                                .instrument(consume_span)
+                                .await;
 
                                 // Commit offset after successful processing
                                 if let Err(e) = consumer
@@ -327,6 +339,7 @@ impl KafkaEventBus {
 
 #[async_trait]
 impl EventBus for KafkaEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let domain = book
             .cover()
@@ -341,6 +354,14 @@ impl EventBus for KafkaEventBus {
 
         if let Some(ref k) = key {
             record = record.key(k);
+        }
+
+        #[cfg(feature = "otel")]
+        let trace_headers = kafka_inject_trace_context();
+
+        #[cfg(feature = "otel")]
+        {
+            record = record.headers(trace_headers);
         }
 
         self.producer
@@ -370,6 +391,98 @@ impl EventBus for KafkaEventBus {
         handlers.push(handler);
 
         Ok(())
+    }
+
+    async fn start_consuming(&self) -> Result<()> {
+        self.consume().await
+    }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        let config = match domain_filter {
+            Some(d) => KafkaEventBusConfig::subscriber(
+                &self.config.bootstrap_servers,
+                name,
+                vec![d.to_string()],
+            ),
+            None => KafkaEventBusConfig::subscriber_all(&self.config.bootstrap_servers, name),
+        };
+        let bus = KafkaEventBus::new(config).await?;
+        Ok(Arc::new(bus))
+    }
+}
+
+// ============================================================================
+// OTel Trace Context Propagation
+// ============================================================================
+
+/// Inject W3C trace context from the current span into Kafka message headers.
+#[cfg(feature = "otel")]
+fn kafka_inject_trace_context() -> rdkafka::message::OwnedHeaders {
+    use rdkafka::message::OwnedHeaders;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let cx = tracing::Span::current().context();
+    let mut headers = OwnedHeaders::new();
+
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        struct HeaderInjector<'a>(&'a mut Vec<(String, String)>);
+        impl opentelemetry::propagation::Injector for HeaderInjector<'_> {
+            fn set(&mut self, key: &str, value: String) {
+                self.0.push((key.to_string(), value));
+            }
+        }
+
+        let mut pairs = Vec::new();
+        propagator.inject_context(&cx, &mut HeaderInjector(&mut pairs));
+
+        for (key, value) in pairs {
+            headers = std::mem::take(&mut headers).insert(rdkafka::message::Header {
+                key: &key,
+                value: Some(value.as_bytes()),
+            });
+        }
+    });
+
+    headers
+}
+
+/// Extract W3C trace context from Kafka message headers and set as parent on span.
+#[cfg(feature = "otel")]
+fn kafka_extract_trace_context<M: rdkafka::message::Message>(message: &M, span: &tracing::Span) {
+    use rdkafka::message::Headers;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    if let Some(headers) = message.headers() {
+        let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
+            struct KafkaExtractor<'a, H: Headers>(&'a H);
+            impl<H: Headers> opentelemetry::propagation::Extractor for KafkaExtractor<'_, H> {
+                fn get(&self, key: &str) -> Option<&str> {
+                    for i in 0..self.0.count() {
+                        if let Some(header) = self.0.get_as::<[u8]>(i) {
+                            if header.key == key {
+                                return header.value.and_then(|v| std::str::from_utf8(v).ok());
+                            }
+                        }
+                    }
+                    None
+                }
+                fn keys(&self) -> Vec<&str> {
+                    let mut keys = Vec::new();
+                    for i in 0..self.0.count() {
+                        if let Some(header) = self.0.get_as::<[u8]>(i) {
+                            keys.push(header.key);
+                        }
+                    }
+                    keys
+                }
+            }
+            propagator.extract(&KafkaExtractor(headers))
+        });
+        span.set_parent(parent_cx);
     }
 }
 

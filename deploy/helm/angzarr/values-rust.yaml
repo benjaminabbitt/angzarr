@@ -136,10 +136,10 @@ infrastructure:
   gateway:
     enabled: true
     replicas: 1
-    port: 1350           # Gateway gRPC (x0)
-    # NodePort for external access (kind maps hostPort:1350 -> nodePort:31350)
+    port: 9084           # Gateway gRPC (angzarr port)
+    # NodePort for external access (kind maps hostPort:9084 -> nodePort:30084)
     serviceType: NodePort
-    nodePort: 31350
+    nodePort: 30084
     streamService: "angzarr-stream:1340"
     streamTimeoutSecs: 30
     resources:
@@ -226,6 +226,7 @@ applications:
         repository: localhost:5001/saga-loyalty-earn-rs
         tag: "latest"
         pullPolicy: IfNotPresent
+      domain: "saga-loyalty-earn"
       port: 50065        # saga-loyalty-earn business gRPC (50060+5)
       topics:
         - "order.*"
@@ -236,6 +237,7 @@ applications:
         repository: localhost:5001/saga-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
+      domain: "saga-fulfillment"
       port: 50075        # saga-fulfillment business gRPC (50070+5)
       topics:
         - "order.*"
@@ -246,6 +248,7 @@ applications:
         repository: localhost:5001/saga-cancellation-rs
         tag: "latest"
         pullPolicy: IfNotPresent
+      domain: "saga-cancellation"
       port: 50085        # saga-cancellation business gRPC (50080+5)
       topics:
         - "order.*"

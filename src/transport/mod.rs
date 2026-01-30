@@ -12,9 +12,13 @@ use hyper_util::rt::TokioIo;
 use serde::Deserialize;
 use tokio::net::{UnixListener, UnixStream};
 use tokio_stream::wrappers::UnixListenerStream;
+use tonic::service::Routes;
 use tonic::transport::server::Router;
 use tonic::transport::{Channel, Endpoint, Uri};
 use tower::service_fn;
+use tower::Layer;
+use tower::Service;
+use tower_http::trace::TraceLayer;
 use tracing::info;
 
 /// Transport type discriminator.
@@ -178,12 +182,24 @@ pub fn prepare_uds_socket(path: &Path) -> std::io::Result<UdsCleanupGuard> {
 /// For UDS transport:
 /// - Without qualifier: `/tmp/angzarr/{service_name}.sock`
 /// - With qualifier: `/tmp/angzarr/{service_name}-{qualifier}.sock`
-pub async fn serve_with_transport(
-    router: Router,
+pub async fn serve_with_transport<L, ResBody>(
+    router: Router<L>,
     config: &TransportConfig,
     service_name: &str,
     qualifier: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    L: Layer<Routes> + Clone,
+    L::Service: Service<http::Request<tonic::body::BoxBody>, Response = http::Response<ResBody>>
+        + Clone
+        + Send
+        + 'static,
+    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Future: Send + 'static,
+    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Error:
+        Into<Box<dyn std::error::Error + Send + Sync>> + Send,
+    ResBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
+    ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     let display_name = match qualifier {
         Some(q) => format!("{}-{}", service_name, q),
         None => service_name.to_string(),
@@ -227,14 +243,24 @@ pub async fn serve_with_transport(
 /// Serve a gRPC router using the configured transport with a shutdown signal.
 ///
 /// The server will gracefully shut down when the signal future completes.
-pub async fn serve_with_transport_and_shutdown<F>(
-    router: Router,
+pub async fn serve_with_transport_and_shutdown<L, ResBody, F>(
+    router: Router<L>,
     config: &TransportConfig,
     service_name: &str,
     qualifier: Option<&str>,
     signal: F,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
+    L: Layer<Routes> + Clone,
+    L::Service: Service<http::Request<tonic::body::BoxBody>, Response = http::Response<ResBody>>
+        + Clone
+        + Send
+        + 'static,
+    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Future: Send + 'static,
+    <L::Service as Service<http::Request<tonic::body::BoxBody>>>::Error:
+        Into<Box<dyn std::error::Error + Send + Sync>> + Send,
+    ResBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
+    ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     F: Future<Output = ()> + Send,
 {
     let display_name = match qualifier {
@@ -440,6 +466,62 @@ impl ServiceEndpointConfig {
     ) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
         let tcp_addr = self.address.as_deref().unwrap_or("localhost:50051");
         connect_with_transport(transport, &self.name, self.qualifier.as_deref(), tcp_addr).await
+    }
+}
+
+/// Tower trace layer that extracts `x-correlation-id` from gRPC request headers.
+///
+/// Creates a tracing span per request with the correlation_id, enabling
+/// all downstream tracing to inherit it automatically. This works at the HTTP
+/// layer — before tonic deserializes the protobuf body.
+///
+/// When the `otel` feature is enabled, also extracts W3C `traceparent` header
+/// and sets it as the parent context on the span for distributed tracing.
+pub fn grpc_trace_layer() -> TraceLayer<
+    tower_http::classify::SharedClassifier<tower_http::classify::GrpcErrorsAsFailures>,
+    impl Fn(&http::Request<tonic::body::BoxBody>) -> tracing::Span + Clone,
+> {
+    TraceLayer::new_for_grpc().make_span_with(|request: &http::Request<tonic::body::BoxBody>| {
+        let correlation_id = request
+            .headers()
+            .get("x-correlation-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let path = request.uri().path();
+        let span = tracing::info_span!("grpc", %correlation_id, %path);
+
+        #[cfg(feature = "otel")]
+        {
+            extract_trace_context(request.headers(), &span);
+        }
+
+        span
+    })
+}
+
+/// Extract W3C trace context from HTTP headers and set as parent on the span.
+#[cfg(feature = "otel")]
+fn extract_trace_context(headers: &http::HeaderMap, span: &tracing::Span) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.extract(&HeaderExtractor(headers))
+    });
+    span.set_parent(parent_cx);
+}
+
+/// Adapter to extract OTel context from HTTP headers.
+#[cfg(feature = "otel")]
+struct HeaderExtractor<'a>(&'a http::HeaderMap);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Extractor for HeaderExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|v| v.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|k| k.as_str()).collect()
     }
 }
 

@@ -11,7 +11,7 @@ use tonic::Status;
 use tracing::warn;
 
 use angzarr::proto::{EventBook, Projection};
-use angzarr::standalone::ProjectorHandler;
+use angzarr::standalone::{ProjectionMode, ProjectorHandler};
 use common::proto as examples_proto;
 
 fn extract_event_type(event: &prost_types::Any) -> &str {
@@ -149,22 +149,24 @@ impl WebProjector {
 
 #[async_trait]
 impl ProjectorHandler for WebProjector {
-    async fn handle(&self, events: &EventBook) -> Result<Projection, Status> {
-        let order_id = root_id_string(events);
+    async fn handle(&self, events: &EventBook, mode: ProjectionMode) -> Result<Projection, Status> {
         let domain = events
             .cover
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("");
 
-        // Only process order domain events
         if domain != "order" {
             return Ok(Projection::default());
         }
 
-        for page in &events.pages {
-            if let Some(event) = &page.event {
-                self.process_event(event, &order_id).await;
+        // Persistence gated on execution mode
+        if mode == ProjectionMode::Execute {
+            let order_id = root_id_string(events);
+            for page in &events.pages {
+                if let Some(event) = &page.event {
+                    self.process_event(event, &order_id).await;
+                }
             }
         }
         Ok(Projection::default())
@@ -356,17 +358,20 @@ impl AccountingProjector {
 
 #[async_trait]
 impl ProjectorHandler for AccountingProjector {
-    async fn handle(&self, events: &EventBook) -> Result<Projection, Status> {
-        let root_id = root_id_string(events);
-        let domain = events
-            .cover
-            .as_ref()
-            .map(|c| c.domain.as_str())
-            .unwrap_or("");
+    async fn handle(&self, events: &EventBook, mode: ProjectionMode) -> Result<Projection, Status> {
+        // Persistence gated on execution mode
+        if mode == ProjectionMode::Execute {
+            let root_id = root_id_string(events);
+            let domain = events
+                .cover
+                .as_ref()
+                .map(|c| c.domain.as_str())
+                .unwrap_or("");
 
-        for page in &events.pages {
-            if let Some(event) = &page.event {
-                self.process_event(event, &root_id, domain).await;
+            for page in &events.pages {
+                if let Some(event) = &page.event {
+                    self.process_event(event, &root_id, domain).await;
+                }
             }
         }
         Ok(Projection::default())

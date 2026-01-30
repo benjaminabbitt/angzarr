@@ -55,10 +55,10 @@ impl EventBookRepository {
     ///
     /// If snapshot reading is enabled and a snapshot exists, loads events
     /// from the snapshot sequence. Otherwise, loads all events from the beginning.
-    pub async fn get(&self, domain: &str, root: Uuid) -> Result<EventBook> {
+    pub async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<EventBook> {
         // Try to load snapshot (only if snapshot reading is enabled)
         let snapshot = if self.snapshot_read_enabled {
-            self.snapshot_store.get(domain, root).await?
+            self.snapshot_store.get(domain, edition, root).await?
         } else {
             None
         };
@@ -71,7 +71,7 @@ impl EventBookRepository {
         // Load events after snapshot (or from beginning if no snapshot)
         let events = self
             .event_store
-            .get_from(domain, root, from_sequence)
+            .get_from(domain, edition, root, from_sequence)
             .await?;
 
         Ok(EventBook {
@@ -81,6 +81,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: Some(edition.to_string()),
             }),
             snapshot,
             pages: events,
@@ -92,11 +93,12 @@ impl EventBookRepository {
     pub async fn get_from_to(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         from: u32,
         to: u32,
     ) -> Result<EventBook> {
-        let events = self.event_store.get_from_to(domain, root, from, to).await?;
+        let events = self.event_store.get_from_to(domain, edition, root, from, to).await?;
 
         Ok(EventBook {
             cover: Some(Cover {
@@ -105,6 +107,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: Some(edition.to_string()),
             }),
             snapshot: None,
             pages: events,
@@ -119,12 +122,13 @@ impl EventBookRepository {
     pub async fn get_temporal_by_time(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         until: &str,
     ) -> Result<EventBook> {
         let events = self
             .event_store
-            .get_until_timestamp(domain, root, until)
+            .get_until_timestamp(domain, edition, root, until)
             .await?;
 
         Ok(EventBook {
@@ -134,6 +138,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: Some(edition.to_string()),
             }),
             snapshot: None,
             pages: events,
@@ -148,12 +153,13 @@ impl EventBookRepository {
     pub async fn get_temporal_by_sequence(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         sequence: u32,
     ) -> Result<EventBook> {
         let events = self
             .event_store
-            .get_from_to(domain, root, 0, sequence.saturating_add(1))
+            .get_from_to(domain, edition, root, 0, sequence.saturating_add(1))
             .await?;
 
         Ok(EventBook {
@@ -163,6 +169,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: Some(edition.to_string()),
             }),
             snapshot: None,
             pages: events,
@@ -173,10 +180,10 @@ impl EventBookRepository {
     /// Persist an EventBook.
     ///
     /// Stores all events in the event store.
-    pub async fn put(&self, book: &EventBook) -> Result<()> {
+    pub async fn put(&self, edition: &str, book: &EventBook) -> Result<()> {
         let (domain, root_uuid, correlation_id) = extract_cover(book)?;
         self.event_store
-            .add(domain, root_uuid, book.pages.clone(), correlation_id)
+            .add(domain, edition, root_uuid, book.pages.clone(), correlation_id)
             .await
     }
 }

@@ -1,3 +1,8 @@
+use uuid::Uuid;
+
+use crate::proto::{EventPage, Snapshot};
+use crate::storage::{EventStore, SnapshotStore};
+
 use super::*;
 
 #[tokio::test]
@@ -14,9 +19,12 @@ async fn test_mock_event_store_add_and_get() {
         created_at: None,
     }];
 
-    store.add("orders", root, events, "corr-123").await.unwrap();
+    store
+        .add("orders", "test", root, events, "corr-123")
+        .await
+        .unwrap();
 
-    let retrieved = store.get("orders", root).await.unwrap();
+    let retrieved = store.get("orders", "test", root).await.unwrap();
     assert_eq!(retrieved.len(), 1);
 }
 
@@ -46,11 +54,11 @@ async fn test_mock_event_store_get_by_correlation() {
 
     // Add events with same correlation_id across different domains
     store
-        .add("orders", root1, vec![event1], "tx-abc")
+        .add("orders", "test", root1, vec![event1], "tx-abc")
         .await
         .unwrap();
     store
-        .add("payment", root2, vec![event2], "tx-abc")
+        .add("payment", "test", root2, vec![event2], "tx-abc")
         .await
         .unwrap();
 
@@ -103,32 +111,35 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
     ];
-    store.add("orders", root, events, "").await.unwrap();
+    store
+        .add("orders", "test", root, events, "")
+        .await
+        .unwrap();
 
     // Query as-of Jan 2 — should return events 0 and 1
     let result = store
-        .get_until_timestamp("orders", root, "2024-01-02T00:00:00Z")
+        .get_until_timestamp("orders", "test", root, "2024-01-02T00:00:00Z")
         .await
         .unwrap();
     assert_eq!(result.len(), 2);
 
     // Query as-of Jan 1 — should return event 0 only
     let result = store
-        .get_until_timestamp("orders", root, "2024-01-01T00:00:00Z")
+        .get_until_timestamp("orders", "test", root, "2024-01-01T00:00:00Z")
         .await
         .unwrap();
     assert_eq!(result.len(), 1);
 
     // Query before any events — should return empty
     let result = store
-        .get_until_timestamp("orders", root, "2023-12-31T00:00:00Z")
+        .get_until_timestamp("orders", "test", root, "2023-12-31T00:00:00Z")
         .await
         .unwrap();
     assert!(result.is_empty());
 
     // Query after all events — should return all
     let result = store
-        .get_until_timestamp("orders", root, "2024-01-04T00:00:00Z")
+        .get_until_timestamp("orders", "test", root, "2024-01-04T00:00:00Z")
         .await
         .unwrap();
     assert_eq!(result.len(), 3);
@@ -147,10 +158,13 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
         }),
         created_at: None,
     }];
-    store.add("orders", root, events, "").await.unwrap();
+    store
+        .add("orders", "test", root, events, "")
+        .await
+        .unwrap();
 
     let result = store
-        .get_until_timestamp("orders", root, "2024-01-02T00:00:00Z")
+        .get_until_timestamp("orders", "test", root, "2024-01-02T00:00:00Z")
         .await
         .unwrap();
     assert!(result.is_empty());
@@ -162,7 +176,7 @@ async fn test_get_until_timestamp_invalid_format() {
     let root = Uuid::new_v4();
 
     let result = store
-        .get_until_timestamp("orders", root, "not-a-timestamp")
+        .get_until_timestamp("orders", "test", root, "not-a-timestamp")
         .await;
     assert!(result.is_err());
 }
@@ -177,9 +191,12 @@ async fn test_mock_snapshot_store() {
         state: None,
     };
 
-    store.put("orders", root, snapshot.clone()).await.unwrap();
+    store
+        .put("orders", "test", root, snapshot.clone())
+        .await
+        .unwrap();
 
-    let retrieved = store.get("orders", root).await.unwrap();
+    let retrieved = store.get("orders", "test", root).await.unwrap();
     assert!(retrieved.is_some());
     assert_eq!(retrieved.unwrap().sequence, 5);
 }

@@ -85,6 +85,7 @@ deploy:
         createNamespace: true
         valuesFiles:
           - ../../deploy/helm/angzarr/values-rust.yaml
+          - ../../deploy/helm/angzarr/values-observability.yaml
         setValueTemplates:
           # Framework sidecar images (from required angzarr-build config)
           images.aggregate.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_aggregate}}"

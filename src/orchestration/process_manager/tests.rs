@@ -2,6 +2,8 @@ use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+use backon::ExponentialBuilder;
+
 use crate::proto::CommandResponse;
 
 /// PM context that always succeeds with no commands or PM events.
@@ -112,13 +114,11 @@ impl CommandExecutor for NoOpExecutor {
     }
 }
 
-fn fast_retry_config() -> RetryConfig {
-    RetryConfig {
-        base_delay: Duration::from_millis(1),
-        max_delay: Duration::from_millis(10),
-        max_retries: 5,
-        jitter: 0.0,
-    }
+fn fast_backoff() -> ExponentialBuilder {
+    ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(1))
+        .with_max_delay(Duration::from_millis(10))
+        .with_max_times(5)
 }
 
 fn trigger_event() -> EventBook {
@@ -128,6 +128,7 @@ fn trigger_event() -> EventBook {
             domain: "order".to_string(),
             root: None,
             correlation_id: "corr-1".to_string(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,
@@ -149,7 +150,7 @@ async fn test_orchestrate_pm_empty_response() {
         &trigger,
         "fulfillment-pm",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 
@@ -173,7 +174,7 @@ async fn test_orchestrate_pm_persists_events() {
         &trigger,
         "fulfillment-pm",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 
@@ -198,7 +199,7 @@ async fn test_orchestrate_pm_retries_on_sequence_conflict() {
         &trigger,
         "fulfillment-pm",
         "corr-1",
-        &fast_retry_config(),
+        fast_backoff(),
     )
     .await;
 
@@ -217,12 +218,10 @@ async fn test_orchestrate_pm_exhausts_retries() {
     let executor = NoOpExecutor;
     let trigger = trigger_event();
 
-    let config = RetryConfig {
-        base_delay: Duration::from_millis(1),
-        max_delay: Duration::from_millis(10),
-        max_retries: 3,
-        jitter: 0.0,
-    };
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(1))
+        .with_max_delay(Duration::from_millis(10))
+        .with_max_times(3);
 
     let result = orchestrate_pm(
         &ctx,
@@ -231,7 +230,7 @@ async fn test_orchestrate_pm_exhausts_retries() {
         &trigger,
         "fulfillment-pm",
         "corr-1",
-        &config,
+        backoff,
     )
     .await;
 

@@ -1,22 +1,26 @@
-//! angzarr-standalone: Standalone mode orchestrator
+//! angzarr-standalone: All-in-one infrastructure host
 //!
-//! Spawns and manages all sidecar processes for local development.
-//! Replaces K8s orchestration with a single binary.
+//! Runs all angzarr infrastructure in a single process while spawning
+//! business logic processes as separate gRPC servers over UDS.
 //!
 //! ## Architecture
 //! ```text
-//! angzarr-standalone (orchestrator)
+//! angzarr-standalone (single process, all infrastructure)
 //!     │
-//!     ├── angzarr-aggregate (customer) ──► business-customer.sock
-//!     ├── angzarr-aggregate (order)    ──► business-order.sock
-//!     ├── angzarr-saga (fulfillment)   ──► saga-fulfillment.sock
-//!     ├── angzarr-projector (web)      ──► projector-web.sock
-//!     ├── angzarr-stream               ──► stream.sock
-//!     ├── angzarr-projector (stream)   ──► (feeds events to stream)
-//!     └── angzarr-gateway              ──► :50051 (streams via stream.sock)
+//!     │  Business logic processes (gRPC over UDS):
+//!     ├── business-customer (Python)      → business-customer.sock
+//!     ├── business-order (Python)         → business-order.sock
+//!     ├── saga-fulfillment (Python)       → saga-fulfillment.sock
+//!     ├── projector-web (Go)              → projector-web.sock
+//!     │
+//!     │  Infrastructure (all in-process, channels):
+//!     ├── CommandRouter + BusinessLogic ──gRPC/UDS──→ business-*.sock
+//!     ├── ProjectorEventHandler       ──gRPC/UDS──→ projector-*.sock
+//!     ├── SagaEventHandler            ──gRPC/UDS──→ saga-*.sock
+//!     ├── EventBus (tokio broadcast channels)
+//!     ├── Storage (direct access)
+//!     └── Gateway (:50051 TCP for external clients)
 //! ```
-//!
-//! Each sidecar spawns its own business logic process via target.command.
 //!
 //! ## Configuration
 //! ```yaml
@@ -27,11 +31,6 @@
 //!   type: uds
 //!   uds:
 //!     base_path: /tmp/angzarr
-//!
-//! messaging:
-//!   type: amqp
-//!   amqp:
-//!     url: amqp://guest:guest@localhost:5672
 //!
 //! standalone:
 //!   aggregates:
@@ -61,12 +60,34 @@
 
 use std::collections::HashMap;
 use std::process::Stdio;
+use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::process::{Child, Command};
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
-use angzarr::bus::{IpcBroker, IpcBrokerConfig, MessagingType, SUBSCRIBERS_ENV_VAR};
-use angzarr::config::{Config, ExternalServiceConfig, HealthCheckConfig, ServiceConfig};
+use angzarr::bus::{ChannelConfig, ChannelEventBus, EventBus};
+use angzarr::clients::SagaCompensationConfig;
+use angzarr::config::{Config, ExternalServiceConfig, HealthCheckConfig};
+use angzarr::discovery::k8s::K8sServiceDiscovery;
+use angzarr::discovery::ServiceDiscovery;
+use angzarr::handlers::core::{ProjectorEventHandler, SagaEventHandler};
+use angzarr::orchestration::aggregate::GrpcBusinessLogic;
+use angzarr::orchestration::command::local::LocalCommandExecutor;
+use angzarr::orchestration::destination::local::LocalDestinationFetcher;
+use angzarr::orchestration::projector::local::LocalProjectorContext;
+use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
+use angzarr::proto::aggregate_client::AggregateClient;
+use angzarr::proto::command_gateway_server::CommandGatewayServer;
+use angzarr::proto::event_query_server::EventQueryServer;
+use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use angzarr::proto::saga_client::SagaClient;
+use angzarr::standalone::{
+    CommandRouter, DomainStorage, GrpcProjectorHandler, ServerInfo, StandaloneEventQueryBridge,
+    StandaloneGatewayService,
+};
+use angzarr::transport::{connect_to_address, grpc_trace_layer};
 
 /// Managed child process with proper cleanup.
 struct ManagedChild {
@@ -75,45 +96,43 @@ struct ManagedChild {
 }
 
 impl ManagedChild {
+    /// Spawn a business logic process from a command array.
     async fn spawn(
         name: &str,
-        binary: &str,
-        env: HashMap<String, String>,
+        command: &[String],
+        working_dir: Option<&str>,
+        env: &HashMap<String, String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        info!(name = %name, binary = %binary, "Spawning sidecar");
+        let executable = command
+            .first()
+            .ok_or_else(|| format!("Empty command for {}", name))?;
+        let args = &command[1..];
 
-        // Log EVENT_QUERY_ADDRESS if present for debugging
-        if let Some(addr) = env.get("EVENT_QUERY_ADDRESS") {
-            info!(
-                name = %name,
-                event_query_address = %addr,
-                "Setting EVENT_QUERY_ADDRESS for sidecar"
-            );
+        info!(name = %name, executable = %executable, "Spawning process");
+
+        let mut cmd = Command::new(executable);
+        cmd.args(args);
+
+        if let Some(dir) = working_dir {
+            cmd.current_dir(dir);
         }
 
-        // Log total env var count for debugging
-        tracing::debug!(name = %name, env_count = env.len(), "Environment variables for sidecar");
-
-        let mut cmd = Command::new(binary);
-        // Clear ANGZARR_CONFIG so sidecars don't load the standalone config file
-        cmd.env_remove("ANGZARR_CONFIG");
-        for (key, value) in &env {
+        for (key, value) in env {
             cmd.env(key, value);
         }
 
         cmd.stdout(Stdio::inherit());
         cmd.stderr(Stdio::inherit());
 
-        // Create new process group so we can kill all descendants
         #[cfg(unix)]
         cmd.process_group(0);
 
         let child = cmd.spawn().map_err(|e| {
-            error!(name = %name, binary = %binary, error = %e, "Failed to spawn sidecar");
+            error!(name = %name, error = %e, "Failed to spawn process");
             e
         })?;
 
-        info!(name = %name, pid = ?child.id(), "Sidecar started");
+        info!(name = %name, pid = ?child.id(), "Process started");
 
         Ok(Self {
             child,
@@ -124,35 +143,30 @@ impl ManagedChild {
     /// Kill the process and all its descendants.
     async fn kill(&mut self) {
         if let Some(pid) = self.child.id() {
-            info!(name = %self.name, pid = pid, "Killing sidecar");
+            info!(name = %self.name, pid = pid, "Killing process");
 
-            // Kill the process group (negative PID kills all processes in group)
             #[cfg(unix)]
             {
                 use nix::sys::signal::{killpg, Signal};
                 use nix::unistd::Pid;
 
-                // Try SIGTERM first for graceful shutdown
                 let pgid = Pid::from_raw(pid as i32);
                 if let Err(e) = killpg(pgid, Signal::SIGTERM) {
                     warn!(name = %self.name, error = %e, "Failed to send SIGTERM to process group");
                 }
             }
 
-            // Also start tokio's kill
             let _ = self.child.start_kill();
 
-            // Wait briefly for graceful shutdown
-            match tokio::time::timeout(std::time::Duration::from_secs(2), self.child.wait()).await {
+            match tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await {
                 Ok(Ok(status)) => {
-                    info!(name = %self.name, status = ?status, "Sidecar exited");
+                    info!(name = %self.name, status = ?status, "Process exited");
                 }
                 Ok(Err(e)) => {
-                    warn!(name = %self.name, error = %e, "Error waiting for sidecar");
+                    warn!(name = %self.name, error = %e, "Error waiting for process");
                 }
                 Err(_) => {
-                    // Timeout - force kill
-                    warn!(name = %self.name, "Sidecar didn't exit gracefully, sending SIGKILL");
+                    warn!(name = %self.name, "Process didn't exit gracefully, sending SIGKILL");
 
                     #[cfg(unix)]
                     {
@@ -172,7 +186,6 @@ impl ManagedChild {
 
 impl Drop for ManagedChild {
     fn drop(&mut self) {
-        // Synchronous fallback - try to start the kill process
         if let Ok(None) = self.child.try_wait() {
             if let Some(pid) = self.child.id() {
                 #[cfg(unix)]
@@ -189,21 +202,71 @@ impl Drop for ManagedChild {
     }
 }
 
-/// Strip AMQP routing wildcards from a domain pattern.
+/// Resolve UDS socket path for a business logic process.
+fn socket_path(base_path: &std::path::Path, prefix: &str, name: &str) -> String {
+    format!("{}/{}-{}.sock", base_path.display(), prefix, name)
+}
+
+/// Wait for a UDS socket to become connectable.
+async fn wait_for_socket(
+    path: &str,
+    name: &str,
+    timeout: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let start = std::time::Instant::now();
+    let interval = Duration::from_millis(100);
+
+    info!(name = %name, path = %path, "Waiting for socket");
+
+    loop {
+        if start.elapsed() > timeout {
+            return Err(format!(
+                "Socket for '{}' not available after {:?}: {}",
+                name, timeout, path
+            )
+            .into());
+        }
+
+        if tokio::net::UnixStream::connect(path).await.is_ok() {
+            info!(
+                name = %name,
+                elapsed_ms = start.elapsed().as_millis(),
+                "Socket ready"
+            );
+            return Ok(());
+        }
+
+        tokio::time::sleep(interval).await;
+    }
+}
+
+/// Spawn a business logic process and wait for its UDS socket.
 ///
-/// Routing patterns like `game.#` or `game.*` should not be used
-/// directly in socket paths. This extracts the base domain.
-///
-/// Examples:
-/// - `game.#` -> `game`
-/// - `game.*` -> `game`
-/// - `game.player.*` -> `game.player`
-/// - `game` -> `game` (unchanged)
-fn strip_routing_wildcards(domain: &str) -> &str {
-    domain
-        .strip_suffix(".#")
-        .or_else(|| domain.strip_suffix(".*"))
-        .unwrap_or(domain)
+/// Returns immediately if command is empty (pre-existing process).
+async fn spawn_business_process(
+    name: &str,
+    command: &[String],
+    working_dir: Option<&str>,
+    env: &HashMap<String, String>,
+    socket_path: &str,
+    children: &mut Vec<ManagedChild>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if command.is_empty() {
+        return Ok(());
+    }
+
+    let mut process_env = env.clone();
+    // Tell business logic servers to listen on UDS instead of TCP
+    process_env.insert("TRANSPORT_TYPE".to_string(), "uds".to_string());
+    process_env.insert(
+        "ANGZARR__TARGET__ADDRESS".to_string(),
+        socket_path.to_string(),
+    );
+
+    let child = ManagedChild::spawn(name, command, working_dir, &process_env).await?;
+    children.push(child);
+
+    wait_for_socket(socket_path, name, Duration::from_secs(30)).await
 }
 
 #[tokio::main]
@@ -215,13 +278,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         e
     })?;
 
-    info!("Starting angzarr-standalone orchestrator");
+    info!("Starting angzarr-standalone");
 
-    // Create UDS base directory
+    // Create UDS base directory and clean stale sockets
     let base_path = &config.transport.uds.base_path;
     tokio::fs::create_dir_all(base_path).await?;
 
-    // Clean up stale sockets
     let mut entries = tokio::fs::read_dir(base_path).await?;
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
@@ -231,88 +293,212 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     info!(path = %base_path.display(), "UDS directory ready");
 
-    // Find sidecar binaries (same directory as this binary, or in PATH)
-    let self_path = std::env::current_exe()?;
-    let bin_dir = self_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
-
-    let aggregate_bin = find_binary(bin_dir, "angzarr-aggregate")?;
-    let saga_bin = find_binary(bin_dir, "angzarr-saga")?;
-    let projector_bin = find_binary(bin_dir, "angzarr-projector")?;
-    let gateway_bin = find_binary(bin_dir, "angzarr-gateway")?;
-    let stream_bin = find_binary(bin_dir, "angzarr-stream")?;
-
-    // Track all managed processes
     let mut children: Vec<ManagedChild> = Vec::new();
 
-    // Base environment for all sidecars
-    let base_env = build_base_env(&config);
-
-    // Set up IPC broker if using IPC messaging
-    let ipc_broker = setup_ipc_broker(&config).await?;
-    let subscribers_json = ipc_broker
-        .as_ref()
-        .map(|b| b.subscribers_to_json())
-        .unwrap_or_else(|| "[]".to_string());
-
-    // Spawn aggregate sidecars (with subscriber list for IPC)
+    // Initialize per-domain storage
+    let mut domain_stores: HashMap<String, DomainStorage> = HashMap::new();
     for svc in &config.standalone.aggregates {
-        let mut env = build_aggregate_env(&base_env, &config, svc)?;
-        // Pass subscriber list for IPC fanout
-        if ipc_broker.is_some() {
-            env.insert(SUBSCRIBERS_ENV_VAR.to_string(), subscribers_json.clone());
-        }
-        let name = format!("aggregate-{}", svc.domain);
-        let child = ManagedChild::spawn(&name, &aggregate_bin, env).await?;
-        children.push(child);
+        let storage_config = svc.storage.as_ref().unwrap_or(&config.storage);
+        let (event_store, snapshot_store) =
+            angzarr::storage::init_storage(storage_config).await?;
+
+        info!(
+            domain = %svc.domain,
+            storage_type = ?storage_config.storage_type,
+            "Initialized storage"
+        );
+
+        domain_stores.insert(
+            svc.domain.clone(),
+            DomainStorage {
+                event_store,
+                snapshot_store,
+            },
+        );
     }
 
-    // Spawn saga sidecars
-    for svc in &config.standalone.sagas {
-        let env = build_saga_env(&base_env, &config, svc, &ipc_broker)?;
-        let name = format!("saga-{}", svc.domain);
-        let child = ManagedChild::spawn(&name, &saga_bin, env).await?;
-        children.push(child);
+    // Create channel event bus (in-process event distribution)
+    let channel_bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
+    let event_bus: Arc<dyn EventBus> = channel_bus.clone();
+
+    // Spawn and connect aggregate business logic processes
+    let mut business: HashMap<String, Arc<dyn angzarr::orchestration::aggregate::BusinessLogic>> =
+        HashMap::new();
+
+    for svc in &config.standalone.aggregates {
+        let path = svc
+            .address
+            .clone()
+            .unwrap_or_else(|| socket_path(base_path, "business", &svc.domain));
+
+        spawn_business_process(
+            &format!("business-{}", svc.domain),
+            &svc.command,
+            svc.working_dir.as_deref(),
+            &svc.env,
+            &path,
+            &mut children,
+        )
+        .await?;
+
+        let channel = connect_to_address(&path).await?;
+        let client = AggregateClient::new(channel);
+        business.insert(
+            svc.domain.clone(),
+            Arc::new(GrpcBusinessLogic::new(client)),
+        );
+
+        info!(domain = %svc.domain, "Connected to aggregate business logic");
     }
 
-    // Spawn projector sidecars
+    // Service discovery (static — no K8s in standalone)
+    let discovery: Arc<dyn ServiceDiscovery> = Arc::new(K8sServiceDiscovery::new_static());
+
+    // Create command router (no in-process sync projectors in binary mode)
+    let router = Arc::new(CommandRouter::new(
+        business,
+        domain_stores.clone(),
+        discovery,
+        event_bus.clone(),
+        vec![],
+    ));
+
+    // Create local command executor and destination fetcher
+    let executor = Arc::new(LocalCommandExecutor::new(router.clone()));
+    let fetcher = Arc::new(LocalDestinationFetcher::new(domain_stores.clone()));
+
+    // Spawn and connect projector processes
     for svc in &config.standalone.projectors {
-        let env = build_projector_env(&base_env, &config, svc, &ipc_broker)?;
-        let name = match &svc.name {
-            Some(proj_name) => format!("projector-{}-{}", proj_name, svc.domain),
-            None => format!("projector-{}", svc.domain),
+        let socket_name = match &svc.name {
+            Some(name) => format!("{}-{}", name, svc.domain),
+            None => svc.domain.clone(),
         };
-        let child = ManagedChild::spawn(&name, &projector_bin, env).await?;
-        children.push(child);
+        let path = svc
+            .address
+            .clone()
+            .unwrap_or_else(|| socket_path(base_path, "projector", &socket_name));
+
+        spawn_business_process(
+            &format!("projector-{}", socket_name),
+            &svc.command,
+            svc.working_dir.as_deref(),
+            &svc.env,
+            &path,
+            &mut children,
+        )
+        .await?;
+
+        let channel = connect_to_address(&path).await?;
+        let client = ProjectorCoordinatorClient::new(channel);
+        let handler: Arc<dyn angzarr::standalone::ProjectorHandler> =
+            Arc::new(GrpcProjectorHandler::new(client));
+
+        let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+        let ctx = Arc::new(LocalProjectorContext::new(handler));
+        let proj_handler = ProjectorEventHandler::with_config(
+            ctx,
+            None,
+            vec![listen_domain.clone()],
+            false,
+            socket_name.clone(),
+        );
+
+        let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
+        sub.subscribe(Box::new(proj_handler)).await?;
+        sub.start_consuming().await?;
+
+        info!(domain = %svc.domain, listen = %listen_domain, "Connected to projector");
+    }
+
+    // Spawn and connect saga processes
+    let compensation_config: SagaCompensationConfig = config
+        .saga_compensation
+        .clone()
+        .unwrap_or_default();
+
+    for svc in &config.standalone.sagas {
+        let path = svc
+            .address
+            .clone()
+            .unwrap_or_else(|| socket_path(base_path, "saga", &svc.domain));
+
+        spawn_business_process(
+            &format!("saga-{}", svc.domain),
+            &svc.command,
+            svc.working_dir.as_deref(),
+            &svc.env,
+            &path,
+            &mut children,
+        )
+        .await?;
+
+        let channel = connect_to_address(&path).await?;
+        let saga_client = Arc::new(Mutex::new(SagaClient::new(channel)));
+        let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+
+        let factory = Arc::new(GrpcSagaContextFactory::new(
+            saga_client,
+            event_bus.clone(),
+            compensation_config.clone(),
+            None,
+            svc.domain.clone(),
+        ));
+
+        let handler = SagaEventHandler::from_factory(
+            factory,
+            executor.clone(),
+            Some(fetcher.clone()),
+        );
+
+        let sub = channel_bus.with_config(ChannelConfig::subscriber(listen_domain.clone()));
+        sub.subscribe(Box::new(handler)).await?;
+        sub.start_consuming().await?;
+
+        info!(domain = %svc.domain, listen = %listen_domain, "Connected to saga");
     }
 
     // Spawn external services (REST APIs, GraphQL servers, etc.)
-    // These services read from projection databases and serve data to clients
     for svc in &config.standalone.services {
         let child = spawn_external_service(&svc.name, svc).await?;
         children.push(child);
 
-        // Wait for health check if configured
         if !matches!(svc.health_check, HealthCheckConfig::None) {
-            wait_for_service_health(&svc.name, &svc.health_check, svc.health_timeout_secs).await?;
+            wait_for_service_health(&svc.name, &svc.health_check, svc.health_timeout_secs)
+                .await?;
         }
     }
 
-    // Spawn stream service if gateway is enabled
-    // Stream enables execute_stream() for real-time event streaming to clients
-    // Note: The stream projector must be configured explicitly in standalone.projectors
+    // Start gateway if enabled
+    let mut servers: Vec<ServerInfo> = Vec::new();
     if config.standalone.gateway.enabled {
-        let stream_env = build_stream_env(&base_env, &config);
-        let child = ManagedChild::spawn("stream", &stream_bin, stream_env).await?;
-        children.push(child);
-    }
+        let port = config.standalone.gateway.port.unwrap_or(50051);
+        let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
-    // Spawn gateway if enabled
-    if config.standalone.gateway.enabled {
-        let env = build_gateway_env(&base_env, &config);
-        let child = ManagedChild::spawn("gateway", &gateway_bin, env).await?;
-        children.push(child);
+        let gateway = StandaloneGatewayService::new(router.clone());
+        let event_query = StandaloneEventQueryBridge::new(domain_stores.clone());
+
+        let grpc_router = tonic::transport::Server::builder()
+            .layer(grpc_trace_layer())
+            .add_service(CommandGatewayServer::new(gateway))
+            .add_service(EventQueryServer::new(event_query));
+
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let local_addr = listener.local_addr()?;
+
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+
+        tokio::spawn(async move {
+            let server = grpc_router.serve_with_incoming_shutdown(incoming, async {
+                let _ = shutdown_rx.await;
+            });
+            if let Err(e) = server.await {
+                error!(error = %e, "Gateway server error");
+            }
+        });
+
+        servers.push(ServerInfo::from_parts(local_addr, shutdown_tx));
+        info!(addr = %local_addr, "Gateway listening");
     }
 
     info!(
@@ -321,390 +507,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         projectors = config.standalone.projectors.len(),
         services = config.standalone.services.len(),
         gateway = config.standalone.gateway.enabled,
-        streaming = config.standalone.gateway.enabled,
-        "All sidecars started"
+        "All components started"
     );
 
     info!("Press Ctrl+C to exit");
     tokio::signal::ctrl_c().await?;
 
-    info!("Shutting down {} children...", children.len());
+    info!("Shutting down...");
 
-    // Kill in reverse order (LIFO): gateway first, then projectors, sagas, aggregates
+    // Shutdown gateway
+    for server in servers {
+        server.shutdown();
+    }
+
+    // Kill children in reverse order (LIFO: external services, then sagas, projectors, aggregates)
     for child in children.iter_mut().rev() {
         child.kill().await;
     }
 
-    info!("All children terminated");
+    info!("Shutdown complete");
     Ok(())
-}
-
-/// Find a binary in the given directory or PATH.
-fn find_binary(
-    bin_dir: &std::path::Path,
-    name: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    // Try same directory first
-    let local_path = bin_dir.join(name);
-    if local_path.exists() {
-        return Ok(local_path.to_string_lossy().to_string());
-    }
-
-    // Try with .exe on Windows
-    #[cfg(windows)]
-    {
-        let exe_path = bin_dir.join(format!("{}.exe", name));
-        if exe_path.exists() {
-            return Ok(exe_path.to_string_lossy().to_string());
-        }
-    }
-
-    // Fall back to PATH
-    Ok(name.to_string())
-}
-
-/// Build base environment variables from config (transport and messaging only).
-fn build_base_env(config: &Config) -> HashMap<String, String> {
-    let mut env = HashMap::new();
-
-    // Transport
-    env.insert("ANGZARR__TRANSPORT__TYPE".to_string(), "uds".to_string());
-    env.insert(
-        "ANGZARR__TRANSPORT__UDS__BASE_PATH".to_string(),
-        config.transport.uds.base_path.to_string_lossy().to_string(),
-    );
-
-    // Messaging
-    if let Some(ref messaging) = config.messaging {
-        env.insert(
-            "ANGZARR__MESSAGING__TYPE".to_string(),
-            format!("{:?}", messaging.messaging_type).to_lowercase(),
-        );
-
-        match messaging.messaging_type {
-            MessagingType::Ipc => {
-                env.insert(
-                    "ANGZARR__MESSAGING__IPC__BASE_PATH".to_string(),
-                    messaging.ipc.base_path.clone(),
-                );
-            }
-            MessagingType::Amqp => {
-                env.insert(
-                    "ANGZARR__MESSAGING__AMQP__URL".to_string(),
-                    messaging.amqp.url.clone(),
-                );
-            }
-            _ => {}
-        }
-    }
-
-    env
-}
-
-/// Build storage environment variables from StorageConfig.
-fn build_storage_env(env: &mut HashMap<String, String>, storage: &angzarr::storage::StorageConfig) {
-    use angzarr::storage::StorageType;
-
-    env.insert(
-        "ANGZARR__STORAGE__TYPE".to_string(),
-        format!("{:?}", storage.storage_type).to_lowercase(),
-    );
-
-    match storage.storage_type {
-        StorageType::Sqlite => {
-            if let Some(ref path) = storage.sqlite.path {
-                env.insert("ANGZARR__STORAGE__SQLITE__PATH".to_string(), path.clone());
-            }
-        }
-        StorageType::Postgres => {
-            env.insert(
-                "ANGZARR__STORAGE__POSTGRES__URI".to_string(),
-                storage.postgres.uri.clone(),
-            );
-        }
-        StorageType::Mongodb => {
-            env.insert(
-                "ANGZARR__STORAGE__MONGODB__URI".to_string(),
-                storage.mongodb.uri.clone(),
-            );
-            env.insert(
-                "ANGZARR__STORAGE__MONGODB__DATABASE".to_string(),
-                storage.mongodb.database.clone(),
-            );
-        }
-        StorageType::Redis => {
-            env.insert(
-                "ANGZARR__STORAGE__REDIS__URI".to_string(),
-                storage.redis.uri.clone(),
-            );
-        }
-    }
-}
-
-/// Build environment for aggregate sidecar.
-fn build_aggregate_env(
-    base: &HashMap<String, String>,
-    config: &Config,
-    svc: &ServiceConfig,
-) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-    let mut env = base.clone();
-    let base_path = &config.transport.uds.base_path;
-
-    // Storage: per-service override or fall back to root config
-    let storage = svc.storage.as_ref().unwrap_or(&config.storage);
-    build_storage_env(&mut env, storage);
-
-    // Target configuration
-    env.insert(
-        "ANGZARR__TARGET__ADDRESS".to_string(),
-        format!("{}/business-{}.sock", base_path.display(), svc.domain),
-    );
-    env.insert("ANGZARR__TARGET__DOMAIN".to_string(), svc.domain.clone());
-    // Pass command as JSON array for sidecar's ManagedProcess to parse
-    if !svc.command.is_empty() {
-        env.insert(
-            "ANGZARR__TARGET__COMMAND_JSON".to_string(),
-            serde_json::to_string(&svc.command).unwrap_or_default(),
-        );
-    }
-    if let Some(ref working_dir) = svc.working_dir {
-        env.insert(
-            "ANGZARR__TARGET__WORKING_DIR".to_string(),
-            working_dir.clone(),
-        );
-    }
-
-    // Disable K8s service discovery in standalone mode
-    env.insert("ANGZARR_DISCOVERY".to_string(), "static".to_string());
-
-    Ok(env)
-}
-
-/// Set up IPC broker if using IPC messaging.
-async fn setup_ipc_broker(
-    config: &Config,
-) -> Result<Option<IpcBroker>, Box<dyn std::error::Error>> {
-    let messaging_type = config
-        .messaging
-        .as_ref()
-        .map(|m| &m.messaging_type)
-        .unwrap_or(&MessagingType::Amqp);
-
-    if *messaging_type != MessagingType::Ipc {
-        return Ok(None);
-    }
-
-    let base_path = config
-        .messaging
-        .as_ref()
-        .map(|m| m.ipc.base_path.clone())
-        .unwrap_or_else(|| "/tmp/angzarr".to_string());
-
-    let broker_config = IpcBrokerConfig::with_base_path(&base_path);
-    let mut broker = IpcBroker::new(broker_config);
-
-    info!(base_path = %base_path, "Setting up IPC broker");
-
-    // Register all projectors as subscribers
-    for svc in &config.standalone.projectors {
-        let name = match &svc.name {
-            Some(proj_name) => format!("projector-{}-{}", proj_name, svc.domain),
-            None => format!("projector-{}", svc.domain),
-        };
-        let domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        broker.register_subscriber(&name, vec![domain.clone()])?;
-    }
-
-    // Register all sagas as subscribers
-    for svc in &config.standalone.sagas {
-        let name = format!("saga-{}", svc.domain);
-        let domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        broker.register_subscriber(&name, vec![domain.clone()])?;
-    }
-
-    info!(
-        subscribers = broker.get_subscribers().len(),
-        "IPC broker ready"
-    );
-
-    Ok(Some(broker))
-}
-
-/// Build environment for saga sidecar.
-fn build_saga_env(
-    base: &HashMap<String, String>,
-    config: &Config,
-    svc: &ServiceConfig,
-    ipc_broker: &Option<IpcBroker>,
-) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-    let mut env = base.clone();
-    let base_path = &config.transport.uds.base_path;
-    let subscriber_name = format!("saga-{}", svc.domain);
-
-    // Storage: per-service override or fall back to root config
-    let storage = svc.storage.as_ref().unwrap_or(&config.storage);
-    build_storage_env(&mut env, storage);
-
-    // Target configuration
-    env.insert(
-        "ANGZARR__TARGET__ADDRESS".to_string(),
-        format!("{}/saga-{}.sock", base_path.display(), svc.domain),
-    );
-    env.insert("ANGZARR__TARGET__DOMAIN".to_string(), svc.domain.clone());
-    // Pass command as JSON array for sidecar's ManagedProcess to parse
-    if !svc.command.is_empty() {
-        env.insert(
-            "ANGZARR__TARGET__COMMAND_JSON".to_string(),
-            serde_json::to_string(&svc.command).unwrap_or_default(),
-        );
-    }
-    if let Some(ref working_dir) = svc.working_dir {
-        env.insert(
-            "ANGZARR__TARGET__WORKING_DIR".to_string(),
-            working_dir.clone(),
-        );
-    }
-
-    // Messaging configuration - IPC or AMQP
-    let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-    if ipc_broker.is_some() {
-        // IPC mode: set subscriber name and domain
-        env.insert(
-            "ANGZARR__MESSAGING__IPC__SUBSCRIBER_NAME".to_string(),
-            subscriber_name,
-        );
-        env.insert(
-            "ANGZARR__MESSAGING__IPC__DOMAIN".to_string(),
-            listen_domain.clone(),
-        );
-    } else {
-        // AMQP mode: set domain
-        env.insert(
-            "ANGZARR__MESSAGING__AMQP__DOMAIN".to_string(),
-            listen_domain.clone(),
-        );
-    }
-
-    // Static endpoints for command routing (same format as gateway)
-    let endpoints: Vec<String> = config
-        .standalone
-        .aggregates
-        .iter()
-        .map(|agg| {
-            format!(
-                "{}={}/aggregate-{}.sock",
-                agg.domain,
-                base_path.display(),
-                agg.domain
-            )
-        })
-        .collect();
-
-    env.insert("ANGZARR_STATIC_ENDPOINTS".to_string(), endpoints.join(","));
-
-    // EventQuery address for repair (use listen domain's aggregate)
-    // Strip routing wildcards (e.g., "game.#" -> "game") for socket paths
-    let repair_domain = strip_routing_wildcards(listen_domain);
-    env.insert(
-        "EVENT_QUERY_ADDRESS".to_string(),
-        format!("{}/aggregate-{}.sock", base_path.display(), repair_domain),
-    );
-
-    // Merge in service-specific environment variables from config
-    // These override any previously set values
-    for (key, value) in &svc.env {
-        env.insert(key.clone(), value.clone());
-    }
-
-    Ok(env)
-}
-
-/// Build environment for projector sidecar.
-fn build_projector_env(
-    base: &HashMap<String, String>,
-    config: &Config,
-    svc: &ServiceConfig,
-    ipc_broker: &Option<IpcBroker>,
-) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-    let mut env = base.clone();
-    let base_path = &config.transport.uds.base_path;
-
-    // Storage: per-service override or fall back to root config
-    let storage = svc.storage.as_ref().unwrap_or(&config.storage);
-    build_storage_env(&mut env, storage);
-
-    // Subscriber/socket name: use "name-domain" if name is set, otherwise just "domain"
-    let subscriber_name = match &svc.name {
-        Some(name) => format!("projector-{}-{}", name, svc.domain),
-        None => format!("projector-{}", svc.domain),
-    };
-    let socket_name = match &svc.name {
-        Some(name) => format!("{}-{}", name, svc.domain),
-        None => svc.domain.clone(),
-    };
-
-    // Target configuration
-    env.insert(
-        "ANGZARR__TARGET__ADDRESS".to_string(),
-        format!("{}/projector-{}.sock", base_path.display(), socket_name),
-    );
-    env.insert("ANGZARR__TARGET__DOMAIN".to_string(), svc.domain.clone());
-    // Pass command as JSON array for sidecar's ManagedProcess to parse
-    if !svc.command.is_empty() {
-        env.insert(
-            "ANGZARR__TARGET__COMMAND_JSON".to_string(),
-            serde_json::to_string(&svc.command).unwrap_or_default(),
-        );
-    }
-    if let Some(ref working_dir) = svc.working_dir {
-        env.insert(
-            "ANGZARR__TARGET__WORKING_DIR".to_string(),
-            working_dir.clone(),
-        );
-    }
-
-    // Messaging configuration - IPC or AMQP
-    let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-    if ipc_broker.is_some() {
-        // IPC mode: set subscriber name and domain
-        env.insert(
-            "ANGZARR__MESSAGING__IPC__SUBSCRIBER_NAME".to_string(),
-            subscriber_name,
-        );
-        env.insert(
-            "ANGZARR__MESSAGING__IPC__DOMAIN".to_string(),
-            listen_domain.clone(),
-        );
-    } else {
-        // AMQP mode: set domain
-        env.insert(
-            "ANGZARR__MESSAGING__AMQP__DOMAIN".to_string(),
-            listen_domain.clone(),
-        );
-    }
-
-    // EventQuery address for repair (use listen domain's aggregate)
-    // Strip routing wildcards (e.g., "game.#" -> "game") for socket paths
-    let repair_domain = strip_routing_wildcards(listen_domain);
-    env.insert(
-        "EVENT_QUERY_ADDRESS".to_string(),
-        format!("{}/aggregate-{}.sock", base_path.display(), repair_domain),
-    );
-
-    // Merge in service-specific environment variables from config
-    // These override any previously set values
-    for (key, value) in &svc.env {
-        env.insert(key.clone(), value.clone());
-    }
-
-    Ok(env)
-}
-
-/// Build environment for stream service.
-fn build_stream_env(base: &HashMap<String, String>, _config: &Config) -> HashMap<String, String> {
-    // Stream service uses UDS transport from base env
-    // Socket path will be {base_path}/stream.sock
-    base.clone()
 }
 
 /// Spawn an external service process.
@@ -729,12 +551,10 @@ async fn spawn_external_service(
     let mut cmd = Command::new(executable);
     cmd.args(args);
 
-    // Set working directory
     if let Some(ref dir) = svc.working_dir {
         cmd.current_dir(dir);
     }
 
-    // Set environment variables
     for (key, value) in &svc.env {
         cmd.env(key, value);
     }
@@ -742,7 +562,6 @@ async fn spawn_external_service(
     cmd.stdout(Stdio::inherit());
     cmd.stderr(Stdio::inherit());
 
-    // Create new process group so we can kill all descendants
     #[cfg(unix)]
     cmd.process_group(0);
 
@@ -765,8 +584,8 @@ async fn wait_for_service_health(
     health_check: &HealthCheckConfig,
     timeout_secs: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let timeout = std::time::Duration::from_secs(timeout_secs);
-    let interval = std::time::Duration::from_millis(500);
+    let timeout = Duration::from_secs(timeout_secs);
+    let interval = Duration::from_millis(500);
     let start = std::time::Instant::now();
 
     info!(
@@ -808,7 +627,6 @@ async fn wait_for_service_health(
 async fn check_http_health(url: &str) -> bool {
     use std::io::{Read, Write};
 
-    // Parse URL to extract host and port
     let url = match url.strip_prefix("http://") {
         Some(rest) => rest,
         None => match url.strip_prefix("https://") {
@@ -825,22 +643,20 @@ async fn check_http_health(url: &str) -> bool {
         None => (url, "/"),
     };
 
-    // Connect via TCP
     let stream = match std::net::TcpStream::connect_timeout(
         &host_port
             .parse()
             .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 80))),
-        std::time::Duration::from_secs(5),
+        Duration::from_secs(5),
     ) {
         Ok(s) => s,
         Err(_) => return false,
     };
 
-    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
-    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(5)));
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     let mut stream = stream;
 
-    // Send HTTP GET request
     let request = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
         path, host_port
@@ -849,12 +665,10 @@ async fn check_http_health(url: &str) -> bool {
         return false;
     }
 
-    // Read response
     let mut response = [0u8; 1024];
     match stream.read(&mut response) {
         Ok(n) if n > 0 => {
             let response_str = String::from_utf8_lossy(&response[..n]);
-            // Check for 2xx status code
             response_str.contains("200 ") || response_str.contains("204 ")
         }
         _ => false,
@@ -866,79 +680,7 @@ async fn check_tcp_health(addr: &str) -> bool {
     tokio::net::TcpStream::connect(addr).await.is_ok()
 }
 
-/// Check gRPC health (simplified - just TCP connectivity).
+/// Check gRPC health (TCP connectivity).
 async fn check_grpc_health(addr: &str) -> bool {
-    // For now, just check TCP connectivity
-    // A full implementation would use grpc.health.v1.Health
     check_tcp_health(addr).await
-}
-
-/// Build environment for gateway.
-fn build_gateway_env(base: &HashMap<String, String>, config: &Config) -> HashMap<String, String> {
-    let mut env = base.clone();
-    let base_path = &config.transport.uds.base_path;
-
-    // Server port (on TCP for external clients)
-    let port = config.standalone.gateway.port.unwrap_or(50051);
-    env.insert(
-        "ANGZARR__SERVER__AGGREGATE_PORT".to_string(),
-        port.to_string(),
-    );
-
-    // Use TCP transport for gateway (so external clients can connect)
-    env.insert("ANGZARR__TRANSPORT__TYPE".to_string(), "tcp".to_string());
-    env.insert(
-        "ANGZARR__TRANSPORT__TCP__PORT".to_string(),
-        port.to_string(),
-    );
-
-    // Build static endpoints from aggregates
-    // Format: "domain=/path/to/socket.sock,domain2=/path/to/socket2.sock"
-    let endpoints: Vec<String> = config
-        .standalone
-        .aggregates
-        .iter()
-        .map(|svc| {
-            format!(
-                "{}={}/aggregate-{}.sock",
-                svc.domain,
-                base_path.display(),
-                svc.domain
-            )
-        })
-        .collect();
-
-    env.insert("ANGZARR_STATIC_ENDPOINTS".to_string(), endpoints.join(","));
-
-    // Stream service address for event streaming
-    env.insert(
-        "STREAM_ADDRESS".to_string(),
-        format!("{}/stream.sock", base_path.display()),
-    );
-
-    env
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strip_routing_wildcards() {
-        // Hash wildcard (multi-level)
-        assert_eq!(strip_routing_wildcards("game.#"), "game");
-        assert_eq!(strip_routing_wildcards("game.player.#"), "game.player");
-
-        // Star wildcard (single-level)
-        assert_eq!(strip_routing_wildcards("game.*"), "game");
-        assert_eq!(strip_routing_wildcards("game.player.*"), "game.player");
-
-        // No wildcard - unchanged
-        assert_eq!(strip_routing_wildcards("game"), "game");
-        assert_eq!(strip_routing_wildcards("game.player"), "game.player");
-
-        // Edge cases
-        assert_eq!(strip_routing_wildcards("#"), "#"); // Bare # is valid match-all
-        assert_eq!(strip_routing_wildcards("*"), "*"); // Bare * is valid match-all
-    }
 }

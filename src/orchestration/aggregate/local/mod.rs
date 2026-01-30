@@ -57,6 +57,7 @@ impl LocalAggregateContext {
     }
 
     /// Call sync projectors via service discovery.
+    #[tracing::instrument(name = "aggregate.sync_projectors", skip_all)]
     async fn call_sync_projectors(&self, events: &EventBook) -> Vec<Projection> {
         let clients = match self.discovery.get_all_projectors().await {
             Ok(c) => c,
@@ -89,9 +90,11 @@ impl LocalAggregateContext {
 
 #[async_trait]
 impl AggregateContext for LocalAggregateContext {
+    #[tracing::instrument(name = "aggregate.load_events", skip_all, fields(%domain, %root))]
     async fn load_prior_events(
         &self,
         domain: &str,
+        edition: &str,
         root: Uuid,
         temporal: &TemporalQuery,
     ) -> Result<EventBook, Status> {
@@ -101,7 +104,7 @@ impl AggregateContext for LocalAggregateContext {
                 let snapshot = self
                     .storage
                     .snapshot_store
-                    .get(domain, root)
+                    .get(domain, edition, root)
                     .await
                     .map_err(|e| Status::internal(format!("Failed to load snapshot: {e}")))?;
 
@@ -110,7 +113,7 @@ impl AggregateContext for LocalAggregateContext {
                     let events = self
                         .storage
                         .event_store
-                        .get_from(domain, root, from_seq)
+                        .get_from(domain, edition, root, from_seq)
                         .await
                         .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
                     (events, Some(snap))
@@ -118,7 +121,7 @@ impl AggregateContext for LocalAggregateContext {
                     let events = self
                         .storage
                         .event_store
-                        .get(domain, root)
+                        .get(domain, edition, root)
                         .await
                         .map_err(|e| Status::internal(format!("Failed to load events: {e}")))?;
                     (events, None)
@@ -131,6 +134,7 @@ impl AggregateContext for LocalAggregateContext {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: String::new(),
+                        edition: Some(edition.to_string()),
                     }),
                     pages: events,
                     snapshot: snapshot_data,
@@ -142,7 +146,7 @@ impl AggregateContext for LocalAggregateContext {
                 let events = self
                     .storage
                     .event_store
-                    .get_from_to(domain, root, 0, seq + 1)
+                    .get_from_to(domain, edition, root, 0, seq + 1)
                     .await
                     .map_err(|e| {
                         Status::internal(format!("Failed to load temporal events: {e}"))
@@ -155,6 +159,7 @@ impl AggregateContext for LocalAggregateContext {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: String::new(),
+                        edition: Some(edition.to_string()),
                     }),
                     pages: events,
                     snapshot: None,
@@ -165,7 +170,7 @@ impl AggregateContext for LocalAggregateContext {
                 let events = self
                     .storage
                     .event_store
-                    .get_until_timestamp(domain, root, ts)
+                    .get_until_timestamp(domain, edition, root, ts)
                     .await
                     .map_err(|e| {
                         Status::internal(format!("Failed to load temporal events: {e}"))
@@ -178,6 +183,7 @@ impl AggregateContext for LocalAggregateContext {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: String::new(),
+                        edition: Some(edition.to_string()),
                     }),
                     pages: events,
                     snapshot: None,
@@ -187,10 +193,12 @@ impl AggregateContext for LocalAggregateContext {
         }
     }
 
+    #[tracing::instrument(name = "aggregate.persist", skip_all, fields(%domain, %root))]
     async fn persist_events(
         &self,
         events: &EventBook,
         domain: &str,
+        edition: &str,
         root: Uuid,
         correlation_id: &str,
     ) -> Result<EventBook, Status> {
@@ -214,7 +222,7 @@ impl AggregateContext for LocalAggregateContext {
         let next_sequence = self
             .storage
             .event_store
-            .get_next_sequence(domain, root)
+            .get_next_sequence(domain, edition, root)
             .await
             .map_err(|e| Status::internal(format!("Failed to get sequence: {e}")))?;
         let first_event_seq = extract_sequence(events.pages.first());
@@ -230,7 +238,7 @@ impl AggregateContext for LocalAggregateContext {
         // Persist events
         self.storage
             .event_store
-            .add(domain, root, events.pages.clone(), correlation_id)
+            .add(domain, edition, root, events.pages.clone(), correlation_id)
             .await
             .map_err(|e| match e {
                 StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
@@ -250,17 +258,18 @@ impl AggregateContext for LocalAggregateContext {
                 };
                 self.storage
                     .snapshot_store
-                    .put(domain, root, snapshot)
+                    .put(domain, edition, root, snapshot)
                     .await
                     .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
             }
         }
 
-        // Return events with correlation ID set on cover
+        // Return events with correlation ID and edition set on cover
         let cover = events.cover.clone().map(|mut c| {
             if c.correlation_id.is_empty() {
                 c.correlation_id = correlation_id.to_string();
             }
+            c.edition = Some(edition.to_string());
             c
         });
         Ok(EventBook {
@@ -271,19 +280,48 @@ impl AggregateContext for LocalAggregateContext {
         })
     }
 
+    #[tracing::instrument(name = "aggregate.post_persist", skip_all)]
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
         // Call sync projectors
         let projections = self.call_sync_projectors(events).await;
 
-        // Publish to event bus for async consumers
-        if let Err(e) = self.event_bus.publish(Arc::new(events.clone())).await {
-            let domain = events
-                .cover
-                .as_ref()
-                .map(|c| c.domain.as_str())
-                .unwrap_or("unknown");
+        // Extract edition from cover for bus routing
+        let cover = events.cover.as_ref();
+        let edition = cover.and_then(|c| c.edition.as_deref()).unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION);
+        let bare_domain = cover.map(|c| c.domain.as_str()).unwrap_or("unknown");
+        let bus_domain = format!("{edition}.{bare_domain}");
+
+        // Construct bus-routable EventBook with edition-prefixed domain
+        let mut bus_events = events.clone();
+        if let Some(ref mut c) = bus_events.cover {
+            c.domain = bus_domain.clone();
+        }
+
+        #[cfg(feature = "otel")]
+        let publish_start = std::time::Instant::now();
+
+        let bus_events = Arc::new(bus_events);
+        let publish_result = self.event_bus.publish(bus_events.clone()).await;
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, BUS_PUBLISH_DURATION, BUS_PUBLISH_TOTAL};
+            let outcome = if publish_result.is_ok() { "success" } else { "error" };
+            BUS_PUBLISH_DURATION.record(publish_start.elapsed().as_secs_f64(), &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&bus_domain),
+                metrics::outcome_attr(outcome),
+            ]);
+            BUS_PUBLISH_TOTAL.add(1, &[
+                metrics::component_attr("aggregate"),
+                metrics::domain_attr(&bus_domain),
+                metrics::outcome_attr(outcome),
+            ]);
+        }
+
+        if let Err(e) = publish_result {
             warn!(
-                domain = %domain,
+                domain = %bus_domain,
                 error = %e,
                 "Failed to publish events"
             );

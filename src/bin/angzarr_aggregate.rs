@@ -53,7 +53,7 @@ use angzarr::proto::{
 };
 use angzarr::services::{AggregateService, EventQueryService};
 use angzarr::storage::init_storage;
-use angzarr::transport::serve_with_transport;
+use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -190,6 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     let router = Server::builder()
+        .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(AggregateCoordinatorServer::new(aggregate_service))
         .add_service(EventQueryServer::new(event_query));

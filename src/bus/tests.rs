@@ -10,6 +10,7 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
                 value: uuid::Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: "test-correlation".to_string(),
+            edition: None,
         }),
         pages: event_types
             .iter()

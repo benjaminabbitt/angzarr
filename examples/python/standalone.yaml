@@ -69,4 +69,4 @@ standalone:
 
   gateway:
     enabled: true
-    port: 1350
+    port: 9084

@@ -159,6 +159,7 @@ pub fn build_compensation_failed_event_book(
                 value: fallback_root.as_bytes().to_vec(),
             }),
             correlation_id: context.correlation_id.clone(),
+            edition: None,
         }),
         pages: vec![EventPage {
             sequence: Some(crate::proto::event_page::Sequence::Num(0)),

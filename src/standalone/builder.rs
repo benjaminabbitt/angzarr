@@ -1,6 +1,6 @@
-//! Runtime builder for embedded mode.
+//! Runtime builder for standalone mode.
 //!
-//! Provides a fluent API for configuring and building the embedded runtime.
+//! Provides a fluent API for configuring and building the standalone runtime.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -40,12 +40,12 @@ impl GatewayConfig {
     }
 }
 
-/// Builder for creating an embedded runtime.
+/// Builder for creating a standalone runtime.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use angzarr::embedded::{RuntimeBuilder, ProjectorConfig};
+/// use angzarr::standalone::{RuntimeBuilder, ProjectorConfig};
 ///
 /// let runtime = RuntimeBuilder::new()
 ///     .with_sqlite_memory()
@@ -73,9 +73,7 @@ pub struct RuntimeBuilder {
     sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
     /// Registered process manager handlers by name.
     process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
-    /// Optional custom channel bus (base pub/sub bus for subscriptions).
-    custom_channel_bus: Option<Arc<ChannelEventBus>>,
-    /// Optional custom event bus (wrapper around channel bus for publishing).
+    /// Optional custom event bus (for testing or external transports).
     custom_event_bus: Option<Arc<dyn EventBus>>,
 }
 
@@ -115,7 +113,6 @@ impl RuntimeBuilder {
             projectors: HashMap::new(),
             sagas: HashMap::new(),
             process_managers: HashMap::new(),
-            custom_channel_bus: None,
             custom_event_bus: None,
         }
     }
@@ -253,11 +250,11 @@ impl RuntimeBuilder {
     // Custom Event Bus (for testing)
     // ========================================================================
 
-    /// Use a custom event bus implementation with its underlying channel bus.
+    /// Use a custom event bus implementation.
     ///
-    /// This is for testing scenarios like wrapping with LossyEventBus.
-    /// Both the channel bus (for subscriptions) and the wrapper (for publishing)
-    /// must be provided so they share the same underlying pub/sub channel.
+    /// The bus is used for both publishing events and creating subscribers.
+    /// Each bus transport (Channel, IPC, AMQP, Kafka) implements
+    /// `create_subscriber()` to produce transport-appropriate subscribers.
     ///
     /// # Example
     ///
@@ -266,22 +263,17 @@ impl RuntimeBuilder {
     ///
     /// let channel_bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
     /// let lossy_bus = Arc::new(LossyEventBus::new(
-    ///     channel_bus.clone(), // Wrap the same channel bus
+    ///     channel_bus.clone(),
     ///     LossyConfig::with_drop_rate(0.5),
     /// ));
     ///
     /// let runtime = RuntimeBuilder::new()
-    ///     .with_event_bus(channel_bus, lossy_bus)
+    ///     .with_event_bus(lossy_bus)
     ///     .register_aggregate("orders", handler)
     ///     .build()
     ///     .await?;
     /// ```
-    pub fn with_event_bus(
-        mut self,
-        channel_bus: Arc<ChannelEventBus>,
-        event_bus: Arc<dyn EventBus>,
-    ) -> Self {
-        self.custom_channel_bus = Some(channel_bus);
+    pub fn with_event_bus(mut self, event_bus: Arc<dyn EventBus>) -> Self {
         self.custom_event_bus = Some(event_bus);
         self
     }
@@ -368,14 +360,10 @@ impl RuntimeBuilder {
     /// Initializes storage, messaging, and transport based on configuration.
     /// Returns a Runtime that can be used to run the system.
     pub async fn build(self) -> Result<Runtime, Box<dyn std::error::Error>> {
-        // Use custom channel bus if provided, otherwise create a new one
-        let channel_bus = self
-            .custom_channel_bus
+        // Use custom event bus if provided, otherwise create a default channel bus.
+        let event_bus: Arc<dyn EventBus> = self
+            .custom_event_bus
             .unwrap_or_else(|| Arc::new(ChannelEventBus::new(ChannelConfig::publisher())));
-
-        // Use custom event bus if provided, otherwise use the channel bus directly
-        let event_bus: Arc<dyn EventBus> =
-            self.custom_event_bus.unwrap_or_else(|| channel_bus.clone());
 
         Runtime::new(
             self.storage,
@@ -387,7 +375,6 @@ impl RuntimeBuilder {
             self.projectors,
             self.sagas,
             self.process_managers,
-            channel_bus,
             event_bus,
         )
         .await

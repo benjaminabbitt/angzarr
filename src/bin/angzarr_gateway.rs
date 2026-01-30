@@ -42,6 +42,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use backon::Retryable;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
@@ -52,8 +53,9 @@ use angzarr::handlers::gateway::{EventQueryProxy, GatewayService};
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::event_stream_client::EventStreamClient;
-use angzarr::transport::{connect_to_address, serve_with_transport};
-use angzarr::utils::bootstrap::{connect_with_retry, init_tracing, parse_static_endpoints};
+use angzarr::transport::{connect_to_address, grpc_trace_layer, serve_with_transport};
+use angzarr::utils::bootstrap::{init_tracing, parse_static_endpoints};
+use angzarr::utils::retry::connection_backoff;
 
 const DEFAULT_STREAM_TIMEOUT_SECS: u64 = 30;
 
@@ -120,12 +122,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(stream_address) => {
             let stream_addr = stream_address.clone();
             Some(
-                connect_with_retry("stream service", &stream_address, || {
+                (|| {
                     let addr = stream_addr.clone();
                     async move {
-                        let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
+                        let channel =
+                            connect_to_address(&addr).await.map_err(|e| e.to_string())?;
                         Ok::<_, String>(EventStreamClient::new(channel))
                     }
+                })
+                .retry(connection_backoff())
+                .notify(|err: &String, dur: Duration| {
+                    warn!(service = "stream", error = %err, delay = ?dur, "Connection failed, retrying");
                 })
                 .await?,
             )
@@ -157,6 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     let router = Server::builder()
+        .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(CommandGatewayServer::new(gateway_service))
         .add_service(EventQueryServer::new(event_query_proxy));

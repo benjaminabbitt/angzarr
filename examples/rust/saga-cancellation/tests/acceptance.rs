@@ -142,6 +142,7 @@ async fn process_saga(world: &mut SagaWorld) {
             domain: SOURCE_DOMAIN.to_string(),
             root: world.current_root.clone(),
             correlation_id: world.current_correlation_id.clone(),
+            edition: None,
         }),
         pages: vec![EventPage {
             sequence: Some(Sequence::Num(1)),

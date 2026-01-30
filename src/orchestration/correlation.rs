@@ -50,6 +50,7 @@ mod tests {
                 } else {
                     String::new()
                 },
+                edition: None,
             }),
             pages: vec![CommandPage {
                 sequence: 0,

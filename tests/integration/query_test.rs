@@ -84,6 +84,7 @@ async fn test_query_with_bounds() {
                 value: customer_id.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: Some(Selection::Range(SequenceRange {
             lower: 0,

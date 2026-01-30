@@ -14,15 +14,16 @@
 
 use std::sync::Arc;
 
+use backon::ExponentialBuilder;
 use futures::future::BoxFuture;
-use tracing::error;
+use tracing::{error, Instrument};
 
 use crate::bus::{BusError, EventHandler};
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::saga::{orchestrate_saga, OutputDomainValidator, SagaContextFactory};
 use crate::proto::EventBook;
-use crate::utils::retry::RetryConfig;
+use crate::utils::retry::saga_backoff;
 
 /// Event handler that orchestrates saga execution via a context factory.
 ///
@@ -35,7 +36,7 @@ pub struct SagaEventHandler {
     command_executor: Arc<dyn CommandExecutor>,
     destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
     output_domain_validator: Option<Arc<OutputDomainValidator>>,
-    retry_config: RetryConfig,
+    backoff: ExponentialBuilder,
 }
 
 impl SagaEventHandler {
@@ -50,7 +51,7 @@ impl SagaEventHandler {
             command_executor,
             destination_fetcher,
             output_domain_validator: None,
-            retry_config: RetryConfig::for_saga_commands(),
+            backoff: saga_backoff(),
         }
     }
 
@@ -60,33 +61,35 @@ impl SagaEventHandler {
         command_executor: Arc<dyn CommandExecutor>,
         destination_fetcher: Option<Arc<dyn DestinationFetcher>>,
         output_domain_validator: Option<Arc<OutputDomainValidator>>,
-        retry_config: RetryConfig,
+        backoff: ExponentialBuilder,
     ) -> Self {
         Self {
             context_factory,
             command_executor,
             destination_fetcher,
             output_domain_validator,
-            retry_config,
+            backoff,
         }
     }
 }
 
 impl EventHandler for SagaEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
+        let correlation_id = book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
+        let saga_name = self.context_factory.name().to_string();
+        let span = tracing::info_span!("saga.handle", %saga_name, %correlation_id);
+
         let factory = self.context_factory.clone();
         let executor = self.command_executor.clone();
         let fetcher = self.destination_fetcher.clone();
         let validator = self.output_domain_validator.clone();
-        let retry_config = self.retry_config.clone();
+        let backoff = self.backoff;
 
         Box::pin(async move {
-            let correlation_id = book
-                .cover
-                .as_ref()
-                .map(|c| c.correlation_id.clone())
-                .unwrap_or_default();
-
             let ctx = factory.create(book);
 
             let validator_ref: Option<&OutputDomainValidator> = validator.as_deref();
@@ -96,20 +99,20 @@ impl EventHandler for SagaEventHandler {
                 ctx.as_ref(),
                 executor.as_ref(),
                 fetcher_ref,
+                &saga_name,
                 &correlation_id,
                 validator_ref,
-                &retry_config,
+                backoff,
             )
             .await
             {
                 error!(
-                    correlation_id = %correlation_id,
                     error = %e,
                     "Saga orchestration failed"
                 );
             }
 
             Ok(())
-        })
+        }.instrument(span))
     }
 }

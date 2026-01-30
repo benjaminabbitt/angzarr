@@ -44,6 +44,17 @@ pub trait CoverExt {
         !self.correlation_id().is_empty()
     }
 
+    /// Get the edition name from the cover.
+    ///
+    /// Returns the explicit edition if set and non-empty, otherwise
+    /// defaults to the canonical timeline name (`"angzarr"`).
+    fn edition(&self) -> &str {
+        self.cover()
+            .and_then(|c| c.edition.as_deref())
+            .filter(|e| !e.is_empty())
+            .unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION)
+    }
+
     /// Generate a cache key for this entity based on domain + root.
     ///
     /// Used for caching aggregate state during saga retry to avoid redundant fetches.
@@ -78,6 +89,58 @@ impl CoverExt for CommandBook {
     }
 }
 
+/// Create a tonic Request with `x-correlation-id` gRPC metadata.
+///
+/// Propagates the correlation_id into gRPC request headers so that
+/// server-side tower middleware can create tracing spans before
+/// protobuf deserialization.
+///
+/// When the `otel` feature is enabled, also injects W3C `traceparent`
+/// header for distributed trace context propagation.
+pub fn correlated_request<T>(msg: T, correlation_id: &str) -> tonic::Request<T> {
+    let mut req = tonic::Request::new(msg);
+    if !correlation_id.is_empty() {
+        if let Ok(val) = correlation_id.parse() {
+            req.metadata_mut().insert("x-correlation-id", val);
+        }
+    }
+
+    #[cfg(feature = "otel")]
+    {
+        inject_trace_context(req.metadata_mut());
+    }
+
+    req
+}
+
+/// Inject W3C trace context into tonic metadata from the current tracing span.
+#[cfg(feature = "otel")]
+fn inject_trace_context(metadata: &mut tonic::metadata::MetadataMap) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let cx = tracing::Span::current().context();
+
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        let mut injector = MetadataInjector(metadata);
+        propagator.inject_context(&cx, &mut injector);
+    });
+}
+
+/// Adapter to inject OTel context into tonic gRPC metadata.
+#[cfg(feature = "otel")]
+struct MetadataInjector<'a>(&'a mut tonic::metadata::MetadataMap);
+
+#[cfg(feature = "otel")]
+impl opentelemetry::propagation::Injector for MetadataInjector<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        if let Ok(key) = tonic::metadata::MetadataKey::from_bytes(key.as_bytes()) {
+            if let Ok(val) = value.parse() {
+                self.0.insert(key, val);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +153,7 @@ mod tests {
             root: root.map(|u| ProtoUuid {
                 value: u.as_bytes().to_vec(),
             }),
+            edition: None,
         }
     }
 

@@ -10,6 +10,7 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
                 value: uuid::Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: correlation_id.to_string(),
+            edition: None,
         }),
         pages: vec![EventPage {
             sequence: Some(crate::proto::event_page::Sequence::Num(0)),

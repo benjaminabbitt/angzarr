@@ -16,6 +16,7 @@ use tracing_subscriber::FmtSubscriber;
 
 use angzarr::handlers::projectors::{connect_pool, EventService, EventServiceHandle};
 use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
+use angzarr::transport::grpc_trace_layer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -71,6 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         Server::builder()
+            .layer(grpc_trace_layer())
             .add_service(health_service)
             .add_service(ProjectorCoordinatorServer::new(handle))
             .serve_with_incoming(uds_stream)
@@ -87,6 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         Server::builder()
+            .layer(grpc_trace_layer())
             .add_service(health_service)
             .add_service(ProjectorCoordinatorServer::new(handle))
             .serve(addr)

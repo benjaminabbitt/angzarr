@@ -17,7 +17,7 @@ use futures::future::BoxFuture;
 use prost::Message;
 use prost_types::Any;
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, info, Instrument};
 
 use crate::bus::{BusError, EventBus, EventHandler};
 use crate::orchestration::projector::grpc::GrpcProjectorContext;
@@ -41,16 +41,19 @@ pub struct ProjectorEventHandler {
     /// If true, this projector is synchronous (handled inline by the aggregate pipeline).
     /// Async distribution should skip it.
     synchronous: bool,
+    /// Projector name (used for metrics and tracing).
+    name: String,
 }
 
 impl ProjectorEventHandler {
     /// Create from a projector context without streaming output.
-    pub fn from_context(context: Arc<dyn ProjectorContext>) -> Self {
+    pub fn from_context(context: Arc<dyn ProjectorContext>, name: String) -> Self {
         Self {
             context,
             publisher: None,
             domains: Vec::new(),
             synchronous: false,
+            name,
         }
     }
 
@@ -58,12 +61,14 @@ impl ProjectorEventHandler {
     pub fn from_context_with_publisher(
         context: Arc<dyn ProjectorContext>,
         publisher: Arc<dyn EventBus>,
+        name: String,
     ) -> Self {
         Self {
             context,
             publisher: Some(publisher),
             domains: Vec::new(),
             synchronous: false,
+            name,
         }
     }
 
@@ -73,25 +78,31 @@ impl ProjectorEventHandler {
         publisher: Option<Arc<dyn EventBus>>,
         domains: Vec<String>,
         synchronous: bool,
+        name: String,
     ) -> Self {
         Self {
             context,
             publisher,
             domains,
             synchronous,
+            name,
         }
     }
 
     // --- Backward-compatible constructors for distributed sidecar binaries ---
 
     /// Create a new projector event handler without streaming output.
-    pub fn new(client: ProjectorCoordinatorClient<tonic::transport::Channel>) -> Self {
+    pub fn new(
+        client: ProjectorCoordinatorClient<tonic::transport::Channel>,
+        name: String,
+    ) -> Self {
         let context = Arc::new(GrpcProjectorContext::new(Arc::new(Mutex::new(client))));
         Self {
             context,
             publisher: None,
             domains: Vec::new(),
             synchronous: false,
+            name,
         }
     }
 
@@ -99,6 +110,7 @@ impl ProjectorEventHandler {
     pub fn with_publisher(
         client: ProjectorCoordinatorClient<tonic::transport::Channel>,
         publisher: Arc<dyn EventBus>,
+        name: String,
     ) -> Self {
         let context = Arc::new(GrpcProjectorContext::new(Arc::new(Mutex::new(client))));
         Self {
@@ -106,6 +118,7 @@ impl ProjectorEventHandler {
             publisher: Some(publisher),
             domains: Vec::new(),
             synchronous: false,
+            name,
         }
     }
 }
@@ -125,47 +138,67 @@ impl EventHandler for ProjectorEventHandler {
             }
         }
 
+        let correlation_id = book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
+        let domain = book.domain().to_string();
+        let projector_name = self.name.clone();
+        let span = tracing::info_span!("projector.handle", %projector_name, %correlation_id, %domain);
+
         let context = self.context.clone();
         let publisher = self.publisher.clone();
 
         Box::pin(async move {
+            #[cfg(feature = "otel")]
+            let start = std::time::Instant::now();
+
             let book_owned = (*book).clone();
-            let correlation_id = book_owned
-                .cover
-                .as_ref()
-                .map(|c| c.correlation_id.clone())
-                .unwrap_or_default();
 
-            let projection = context
-                .handle_events(&book_owned)
-                .await
-                .map_err(BusError::Grpc)?;
+            let result: Result<(), BusError> = async {
+                let projection = context
+                    .handle_events(&book_owned)
+                    .await
+                    .map_err(BusError::Grpc)?;
 
-            // If we have a publisher and the projection has content, publish it back
-            if let Some(ref publisher) = publisher {
-                if projection.projection.is_some() || !projection.projector.is_empty() {
-                    debug!(
-                        correlation_id = %correlation_id,
-                        projector = %projection.projector,
-                        sequence = projection.sequence,
-                        "Publishing projection output"
-                    );
+                // If we have a publisher and the projection has content, publish it back
+                if let Some(ref publisher) = publisher {
+                    if projection.projection.is_some() || !projection.projector.is_empty() {
+                        debug!(
+                            projector = %projection.projector,
+                            sequence = projection.sequence,
+                            "Publishing projection output"
+                        );
 
-                    let projection_event_book =
-                        create_projection_event_book(projection, &correlation_id);
+                        let projection_event_book =
+                            create_projection_event_book(projection, &correlation_id);
 
-                    info!(
-                        correlation_id = %correlation_id,
-                        domain = %projection_event_book.domain(),
-                        "Publishing projection for streaming"
-                    );
+                        info!(
+                            domain = %projection_event_book.domain(),
+                            "Publishing projection for streaming"
+                        );
 
-                    publisher.publish(Arc::new(projection_event_book)).await?;
+                        publisher.publish(Arc::new(projection_event_book)).await?;
+                    }
                 }
+
+                Ok(())
+            }
+            .await;
+
+            #[cfg(feature = "otel")]
+            {
+                use crate::utils::metrics::{self, PROJECTOR_DURATION};
+                PROJECTOR_DURATION.record(start.elapsed().as_secs_f64(), &[
+                    metrics::component_attr("projector"),
+                    metrics::name_attr(&projector_name),
+                    metrics::domain_attr(&domain),
+                ]);
             }
 
-            Ok(())
-        })
+            result
+        }.instrument(span))
     }
 }
 
@@ -199,6 +232,7 @@ fn create_projection_event_book(projection: Projection, correlation_id: &str) ->
             domain: format!("_projection.{}", projector_name),
             root: None,
             correlation_id: correlation_id.to_string(),
+            edition: None,
         }),
     };
 

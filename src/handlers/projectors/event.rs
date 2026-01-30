@@ -284,7 +284,7 @@ impl EventService {
             .map(|u| hex::encode(&u.value))
             .unwrap_or_else(|| "unknown".to_string());
 
-        let correlation_id = &book.correlation_id;
+        let correlation_id = &cover.correlation_id;
 
         for page in &book.pages {
             let sequence = match &page.sequence {

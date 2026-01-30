@@ -1,10 +1,15 @@
-Feature: Temporal Query and Dry-Run
-  Tests querying aggregate state at a point in time and
-  speculatively executing commands without side effects.
+Feature: Temporal Query and Speculative Execution
+  Temporal queries reconstruct aggregate state at a past point in time.
+  Speculative execution (dry-run) runs a command handler against that
+  historical state and returns the events that *would* be produced.
+
+  Speculative execution is purely exploratory: no events are emitted,
+  persisted, or published. No sagas, projectors, or process managers
+  are triggered. The actual aggregate remains unchanged.
 
   Background:
     # Temporal queries replay events from sequence 0 (no snapshots).
-    # Dry-run executes a command against temporal state without persisting.
+    # Speculative execution does NOT emit events or cause side effects.
 
   # ===========================================================================
   # Temporal Query by Sequence
@@ -47,11 +52,11 @@ Feature: Temporal Query and Dry-Run
     Then only events before that timestamp are returned
 
   # ===========================================================================
-  # Dry-Run - What-If Execution
+  # Speculative Execution (Dry-Run) - What-If Analysis
   # ===========================================================================
 
   @e2e @dryrun
-  Scenario: Dry-run succeeds against temporal state
+  Scenario: Speculative execution succeeds against temporal state
     Given a cart "DRY-CART-1" with items:
       | sequence | event_type | details         |
       | 0        | CartCreated| created         |
@@ -62,7 +67,7 @@ Feature: Temporal Query and Dry-Run
     And the actual cart state is unchanged (still has WIDGET-B)
 
   @e2e @dryrun
-  Scenario: Dry-run fails when item not in temporal state
+  Scenario: Speculative execution fails when item not in temporal state
     Given a cart "DRY-CART-2" with items:
       | sequence | event_type | details         |
       | 0        | CartCreated| created         |
@@ -73,14 +78,14 @@ Feature: Temporal Query and Dry-Run
     And the actual cart state is unchanged
 
   @e2e @dryrun
-  Scenario: Dry-run does not persist events
+  Scenario: Speculative execution does not persist events
     Given a cart "DRY-CART-3" with 3 events
     When I dry-run "AddItem SKU-DRY" on cart "DRY-CART-3" at sequence 2
     Then the dry-run returns an "ItemAdded" event
     And querying cart "DRY-CART-3" still returns exactly 3 events
 
   @e2e @dryrun
-  Scenario: Dry-run does not trigger sagas
+  Scenario: Speculative execution does not trigger sagas
     Given a cart "DRY-CART-4" ready for checkout
     When I dry-run "Checkout" on cart "DRY-CART-4" at latest sequence
     Then the dry-run returns a "CheckedOut" event
@@ -88,18 +93,18 @@ Feature: Temporal Query and Dry-Run
     And no events appear in any other domain
 
   # ===========================================================================
-  # Dry-Run for Historical What-If
+  # Speculative Execution for Historical What-If
   # ===========================================================================
 
   @e2e @dryrun @historical
-  Scenario: Dry-run against earlier state for experimentation
+  Scenario: Speculative execution against earlier state for experimentation
     Given a cart "DRY-HIST" that was checked out at sequence 5
     When I dry-run "AddItem SKU-LATE" at sequence 3 (before checkout)
     Then the dry-run returns an "ItemAdded" event
     And the cart "DRY-HIST" remains checked out (no mutation)
 
   @e2e @dryrun @historical
-  Scenario: Dry-run at sequence 0 simulates fresh aggregate
+  Scenario: Speculative execution at sequence 0 simulates fresh aggregate
     Given no cart exists for "DRY-FRESH"
     When I dry-run "CreateCart" at sequence 0
     Then the dry-run returns a "CartCreated" event

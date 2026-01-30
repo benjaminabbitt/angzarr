@@ -49,6 +49,22 @@ output "redis_secret" {
   value       = module.redis.secret_name
 }
 
+# Observability
+output "otel_collector_endpoint" {
+  description = "OTel Collector OTLP gRPC endpoint (for OTEL_EXPORTER_OTLP_ENDPOINT)"
+  value       = var.enable_observability ? module.observability[0].otel_collector_endpoint : ""
+}
+
+output "grafana_url" {
+  description = "Grafana URL"
+  value       = var.enable_observability ? module.observability[0].grafana_url : ""
+}
+
+output "observability_enabled" {
+  description = "Whether observability stack is enabled"
+  value       = var.enable_observability
+}
+
 output "mesh_enabled" {
   description = "Whether service mesh is enabled"
   value       = var.enable_mesh

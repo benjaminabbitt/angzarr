@@ -66,17 +66,25 @@ impl SagaRetryContext for LocalSagaContext {
 /// fetching are handled by the event handler, not the factory.
 pub struct LocalSagaContextFactory {
     saga_handler: Arc<dyn SagaHandler>,
+    name: String,
 }
 
 impl LocalSagaContextFactory {
-    /// Create a new factory with the saga handler.
-    pub fn new(saga_handler: Arc<dyn SagaHandler>) -> Self {
-        Self { saga_handler }
+    /// Create a new factory with the saga handler and name.
+    pub fn new(saga_handler: Arc<dyn SagaHandler>, name: String) -> Self {
+        Self {
+            saga_handler,
+            name,
+        }
     }
 }
 
 impl SagaContextFactory for LocalSagaContextFactory {
     fn create(&self, source: Arc<EventBook>) -> Box<dyn SagaRetryContext> {
         Box::new(LocalSagaContext::new(self.saga_handler.clone(), source))
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }

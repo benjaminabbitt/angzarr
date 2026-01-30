@@ -37,7 +37,7 @@ use angzarr::proto::projector_coordinator_server::{
     ProjectorCoordinator, ProjectorCoordinatorServer,
 };
 use angzarr::proto::{EventBook, Projection, SyncEventBook};
-use angzarr::transport::serve_with_transport;
+use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::init_tracing;
 
 /// Projector service that receives events from the projector sidecar.
@@ -127,6 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("angzarr-stream started");
 
     let router = Server::builder()
+        .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(ProjectorCoordinatorServer::new(projector_service))
         .add_service(EventStreamServer::new(event_stream_service));

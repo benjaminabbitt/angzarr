@@ -42,9 +42,9 @@ nodes:
       # x0: sidecar gRPC      x5: business gRPC
       # x1: sidecar debug     x6: business debug
       # =============================================================================
-      # Gateway (1350-1359) - primary entry point
-      - containerPort: 31350
-        hostPort: 1350
+      # Gateway - primary angzarr ingress (port 9084)
+      - containerPort: 30084
+        hostPort: 9084
         protocol: TCP
       # Stream (1340-1349)
       - containerPort: 31340
@@ -65,4 +65,12 @@ nodes:
       # Redis
       - containerPort: 30379
         hostPort: 6379
+        protocol: TCP
+      # Grafana
+      - containerPort: 30300
+        hostPort: 3000
+        protocol: TCP
+      # OpenTelemetry Collector gRPC (OTLP)
+      - containerPort: 30417
+        hostPort: 4317
         protocol: TCP

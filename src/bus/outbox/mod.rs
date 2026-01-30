@@ -75,6 +75,7 @@ use uuid::Uuid;
 
 use super::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 
 // ============================================================================
 // Schema
@@ -278,6 +279,7 @@ impl PostgresOutboxEventBus {
 #[cfg(feature = "postgres")]
 #[async_trait]
 impl EventBus for PostgresOutboxEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let id = Uuid::new_v4();
         let event_data = book.encode_to_vec();
@@ -344,6 +346,14 @@ impl EventBus for PostgresOutboxEventBus {
 
     async fn start_consuming(&self) -> Result<()> {
         self.inner.start_consuming().await
+    }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        self.inner.create_subscriber(name, domain_filter).await
     }
 }
 
@@ -484,6 +494,7 @@ impl SqliteOutboxEventBus {
 #[cfg(feature = "sqlite")]
 #[async_trait]
 impl EventBus for SqliteOutboxEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let id = Uuid::new_v4();
         let event_data = book.encode_to_vec();
@@ -547,6 +558,14 @@ impl EventBus for SqliteOutboxEventBus {
 
     async fn start_consuming(&self) -> Result<()> {
         self.inner.start_consuming().await
+    }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        self.inner.create_subscriber(name, domain_filter).await
     }
 }
 

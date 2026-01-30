@@ -1,13 +1,36 @@
-# Angzarr Documentation
+# Documentation
 
-## Architecture Guides
+## Architects & Decision Makers
 
-- [CQRS and Event Sourcing Concepts](cqrs-event-sourcing.md) — Background for those new to the pattern
+- [PITCH.md](PITCH.md) — Full architectural pitch (standalone document for sharing)
+- [COMPARISON.md](COMPARISON.md) — Detailed comparison vs Axon, AWS, GCP, Kafka
+
+## Developers
+
+### Getting Started
+
+- [Getting Started](getting-started.md) — Prerequisites, installation, first domain, CLI reference
+- [TOOLING.md](../TOOLING.md) — Development tools setup (just, bacon, mold, sccache, Kind)
+
+### Implementation Guides
+
+- [Command Handlers (Aggregates)](components/aggregate/aggregate.md) — Processing commands and emitting events
+- [Projectors](components/projector/projectors.md) — Building read models and performing side effects
+- [Sagas (Process Coordinators)](components/saga/sagas.md) — Orchestrating workflows across aggregates
+
+### Reference
+
 - [Patterns](patterns.md) — Outbox, upcasting, process manager, temporal query
-- [Command Handlers (Aggregates)](command-handlers.md) — Processing commands and emitting events
-- [Projectors](projectors.md) — Building read models and performing side effects
-- [Sagas (Process Coordinators)](sagas.md) — Orchestrating workflows across aggregates
 - [Port Conventions](port-conventions.md) — Standardized five-port-per-pod scheme
+- [Observability](PITCH.md#observability) — OpenTelemetry, tracing, metrics (baked into the sidecar)
+
+## Sponsors & Partners
+
+- [PARTNERS.md](PARTNERS.md) — Partnership opportunities, engagement models, roadmap
+
+## Concepts
+
+- [CQRS and Event Sourcing](cqrs-event-sourcing.md) — Background for those new to the pattern
 
 ## Quick Reference
 
@@ -18,6 +41,11 @@
 | Aggregate Root | Identity of instance within domain (hash of business keys) | — | — |
 | Projector | Perform side effects (DB writes, streaming, caching) | Events | Projections / Side Effects |
 | Saga (Process Coordinator) | Coordinate workflows across domains | Events | Commands to other domains |
+
+## gRPC Contracts
+
+- [proto/angzarr/](../proto/angzarr/) — Framework service definitions (aggregate, gateway, projector, saga, query)
+- [proto/examples/](../proto/examples/) — Example domain types (cart, customer, order, product, inventory, fulfillment)
 
 ## Example Implementations
 
@@ -30,14 +58,3 @@ examples/
 ├── go/                 # Go implementations
 └── python/             # Python implementations
 ```
-
-## gRPC Contracts
-
-- [proto/angzarr/angzarr.proto](../proto/angzarr/angzarr.proto) — Framework services
-- [proto/examples/domains.proto](../proto/examples/domains.proto) — Example domain types
-
-## Additional Resources
-
-- [COMPARISON.md](COMPARISON.md) — How Angzarr compares to other frameworks
-- [PITCH.md](PITCH.md) — Value proposition and use cases
-- [ONE_PAGER.md](ONE_PAGER.md) — Executive summary

@@ -6,11 +6,12 @@
 use std::sync::Arc;
 
 use prost::Message;
-use tonic::{Request, Status};
+use tonic::Status;
 use tracing::{debug, warn};
 
 use crate::discovery::{DiscoveryError, ServiceDiscovery};
 use crate::proto::{CommandBook, CommandResponse, DryRunRequest, SyncCommandBook};
+use crate::proto_ext::correlated_request;
 
 /// Command router for forwarding commands to aggregate services.
 #[derive(Clone)]
@@ -62,8 +63,7 @@ impl CommandRouter {
             .unwrap_or_else(|| "*".to_string());
 
         debug!(
-            correlation_id = %correlation_id,
-            domain = %domain,
+            %domain,
             "Routing command to domain"
         );
 
@@ -74,13 +74,12 @@ impl CommandRouter {
             .map_err(map_discovery_error)?;
 
         client
-            .handle(Request::new(command_book))
+            .handle(correlated_request(command_book, correlation_id))
             .await
             .map(|r| r.into_inner())
             .map_err(|e| {
                 warn!(
-                    correlation_id = %correlation_id,
-                    domain = %domain,
+                    %domain,
                     error = %e,
                     "Command failed"
                 );
@@ -102,8 +101,7 @@ impl CommandRouter {
             .unwrap_or_else(|| "*".to_string());
 
         debug!(
-            correlation_id = %correlation_id,
-            domain = %domain,
+            %domain,
             "Routing dry-run to domain"
         );
 
@@ -114,13 +112,12 @@ impl CommandRouter {
             .map_err(map_discovery_error)?;
 
         client
-            .dry_run_handle(Request::new(dry_run_request))
+            .dry_run_handle(correlated_request(dry_run_request, correlation_id))
             .await
             .map(|r| r.into_inner())
             .map_err(|e| {
                 warn!(
-                    correlation_id = %correlation_id,
-                    domain = %domain,
+                    %domain,
                     error = %e,
                     "Dry-run command failed"
                 );
@@ -142,9 +139,8 @@ impl CommandRouter {
             .unwrap_or_else(|| "*".to_string());
 
         debug!(
-            correlation_id = %correlation_id,
-            domain = %domain,
-            sync_mode = %sync_mode,
+            %domain,
+            %sync_mode,
             "Routing command to domain (sync)"
         );
 
@@ -160,13 +156,12 @@ impl CommandRouter {
         };
 
         client
-            .handle_sync(Request::new(sync_request))
+            .handle_sync(correlated_request(sync_request, correlation_id))
             .await
             .map(|r| r.into_inner())
             .map_err(|e| {
                 warn!(
-                    correlation_id = %correlation_id,
-                    domain = %domain,
+                    %domain,
                     error = %e,
                     "Sync command failed"
                 );
@@ -222,6 +217,7 @@ mod tests {
                     value: uuid::Uuid::new_v4().as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             pages: vec![],
             saga_origin: None,

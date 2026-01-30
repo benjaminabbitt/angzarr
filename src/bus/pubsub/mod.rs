@@ -23,7 +23,7 @@ use google_cloud_pubsub::publisher::Publisher;
 use google_cloud_pubsub::subscription::SubscriptionConfig;
 use prost::Message;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Instrument};
 
 use super::{
     domain_matches_any, BusError, DeadLetterHandler, DlqConfig, EventBus, EventHandler,
@@ -258,6 +258,7 @@ impl PubSubEventBus {
 
 #[async_trait]
 impl EventBus for PubSubEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let domain = book.domain();
         let root_id = book.root_id_hex().unwrap_or_default();
@@ -270,16 +271,22 @@ impl EventBus for PubSubEventBus {
 
         // Build message with attributes using PubsubMessage
         use google_cloud_googleapis::pubsub::v1::PubsubMessage;
+        let ordering_key = root_id.clone();
+        let mut attributes: std::collections::HashMap<String, String> = [
+            (DOMAIN_ATTR.to_string(), domain.to_string()),
+            (CORRELATION_ID_ATTR.to_string(), correlation_id.clone()),
+            (ROOT_ID_ATTR.to_string(), root_id),
+        ]
+        .into_iter()
+        .collect();
+
+        #[cfg(feature = "otel")]
+        pubsub_inject_trace_context(&mut attributes);
+
         let message = PubsubMessage {
             data: data.into(),
-            ordering_key: root_id.clone(), // Ordering by aggregate root
-            attributes: [
-                (DOMAIN_ATTR.to_string(), domain.to_string()),
-                (CORRELATION_ID_ATTR.to_string(), correlation_id.clone()),
-                (ROOT_ID_ATTR.to_string(), root_id),
-            ]
-            .into_iter()
-            .collect(),
+            ordering_key,
+            attributes,
             ..Default::default()
         };
 
@@ -481,36 +488,50 @@ impl EventBus for PubSubEventBus {
 
                                 match EventBook::decode(data) {
                                     Ok(book) => {
+                                        let consume_span = tracing::info_span!("bus.consume",
+                                            domain = %domain);
+
+                                        #[cfg(feature = "otel")]
+                                        pubsub_extract_trace_context(
+                                            &message.message.attributes,
+                                            &consume_span,
+                                        );
+
                                         let book = Arc::new(book);
-                                        let handlers = handlers.read().await;
+                                        let handlers_ref = &handlers;
+                                        let dlq_handlers_ref = &dlq_handlers;
+                                        let book_ref = &book;
 
-                                        let mut success = true;
-                                        for handler in handlers.iter() {
-                                            if let Err(e) = handler.handle(Arc::clone(&book)).await
-                                            {
-                                                error!(
-                                                    domain = %domain,
-                                                    error = %e,
-                                                    "Handler failed"
-                                                );
-                                                success = false;
-
-                                                // Check if we should DLQ
-                                                if retry_count >= dlq_config.max_retries {
-                                                    // Send to DLQ handlers
-                                                    let failed = FailedMessage::new(
-                                                        &book,
-                                                        e.to_string(),
-                                                        "pubsub_handler",
-                                                        retry_count,
+                                        let success = async {
+                                            let handlers_guard = handlers_ref.read().await;
+                                            let mut ok = true;
+                                            for handler in handlers_guard.iter() {
+                                                if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
+                                                    error!(
+                                                        domain = %domain,
+                                                        error = %e,
+                                                        "Handler failed"
                                                     );
-                                                    let dlq_handlers = dlq_handlers.read().await;
-                                                    for dlq_handler in dlq_handlers.iter() {
-                                                        let _ = dlq_handler.handle_dlq(failed.clone()).await;
+                                                    ok = false;
+
+                                                    if retry_count >= dlq_config.max_retries {
+                                                        let failed = FailedMessage::new(
+                                                            book_ref,
+                                                            e.to_string(),
+                                                            "pubsub_handler",
+                                                            retry_count,
+                                                        );
+                                                        let dlq_guard = dlq_handlers_ref.read().await;
+                                                        for dlq_handler in dlq_guard.iter() {
+                                                            let _ = dlq_handler.handle_dlq(failed.clone()).await;
+                                                        }
                                                     }
                                                 }
                                             }
+                                            ok
                                         }
+                                        .instrument(consume_span)
+                                        .await;
 
                                         if success {
                                             let _ = message.ack().await;
@@ -546,6 +567,63 @@ impl EventBus for PubSubEventBus {
 
         Ok(())
     }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        let config = match domain_filter {
+            Some(d) => PubSubConfig::subscriber(&self.config.project_id, name, vec![d.to_string()]),
+            None => PubSubConfig::subscriber_all(&self.config.project_id, name),
+        };
+        let bus = PubSubEventBus::new(config).await?;
+        Ok(Arc::new(bus))
+    }
+}
+
+// ============================================================================
+// OTel Trace Context Propagation
+// ============================================================================
+
+/// Inject W3C trace context from the current span into Pub/Sub message attributes.
+#[cfg(feature = "otel")]
+fn pubsub_inject_trace_context(attributes: &mut std::collections::HashMap<String, String>) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let cx = tracing::Span::current().context();
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        struct MapInjector<'a>(&'a mut std::collections::HashMap<String, String>);
+        impl opentelemetry::propagation::Injector for MapInjector<'_> {
+            fn set(&mut self, key: &str, value: String) {
+                self.0.insert(key.to_string(), value);
+            }
+        }
+        propagator.inject_context(&cx, &mut MapInjector(attributes));
+    });
+}
+
+/// Extract W3C trace context from Pub/Sub message attributes and set as parent on span.
+#[cfg(feature = "otel")]
+fn pubsub_extract_trace_context(
+    attributes: &std::collections::HashMap<String, String>,
+    span: &tracing::Span,
+) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
+        struct MapExtractor<'a>(&'a std::collections::HashMap<String, String>);
+        impl opentelemetry::propagation::Extractor for MapExtractor<'_> {
+            fn get(&self, key: &str) -> Option<&str> {
+                self.0.get(key).map(|v| v.as_str())
+            }
+            fn keys(&self) -> Vec<&str> {
+                self.0.keys().map(|k| k.as_str()).collect()
+            }
+        }
+        propagator.extract(&MapExtractor(attributes))
+    });
+    span.set_parent(parent_cx);
 }
 
 #[cfg(test)]

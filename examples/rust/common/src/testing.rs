@@ -21,6 +21,7 @@ pub fn make_test_command_book(
                 value: root.to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![CommandPage {
             sequence: 0,

@@ -22,15 +22,22 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
+COPY angzarr-client/ ./angzarr-client/
 COPY examples/rust examples/rust/
 
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
-    echo "fn main() {}" > tests/container_integration.rs && \
-    echo "fn main() {}" > tests/mongodb_debug.rs
+RUN mkdir -p tests/integration && \
+    for f in acceptance container_integration mongodb_debug \
+             storage_mongodb storage_redis storage_postgres storage_sqlite \
+             standalone_integration; do \
+      echo "fn main() {}" > tests/$f.rs; \
+    done && \
+    for f in gateway_test streaming_test query_test; do \
+      echo "fn main() {}" > tests/integration/$f.rs; \
+    done
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/target \
+    --mount=type=cache,id=examples-target,target=/app/target \
     cargo build --profile container-dev \
     -p customer --bin customer-server \
     -p product --bin product-server \
@@ -67,11 +74,18 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY src/ ./src/
+COPY angzarr-client/ ./angzarr-client/
 COPY examples/rust examples/rust/
 
-RUN mkdir -p tests && echo "fn main() {}" > tests/acceptance.rs && \
-    echo "fn main() {}" > tests/container_integration.rs && \
-    echo "fn main() {}" > tests/mongodb_debug.rs
+RUN mkdir -p tests/integration && \
+    for f in acceptance container_integration mongodb_debug \
+             storage_mongodb storage_redis storage_postgres storage_sqlite \
+             standalone_integration; do \
+      echo "fn main() {}" > tests/$f.rs; \
+    done && \
+    for f in gateway_test streaming_test query_test; do \
+      echo "fn main() {}" > tests/integration/$f.rs; \
+    done
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \

@@ -431,7 +431,7 @@ def publish_order_created(order):
 >
 > **Default to saga.** Only use Process Manager when saga cannot handle your use case.
 
-A **Process Manager** is a stateful coordinator for long-running workflows that span multiple aggregates. It is implemented as its own aggregate domain, with event-sourced state and correlation_id-based tracking. See [Process Manager](process-manager.md) for full implementation guide.
+A **Process Manager** is a stateful coordinator for long-running workflows that span multiple aggregates. It is implemented as its own aggregate domain, with event-sourced state and correlation_id-based tracking. See [Process Manager](components/process-manager/process-manager.md) for full implementation guide.
 
 #### When Process Manager Is Warranted
 
@@ -511,7 +511,7 @@ Process managers use the `TimeoutScheduler` service:
 3. Emits `ProcessTimeout` events to the bus
 4. PM handles timeout events like any other event
 
-For full details, see [Process Manager](process-manager.md).
+For full details, see [Process Manager](components/process-manager/process-manager.md).
 
 ---
 
@@ -707,6 +707,6 @@ A projector populates this at end of each day or on-demand. This shifts the cost
 
 ## Next Steps
 
-- [Sagas](sagas.md) — Cross-aggregate workflows and compensation
-- [Projectors](projectors.md) — Building read models from event streams
-- [Command Handlers](command-handlers.md) — Processing commands and emitting events
+- [Sagas](components/saga/sagas.md) — Cross-aggregate workflows and compensation
+- [Projectors](components/projector/projectors.md) — Building read models from event streams
+- [Command Handlers](components/aggregate/aggregate.md) — Processing commands and emitting events

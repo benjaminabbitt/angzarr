@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_stream::wrappers::ReceiverStream as TokioReceiverStream;
 use tonic::transport::Server;
+use tonic::Request;
 
 use crate::proto::event_stream_server::{EventStream, EventStreamServer};
 

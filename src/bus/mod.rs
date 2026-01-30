@@ -154,9 +154,9 @@ pub fn any_subscription_matches(book: &EventBook, subscriptions: &[Subscription]
 
 /// Interface for event delivery to projectors/sagas.
 ///
-/// Implementations:
-/// - `AmqpEventBus`: RabbitMQ via AMQP
-/// - `MockEventBus`: In-memory mock for testing
+/// Implementations handle both publishing and subscriber creation through a
+/// single interface. The runtime creates subscribers via `create_subscriber`
+/// — no transport-specific code needed.
 #[async_trait]
 pub trait EventBus: Send + Sync {
     /// Publish events to consumers.
@@ -184,6 +184,24 @@ pub trait EventBus: Send + Sync {
     async fn start_consuming(&self) -> Result<()> {
         Ok(())
     }
+
+    /// Create a subscriber bus that shares this bus's underlying transport.
+    ///
+    /// Events published on this bus will be delivered to the returned subscriber.
+    /// Each implementation creates a transport-appropriate subscriber:
+    /// - Channel: shares the broadcast channel with domain filtering
+    /// - IPC: creates a named pipe subscriber
+    /// - AMQP: creates a queue bound to the exchange
+    /// - Kafka: creates a consumer group subscription
+    ///
+    /// # Arguments
+    /// * `name` — subscriber identity (queue name, consumer group, pipe name)
+    /// * `domain_filter` — restrict delivery to this domain (`None` = all domains)
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>>;
 }
 
 // ============================================================================

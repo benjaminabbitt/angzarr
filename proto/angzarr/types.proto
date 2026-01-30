@@ -15,6 +15,7 @@ message Cover {
   string domain = 2;
   UUID root = 1;
   string correlation_id = 3;  // Workflow correlation - flows through all commands/events
+  optional string edition = 4; // Edition name for diverged timelines; empty = main timeline
 }
 
 // Controls synchronous processing behavior

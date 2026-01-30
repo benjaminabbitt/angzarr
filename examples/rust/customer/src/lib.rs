@@ -106,6 +106,7 @@ mod tests {
                 domain: "customer".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -156,6 +157,7 @@ mod tests {
                 domain: "customer".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -238,6 +240,7 @@ mod tests {
                 domain: "customer".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![

@@ -31,6 +31,7 @@ pub fn compute_snapshot_sequence(event_book: &EventBook) -> u32 {
 /// * `snapshot_store` - The storage backend for snapshots
 /// * `event_book` - The EventBook potentially containing snapshot state
 /// * `domain` - The domain name for the aggregate
+/// * `edition` - The edition identifier for multi-tenant partitioning
 /// * `root_uuid` - The aggregate root UUID
 /// * `write_enabled` - Whether snapshot writing is enabled
 ///
@@ -40,6 +41,7 @@ pub async fn persist_snapshot_if_present(
     snapshot_store: &Arc<dyn SnapshotStore>,
     event_book: &EventBook,
     domain: &str,
+    edition: &str,
     root_uuid: Uuid,
     write_enabled: bool,
 ) -> Result<(), Status> {
@@ -54,7 +56,7 @@ pub async fn persist_snapshot_if_present(
             state: Some(state.clone()),
         };
         snapshot_store
-            .put(domain, root_uuid, snapshot)
+            .put(domain, edition, root_uuid, snapshot)
             .await
             .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
     }

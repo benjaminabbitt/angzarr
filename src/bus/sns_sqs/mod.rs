@@ -18,7 +18,7 @@ use aws_sdk_sqs::Client as SqsClient;
 use base64::prelude::*;
 use prost::Message;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Instrument};
 
 use super::{
     domain_matches_any, BusError, DeadLetterHandler, DlqConfig, EventBus, EventHandler,
@@ -335,6 +335,7 @@ impl SnsSqsEventBus {
 
 #[async_trait]
 impl EventBus for SnsSqsEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let domain = book.domain();
         let root_id = book.root_id_hex().unwrap_or_default();
@@ -374,6 +375,9 @@ impl EventBus for SnsSqsEventBus {
                 .build()
                 .map_err(|e| BusError::Publish(format!("Failed to build attribute: {}", e)))?,
         );
+
+        #[cfg(feature = "otel")]
+        sns_inject_trace_context(&mut attrs);
 
         // Publish to SNS
         self.sns
@@ -651,36 +655,47 @@ impl EventBus for SnsSqsEventBus {
 
                                 match EventBook::decode(data.as_slice()) {
                                     Ok(book) => {
+                                        let consume_span = tracing::info_span!("bus.consume",
+                                            domain = %msg_domain);
+
+                                        #[cfg(feature = "otel")]
+                                        sqs_extract_trace_context(message, &consume_span);
+
                                         let book = Arc::new(book);
-                                        let handlers_guard = handlers.read().await;
+                                        let handlers_ref = &handlers;
+                                        let dlq_handlers_ref = &dlq_handlers;
+                                        let book_ref = &book;
 
-                                        let mut success = true;
-                                        for handler in handlers_guard.iter() {
-                                            if let Err(e) = handler.handle(Arc::clone(&book)).await {
-                                                error!(
-                                                    domain = %msg_domain,
-                                                    error = %e,
-                                                    "Handler failed"
-                                                );
-                                                success = false;
-
-                                                // Check if we should DLQ
-                                                if retry_count >= dlq_config.max_retries {
-                                                    let failed = FailedMessage::new(
-                                                        &book,
-                                                        e.to_string(),
-                                                        "sns_sqs_handler",
-                                                        retry_count,
+                                        let success = async {
+                                            let handlers_guard = handlers_ref.read().await;
+                                            let mut ok = true;
+                                            for handler in handlers_guard.iter() {
+                                                if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
+                                                    error!(
+                                                        domain = %msg_domain,
+                                                        error = %e,
+                                                        "Handler failed"
                                                     );
-                                                    let dlq_handlers_guard =
-                                                        dlq_handlers.read().await;
-                                                    for dlq_handler in dlq_handlers_guard.iter() {
-                                                        let _ =
-                                                            dlq_handler.handle_dlq(failed.clone()).await;
+                                                    ok = false;
+
+                                                    if retry_count >= dlq_config.max_retries {
+                                                        let failed = FailedMessage::new(
+                                                            book_ref,
+                                                            e.to_string(),
+                                                            "sns_sqs_handler",
+                                                            retry_count,
+                                                        );
+                                                        let dlq_guard = dlq_handlers_ref.read().await;
+                                                        for dlq_handler in dlq_guard.iter() {
+                                                            let _ = dlq_handler.handle_dlq(failed.clone()).await;
+                                                        }
                                                     }
                                                 }
                                             }
+                                            ok
                                         }
+                                        .instrument(consume_span)
+                                        .await;
 
                                         if success {
                                             // Delete successfully processed message
@@ -740,6 +755,80 @@ impl EventBus for SnsSqsEventBus {
         );
 
         Ok(())
+    }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        let mut config = match domain_filter {
+            Some(d) => SnsSqsConfig::subscriber(name, vec![d.to_string()]),
+            None => SnsSqsConfig::subscriber_all(name),
+        };
+        // Inherit region and endpoint from parent config
+        config.region = self.config.region.clone();
+        config.endpoint_url = self.config.endpoint_url.clone();
+        let bus = SnsSqsEventBus::new(config).await?;
+        Ok(Arc::new(bus))
+    }
+}
+
+// ============================================================================
+// OTel Trace Context Propagation
+// ============================================================================
+
+/// Inject W3C trace context from the current span into SNS message attributes.
+#[cfg(feature = "otel")]
+fn sns_inject_trace_context(
+    attrs: &mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>,
+) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let cx = tracing::Span::current().context();
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        struct SnsInjector<'a>(
+            &'a mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>,
+        );
+        impl opentelemetry::propagation::Injector for SnsInjector<'_> {
+            fn set(&mut self, key: &str, value: String) {
+                if let Ok(attr) = aws_sdk_sns::types::MessageAttributeValue::builder()
+                    .data_type("String")
+                    .string_value(value)
+                    .build()
+                {
+                    self.0.insert(key.to_string(), attr);
+                }
+            }
+        }
+        propagator.inject_context(&cx, &mut SnsInjector(attrs));
+    });
+}
+
+/// Extract W3C trace context from SQS message attributes and set as parent on span.
+#[cfg(feature = "otel")]
+fn sqs_extract_trace_context(
+    message: &aws_sdk_sqs::types::Message,
+    span: &tracing::Span,
+) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    if let Some(attrs) = message.message_attributes() {
+        let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
+            struct SqsExtractor<'a>(
+                &'a HashMap<String, aws_sdk_sqs::types::MessageAttributeValue>,
+            );
+            impl opentelemetry::propagation::Extractor for SqsExtractor<'_> {
+                fn get(&self, key: &str) -> Option<&str> {
+                    self.0.get(key).and_then(|v| v.string_value())
+                }
+                fn keys(&self) -> Vec<&str> {
+                    self.0.keys().map(|k| k.as_str()).collect()
+                }
+            }
+            propagator.extract(&SqsExtractor(attrs))
+        });
+        span.set_parent(parent_cx);
     }
 }
 

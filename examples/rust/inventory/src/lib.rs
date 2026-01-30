@@ -2,12 +2,11 @@
 //!
 //! Handles stock levels, reservations, and low stock alerts.
 
-use std::collections::HashMap;
-
 use prost::Message;
 
 use angzarr::proto::{
-    event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand, EventBook, EventPage,
+    event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook,
+    EventPage,
 };
 use common::proto::{
     CommitReservation, InitializeStock, InventoryState, LowStockAlert, ReceiveStock,
@@ -29,7 +28,12 @@ pub mod errmsg {
     pub use common::errmsg::*;
 }
 
-fn apply_event(state: &mut InventoryState, event: &prost_types::Any) {
+const STATE_TYPE_URL: &str = "type.examples/examples.InventoryState";
+
+/// Apply a single event to the inventory state.
+///
+/// Single source of truth for all inventory state transitions.
+pub fn apply_event(state: &mut InventoryState, event: &prost_types::Any) {
     if event.type_url.ends_with("StockInitialized") {
         if let Ok(e) = StockInitialized::decode(event.value.as_slice()) {
             state.product_id = e.product_id;
@@ -64,6 +68,32 @@ fn apply_event(state: &mut InventoryState, event: &prost_types::Any) {
             state.reservations.remove(&e.order_id);
         }
     }
+}
+
+/// Apply an event and build an EventBook response with updated snapshot.
+fn build_event_response(
+    state: &InventoryState,
+    cover: Option<Cover>,
+    next_seq: u32,
+    event_type_url: &str,
+    event: impl Message,
+) -> EventBook {
+    let event_bytes = event.encode_to_vec();
+    let any = prost_types::Any {
+        type_url: event_type_url.to_string(),
+        value: event_bytes.clone(),
+    };
+    let mut new_state = state.clone();
+    apply_event(&mut new_state, &any);
+
+    make_event_book(
+        cover,
+        next_seq,
+        event_type_url,
+        event_bytes,
+        STATE_TYPE_URL,
+        new_state.encode_to_vec(),
+    )
 }
 
 /// Business logic for Inventory aggregate.
@@ -109,21 +139,12 @@ impl InventoryLogic {
             initialized_at: Some(now()),
         };
 
-        let new_state = InventoryState {
-            product_id: cmd.product_id,
-            on_hand: cmd.quantity,
-            reserved: 0,
-            low_stock_threshold: cmd.low_stock_threshold,
-            reservations: HashMap::new(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.StockInitialized",
-            event.encode_to_vec(),
-            "type.examples/examples.InventoryState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -149,21 +170,12 @@ impl InventoryLogic {
             received_at: Some(now()),
         };
 
-        let new_state = InventoryState {
-            product_id: state.product_id.clone(),
-            on_hand: new_on_hand,
-            reserved: state.reserved,
-            low_stock_threshold: state.low_stock_threshold,
-            reservations: state.reservations.clone(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.StockReceived",
-            event.encode_to_vec(),
-            "type.examples/examples.InventoryState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -200,16 +212,16 @@ impl InventoryLogic {
             new_on_hand: state.on_hand, // Fact: on_hand unchanged by reserve
         };
 
-        let mut new_reservations = state.reservations.clone();
-        new_reservations.insert(cmd.order_id, cmd.quantity);
-
-        let new_state = InventoryState {
-            product_id: state.product_id.clone(),
-            on_hand: state.on_hand,
-            reserved: new_reserved,
-            low_stock_threshold: state.low_stock_threshold,
-            reservations: new_reservations,
-        };
+        // Derive state through apply_event (single source of truth)
+        let event_bytes = event.encode_to_vec();
+        let mut new_state = state.clone();
+        apply_event(
+            &mut new_state,
+            &prost_types::Any {
+                type_url: "type.examples/examples.StockReserved".to_string(),
+                value: event_bytes.clone(),
+            },
+        );
 
         // Build event pages - main event plus optional alert
         let mut seq = next_seq;
@@ -217,7 +229,7 @@ impl InventoryLogic {
             sequence: Some(Sequence::Num(seq)),
             event: Some(prost_types::Any {
                 type_url: "type.examples/examples.StockReserved".to_string(),
-                value: event.encode_to_vec(),
+                value: event_bytes,
             }),
             created_at: Some(now()),
         }];
@@ -246,7 +258,7 @@ impl InventoryLogic {
             snapshot: None,
             pages,
             snapshot_state: Some(prost_types::Any {
-                type_url: "type.examples/examples.InventoryState".to_string(),
+                type_url: STATE_TYPE_URL.to_string(),
                 value: new_state.encode_to_vec(),
             }),
         })
@@ -281,24 +293,12 @@ impl InventoryLogic {
             new_on_hand: state.on_hand, // Fact: on_hand unchanged by release
         };
 
-        let mut new_reservations = state.reservations.clone();
-        new_reservations.remove(&cmd.order_id);
-
-        let new_state = InventoryState {
-            product_id: state.product_id.clone(),
-            on_hand: state.on_hand,
-            reserved: new_reserved,
-            low_stock_threshold: state.low_stock_threshold,
-            reservations: new_reservations,
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ReservationReleased",
-            event.encode_to_vec(),
-            "type.examples/examples.InventoryState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -330,24 +330,12 @@ impl InventoryLogic {
             new_reserved, // Fact: total reserved after this event
         };
 
-        let mut new_reservations = state.reservations.clone();
-        new_reservations.remove(&cmd.order_id);
-
-        let new_state = InventoryState {
-            product_id: state.product_id.clone(),
-            on_hand: new_on_hand,
-            reserved: new_reserved,
-            low_stock_threshold: state.low_stock_threshold,
-            reservations: new_reservations,
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ReservationCommitted",
-            event.encode_to_vec(),
-            "type.examples/examples.InventoryState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 }
@@ -431,6 +419,7 @@ mod tests {
                 domain: "inventory".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {

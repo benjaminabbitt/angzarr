@@ -127,7 +127,7 @@ Feature: Complete Order Lifecycle
   Scenario: Add item to non-existent cart fails
     Given no cart exists for "GHOST-CART"
     When I add item "SKU-001" quantity 1 to cart "GHOST-CART" expecting sequence 5
-    Then the command fails with "FailedPrecondition"
+    Then the command fails with "Aborted"
 
   @e2e @flow @errors
   Scenario: Checkout empty cart fails

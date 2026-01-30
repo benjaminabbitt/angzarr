@@ -222,6 +222,14 @@ impl<B: EventBus> EventBus for LossyEventBus<B> {
         // Subscribe passes through - we only drop on publish
         self.inner.subscribe(handler).await
     }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        self.inner.create_subscriber(name, domain_filter).await
+    }
 }
 
 #[cfg(test)]

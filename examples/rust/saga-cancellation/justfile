@@ -1,43 +1,5 @@
-# Saga Cancellation - Rust gRPC Server
+PKG := "saga-cancellation"
+BIN_PKG := PKG
+BIN := PKG + "-server"
 
-set shell := ["bash", "-c"]
-
-TOP := `git rev-parse --show-toplevel`
-
-default:
-    @just --list
-
-build:
-    cargo build -p saga-cancellation --bin saga-cancellation-server
-
-build-release:
-    cargo build -p saga-cancellation --bin saga-cancellation-server --release
-
-run: build
-    cargo run -p saga-cancellation --bin saga-cancellation-server
-
-run-port port:
-    PORT={{port}} cargo run -p saga-cancellation --bin saga-cancellation-server
-
-copy-features:
-    rm -rf tests/features
-    cp -r {{TOP}}/examples/features tests/
-
-unit:
-    cargo test -p saga-cancellation --lib
-
-acceptance: copy-features
-    cargo test -p saga-cancellation --test acceptance
-
-test: unit acceptance
-
-test-unit: unit
-
-clean:
-    cargo clean -p saga-cancellation
-
-check:
-    cargo check -p saga-cancellation
-
-lint:
-    cargo clippy -p saga-cancellation -- -D warnings
+import "../service.justfile"

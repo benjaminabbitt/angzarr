@@ -4,12 +4,15 @@
 
 use prost::Message;
 
-use angzarr::proto::EventBook;
+use angzarr::proto::{Cover, EventBook};
 use common::proto::{
     CartCheckedOut, CartCleared, CartCreated, CartItem, CartState, CouponApplied, ItemAdded,
     ItemRemoved, QuantityUpdated,
 };
-use common::rebuild_from_events;
+use common::{make_event_book, rebuild_from_events};
+
+/// Protobuf type URL for CartState snapshots.
+pub const STATE_TYPE_URL: &str = "type.examples/examples.CartState";
 
 /// Rebuild cart state from an event book.
 pub fn rebuild_state(event_book: Option<&EventBook>) -> CartState {
@@ -17,7 +20,9 @@ pub fn rebuild_state(event_book: Option<&EventBook>) -> CartState {
 }
 
 /// Apply a single event to the cart state.
-fn apply_event(state: &mut CartState, event: &prost_types::Any) {
+///
+/// Single source of truth for all cart state transitions.
+pub fn apply_event(state: &mut CartState, event: &prost_types::Any) {
     if event.type_url.ends_with("CartCreated") {
         if let Ok(e) = CartCreated::decode(event.value.as_slice()) {
             state.customer_id = e.customer_id;
@@ -84,4 +89,34 @@ fn apply_event(state: &mut CartState, event: &prost_types::Any) {
 /// Calculate subtotal from cart items.
 pub fn calculate_subtotal(items: &[CartItem]) -> i32 {
     items.iter().map(|i| i.quantity * i.unit_price_cents).sum()
+}
+
+/// Apply an event and build an EventBook response with updated snapshot.
+///
+/// Ensures state derivation goes through `apply_event` — single source of truth
+/// for state transitions. Handlers create the event (with computed facts),
+/// then delegate state derivation here.
+pub fn build_event_response(
+    state: &CartState,
+    cover: Option<Cover>,
+    next_seq: u32,
+    event_type_url: &str,
+    event: impl Message,
+) -> EventBook {
+    let event_bytes = event.encode_to_vec();
+    let any = prost_types::Any {
+        type_url: event_type_url.to_string(),
+        value: event_bytes.clone(),
+    };
+    let mut new_state = state.clone();
+    apply_event(&mut new_state, &any);
+
+    make_event_book(
+        cover,
+        next_seq,
+        event_type_url,
+        event_bytes,
+        STATE_TYPE_URL,
+        new_state.encode_to_vec(),
+    )
 }

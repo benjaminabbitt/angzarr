@@ -31,22 +31,22 @@ build:
 test:
     cargo test --workspace --lib
 
-# Run integration tests (assumes backing services already deployed via root `just infra-local`)
+# Run integration tests (assumes backing services already deployed via root `just infra`)
 # Deploy application services via Skaffold, then run technical tests
 integration:
     skaffold run
     @echo "Waiting for application services to be ready..."
     @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
-    ANGZARR_PORT=1350 \
+    ANGZARR_PORT=9084 \
     TEST_LANGUAGE=rust cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
 
-# Run acceptance tests (assumes backing services already deployed via root `just infra-local`)
+# Run acceptance tests (assumes backing services already deployed via root `just infra`)
 # Deploy application services via Skaffold, then run BDD cucumber tests
 acceptance:
     skaffold run
     @echo "Waiting for application services to be ready..."
     @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
-    ANGZARR_PORT=1350 \
+    ANGZARR_PORT=9084 \
     cargo test --workspace --test acceptance
 
 # Clean build artifacts
@@ -199,11 +199,11 @@ acceptance-embedded: build-angzarr kill-embedded clean-sockets build
     ANGZARR_CONFIG=config/standalone.yaml "{{TOP}}/target/debug/angzarr-standalone" &
     EMBEDDED_PID=$!
 
-    # Wait for services to be ready (gateway on port 1350)
+    # Wait for services to be ready (gateway on port 9084)
     # Use TCP connection check (no reflection needed)
     echo "Waiting for gateway to be ready..."
     for i in {1..60}; do
-        if nc -z localhost 1350 2>/dev/null; then
+        if nc -z localhost 9084 2>/dev/null; then
             echo "Gateway ready!"
             break
         fi
@@ -216,58 +216,8 @@ acceptance-embedded: build-angzarr kill-embedded clean-sockets build
 
     # Run acceptance tests
     echo "Running acceptance tests..."
-    ANGZARR_PORT=1350 cargo test --workspace --test acceptance || TEST_RESULT=$?
+    ANGZARR_PORT=9084 cargo test --workspace --test acceptance || TEST_RESULT=$?
 
     exit ${TEST_RESULT:-0}
 
-# ============================================================================
-# Run Individual Services (local development without K8s)
-# See docs/port-conventions.md for port scheme (logic port = base + 3)
-# ============================================================================
 
-# Run customer server (logic port 50053)
-run-customer:
-    cargo run -p customer --bin customer-server
-
-# Run product server (logic port 50063)
-run-product:
-    cargo run -p product --bin product-server
-
-# Run inventory server (logic port 50073)
-run-inventory:
-    cargo run -p inventory-svc --bin inventory-server
-
-# Run order server (logic port 50083)
-run-order:
-    cargo run -p order --bin order-server
-
-# Run cart server (logic port 50093)
-run-cart:
-    cargo run -p cart --bin cart-server
-
-# Run fulfillment server (logic port 50103)
-run-fulfillment:
-    cargo run -p fulfillment --bin fulfillment-server
-
-# Run saga-loyalty-earn server (logic port 50113)
-run-saga-loyalty-earn:
-    cargo run -p saga-loyalty-earn --bin saga-loyalty-earn-server
-
-# Run saga-fulfillment server (logic port 50123)
-run-saga-fulfillment:
-    cargo run -p saga-fulfillment --bin saga-fulfillment-server
-
-# Run saga-cancellation server (logic port 50133)
-run-saga-cancellation:
-    cargo run -p saga-cancellation --bin saga-cancellation-server
-
-# ============================================================================
-# Aliases (backwards compatibility)
-# ============================================================================
-
-skaffold-init: setup
-skaffold-setup: setup
-skaffold-dev: dev
-skaffold-run: run
-skaffold-build: build-images
-skaffold-delete: delete

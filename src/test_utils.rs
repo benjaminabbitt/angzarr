@@ -32,6 +32,7 @@ pub fn make_cover_with_root(domain: &str, root: Uuid) -> Cover {
         domain: domain.to_string(),
         root: Some(proto_uuid(root)),
         correlation_id: String::new(),
+        edition: None,
     }
 }
 
@@ -41,6 +42,7 @@ pub fn make_cover_full(domain: &str, root: Uuid, correlation_id: &str) -> Cover 
         domain: domain.to_string(),
         root: Some(proto_uuid(root)),
         correlation_id: correlation_id.to_string(),
+        edition: None,
     }
 }
 
@@ -124,6 +126,7 @@ pub fn make_command_book_correlated(with_correlation: bool) -> CommandBook {
             } else {
                 String::new()
             },
+            edition: None,
         }),
         pages: vec![CommandPage {
             sequence: 0,

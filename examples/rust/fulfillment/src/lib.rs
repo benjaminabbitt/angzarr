@@ -4,7 +4,7 @@
 
 use prost::Message;
 
-use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, EventBook};
+use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook};
 use common::proto::{
     CreateShipment, Delivered, FulfillmentState, ItemsPacked, ItemsPicked, MarkPacked, MarkPicked,
     RecordDelivery, Ship, ShipmentCreated, Shipped,
@@ -14,6 +14,8 @@ use common::{
     rebuild_from_events, require_exists, require_not_exists, require_status, require_status_not,
 };
 use common::{AggregateLogic, Result};
+
+const STATE_TYPE_URL: &str = "type.examples/examples.FulfillmentState";
 
 pub mod errmsg {
     pub const SHIPMENT_EXISTS: &str = "Shipment already exists";
@@ -26,7 +28,7 @@ pub mod errmsg {
     pub use common::errmsg::*;
 }
 
-fn apply_event(state: &mut FulfillmentState, event: &prost_types::Any) {
+pub fn apply_event(state: &mut FulfillmentState, event: &prost_types::Any) {
     if event.type_url.ends_with("ShipmentCreated") {
         if let Ok(e) = ShipmentCreated::decode(event.value.as_slice()) {
             state.order_id = e.order_id;
@@ -54,6 +56,32 @@ fn apply_event(state: &mut FulfillmentState, event: &prost_types::Any) {
             state.status = "delivered".to_string();
         }
     }
+}
+
+/// Apply an event and build an EventBook response with updated snapshot.
+fn build_event_response(
+    state: &FulfillmentState,
+    cover: Option<Cover>,
+    next_seq: u32,
+    event_type_url: &str,
+    event: impl Message,
+) -> EventBook {
+    let event_bytes = event.encode_to_vec();
+    let any = prost_types::Any {
+        type_url: event_type_url.to_string(),
+        value: event_bytes.clone(),
+    };
+    let mut new_state = state.clone();
+    apply_event(&mut new_state, &any);
+
+    make_event_book(
+        cover,
+        next_seq,
+        event_type_url,
+        event_bytes,
+        STATE_TYPE_URL,
+        new_state.encode_to_vec(),
+    )
 }
 
 /// Business logic for Fulfillment aggregate.
@@ -87,28 +115,17 @@ impl FulfillmentLogic {
         let cmd: CreateShipment = decode_command(command_data)?;
 
         let event = ShipmentCreated {
-            order_id: cmd.order_id.clone(),
+            order_id: cmd.order_id,
             status: "pending".to_string(),
             created_at: Some(now()),
         };
 
-        let new_state = FulfillmentState {
-            order_id: cmd.order_id,
-            status: "pending".to_string(),
-            tracking_number: String::new(),
-            carrier: String::new(),
-            picker_id: String::new(),
-            packer_id: String::new(),
-            signature: String::new(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ShipmentCreated",
-            event.encode_to_vec(),
-            "type.examples/examples.FulfillmentState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -125,27 +142,16 @@ impl FulfillmentLogic {
         let cmd: MarkPicked = decode_command(command_data)?;
 
         let event = ItemsPicked {
-            picker_id: cmd.picker_id.clone(),
+            picker_id: cmd.picker_id,
             picked_at: Some(now()),
         };
 
-        let new_state = FulfillmentState {
-            order_id: state.order_id.clone(),
-            status: "picking".to_string(),
-            tracking_number: state.tracking_number.clone(),
-            carrier: state.carrier.clone(),
-            picker_id: cmd.picker_id,
-            packer_id: state.packer_id.clone(),
-            signature: state.signature.clone(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ItemsPicked",
-            event.encode_to_vec(),
-            "type.examples/examples.FulfillmentState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -162,27 +168,16 @@ impl FulfillmentLogic {
         let cmd: MarkPacked = decode_command(command_data)?;
 
         let event = ItemsPacked {
-            packer_id: cmd.packer_id.clone(),
+            packer_id: cmd.packer_id,
             packed_at: Some(now()),
         };
 
-        let new_state = FulfillmentState {
-            order_id: state.order_id.clone(),
-            status: "packing".to_string(),
-            tracking_number: state.tracking_number.clone(),
-            carrier: state.carrier.clone(),
-            picker_id: state.picker_id.clone(),
-            packer_id: cmd.packer_id,
-            signature: state.signature.clone(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ItemsPacked",
-            event.encode_to_vec(),
-            "type.examples/examples.FulfillmentState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -199,28 +194,17 @@ impl FulfillmentLogic {
         let cmd: Ship = decode_command(command_data)?;
 
         let event = Shipped {
-            carrier: cmd.carrier.clone(),
-            tracking_number: cmd.tracking_number.clone(),
+            carrier: cmd.carrier,
+            tracking_number: cmd.tracking_number,
             shipped_at: Some(now()),
         };
 
-        let new_state = FulfillmentState {
-            order_id: state.order_id.clone(),
-            status: "shipped".to_string(),
-            tracking_number: cmd.tracking_number,
-            carrier: cmd.carrier,
-            picker_id: state.picker_id.clone(),
-            packer_id: state.packer_id.clone(),
-            signature: state.signature.clone(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.Shipped",
-            event.encode_to_vec(),
-            "type.examples/examples.FulfillmentState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -238,27 +222,16 @@ impl FulfillmentLogic {
         let cmd: RecordDelivery = decode_command(command_data)?;
 
         let event = Delivered {
-            signature: cmd.signature.clone(),
+            signature: cmd.signature,
             delivered_at: Some(now()),
         };
 
-        let new_state = FulfillmentState {
-            order_id: state.order_id.clone(),
-            status: "delivered".to_string(),
-            tracking_number: state.tracking_number.clone(),
-            carrier: state.carrier.clone(),
-            picker_id: state.picker_id.clone(),
-            packer_id: state.packer_id.clone(),
-            signature: cmd.signature,
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.Delivered",
-            event.encode_to_vec(),
-            "type.examples/examples.FulfillmentState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 }

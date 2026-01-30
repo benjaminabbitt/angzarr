@@ -206,6 +206,7 @@ mod tests {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: "test-correlation".to_string(),
+                edition: None,
             }),
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(0)),

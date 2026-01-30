@@ -1,15 +1,13 @@
 //! Remove item command handler.
 
-use prost::Message;
-
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartItem, CartState, ItemRemoved, RemoveItem};
 use common::{
-    decode_command, make_event_book, now, require_exists, require_status_not, BusinessError, Result,
+    decode_command, now, require_exists, require_status_not, BusinessError, Result,
 };
 
 use crate::errmsg;
-use crate::state::calculate_subtotal;
+use crate::state::{build_event_response, calculate_subtotal};
 
 /// Handle the RemoveItem command.
 ///
@@ -49,21 +47,11 @@ pub fn handle_remove_item(
         removed_at: Some(now()),
     };
 
-    let new_state = CartState {
-        customer_id: state.customer_id.clone(),
-        items,
-        subtotal_cents: new_subtotal,
-        coupon_code: state.coupon_code.clone(),
-        discount_cents: state.discount_cents,
-        status: state.status.clone(),
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.ItemRemoved",
-        event.encode_to_vec(),
-        "type.examples/examples.CartState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

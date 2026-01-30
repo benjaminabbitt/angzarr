@@ -7,6 +7,7 @@
 mod storage;
 
 use angzarr::storage::MongoEventStore;
+use angzarr::storage::MongoPositionStore;
 use angzarr::storage::MongoSnapshotStore;
 
 fn mongodb_uri() -> String {
@@ -30,6 +31,11 @@ async fn cleanup_test_data(client: &mongodb::Client, db_name: &str) {
     let snapshots = db.collection::<mongodb::bson::Document>("snapshots");
     let _ = snapshots
         .delete_many(mongodb::bson::doc! { "domain": { "$regex": "^test_" } })
+        .await;
+
+    let positions = db.collection::<mongodb::bson::Document>("positions");
+    let _ = positions
+        .delete_many(mongodb::bson::doc! { "handler": { "$regex": "^test_" } })
         .await;
 }
 
@@ -87,4 +93,32 @@ async fn test_mongodb_snapshot_store() {
     cleanup_test_data(&client, &db_name).await;
 
     println!("=== All MongoDB SnapshotStore tests PASSED ===");
+}
+
+#[tokio::test]
+#[ignore = "requires running MongoDB instance"]
+async fn test_mongodb_position_store() {
+    println!("=== MongoDB PositionStore Tests ===");
+    println!("Connecting to: {}", mongodb_uri());
+
+    let client = mongodb::Client::with_uri_str(&mongodb_uri())
+        .await
+        .expect("Failed to connect to MongoDB");
+
+    let db_name = mongodb_database();
+    println!("Using database: {}", db_name);
+
+    // Clean up before tests
+    cleanup_test_data(&client, &db_name).await;
+
+    let store = MongoPositionStore::new(&client, &db_name)
+        .await
+        .expect("Failed to create position store");
+
+    run_position_store_tests!(&store);
+
+    // Clean up after tests
+    cleanup_test_data(&client, &db_name).await;
+
+    println!("=== All MongoDB PositionStore tests PASSED ===");
 }

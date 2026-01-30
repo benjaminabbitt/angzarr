@@ -4,7 +4,7 @@
 
 use prost::Message;
 
-use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, EventBook};
+use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook};
 use common::proto::{
     CreateProduct, Discontinue, PriceSet, ProductCreated, ProductDiscontinued, ProductState,
     ProductUpdated, SetPrice, UpdateProduct,
@@ -14,6 +14,8 @@ use common::{
     rebuild_from_events, require_exists, require_not_exists, require_positive, require_status_not,
 };
 use common::{AggregateLogic, Result};
+
+const STATE_TYPE_URL: &str = "type.examples/examples.ProductState";
 
 pub mod errmsg {
     pub const PRODUCT_EXISTS: &str = "Product already exists";
@@ -26,7 +28,7 @@ pub mod errmsg {
     pub use common::errmsg::*;
 }
 
-fn apply_event(state: &mut ProductState, event: &prost_types::Any) {
+pub fn apply_event(state: &mut ProductState, event: &prost_types::Any) {
     if event.type_url.ends_with("ProductCreated") {
         if let Ok(e) = ProductCreated::decode(event.value.as_slice()) {
             state.sku = e.sku;
@@ -47,6 +49,32 @@ fn apply_event(state: &mut ProductState, event: &prost_types::Any) {
     } else if event.type_url.ends_with("ProductDiscontinued") {
         state.status = "discontinued".to_string();
     }
+}
+
+/// Apply an event and build an EventBook response with updated snapshot.
+fn build_event_response(
+    state: &ProductState,
+    cover: Option<Cover>,
+    next_seq: u32,
+    event_type_url: &str,
+    event: impl Message,
+) -> EventBook {
+    let event_bytes = event.encode_to_vec();
+    let any = prost_types::Any {
+        type_url: event_type_url.to_string(),
+        value: event_bytes.clone(),
+    };
+    let mut new_state = state.clone();
+    apply_event(&mut new_state, &any);
+
+    make_event_book(
+        cover,
+        next_seq,
+        event_type_url,
+        event_bytes,
+        STATE_TYPE_URL,
+        new_state.encode_to_vec(),
+    )
 }
 
 /// Business logic for Product aggregate.
@@ -83,28 +111,19 @@ impl ProductLogic {
         require_positive(cmd.price_cents, errmsg::PRICE_POSITIVE)?;
 
         let event = ProductCreated {
-            sku: cmd.sku.clone(),
-            name: cmd.name.clone(),
-            description: cmd.description.clone(),
-            price_cents: cmd.price_cents,
-            created_at: Some(now()),
-        };
-
-        let new_state = ProductState {
             sku: cmd.sku,
             name: cmd.name,
             description: cmd.description,
             price_cents: cmd.price_cents,
-            status: "active".to_string(),
+            created_at: Some(now()),
         };
 
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ProductCreated",
-            event.encode_to_vec(),
-            "type.examples/examples.ProductState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -120,26 +139,17 @@ impl ProductLogic {
         let cmd: UpdateProduct = decode_command(command_data)?;
 
         let event = ProductUpdated {
-            name: cmd.name.clone(),
-            description: cmd.description.clone(),
+            name: cmd.name,
+            description: cmd.description,
             updated_at: Some(now()),
         };
 
-        let new_state = ProductState {
-            sku: state.sku.clone(),
-            name: cmd.name,
-            description: cmd.description,
-            price_cents: state.price_cents,
-            status: state.status.clone(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ProductUpdated",
-            event.encode_to_vec(),
-            "type.examples/examples.ProductState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -163,21 +173,12 @@ impl ProductLogic {
             set_at: Some(now()),
         };
 
-        let new_state = ProductState {
-            sku: state.sku.clone(),
-            name: state.name.clone(),
-            description: state.description.clone(),
-            price_cents: cmd.price_cents,
-            status: state.status.clone(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.PriceSet",
-            event.encode_to_vec(),
-            "type.examples/examples.ProductState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 
@@ -198,21 +199,12 @@ impl ProductLogic {
             discontinued_at: Some(now()),
         };
 
-        let new_state = ProductState {
-            sku: state.sku.clone(),
-            name: state.name.clone(),
-            description: state.description.clone(),
-            price_cents: state.price_cents,
-            status: "discontinued".to_string(),
-        };
-
-        Ok(make_event_book(
+        Ok(build_event_response(
+            state,
             command_book.cover.clone(),
             next_seq,
             "type.examples/examples.ProductDiscontinued",
-            event.encode_to_vec(),
-            "type.examples/examples.ProductState",
-            new_state.encode_to_vec(),
+            event,
         ))
     }
 }
@@ -293,6 +285,7 @@ mod tests {
                 domain: "product".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -346,6 +339,7 @@ mod tests {
                 domain: "product".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {
@@ -399,6 +393,7 @@ mod tests {
                 domain: "product".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages: vec![EventPage {

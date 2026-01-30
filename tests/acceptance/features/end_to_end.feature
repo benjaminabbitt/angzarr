@@ -3,7 +3,7 @@ Feature: End-to-End Container Integration
   Verify the deployed angzarr system works correctly.
 
   Background:
-    Given the angzarr system is running at "localhost:1350"
+    Given the angzarr system is running at "localhost:9084"
 
   @container
   Scenario: Create a customer via gateway

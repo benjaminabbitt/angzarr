@@ -3,17 +3,23 @@
 use common::proto::{
     LoyaltyDiscountApplied, OrderCompleted, OrderCreated, OrderState, PaymentSubmitted,
 };
-use common::rebuild_from_events;
+use common::{make_event_book, rebuild_from_events};
 use prost::Message;
 
-use angzarr::proto::EventBook;
+use angzarr::proto::{Cover, EventBook};
+
+/// Protobuf type URL for OrderState snapshots.
+pub const STATE_TYPE_URL: &str = "type.examples/examples.OrderState";
 
 /// Rebuild order state from event history.
 pub fn rebuild_state(event_book: Option<&EventBook>) -> OrderState {
     rebuild_from_events(event_book, apply_event)
 }
 
-fn apply_event(state: &mut OrderState, event: &prost_types::Any) {
+/// Apply a single event to the order state.
+///
+/// Single source of truth for all order state transitions.
+pub fn apply_event(state: &mut OrderState, event: &prost_types::Any) {
     if event.type_url.ends_with("OrderCreated") {
         if let Ok(e) = OrderCreated::decode(event.value.as_slice()) {
             state.customer_id = e.customer_id;
@@ -23,6 +29,7 @@ fn apply_event(state: &mut OrderState, event: &prost_types::Any) {
             state.loyalty_points_used = 0;
             state.status = "pending".to_string();
             state.customer_root = e.customer_root;
+            state.cart_root = e.cart_root;
         }
     } else if event.type_url.ends_with("LoyaltyDiscountApplied") {
         if let Ok(e) = LoyaltyDiscountApplied::decode(event.value.as_slice()) {
@@ -49,6 +56,36 @@ pub fn calculate_total(state: &OrderState) -> i32 {
     state.subtotal_cents - state.discount_cents
 }
 
+/// Apply an event and build an EventBook response with updated snapshot.
+///
+/// Ensures state derivation goes through `apply_event` — single source of truth
+/// for state transitions. Handlers create the event (with computed facts),
+/// then delegate state derivation here.
+pub fn build_event_response(
+    state: &OrderState,
+    cover: Option<Cover>,
+    next_seq: u32,
+    event_type_url: &str,
+    event: impl Message,
+) -> EventBook {
+    let event_bytes = event.encode_to_vec();
+    let any = prost_types::Any {
+        type_url: event_type_url.to_string(),
+        value: event_bytes.clone(),
+    };
+    let mut new_state = state.clone();
+    apply_event(&mut new_state, &any);
+
+    make_event_book(
+        cover,
+        next_seq,
+        event_type_url,
+        event_bytes,
+        STATE_TYPE_URL,
+        new_state.encode_to_vec(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,7 +97,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(i, (type_url, value))| EventPage {
-                sequence: Some(Sequence::Num(i as u32 + 1)),
+                sequence: Some(Sequence::Num(i as u32)),
                 event: Some(prost_types::Any {
                     type_url: type_url.to_string(),
                     value,
@@ -74,6 +111,7 @@ mod tests {
                 domain: "order".to_string(),
                 root: Some(ProtoUuid { value: vec![1; 16] }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             snapshot: None,
             pages,

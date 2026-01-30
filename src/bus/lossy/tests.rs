@@ -11,6 +11,7 @@ fn make_event_book(domain: &str) -> Arc<EventBook> {
                 value: Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,

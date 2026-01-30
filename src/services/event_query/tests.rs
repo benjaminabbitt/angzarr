@@ -1,4 +1,5 @@
 use super::*;
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{event_page, EventPage, SequenceRange, TemporalQuery};
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use prost_types::{Any, Timestamp};
@@ -36,6 +37,7 @@ async fn test_get_event_book_empty_aggregate() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -60,7 +62,7 @@ async fn test_get_event_book_with_data() {
         }),
         created_at: None,
     }];
-    event_store.add("orders", root, events, "").await.unwrap();
+    event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
 
     let query = Query {
         cover: Some(crate::proto::Cover {
@@ -69,6 +71,7 @@ async fn test_get_event_book_with_data() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -89,6 +92,7 @@ async fn test_get_event_book_missing_root() {
             domain: "orders".to_string(),
             root: None,
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -111,6 +115,7 @@ async fn test_get_event_book_invalid_uuid() {
                 value: vec![1, 2, 3], // Invalid UUID
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -137,7 +142,7 @@ async fn test_get_event_book_with_range() {
             }),
             created_at: None,
         }];
-        event_store.add("orders", root, events, "").await.unwrap();
+        event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
     }
 
     // Query for range [2, 4] - inclusive bounds, should return events 2, 3, 4
@@ -148,6 +153,7 @@ async fn test_get_event_book_with_range() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: Some(Selection::Range(SequenceRange {
             lower: 2,
@@ -174,6 +180,7 @@ async fn test_get_events_empty_aggregate() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -202,7 +209,7 @@ async fn test_get_events_with_data() {
         }),
         created_at: None,
     }];
-    event_store.add("orders", root, events, "").await.unwrap();
+    event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
 
     let query = Query {
         cover: Some(crate::proto::Cover {
@@ -211,6 +218,7 @@ async fn test_get_events_with_data() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -234,6 +242,7 @@ async fn test_get_events_missing_root() {
             domain: "orders".to_string(),
             root: None,
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -256,6 +265,7 @@ async fn test_get_events_invalid_uuid() {
                 value: vec![1, 2, 3], // Invalid: must be 16 bytes
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None,
     };
@@ -286,8 +296,8 @@ async fn test_get_aggregate_roots_with_data() {
     let root2 = uuid::Uuid::new_v4();
 
     // Add some events
-    event_store.add("orders", root1, vec![], "").await.unwrap();
-    event_store.add("orders", root2, vec![], "").await.unwrap();
+    event_store.add("orders", DEFAULT_EDITION, root1, vec![], "").await.unwrap();
+    event_store.add("orders", DEFAULT_EDITION, root2, vec![], "").await.unwrap();
 
     let response = service.get_aggregate_roots(Request::new(())).await;
 
@@ -302,11 +312,11 @@ async fn test_get_aggregate_roots_multiple_domains() {
     let (service, event_store, _) = create_default_test_service();
 
     event_store
-        .add("orders", uuid::Uuid::new_v4(), vec![], "")
+        .add("orders", DEFAULT_EDITION, uuid::Uuid::new_v4(), vec![], "")
         .await
         .unwrap();
     event_store
-        .add("inventory", uuid::Uuid::new_v4(), vec![], "")
+        .add("inventory", DEFAULT_EDITION, uuid::Uuid::new_v4(), vec![], "")
         .await
         .unwrap();
 
@@ -334,7 +344,7 @@ async fn test_get_event_book_by_correlation_id() {
         created_at: None,
     }];
     event_store
-        .add("orders", root, events, correlation_id)
+        .add("orders", DEFAULT_EDITION, root, events, correlation_id)
         .await
         .unwrap();
 
@@ -344,6 +354,7 @@ async fn test_get_event_book_by_correlation_id() {
             domain: String::new(),
             root: None,
             correlation_id: correlation_id.to_string(),
+            edition: None,
         }),
         selection: None,
     };
@@ -364,6 +375,7 @@ async fn test_get_event_book_by_correlation_id_not_found() {
             domain: String::new(),
             root: None,
             correlation_id: "nonexistent".to_string(),
+            edition: None,
         }),
         selection: None,
     };
@@ -394,7 +406,7 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
             created_at: None,
         }];
         event_store
-            .add(domain, root, events, correlation_id)
+            .add(domain, DEFAULT_EDITION, root, events, correlation_id)
             .await
             .unwrap();
     }
@@ -405,6 +417,7 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
             domain: String::new(),
             root: None,
             correlation_id: correlation_id.to_string(),
+            edition: None,
         }),
         selection: None,
     };
@@ -457,7 +470,7 @@ async fn test_get_event_book_temporal_by_time() {
             }),
         },
     ];
-    event_store.add("orders", root, events, "").await.unwrap();
+    event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
 
     // Query as-of Jan 2
     let query = Query {
@@ -467,6 +480,7 @@ async fn test_get_event_book_temporal_by_time() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: Some(PointInTime::AsOfTime(Timestamp {
@@ -498,7 +512,7 @@ async fn test_get_event_book_temporal_by_sequence() {
             }),
             created_at: None,
         }];
-        event_store.add("orders", root, events, "").await.unwrap();
+        event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
     }
 
     // Query as-of sequence 2 — should return events 0, 1, 2
@@ -509,6 +523,7 @@ async fn test_get_event_book_temporal_by_sequence() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: Some(PointInTime::AsOfSequence(2)),
@@ -535,6 +550,7 @@ async fn test_get_event_book_temporal_empty_point_in_time() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: Some(Selection::Temporal(TemporalQuery {
             point_in_time: None,
@@ -545,4 +561,51 @@ async fn test_get_event_book_temporal_empty_point_in_time() {
 
     assert!(response.is_err());
     assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+}
+
+#[tokio::test]
+async fn test_get_event_book_returns_all_events_despite_snapshot() {
+    let (service, event_store, snapshot_store) = create_default_test_service();
+    let root = uuid::Uuid::new_v4();
+
+    // Add an event at sequence 0
+    let events = vec![EventPage {
+        sequence: Some(event_page::Sequence::Num(0)),
+        event: Some(Any {
+            type_url: "test.CustomerCreated".to_string(),
+            value: vec![],
+        }),
+        created_at: None,
+    }];
+    event_store.add("customer", DEFAULT_EDITION, root, events, "").await.unwrap();
+
+    // Store a snapshot at sequence 0 (as the aggregate coordinator would)
+    let snapshot = crate::proto::Snapshot {
+        sequence: 0,
+        state: Some(Any {
+            type_url: "test.CustomerState".to_string(),
+            value: vec![1, 2, 3],
+        }),
+    };
+    snapshot_store.put("customer", DEFAULT_EDITION, root, snapshot).await.unwrap();
+
+    // Query should return the event despite snapshot existing at same sequence
+    let query = Query {
+        cover: Some(crate::proto::Cover {
+            domain: "customer".to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        selection: None,
+    };
+
+    let response = service.get_event_book(Request::new(query)).await;
+
+    assert!(response.is_ok());
+    let book = response.unwrap().into_inner();
+    assert_eq!(book.pages.len(), 1, "EventQuery must return all events regardless of snapshots");
+    assert!(book.snapshot.is_none(), "EventQuery should not include snapshots");
 }

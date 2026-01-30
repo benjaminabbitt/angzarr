@@ -3,21 +3,32 @@
 //! This module contains:
 //! - `EventStore` trait: Event persistence
 //! - `SnapshotStore` trait: Snapshot optimization
+//! - `PositionStore` trait: Handler checkpoint tracking
 //! - Storage configuration types
-//! - Implementations: MongoDB, PostgreSQL, Redis
+//! - Implementations: MongoDB, PostgreSQL, SQLite, Redis, Bigtable, DynamoDB
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use serde::Deserialize;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::proto::{EventPage, Snapshot};
+// Trait modules
+mod event_store;
+mod position_store;
+mod snapshot_store;
+
+pub use event_store::EventStore;
+pub use position_store::PositionStore;
+pub use snapshot_store::SnapshotStore;
 
 // Implementation modules
 pub mod helpers;
 pub mod mock;
+#[cfg(feature = "bigtable")]
+pub mod bigtable;
+#[cfg(feature = "dynamo")]
+pub mod dynamo;
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
 #[cfg(feature = "postgres")]
@@ -30,16 +41,22 @@ pub mod schema;
 pub mod sqlite;
 
 // Re-exports
-pub use mock::{MockEventStore, MockSnapshotStore};
+pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+#[cfg(feature = "bigtable")]
+pub use bigtable::{BigtableEventStore, BigtablePositionStore, BigtableSnapshotStore};
+#[cfg(feature = "dynamo")]
+pub use dynamo::{DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
 #[cfg(feature = "mongodb")]
-pub use mongodb::{MongoEventStore, MongoSnapshotStore};
+pub use mongodb::{MongoEventStore, MongoPositionStore, MongoSnapshotStore};
 #[cfg(feature = "postgres")]
-pub use postgres::{PostgresEventStore, PostgresSnapshotStore};
+pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
+#[cfg(feature = "redis")]
+pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
 #[cfg(feature = "sqlite")]
-pub use sqlite::{SqliteEventStore, SqliteSnapshotStore};
+pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
 
 // ============================================================================
-// Traits
+// Error Types
 // ============================================================================
 
 /// Result type for storage operations.
@@ -83,108 +100,6 @@ pub enum StorageError {
     #[cfg(feature = "redis")]
     #[error("Redis error: {0}")]
     Redis(#[from] ::redis::RedisError),
-}
-
-/// Interface for event persistence.
-///
-/// Implementations:
-/// - `MongoEventStore`: MongoDB storage
-/// - `PostgresEventStore`: PostgreSQL storage
-/// - `RedisEventStore`: Redis storage
-/// - `MockEventStore`: In-memory mock for testing
-#[async_trait]
-pub trait EventStore: Send + Sync {
-    /// Store events for an aggregate root.
-    ///
-    /// Events are appended to the existing event stream for this root.
-    /// Sequence numbers are validated for consistency.
-    /// The correlation_id links related events across aggregates for tracing.
-    async fn add(
-        &self,
-        domain: &str,
-        root: Uuid,
-        events: Vec<EventPage>,
-        correlation_id: &str,
-    ) -> Result<()>;
-
-    /// Retrieve all events for an aggregate.
-    async fn get(&self, domain: &str, root: Uuid) -> Result<Vec<EventPage>>;
-
-    /// Retrieve events from sequence N onwards.
-    async fn get_from(&self, domain: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>>;
-
-    /// Retrieve events in range [from, to).
-    async fn get_from_to(
-        &self,
-        domain: &str,
-        root: Uuid,
-        from: u32,
-        to: u32,
-    ) -> Result<Vec<EventPage>>;
-
-    /// List all aggregate roots in a domain.
-    async fn list_roots(&self, domain: &str) -> Result<Vec<Uuid>>;
-
-    /// List all domains that have events stored.
-    async fn list_domains(&self) -> Result<Vec<String>>;
-
-    /// Get the next sequence number for an aggregate.
-    async fn get_next_sequence(&self, domain: &str, root: Uuid) -> Result<u32>;
-
-    /// Retrieve events up to (inclusive) a timestamp.
-    ///
-    /// Returns events ordered by sequence ASC where created_at <= until.
-    /// Used for temporal queries to reconstruct historical state.
-    async fn get_until_timestamp(
-        &self,
-        domain: &str,
-        root: Uuid,
-        until: &str,
-    ) -> Result<Vec<EventPage>>;
-
-    /// Retrieve all events with a given correlation ID across all domains.
-    ///
-    /// Used for tracing related events across aggregates during saga workflows.
-    /// Returns EventBooks grouped by domain/root.
-    async fn get_by_correlation(
-        &self,
-        correlation_id: &str,
-    ) -> Result<Vec<crate::proto::EventBook>>;
-}
-
-/// Interface for snapshot persistence.
-///
-/// Snapshots are optional optimization to avoid replaying entire event history.
-/// When loading an aggregate, if a snapshot exists, events are loaded from
-/// the snapshot sequence onwards.
-///
-/// # Requirements
-///
-/// For snapshotting to work, aggregate state must be protobuf serializable.
-/// The state is stored as `google.protobuf.Any`, requiring:
-/// - State type must be a protobuf `Message`
-/// - State must implement `prost::Name` for type URL resolution
-///
-/// # Implementations
-///
-/// - `MongoSnapshotStore`: MongoDB storage
-/// - `PostgresSnapshotStore`: PostgreSQL storage
-/// - `RedisSnapshotStore`: Redis storage
-/// - `MockSnapshotStore`: In-memory mock for testing
-#[async_trait]
-pub trait SnapshotStore: Send + Sync {
-    /// Retrieve the latest snapshot for an aggregate.
-    ///
-    /// Returns `None` if no snapshot exists.
-    async fn get(&self, domain: &str, root: Uuid) -> Result<Option<Snapshot>>;
-
-    /// Store a snapshot for an aggregate.
-    ///
-    /// This replaces any existing snapshot for this root.
-    async fn put(&self, domain: &str, root: Uuid, snapshot: Snapshot) -> Result<()>;
-
-    /// Delete the snapshot for an aggregate.
-    async fn delete(&self, domain: &str, root: Uuid) -> Result<()>;
 }
 
 // ============================================================================
@@ -380,12 +295,10 @@ pub async fn init_storage(
                 info!("Storage: postgres at {}", config.postgres.uri);
 
                 let pool = sqlx::PgPool::connect(&config.postgres.uri).await?;
+                sqlx::migrate!("migrations/postgres").run(&pool).await?;
 
                 let event_store = Arc::new(PostgresEventStore::new(pool.clone()));
-                event_store.init().await?;
-
                 let snapshot_store = Arc::new(PostgresSnapshotStore::new(pool));
-                snapshot_store.init().await?;
 
                 Ok((event_store, snapshot_store))
             }
@@ -419,11 +332,10 @@ pub async fn init_storage(
                     .connect_with(connect_options)
                     .await?;
 
-                let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
-                event_store.init().await?;
+                sqlx::migrate!("migrations/sqlite").run(&pool).await?;
 
+                let event_store = Arc::new(SqliteEventStore::new(pool.clone()));
                 let snapshot_store = Arc::new(SqliteSnapshotStore::new(pool));
-                snapshot_store.init().await?;
 
                 Ok((event_store, snapshot_store))
             }
@@ -457,6 +369,86 @@ pub async fn init_storage(
                 )
             }
         }
+    }
+}
+
+/// Initialize a position store based on configuration.
+///
+/// Position stores track projector/saga checkpoints (last processed sequence).
+/// Separate from `init_storage` because position tracking is per-handler,
+/// not per-domain.
+///
+/// Requires the corresponding feature to be enabled:
+/// - MongoDB: `--features mongodb`
+/// - PostgreSQL: `--features postgres`
+/// - SQLite: `--features sqlite`
+pub async fn init_position_store(
+    config: &StorageConfig,
+) -> std::result::Result<Arc<dyn PositionStore>, Box<dyn std::error::Error>> {
+    match config.storage_type {
+        StorageType::Mongodb => {
+            #[cfg(feature = "mongodb")]
+            {
+                info!(
+                    "PositionStore: mongodb at {} (db: {})",
+                    config.mongodb.uri, config.mongodb.database
+                );
+                let client = ::mongodb::Client::with_uri_str(&config.mongodb.uri).await?;
+                Ok(Arc::new(
+                    MongoPositionStore::new(&client, &config.mongodb.database).await?,
+                ))
+            }
+            #[cfg(not(feature = "mongodb"))]
+            {
+                Err("MongoDB position store requires the 'mongodb' feature".into())
+            }
+        }
+        StorageType::Postgres => {
+            #[cfg(feature = "postgres")]
+            {
+                info!("PositionStore: postgres at {}", config.postgres.uri);
+                let pool = sqlx::PgPool::connect(&config.postgres.uri).await?;
+                sqlx::migrate!("migrations/postgres").run(&pool).await?;
+                Ok(Arc::new(PostgresPositionStore::new(pool)))
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                Err("PostgreSQL position store requires the 'postgres' feature".into())
+            }
+        }
+        StorageType::Sqlite => {
+            #[cfg(feature = "sqlite")]
+            {
+                use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+                use std::str::FromStr;
+                use std::time::Duration;
+
+                let uri = config.sqlite.uri();
+                info!("PositionStore: sqlite at {}", uri);
+
+                let connect_options = SqliteConnectOptions::from_str(&uri)?
+                    .journal_mode(SqliteJournalMode::Wal)
+                    .busy_timeout(Duration::from_secs(30))
+                    .create_if_missing(true);
+
+                let pool = SqlitePoolOptions::new()
+                    .max_connections(5)
+                    .connect_with(connect_options)
+                    .await?;
+
+                sqlx::migrate!("migrations/sqlite").run(&pool).await?;
+                Ok(Arc::new(SqlitePositionStore::new(pool)))
+            }
+            #[cfg(not(feature = "sqlite"))]
+            {
+                Err("SQLite position store requires the 'sqlite' feature".into())
+            }
+        }
+        _ => Err(format!(
+            "Position store not supported for {:?} storage type",
+            config.storage_type
+        )
+        .into()),
     }
 }
 

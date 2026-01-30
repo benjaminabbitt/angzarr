@@ -101,6 +101,7 @@ pub async fn fetch_complete(
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         selection: None, // Full query - all events
     };

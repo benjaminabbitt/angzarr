@@ -436,4 +436,8 @@ buf --version
 
 ### Kind cluster issues
 
-See [COMMON_PROBLEMS.md](COMMON_PROBLEMS.md) for cgroup delegation, port conflicts, and cleanup issues.
+Common issues include cgroup delegation errors, port conflicts, and stale cluster state. Try `just kind-delete && just kind-create` to reset.
+
+### Skaffold
+
+We would prefer to use [Skaffold](https://skaffold.dev/) for local Kubernetes development, as it provides file watching and automatic rebuilds. However, Skaffold's Kind integration uses `kind load docker-image` which doesn't work with Podman—it expects images in the Docker daemon. Until Skaffold adds native Podman+Kind support (using `kind load image-archive`), we use a custom `just deploy` workflow that handles the `podman save` → `kind load image-archive` process.

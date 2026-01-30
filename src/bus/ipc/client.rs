@@ -7,6 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use nix::libc;
@@ -22,6 +23,7 @@ use super::checkpoint::{Checkpoint, CheckpointConfig};
 use super::{DEFAULT_BASE_PATH, SUBSCRIBER_PIPE_PREFIX};
 use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::{event_page, EventBook};
+use crate::proto_ext::CoverExt;
 
 /// Env var name for subscriber list (set by orchestrator).
 pub const SUBSCRIBERS_ENV_VAR: &str = "ANGZARR_IPC_SUBSCRIBERS";
@@ -128,6 +130,8 @@ pub struct IpcEventBus {
     consumer_task: Arc<RwLock<Option<JoinHandle<()>>>>,
     /// Tracks last-processed sequence for crash recovery.
     checkpoint: Arc<Checkpoint>,
+    /// Shutdown signal for the consumer task.
+    shutdown: Arc<AtomicBool>,
 }
 
 impl IpcEventBus {
@@ -142,6 +146,7 @@ impl IpcEventBus {
             config,
             handlers: Arc::new(RwLock::new(Vec::new())),
             consumer_task: Arc::new(RwLock::new(None)),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -157,6 +162,27 @@ impl IpcEventBus {
         domains: Vec<String>,
     ) -> Self {
         Self::new(IpcConfig::subscriber(base_path, name, domains))
+    }
+
+    /// Stop the consumer and clean up.
+    ///
+    /// Sets the shutdown flag and unblocks the consumer if it's stuck
+    /// waiting for a writer on the pipe.
+    pub async fn stop(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+
+        // Open the pipe for writing to unblock consumer's blocking File::open().
+        // The consumer will see the shutdown flag after the open returns.
+        if let Some(pipe_path) = self.config.subscriber_pipe() {
+            let _ = OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&pipe_path);
+        }
+
+        if let Some(handle) = self.consumer_task.write().await.take() {
+            handle.abort();
+        }
     }
 
     /// Start consuming from the pipe (for subscribers).
@@ -186,6 +212,7 @@ impl IpcEventBus {
         let handlers = self.handlers.clone();
         let domains = self.config.domains.clone();
         let checkpoint = self.checkpoint.clone();
+        let shutdown = self.shutdown.clone();
 
         info!(pipe = %pipe_path.display(), "Starting IPC consumer");
 
@@ -195,6 +222,11 @@ impl IpcEventBus {
 
             // Outer loop: reopen pipe after EOF (writers may close and reopen)
             loop {
+                if shutdown.load(Ordering::Relaxed) {
+                    debug!(pipe = %pipe_path.display(), "IPC consumer shutting down");
+                    return;
+                }
+
                 // Open pipe for reading (blocks until writer opens)
                 let mut file = match File::open(&pipe_path) {
                     Ok(f) => f,
@@ -203,6 +235,12 @@ impl IpcEventBus {
                         return;
                     }
                 };
+
+                // Check shutdown after unblocking from open
+                if shutdown.load(Ordering::Relaxed) {
+                    debug!(pipe = %pipe_path.display(), "IPC consumer shutting down");
+                    return;
+                }
 
                 info!(pipe = %pipe_path.display(), "IPC consumer connected");
 
@@ -315,6 +353,7 @@ impl IpcEventBus {
 #[async_trait]
 impl EventBus for IpcEventBus {
     /// Publish events directly to subscriber pipes.
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         if self.config.subscribers.is_empty() {
             debug!("No subscribers configured, event not published");
@@ -406,6 +445,20 @@ impl EventBus for IpcEventBus {
     /// Start consuming from the pipe (IPC requires explicit start).
     async fn start_consuming(&self) -> Result<()> {
         IpcEventBus::start_consuming(self).await
+    }
+
+    /// Create a new subscriber bus sharing the same base path.
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        let domains = match domain_filter {
+            Some(d) => vec![d.to_string()],
+            None => vec![],
+        };
+        let config = IpcConfig::subscriber(&self.config.base_path, name, domains);
+        Ok(Arc::new(IpcEventBus::new(config)))
     }
 }
 

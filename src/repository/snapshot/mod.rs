@@ -38,25 +38,25 @@ impl SnapshotRepository {
     /// Retrieve the latest snapshot for an aggregate.
     ///
     /// Returns `None` if no snapshot exists.
-    pub async fn get(&self, domain: &str, root: Uuid) -> Result<Option<Snapshot>> {
-        self.store.get(domain, root).await
+    pub async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Option<Snapshot>> {
+        self.store.get(domain, edition, root).await
     }
 
     /// Store a snapshot for an aggregate.
     ///
     /// Replaces any existing snapshot for this root.
     /// If writes are disabled, this is a no-op.
-    pub async fn put(&self, domain: &str, root: Uuid, snapshot: Snapshot) -> Result<()> {
+    pub async fn put(&self, domain: &str, edition: &str, root: Uuid, snapshot: Snapshot) -> Result<()> {
         if self.write_enabled {
-            self.store.put(domain, root, snapshot).await
+            self.store.put(domain, edition, root, snapshot).await
         } else {
             Ok(())
         }
     }
 
     /// Delete the snapshot for an aggregate.
-    pub async fn delete(&self, domain: &str, root: Uuid) -> Result<()> {
-        self.store.delete(domain, root).await
+    pub async fn delete(&self, domain: &str, edition: &str, root: Uuid) -> Result<()> {
+        self.store.delete(domain, edition, root).await
     }
 }
 

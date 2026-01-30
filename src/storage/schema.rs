@@ -1,7 +1,7 @@
 //! Database schema definitions using sea-query.
 //!
 //! These define the table and column identifiers for type-safe query building.
-//! Schema creation is handled via sea-query's Table::create() in each backend.
+//! Schema creation is handled via sqlx migrations (see `migrations/`).
 
 use sea_query::Iden;
 
@@ -11,6 +11,8 @@ pub enum Events {
     Table,
     #[iden = "domain"]
     Domain,
+    #[iden = "edition"]
+    Edition,
     #[iden = "root"]
     Root,
     #[iden = "sequence"]
@@ -29,6 +31,8 @@ pub enum Snapshots {
     Table,
     #[iden = "domain"]
     Domain,
+    #[iden = "edition"]
+    Edition,
     #[iden = "root"]
     Root,
     #[iden = "sequence"]
@@ -37,4 +41,25 @@ pub enum Snapshots {
     StateData,
     #[iden = "created_at"]
     CreatedAt,
+}
+
+/// Positions table schema.
+///
+/// Tracks last-processed event sequence per handler/domain/edition/root.
+/// Used by projectors and sagas to resume from their last checkpoint.
+#[derive(Iden)]
+pub enum Positions {
+    Table,
+    #[iden = "handler"]
+    Handler,
+    #[iden = "domain"]
+    Domain,
+    #[iden = "edition"]
+    Edition,
+    #[iden = "root"]
+    Root,
+    #[iden = "sequence"]
+    Sequence,
+    #[iden = "updated_at"]
+    UpdatedAt,
 }

@@ -122,7 +122,7 @@ spec:
           securityContext:
             {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
 
-        # Sidecar: Angzarr entity sidecar
+        # Sidecar: Angzarr aggregate sidecar
         # Port scheme: base+0 = coordinator, base+2 = coordinator debug
         - name: angzarr
           securityContext:
@@ -130,11 +130,11 @@ spec:
           image: "{{ $.Values.images.aggregate.repository }}:{{ $.Values.images.aggregate.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.images.aggregate.pullPolicy }}
           ports:
-            - name: entity
+            - name: aggregate
               containerPort: {{ $.Values.service.aggregatePort }}
               protocol: TCP
             - name: query
-              containerPort: {{ $.Values.service.queryPort }}
+              containerPort: {{ $.Values.service.aggregatePort }}
               protocol: TCP
             {{- if $.Values.ports.coordinatorDebug.enabled }}
             - name: coord-debug
@@ -149,11 +149,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            # Server ports (ANGZARR__ prefix with __ separator)
-            - name: ANGZARR__SERVER__AGGREGATE_PORT
+            # Transport port — single gRPC server hosts both coordinator + query
+            - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ $.Values.service.aggregatePort }}"
-            - name: ANGZARR__SERVER__EVENT_QUERY_PORT
-              value: "{{ $.Values.service.queryPort }}"
             # Target configuration
             - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .port }}"
@@ -188,6 +186,7 @@ spec:
               value: {{ $.Values.amqp.url }}
               {{- end }}
             {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" $ "service" "aggregate" "domain" .domain) | nindent 12 }}
           livenessProbe:
             {{- toYaml $.Values.livenessProbe | nindent 12 }}
           readinessProbe:
@@ -380,6 +379,7 @@ spec:
             - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: {{ .topics | first | default "#" | quote }}
             {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" $ "service" "projector" "domain" .domain) | nindent 12 }}
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
       {{- with $.Values.nodeSelector }}
@@ -512,7 +512,7 @@ spec:
           image: "{{ $.Values.images.saga.repository }}:{{ $.Values.images.saga.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.images.saga.pullPolicy }}
           ports:
-            - name: entity
+            - name: aggregate
               containerPort: {{ $.Values.service.aggregatePort }}
               protocol: TCP
             - name: query
@@ -531,9 +531,14 @@ spec:
               value: "{{ $.Values.service.aggregatePort }}"
             - name: ANGZARR__SERVER__EVENT_QUERY_PORT
               value: "{{ $.Values.service.queryPort }}"
-            # Saga sidecar target address
+            # Saga sidecar target
             - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .port | default 50051 }}"
+            - name: ANGZARR__TARGET__DOMAIN
+              value: {{ .domain | quote }}
+            # Static endpoints for two-phase saga command routing
+            - name: ANGZARR_STATIC_ENDPOINTS
+              value: "{{ range $i, $app := $.Values.applications.business }}{{ if $i }},{{ end }}{{ $app.domain }}={{ include "angzarr.fullname" $ }}-{{ $app.name }}:{{ $.Values.service.aggregatePort }}{{ end }}"
             # Storage configuration - from secret if provided
             {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
@@ -572,6 +577,7 @@ spec:
             - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: {{ .topics | first | default "#" | quote }}
             {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" $ "service" "saga" "domain" (.domain | trimPrefix "saga-")) | nindent 12 }}
           # NOTE: No liveness/readiness probes - saga sidecar is a pure consumer (no server ports)
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
@@ -648,16 +654,17 @@ spec:
           image: "{{ .Values.images.stream.repository }}:{{ .Values.images.stream.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.images.stream.pullPolicy }}
           ports:
-            # Projector gRPC (receives events from sidecar) + EventStream gRPC (for gateway)
+            # Single gRPC server hosts both ProjectorCoordinator + EventStream
             - name: grpc
-              containerPort: {{ .Values.infrastructure.stream.projectorPort | default 50051 }}
+              containerPort: {{ .Values.infrastructure.stream.port }}
               protocol: TCP
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Port for Projector + EventStream gRPC services
-            - name: ANGZARR_PORT
-              value: "{{ .Values.infrastructure.stream.projectorPort | default 50051 }}"
+            # Transport port — single gRPC server hosts both projector + event stream
+            - name: ANGZARR__TRANSPORT__TCP__PORT
+              value: "{{ .Values.infrastructure.stream.port }}"
+            {{- include "angzarr.otel-env" (dict "root" . "service" "stream") | nindent 12 }}
           resources:
             {{- toYaml .Values.infrastructure.stream.resources | nindent 12 }}
 
@@ -670,9 +677,11 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Target: stream projector container
+            # Target: stream container (single server hosts both services)
             - name: ANGZARR__TARGET__ADDRESS
-              value: "localhost:{{ .Values.infrastructure.stream.projectorPort | default 50051 }}"
+              value: "localhost:{{ .Values.infrastructure.stream.port }}"
+            - name: ANGZARR__TARGET__DOMAIN
+              value: "stream"
             # Subscribe to ALL events (stream forwards by correlation ID)
             {{- if .Values.amqp.enabled }}
             - name: ANGZARR__MESSAGING__TYPE
@@ -690,6 +699,7 @@ spec:
             - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: "#"
             {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" . "service" "projector" "domain" "stream") | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
@@ -752,8 +762,8 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Standard Angzarr port - used across all languages/containers
-            - name: ANGZARR_PORT
+            # Transport port — single gRPC server hosts both command gateway + event query
+            - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ .Values.infrastructure.gateway.port }}"
             # Namespace for K8s service discovery (from downward API)
             - name: NAMESPACE
@@ -773,6 +783,7 @@ spec:
               value: {{ .Values.infrastructure.gateway.streamService | default (printf "%s-stream:%d" (include "angzarr.fullname" .) (.Values.infrastructure.stream.port | int)) | quote }}
             - name: STREAM_TIMEOUT_SECS
               value: "{{ .Values.infrastructure.gateway.streamTimeoutSecs }}"
+            {{- include "angzarr.otel-env" (dict "root" . "service" "gateway") | nindent 12 }}
           resources:
             {{- toYaml .Values.infrastructure.gateway.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
@@ -845,9 +856,10 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ .Values.logging.level }}
-            # Port for Projector gRPC service
-            - name: ANGZARR_PORT
+            # Transport port — projector gRPC service
+            - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ .Values.infrastructure.log.port | default 50051 }}"
+            {{- include "angzarr.otel-env" (dict "root" . "service" "log" "domain" "projector") | nindent 12 }}
           resources:
             {{- toYaml .Values.infrastructure.log.resources | nindent 12 }}
 
@@ -863,6 +875,8 @@ spec:
             # Target: log projector container
             - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .Values.infrastructure.log.port | default 50051 }}"
+            - name: ANGZARR__TARGET__DOMAIN
+              value: "log"
             # Subscribe to ALL events
             {{- if .Values.amqp.enabled }}
             - name: ANGZARR__MESSAGING__TYPE
@@ -880,6 +894,7 @@ spec:
             - name: ANGZARR__MESSAGING__AMQP__DOMAIN
               value: "#"
             {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" . "service" "projector" "domain" "log") | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

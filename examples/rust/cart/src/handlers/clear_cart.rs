@@ -1,12 +1,11 @@
 //! Clear cart command handler.
 
-use prost::Message;
-
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartCleared, CartState};
-use common::{make_event_book, now, require_exists, require_status_not, Result};
+use common::{now, require_exists, require_status_not, Result};
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the ClearCart command.
 ///
@@ -26,21 +25,11 @@ pub fn handle_clear_cart(
         items: state.items.clone(),
     };
 
-    let new_state = CartState {
-        customer_id: state.customer_id.clone(),
-        items: vec![],
-        subtotal_cents: 0,
-        coupon_code: String::new(),
-        discount_cents: 0,
-        status: state.status.clone(),
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.CartCleared",
-        event.encode_to_vec(),
-        "type.examples/examples.CartState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

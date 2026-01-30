@@ -1,15 +1,14 @@
 //! Apply coupon command handler.
 
-use prost::Message;
-
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{ApplyCoupon, CartState, CouponApplied};
 use common::{
-    decode_command, make_event_book, now, require_exists, require_not_empty, require_not_exists,
-    require_status_not, Result,
+    decode_command, now, require_exists, require_not_empty, require_not_exists, require_status_not,
+    Result,
 };
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the ApplyCoupon command.
 ///
@@ -42,21 +41,11 @@ pub fn handle_apply_coupon(
         applied_at: Some(now()),
     };
 
-    let new_state = CartState {
-        customer_id: state.customer_id.clone(),
-        items: state.items.clone(),
-        subtotal_cents: state.subtotal_cents,
-        coupon_code: cmd.code,
-        discount_cents,
-        status: state.status.clone(),
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.CouponApplied",
-        event.encode_to_vec(),
-        "type.examples/examples.CartState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

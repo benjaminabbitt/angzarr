@@ -4,4 +4,5 @@
 //! Each implementation module imports these test functions and runs them.
 
 pub mod event_store_tests;
+pub mod position_store_tests;
 pub mod snapshot_store_tests;

@@ -18,7 +18,7 @@ spec:
   ports:
     # Angzarr sidecar aggregate coordinator (external access)
     - port: {{ $.Values.service.aggregatePort }}
-      targetPort: entity
+      targetPort: aggregate
       protocol: TCP
       name: grpc
     # Angzarr sidecar event query (external access)
@@ -159,7 +159,7 @@ spec:
   clusterIP: None
   ports:
     - port: {{ .Values.service.aggregatePort }}
-      targetPort: entity
+      targetPort: aggregate
       protocol: TCP
       name: command
   selector:
@@ -242,7 +242,7 @@ spec:
   ports:
     # Aggregate sidecar exposes AggregateCoordinator and EventQuery
     - port: {{ .Values.service.aggregatePort }}
-      targetPort: entity
+      targetPort: aggregate
       protocol: TCP
       name: grpc
       nodePort: {{ .Values.service.nodePort.aggregate }}
@@ -268,7 +268,7 @@ spec:
   type: NodePort
   ports:
     - port: {{ $.Values.service.aggregatePort }}
-      targetPort: entity
+      targetPort: aggregate
       protocol: TCP
       name: grpc
       {{- if $app.debug.nodePort }}

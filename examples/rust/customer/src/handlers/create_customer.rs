@@ -2,10 +2,10 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateCustomer, CustomerCreated, CustomerState};
-use common::{decode_command, make_event_book, now, require_exists, require_not_exists, Result};
-use prost::Message;
+use common::{decode_command, now, require_exists, require_not_exists, Result};
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the CreateCustomer command.
 ///
@@ -30,20 +30,11 @@ pub fn handle_create_customer(
         created_at: Some(now()),
     };
 
-    // New state after applying event
-    let new_state = CustomerState {
-        name: cmd.name,
-        email: cmd.email,
-        loyalty_points: 0,
-        lifetime_points: 0,
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.CustomerCreated",
-        event.encode_to_vec(),
-        "type.examples/examples.CustomerState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

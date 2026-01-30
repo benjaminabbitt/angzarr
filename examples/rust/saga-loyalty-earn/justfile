@@ -1,43 +1,5 @@
-# Saga Loyalty Earn - Rust gRPC Server
+PKG := "saga-loyalty-earn"
+BIN_PKG := PKG
+BIN := PKG + "-server"
 
-set shell := ["bash", "-c"]
-
-TOP := `git rev-parse --show-toplevel`
-
-default:
-    @just --list
-
-build:
-    cargo build -p saga-loyalty-earn --bin saga-loyalty-earn-server
-
-build-release:
-    cargo build -p saga-loyalty-earn --bin saga-loyalty-earn-server --release
-
-run: build
-    cargo run -p saga-loyalty-earn --bin saga-loyalty-earn-server
-
-run-port port:
-    PORT={{port}} cargo run -p saga-loyalty-earn --bin saga-loyalty-earn-server
-
-copy-features:
-    rm -rf tests/features
-    cp -r {{TOP}}/examples/features tests/
-
-unit:
-    cargo test -p saga-loyalty-earn --lib
-
-acceptance: copy-features
-    cargo test -p saga-loyalty-earn --test acceptance
-
-test: unit acceptance
-
-test-unit: unit
-
-clean:
-    cargo clean -p saga-loyalty-earn
-
-check:
-    cargo check -p saga-loyalty-earn
-
-lint:
-    cargo clippy -p saga-loyalty-earn -- -D warnings
+import "../service.justfile"

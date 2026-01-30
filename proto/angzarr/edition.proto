@@ -1,0 +1,44 @@
+syntax = "proto3";
+package angzarr;
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_package = "dev.angzarr";
+option java_multiple_files = true;
+
+import "angzarr/types.proto";
+
+// Edition service — create, delete, and list diverged event timelines.
+service EditionService {
+  rpc CreateEdition(CreateEditionRequest) returns (CreateEditionResponse);
+  rpc DeleteEdition(DeleteEditionRequest) returns (DeleteEditionResponse);
+  rpc ListEditions(ListEditionsRequest) returns (ListEditionsResponse);
+}
+
+message CreateEditionRequest {
+  string name = 1;
+  TemporalQuery divergence_point = 2;
+  string description = 3;
+}
+
+message CreateEditionResponse {
+  string name = 1;
+  string created_at = 2;
+}
+
+message DeleteEditionRequest {
+  string name = 1;
+}
+
+message DeleteEditionResponse {}
+
+message ListEditionsRequest {}
+
+message ListEditionsResponse {
+  repeated EditionInfo editions = 1;
+}
+
+message EditionInfo {
+  string name = 1;
+  string created_at = 2;
+  TemporalQuery divergence_point = 3;
+  string description = 4;
+}

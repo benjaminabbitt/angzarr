@@ -1,24 +1,24 @@
-//! Command routing for embedded runtime.
+//! Command routing for standalone runtime.
 //!
-//! Dispatches commands to registered aggregate handlers via gRPC.
+//! Dispatches commands to registered aggregate business logic.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
 use tonic::Status;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::local::LocalAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, parse_command_cover, PipelineMode,
+    execute_command_pipeline, parse_command_cover, BusinessLogic, PipelineMode,
 };
-use crate::proto::aggregate_client::AggregateClient;
 use crate::proto::{CommandBook, CommandResponse, Cover, Uuid as ProtoUuid};
 use crate::storage::{EventStore, SnapshotStore};
+
+use super::traits::ProjectorHandler;
 
 /// Per-domain storage.
 #[derive(Clone)]
@@ -29,52 +29,65 @@ pub struct DomainStorage {
     pub snapshot_store: Arc<dyn SnapshotStore>,
 }
 
-/// Command router for embedded runtime.
+/// In-process sync projector entry for standalone mode.
+pub struct SyncProjectorEntry {
+    /// Projector name for logging.
+    pub name: String,
+    /// Handler to call synchronously during command response.
+    pub handler: Arc<dyn ProjectorHandler>,
+}
+
+/// Command router for standalone runtime.
 ///
-/// Routes commands to registered aggregate business logic via gRPC.
+/// Routes commands to registered aggregate business logic.
 /// Each domain has its own isolated storage.
 #[derive(Clone)]
 pub struct CommandRouter {
-    /// Business logic gRPC clients by domain.
-    business_clients: Arc<HashMap<String, Arc<Mutex<AggregateClient<tonic::transport::Channel>>>>>,
+    /// Business logic implementations by domain.
+    business: Arc<HashMap<String, Arc<dyn BusinessLogic>>>,
     /// Per-domain storage.
     stores: Arc<HashMap<String, DomainStorage>>,
     /// Service discovery for projectors.
     discovery: Arc<dyn ServiceDiscovery>,
     /// Event bus for publishing.
     event_bus: Arc<dyn EventBus>,
+    /// In-process sync projectors (called during command response).
+    sync_projectors: Arc<Vec<SyncProjectorEntry>>,
 }
 
 impl CommandRouter {
     /// Create a new command router.
     pub fn new(
-        business_clients: HashMap<String, Arc<Mutex<AggregateClient<tonic::transport::Channel>>>>,
+        business: HashMap<String, Arc<dyn BusinessLogic>>,
         stores: HashMap<String, DomainStorage>,
         discovery: Arc<dyn ServiceDiscovery>,
         event_bus: Arc<dyn EventBus>,
+        sync_projectors: Vec<SyncProjectorEntry>,
     ) -> Self {
-        let domains: Vec<_> = business_clients.keys().cloned().collect();
+        let domains: Vec<_> = business.keys().cloned().collect();
         info!(
             domains = ?domains,
+            sync_projectors = sync_projectors.len(),
             "Command router initialized"
         );
 
         Self {
-            business_clients: Arc::new(business_clients),
+            business: Arc::new(business),
             stores: Arc::new(stores),
             discovery,
             event_bus,
+            sync_projectors: Arc::new(sync_projectors),
         }
     }
 
     /// Get list of registered domains.
     pub fn domains(&self) -> Vec<&str> {
-        self.business_clients.keys().map(|s| s.as_str()).collect()
+        self.business.keys().map(|s| s.as_str()).collect()
     }
 
     /// Check if a domain has a registered handler.
     pub fn has_handler(&self, domain: &str) -> bool {
-        self.business_clients.contains_key(domain)
+        self.business.contains_key(domain)
     }
 
     /// Execute a command and return the response.
@@ -98,6 +111,28 @@ impl CommandRouter {
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
+    /// Call in-process sync projectors and return their projections.
+    async fn call_sync_projectors(
+        &self,
+        events: &crate::proto::EventBook,
+    ) -> Vec<crate::proto::Projection> {
+        use super::traits::ProjectionMode;
+        let mut projections = Vec::new();
+        for entry in self.sync_projectors.iter() {
+            match entry.handler.handle(events, ProjectionMode::Execute).await {
+                Ok(projection) => projections.push(projection),
+                Err(e) => {
+                    warn!(
+                        projector = %entry.name,
+                        error = %e,
+                        "Sync projector failed"
+                    );
+                }
+            }
+        }
+        projections
+    }
+
     /// Core command execution with optional sequence validation.
     async fn execute_inner(
         &self,
@@ -109,10 +144,10 @@ impl CommandRouter {
         debug!(
             domain = %domain,
             root = %root_uuid,
-            "Executing command via gRPC"
+            "Executing command"
         );
 
-        let client = self.business_clients.get(&domain).ok_or_else(|| {
+        let business = self.business.get(&domain).ok_or_else(|| {
             Status::not_found(format!("No handler registered for domain: {domain}"))
         })?;
 
@@ -126,19 +161,33 @@ impl CommandRouter {
             self.event_bus.clone(),
         );
 
-        execute_command_pipeline(
+        let mut response = execute_command_pipeline(
             &ctx,
-            client.as_ref(),
+            &**business,
             command_book,
             PipelineMode::Execute { validate_sequence },
         )
-        .await
+        .await?;
+
+        // Call in-process sync projectors (standalone mode)
+        if !self.sync_projectors.is_empty() {
+            if let Some(ref events) = response.events {
+                let projections = self.call_sync_projectors(events).await;
+                response.projections.extend(projections);
+            }
+        }
+
+        Ok(response)
     }
 
-    /// Dry-run: execute command against temporal state without persisting.
+    /// Speculatively execute a command against temporal state (dry-run).
     ///
-    /// Loads aggregate state at a point in time, runs the handler, returns
-    /// speculative events. No side effects — nothing persisted, nothing published.
+    /// Reconstructs aggregate state at a historical point in time, runs the
+    /// handler, and returns the events that *would* be produced. This is purely
+    /// speculative: no events are persisted to the store, no events are
+    /// published to the bus, and no sagas or projectors are triggered. Use this
+    /// to validate business rules or explore "what-if" scenarios without side
+    /// effects.
     pub async fn dry_run(
         &self,
         command_book: CommandBook,
@@ -152,10 +201,10 @@ impl CommandRouter {
             root = %root_uuid,
             ?as_of_sequence,
             ?as_of_timestamp,
-            "Dry-run command via gRPC"
+            "Dry-run command"
         );
 
-        let client = self.business_clients.get(&domain).ok_or_else(|| {
+        let business = self.business.get(&domain).ok_or_else(|| {
             Status::not_found(format!("No handler registered for domain: {domain}"))
         })?;
 
@@ -171,7 +220,7 @@ impl CommandRouter {
 
         execute_command_pipeline(
             &ctx,
-            client.as_ref(),
+            &**business,
             command_book,
             PipelineMode::DryRun {
                 as_of_sequence,
@@ -205,6 +254,7 @@ pub fn create_command_book(
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![crate::proto::CommandPage {
             sequence: 0,

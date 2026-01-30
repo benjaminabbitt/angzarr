@@ -75,6 +75,7 @@ fn test_extract_identity_success() {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,
@@ -106,6 +107,7 @@ fn test_extract_identity_missing_root() {
             domain: "orders".to_string(),
             root: None,
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,
@@ -118,6 +120,7 @@ fn test_extract_identity_missing_root() {
 
 mod grpc_integration {
     use super::*;
+    use crate::orchestration::aggregate::DEFAULT_EDITION;
     use crate::proto::event_query_server::EventQueryServer;
     use crate::proto::Snapshot;
     use crate::services::EventQueryService;
@@ -184,6 +187,7 @@ mod grpc_integration {
         event_store
             .add(
                 domain,
+                DEFAULT_EDITION,
                 root,
                 vec![
                     test_event(0, "Created"),
@@ -244,12 +248,13 @@ mod grpc_integration {
         let events: Vec<EventPage> = (0..10)
             .map(|i| test_event(i, &format!("Event{}", i)))
             .collect();
-        event_store.add(domain, root, events, "").await.unwrap();
+        event_store.add(domain, DEFAULT_EDITION, root, events, "").await.unwrap();
 
         use crate::storage::SnapshotStore;
         snapshot_store
             .put(
                 domain,
+                DEFAULT_EDITION,
                 root,
                 Snapshot {
                     sequence: 5,

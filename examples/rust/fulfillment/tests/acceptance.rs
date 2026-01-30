@@ -15,7 +15,7 @@ use common::proto::{
 };
 
 /// Default Angzarr port - standard across all languages/containers
-const DEFAULT_ANGZARR_PORT: u16 = 1350;
+const DEFAULT_ANGZARR_PORT: u16 = 9084;
 
 /// Get gateway endpoint from environment or default
 fn get_gateway_endpoint() -> String {

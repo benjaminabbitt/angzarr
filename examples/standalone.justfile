@@ -110,10 +110,10 @@ test LANG: build-angzarr kill clean-sockets (build-lang LANG)
     ANGZARR_CONFIG=examples/{{LANG}}/standalone.yaml "{{TOP}}/target/debug/angzarr-standalone" &
     STANDALONE_PID=$!
 
-    # Wait for services to be ready (gateway on port 1350)
+    # Wait for services to be ready (gateway on port 9084)
     echo "Waiting for gateway to be ready..."
     for i in {1..90}; do
-        if nc -z localhost 1350 2>/dev/null; then
+        if nc -z localhost 9084 2>/dev/null; then
             echo "Gateway ready!"
             break
         fi
@@ -132,15 +132,15 @@ test LANG: build-angzarr kill clean-sockets (build-lang LANG)
     case "{{LANG}}" in
         rust)
             cd "{{TOP}}/examples/rust"
-            ANGZARR_PORT=1350 cargo test --workspace --test acceptance || TEST_RESULT=$?
+            ANGZARR_PORT=9084 cargo test --workspace --test acceptance || TEST_RESULT=$?
             ;;
         python)
             cd "{{TOP}}/examples/python/tests"
-            ANGZARR_PORT=1350 ANGZARR_TEST_MODE=standalone uv run pytest -v || TEST_RESULT=$?
+            ANGZARR_PORT=9084 ANGZARR_TEST_MODE=standalone uv run pytest -v || TEST_RESULT=$?
             ;;
         go)
             cd "{{TOP}}/examples/go"
-            ANGZARR_PORT=1350 go test -v ./... || TEST_RESULT=$?
+            ANGZARR_PORT=9084 go test -v ./... || TEST_RESULT=$?
             ;;
     esac
 

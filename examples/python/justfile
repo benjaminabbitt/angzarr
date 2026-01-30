@@ -76,8 +76,8 @@ setup-tests:
     cd tests && uv sync
 
 # Run integration tests (assumes gateway available)
-integration GATEWAY="localhost:1350": setup-tests
-    cd tests && ANGZARR_PORT=1350 ANGZARR_TEST_MODE=container uv run pytest -v
+integration GATEWAY="localhost:9084": setup-tests
+    cd tests && ANGZARR_PORT=9084 ANGZARR_TEST_MODE=container uv run pytest -v
 
 # ============================================================================
 # Standalone Mode Shortcuts (delegates to examples/standalone.justfile)

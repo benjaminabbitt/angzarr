@@ -1,6 +1,6 @@
 # ⍼ Angzarr
 
-**A schema-first CQRS/ES framework for polyglot business logic**
+**A schema-first CQRS/ES framework — write business logic in any gRPC language**
 
 The symbol ⍼ ([U+237C](https://en.wikipedia.org/wiki/Angzarr)) has existed in Unicode since 2002 with no defined purpose. The right angle represents the origin point—your event store. The zigzag arrow represents events cascading through your system. We gave it meaning.
 
@@ -24,7 +24,7 @@ See for yourself—the customer aggregate (create customer, add/redeem loyalty p
 |----------|-----|----------------|
 | Go | 173 | [examples/go/customer/logic/](../examples/go/customer/logic/) |
 | Python | 209 | [examples/python/customer/](../examples/python/customer/) |
-| Rust | 468 | [examples/rust/customer/src/](../examples/rust/customer/src/) |
+| Rust | 303 | [examples/rust/customer/src/](../examples/rust/customer/src/) |
 
 *LOC counted via [scripts/render_docs.py](../scripts/render_docs.py) — non-blank, non-comment lines in business logic files.*
 
@@ -69,9 +69,39 @@ The result: CQRS/ES often remains confined to greenfield projects with dedicated
 
 Angzarr inverts the typical framework relationship. Rather than providing libraries that applications import, Angzarr provides infrastructure that applications connect to.
 
+### The Value Proposition
+
+| You Define | You Implement | We Handle |
+|------------|---------------|-----------|
+| Commands in `.proto` | gRPC `BusinessLogic` service | Event persistence |
+| Events in `.proto` | gRPC `Projector` services | Optimistic concurrency |
+| Read models in `.proto` | gRPC `Saga` services | Snapshot management |
+| | | Event distribution |
+| | | Saga coordination |
+| | | Schema evolution rules |
+
+### What Angzarr Handles (So You Don't)
+
+| Concern | Handled By |
+|---------|------------|
+| Database transactions | Angzarr |
+| Optimistic concurrency | Angzarr |
+| Event ordering | Angzarr |
+| Retry logic | Angzarr |
+| Network failures | Angzarr |
+| Service discovery | Angzarr |
+| Load balancing | Angzarr |
+| State hydration | Angzarr |
+| Snapshot management | Angzarr |
+| Observability | Angzarr |
+| Message serialization | Protobuf |
+| Schema evolution | Protobuf |
+| Deployment | DevOps/Helm |
+| Scaling | K8s/DevOps |
+
 **Protocol Buffers define the contract.** Commands, events, queries, and read models are declared in `.proto` files. This schema becomes the source of truth—for serialization, validation, documentation, and cross-service compatibility. Protobuf's established rules for backward-compatible evolution apply directly to your event schema.
 
-**gRPC provides the boundary.** Business logic—aggregates, command handlers, event handlers, saga orchestrators—runs as gRPC services in any supported language. The framework communicates exclusively through generated protobuf messages over gRPC. Your domain code never imports Angzarr libraries; it implements generated service interfaces.
+**gRPC provides the boundary.** Business logic—aggregates, command handlers, event handlers, saga orchestrators—runs as gRPC services in any supported language. The framework communicates exclusively through generated protobuf messages over gRPC. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf.
 
 **The framework handles the rest.** Event persistence, command routing, event distribution, snapshot storage, idempotency, and saga state management run within Angzarr's Rust core. Your business logic receives commands with full event history and emits events. Side effects stay on one side of the gRPC boundary.
 
@@ -114,10 +144,11 @@ Angzarr models event-sourced aggregates as books. An **EventBook** contains the 
 This metaphor provides intuitive semantics: you read a book to understand its history, append pages as events occur, and bookmark your place with snapshots.
 
 ```protobuf
-// Core identity: domain + aggregate root ID
+// Core identity: domain + aggregate root + workflow correlation
 message Cover {
-  string domain = 1;
-  UUID root = 2;
+  string domain = 2;
+  UUID root = 1;
+  string correlation_id = 3;  // Workflow correlation - flows through all commands/events
 }
 
 // Individual event with sequence number and timestamp
@@ -126,15 +157,14 @@ message EventPage {
     uint32 num = 1;    // Normal sequenced event
     bool force = 2;    // Force-write (conflict resolution)
   }
-  google.protobuf.Timestamp createdAt = 3;
+  google.protobuf.Timestamp created_at = 3;
   google.protobuf.Any event = 4;
-  bool synchronous = 5;
 }
 
 // Point-in-time aggregate state for replay optimization
 message Snapshot {
-  uint32 sequence = 1;
-  google.protobuf.Any state = 2;
+  uint32 sequence = 2;
+  google.protobuf.Any state = 3;
 }
 
 // Complete aggregate history
@@ -142,6 +172,7 @@ message EventBook {
   Cover cover = 1;
   Snapshot snapshot = 2;
   repeated EventPage pages = 3;
+  google.protobuf.Any snapshot_state = 5;  // Business logic sets this
 }
 ```
 
@@ -150,13 +181,13 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 ```protobuf
 message CommandPage {
   uint32 sequence = 1;
-  bool synchronous = 2;
   google.protobuf.Any command = 3;
 }
 
 message CommandBook {
   Cover cover = 1;
   repeated CommandPage pages = 2;
+  SagaCommandOrigin saga_origin = 4;  // Tracks origin for compensation flow
 }
 ```
 
@@ -365,10 +396,9 @@ enum SyncMode {
   SYNC_MODE_CASCADE = 2;  // Full sync: projectors + saga cascade (expensive)
 }
 
-message CommandPage {
-  uint32 sequence = 1;
+message SyncCommandBook {
+  CommandBook command = 1;
   SyncMode sync_mode = 2;
-  google.protobuf.Any command = 3;
 }
 ```
 
@@ -460,7 +490,7 @@ service CommandGateway {
 }
 ```
 
-Events are correlated via `correlation_id` on both `CommandBook` and `EventBook`, allowing clients to track causally-related events across aggregate boundaries.
+Events are correlated via `correlation_id` on `Cover`, which is shared by both `CommandBook` and `EventBook`. This allows clients to track causally-related events across aggregate boundaries.
 
 **Use when:**
 - Building reactive UIs that update progressively as events cascade
@@ -500,10 +530,12 @@ service EventQuery {
 }
 
 message Query {
-  string domain = 1;
-  UUID root = 2;
-  uint32 lowerBound = 3;  // Sequence range for partial replay
-  uint32 upperBound = 4;
+  Cover cover = 1;  // Query by root, correlation_id, or both
+  oneof selection {
+    SequenceRange range = 3;    // Partial replay
+    SequenceSet sequences = 4;  // Specific sequences
+    TemporalQuery temporal = 5; // Point-in-time (as_of_time or as_of_sequence)
+  }
 }
 
 message AggregateRoot {
@@ -521,16 +553,15 @@ Streaming responses handle large event histories efficiently. The `Synchronize` 
 Angzarr's core abstracts storage and messaging behind adapter interfaces. Custom adapters implement a defined trait.
 
 **Event Store Adapters**
-- MongoDB (production)
-- PostgreSQL (production)
-- EventStoreDB (implemented, untested)
-- Redis (implemented, untested)
-- Mock (development/testing)
+- SQLite (tested — local development, standalone mode)
+- MongoDB (tested — production)
+- [PostgreSQL](../src/storage/postgres/README.md) (implemented, untested)
+- [Redis](../src/storage/redis/README.md) (implemented, untested)
 
 **Message Bus Adapters**
-- Direct gRPC (development, simple deployments)
-- RabbitMQ (production)
-- *Kafka (planned)*
+- Direct gRPC (tested — development, simple deployments)
+- RabbitMQ (tested — production)
+- [Kafka](../src/bus/kafka/README.md) (implemented, untested)
 
 Configuration is declarative:
 
@@ -562,7 +593,8 @@ sagas:
 ```yaml
 # config.yaml (local development)
 storage:
-  type: mock  # In-memory, no persistence
+  type: sqlite
+  path: ./data/events.db
 
 bus:
   type: direct  # gRPC calls, no message broker
@@ -629,41 +661,107 @@ spec:
               drop: ["ALL"]
 ```
 
-### Standalone Infrastructure
-
-Not all Angzarr binaries are sidecars. Two services run as standalone infrastructure:
-
-| Service | Purpose |
-|---------|---------|
-| **angzarr-gateway** | Client entry point. Routes commands to domain-specific aggregates, streams events back to clients. |
-| **angzarr-stream** | Infrastructure projector. Receives events from a projector sidecar, filters by correlation ID, forwards to gateway subscribers. |
-
-These deploy as regular services, not as sidecars to business logic:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Standalone Infrastructure                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│  [angzarr-gateway]                    [angzarr-stream + projector sidecar] │
-│       ↓ routes commands                      ↑ receives all events      │
-└───────┼──────────────────────────────────────┼──────────────────────────┘
-        ↓                                      │
-┌───────┴──────────────────────────────────────┴──────────────────────────┐
-│                         Business Logic Pods                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│  [Your Aggregate] ←→ [angzarr-aggregate sidecar] → publishes to AMQP    │
-│  [Your Projector] ←→ [angzarr-projector sidecar] ← subscribes to AMQP   │
-│  [Your Saga]      ←→ [angzarr-saga sidecar]      ← subscribes to AMQP   │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-For local development, use Kind (Kubernetes in Docker):
+For local development, use Kind (Kubernetes in Docker) with SQLite storage:
 
 ```bash
 # Local dev with Kind cluster
 just kind-create
 just deploy
 ```
+
+---
+
+## Observability
+
+Implementing teams get OpenTelemetry instrumentation for free. The sidecar/coordinator layer instruments every pipeline—aggregate command handling, saga orchestration, process manager workflows, and projector event processing—so business logic code requires zero observability boilerplate.
+
+### What You Get Without Writing Any Instrumentation Code
+
+Every command, saga, and projector execution is traced and metered at the coordinator level. The granularity is the `Handle` and `Prepare` boundaries—the exact points where the framework calls into your business logic:
+
+| Pipeline | Traced Spans | Metrics |
+|----------|-------------|---------|
+| Aggregate | `aggregate.handle`, `aggregate.execute`, `aggregate.load_events`, `aggregate.persist`, `aggregate.post_persist`, `aggregate.sync_projectors` | `angzarr.command.duration`, `angzarr.command.total` |
+| Saga | `saga.orchestrate`, `saga.retry`, `orchestration.fetch`, `orchestration.execute` | `angzarr.saga.duration`, `angzarr.saga.retry.total`, `angzarr.saga.compensation.total` |
+| Process Manager | `pm.orchestrate`, `orchestration.fetch`, `orchestration.execute` | `angzarr.pm.duration` |
+| Projector | `projector.handle` | `angzarr.projector.duration` |
+| Event Bus | — | `angzarr.bus.publish.duration`, `angzarr.bus.publish.total` |
+| Storage | — | `angzarr.storage.duration_seconds`, `angzarr.events.stored_total`, `angzarr.events.loaded_total`, `angzarr.snapshots.stored_total`, `angzarr.positions.updated_total` |
+
+Every span carries the `correlation_id` as a field, so distributed traces follow a command through aggregate execution, saga fan-out, and downstream projections without any manual context propagation.
+
+### How It Works
+
+Angzarr layers observability at three levels:
+
+**1. Structured tracing (always on).** Every orchestration function is annotated with `#[tracing::instrument]`. Spans are named by pipeline phase (`aggregate.execute`, `saga.orchestrate`, etc.) and carry domain, root, and correlation_id as structured fields. These work with any `tracing` subscriber—console output, JSON, or OpenTelemetry.
+
+**2. Storage metrics (always on).** An aspect-oriented `Instrumented` wrapper decorates all storage implementations (event store, snapshot store, position store) with counters and latency histograms. This is applied at service composition time, not inside implementations—storage code stays clean:
+
+```rust
+// Framework applies this at startup — your code never sees it
+let store = SqliteEventStore::new(pool);
+let store = Instrumented::new(store, "sqlite");
+```
+
+**3. OpenTelemetry export (opt-in via `otel` feature).** When built with `--features otel`, the sidecar exports all three telemetry signals via OTLP:
+- **Traces** — Every pipeline span (`aggregate.execute`, `saga.orchestrate`, etc.) is exported as OTLP spans. W3C TraceContext propagation from inbound gRPC headers means traces from your client through the sidecar to your business logic appear as a single distributed trace.
+- **Metrics** — Command duration, saga duration, bus publish latency, storage operation counters, and all other instruments are exported as OTLP metrics with domain and outcome labels.
+- **Logs** — Structured tracing events are exported as OTLP logs, correlated with traces via trace/span IDs.
+
+All three signals flow through a single OTLP endpoint (gRPC or HTTP), making the observability backend a deployment choice rather than a code change.
+
+Configuration follows standard OTel environment variables:
+
+```yaml
+env:
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://otel-collector:4317"
+  - name: OTEL_SERVICE_NAME
+    value: "inventory-aggregate"
+  - name: ANGZARR_LOG
+    value: "angzarr=info"
+```
+
+### Kubernetes: Grafana Out of the Box
+
+On Kubernetes, the included observability stack deploys alongside your application via Helm:
+
+- **OpenTelemetry Collector** — Receives OTLP from all sidecars, routes to backends
+- **Tempo** — Distributed trace storage
+- **Prometheus** — Metrics storage (via Collector remote write)
+- **Loki** — Log aggregation
+- **Grafana** — Pre-configured dashboards for command pipeline, saga execution, and projector throughput
+
+Grafana is available immediately after deployment with no additional setup. Dashboards visualize the full command lifecycle across domains.
+
+### Cloud Provider Integration
+
+OTLP is the vendor-neutral telemetry protocol. The same sidecar binaries feed any OTLP-compatible backend by changing the collector endpoint:
+
+| Provider | Traces | Metrics | Logs |
+|----------|--------|---------|------|
+| **GCP** | Cloud Trace | Cloud Monitoring | Cloud Logging |
+| **AWS** | X-Ray (via ADOT Collector) | CloudWatch Metrics | CloudWatch Logs |
+| **Self-hosted** | Tempo / Jaeger | Prometheus | Loki |
+| **SaaS** | Datadog / Honeycomb / Lightstep | Datadog / Grafana Cloud | Datadog / Grafana Cloud |
+
+No code changes or recompilation required — swap the `OTEL_EXPORTER_OTLP_ENDPOINT` to point at the appropriate collector.
+
+### Correlation ID Flow
+
+The `correlation_id` on `Cover` is the thread connecting all operations in a workflow. When a client sends a command, the sidecar generates or preserves the correlation ID and propagates it through every subsequent operation:
+
+```
+CreateOrder(correlation_id="abc-123")
+  → aggregate.execute(correlation_id="abc-123")       ← traced
+    → saga.orchestrate(correlation_id="abc-123")       ← traced
+      → orchestration.execute(correlation_id="abc-123") ← traced
+        → aggregate.execute(correlation_id="abc-123")   ← traced (downstream command)
+  → projector.handle(correlation_id="abc-123")         ← traced
+```
+
+In a log aggregation system, filtering by `correlation_id=abc-123` shows the entire workflow across all aggregates, sagas, and projectors—without the implementing team adding a single log line.
 
 ---
 
@@ -674,9 +772,23 @@ The framework core is implemented in Rust. This choice is pragmatic, not ideolog
 - **Memory safety without runtime cost**: No garbage collection pauses affecting tail latencies. No null pointer exceptions in production. Memory safety guarantees reduce the class of security vulnerabilities possible in the framework itself.
 - **Minimal deployment footprint**: Sidecar container images are ~8MB. No runtime dependencies, no JVM, no interpreter. Distroless base images with only the Angzarr binary reduce attack surface to the minimum possible.
 - **Predictable performance**: Latency-sensitive paths (command routing, event serialization) benefit from zero-cost abstractions and control over allocation.
-- **Strong ecosystem for the domain**: `tonic` (gRPC), `prost` (protobuf), `sqlx` (PostgreSQL), `mongodb`, and `tokio` (async runtime) are mature and actively maintained.
+- **Strong ecosystem for the domain**: `tonic` (gRPC), `prost` (protobuf), `sqlx`/`mongodb`/`bigtable` drivers, and `tokio` (async runtime) are mature and actively maintained.
 
-Business logic runs in whatever language suits the domain and team. Rust proficiency is not required to use Angzarr.
+Business logic runs in whatever language suits the domain and team. Rust proficiency is not required to use Angzarr. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf.
+
+---
+
+## Deployment Options
+
+Adapting Angzarr to your infrastructure requires a one-time DevOps effort:
+
+| Environment | Effort |
+|-------------|--------|
+| AWS/GCP managed services | Configuration only |
+| Existing Kubernetes cluster | Helm install to namespace |
+| Custom infrastructure | Integrate storage/messaging backends |
+
+Once deployed, business logic development requires zero infrastructure knowledge.
 
 ---
 
@@ -684,17 +796,12 @@ Business logic runs in whatever language suits the domain and team. Rust profici
 
 Angzarr optimizes for a specific architectural style. It is not universally applicable.
 
-**When Angzarr fits well:**
-- Domains with complex business rules benefiting from event sourcing's audit and temporal capabilities
-- Organizations with polyglot environments or teams with varied language expertise
-- Systems requiring independent scaling of command handling and query serving
-- Projects where infrastructure lock-in is a concern
-
-**When to consider alternatives:**
-- Simple CRUD applications without event sourcing requirements
-- Environments where gRPC is impractical (browser-only, constrained embedded systems)
-- Teams preferring library-style frameworks with direct code integration
-- Monolithic deployments where sidecar overhead is undesirable
+| Fits Well | Consider Alternatives |
+|-----------|----------------------|
+| Complex domains needing audit trails | Simple CRUD apps |
+| Teams using any gRPC-supported language | Browser-only (no gRPC) |
+| Independent command/query scaling | Library-style preference |
+| Infrastructure portability | Managed service preference |
 
 **Current limitations:**
 - Multi-tenancy patterns are possible but not first-class; tenant isolation is an application concern
@@ -705,45 +812,13 @@ Angzarr optimizes for a specific architectural style. It is not universally appl
 
 ## Comparison to Alternatives
 
-| Aspect | ⍼ Angzarr | AWS Lambda + Step Functions | Axon Framework | EventStoreDB |
-|--------|-----------|----------------------------|----------------|--------------|
-| **Event Store** | Pluggable (MongoDB, PostgreSQL) | DynamoDB (you build) | Axon Server | Native |
-| **Schema** | Protobuf-first, enforced | Application-defined | Java classes | JSON/binary |
-| **Multi-Language** | Native (gRPC boundary) | Any (containers) | Java primary | Client libraries |
-| **Saga Coordination** | Built-in | Step Functions | Built-in | You build |
-| **Deployment** | K8s sidecar | Managed | Self-hosted/Cloud | Self-hosted/Cloud |
-| **Vendor Lock-in** | None | AWS | Axon ecosystem | EventStore Ltd |
-| **Footprint** | ~8MB sidecar | N/A (managed) | JVM | Database |
+For detailed comparison against AWS Lambda + Step Functions, GCP Cloud Run, Axon Framework, and Kafka, see [COMPARISON.md](COMPARISON.md).
 
 ---
 
 ## Getting Started
 
-```bash
-# Clone the repository
-git clone https://github.com/angzarr/angzarr
-cd angzarr
-
-# Build the framework
-cargo build --release
-
-# Create local Kubernetes cluster
-just kind-create
-
-# Deploy Angzarr + example services
-just deploy
-
-# View logs
-just k8s-logs
-
-# Send a test command
-grpcurl -plaintext -d '{"cover":{"domain":"customer"}}' \
-  localhost:50051 angzarr.BusinessCoordinator/Handle
-```
-
-See `examples/` for business logic implementations in Go, Python, and Rust.
-
-Source: [https://github.com/angzarr/angzarr](https://github.com/angzarr/angzarr)
+See [Getting Started](getting-started.md) for prerequisites, installation, and your first domain.
 
 ---
 

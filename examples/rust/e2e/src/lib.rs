@@ -79,6 +79,12 @@ pub struct E2EWorld {
 
     /// Generic key-value context for multi-step scenarios (PM, saga).
     pub context: HashMap<String, String>,
+
+    /// Speculative client for dry-run of projectors, sagas, PMs (standalone only).
+    speculative: Option<angzarr::standalone::SpeculativeClient>,
+
+    /// Edition client for managing diverged timelines (standalone only).
+    edition: Option<angzarr::standalone::EditionClient>,
 }
 
 // cucumber::World derive requires Debug
@@ -120,12 +126,28 @@ impl E2EWorld {
             web_db: result.web_db,
             accounting_db: result.accounting_db,
             context: HashMap::new(),
+            speculative: result.speculative,
+            edition: result.edition,
         }
     }
 
     /// Get the backend (for advanced usage)
     pub fn backend(&self) -> &dyn Backend {
         self.backend.as_ref()
+    }
+
+    /// Get the speculative client (standalone mode only).
+    pub fn speculative(&self) -> &angzarr::standalone::SpeculativeClient {
+        self.speculative
+            .as_ref()
+            .expect("Speculative client requires standalone mode")
+    }
+
+    /// Get the edition client (standalone mode only).
+    pub fn edition(&self) -> &angzarr::standalone::EditionClient {
+        self.edition
+            .as_ref()
+            .expect("Edition client requires standalone mode")
     }
 
     /// Get or create a root UUID for a given alias
@@ -166,6 +188,40 @@ impl E2EWorld {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id,
+                edition: None,
+            }),
+            pages: vec![CommandPage {
+                sequence: 0,
+                command: Some(prost_types::Any {
+                    type_url: format!("type.examples/{}", type_url),
+                    value: command.encode_to_vec(),
+                }),
+            }],
+            saga_origin: None,
+        }
+    }
+
+    /// Build a command targeting an edition (diverged timeline).
+    pub fn build_edition_command<M: Message>(
+        &mut self,
+        domain: &str,
+        root_alias: &str,
+        correlation_alias: &str,
+        type_url: &str,
+        command: &M,
+        edition_name: &str,
+    ) -> CommandBook {
+        let root = self.root(root_alias);
+        let correlation_id = self.correlation(correlation_alias);
+
+        CommandBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id,
+                edition: Some(edition_name.to_string()),
             }),
             pages: vec![CommandPage {
                 sequence: 0,
@@ -195,6 +251,7 @@ impl E2EWorld {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: correlation_id.to_string(),
+                edition: None,
             }),
             pages: vec![CommandPage {
                 sequence,

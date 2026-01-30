@@ -10,7 +10,7 @@ async fn test_get_returns_empty_book_for_new_aggregate() {
     let repo = EventBookRepository::new(event_store, snapshot_store);
 
     let root = Uuid::new_v4();
-    let book = repo.get("orders", root).await.unwrap();
+    let book = repo.get("orders", "test", root).await.unwrap();
 
     assert!(book.pages.is_empty());
     assert!(book.snapshot.is_none());
@@ -30,9 +30,9 @@ async fn test_put_and_get_roundtrip() {
         vec![make_event_page(0), make_event_page(1)],
     );
 
-    repo.put(&book).await.unwrap();
+    repo.put("test", &book).await.unwrap();
 
-    let retrieved = repo.get("orders", root).await.unwrap();
+    let retrieved = repo.get("orders", "test", root).await.unwrap();
     assert_eq!(retrieved.pages.len(), 2);
 }
 
@@ -46,7 +46,7 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
 
     // Add events 0-4
     event_store
-        .add("orders", root, (0..5).map(make_event_page).collect(), "")
+        .add("orders", "test", root, (0..5).map(make_event_page).collect(), "")
         .await
         .unwrap();
 
@@ -54,6 +54,7 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
     snapshot_store
         .put(
             "orders",
+            "test",
             root,
             Snapshot {
                 sequence: 3,
@@ -63,7 +64,7 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
         .await
         .unwrap();
 
-    let book = repo.get("orders", root).await.unwrap();
+    let book = repo.get("orders", "test", root).await.unwrap();
 
     // Should only have events AFTER snapshot (snapshot contains seq 3, so load from 4)
     assert_eq!(book.pages.len(), 1); // Only event 4
@@ -82,6 +83,7 @@ async fn test_get_from_to_returns_range() {
     event_store
         .add(
             "orders",
+            "test",
             root,
             (0..10).map(make_event_page).collect(),
             "",
@@ -89,7 +91,7 @@ async fn test_get_from_to_returns_range() {
         .await
         .unwrap();
 
-    let book = repo.get_from_to("orders", root, 3, 7).await.unwrap();
+    let book = repo.get_from_to("orders", "test", root, 3, 7).await.unwrap();
 
     assert_eq!(book.pages.len(), 4); // Events 3, 4, 5, 6
     assert!(book.snapshot.is_none()); // Range query doesn't include snapshot
@@ -108,7 +110,7 @@ async fn test_put_missing_cover_returns_error() {
         snapshot_state: None,
     };
 
-    let result = repo.put(&book).await;
+    let result = repo.put("test", &book).await;
 
     assert!(result.is_err());
 }
@@ -124,13 +126,14 @@ async fn test_put_missing_root_returns_error() {
             domain: "orders".to_string(),
             root: None,
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,
         snapshot_state: None,
     };
 
-    let result = repo.put(&book).await;
+    let result = repo.put("test", &book).await;
 
     assert!(result.is_err());
 }
@@ -148,13 +151,14 @@ async fn test_put_invalid_uuid_returns_error() {
                 value: vec![1, 2, 3], // Invalid: not 16 bytes
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,
         snapshot_state: None,
     };
 
-    let result = repo.put(&book).await;
+    let result = repo.put("test", &book).await;
 
     assert!(result.is_err());
 }
@@ -166,7 +170,7 @@ async fn test_get_propagates_store_error() {
     let snapshot_store = Arc::new(MockSnapshotStore::new());
     let repo = EventBookRepository::new(event_store, snapshot_store);
 
-    let result = repo.get("orders", Uuid::new_v4()).await;
+    let result = repo.get("orders", "test", Uuid::new_v4()).await;
 
     assert!(result.is_err());
 }
@@ -181,7 +185,7 @@ async fn test_put_propagates_store_error() {
     let root = Uuid::new_v4();
     let book = make_event_book_with_root("orders", root, vec![]);
 
-    let result = repo.put(&book).await;
+    let result = repo.put("test", &book).await;
 
     assert!(result.is_err());
 }
@@ -197,7 +201,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
 
     // Add events 0-4
     event_store
-        .add("orders", root, (0..5).map(make_event_page).collect(), "")
+        .add("orders", "test", root, (0..5).map(make_event_page).collect(), "")
         .await
         .unwrap();
 
@@ -205,6 +209,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
     snapshot_store
         .put(
             "orders",
+            "test",
             root,
             Snapshot {
                 sequence: 3,
@@ -214,7 +219,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
         .await
         .unwrap();
 
-    let book = repo.get("orders", root).await.unwrap();
+    let book = repo.get("orders", "test", root).await.unwrap();
 
     // With snapshot reading disabled, should load ALL events from beginning
     assert_eq!(book.pages.len(), 5);
@@ -232,7 +237,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
 
     // Add events 0-4
     event_store
-        .add("orders", root, (0..5).map(make_event_page).collect(), "")
+        .add("orders", "test", root, (0..5).map(make_event_page).collect(), "")
         .await
         .unwrap();
 
@@ -240,6 +245,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
     snapshot_store
         .put(
             "orders",
+            "test",
             root,
             Snapshot {
                 sequence: 3,
@@ -249,7 +255,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
         .await
         .unwrap();
 
-    let book = repo.get("orders", root).await.unwrap();
+    let book = repo.get("orders", "test", root).await.unwrap();
 
     // With snapshot reading enabled, should load from snapshot sequence + 1
     assert_eq!(book.pages.len(), 1); // Only event 4 (snapshot contains through seq 3)
@@ -270,13 +276,14 @@ async fn test_with_config_defaults_match_new_constructor() {
     let root = Uuid::new_v4();
 
     event_store
-        .add("orders", root, (0..3).map(make_event_page).collect(), "")
+        .add("orders", "test", root, (0..3).map(make_event_page).collect(), "")
         .await
         .unwrap();
 
     snapshot_store
         .put(
             "orders",
+            "test",
             root,
             Snapshot {
                 sequence: 2,
@@ -286,8 +293,8 @@ async fn test_with_config_defaults_match_new_constructor() {
         .await
         .unwrap();
 
-    let book_new = repo_new.get("orders", root).await.unwrap();
-    let book_config = repo_config.get("orders", root).await.unwrap();
+    let book_new = repo_new.get("orders", "test", root).await.unwrap();
+    let book_config = repo_config.get("orders", "test", root).await.unwrap();
 
     assert_eq!(book_new.pages.len(), book_config.pages.len());
     assert_eq!(book_new.snapshot.is_some(), book_config.snapshot.is_some());
@@ -341,7 +348,7 @@ mod mock_integration {
         let domain = "test_domain";
         let root = Uuid::new_v4();
 
-        let book = repo.get(domain, root).await.unwrap();
+        let book = repo.get(domain, "test", root).await.unwrap();
 
         assert!(book.cover.is_some());
         assert_eq!(book.cover.as_ref().unwrap().domain, domain);
@@ -358,9 +365,9 @@ mod mock_integration {
         let events = vec![test_event(0, "Created"), test_event(1, "Updated")];
 
         let book = make_event_book_with_root(domain, root, events);
-        repo.put(&book).await.unwrap();
+        repo.put("test", &book).await.unwrap();
 
-        let retrieved = repo.get(domain, root).await.unwrap();
+        let retrieved = repo.get(domain, "test", root).await.unwrap();
         assert_eq!(retrieved.pages.len(), 2);
         assert_eq!(
             retrieved.pages[0].sequence,
@@ -383,6 +390,7 @@ mod mock_integration {
         event_store
             .add(
                 domain,
+                "test",
                 root,
                 vec![
                     test_event(0, "Event0"),
@@ -398,11 +406,11 @@ mod mock_integration {
 
         use crate::storage::SnapshotStore;
         snapshot_store
-            .put(domain, root, test_snapshot(3))
+            .put(domain, "test", root, test_snapshot(3))
             .await
             .unwrap();
 
-        let book = repo.get(domain, root).await.unwrap();
+        let book = repo.get(domain, "test", root).await.unwrap();
 
         assert!(book.snapshot.is_some());
         assert_eq!(book.snapshot.as_ref().unwrap().sequence, 3);
@@ -422,6 +430,7 @@ mod mock_integration {
         event_store
             .add(
                 domain,
+                "test",
                 root,
                 vec![
                     test_event(0, "Event0"),
@@ -435,7 +444,7 @@ mod mock_integration {
             .await
             .unwrap();
 
-        let book = repo.get_from_to(domain, root, 1, 4).await.unwrap();
+        let book = repo.get_from_to(domain, "test", root, 1, 4).await.unwrap();
 
         assert!(book.snapshot.is_none());
         assert_eq!(book.pages.len(), 3);
@@ -451,12 +460,12 @@ mod mock_integration {
         let root = Uuid::new_v4();
 
         let book1 = make_event_book_with_root(domain, root, vec![test_event(0, "Created")]);
-        repo.put(&book1).await.unwrap();
+        repo.put("test", &book1).await.unwrap();
 
         let book2 = make_event_book_with_root(domain, root, vec![test_event(1, "Updated")]);
-        repo.put(&book2).await.unwrap();
+        repo.put("test", &book2).await.unwrap();
 
-        let retrieved = repo.get(domain, root).await.unwrap();
+        let retrieved = repo.get(domain, "test", root).await.unwrap();
         assert_eq!(retrieved.pages.len(), 2);
     }
 
@@ -477,6 +486,7 @@ mod mock_integration {
         event_store
             .add(
                 domain,
+                "test",
                 root,
                 vec![
                     test_event(0, "Event0"),
@@ -492,11 +502,11 @@ mod mock_integration {
 
         use crate::storage::SnapshotStore;
         snapshot_store
-            .put(domain, root, test_snapshot(3))
+            .put(domain, "test", root, test_snapshot(3))
             .await
             .unwrap();
 
-        let book = repo.get(domain, root).await.unwrap();
+        let book = repo.get(domain, "test", root).await.unwrap();
 
         assert!(book.snapshot.is_none());
         assert_eq!(book.pages.len(), 5);
@@ -516,6 +526,7 @@ mod mock_integration {
         event_store
             .add(
                 domain,
+                "test",
                 root,
                 vec![
                     test_event(0, "Event0"),
@@ -532,13 +543,13 @@ mod mock_integration {
         // Snapshot at sequence 3 — should be ignored for temporal queries
         use crate::storage::SnapshotStore;
         snapshot_store
-            .put(domain, root, test_snapshot(3))
+            .put(domain, "test", root, test_snapshot(3))
             .await
             .unwrap();
 
         // Query as-of 2 seconds after epoch (should return events 0, 1, 2)
         let book = repo
-            .get_temporal_by_time(domain, root, "2024-01-01T00:00:02+00:00")
+            .get_temporal_by_time(domain, "test", root, "2024-01-01T00:00:02+00:00")
             .await
             .unwrap();
 
@@ -557,6 +568,7 @@ mod mock_integration {
         event_store
             .add(
                 domain,
+                "test",
                 root,
                 vec![
                     test_event(0, "Event0"),
@@ -573,13 +585,13 @@ mod mock_integration {
         // Snapshot at sequence 3 — should be ignored
         use crate::storage::SnapshotStore;
         snapshot_store
-            .put(domain, root, test_snapshot(3))
+            .put(domain, "test", root, test_snapshot(3))
             .await
             .unwrap();
 
         // Query as-of sequence 2 — should return events 0, 1, 2
         let book = repo
-            .get_temporal_by_sequence(domain, root, 2)
+            .get_temporal_by_sequence(domain, "test", root, 2)
             .await
             .unwrap();
 
@@ -600,6 +612,7 @@ mod mock_integration {
         event_store
             .add(
                 domain,
+                "test",
                 root,
                 vec![test_event(0, "Event0"), test_event(1, "Event1")],
                 "",
@@ -609,7 +622,7 @@ mod mock_integration {
 
         // Query as-of sequence 0 — should return only event 0
         let book = repo
-            .get_temporal_by_sequence(domain, root, 0)
+            .get_temporal_by_sequence(domain, "test", root, 0)
             .await
             .unwrap();
 

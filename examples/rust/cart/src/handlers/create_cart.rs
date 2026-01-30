@@ -1,12 +1,11 @@
 //! Create cart command handler.
 
-use prost::Message;
-
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CartCreated, CartState, CreateCart};
-use common::{decode_command, make_event_book, now, require_not_exists, Result};
+use common::{decode_command, now, require_not_exists, Result};
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the CreateCart command.
 ///
@@ -26,21 +25,11 @@ pub fn handle_create_cart(
         created_at: Some(now()),
     };
 
-    let new_state = CartState {
-        customer_id: cmd.customer_id,
-        items: vec![],
-        subtotal_cents: 0,
-        coupon_code: String::new(),
-        discount_cents: 0,
-        status: "active".to_string(),
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.CartCreated",
-        event.encode_to_vec(),
-        "type.examples/examples.CartState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 use angzarr::proto::{CommandBook, CommandResponse, EventPage};
 use angzarr::standalone::DomainStorage;
 
@@ -36,7 +37,10 @@ pub trait Backend: Send + Sync {
         as_of_timestamp: Option<&str>,
     ) -> BackendResult<Vec<EventPage>>;
 
-    /// Dry-run a command against temporal state (no persistence).
+    /// Speculatively execute a command against temporal state.
+    ///
+    /// Returns the events that *would* be produced without persisting,
+    /// publishing, or triggering any side effects (sagas, projectors, PMs).
     async fn dry_run(
         &self,
         command: CommandBook,
@@ -60,6 +64,8 @@ pub struct BackendWithProjectors {
     pub backend: Arc<dyn Backend>,
     pub web_db: Option<sqlx::SqlitePool>,
     pub accounting_db: Option<sqlx::SqlitePool>,
+    pub speculative: Option<angzarr::standalone::SpeculativeClient>,
+    pub edition: Option<angzarr::standalone::EditionClient>,
 }
 
 /// Create the appropriate backend based on `ANGZARR_TEST_MODE` env var.
@@ -70,6 +76,8 @@ pub async fn create_backend() -> BackendWithProjectors {
             backend: Arc::new(create_gateway_backend().await),
             web_db: None,
             accounting_db: None,
+            speculative: None,
+            edition: None,
         },
         _ => create_standalone_with_projectors().await,
     }
@@ -101,6 +109,7 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
     use inventory_svc::InventoryLogic;
     use order::OrderLogic;
     use process_manager_fulfillment::OrderFulfillmentProcess;
+    use process_manager_order_status::OrderStatusProcess;
     use product::ProductLogic;
     use saga_cancellation::CancellationSaga;
     use saga_fulfillment::FulfillmentSaga;
@@ -153,11 +162,16 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
             SagaLogicAdapter::new(LoyaltyEarnSaga::new()),
             SagaConfig::new("order", "customer").with_output("inventory"),
         )
-        // 1 process manager
+        // 2 process managers
         .register_process_manager(
             "order-fulfillment",
             OrderFulfillmentProcess::new(),
             ProcessManagerConfig::new("order-fulfillment"),
+        )
+        .register_process_manager(
+            "order-status",
+            OrderStatusProcess::new(),
+            ProcessManagerConfig::new("order-status"),
         )
         // 2 projectors
         .register_projector(
@@ -175,6 +189,8 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
         .expect("Failed to build standalone runtime");
 
     let client = runtime.command_client();
+    let speculative = runtime.speculative_client();
+    let edition = runtime.edition_client();
     let domain_stores = runtime.domain_stores().clone();
     runtime.start().await.expect("Failed to start runtime");
 
@@ -186,6 +202,8 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
         }),
         web_db: Some(web_pool),
         accounting_db: Some(accounting_pool),
+        speculative: Some(speculative),
+        edition: Some(edition),
     }
 }
 
@@ -200,7 +218,7 @@ impl Backend for StandaloneBackend {
             .domain_stores
             .get(domain)
             .ok_or_else(|| format!("No storage for domain: {}", domain))?;
-        let pages = storage.event_store.get(domain, root).await?;
+        let pages = storage.event_store.get(domain, DEFAULT_EDITION, root).await?;
         Ok(pages)
     }
 
@@ -215,17 +233,16 @@ impl Backend for StandaloneBackend {
             .domain_stores
             .get(domain)
             .ok_or_else(|| format!("No storage for domain: {}", domain))?;
-
         if let Some(seq) = as_of_sequence {
             let pages = storage
                 .event_store
-                .get_from_to(domain, root, 0, seq + 1)
+                .get_from_to(domain, DEFAULT_EDITION, root, 0, seq + 1)
                 .await?;
             Ok(pages)
         } else if let Some(ts) = as_of_timestamp {
             let pages = storage
                 .event_store
-                .get_until_timestamp(domain, root, ts)
+                .get_until_timestamp(domain, DEFAULT_EDITION, root, ts)
                 .await?;
             Ok(pages)
         } else {

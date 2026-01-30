@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::CommandBook;
+use crate::proto_ext::correlated_request;
 use crate::utils::retry::is_retryable_status;
 use crate::utils::sequence_validator::extract_event_book_from_status;
 
@@ -49,13 +50,21 @@ impl GrpcCommandExecutor {
             .as_ref()
             .map(|c| c.domain.as_str())
             .unwrap_or("unknown");
+        let correlation_id = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
 
         let client = self.clients.get(domain).ok_or_else(|| {
             tonic::Status::not_found(format!("No aggregate registered for domain: {}", domain))
         })?;
 
         let mut client = client.lock().await;
-        client.handle(command_book).await.map(|r| r.into_inner())
+        client
+            .handle(correlated_request(command_book, &correlation_id))
+            .await
+            .map(|r| r.into_inner())
     }
 }
 
@@ -94,8 +103,16 @@ impl SingleClientExecutor {
 #[async_trait]
 impl CommandExecutor for SingleClientExecutor {
     async fn execute(&self, command: CommandBook) -> CommandOutcome {
+        let correlation_id = command
+            .cover
+            .as_ref()
+            .map(|c| c.correlation_id.clone())
+            .unwrap_or_default();
         let mut client = self.client.lock().await;
-        match client.handle(command).await {
+        match client
+            .handle(correlated_request(command, &correlation_id))
+            .await
+        {
             Ok(response) => CommandOutcome::Success(response.into_inner()),
             Err(e) if is_retryable_status(&e) => {
                 let current_state = extract_event_book_from_status(&e);

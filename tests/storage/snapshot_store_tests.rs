@@ -39,7 +39,7 @@ pub async fn test_get_nonexistent<S: SnapshotStore>(store: &S) {
     let domain = "test_snap_nonexist";
     let root = Uuid::new_v4();
 
-    let snapshot = store.get(domain, root).await.expect("get should succeed");
+    let snapshot = store.get(domain, "test", root).await.expect("get should succeed");
     assert!(snapshot.is_none(), "nonexistent snapshot should be None");
 }
 
@@ -48,12 +48,12 @@ pub async fn test_get_existing<S: SnapshotStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .put(domain, root, make_snapshot(10))
+        .put(domain, "test", root, make_snapshot(10))
         .await
         .expect("put should succeed");
 
     let snapshot = store
-        .get(domain, root)
+        .get(domain, "test", root)
         .await
         .expect("get should succeed")
         .expect("snapshot should exist");
@@ -67,12 +67,12 @@ pub async fn test_get_preserves_data<S: SnapshotStore>(store: &S) {
     let data = vec![1, 2, 3, 4, 5, 100, 200, 255];
 
     store
-        .put(domain, root, make_snapshot_with_data(5, data.clone()))
+        .put(domain, "test", root, make_snapshot_with_data(5, data.clone()))
         .await
         .expect("put should succeed");
 
     let snapshot = store
-        .get(domain, root)
+        .get(domain, "test", root)
         .await
         .expect("get should succeed")
         .expect("snapshot should exist");
@@ -92,12 +92,12 @@ pub async fn test_put_new<S: SnapshotStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .put(domain, root, make_snapshot(5))
+        .put(domain, "test", root, make_snapshot(5))
         .await
         .expect("put should succeed");
 
     let snapshot = store
-        .get(domain, root)
+        .get(domain, "test", root)
         .await
         .expect("get should succeed")
         .expect("snapshot should exist");
@@ -111,18 +111,18 @@ pub async fn test_put_update<S: SnapshotStore>(store: &S) {
 
     // Initial snapshot
     store
-        .put(domain, root, make_snapshot(5))
+        .put(domain, "test", root, make_snapshot(5))
         .await
         .expect("first put should succeed");
 
     // Update snapshot
     store
-        .put(domain, root, make_snapshot(15))
+        .put(domain, "test", root, make_snapshot(15))
         .await
         .expect("second put should succeed");
 
     let snapshot = store
-        .get(domain, root)
+        .get(domain, "test", root)
         .await
         .expect("get should succeed")
         .expect("snapshot should exist");
@@ -136,12 +136,12 @@ pub async fn test_put_multiple_updates<S: SnapshotStore>(store: &S) {
 
     for seq in [1, 5, 10, 20, 50] {
         store
-            .put(domain, root, make_snapshot(seq))
+            .put(domain, "test", root, make_snapshot(seq))
             .await
             .expect("put should succeed");
 
         let snapshot = store
-            .get(domain, root)
+            .get(domain, "test", root)
             .await
             .expect("get should succeed")
             .expect("snapshot should exist");
@@ -159,20 +159,20 @@ pub async fn test_delete_existing<S: SnapshotStore>(store: &S) {
     let root = Uuid::new_v4();
 
     store
-        .put(domain, root, make_snapshot(10))
+        .put(domain, "test", root, make_snapshot(10))
         .await
         .expect("put should succeed");
 
     // Verify it exists
-    assert!(store.get(domain, root).await.unwrap().is_some());
+    assert!(store.get(domain, "test", root).await.unwrap().is_some());
 
     store
-        .delete(domain, root)
+        .delete(domain, "test", root)
         .await
         .expect("delete should succeed");
 
     // Verify it's gone
-    let snapshot = store.get(domain, root).await.expect("get should succeed");
+    let snapshot = store.get(domain, "test", root).await.expect("get should succeed");
     assert!(snapshot.is_none(), "deleted snapshot should be None");
 }
 
@@ -182,7 +182,7 @@ pub async fn test_delete_nonexistent<S: SnapshotStore>(store: &S) {
 
     // Delete non-existent should succeed (idempotent)
     store
-        .delete(domain, root)
+        .delete(domain, "test", root)
         .await
         .expect("delete nonexistent should succeed");
 }
@@ -191,12 +191,12 @@ pub async fn test_delete_then_recreate<S: SnapshotStore>(store: &S) {
     let domain = "test_snap_recreate";
     let root = Uuid::new_v4();
 
-    store.put(domain, root, make_snapshot(5)).await.unwrap();
-    store.delete(domain, root).await.unwrap();
-    store.put(domain, root, make_snapshot(20)).await.unwrap();
+    store.put(domain, "test", root, make_snapshot(5)).await.unwrap();
+    store.delete(domain, "test", root).await.unwrap();
+    store.put(domain, "test", root, make_snapshot(20)).await.unwrap();
 
     let snapshot = store
-        .get(domain, root)
+        .get(domain, "test", root)
         .await
         .expect("get should succeed")
         .expect("recreated snapshot should exist");
@@ -213,20 +213,20 @@ pub async fn test_aggregate_isolation<S: SnapshotStore>(store: &S) {
     let root1 = Uuid::new_v4();
     let root2 = Uuid::new_v4();
 
-    store.put(domain, root1, make_snapshot(10)).await.unwrap();
-    store.put(domain, root2, make_snapshot(20)).await.unwrap();
+    store.put(domain, "test", root1, make_snapshot(10)).await.unwrap();
+    store.put(domain, "test", root2, make_snapshot(20)).await.unwrap();
 
-    let snap1 = store.get(domain, root1).await.unwrap().unwrap();
-    let snap2 = store.get(domain, root2).await.unwrap().unwrap();
+    let snap1 = store.get(domain, "test", root1).await.unwrap().unwrap();
+    let snap2 = store.get(domain, "test", root2).await.unwrap().unwrap();
 
     assert_eq!(snap1.sequence, 10);
     assert_eq!(snap2.sequence, 20);
 
     // Delete one doesn't affect the other
-    store.delete(domain, root1).await.unwrap();
+    store.delete(domain, "test", root1).await.unwrap();
 
-    assert!(store.get(domain, root1).await.unwrap().is_none());
-    assert!(store.get(domain, root2).await.unwrap().is_some());
+    assert!(store.get(domain, "test", root1).await.unwrap().is_none());
+    assert!(store.get(domain, "test", root2).await.unwrap().is_some());
 }
 
 pub async fn test_domain_isolation<S: SnapshotStore>(store: &S) {
@@ -234,11 +234,11 @@ pub async fn test_domain_isolation<S: SnapshotStore>(store: &S) {
     let domain2 = "test_snap_d2";
     let root = Uuid::new_v4();
 
-    store.put(domain1, root, make_snapshot(10)).await.unwrap();
-    store.put(domain2, root, make_snapshot(20)).await.unwrap();
+    store.put(domain1, "test", root, make_snapshot(10)).await.unwrap();
+    store.put(domain2, "test", root, make_snapshot(20)).await.unwrap();
 
-    let snap1 = store.get(domain1, root).await.unwrap().unwrap();
-    let snap2 = store.get(domain2, root).await.unwrap().unwrap();
+    let snap1 = store.get(domain1, "test", root).await.unwrap().unwrap();
+    let snap2 = store.get(domain2, "test", root).await.unwrap().unwrap();
 
     assert_eq!(snap1.sequence, 10);
     assert_eq!(snap2.sequence, 20);

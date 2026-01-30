@@ -46,6 +46,14 @@ impl EventBus for MockEventBus {
     async fn subscribe(&self, _handler: Box<dyn EventHandler>) -> Result<()> {
         Err(BusError::SubscribeNotSupported)
     }
+
+    async fn create_subscriber(
+        &self,
+        _name: &str,
+        _domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        Err(BusError::SubscribeNotSupported)
+    }
 }
 
 #[cfg(test)]
@@ -64,6 +72,7 @@ mod tests {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             pages: (0..event_count)
                 .map(|i| EventPage {

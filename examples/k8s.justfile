@@ -22,8 +22,8 @@ default:
 # Ensure Kind cluster and infrastructure are ready
 [private]
 ensure-cluster:
-    cd {{TOP}} && just kind-create-registry
-    cd {{TOP}} && just infra-local
+    cd {{TOP}} && just cluster-create
+    cd {{TOP}} && just infra
 
 # ============================================================================
 # Deployment Targets
@@ -60,7 +60,7 @@ test LANG: (deploy LANG)
 
     # Wait for gateway to be ready
     echo "Waiting for gateway to be ready..."
-    uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:1350 || {
+    uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:9084 || {
         echo "Gateway not ready, checking pods..."
         kubectl get pods -n angzarr
         exit 1
@@ -71,15 +71,15 @@ test LANG: (deploy LANG)
     case "{{LANG}}" in
         rust)
             cd "{{TOP}}/examples/rust"
-            ANGZARR_PORT=1350 cargo test --workspace --test acceptance || TEST_RESULT=$?
+            ANGZARR_PORT=9084 cargo test --workspace --test acceptance || TEST_RESULT=$?
             ;;
         python)
             cd "{{TOP}}/examples/python/tests"
-            ANGZARR_PORT=1350 ANGZARR_TEST_MODE=container uv run pytest -v || TEST_RESULT=$?
+            ANGZARR_PORT=9084 ANGZARR_TEST_MODE=container uv run pytest -v || TEST_RESULT=$?
             ;;
         go)
             cd "{{TOP}}/examples/go"
-            ANGZARR_PORT=1350 go test -v ./... || TEST_RESULT=$?
+            ANGZARR_PORT=9084 go test -v ./... || TEST_RESULT=$?
             ;;
     esac
 
@@ -92,13 +92,13 @@ integration LANG: (deploy LANG)
     cd "{{TOP}}"
 
     echo "Waiting for gateway to be ready..."
-    uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:1350 || {
+    uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 localhost:9084 || {
         echo "Gateway not ready"
         exit 1
     }
 
     echo "Running integration tests for {{LANG}}..."
-    ANGZARR_PORT=1350 TEST_LANGUAGE={{LANG}} cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
+    ANGZARR_PORT=9084 TEST_LANGUAGE={{LANG}} cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
 
 # ============================================================================
 # Multi-Language Operations
@@ -132,4 +132,4 @@ logs COMPONENT:
 
 # Port forward gateway (if not using NodePort)
 port-forward:
-    kubectl port-forward -n angzarr svc/angzarr-gateway 1350:1350
+    kubectl port-forward -n angzarr svc/angzarr-gateway 9084:9084

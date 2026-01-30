@@ -25,6 +25,13 @@ variable "secrets_namespace" {
   default     = "angzarr-secrets"
 }
 
+# Observability (Grafana + OTel stack)
+variable "enable_observability" {
+  description = "Enable observability stack (Grafana, Tempo, Prometheus, Loki, OTel Collector)"
+  type        = bool
+  default     = true
+}
+
 # Service mesh (optional for local)
 variable "enable_mesh" {
   description = "Enable service mesh (requires mTLS certificates)"

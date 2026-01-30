@@ -17,10 +17,11 @@ use lapin::{
 };
 use prost::Message;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, Instrument};
 
 use super::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 
 /// Exchange name for angzarr events.
 const EVENTS_EXCHANGE: &str = "angzarr.events";
@@ -156,8 +157,8 @@ impl AmqpEventBus {
         format!("{}.{}", domain, root_id)
     }
 
-    /// Start consuming messages (call after subscribe).
-    pub async fn start_consuming(&self) -> Result<()> {
+    /// Declare queue, bind to exchange, and start consuming messages.
+    async fn consume(&self) -> Result<()> {
         let queue = self
             .config
             .queue
@@ -231,16 +232,29 @@ impl AmqpEventBus {
                                     "Received event book"
                                 );
 
+                                // Create consume span (with trace parent when otel is enabled)
+                                let consume_span = tracing::info_span!("bus.consume",
+                                    routing_key = %delivery.routing_key);
+
+                                #[cfg(feature = "otel")]
+                                amqp_extract_trace_context(&delivery.properties, &consume_span);
+
                                 // Wrap in Arc for sharing across handlers
                                 let book = Arc::new(book);
 
-                                // Call all handlers
-                                let handlers_guard = handlers.read().await;
-                                for handler in handlers_guard.iter() {
-                                    if let Err(e) = handler.handle(Arc::clone(&book)).await {
-                                        error!(error = %e, "Handler failed");
+                                // Call all handlers within the consume span
+                                let handlers_ref = &handlers;
+                                let book_ref = &book;
+                                async {
+                                    let handlers_guard = handlers_ref.read().await;
+                                    for handler in handlers_guard.iter() {
+                                        if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
+                                            error!(error = %e, "Handler failed");
+                                        }
                                     }
                                 }
+                                .instrument(consume_span)
+                                .await;
 
                                 // Acknowledge message
                                 if let Err(e) = delivery.ack(Default::default()).await {
@@ -267,6 +281,7 @@ impl AmqpEventBus {
 
 #[async_trait]
 impl EventBus for AmqpEventBus {
+    #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let channel = self.get_channel().await?;
         let routing_key = Self::routing_key(&book);
@@ -274,15 +289,27 @@ impl EventBus for AmqpEventBus {
         // Serialize event book to protobuf
         let payload = book.encode_to_vec();
 
+        let properties = BasicProperties::default()
+            .with_content_type("application/protobuf".into())
+            .with_delivery_mode(2); // persistent
+
+        #[cfg(feature = "otel")]
+        let properties = {
+            let headers = amqp_inject_trace_context();
+            if headers.inner().is_empty() {
+                properties
+            } else {
+                properties.with_headers(headers)
+            }
+        };
+
         channel
             .basic_publish(
                 &self.config.exchange,
                 &routing_key,
                 BasicPublishOptions::default(),
                 &payload,
-                BasicProperties::default()
-                    .with_content_type("application/protobuf".into())
-                    .with_delivery_mode(2), // persistent
+                properties,
             )
             .await
             .map_err(|e| BusError::Publish(format!("Failed to publish: {}", e)))?
@@ -311,6 +338,75 @@ impl EventBus for AmqpEventBus {
 
         Ok(())
     }
+
+    async fn start_consuming(&self) -> Result<()> {
+        self.consume().await
+    }
+
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> Result<Arc<dyn EventBus>> {
+        let config = match domain_filter {
+            Some(d) => AmqpConfig::subscriber(&self.config.url, name, d),
+            None => AmqpConfig::subscriber_all(&self.config.url, name),
+        };
+        let bus = AmqpEventBus::new(config).await?;
+        Ok(Arc::new(bus))
+    }
+}
+
+// ============================================================================
+// OTel Trace Context Propagation
+// ============================================================================
+
+/// Inject W3C trace context from the current span into AMQP message headers.
+#[cfg(feature = "otel")]
+fn amqp_inject_trace_context() -> FieldTable {
+    use lapin::types::AMQPValue;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    let cx = tracing::Span::current().context();
+    let mut headers = std::collections::BTreeMap::new();
+
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        struct MapInjector<'a>(&'a mut std::collections::BTreeMap<lapin::types::ShortString, AMQPValue>);
+        impl opentelemetry::propagation::Injector for MapInjector<'_> {
+            fn set(&mut self, key: &str, value: String) {
+                self.0.insert(key.into(), AMQPValue::LongString(value.into()));
+            }
+        }
+        propagator.inject_context(&cx, &mut MapInjector(&mut headers));
+    });
+
+    FieldTable::from(headers)
+}
+
+/// Extract W3C trace context from AMQP message properties and set as parent on span.
+#[cfg(feature = "otel")]
+fn amqp_extract_trace_context(properties: &BasicProperties, span: &tracing::Span) {
+    use lapin::types::AMQPValue;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    if let Some(headers) = properties.headers() {
+        let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
+            struct FieldTableExtractor<'a>(&'a FieldTable);
+            impl opentelemetry::propagation::Extractor for FieldTableExtractor<'_> {
+                fn get(&self, key: &str) -> Option<&str> {
+                    self.0.inner().get(key).and_then(|v| match v {
+                        AMQPValue::LongString(s) => std::str::from_utf8(s.as_bytes()).ok(),
+                        _ => None,
+                    })
+                }
+                fn keys(&self) -> Vec<&str> {
+                    self.0.inner().keys().map(|k| k.as_str()).collect()
+                }
+            }
+            propagator.extract(&FieldTableExtractor(headers))
+        });
+        span.set_parent(parent_cx);
+    }
 }
 
 #[cfg(test)]
@@ -327,6 +423,7 @@ mod tests {
                     value: b"test-123".to_vec(),
                 }),
                 correlation_id: String::new(),
+                edition: None,
             }),
             pages: vec![],
             snapshot: None,

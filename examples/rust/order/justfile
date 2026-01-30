@@ -1,43 +1,5 @@
-# Order Business Logic - Rust gRPC Server
+PKG := "order"
+BIN_PKG := PKG
+BIN := PKG + "-server"
 
-set shell := ["bash", "-c"]
-
-TOP := `git rev-parse --show-toplevel`
-
-default:
-    @just --list
-
-build:
-    cargo build -p order --bin order-server
-
-build-release:
-    cargo build -p order --bin order-server --release
-
-run: build
-    cargo run -p order --bin order-server
-
-run-port port:
-    PORT={{port}} cargo run -p order --bin order-server
-
-copy-features:
-    rm -rf tests/features
-    cp -r {{TOP}}/examples/features tests/
-
-unit:
-    cargo test -p order --lib
-
-acceptance: copy-features
-    cargo test -p order --test acceptance
-
-test: unit acceptance
-
-test-unit: unit
-
-clean:
-    cargo clean -p order
-
-check:
-    cargo check -p order
-
-lint:
-    cargo clippy -p order -- -D warnings
+import "../service.justfile"

@@ -1,43 +1,5 @@
-# Inventory Business Logic - Rust gRPC Server
+PKG := "inventory-svc"
+BIN_PKG := "inventory-svc-svc"
+BIN := "inventory-server"
 
-set shell := ["bash", "-c"]
-
-TOP := `git rev-parse --show-toplevel`
-
-default:
-    @just --list
-
-build:
-    cargo build -p inventory-svc-svc --bin inventory-server
-
-build-release:
-    cargo build -p inventory-svc-svc --bin inventory-server --release
-
-run: build
-    cargo run -p inventory-svc-svc --bin inventory-server
-
-run-port port:
-    PORT={{port}} cargo run -p inventory-svc-svc --bin inventory-server
-
-copy-features:
-    rm -rf tests/features
-    cp -r {{TOP}}/examples/features tests/
-
-unit:
-    cargo test -p inventory-svc --lib
-
-acceptance: copy-features
-    cargo test -p inventory-svc --test acceptance
-
-test: unit acceptance
-
-test-unit: unit
-
-clean:
-    cargo clean -p inventory-svc
-
-check:
-    cargo check -p inventory-svc
-
-lint:
-    cargo clippy -p inventory-svc -- -D warnings
+import "../service.justfile"

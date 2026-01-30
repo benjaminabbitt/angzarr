@@ -107,6 +107,6 @@ The mesh/ingress routes to the coordinator port (offset 0). Internal sidecar-to-
 
 ## See Also
 
-- [Command Handlers](command-handlers.md) - Aggregate sidecar architecture
-- [Projectors](projectors.md) - Projector sidecar architecture
-- [Sagas](sagas.md) - Saga sidecar architecture
+- [Command Handlers](components/aggregate/aggregate.md) - Aggregate sidecar architecture
+- [Projectors](components/projector/projectors.md) - Projector sidecar architecture
+- [Sagas](components/saga/sagas.md) - Saga sidecar architecture

@@ -39,8 +39,12 @@ pub fn validate_sequence(expected_sequence: u32, actual_sequence: u32) -> Sequen
 }
 
 /// Creates a Status error for a sequence mismatch.
+///
+/// Uses `Aborted` because sequence mismatches are retryable optimistic
+/// concurrency errors — the caller should re-fetch state and retry.
+/// `FailedPrecondition` is reserved for non-retryable business logic errors.
 pub fn sequence_mismatch_error(expected: u32, actual: u32) -> Status {
-    Status::failed_precondition(format!(
+    Status::aborted(format!(
         "Sequence mismatch: command expects {}, aggregate at {}",
         expected, actual
     ))
@@ -63,7 +67,7 @@ pub fn sequence_mismatch_error_with_state(
     // Serialize EventBook to binary for status details
     let details = current_state.encode_to_vec();
 
-    Status::with_details(tonic::Code::FailedPrecondition, message, details.into())
+    Status::with_details(tonic::Code::Aborted, message, details.into())
 }
 
 /// Extract EventBook from status details if present.
@@ -141,7 +145,7 @@ mod tests {
     #[test]
     fn test_sequence_mismatch_error_format() {
         let status = sequence_mismatch_error(0, 5);
-        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+        assert_eq!(status.code(), tonic::Code::Aborted);
         assert!(status.message().contains("Sequence mismatch"));
         assert!(status.message().contains("0"));
         assert!(status.message().contains("5"));

@@ -13,6 +13,7 @@ use crate::proto::{CommandBook, Cover, EventBook};
 ///
 /// Iterates covers and fetches state via the destination fetcher.
 /// Skips (with warning) any covers that fail to resolve.
+#[tracing::instrument(name = "orchestration.fetch", skip_all, fields(%correlation_id, count = covers.len()))]
 pub async fn fetch_destinations(
     fetcher: &dyn DestinationFetcher,
     covers: &[Cover],
@@ -24,7 +25,6 @@ pub async fn fetch_destinations(
             destinations.push(event_book);
         } else {
             warn!(
-                correlation_id = %correlation_id,
                 domain = %cover.domain,
                 "Failed to fetch destination, skipping"
             );
@@ -50,6 +50,7 @@ pub fn fill_correlation_id(commands: &mut [CommandBook], correlation_id: &str) {
 ///
 /// Used by process managers for simple fire-and-forget command execution.
 /// Saga uses its own retry-aware execution loop instead.
+#[tracing::instrument(name = "orchestration.execute", skip_all, fields(%correlation_id, count = commands.len()))]
 pub async fn execute_commands(
     executor: &dyn CommandExecutor,
     mut commands: Vec<CommandBook>,
@@ -65,7 +66,6 @@ pub async fn execute_commands(
             .unwrap_or_else(|| "unknown".to_string());
 
         debug!(
-            correlation_id = %correlation_id,
             domain = %cmd_domain,
             "Executing command"
         );
@@ -73,7 +73,6 @@ pub async fn execute_commands(
         match executor.execute(command_book).await {
             CommandOutcome::Success(cmd_response) => {
                 debug!(
-                    correlation_id = %correlation_id,
                     domain = %cmd_domain,
                     has_events = cmd_response.events.is_some(),
                     "Command executed successfully"
@@ -81,7 +80,6 @@ pub async fn execute_commands(
             }
             CommandOutcome::Retryable { reason, .. } => {
                 warn!(
-                    correlation_id = %correlation_id,
                     domain = %cmd_domain,
                     error = %reason,
                     "Command sequence conflict"
@@ -89,7 +87,6 @@ pub async fn execute_commands(
             }
             CommandOutcome::Rejected(reason) => {
                 error!(
-                    correlation_id = %correlation_id,
                     domain = %cmd_domain,
                     error = %reason,
                     "Command failed (non-retryable)"

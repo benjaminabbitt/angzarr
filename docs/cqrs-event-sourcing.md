@@ -417,6 +417,6 @@ CustomerState {
 ## Next Steps
 
 - [Patterns](patterns.md) — Outbox, upcasting, process manager, temporal query
-- [Command Handlers](command-handlers.md) — Implementing aggregates
-- [Projectors](projectors.md) — Building read models
-- [Sagas](sagas.md) — Cross-aggregate workflows
+- [Command Handlers](components/aggregate/aggregate.md) — Implementing aggregates
+- [Projectors](components/projector/projectors.md) — Building read models
+- [Sagas](components/saga/sagas.md) — Cross-aggregate workflows

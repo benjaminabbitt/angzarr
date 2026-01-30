@@ -21,10 +21,11 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tonic::transport::Channel;
-use tonic::{Request, Status};
+use tonic::Status;
 use tracing::{debug, info};
 
 use crate::proto::{upcaster_client::UpcasterClient, EventPage, UpcastRequest};
+use crate::proto_ext::correlated_request;
 
 // ============================================================================
 // Configuration
@@ -150,10 +151,13 @@ impl Upcaster {
 
         debug!(domain = %domain, event_count = events.len(), "Upcasting events");
 
-        let request = Request::new(UpcastRequest {
-            domain: domain.to_string(),
-            events,
-        });
+        let request = correlated_request(
+            UpcastRequest {
+                domain: domain.to_string(),
+                events,
+            },
+            "", // No correlation context for upcasting
+        );
 
         let mut client = client.lock().await;
         let response = client.upcast(request).await?;

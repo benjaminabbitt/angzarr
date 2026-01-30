@@ -138,7 +138,7 @@ infrastructure:
   gateway:
     enabled: false
     replicas: 1
-    port: 1350            # Gateway gRPC
+    port: 9084            # Gateway gRPC (angzarr port)
     # Address of command service to forward to
     entityService: ""
     # Address of stream service
@@ -188,13 +188,13 @@ resources:
 
 livenessProbe:
   tcpSocket:
-    port: entity
+    port: aggregate
   initialDelaySeconds: 10
   periodSeconds: 10
 
 readinessProbe:
   tcpSocket:
-    port: entity
+    port: aggregate
   initialDelaySeconds: 5
   periodSeconds: 5
 
@@ -414,6 +414,13 @@ extraVolumeMounts: []
 logging:
   level: info
   format: json
+
+# Observability (OpenTelemetry)
+observability:
+  enabled: false
+  environment: "dev"
+  otlp:
+    endpoint: "http://angzarr-otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
 
 # Stakater Reloader configuration
 # Automatically restarts pods when ConfigMaps/Secrets change

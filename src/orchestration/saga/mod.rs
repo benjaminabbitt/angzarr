@@ -15,12 +15,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
 use crate::proto::{CommandBook, Cover, EventBook};
 use crate::proto_ext::CoverExt;
-use crate::utils::retry::RetryConfig;
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -36,6 +36,9 @@ pub type OutputDomainValidator = dyn Fn(&CommandBook) -> Result<(), String> + Se
 pub trait SagaContextFactory: Send + Sync {
     /// Create a saga context for processing the given source event book.
     fn create(&self, source: Arc<EventBook>) -> Box<dyn SagaRetryContext>;
+
+    /// The name of this saga (used for metrics and tracing).
+    fn name(&self) -> &str;
 }
 
 /// Operations needed by the saga retry loop.
@@ -73,19 +76,22 @@ pub trait SagaRetryContext: Send + Sync {
 ///
 /// When sequence conflicts include current aggregate state in the error response,
 /// that state is cached and reused during retry to avoid redundant fetches.
+#[tracing::instrument(name = "saga.retry", skip_all, fields(%saga_name, %correlation_id))]
 pub async fn execute_with_retry(
     context: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
     fetcher: Option<&dyn DestinationFetcher>,
     initial_commands: Vec<CommandBook>,
+    saga_name: &str,
     correlation_id: &str,
-    config: &RetryConfig,
+    backoff: ExponentialBuilder,
 ) {
     if initial_commands.is_empty() {
         return;
     }
 
     let mut commands = initial_commands;
+    let mut delays = backoff.build();
     let mut attempt = 0u32;
 
     loop {
@@ -109,17 +115,15 @@ pub async fn execute_with_retry(
                 .unwrap_or("unknown");
 
             debug!(
-                correlation_id = %correlation_id,
-                domain = %domain,
-                attempt = attempt,
+                %domain,
+                attempt,
                 "Executing saga command"
             );
 
             match executor.execute(command.clone()).await {
                 CommandOutcome::Success(_) => {
                     debug!(
-                        correlation_id = %correlation_id,
-                        domain = %domain,
+                        %domain,
                         "Saga command executed successfully"
                     );
                 }
@@ -128,9 +132,8 @@ pub async fn execute_with_retry(
                     current_state,
                 } => {
                     warn!(
-                        correlation_id = %correlation_id,
-                        domain = %domain,
-                        attempt = attempt,
+                        %domain,
+                        attempt,
                         error = %reason,
                         has_state = current_state.is_some(),
                         "Sequence conflict, will retry with fresh state"
@@ -145,11 +148,20 @@ pub async fn execute_with_retry(
                 }
                 CommandOutcome::Rejected(reason) => {
                     error!(
-                        correlation_id = %correlation_id,
-                        domain = %domain,
+                        %domain,
                         error = %reason,
                         "Saga command rejected (non-retryable)"
                     );
+
+                    #[cfg(feature = "otel")]
+                    {
+                        use crate::utils::metrics::{self, SAGA_COMPENSATION_TOTAL};
+                        SAGA_COMPENSATION_TOTAL.add(1, &[
+                            metrics::component_attr("saga"),
+                            metrics::name_attr(saga_name),
+                        ]);
+                    }
+
                     context.on_command_rejected(&command, &reason).await;
                 }
             }
@@ -159,26 +171,35 @@ pub async fn execute_with_retry(
             break;
         }
 
-        if !config.should_retry(attempt) {
-            error!(
-                correlation_id = %correlation_id,
-                attempts = attempt + 1,
-                "Saga retry exhausted"
-            );
-            break;
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, SAGA_RETRY_TOTAL};
+            SAGA_RETRY_TOTAL.add(1, &[
+                metrics::component_attr("saga"),
+                metrics::name_attr(saga_name),
+            ]);
         }
 
-        // Wait before retry
-        let delay = config.delay_for_attempt(attempt);
-        tokio::time::sleep(delay).await;
-        attempt += 1;
+        // Wait before retry using backon backoff iterator
+        match delays.next() {
+            Some(delay) => {
+                tokio::time::sleep(delay).await;
+                attempt += 1;
+            }
+            None => {
+                error!(
+                    attempts = attempt + 1,
+                    "Saga retry exhausted"
+                );
+                break;
+            }
+        }
 
         // Re-prepare: get fresh destination covers
         let covers = match context.prepare_destinations().await {
             Ok(c) => c,
             Err(e) => {
                 error!(
-                    correlation_id = %correlation_id,
                     error = %e,
                     "Saga re-prepare failed, aborting retry"
                 );
@@ -195,7 +216,6 @@ pub async fn execute_with_retry(
             let cache_key = cover.cache_key();
             if let Some(cached) = cached_states.remove(&cache_key) {
                 debug!(
-                    correlation_id = %correlation_id,
                     domain = %cover.domain,
                     "Using cached state from conflict response"
                 );
@@ -210,8 +230,7 @@ pub async fn execute_with_retry(
         }
 
         info!(
-            correlation_id = %correlation_id,
-            attempt = attempt,
+            attempt,
             destinations = destinations.len(),
             fetched = fetched_count,
             cached = cached_count,
@@ -222,8 +241,7 @@ pub async fn execute_with_retry(
         commands = match context.re_execute_saga(destinations).await {
             Ok(cmds) => {
                 debug!(
-                    correlation_id = %correlation_id,
-                    attempt = attempt,
+                    attempt,
                     commands = cmds.len(),
                     "Saga retry produced new commands"
                 );
@@ -231,8 +249,7 @@ pub async fn execute_with_retry(
             }
             Err(e) => {
                 error!(
-                    correlation_id = %correlation_id,
-                    attempt = attempt,
+                    attempt,
                     error = %e,
                     "Saga re-execute failed, aborting retry"
                 );
@@ -249,14 +266,19 @@ pub async fn execute_with_retry(
 /// 3. Execute saga with source + destinations
 /// 4. Validate output domains (if validator provided)
 /// 5. Execute commands with retry
+#[tracing::instrument(name = "saga.orchestrate", skip_all, fields(%saga_name, %correlation_id))]
 pub async fn orchestrate_saga(
     ctx: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
     fetcher: Option<&dyn DestinationFetcher>,
+    saga_name: &str,
     correlation_id: &str,
     output_domain_validator: Option<&OutputDomainValidator>,
-    retry_config: &RetryConfig,
+    backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
+    #[cfg(feature = "otel")]
+    let start = std::time::Instant::now();
+
     // Phase 1: Prepare — get destination covers
     let destination_covers = ctx
         .prepare_destinations()
@@ -264,7 +286,6 @@ pub async fn orchestrate_saga(
         .map_err(|e| BusError::Publish(e.to_string()))?;
 
     debug!(
-        correlation_id = %correlation_id,
         destinations = destination_covers.len(),
         "Saga prepare returned destinations"
     );
@@ -283,7 +304,6 @@ pub async fn orchestrate_saga(
         .map_err(|e| BusError::Publish(e.to_string()))?;
 
     debug!(
-        correlation_id = %correlation_id,
         commands = commands.len(),
         "Saga produced commands"
     );
@@ -301,15 +321,16 @@ pub async fn orchestrate_saga(
     }
 
     // Phase 5: Execute commands with retry
-    execute_with_retry(
-        ctx,
-        executor,
-        fetcher,
-        commands,
-        correlation_id,
-        retry_config,
-    )
-    .await;
+    execute_with_retry(ctx, executor, fetcher, commands, saga_name, correlation_id, backoff).await;
+
+    #[cfg(feature = "otel")]
+    {
+        use crate::utils::metrics::{self, SAGA_DURATION};
+        SAGA_DURATION.record(start.elapsed().as_secs_f64(), &[
+            metrics::component_attr("saga"),
+            metrics::name_attr(saga_name),
+        ]);
+    }
 
     Ok(())
 }

@@ -2,10 +2,10 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{AddLoyaltyPoints, CustomerState, LoyaltyPointsAdded};
-use common::{decode_command, make_event_book, require_exists, require_positive, Result};
-use prost::Message;
+use common::{decode_command, require_exists, require_positive, Result};
 
 use crate::errmsg;
+use crate::state::build_event_response;
 
 /// Handle the AddLoyaltyPoints command.
 ///
@@ -33,20 +33,11 @@ pub fn handle_add_loyalty_points(
         new_lifetime_points, // Fact: total lifetime points after this event
     };
 
-    // New state after applying event
-    let new_state = CustomerState {
-        name: state.name.clone(),
-        email: state.email.clone(),
-        loyalty_points: new_balance,
-        lifetime_points: new_lifetime_points,
-    };
-
-    Ok(make_event_book(
+    Ok(build_event_response(
+        state,
         command_book.cover.clone(),
         next_seq,
         "type.examples/examples.LoyaltyPointsAdded",
-        event.encode_to_vec(),
-        "type.examples/examples.CustomerState",
-        new_state.encode_to_vec(),
+        event,
     ))
 }

@@ -52,6 +52,7 @@ impl GatewayService {
 #[tonic::async_trait]
 impl CommandGateway for GatewayService {
     /// Unary execute - returns immediate response only, no streaming.
+    #[tracing::instrument(name = "gateway.execute", skip_all)]
     async fn execute(
         &self,
         request: Request<CommandBook>,
@@ -59,7 +60,7 @@ impl CommandGateway for GatewayService {
         let mut command_book = request.into_inner();
         let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
-        debug!(correlation_id = %correlation_id, "Executing command (unary)");
+        debug!("Executing command (unary)");
 
         let response = self
             .command_router
@@ -69,6 +70,7 @@ impl CommandGateway for GatewayService {
     }
 
     /// Sync execute - waits for projectors/sagas based on sync_mode.
+    #[tracing::instrument(name = "gateway.execute_sync", skip_all)]
     async fn execute_sync(
         &self,
         request: Request<SyncCommandBook>,
@@ -79,7 +81,7 @@ impl CommandGateway for GatewayService {
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
         let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
-        debug!(correlation_id = %correlation_id, "Executing command (sync)");
+        debug!("Executing command (sync)");
 
         let response = self
             .command_router
@@ -94,6 +96,7 @@ impl CommandGateway for GatewayService {
     /// Streaming execute - streams events until client disconnects.
     ///
     /// Returns `Unimplemented` if streaming is disabled (embedded mode).
+    #[tracing::instrument(name = "gateway.execute_stream", skip_all)]
     async fn execute_stream(
         &self,
         request: Request<CommandBook>,
@@ -105,7 +108,7 @@ impl CommandGateway for GatewayService {
         let mut command_book = request.into_inner();
         let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
 
-        debug!(correlation_id = %correlation_id, "Executing command (stream)");
+        debug!("Executing command (stream)");
 
         // Subscribe BEFORE sending command
         let event_stream = stream_handler.subscribe(&correlation_id).await?;
@@ -129,6 +132,7 @@ impl CommandGateway for GatewayService {
     }
 
     /// Dry-run execute — execute command against temporal state without persisting.
+    #[tracing::instrument(name = "gateway.dry_run", skip_all)]
     async fn dry_run_execute(
         &self,
         request: Request<DryRunRequest>,
@@ -145,7 +149,7 @@ impl CommandGateway for GatewayService {
             }
         };
 
-        debug!(correlation_id = %correlation_id, "Executing command (dry-run)");
+        debug!("Executing command (dry-run)");
 
         let response = self
             .command_router

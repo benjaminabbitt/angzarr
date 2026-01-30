@@ -13,6 +13,7 @@ fn make_event_book(domain: &str, root: Uuid) -> EventBook {
                 value: root.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages: vec![],
         snapshot: None,

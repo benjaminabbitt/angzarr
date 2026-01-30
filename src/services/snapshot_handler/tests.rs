@@ -22,6 +22,7 @@ fn make_event_book_with_snapshot(pages: Vec<EventPage>, has_snapshot: bool) -> E
                 value: Uuid::new_v4().as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
+            edition: None,
         }),
         pages,
         snapshot: None,
@@ -65,11 +66,11 @@ async fn test_persist_snapshot_if_present_disabled() {
     let root = Uuid::new_v4();
 
     let result =
-        persist_snapshot_if_present(&snapshot_store, &event_book, "test", root, false).await;
+        persist_snapshot_if_present(&snapshot_store, &event_book, "test", "test", root, false).await;
 
     assert!(result.is_ok());
     // No snapshot should be stored when disabled
-    let stored = mock_store.get_stored("test", root).await;
+    let stored = mock_store.get_stored("test", "test", root).await;
     assert!(stored.is_none());
 }
 
@@ -82,11 +83,11 @@ async fn test_persist_snapshot_if_present_no_state() {
     let root = Uuid::new_v4();
 
     let result =
-        persist_snapshot_if_present(&snapshot_store, &event_book, "test", root, true).await;
+        persist_snapshot_if_present(&snapshot_store, &event_book, "test", "test", root, true).await;
 
     assert!(result.is_ok());
     // No snapshot should be stored when no state
-    let stored = mock_store.get_stored("test", root).await;
+    let stored = mock_store.get_stored("test", "test", root).await;
     assert!(stored.is_none());
 }
 
@@ -99,10 +100,10 @@ async fn test_persist_snapshot_if_present_success() {
     let root = Uuid::new_v4();
 
     let result =
-        persist_snapshot_if_present(&snapshot_store, &event_book, "test", root, true).await;
+        persist_snapshot_if_present(&snapshot_store, &event_book, "test", "test", root, true).await;
 
     assert!(result.is_ok());
-    let stored = mock_store.get_stored("test", root).await;
+    let stored = mock_store.get_stored("test", "test", root).await;
     assert!(stored.is_some());
     // Snapshot sequence is the last event sequence (0), not incremented
     assert_eq!(stored.unwrap().sequence, 0);

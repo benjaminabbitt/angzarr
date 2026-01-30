@@ -11,11 +11,11 @@ pub mod grpc;
 pub mod local;
 
 use async_trait::async_trait;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
 use crate::proto::{CommandBook, Cover, EventBook};
-use crate::utils::retry::RetryConfig;
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -70,6 +70,9 @@ pub trait PMContextFactory: Send + Sync {
 
     /// The domain this process manager owns (for PM event persistence).
     fn pm_domain(&self) -> &str;
+
+    /// The name of this process manager (used for metrics and tracing).
+    fn name(&self) -> &str;
 }
 
 /// Full process manager orchestration with retry on sequence conflicts.
@@ -82,6 +85,7 @@ pub trait PMContextFactory: Send + Sync {
 /// 5. Handle: PM produces commands + PM events
 /// 6. Persist PM events (retries on sequence conflict)
 /// 7. Execute commands with correlation_id propagation
+#[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_domain, %correlation_id))]
 pub async fn orchestrate_pm(
     ctx: &dyn ProcessManagerContext,
     fetcher: &dyn DestinationFetcher,
@@ -89,8 +93,11 @@ pub async fn orchestrate_pm(
     trigger: &EventBook,
     pm_domain: &str,
     correlation_id: &str,
-    retry_config: &RetryConfig,
+    backoff: ExponentialBuilder,
 ) -> Result<(), BusError> {
+    #[cfg(feature = "otel")]
+    let start = std::time::Instant::now();
+
     let trigger_domain = trigger
         .cover
         .as_ref()
@@ -98,12 +105,11 @@ pub async fn orchestrate_pm(
         .unwrap_or("unknown");
 
     debug!(
-        correlation_id = %correlation_id,
-        trigger_domain = %trigger_domain,
-        process_domain = %pm_domain,
+        %trigger_domain,
         "Processing event in process manager"
     );
 
+    let mut delays = backoff.build();
     let mut attempt = 0u32;
     loop {
         // Load trigger domain state by correlation_id
@@ -112,8 +118,7 @@ pub async fn orchestrate_pm(
             .await
             .unwrap_or_else(|| {
                 warn!(
-                    correlation_id = %correlation_id,
-                    domain = %trigger_domain,
+                    %trigger_domain,
                     "Failed to fetch trigger state, using incoming event"
                 );
                 trigger.clone()
@@ -125,11 +130,7 @@ pub async fn orchestrate_pm(
             .await;
 
         if pm_state.is_none() {
-            debug!(
-                correlation_id = %correlation_id,
-                domain = %pm_domain,
-                "No existing PM state (new workflow)"
-            );
+            debug!("No existing PM state (new workflow)");
         }
 
         // Phase 1: Prepare — get additional destination covers
@@ -139,7 +140,6 @@ pub async fn orchestrate_pm(
             .map_err(|e| BusError::Publish(e.to_string()))?;
 
         debug!(
-            correlation_id = %correlation_id,
             destinations = destination_covers.len(),
             "ProcessManager.Prepare returned destinations"
         );
@@ -155,7 +155,6 @@ pub async fn orchestrate_pm(
             .map_err(|e| BusError::Publish(e.to_string()))?;
 
         debug!(
-            correlation_id = %correlation_id,
             commands = response.commands.len(),
             has_process_events = response.process_events.is_some(),
             "ProcessManager.Handle returned response"
@@ -167,30 +166,33 @@ pub async fn orchestrate_pm(
                 match ctx.persist_pm_events(process_events, correlation_id).await {
                     CommandOutcome::Success(_) => {
                         info!(
-                            correlation_id = %correlation_id,
-                            domain = %pm_domain,
                             events = process_events.pages.len(),
                             "PM events persisted successfully"
                         );
                     }
-                    CommandOutcome::Retryable { reason, .. }
-                        if attempt < retry_config.max_retries =>
-                    {
-                        warn!(
-                            correlation_id = %correlation_id,
-                            attempt = attempt,
-                            error = %reason,
-                            "Sequence conflict persisting PM events, retrying"
-                        );
-                        let delay = retry_config.delay_for_attempt(attempt);
-                        tokio::time::sleep(delay).await;
-                        attempt += 1;
-                        continue;
+                    CommandOutcome::Retryable { reason, .. } => {
+                        match delays.next() {
+                            Some(delay) => {
+                                warn!(
+                                    attempt,
+                                    error = %reason,
+                                    "Sequence conflict persisting PM events, retrying"
+                                );
+                                tokio::time::sleep(delay).await;
+                                attempt += 1;
+                                continue;
+                            }
+                            None => {
+                                error!(
+                                    error = %reason,
+                                    "Failed to persist PM events (retries exhausted)"
+                                );
+                                return Err(BusError::Publish(reason));
+                            }
+                        }
                     }
-                    CommandOutcome::Retryable { reason, .. } | CommandOutcome::Rejected(reason) => {
+                    CommandOutcome::Rejected(reason) => {
                         error!(
-                            correlation_id = %correlation_id,
-                            domain = %pm_domain,
                             error = %reason,
                             "Failed to persist PM events"
                         );
@@ -205,6 +207,15 @@ pub async fn orchestrate_pm(
 
         // Success — exit retry loop
         break;
+    }
+
+    #[cfg(feature = "otel")]
+    {
+        use crate::utils::metrics::{self, PM_DURATION};
+        PM_DURATION.record(start.elapsed().as_secs_f64(), &[
+            metrics::component_attr("process_manager"),
+            metrics::name_attr(pm_domain),
+        ]);
     }
 
     Ok(())

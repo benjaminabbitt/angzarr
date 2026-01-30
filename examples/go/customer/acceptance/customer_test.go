@@ -47,7 +47,7 @@ func getAngzarrEndpoint() string {
 	}
 	port := os.Getenv("ANGZARR_PORT")
 	if port == "" {
-		port = "1350"
+		port = "9084"
 	}
 	return host + ":" + port
 }

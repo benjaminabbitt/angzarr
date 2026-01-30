@@ -35,11 +35,14 @@
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use backon::Retryable;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
+use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 use angzarr::clients::SagaCompensationConfig;
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::command::grpc::SingleClientExecutor;
@@ -48,7 +51,7 @@ use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::saga_client::SagaClient;
 use angzarr::transport::connect_to_address;
-use angzarr::utils::bootstrap::connect_with_retry;
+use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
 
 #[tokio::main]
@@ -65,12 +68,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to saga service with retry
     let saga_addr = bootstrap.address.clone();
-    let saga_client = connect_with_retry("saga", &bootstrap.address, || {
+    let saga_client = (|| {
         let addr = saga_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
             Ok::<_, String>(SagaClient::new(channel))
         }
+    })
+    .retry(connection_backoff())
+    .notify(|err: &String, dur: Duration| {
+        warn!(service = "saga", error = %err, delay = ?dur, "Connection failed, retrying");
     })
     .await?;
 
@@ -88,16 +95,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             publisher,
             SagaCompensationConfig::default(),
             None,
+            format!("{DEFAULT_EDITION}.{}", bootstrap.domain),
         ));
         SagaEventHandler::from_factory(factory, executor, Some(fetcher))
     } else if let Ok(command_address) = std::env::var("COMMAND_ADDRESS") {
         let cmd_addr = command_address.clone();
-        let client = connect_with_retry("command handler", &command_address, || {
+        let client = (|| {
             let addr = cmd_addr.clone();
             async move {
                 let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
                 Ok::<_, String>(AggregateCoordinatorClient::new(channel))
             }
+        })
+        .retry(connection_backoff())
+        .notify(|err: &String, dur: Duration| {
+            warn!(service = "command handler", error = %err, delay = ?dur, "Connection failed, retrying");
         })
         .await?;
         warn!("Using single COMMAND_ADDRESS - two-phase saga protocol not supported");
@@ -109,6 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             publisher,
             SagaCompensationConfig::default(),
             Some(comp_handler),
+            format!("{DEFAULT_EDITION}.{}", bootstrap.domain),
         ));
         SagaEventHandler::from_factory(factory, executor, None)
     } else {
