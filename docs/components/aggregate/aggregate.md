@@ -249,6 +249,258 @@ flowchart TD
 
 ---
 
+## Aggregate Lifecycle
+
+Every command follows the same five-step lifecycle inside the aggregate. This is the pattern every implementor follows.
+
+```
+ ┌──────────────────┐
+ │  1. RESTORE       │  Snapshot → state, or Default → state
+ │     STATE         │
+ └────────┬─────────┘
+          │
+          ▼
+ ┌──────────────────┐
+ │  2. REPLAY        │  Apply events since snapshot
+ │     EVENTS        │  to reach current state
+ └────────┬─────────┘
+          │
+          ▼
+ ┌──────────────────┐
+ │  3. HANDLE        │  GUARD → VALIDATE → COMPUTE
+ │     COMMAND       │  Check preconditions, validate input, run logic
+ └────────┬─────────┘
+          │
+          ▼
+ ┌──────────────────┐
+ │  4. EMIT          │  Create events as immutable facts
+ │     EVENTS        │  (absolute values, not deltas)
+ └────────┬─────────┘
+          │
+          ▼
+ ┌──────────────────┐
+ │  5. APPLY &       │  Apply new events to state,
+ │     RETURN        │  return events + updated snapshot
+ └──────────────────┘
+```
+
+### Step 1–2: Restore State
+
+The aggregate starts from a snapshot (or empty state) and replays events to reach current state. This is a single operation — the `rebuild_from_events` helper handles both:
+
+```rust
+pub fn rebuild_from_events<S: Message + Default>(
+    event_book: Option<&EventBook>,
+    mut apply: impl FnMut(&mut S, &prost_types::Any),
+) -> S {
+    let mut state = S::default();          // Empty state
+
+    let Some(book) = event_book else {
+        return state;                       // No history → new aggregate
+    };
+
+    // Restore from snapshot if present
+    if let Some(snapshot) = &book.snapshot {
+        if let Some(snapshot_state) = &snapshot.state {
+            if let Ok(s) = S::decode(snapshot_state.value.as_slice()) {
+                state = s;                  // Start from cached state
+            }
+        }
+    }
+
+    // Replay events since snapshot (or all events if no snapshot)
+    for page in &book.pages {
+        if let Some(event) = &page.event {
+            apply(&mut state, event);       // Fold each event into state
+        }
+    }
+
+    state
+}
+```
+
+Each aggregate provides its own `apply_event` function — the single source of truth for state transitions:
+
+```rust
+pub fn apply_event(state: &mut CartState, event: &prost_types::Any) {
+    if event.type_url.ends_with("CartCreated") {
+        if let Ok(e) = CartCreated::decode(event.value.as_slice()) {
+            state.customer_id = e.customer_id;
+            state.status = "active".to_string();
+            // ...
+        }
+    } else if event.type_url.ends_with("ItemAdded") {
+        if let Ok(e) = ItemAdded::decode(event.value.as_slice()) {
+            // Update item list and subtotal using absolute values
+            state.subtotal_cents = e.new_subtotal;
+            // ...
+        }
+    }
+    // ... other event types
+}
+```
+
+The rebuild function is called once per command, producing the current state from history.
+
+### Step 3: Handle the Command
+
+With current state in hand, the handler validates and processes the command. Every handler follows the same internal pattern: **GUARD → VALIDATE → COMPUTE**.
+
+```rust
+pub fn handle_add_item(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &CartState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    // GUARD: Check preconditions against current state
+    require_exists(&state.customer_id, errmsg::CART_NOT_FOUND)?;
+    require_status_not(&state.status, "checked_out", errmsg::CART_CHECKED_OUT)?;
+
+    // VALIDATE: Decode and validate command input
+    let cmd: AddItem = decode_command(command_data)?;
+    require_positive(cmd.quantity, errmsg::QUANTITY_POSITIVE)?;
+
+    // COMPUTE: Derive new values (facts, not deltas)
+    let new_quantity = existing_qty + cmd.quantity;
+    let new_subtotal = calculate_subtotal(&updated_items);
+
+    // ... steps 4 and 5 follow
+}
+```
+
+Rejection happens here. If any guard or validation fails, the handler returns an error — no events are emitted and no state changes.
+
+### Step 4: Emit Events
+
+The handler creates events recording what happened. Events contain **absolute values** (facts), not deltas:
+
+```rust
+    // EMIT: Create event with computed facts
+    let event = ItemAdded {
+        product_id: cmd.product_id.clone(),
+        name: cmd.name.clone(),
+        quantity: new_quantity,          // Absolute: total quantity after add
+        unit_price_cents: cmd.unit_price_cents,
+        new_subtotal,                   // Absolute: cart total after add
+        added_at: Some(now()),
+    };
+```
+
+Absolute values ensure idempotent replay. Applying the same event twice produces the same state — the `apply_event` function uses assignment (`=`), never increment (`+=`).
+
+### Step 5: Apply Events and Return Snapshot
+
+The handler applies the new event to produce updated state, then returns both the event and the snapshot:
+
+```rust
+pub fn build_event_response(
+    state: &CartState,
+    cover: Option<Cover>,
+    next_seq: u32,
+    event_type_url: &str,
+    event: impl Message,
+) -> EventBook {
+    // Encode the event
+    let event_bytes = event.encode_to_vec();
+    let any = prost_types::Any {
+        type_url: event_type_url.to_string(),
+        value: event_bytes.clone(),
+    };
+
+    // Apply the new event to current state → updated state
+    let mut new_state = state.clone();
+    apply_event(&mut new_state, &any);
+
+    // Return both the event and the updated snapshot
+    EventBook {
+        cover,
+        pages: vec![EventPage {
+            sequence: Some(Sequence::Num(next_seq)),
+            event: Some(any),
+            created_at: Some(now()),
+        }],
+        snapshot_state: Some(prost_types::Any {
+            type_url: STATE_TYPE_URL.to_string(),
+            value: new_state.encode_to_vec(),
+        }),
+        snapshot: None,
+    }
+}
+```
+
+The `apply_event` function serves double duty:
+1. **During rebuild** (steps 1–2): reconstructs state from stored events
+2. **During response** (step 5): derives new snapshot from the event being emitted
+
+This guarantees the snapshot is always consistent with the event stream — the same function produces state whether replaying history or handling a new command.
+
+### Complete Handler
+
+Putting it all together, a handler's full lifecycle:
+
+```rust
+pub fn handle_create_cart(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &CartState,        // ← Steps 1-2 already done by dispatch
+    next_seq: u32,            // ← Computed from prior events
+) -> Result<EventBook> {
+    // Step 3: GUARD — cart must not already exist
+    require_not_exists(&state.customer_id, errmsg::CART_EXISTS)?;
+
+    // Step 3: VALIDATE — decode command
+    let cmd: CreateCart = decode_command(command_data)?;
+
+    // Step 4: EMIT — create the event
+    let event = CartCreated {
+        customer_id: cmd.customer_id.clone(),
+        created_at: Some(now()),
+    };
+
+    // Step 5: Apply event to state, return event + snapshot
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.CartCreated",
+        event,
+    ))
+}
+```
+
+### Dispatch Wiring
+
+The `dispatch_aggregate` helper ties the lifecycle together, connecting steps 1–2 (rebuild) to steps 3–5 (handler):
+
+```rust
+pub fn dispatch_aggregate<S>(
+    cmd: ContextualCommand,
+    rebuild: impl Fn(Option<&EventBook>) -> S,
+    dispatch: impl FnOnce(&CommandBook, &prost_types::Any, &S, u32) -> Result<EventBook>,
+) -> Result<BusinessResponse, Status> {
+    // Steps 1-2: Rebuild state from snapshot + events
+    let state = rebuild(cmd.events.as_ref());
+    let next_seq = next_sequence(cmd.events.as_ref());
+
+    // Extract command payload
+    let cb = cmd.command.as_ref()
+        .ok_or(BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()))?;
+    let command_any = extract_command(cb)?;
+
+    // Steps 3-5: Handler validates, emits, applies, returns
+    let events = dispatch(cb, command_any, &state, next_seq)?;
+
+    Ok(BusinessResponse {
+        result: Some(business_response::Result::Events(events)),
+    })
+}
+```
+
+The framework calls `dispatch_aggregate` with the prior events loaded from storage. Business logic never touches storage directly — it receives state and returns events.
+
+---
+
 ## Event Sequencing
 
 **Business logic is responsible for assigning explicit sequence numbers to new events.**

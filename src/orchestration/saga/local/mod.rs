@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use tracing::error;
 
 use crate::proto::{CommandBook, Cover, EventBook};
+use crate::proto_ext::CoverExt;
 use crate::standalone::SagaHandler;
 
 use super::{SagaContextFactory, SagaRetryContext};
@@ -37,22 +38,47 @@ impl SagaRetryContext for LocalSagaContext {
     async fn prepare_destinations(
         &self,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        self.saga_handler
+        let edition = self.source.edition().to_string();
+        let mut covers = self
+            .saga_handler
             .prepare(&self.source)
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+        // Stamp source edition onto outgoing covers
+        for cover in &mut covers {
+            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                cover.edition = Some(edition.clone());
+            }
+        }
+        Ok(covers)
     }
 
     async fn re_execute_saga(
         &self,
         destinations: Vec<EventBook>,
     ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
+        let edition = self.source.edition().to_string();
         let response = self
             .saga_handler
             .execute(&self.source, &destinations)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        Ok(response.commands)
+
+        // Stamp source edition onto outgoing command covers
+        let commands = response
+            .commands
+            .into_iter()
+            .map(|mut cmd| {
+                if let Some(ref mut c) = cmd.cover {
+                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                        c.edition = Some(edition.clone());
+                    }
+                }
+                cmd
+            })
+            .collect();
+        Ok(commands)
     }
 
     async fn on_command_rejected(&self, _command: &CommandBook, reason: &str) {

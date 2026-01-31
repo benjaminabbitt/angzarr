@@ -80,6 +80,14 @@ Usage: {{- include "angzarr.otel-env" (dict "root" $ "service" "aggregate" "doma
 {{- end }}
 
 {{/*
+Whether topology service is enabled.
+Auto-enables when observability is enabled (Grafana stack implies topology visualization).
+*/}}
+{{- define "angzarr.topology-enabled" -}}
+{{- or .Values.infrastructure.topology.enabled .Values.observability.enabled -}}
+{{- end }}
+
+{{/*
 Container security context with optional debug capabilities
 runAsNonRoot is hardcoded - never allow running as root
 */}}

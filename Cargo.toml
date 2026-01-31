@@ -92,14 +92,17 @@ dynamo = []      # placeholder, no deps yet
 # OpenTelemetry observability
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-opentelemetry"]
 
+# Topology visualization projector (Grafana Node Graph)
+topology = ["dep:axum"]
+
 # Testing utilities
 lossy = ["dep:rand"]
 
 # Convenience
-standalone = ["sqlite", "channel"]
+standalone = ["sqlite", "channel", "topology"]
 
 # All features for development
-full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "bigtable", "dynamo", "lossy", "otel"]
+full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "bigtable", "dynamo", "lossy", "otel", "topology"]
 
 [dependencies]
 # gRPC
@@ -181,6 +184,9 @@ aws-config = { version = "1", optional = true }
 # Random (for lossy testing bus)
 rand = { version = "0.9", optional = true }
 
+# HTTP framework (for topology REST API)
+axum = { version = "0.7", features = ["json"], optional = true }
+
 # Kubernetes API (for gateway service discovery)
 kube = { version = "0.98", features = ["runtime", "client"] }
 k8s-openapi = { version = "0.24", features = ["v1_29"] }
@@ -228,6 +234,11 @@ required-features = ["standalone"]
 name = "angzarr-event-projector"
 path = "src/bin/angzarr_event_projector.rs"
 required-features = ["postgres"]
+
+[[bin]]
+name = "angzarr-topology"
+path = "src/bin/angzarr_topology.rs"
+required-features = ["topology"]
 
 [dev-dependencies]
 tokio-test = "0.4"

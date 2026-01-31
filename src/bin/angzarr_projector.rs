@@ -44,7 +44,8 @@ use angzarr::utils::retry::connection_backoff;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    let config = Config::load().map_err(|e| {
+    let config_path = angzarr::utils::bootstrap::parse_config_path();
+    let config = Config::load(config_path.as_deref()).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         e
     })?;

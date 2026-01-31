@@ -29,6 +29,10 @@ images:
     repository: angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
+  topology:
+    repository: angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -158,6 +162,24 @@ infrastructure:
     enabled: false
     replicas: 1
     port: 50051           # Projector gRPC (receives events from sidecar)
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+  # Topology service - discovers runtime component graph from event stream
+  # Serves REST API for Grafana Node Graph panel
+  # Auto-enabled when observability.enabled is true
+  topology:
+    enabled: false
+    port: 9099            # REST API port (Grafana Node Graph API)
+    storage:
+      type: sqlite        # sqlite or postgres (postgres uses main storage config)
+      sqlite:
+        path: "/data/topology.db"
     resources:
       limits:
         cpu: 200m

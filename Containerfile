@@ -26,6 +26,7 @@ COPY proto/ ./proto/
 COPY src/ ./src/
 COPY angzarr-client/ ./angzarr-client/
 COPY examples/rust examples/rust/
+COPY migrations/ ./migrations/
 
 RUN mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
@@ -40,13 +41,14 @@ RUN mkdir -p tests/integration && \
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,id=framework-target,target=/app/target \
-    cargo build --profile container-dev --features otel \
+    cargo build --profile container-dev --features otel,topology,sqlite \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-stream \
     --bin angzarr-gateway \
-    --bin angzarr-log && \
+    --bin angzarr-log \
+    --bin angzarr-topology && \
     cp target/container-dev/angzarr-* /tmp/
 
 # Generate protobuf FileDescriptorSet for runtime event decoding
@@ -96,6 +98,7 @@ COPY proto/ ./proto/
 COPY src/ ./src/
 COPY angzarr-client/ ./angzarr-client/
 COPY examples/rust examples/rust/
+COPY migrations/ ./migrations/
 
 RUN mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
@@ -122,7 +125,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-saga \
     --bin angzarr-stream \
     --bin angzarr-gateway \
-    --bin angzarr-log && \
+    --bin angzarr-log \
+    --bin angzarr-topology && \
     cp target/$TARGET/production/angzarr-* /tmp/
 
 # Generate protobuf FileDescriptorSet for runtime event decoding
@@ -187,6 +191,11 @@ ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
 ENTRYPOINT ["./server"]
 
+FROM runtime-dev-base AS angzarr-topology-dev
+COPY --from=builder-dev /tmp/angzarr-topology ./server
+EXPOSE 9099
+ENTRYPOINT ["./server"]
+
 # =============================================================================
 # Release images (slow builds, minimal runtime, all features)
 # =============================================================================
@@ -219,4 +228,9 @@ COPY --from=builder-release /tmp/angzarr-log ./server
 COPY --from=builder-release /tmp/descriptors.pb ./descriptors.pb
 ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS angzarr-topology
+COPY --from=builder-release /tmp/angzarr-topology ./server
+EXPOSE 9099
 ENTRYPOINT ["./server"]

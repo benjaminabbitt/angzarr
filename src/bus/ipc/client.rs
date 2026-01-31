@@ -288,15 +288,11 @@ impl IpcEventBus {
                         }
                     };
 
-                    let domain = book
-                        .cover
-                        .as_ref()
-                        .map(|c| c.domain.as_str())
-                        .unwrap_or("unknown");
+                    let routing_key = book.routing_key();
 
-                    // Check domain filter
+                    // Check domain filter using routing key
                     let matches =
-                        domains.is_empty() || domains.iter().any(|d| d == "#" || d == domain);
+                        domains.is_empty() || domains.iter().any(|d| d == "#" || d == &routing_key);
 
                     if !matches {
                         continue;
@@ -313,15 +309,15 @@ impl IpcEventBus {
                     // Skip if already processed (checkpoint deduplication)
                     if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
                         let dominated = rt.block_on(async {
-                            !checkpoint.should_process(domain, root, seq).await
+                            !checkpoint.should_process(&routing_key, root, seq).await
                         });
                         if dominated {
-                            debug!(domain = %domain, sequence = seq, "Skipping checkpointed event");
+                            debug!(routing_key = %routing_key, sequence = seq, "Skipping checkpointed event");
                             continue;
                         }
                     }
 
-                    debug!(domain = %domain, "Received event via pipe");
+                    debug!(routing_key = %routing_key, "Received event via pipe");
 
                     // Call handlers
                     let handlers_clone = handlers.clone();
@@ -337,7 +333,7 @@ impl IpcEventBus {
 
                         // Update checkpoint after successful handler dispatch
                         if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
-                            checkpoint_clone.update(domain, root, seq).await;
+                            checkpoint_clone.update(&routing_key, root, seq).await;
                         }
                     });
                 }
@@ -360,20 +356,19 @@ impl EventBus for IpcEventBus {
             return Ok(PublishResult::default());
         }
 
-        let domain = book
-            .cover
-            .as_ref()
-            .map(|c| c.domain.as_str())
-            .unwrap_or("unknown");
+        let routing_key = book.routing_key();
 
         // Serialize once
         let serialized = book.encode_to_vec();
         let len_bytes = (serialized.len() as u32).to_be_bytes();
 
         for subscriber in &self.config.subscribers {
-            // Check domain filter
+            // Check domain filter using routing key
             let matches = subscriber.domains.is_empty()
-                || subscriber.domains.iter().any(|d| d == "#" || d == domain);
+                || subscriber
+                    .domains
+                    .iter()
+                    .any(|d| d == "#" || *d == routing_key);
 
             if !matches {
                 continue;
@@ -402,7 +397,7 @@ impl EventBus for IpcEventBus {
                     } else {
                         debug!(
                             subscriber = %subscriber.name,
-                            domain = %domain,
+                            routing_key = %routing_key,
                             "Published event to pipe"
                         );
                     }

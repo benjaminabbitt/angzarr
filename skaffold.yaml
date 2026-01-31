@@ -48,6 +48,12 @@ build:
         dockerfile: Containerfile
         target: angzarr-log-dev
 
+    - image: localhost:5001/angzarr-topology
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-topology-dev
+
 profiles:
   # Release profile - slow musl builds, minimal images
   - name: release
@@ -88,3 +94,9 @@ profiles:
           docker:
             dockerfile: Containerfile
             target: angzarr-log
+
+        - image: localhost:5001/angzarr-topology
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-topology

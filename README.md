@@ -7,6 +7,7 @@ A CQRS/Event Sourcing infrastructure framework in Rust.
 Angzarr provides the infrastructure layer for event-sourced systems:
 - Event persistence with sequence validation
 - Snapshot optimization for aggregate replay
+- Event upcasting / schema evolution
 - gRPC event distribution
 - Projector and saga coordination
 
@@ -201,6 +202,7 @@ The senior defines the **what** (schemas, aggregates, events). Juniors and AIs i
 Business logic lives in external services called via gRPC. Angzarr handles:
 - **EventStore**: Persist and query events (MongoDB, SQLite tested; [PostgreSQL](src/storage/postgres/README.md), [Redis](src/storage/redis/README.md) implemented but untested)
 - **SnapshotStore**: Optimize replay with snapshots
+- **Upcaster**: Transform old event versions on read (schema evolution)
 - **EventBus**: Distribute events to projectors/sagas
 - **CommandHandler**: Orchestrate command processing
 - **ProjectorCoordinator**: Route events to read model builders

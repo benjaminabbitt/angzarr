@@ -130,10 +130,10 @@ impl EventHandler for ProjectorEventHandler {
             return Box::pin(async { Ok(()) });
         }
 
-        // Check domain filter
+        // Check domain filter using routing key (edition-prefixed)
         if !self.domains.is_empty() {
-            let domain = book.domain();
-            if !self.domains.iter().any(|d| d == domain) {
+            let routing_key = book.routing_key();
+            if !self.domains.iter().any(|d| d == &routing_key) {
                 return Box::pin(async { Ok(()) });
             }
         }

@@ -100,6 +100,8 @@ deploy:
           images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
           images.log.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_log}}"
           images.log.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_log}}"
+          images.topology.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_topology}}"
+          images.topology.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_topology}}"
           # Business aggregate images
           applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_customer_rs}}"
           applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_customer_rs}}"

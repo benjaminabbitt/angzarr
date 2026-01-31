@@ -106,7 +106,7 @@ resource "helm_release" "prometheus" {
         extraFlags = [
           "web.enable-remote-write-receiver",
         ]
-        retention    = "24h"
+        retention = "24h"
         persistentVolume = {
           enabled = false
         }
@@ -239,8 +239,8 @@ resource "helm_release" "promtail" {
             # Drop logs from angzarr sidecar containers — they export via OTLP
             {
               match = {
-                selector  = "{container=\"angzarr\"}"
-                action    = "drop"
+                selector            = "{container=\"angzarr\"}"
+                action              = "drop"
                 drop_counter_reason = "angzarr_sidecar_otlp_duplicate"
               }
             }
@@ -301,8 +301,8 @@ resource "helm_release" "otel_collector" {
         }
         processors = {
           batch = {
-            timeout          = "5s"
-            send_batch_size  = 1024
+            timeout         = "5s"
+            send_batch_size = 1024
           }
           memory_limiter = {
             check_interval         = "1s"
@@ -361,7 +361,7 @@ resource "helm_release" "otel_collector" {
       }
       ports = {
         otlp = {
-          enabled     = true
+          enabled       = true
           containerPort = 4317
           servicePort   = 4317
           hostPort      = 4317
@@ -422,6 +422,10 @@ resource "helm_release" "grafana" {
           root_url = "http://localhost:3000"
         }
       }
+      # Plugins (auto-installed on startup)
+      plugins = compact([
+        var.topology_endpoint != "" ? "hamedkarbasi93-nodegraphapi-datasource" : "",
+      ])
       # Sidecar watches ConfigMaps with grafana_dashboard=1 label
       sidecar = {
         dashboards = {
@@ -441,7 +445,7 @@ resource "helm_release" "grafana" {
       datasources = {
         "datasources.yaml" = {
           apiVersion = 1
-          datasources = [
+          datasources = concat([
             {
               name      = "Tempo"
               type      = "tempo"
@@ -450,7 +454,7 @@ resource "helm_release" "grafana" {
               isDefault = false
               jsonData = {
                 tracesToLogsV2 = {
-                  datasourceUid = "loki"
+                  datasourceUid   = "loki"
                   filterByTraceID = true
                 }
                 tracesToMetrics = {
@@ -483,7 +487,19 @@ resource "helm_release" "grafana" {
                 ]
               }
             },
-          ]
+            ], var.topology_endpoint != "" ? [
+            {
+              name      = "Angzarr Topology"
+              type      = "hamedkarbasi93-nodegraphapi-datasource"
+              access    = "proxy"
+              url       = var.topology_endpoint
+              uid       = "topology"
+              isDefault = false
+              jsonData = {
+                url = var.topology_endpoint
+              }
+            },
+          ] : [])
         }
       }
       resources = {

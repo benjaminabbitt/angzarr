@@ -73,7 +73,7 @@ use angzarr::config::{Config, ExternalServiceConfig, HealthCheckConfig};
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::handlers::core::{ProjectorEventHandler, SagaEventHandler};
-use angzarr::orchestration::aggregate::GrpcBusinessLogic;
+use angzarr::orchestration::aggregate::{GrpcBusinessLogic, DEFAULT_EDITION};
 use angzarr::orchestration::command::local::LocalCommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
 use angzarr::orchestration::projector::local::LocalProjectorContext;
@@ -87,6 +87,7 @@ use angzarr::standalone::{
     CommandRouter, DomainStorage, GrpcProjectorHandler, ServerInfo, StandaloneEventQueryBridge,
     StandaloneGatewayService,
 };
+use angzarr::standalone::edition::{EditionHandlerRefs, EditionManager};
 use angzarr::transport::{connect_to_address, grpc_trace_layer};
 
 /// Managed child process with proper cleanup.
@@ -262,6 +263,9 @@ async fn spawn_business_process(
         "ANGZARR__TARGET__ADDRESS".to_string(),
         socket_path.to_string(),
     );
+    if let Some(config_path) = angzarr::utils::bootstrap::parse_config_path() {
+        process_env.insert("ANGZARR_CONFIG".to_string(), config_path);
+    }
 
     let child = ManagedChild::spawn(name, command, working_dir, &process_env).await?;
     children.push(child);
@@ -273,7 +277,8 @@ async fn spawn_business_process(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     angzarr::utils::bootstrap::init_tracing();
 
-    let config = Config::load().map_err(|e| {
+    let config_path = angzarr::utils::bootstrap::parse_config_path();
+    let config = Config::load(config_path.as_deref()).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         e
     })?;
@@ -395,12 +400,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
         let ctx = Arc::new(LocalProjectorContext::new(handler));
+        let edition_listen = format!("{DEFAULT_EDITION}.{listen_domain}");
+        let edition_name = format!("{DEFAULT_EDITION}.{socket_name}");
         let proj_handler = ProjectorEventHandler::with_config(
             ctx,
             None,
-            vec![listen_domain.clone()],
+            vec![edition_listen],
             false,
-            socket_name.clone(),
+            edition_name,
         );
 
         let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
@@ -436,12 +443,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let saga_client = Arc::new(Mutex::new(SagaClient::new(channel)));
         let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
 
+        let edition_domain = format!("{DEFAULT_EDITION}.{}", svc.domain);
         let factory = Arc::new(GrpcSagaContextFactory::new(
             saga_client,
             event_bus.clone(),
             compensation_config.clone(),
             None,
-            svc.domain.clone(),
+            edition_domain,
         ));
 
         let handler = SagaEventHandler::from_factory(
@@ -450,20 +458,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(fetcher.clone()),
         );
 
-        let sub = channel_bus.with_config(ChannelConfig::subscriber(listen_domain.clone()));
+        let input_domain = format!("{DEFAULT_EDITION}.{listen_domain}");
+        let sub = channel_bus.with_config(ChannelConfig::subscriber(input_domain));
         sub.subscribe(Box::new(handler)).await?;
         sub.start_consuming().await?;
 
         info!(domain = %svc.domain, listen = %listen_domain, "Connected to saga");
     }
 
+    // Propagate config path to external services
+    let config_path = angzarr::utils::bootstrap::parse_config_path();
+
     // Spawn external services (REST APIs, GraphQL servers, etc.)
     for svc in &config.standalone.services {
-        let child = spawn_external_service(&svc.name, svc).await?;
+        let mut svc_with_env = svc.clone();
+        if let Some(ref path) = config_path {
+            svc_with_env.env.insert("ANGZARR_CONFIG".to_string(), path.clone());
+        }
+        let child = spawn_external_service(&svc_with_env.name, &svc_with_env).await?;
         children.push(child);
 
-        if !matches!(svc.health_check, HealthCheckConfig::None) {
-            wait_for_service_health(&svc.name, &svc.health_check, svc.health_timeout_secs)
+        if !matches!(svc_with_env.health_check, HealthCheckConfig::None) {
+            wait_for_service_health(&svc_with_env.name, &svc_with_env.health_check, svc_with_env.health_timeout_secs)
                 .await?;
         }
     }
@@ -474,7 +490,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let port = config.standalone.gateway.port.unwrap_or(50051);
         let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
-        let gateway = StandaloneGatewayService::new(router.clone());
+        let edition_handler_refs = EditionHandlerRefs {
+            aggregates: HashMap::new(),
+            projectors: HashMap::new(),
+            sagas: HashMap::new(),
+            process_managers: HashMap::new(),
+        };
+        let edition_manager = Arc::new(EditionManager::new(
+            edition_handler_refs,
+            domain_stores.clone(),
+            event_bus.clone(),
+        ));
+        let gateway = StandaloneGatewayService::new(router.clone(), edition_manager);
         let event_query = StandaloneEventQueryBridge::new(domain_stores.clone());
 
         let grpc_router = tonic::transport::Server::builder()

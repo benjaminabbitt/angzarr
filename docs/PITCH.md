@@ -76,6 +76,7 @@ Angzarr inverts the typical framework relationship. Rather than providing librar
 | Commands in `.proto` | gRPC `BusinessLogic` service | Event persistence |
 | Events in `.proto` | gRPC `Projector` services | Optimistic concurrency |
 | Read models in `.proto` | gRPC `Saga` services | Snapshot management |
+| | | Event upcasting |
 | | | Event distribution |
 | | | Saga coordination |
 | | | Schema evolution rules |
@@ -93,6 +94,7 @@ Angzarr inverts the typical framework relationship. Rather than providing librar
 | Load balancing | Angzarr |
 | State hydration | Angzarr |
 | Snapshot management | Angzarr |
+| Event upcasting | Angzarr |
 | Observability | Angzarr |
 | Message serialization | Protobuf |
 | Schema evolution | Protobuf |
@@ -307,6 +309,7 @@ Angzarr uses coordinators to route messages between external clients and your bu
 - Event persistence and retrieval
 - Optimistic concurrency via sequence numbers
 - Snapshot management
+- Event upcasting (schema evolution on read)
 - Synchronous vs. asynchronous processing paths
 
 ```protobuf
@@ -805,7 +808,6 @@ Angzarr optimizes for a specific architectural style. It is not universally appl
 
 **Current limitations:**
 - Multi-tenancy patterns are possible but not first-class; tenant isolation is an application concern
-- Event upcasting / schema evolution tooling is not yet implemented
 - Multi-region event replication is roadmapped but not available
 
 ---

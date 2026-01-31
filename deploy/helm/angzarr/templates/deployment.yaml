@@ -902,3 +902,121 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
+
+{{- /* Topology service - discovers runtime component graph from event stream */}}
+{{- if include "angzarr.topology-enabled" . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" . }}-topology
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: topology
+  {{- if .Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: infrastructure
+      angzarr.io/service: topology
+  template:
+    metadata:
+      labels:
+        {{- include "angzarr.labels" . | nindent 8 }}
+        app.kubernetes.io/component: infrastructure
+        angzarr.io/service: topology
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if .Values.amqp.enabled }}
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ..."
+              until nc -z angzarr-mq-rabbitmq 5672 2>/dev/null; do sleep 2; done
+              echo "RabbitMQ is ready"
+        {{- end }}
+      containers:
+        - name: topology
+          securityContext:
+            {{- include "angzarr.containerSecurityContext" . | nindent 12 }}
+          image: "{{ .Values.images.topology.repository }}:{{ .Values.images.topology.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.images.topology.pullPolicy }}
+          ports:
+            - name: rest
+              containerPort: {{ .Values.infrastructure.topology.port }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ .Values.logging.level }}
+            - name: TOPOLOGY_REST_PORT
+              value: "{{ .Values.infrastructure.topology.port }}"
+            - name: TOPOLOGY_STORAGE_TYPE
+              value: {{ .Values.infrastructure.topology.storage.type | quote }}
+            {{- if eq .Values.infrastructure.topology.storage.type "sqlite" }}
+            {{- if .Values.infrastructure.topology.storage.sqlite.path }}
+            - name: TOPOLOGY_SQLITE_PATH
+              value: {{ .Values.infrastructure.topology.storage.sqlite.path | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if eq .Values.infrastructure.topology.storage.type "postgres" }}
+            - name: TOPOLOGY_POSTGRES_URI
+              value: {{ .Values.storage.postgres.uri | quote }}
+            {{- end }}
+            # Messaging configuration (topology subscribes directly to bus)
+            {{- if .Values.amqp.enabled }}
+            - name: ANGZARR__MESSAGING__TYPE
+              value: "amqp"
+            - name: ANGZARR__MESSAGING__AMQP__URL
+              {{- if .Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.amqp.existingSecret }}
+                  key: uri
+              {{- else }}
+              value: {{ .Values.amqp.url }}
+              {{- end }}
+            - name: ANGZARR__MESSAGING__AMQP__DOMAIN
+              value: "#"
+            {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" . "service" "topology") | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: rest
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: rest
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: topology-data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.infrastructure.topology.resources | nindent 12 }}
+      volumes:
+        - name: topology-data
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

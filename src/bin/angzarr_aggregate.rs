@@ -36,8 +36,8 @@
 //!   - angzarr.io/source-domain: source domain (sagas only)
 //! - Service mesh (Linkerd/Istio) handles L7 gRPC load balancing
 
+extern crate std;
 use std::sync::Arc;
-use std::time::Duration;
 
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
@@ -46,7 +46,6 @@ use tracing::{error, info, warn};
 use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::Config;
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
-use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::{
     aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
     event_query_server::EventQueryServer,
@@ -59,7 +58,8 @@ use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     angzarr::utils::bootstrap::init_tracing();
 
-    let config = Config::load().map_err(|e| {
+    let config_path = angzarr::utils::bootstrap::parse_config_path();
+    let config = Config::load(config_path.as_deref()).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         e
     })?;
@@ -81,43 +81,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Target business logic: {} (domain: {})", address, domain);
 
-    // Get command: prefer env var (for standalone mode), fall back to config
-    let command = match std::env::var("ANGZARR__TARGET__COMMAND_JSON") {
-        Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
-            warn!("Failed to parse ANGZARR__TARGET__COMMAND_JSON, falling back to config");
-            target.command.clone()
-        }),
-        Err(_) => target.command.clone(),
-    };
-
-    // Spawn business logic process if command is configured (embedded mode)
-    let _managed_process = if !command.is_empty() {
-        let env = ProcessEnv::from_transport(&config.transport, "business", Some(domain));
-        let process =
-            ManagedProcess::spawn(&command, target.working_dir.as_deref(), &env, None).await?;
-
-        // Wait for the service to be ready
-        info!("Waiting for business logic to be ready...");
-        let channel = wait_for_ready(
-            &address,
-            Duration::from_secs(30),
-            Duration::from_millis(500),
-        )
-        .await?;
-
-        // Return both the process (to keep it alive) and the channel
-        Some((process, channel))
-    } else {
-        None
-    };
-
-    // Connect to business logic (or use the channel from wait_for_ready)
-    let channel = if let Some((_, ref channel)) = _managed_process {
-        channel.clone()
-    } else {
-        use angzarr::transport::connect_to_address;
-        connect_to_address(&address).await?
-    };
+    // Connect to business logic
+    use angzarr::transport::connect_to_address;
+    let channel = connect_to_address(&address).await?;
 
     let business_client = AggregateClient::new(channel);
 

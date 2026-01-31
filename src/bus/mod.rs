@@ -120,10 +120,10 @@ use crate::proto_ext::CoverExt;
 /// }
 /// ```
 pub fn subscription_matches(book: &EventBook, subscription: &Subscription) -> bool {
-    let domain = book.domain();
+    let routing_key = book.routing_key();
 
-    // Domain must match
-    if subscription.domain != domain {
+    // Routing key must match subscription domain (edition-prefixed)
+    if subscription.domain != routing_key {
         return false;
     }
 

@@ -60,6 +60,7 @@ impl SagaRetryContext for GrpcSagaContext {
         &self,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = self.source.correlation_id();
+        let edition = self.source.edition().to_string();
         let mut client = self.saga_client.lock().await;
         let request = SagaPrepareRequest {
             source: Some(self.source.clone()),
@@ -68,7 +69,15 @@ impl SagaRetryContext for GrpcSagaContext {
             .prepare(correlated_request(request, correlation_id))
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        Ok(response.into_inner().destinations)
+
+        // Stamp source edition onto outgoing covers
+        let mut covers = response.into_inner().destinations;
+        for cover in &mut covers {
+            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                cover.edition = Some(edition.clone());
+            }
+        }
+        Ok(covers)
     }
 
     async fn re_execute_saga(
@@ -76,6 +85,7 @@ impl SagaRetryContext for GrpcSagaContext {
         destinations: Vec<EventBook>,
     ) -> Result<Vec<CommandBook>, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = self.source.correlation_id();
+        let edition = self.source.edition().to_string();
         let mut client = self.saga_client.lock().await;
         let request = SagaExecuteRequest {
             source: Some(self.source.clone()),
@@ -85,7 +95,22 @@ impl SagaRetryContext for GrpcSagaContext {
             .execute(correlated_request(request, correlation_id))
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        Ok(response.into_inner().commands)
+
+        // Stamp source edition onto outgoing command covers
+        let commands = response
+            .into_inner()
+            .commands
+            .into_iter()
+            .map(|mut cmd| {
+                if let Some(ref mut c) = cmd.cover {
+                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                        c.edition = Some(edition.clone());
+                    }
+                }
+                cmd
+            })
+            .collect();
+        Ok(commands)
     }
 
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str) {

@@ -53,15 +53,21 @@ impl Config {
     ///
     /// Configuration sources (in order of priority, later overrides earlier):
     /// 1. `config.yaml` in current directory (if exists)
-    /// 2. File specified by `ANGZARR_CONFIG` environment variable (if set)
-    /// 3. Environment variables with `ANGZARR_` prefix
-    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+    /// 2. File specified by `path` argument (if provided)
+    /// 3. File specified by `ANGZARR_CONFIG` environment variable (if set)
+    /// 4. Environment variables with `ANGZARR_` prefix
+    pub fn load(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
         use ::config::{Config as ConfigLib, Environment, File, FileFormat};
 
         let mut builder = ConfigLib::builder()
             // Start with defaults from config.yaml in current directory
             .add_source(File::new("config", FileFormat::Yaml).required(false))
             .add_source(File::new("config.yaml", FileFormat::Yaml).required(false));
+
+        // Add config file from path argument if provided
+        if let Some(config_path) = path {
+            builder = builder.add_source(File::new(config_path, FileFormat::Yaml).required(true));
+        }
 
         // Add config file from ANGZARR_CONFIG env var if set
         if let Ok(config_path) = std::env::var("ANGZARR_CONFIG") {

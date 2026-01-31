@@ -208,69 +208,59 @@ pub async fn execute_command_pipeline(
     command_book: CommandBook,
     mode: PipelineMode,
 ) -> Result<CommandResponse, Status> {
-    let edition = extract_edition(&command_book);
-    let (domain, root_uuid) = parse_command_cover(&command_book)?;
-    let correlation_id = crate::orchestration::correlation::ensure_correlation_id(&command_book)?;
-
     match mode {
         PipelineMode::Execute { validate_sequence } => {
-            execute_mode(
-                ctx,
-                business,
-                command_book,
-                &domain,
-                &edition,
-                root_uuid,
-                &correlation_id,
-                validate_sequence,
-            )
-            .await
+            execute_mode(ctx, business, command_book, validate_sequence).await
         }
         PipelineMode::DryRun {
             as_of_sequence,
             as_of_timestamp,
         } => {
-            dry_run_mode(
-                ctx,
-                business,
-                command_book,
-                &domain,
-                &edition,
-                root_uuid,
-                as_of_sequence,
-                as_of_timestamp,
-            )
-            .await
+            let temporal = match (as_of_sequence, as_of_timestamp) {
+                (Some(seq), _) => TemporalQuery::AsOfSequence(seq),
+                (_, Some(ts)) => TemporalQuery::AsOfTimestamp(ts),
+                (None, None) => {
+                    return Err(Status::invalid_argument(
+                        "DryRun requires either as_of_sequence or as_of_timestamp",
+                    ));
+                }
+            };
+            dry_run_mode(ctx, business, command_book, temporal).await
         }
     }
 }
 
-#[tracing::instrument(name = "aggregate.execute", skip_all, fields(%domain, %edition, %root_uuid, %correlation_id))]
+#[tracing::instrument(name = "aggregate.execute", skip_all, fields(domain, edition, root_uuid))]
 async fn execute_mode(
     ctx: &dyn AggregateContext,
     business: &dyn BusinessLogic,
     command_book: CommandBook,
-    domain: &str,
-    edition: &str,
-    root_uuid: Uuid,
-    correlation_id: &str,
     validate_sequence: bool,
 ) -> Result<CommandResponse, Status> {
+    let (domain, root_uuid) = parse_command_cover(&command_book)?;
+    let edition = extract_edition(&command_book);
+    let correlation_id =
+        crate::orchestration::correlation::ensure_correlation_id(&command_book)?;
+
+    let span = tracing::Span::current();
+    span.record("domain", domain.as_str());
+    span.record("edition", edition.as_str());
+    span.record("root_uuid", tracing::field::display(&root_uuid));
 
     // Pre-validate sequence (gRPC fast-path, no-op for local)
     if validate_sequence {
         let expected = extract_command_sequence(&command_book);
-        ctx.pre_validate_sequence(domain, edition, root_uuid, expected)
+        ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
             .await?;
     }
 
     // Load prior events
     let prior_events = ctx
-        .load_prior_events(domain, edition, root_uuid, &TemporalQuery::Current)
+        .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
         .await?;
 
     // Transform events (upcasting)
-    let prior_events = ctx.transform_events(domain, prior_events).await?;
+    let prior_events = ctx.transform_events(&domain, prior_events).await?;
 
     // Validate command sequence against loaded events
     if validate_sequence {
@@ -289,12 +279,15 @@ async fn execute_mode(
         command: Some(command_book),
     };
 
-    let response = business.invoke(contextual_command).await?;
+    let response = business.invoke(contextual_command).await.map_err(|e| {
+        tracing::error!(error = %e, "Business logic invocation failed");
+        e
+    })?;
     let new_events = extract_events_from_response(response, correlation_id.to_string())?;
 
     // Persist
     let persisted = ctx
-        .persist_events(&new_events, domain, edition, root_uuid, correlation_id)
+        .persist_events(&new_events, &domain, &edition, root_uuid, &correlation_id)
         .await?;
 
     // Post-persist: publish + sync projectors
@@ -306,37 +299,35 @@ async fn execute_mode(
     })
 }
 
-#[tracing::instrument(name = "aggregate.dry_run", skip_all, fields(%domain, %edition, %root_uuid, ?as_of_sequence, ?as_of_timestamp))]
+#[tracing::instrument(name = "aggregate.dry_run", skip_all, fields(domain, edition, root_uuid, ?temporal))]
 async fn dry_run_mode(
     ctx: &dyn AggregateContext,
     business: &dyn BusinessLogic,
     command_book: CommandBook,
-    domain: &str,
-    edition: &str,
-    root_uuid: Uuid,
-    as_of_sequence: Option<u32>,
-    as_of_timestamp: Option<String>,
+    temporal: TemporalQuery,
 ) -> Result<CommandResponse, Status> {
+    let (domain, root_uuid) = parse_command_cover(&command_book)?;
+    let edition = extract_edition(&command_book);
 
-    let temporal = match (as_of_sequence, as_of_timestamp) {
-        (Some(seq), _) => TemporalQuery::AsOfSequence(seq),
-        (_, Some(ts)) => TemporalQuery::AsOfTimestamp(ts),
-        (None, None) => {
-            return Err(Status::invalid_argument(
-                "DryRun requires either as_of_sequence or as_of_timestamp",
-            ));
-        }
-    };
+    let span = tracing::Span::current();
+    span.record("domain", domain.as_str());
+    span.record("edition", edition.as_str());
+    span.record("root_uuid", tracing::field::display(&root_uuid));
 
-    let prior_events = ctx.load_prior_events(domain, edition, root_uuid, &temporal).await?;
-    let prior_events = ctx.transform_events(domain, prior_events).await?;
+    let prior_events = ctx
+        .load_prior_events(&domain, &edition, root_uuid, &temporal)
+        .await?;
+    let prior_events = ctx.transform_events(&domain, prior_events).await?;
 
     let contextual_command = ContextualCommand {
         events: Some(prior_events),
         command: Some(command_book),
     };
 
-    let response = business.invoke(contextual_command).await?;
+    let response = business.invoke(contextual_command).await.map_err(|e| {
+        tracing::error!(error = %e, "Business logic invocation failed");
+        e
+    })?;
 
     // For dry-run, extract events but don't set correlation_id (speculative)
     let speculative_events = extract_events_from_response(response, String::new())?;

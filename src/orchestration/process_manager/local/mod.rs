@@ -11,9 +11,9 @@ use async_trait::async_trait;
 use tracing::error;
 
 use crate::bus::EventBus;
-use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::{CommandResponse, Cover, EventBook};
+use crate::proto_ext::CoverExt;
 use crate::standalone::DomainStorage;
 use crate::standalone::ProcessManagerHandler;
 
@@ -51,7 +51,16 @@ impl ProcessManagerContext for LocalPMContext {
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.handler.prepare(trigger, pm_state))
+        let edition = trigger.edition().to_string();
+        let mut covers = self.handler.prepare(trigger, pm_state);
+
+        // Stamp trigger edition onto outgoing covers
+        for cover in &mut covers {
+            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                cover.edition = Some(edition.clone());
+            }
+        }
+        Ok(covers)
     }
 
     async fn handle(
@@ -60,7 +69,22 @@ impl ProcessManagerContext for LocalPMContext {
         pm_state: Option<&EventBook>,
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let edition = trigger.edition().to_string();
         let (commands, process_events) = self.handler.handle(trigger, pm_state, destinations);
+
+        // Stamp trigger edition onto outgoing command covers
+        let commands = commands
+            .into_iter()
+            .map(|mut cmd| {
+                if let Some(ref mut c) = cmd.cover {
+                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                        c.edition = Some(edition.clone());
+                    }
+                }
+                cmd
+            })
+            .collect();
+
         Ok(PmHandleResponse {
             commands,
             process_events,
@@ -78,15 +102,16 @@ impl ProcessManagerContext for LocalPMContext {
             .and_then(|c| c.root.as_ref())
             .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())
             .unwrap_or_else(uuid::Uuid::nil);
+        let edition = process_events.edition();
 
-        // PM events bypass the command pipeline, so we pass the default edition directly.
+        // PM events bypass the command pipeline — use edition from trigger cover.
         // Persist to event store
         if let Err(e) = self
             .pm_store
             .event_store
             .add(
                 &self.pm_domain,
-                DEFAULT_EDITION,
+                edition,
                 pm_root,
                 process_events.pages.clone(),
                 correlation_id,
@@ -100,7 +125,7 @@ impl ProcessManagerContext for LocalPMContext {
         match self
             .pm_store
             .event_store
-            .get(&self.pm_domain, DEFAULT_EDITION, pm_root)
+            .get(&self.pm_domain, edition, pm_root)
             .await
         {
             Ok(pages) => {

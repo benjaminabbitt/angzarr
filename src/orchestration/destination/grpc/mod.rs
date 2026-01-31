@@ -53,7 +53,7 @@ impl GrpcDestinationFetcher {
                 domain: domain.clone(),
                 root: Some(root.clone()),
                 correlation_id: correlation_id.clone(),
-                edition: None,
+                edition: cover.edition.clone(),
             }),
             selection: None,
         };
@@ -92,7 +92,7 @@ impl DestinationFetcher for GrpcDestinationFetcher {
                 domain: domain.to_string(),
                 root: None,
                 correlation_id: correlation_id.to_string(),
-                edition: None,
+                edition: None, // correlation lookups don't have edition context
             }),
             selection: None,
         };

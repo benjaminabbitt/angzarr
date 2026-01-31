@@ -55,6 +55,17 @@ pub trait CoverExt {
             .unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION)
     }
 
+    /// Compute the bus routing key: `"{edition}.{domain}"`.
+    ///
+    /// The routing key is a transport concern used for bus subscription matching.
+    /// It combines the edition and bare domain so the bus can route events to
+    /// the correct edition-scoped subscribers without rewriting `cover.domain`.
+    fn routing_key(&self) -> String {
+        let bare = self.domain();
+        let edition = self.edition();
+        format!("{edition}.{bare}")
+    }
+
     /// Generate a cache key for this entity based on domain + root.
     ///
     /// Used for caching aggregate state during saga retry to avoid redundant fetches.

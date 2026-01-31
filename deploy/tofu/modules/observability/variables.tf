@@ -92,6 +92,14 @@ variable "otel_collector_node_port" {
   default     = 30417
 }
 
+# --- Topology ---
+
+variable "topology_endpoint" {
+  description = "Topology REST API endpoint (full URL from within cluster)"
+  type        = string
+  default     = ""
+}
+
 # --- Dashboards ---
 
 variable "dashboards_path" {

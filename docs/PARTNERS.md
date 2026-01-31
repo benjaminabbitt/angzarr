@@ -1,4 +1,4 @@
-# Partnership Opportunities
+#Tem Partnership Opportunities
 
 ## Executive Summary
 
@@ -62,6 +62,8 @@ Angzarr's architecture aligns with cloud-native patterns and creates opportuniti
 - Kubernetes deployment via Helm charts
 - Streaming infrastructure (gateway + stream services for real-time event delivery)
 - Temporal queries (as-of-time, as-of-sequence)
+- Event upcasting / schema evolution via gRPC sidecar
+- Snapshot management with automatic persistence after command handling
 
 ### Honest Assessment
 
@@ -77,8 +79,6 @@ What this means for a partnership:
 
 | Feature | Impact | Partnership Value |
 |---------|--------|-------------------|
-| Event upcasting / schema evolution | Production-critical for long-lived systems | High -- required for consulting engagements |
-| Automatic snapshotting policies | Performance optimization | Medium |
 | Serverless deployment (Cloud Run, Lambda) | Cloud provider integration | High -- direct platform value |
 | Kafka event bus adapter | Enterprise messaging | Medium |
 | Admin UI and projection management | Operational visibility | Medium |

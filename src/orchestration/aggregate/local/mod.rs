@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::proto::{event_page, Cover, EventBook, Projection, SyncEventBook, Uuid as ProtoUuid};
+use crate::proto_ext::CoverExt;
 use crate::standalone::DomainStorage;
 use crate::storage::StorageError;
 
@@ -285,23 +286,16 @@ impl AggregateContext for LocalAggregateContext {
         // Call sync projectors
         let projections = self.call_sync_projectors(events).await;
 
-        // Extract edition from cover for bus routing
-        let cover = events.cover.as_ref();
-        let edition = cover.and_then(|c| c.edition.as_deref()).unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION);
-        let bare_domain = cover.map(|c| c.domain.as_str()).unwrap_or("unknown");
-        let bus_domain = format!("{edition}.{bare_domain}");
-
-        // Construct bus-routable EventBook with edition-prefixed domain
-        let mut bus_events = events.clone();
-        if let Some(ref mut c) = bus_events.cover {
-            c.domain = bus_domain.clone();
-        }
-
+        // Publish events to bus — cover.domain stays bare, bus computes routing key
         #[cfg(feature = "otel")]
         let publish_start = std::time::Instant::now();
 
-        let bus_events = Arc::new(bus_events);
-        let publish_result = self.event_bus.publish(bus_events.clone()).await;
+        let bus_events = Arc::new(events.clone());
+
+        #[cfg(feature = "otel")]
+        let routing_key = bus_events.routing_key();
+
+        let publish_result = self.event_bus.publish(bus_events).await;
 
         #[cfg(feature = "otel")]
         {
@@ -309,19 +303,19 @@ impl AggregateContext for LocalAggregateContext {
             let outcome = if publish_result.is_ok() { "success" } else { "error" };
             BUS_PUBLISH_DURATION.record(publish_start.elapsed().as_secs_f64(), &[
                 metrics::component_attr("aggregate"),
-                metrics::domain_attr(&bus_domain),
+                metrics::domain_attr(&routing_key),
                 metrics::outcome_attr(outcome),
             ]);
             BUS_PUBLISH_TOTAL.add(1, &[
                 metrics::component_attr("aggregate"),
-                metrics::domain_attr(&bus_domain),
+                metrics::domain_attr(&routing_key),
                 metrics::outcome_attr(outcome),
             ]);
         }
 
         if let Err(e) = publish_result {
             warn!(
-                domain = %bus_domain,
+                domain = %events.domain(),
                 error = %e,
                 "Failed to publish events"
             );

@@ -196,6 +196,33 @@ spec:
     angzarr.io/service: stream
 {{- end }}
 
+{{- /* Topology service - REST API for Grafana Node Graph */}}
+{{- if include "angzarr.topology-enabled" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr.fullname" . }}-topology
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "angzarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: topology
+  annotations:
+    angzarr.io/dns-name: "{{ include "angzarr.fullname" . }}-topology.{{ .Release.Namespace }}.svc.cluster.local"
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.infrastructure.topology.port }}
+      targetPort: rest
+      protocol: TCP
+      name: rest
+  selector:
+    {{- include "angzarr.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: infrastructure
+    angzarr.io/service: topology
+{{- end }}
+
 {{- /* Command Proxy service */}}
 {{- if .Values.infrastructure.gateway.enabled }}
 ---

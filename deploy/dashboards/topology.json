@@ -1,0 +1,36 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Runtime Topology",
+      "description": "Live component graph discovered from event stream. Nodes are aggregates, sagas, process managers, and projectors. Edges represent event/command flows via correlation_id chains.",
+      "type": "nodeGraph",
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "hamedkarbasi93-nodegraphapi-datasource", "uid": "topology" },
+      "targets": [
+        {
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["angzarr", "topology", "node-graph"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Angzarr: Topology",
+  "uid": "angzarr-topology",
+  "version": 1
+}

@@ -148,12 +148,12 @@ impl ChannelEventBus {
             loop {
                 match receiver.recv().await {
                     Ok(book) => {
-                        let domain = book.domain();
+                        let routing_key = book.routing_key();
 
-                        // Check domain filter (hierarchical matching)
+                        // Check domain filter using routing key (hierarchical matching)
                         let matches = match &domain_filter {
                             None => true,
-                            Some(filter) => domain_matches(domain, filter),
+                            Some(filter) => domain_matches(&routing_key, filter),
                         };
 
                         if !matches {
@@ -161,7 +161,7 @@ impl ChannelEventBus {
                         }
 
                         debug!(
-                            domain = %domain,
+                            routing_key = %routing_key,
                             "Received event book via channel"
                         );
 

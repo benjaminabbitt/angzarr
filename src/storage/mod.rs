@@ -50,10 +50,14 @@ pub use dynamo::{DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
 pub use mongodb::{MongoEventStore, MongoPositionStore, MongoSnapshotStore};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
+#[cfg(all(feature = "postgres", feature = "topology"))]
+pub use postgres::PostgresTopologyStore;
 #[cfg(feature = "redis")]
 pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
 #[cfg(feature = "sqlite")]
 pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
+#[cfg(all(feature = "sqlite", feature = "topology"))]
+pub use sqlite::SqliteTopologyStore;
 
 // ============================================================================
 // Error Types

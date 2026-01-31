@@ -30,6 +30,11 @@ impl LocalDestinationFetcher {
 impl DestinationFetcher for LocalDestinationFetcher {
     async fn fetch(&self, cover: &Cover) -> Option<EventBook> {
         let domain = &cover.domain;
+        let edition = cover
+            .edition
+            .as_deref()
+            .filter(|e| !e.is_empty())
+            .unwrap_or(DEFAULT_EDITION);
         let root_uuid = cover
             .root
             .as_ref()
@@ -37,7 +42,7 @@ impl DestinationFetcher for LocalDestinationFetcher {
 
         let store = self.domain_stores.get(domain)?;
 
-        match store.event_store.get(domain, DEFAULT_EDITION, root_uuid).await {
+        match store.event_store.get(domain, edition, root_uuid).await {
             Ok(pages) => Some(EventBook {
                 cover: Some(Cover {
                     domain: domain.to_string(),
@@ -45,7 +50,7 @@ impl DestinationFetcher for LocalDestinationFetcher {
                         value: root_uuid.as_bytes().to_vec(),
                     }),
                     correlation_id: cover.correlation_id.clone(),
-                    edition: Some(DEFAULT_EDITION.to_string()),
+                    edition: Some(edition.to_string()),
                 }),
                 pages,
                 snapshot: None,

@@ -158,6 +158,100 @@ clean-sockets:
     mkdir -p /tmp/angzarr
     rm -f /tmp/angzarr/*.sock 2>/dev/null || true
 
+# Run a single aggregate service with its sidecar using UDS
+run-aggregate DOMAIN: build-angzarr build
+    #!/usr/bin/env bash
+    set -e
+    mkdir -p /tmp/angzarr
+    export TRANSPORT_TYPE=uds
+    export UDS_BASE_PATH=/tmp/angzarr
+    export ANGZARR_CONFIG=config/standalone.yaml
+    export SERVICE_NAME=business
+    export DOMAIN={{DOMAIN}}
+    
+    # Start business logic in background
+    # It will listen on $UDS_BASE_PATH/business-$DOMAIN.sock
+    ./target/debug/{{DOMAIN}}-server &
+    BUSINESS_PID=$!
+    
+    # Start angzarr sidecar
+    # It will listen on $UDS_BASE_PATH/aggregate-$DOMAIN.sock
+    # And connect to $UDS_BASE_PATH/business-$DOMAIN.sock
+    # Use ANGZARR_DISCOVERY=static to avoid K8s dependencies
+    export ANGZARR_DISCOVERY=static
+    {{TOP}}/target/debug/angzarr-aggregate --config config/standalone.yaml \
+        || kill $BUSINESS_PID
+    
+    kill $BUSINESS_PID 2>/dev/null || true
+
+# Run a single saga service with its sidecar using UDS
+run-saga DOMAIN: build-angzarr build
+    #!/usr/bin/env bash
+    set -e
+    mkdir -p /tmp/angzarr
+    export TRANSPORT_TYPE=uds
+    export UDS_BASE_PATH=/tmp/angzarr
+    export ANGZARR_CONFIG=config/standalone.yaml
+    export SERVICE_NAME=saga
+    export DOMAIN={{DOMAIN}}
+    
+    # Start saga logic in background
+    # It will listen on $UDS_BASE_PATH/saga-$DOMAIN.sock
+    ./target/debug/saga-{{DOMAIN}}-server &
+    SAGA_PID=$!
+    
+    # Start angzarr sidecar
+    # It will connect to $UDS_BASE_PATH/saga-$DOMAIN.sock
+    # For standalone, we often need static endpoints for two-phase routing
+    export ANGZARR_STATIC_ENDPOINTS="customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock,product=/tmp/angzarr/aggregate-product.sock"
+    {{TOP}}/target/debug/angzarr-saga --config config/standalone.yaml \
+        || kill $SAGA_PID
+    
+    kill $SAGA_PID 2>/dev/null || true
+
+# Run a single projector service with its sidecar using UDS
+run-projector NAME DOMAIN: build-angzarr build
+    #!/usr/bin/env bash
+    set -e
+    mkdir -p /tmp/angzarr
+    export TRANSPORT_TYPE=uds
+    export UDS_BASE_PATH=/tmp/angzarr
+    export ANGZARR_CONFIG=config/standalone.yaml
+    export SERVICE_NAME=projector-{{NAME}}
+    export DOMAIN={{DOMAIN}}
+    
+    # Start projector logic in background
+    ./target/debug/projector-{{NAME}}-server &
+    PROJ_PID=$!
+    
+    # Start angzarr sidecar
+    {{TOP}}/target/debug/angzarr-projector --config config/standalone.yaml \
+        || kill $PROJ_PID
+    
+    kill $PROJ_PID 2>/dev/null || true
+
+# Run a single process manager service with its sidecar using UDS
+run-pm DOMAIN: build-angzarr build
+    #!/usr/bin/env bash
+    set -e
+    mkdir -p /tmp/angzarr
+    export TRANSPORT_TYPE=uds
+    export UDS_BASE_PATH=/tmp/angzarr
+    export ANGZARR_CONFIG=config/standalone.yaml
+    export SERVICE_NAME=process-manager
+    export DOMAIN={{DOMAIN}}
+    
+    # Start PM logic in background
+    ./target/debug/process-manager-{{DOMAIN}}-server &
+    PM_PID=$!
+    
+    # Start angzarr sidecar
+    export ANGZARR_STATIC_ENDPOINTS="customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock,product=/tmp/angzarr/aggregate-product.sock"
+    {{TOP}}/target/debug/angzarr-process-manager --config config/standalone.yaml \
+        || kill $PM_PID
+    
+    kill $PM_PID 2>/dev/null || true
+
 # Run all services in standalone mode (single command)
 embedded: build-angzarr clean-sockets build
     cd {{TOP}}/examples/rust && ANGZARR_CONFIG=config/standalone.yaml {{TOP}}/target/debug/angzarr-standalone

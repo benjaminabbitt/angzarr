@@ -214,23 +214,16 @@ impl AggregateContext for GrpcAggregateContext {
             vec![]
         };
 
-        // Build bus-routable domain: "{edition}.{bare_domain}"
-        let cover = events.cover.as_ref();
-        let edition = cover
-            .and_then(|c| c.edition.as_deref())
-            .unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION);
-        let bare_domain = cover.map(|c| c.domain.as_str()).unwrap_or("unknown");
-        let bus_domain = format!("{edition}.{bare_domain}");
-
-        let mut bus_events = events.clone();
-        if let Some(ref mut c) = bus_events.cover {
-            c.domain = bus_domain.clone();
-        }
-
+        // Publish events to bus — cover.domain stays bare, bus computes routing key
         #[cfg(feature = "otel")]
         let publish_start = std::time::Instant::now();
 
-        let publish_result = self.event_bus.publish(Arc::new(bus_events)).await;
+        let bus_events = Arc::new(events.clone());
+
+        #[cfg(feature = "otel")]
+        let routing_key = bus_events.routing_key();
+
+        let publish_result = self.event_bus.publish(bus_events).await;
 
         #[cfg(feature = "otel")]
         {
@@ -238,19 +231,19 @@ impl AggregateContext for GrpcAggregateContext {
             let outcome = if publish_result.is_ok() { "success" } else { "error" };
             BUS_PUBLISH_DURATION.record(publish_start.elapsed().as_secs_f64(), &[
                 metrics::component_attr("aggregate"),
-                metrics::domain_attr(&bus_domain),
+                metrics::domain_attr(&routing_key),
                 metrics::outcome_attr(outcome),
             ]);
             BUS_PUBLISH_TOTAL.add(1, &[
                 metrics::component_attr("aggregate"),
-                metrics::domain_attr(&bus_domain),
+                metrics::domain_attr(&routing_key),
                 metrics::outcome_attr(outcome),
             ]);
         }
 
         if let Err(e) = publish_result {
             warn!(
-                domain = %bus_domain,
+                domain = %events.domain(),
                 error = %e,
                 "Failed to publish events"
             );

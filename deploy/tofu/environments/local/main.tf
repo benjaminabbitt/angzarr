@@ -191,6 +191,9 @@ module "observability" {
 
   otel_collector_node_port = 30417
 
+  # Topology visualization (Node Graph API datasource for Grafana)
+  topology_endpoint = "http://angzarr-topology.angzarr.svc.cluster.local:9099"
+
   resources = {
     requests = {
       memory = "128Mi"

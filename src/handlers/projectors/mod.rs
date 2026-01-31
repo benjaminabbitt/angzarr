@@ -7,6 +7,8 @@
 pub mod event;
 pub mod log;
 pub mod stream;
+#[cfg(feature = "topology")]
+pub mod topology;
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub use event::{connect_pool, EventService, EventServiceHandle};

@@ -95,7 +95,8 @@ async fn test_channel_subscribe_and_receive() {
 
 #[tokio::test]
 async fn test_channel_domain_filter() {
-    let bus = ChannelEventBus::subscriber("orders");
+    // Subscribe to routing key "angzarr.orders" (edition-prefixed)
+    let bus = ChannelEventBus::subscriber("angzarr.orders");
     let count = Arc::new(AtomicUsize::new(0));
 
     let handler = CountingHandler {
@@ -106,11 +107,11 @@ async fn test_channel_domain_filter() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    // Publish to matching domain
+    // Publish to matching domain (routing key = "angzarr.orders")
     let book1 = Arc::new(make_event_book("orders", Uuid::new_v4()));
     bus.publish(book1).await.unwrap();
 
-    // Publish to non-matching domain
+    // Publish to non-matching domain (routing key = "angzarr.inventory")
     let book2 = Arc::new(make_event_book("inventory", Uuid::new_v4()));
     bus.publish(book2).await.unwrap();
 

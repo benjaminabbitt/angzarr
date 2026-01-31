@@ -47,6 +47,7 @@ impl ProcessManagerContext for GrpcPMContext {
         pm_state: Option<&EventBook>,
     ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
+        let edition = trigger.edition().to_string();
         let request = ProcessManagerPrepareRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
@@ -57,7 +58,15 @@ impl ProcessManagerContext for GrpcPMContext {
             .prepare(correlated_request(request, correlation_id))
             .await?
             .into_inner();
-        Ok(response.destinations)
+
+        // Stamp trigger edition onto outgoing covers
+        let mut covers = response.destinations;
+        for cover in &mut covers {
+            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                cover.edition = Some(edition.clone());
+            }
+        }
+        Ok(covers)
     }
 
     async fn handle(
@@ -67,6 +76,7 @@ impl ProcessManagerContext for GrpcPMContext {
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
+        let edition = trigger.edition().to_string();
         let request = ProcessManagerHandleRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
@@ -79,8 +89,22 @@ impl ProcessManagerContext for GrpcPMContext {
             .await?
             .into_inner();
 
+        // Stamp trigger edition onto outgoing command covers
+        let commands = response
+            .commands
+            .into_iter()
+            .map(|mut cmd| {
+                if let Some(ref mut c) = cmd.cover {
+                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
+                        c.edition = Some(edition.clone());
+                    }
+                }
+                cmd
+            })
+            .collect();
+
         Ok(PmHandleResponse {
-            commands: response.commands,
+            commands,
             process_events: response.process_events,
         })
     }
@@ -90,12 +114,13 @@ impl ProcessManagerContext for GrpcPMContext {
         process_events: &EventBook,
         correlation_id: &str,
     ) -> CommandOutcome {
+        let edition = process_events.edition().to_string();
         let pm_command = CommandBook {
             cover: Some(Cover {
                 domain: self.pm_domain.clone(),
                 root: process_events.cover.as_ref().and_then(|c| c.root.clone()),
                 correlation_id: correlation_id.to_string(),
-                edition: None,
+                edition: Some(edition),
             }),
             pages: vec![],
             saga_origin: None,

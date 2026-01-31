@@ -182,3 +182,16 @@ pub fn parse_static_endpoints(endpoints_str: &str) -> Vec<(String, String)> {
         })
         .collect()
 }
+
+/// Parse configuration path from command-line arguments.
+///
+/// Looks for `--config` or `-c` followed by a path.
+pub fn parse_config_path() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len() {
+        if (args[i] == "--config" || args[i] == "-c") && i + 1 < args.len() {
+            return Some(args[i + 1].clone());
+        }
+    }
+    None
+}

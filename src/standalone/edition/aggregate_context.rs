@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::orchestration::aggregate::{AggregateContext, TemporalQuery};
 use crate::proto::{Cover, EventBook, Projection, Uuid as ProtoUuid};
+use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, StorageError};
 
 use super::event_store::EditionEventStore;
@@ -164,21 +165,10 @@ impl AggregateContext for EditionAggregateContext {
     }
 
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
-        let cover = events.cover.as_ref();
-        let edition = cover
-            .and_then(|c| c.edition.as_deref())
-            .unwrap_or(&self.edition_name);
-        let bare_domain = cover.map(|c| c.domain.as_str()).unwrap_or("unknown");
-        let bus_domain = format!("{edition}.{bare_domain}");
-
-        let mut bus_events = events.clone();
-        if let Some(ref mut c) = bus_events.cover {
-            c.domain = bus_domain.clone();
-        }
-
-        if let Err(e) = self.event_bus.publish(Arc::new(bus_events)).await {
+        // Publish events to bus — cover.domain stays bare, bus computes routing key
+        if let Err(e) = self.event_bus.publish(Arc::new(events.clone())).await {
             warn!(
-                domain = %bus_domain,
+                domain = %events.domain(),
                 edition = %self.edition_name,
                 error = %e,
                 "Failed to publish edition events"
