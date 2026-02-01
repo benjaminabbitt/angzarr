@@ -1,4 +1,4 @@
-//! Inventory bounded context business logic.
+//! Inventory bounded context client logic.
 //!
 //! Handles stock levels, reservations, and low stock alerts.
 
@@ -96,7 +96,7 @@ fn build_event_response(
     )
 }
 
-/// Business logic for Inventory aggregate.
+/// client logic for Inventory aggregate.
 pub struct InventoryLogic;
 
 common::define_aggregate!(InventoryLogic, "inventory");

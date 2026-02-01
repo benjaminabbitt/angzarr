@@ -26,6 +26,7 @@ use std::time::Duration;
 use backon::Retryable;
 use tracing::{info, warn};
 
+use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::proto::process_manager_client::ProcessManagerClient;
 use angzarr::proto::GetSubscriptionsRequest;
@@ -81,8 +82,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Connect to all aggregate endpoints
-    let endpoints_str = std::env::var("ANGZARR_STATIC_ENDPOINTS").map_err(|_| {
-        "Process manager requires ANGZARR_STATIC_ENDPOINTS for multi-domain routing"
+    let endpoints_str = std::env::var(STATIC_ENDPOINTS_ENV_VAR).map_err(|_| {
+        format!("Process manager requires {} for multi-domain routing", STATIC_ENDPOINTS_ENV_VAR)
     })?;
 
     let (command_executor, destination_fetcher) = connect_endpoints(&endpoints_str).await?;

@@ -27,7 +27,12 @@ use futures::future::BoxFuture;
 use tracing::{error, info};
 
 use angzarr::bus::{init_event_bus, BusError, EventBusMode, EventHandler};
-use angzarr::config::Config;
+#[cfg(feature = "postgres")]
+use angzarr::config::TOPOLOGY_POSTGRES_URI_ENV_VAR;
+use angzarr::config::{
+    Config, TOPOLOGY_REST_PORT_ENV_VAR,
+    TOPOLOGY_SQLITE_PATH_ENV_VAR, TOPOLOGY_STORAGE_TYPE_ENV_VAR,
+};
 use angzarr::handlers::projectors::topology::store::TopologyStore;
 use angzarr::handlers::projectors::topology::TopologyProjector;
 use angzarr::proto::EventBook;
@@ -54,13 +59,13 @@ impl EventHandler for TopologyEventHandler {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
-    let rest_port: u16 = std::env::var("TOPOLOGY_REST_PORT")
+    let rest_port: u16 = std::env::var(TOPOLOGY_REST_PORT_ENV_VAR)
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(9099);
 
     let storage_type =
-        std::env::var("TOPOLOGY_STORAGE_TYPE").unwrap_or_else(|_| "sqlite".to_string());
+        std::env::var(TOPOLOGY_STORAGE_TYPE_ENV_VAR).unwrap_or_else(|_| "sqlite".to_string());
 
     info!(port = rest_port, storage = %storage_type, "starting angzarr-topology");
 
@@ -70,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
             use std::time::Duration;
 
-            let path = std::env::var("TOPOLOGY_SQLITE_PATH")
+            let path = std::env::var(TOPOLOGY_SQLITE_PATH_ENV_VAR)
                 .unwrap_or_else(|_| "/data/topology.db".to_string());
 
             let opts = SqliteConnectOptions::new()
@@ -92,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         #[cfg(feature = "postgres")]
         "postgres" => {
-            let uri = std::env::var("TOPOLOGY_POSTGRES_URI")
+            let uri = std::env::var(TOPOLOGY_POSTGRES_URI_ENV_VAR)
                 .unwrap_or_else(|_| "postgres://localhost:5432/angzarr".to_string());
 
             let pool = sqlx::PgPool::connect(&uri).await?;

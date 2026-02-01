@@ -662,7 +662,7 @@ async fn send_corrupted_protobuf(world: &mut E2EWorld) {
     let root = world.root(&cart_alias);
 
     // Query actual sequence to pass sequence validation — we want the
-    // business logic layer to reject the corrupted payload, not the router.
+    // client logic layer to reject the corrupted payload, not the router.
     let events = world.query_events("cart", root).await;
     let next_seq = events.len() as u32;
 

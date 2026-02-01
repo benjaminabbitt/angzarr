@@ -24,6 +24,7 @@ use tonic::transport::Channel;
 use tonic::Status;
 use tracing::{debug, info};
 
+use crate::config::{UPCASTER_ADDRESS_ENV_VAR, UPCASTER_ENABLED_ENV_VAR};
 use crate::proto::{upcaster_client::UpcasterClient, EventPage, UpcastRequest};
 use crate::proto_ext::correlated_request;
 
@@ -48,10 +49,10 @@ pub struct UpcasterConfig {
 impl Default for UpcasterConfig {
     fn default() -> Self {
         Self {
-            enabled: std::env::var("ANGZARR_UPCASTER_ENABLED")
+            enabled: std::env::var(UPCASTER_ENABLED_ENV_VAR)
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            address: std::env::var("ANGZARR_UPCASTER_ADDRESS")
+            address: std::env::var(UPCASTER_ADDRESS_ENV_VAR)
                 .unwrap_or_else(|_| "localhost:50053".to_string()),
             timeout_ms: 5000,
         }
@@ -62,14 +63,14 @@ impl UpcasterConfig {
     /// Check if upcaster is enabled (config or env var).
     pub fn is_enabled(&self) -> bool {
         self.enabled
-            || std::env::var("ANGZARR_UPCASTER_ENABLED")
+            || std::env::var(UPCASTER_ENABLED_ENV_VAR)
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false)
     }
 
     /// Get the upcaster address (config or env var).
     pub fn get_address(&self) -> String {
-        std::env::var("ANGZARR_UPCASTER_ADDRESS").unwrap_or_else(|_| self.address.clone())
+        std::env::var(UPCASTER_ADDRESS_ENV_VAR).unwrap_or_else(|_| self.address.clone())
     }
 }
 

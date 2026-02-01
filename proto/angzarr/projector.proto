@@ -7,8 +7,8 @@ option java_multiple_files = true;
 import "angzarr/types.proto";
 import "google/protobuf/empty.proto";
 
-// Projector: business logic that projects events to read models
-// Business logic doesn't care about sync - coordinator decides
+// Projector: client logic that projects events to read models
+// client logic doesn't care about sync - coordinator decides
 service Projector {
   rpc Handle (EventBook) returns (Projection);
 }

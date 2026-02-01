@@ -109,7 +109,7 @@ debug:
 service:
   type: ClusterIP
   aggregatePort: 1310     # Aggregate sidecar gRPC
-  queryPort: 1315         # Aggregate sidecar business logic port (EventQuery)
+  queryPort: 1315         # Aggregate sidecar client logic port (EventQuery)
   # NodePort for local development access
   nodePort:
     enabled: false
@@ -348,16 +348,16 @@ postgresql:
 # Main application containers - angzarr runs as sidecar to these
 # Each application type gets angzarr infrastructure
 applications:
-  # Business logic applications - handle commands, produce events
+  # client logic applications - handle commands, produce events
   # Angzarr sidecar provides: BusinessCoordinator gRPC service
   business: []
   # - name: discount-service
   #   image:
   #     repository: discount-business
   #     tag: "latest"
-  #   # Domain this business logic handles
+  #   # Domain this client logic handles
   #   domain: "discounts"
-  #   # Port the business logic exposes (angzarr calls this)
+  #   # Port the client logic exposes (angzarr calls this)
   #   port: 50051
   #   type: python  # python, go, or custom
   #   python:

@@ -11,17 +11,17 @@ Angzarr provides the infrastructure layer for event-sourced systems:
 - gRPC event distribution
 - Projector and saga coordination
 
-Business logic runs as external gRPC services — any language with gRPC support works. Most teams pick one language and stick with it; the value is that the choice is entirely theirs. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf. See [angzarr-client](angzarr-client/rust/) for the Rust client library.
+client logic runs as external gRPC services — any language with gRPC support works. Most teams pick one language and stick with it; the value is that the choice is entirely theirs. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf. See [angzarr-client](angzarr-client/rust/) for the Rust client library.
 
 ## Why Angzarr
 
-CQRS/Event Sourcing delivers powerful benefits -- complete audit trails, temporal queries, scalable read models -- but the infrastructure complexity is prohibitive. Teams need expertise in event stores, snapshot optimization, distributed messaging, saga coordination, and concurrency control before writing a single line of business logic.
+CQRS/Event Sourcing delivers powerful benefits -- complete audit trails, temporal queries, scalable read models -- but the infrastructure complexity is prohibitive. Teams need expertise in event stores, snapshot optimization, distributed messaging, saga coordination, and concurrency control before writing a single line of client logic.
 
-Angzarr inverts this equation: **business logic becomes the only thing you write**.
+Angzarr inverts this equation: **client logic becomes the only thing you write**.
 
 ### The Core Insight
 
-Business logic should be pure functions: `(state, command) -> events`. When you strip away infrastructure concerns, what remains is exactly what junior developers and AI code generators excel at:
+client logic should be pure functions: `(state, command) -> events`. When you strip away infrastructure concerns, what remains is exactly what junior developers and AI code generators excel at:
 
 - Clear input/output contracts (protobuf schemas)
 - No side effects to reason about
@@ -53,7 +53,7 @@ Every handler follows the same mechanical pattern:
 4. EMIT:     Return event(s) describing what happened
 ```
 
-Here's the same business logic in three languages -- notice the structural identity:
+Here's the same client logic in three languages -- notice the structural identity:
 
 **Go** (24 lines of logic):
 ```go
@@ -199,7 +199,7 @@ The senior defines the **what** (schemas, aggregates, events). Juniors and AIs i
 
 ## Architecture
 
-Business logic lives in external services called via gRPC. Angzarr handles:
+client logic lives in external services called via gRPC. Angzarr handles:
 - **EventStore**: Persist and query events (MongoDB, SQLite tested; [PostgreSQL](src/storage/postgres/README.md), [Redis](src/storage/redis/README.md) implemented but untested)
 - **SnapshotStore**: Optimize replay with snapshots
 - **Upcaster**: Transform old event versions on read (schema evolution)
@@ -214,7 +214,7 @@ Business logic lives in external services called via gRPC. Angzarr handles:
 
 Angzarr provides seven binaries in two categories:
 
-**Sidecars** (run alongside your business logic in the same pod):
+**Sidecars** (run alongside your client logic in the same pod):
 
 | Binary | Purpose |
 |--------|---------|
@@ -228,8 +228,8 @@ Angzarr provides seven binaries in two categories:
 | Binary | Purpose |
 |--------|---------|
 | `angzarr-gateway` | Client entry point, command routing, event streaming to clients |
-| `angzarr-stream` | Correlation-based event filtering (a projector — runs with `angzarr-projector` sidecar, but the business logic is provided by the framework rather than by the client) |
-| `angzarr-standalone` | Local development orchestrator — spawns all sidecars and business logic processes in a single binary, replacing Kubernetes with SQLite + Unix domain sockets |
+| `angzarr-stream` | Correlation-based event filtering (a projector — runs with `angzarr-projector` sidecar, but the client logic is provided by the framework rather than by the client) |
+| `angzarr-standalone` | Local development orchestrator — spawns all sidecars and client logic processes in a single binary, replacing Kubernetes with SQLite + Unix domain sockets |
 
 ## Documentation
 

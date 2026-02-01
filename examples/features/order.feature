@@ -1,6 +1,6 @@
-Feature: Order Business Logic
+Feature: Order client logic
   Tests order aggregate behavior independent of transport.
-  These scenarios verify pure business logic for order lifecycle and payment.
+  These scenarios verify pure client logic for order lifecycle and payment.
 
   # --- CreateOrder scenarios ---
 

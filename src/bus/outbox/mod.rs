@@ -73,6 +73,7 @@ use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::config::OUTBOX_ENABLED_ENV_VAR;
 use super::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
@@ -119,7 +120,7 @@ pub struct OutboxConfig {
 impl Default for OutboxConfig {
     fn default() -> Self {
         Self {
-            enabled: std::env::var("ANGZARR_OUTBOX_ENABLED")
+            enabled: std::env::var(OUTBOX_ENABLED_ENV_VAR)
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             max_retries: 10,
@@ -132,7 +133,7 @@ impl OutboxConfig {
     /// Check if outbox is enabled (config or env var).
     pub fn is_enabled(&self) -> bool {
         self.enabled
-            || std::env::var("ANGZARR_OUTBOX_ENABLED")
+            || std::env::var(OUTBOX_ENABLED_ENV_VAR)
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false)
     }

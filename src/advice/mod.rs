@@ -1,14 +1,14 @@
 //! Aspect-oriented advice for cross-cutting concerns.
 //!
 //! This module provides wrapper types that add orthogonal behavior
-//! (metrics, tracing, retries) without polluting core business logic.
+//! (metrics, tracing, retries) without polluting core client logic.
 //!
 //! # Architecture
 //!
 //! Advice is applied at service composition time, not in implementations:
 //!
 //! ```ignore
-//! // Core implementation - pure business logic
+//! // Core implementation - pure client logic
 //! let store = SqliteEventStore::new(pool);
 //!
 //! // Apply advice layers

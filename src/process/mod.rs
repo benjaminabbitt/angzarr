@@ -1,6 +1,6 @@
-//! Process management for spawning business logic services.
+//! Process management for spawning client logic services.
 //!
-//! Handles spawning child processes for business logic, passing configuration
+//! Handles spawning child processes for client logic, passing configuration
 //! as environment variables, and managing their lifecycle.
 
 use std::collections::HashMap;
@@ -101,7 +101,7 @@ impl ManagedProcess {
         let executable = &command[0];
         let args = &command[1..];
 
-        info!(executable = %executable, ?args, "Spawning business logic process");
+        info!(executable = %executable, ?args, "Spawning client logic process");
 
         let env_vars = env.to_env_vars();
         debug!(?env_vars, "Process environment");
@@ -140,7 +140,7 @@ impl ManagedProcess {
             e
         })?;
 
-        info!(pid = ?child.id(), "Business logic process spawned");
+        info!(pid = ?child.id(), "client logic process spawned");
 
         Ok(Self {
             child,
@@ -165,7 +165,7 @@ impl ManagedProcess {
 
     /// Kill the process.
     pub async fn kill(&mut self) -> Result<(), std::io::Error> {
-        info!(pid = ?self.child.id(), "Killing business logic process");
+        info!(pid = ?self.child.id(), "Killing client logic process");
         self.child.kill().await
     }
 }

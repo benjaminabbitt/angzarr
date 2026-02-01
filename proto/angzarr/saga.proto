@@ -6,7 +6,7 @@ option java_multiple_files = true;
 
 import "angzarr/types.proto";
 
-// Saga: business logic that coordinates across aggregates
+// Saga: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
 service Saga {
   // Phase 1: Saga declares which destination aggregates it needs

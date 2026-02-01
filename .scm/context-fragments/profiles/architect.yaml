@@ -15,7 +15,7 @@ content: |-
     ## Separation of Concerns
 
     - Are responsibilities clearly divided?
-    - Is business logic separate from infrastructure?
+    - Is client logic separate from infrastructure?
     - Are cross-cutting concerns properly isolated?
 
     ## Testability
@@ -61,7 +61,7 @@ distilled: |-
 
     ## Separation of Concerns
     - Clear responsibility division?
-    - Business logic separate from infra?
+    - client logic separate from infra?
     - Cross-cutting concerns isolated?
 
     ## Testability

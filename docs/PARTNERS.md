@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Angzarr is an open-source CQRS/Event Sourcing infrastructure framework built in Rust. It separates infrastructure concerns (event persistence, messaging, saga coordination, snapshot management) from business logic, which runs as external gRPC services in any language.
+Angzarr is an open-source CQRS/Event Sourcing infrastructure framework built in Rust. It separates infrastructure concerns (event persistence, messaging, saga coordination, snapshot management) from client logic, which runs as external gRPC services in any language.
 
 **Market positioning:** Infrastructure layer for event-sourced systems. Not a library -- a framework that applications connect to. Vendor-neutral, language-agnostic (any gRPC language), Kubernetes-native.
 
@@ -14,11 +14,11 @@ Angzarr is an open-source CQRS/Event Sourcing infrastructure framework built in 
 
 ### For Consulting Firms
 
-CQRS/Event Sourcing engagements carry significant implementation risk. Teams get bogged down in infrastructure -- event stores, snapshot optimization, distributed messaging, concurrency control -- before writing a single line of business logic. Engagements run long, budgets overrun, and clients question the architectural choice.
+CQRS/Event Sourcing engagements carry significant implementation risk. Teams get bogged down in infrastructure -- event stores, snapshot optimization, distributed messaging, concurrency control -- before writing a single line of client logic. Engagements run long, budgets overrun, and clients question the architectural choice.
 
 Angzarr changes the engagement model:
 
-**Reduce implementation risk.** The framework handles the infrastructure that causes most project failures. Business logic becomes pure functions: `(state, command) -> events`. Handlers are 20-40 lines of code each, mechanically structured, unit-testable without infrastructure.
+**Reduce implementation risk.** The framework handles the infrastructure that causes most project failures. client logic becomes pure functions: `(state, command) -> events`. Handlers are 20-40 lines of code each, mechanically structured, unit-testable without infrastructure.
 
 **Repeatable engagement pattern:**
 1. Senior architects design protobuf schemas (commands, events, read models)
@@ -28,7 +28,7 @@ Angzarr changes the engagement model:
 
 **Staff efficiently.** Schema design requires senior expertise. Handler implementation does not. The same pattern applies to AI code generation -- LLMs produce correct handlers because the contract is schema-defined and the pattern is mechanical.
 
-**No "wrong stack" problem.** Client teams write business logic in their preferred language (Go, Python, Rust). The gRPC boundary means mixed teams interoperate without integration friction.
+**No "wrong stack" problem.** Client teams write client logic in their preferred language (Go, Python, Rust). The gRPC boundary means mixed teams interoperate without integration friction.
 
 **Demonstrate value early.** A working domain with command handling, projections, and saga coordination can be stood up in days, not months. The client sees events flowing through the system before the engagement is half complete.
 
@@ -40,7 +40,7 @@ Angzarr's architecture aligns with cloud-native patterns and creates opportuniti
 
 **Native storage/messaging integration.** The adapter architecture supports pluggable backends. Cloud-native adapters (Bigtable, DynamoDB, Pub/Sub, SQS, Kinesis) are bounded implementation tasks against well-defined traits.
 
-**Reference architecture opportunity.** "Event sourcing on [platform]" is a common customer question with no standardized answer. Angzarr provides a reference architecture: schema-first, language-agnostic (any gRPC language), with clear separation between business logic and infrastructure.
+**Reference architecture opportunity.** "Event sourcing on [platform]" is a common customer question with no standardized answer. Angzarr provides a reference architecture: schema-first, language-agnostic (any gRPC language), with clear separation between client logic and infrastructure.
 
 **Minimal compute footprint.** ~8MB distroless sidecar containers. No JVM, no managed runtime overhead. Cost-efficient on per-second billing models.
 
@@ -96,7 +96,7 @@ Partners can integrate with Angzarr at well-defined boundaries:
 
 **Messaging adapters** -- Implement `EventBus` trait for your platform's messaging (Pub/Sub, SQS, Kinesis, Event Hubs).
 
-**Transport** -- gRPC boundary with standard protobuf contracts. Business logic services implement a single interface (`BusinessLogic.Handle`).
+**Transport** -- gRPC boundary with standard protobuf contracts. client logic services implement a single interface (`BusinessLogic.Handle`).
 
 **Deployment** -- Helm charts and OCI container images. Infrastructure-as-code via OpenTofu modules for backing services.
 

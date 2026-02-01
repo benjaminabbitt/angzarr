@@ -42,8 +42,9 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
+use angzarr::config::{COMMAND_ADDRESS_ENV_VAR, STATIC_ENDPOINTS_ENV_VAR};
 use angzarr::orchestration::aggregate::DEFAULT_EDITION;
-use angzarr::clients::SagaCompensationConfig;
+use angzarr::config::SagaCompensationConfig;
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::command::grpc::SingleClientExecutor;
 use angzarr::orchestration::command::CommandExecutor;
@@ -87,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
     // Build executor, fetcher, and factory based on configuration mode
-    let handler = if let Ok(endpoints_str) = std::env::var("ANGZARR_STATIC_ENDPOINTS") {
+    let handler = if let Ok(endpoints_str) = std::env::var(STATIC_ENDPOINTS_ENV_VAR) {
         info!("Using static endpoint configuration for two-phase saga routing");
         let (executor, fetcher) = connect_endpoints(&endpoints_str).await?;
         let factory = Arc::new(GrpcSagaContextFactory::new(
@@ -98,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format!("{DEFAULT_EDITION}.{}", bootstrap.domain),
         ));
         SagaEventHandler::from_factory(factory, executor, Some(fetcher))
-    } else if let Ok(command_address) = std::env::var("COMMAND_ADDRESS") {
+    } else if let Ok(command_address) = std::env::var(COMMAND_ADDRESS_ENV_VAR) {
         let cmd_addr = command_address.clone();
         let client = (|| {
             let addr = cmd_addr.clone();
@@ -125,8 +126,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
         SagaEventHandler::from_factory(factory, executor, None)
     } else {
-        error!("Neither ANGZARR_STATIC_ENDPOINTS nor COMMAND_ADDRESS set - saga cannot execute commands");
-        return Err("Saga sidecar requires ANGZARR_STATIC_ENDPOINTS or COMMAND_ADDRESS".into());
+        error!("Neither {} nor {} set - saga cannot execute commands", STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR);
+        return Err(format!("Saga sidecar requires {} or {}", STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR).into());
     };
 
     let queue_name = format!("saga-{}", bootstrap.domain);

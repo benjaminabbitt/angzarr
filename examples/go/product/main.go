@@ -151,7 +151,7 @@ func main() {
 	grpc_health_v1.RegisterHealthServer(s, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	logger.Info("business logic server started",
+	logger.Info("client logic server started",
 		zap.String("domain", Domain),
 		zap.String("port", port))
 

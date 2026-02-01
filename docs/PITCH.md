@@ -1,6 +1,6 @@
 # ⍼ Angzarr
 
-**A schema-first CQRS/ES framework — write business logic in any gRPC language**
+**A schema-first CQRS/ES framework — write client logic in any gRPC language**
 
 The symbol ⍼ ([U+237C](https://en.wikipedia.org/wiki/Angzarr)) has existed in Unicode since 2002 with no defined purpose. The right angle represents the origin point—your event store. The zigzag arrow represents events cascading through your system. We gave it meaning.
 
@@ -8,15 +8,15 @@ The symbol ⍼ ([U+237C](https://en.wikipedia.org/wiki/Angzarr)) has existed in 
 
 ## Origin
 
-In my history as a consultant software engineer and architect, I've encountered many business logic problems where traceability/audit and the ability to handle burst traffic (high load variability) are critical. The CQRS/ES pattern addresses these concerns elegantly—but I was forewarned, and have seen evolved event architectures fail in... interesting... ways.
+In my history as a consultant software engineer and architect, I've encountered many client logic problems where traceability/audit and the ability to handle burst traffic (high load variability) are critical. The CQRS/ES pattern addresses these concerns elegantly—but I was forewarned, and have seen evolved event architectures fail in... interesting... ways.
 
-The pattern's appeal is clear: complete audit history, temporal queries, natural separation of concerns. The implementation reality is less rosy. Teams start with clean intentions, then infrastructure complexity creeps in. Business logic becomes entangled with persistence concerns. Schema evolution becomes an afterthought. The original architectural benefits get buried under accidental complexity.
+The pattern's appeal is clear: complete audit history, temporal queries, natural separation of concerns. The implementation reality is less rosy. Teams start with clean intentions, then infrastructure complexity creeps in. client logic becomes entangled with persistence concerns. Schema evolution becomes an afterthought. The original architectural benefits get buried under accidental complexity.
 
 I was inspired to create a framework—not a library—for building CQRS/ES applications that handles much of the implementation complexity. The distinction matters: libraries are imported into your code, while frameworks provide the execution environment your code runs within.
 
-The advent of managed runtimes like Kubernetes, GCP Cloud Run, and AWS Lambda provided the path forward. These platforms enable control to be intercepted before and after user-provided business logic. Event histories (snapshots and events) can be loaded, business logic executes in isolation, and resulting events are captured, stored, and forwarded—all without the business logic needing to know how any of it works.
+The advent of managed runtimes like Kubernetes, GCP Cloud Run, and AWS Lambda provided the path forward. These platforms enable control to be intercepted before and after user-provided client logic. Event histories (snapshots and events) can be loaded, client logic executes in isolation, and resulting events are captured, stored, and forwarded—all without the client logic needing to know how any of it works.
 
-The payoff: business logic becomes remarkably small. A command handler receives state and a command, validates business rules, and returns events. No database connections. No message bus configuration. No retry logic. No serialization code. Just pure domain logic. The infrastructure complexity doesn't disappear; it moves to the framework where it belongs.
+The payoff: client logic becomes remarkably small. A command handler receives state and a command, validates business rules, and returns events. No database connections. No message bus configuration. No retry logic. No serialization code. Just pure domain logic. The infrastructure complexity doesn't disappear; it moves to the framework where it belongs.
 
 See for yourself—the customer aggregate (create customer, add/redeem loyalty points) is one of the simpler examples:
 
@@ -26,7 +26,7 @@ See for yourself—the customer aggregate (create customer, add/redeem loyalty p
 | Python | 209 | [examples/python/customer/](../examples/python/customer/) |
 | Rust | 303 | [examples/rust/customer/src/](../examples/rust/customer/src/) |
 
-*LOC counted via [scripts/render_docs.py](../scripts/render_docs.py) — non-blank, non-comment lines in business logic files.*
+*LOC counted via [scripts/render_docs.py](../scripts/render_docs.py) — non-blank, non-comment lines in client logic files.*
 
 The Angzarr project uses Gherkin feature files to specify business behavior—these are *not* a requirement for your applications. We use them to keep business rules consistent across all example implementations (Go, Python, Rust) and to provide executable specification that runs on every commit:
 
@@ -56,7 +56,7 @@ CQRS and Event Sourcing deliver real architectural benefits: full audit history,
 
 Teams adopting CQRS/ES face a consistent set of challenges:
 
-- **Infrastructure gravity**: Event stores, message buses, projection databases, and their failure modes dominate early development cycles. Business logic becomes entangled with persistence concerns.
+- **Infrastructure gravity**: Event stores, message buses, projection databases, and their failure modes dominate early development cycles. client logic becomes entangled with persistence concerns.
 - **Schema management**: Events are append-only and permanent. Schema evolution—adding fields, deprecating event types, maintaining backward compatibility across years of stored events—requires discipline that frameworks rarely enforce.
 - **Operational complexity**: Snapshotting, projection rebuilds, idempotency, exactly-once delivery, and saga coordination demand specialized knowledge. Each concern leaks into application code.
 - **Language lock-in**: Most CQRS/ES frameworks assume a single-language ecosystem. Organizations with mixed stacks either maintain parallel implementations or force standardization.
@@ -103,9 +103,9 @@ Angzarr inverts the typical framework relationship. Rather than providing librar
 
 **Protocol Buffers define the contract.** Commands, events, queries, and read models are declared in `.proto` files. This schema becomes the source of truth—for serialization, validation, documentation, and cross-service compatibility. Protobuf's established rules for backward-compatible evolution apply directly to your event schema.
 
-**gRPC provides the boundary.** Business logic—aggregates, command handlers, event handlers, saga orchestrators—runs as gRPC services in any supported language. The framework communicates exclusively through generated protobuf messages over gRPC. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf.
+**gRPC provides the boundary.** client logic—aggregates, command handlers, event handlers, saga orchestrators—runs as gRPC services in any supported language. The framework communicates exclusively through generated protobuf messages over gRPC. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf.
 
-**The framework handles the rest.** Event persistence, command routing, event distribution, snapshot storage, idempotency, and saga state management run within Angzarr's Rust core. Your business logic receives commands with full event history and emits events. Side effects stay on one side of the gRPC boundary.
+**The framework handles the rest.** Event persistence, command routing, event distribution, snapshot storage, idempotency, and saga state management run within Angzarr's Rust core. Your client logic receives commands with full event history and emits events. Side effects stay on one side of the gRPC boundary.
 
 ```
 ┌─ Pod ────────────────────────────────────────────────────────────────┐
@@ -113,7 +113,7 @@ Angzarr inverts the typical framework relationship. Rather than providing librar
 │  │   Your Aggregate     │ gRPC │      Angzarr Sidecar (~8MB)      │ │
 │  │   (BusinessLogic)    │◄────►│  ┌────────────┐ ┌─────────────┐  │ │
 │  │                      │      │  │  Business  │ │  Projector  │  │ │
-│  │  Pure business logic │      │  │Coordinator │ │ Coordinator │  │ │
+│  │  Pure client logic │      │  │Coordinator │ │ Coordinator │  │ │
 │  └──────────────────────┘      │  └────────────┘ └─────────────┘  │ │
 │                                │  ┌────────────┐ ┌─────────────┐  │ │
 │                                │  │   Event    │ │    Saga     │  │ │
@@ -174,7 +174,7 @@ message EventBook {
   Cover cover = 1;
   Snapshot snapshot = 2;
   repeated EventPage pages = 3;
-  google.protobuf.Any snapshot_state = 5;  // Business logic sets this
+  google.protobuf.Any snapshot_state = 5;  // client logic sets this
 }
 ```
 
@@ -240,7 +240,7 @@ message ProductState {
 }
 ```
 
-Business logic implements the `BusinessLogic` service interface. The framework delivers a **ContextualCommand**—the aggregate's EventBook (snapshot + subsequent events) bundled with the CommandBook—and receives an EventBook containing the resulting events:
+client logic implements the `BusinessLogic` service interface. The framework delivers a **ContextualCommand**—the aggregate's EventBook (snapshot + subsequent events) bundled with the CommandBook—and receives an EventBook containing the resulting events:
 
 ```protobuf
 // Framework protocol — implemented by your aggregate
@@ -304,7 +304,7 @@ func (s *ProductAggregate) processCommand(state *ProductState, cmd *anypb.Any) (
 
 ## Coordinator Pattern
 
-Angzarr uses coordinators to route messages between external clients and your business logic services. This separation keeps your domain code focused on business rules while the framework handles:
+Angzarr uses coordinators to route messages between external clients and your client logic services. This separation keeps your domain code focused on business rules while the framework handles:
 
 - Event persistence and retrieval
 - Optimistic concurrency via sequence numbers
@@ -362,7 +362,7 @@ Synchronous projections enable CQRS patterns where commands must return updated 
 
 Long-running business processes span multiple aggregates and external systems. Angzarr's saga coordinator manages state and compensation without requiring your saga logic to handle persistence or delivery guarantees.
 
-Sagas receive EventBooks (triggering events from any aggregate), execute business logic, and emit commands to other aggregates:
+Sagas receive EventBooks (triggering events from any aggregate), execute client logic, and emit commands to other aggregates:
 
 ```protobuf
 message SagaResponse {
@@ -441,7 +441,7 @@ CommandResponse { events, projections[] }
 
 The key insight: saga-returned commands are executed recursively through the same sync path, and projectors see the *entire* cascade—not just the initial command's events.
 
-**Warning: `SYNC_MODE_CASCADE` is expensive and should be avoided when possible.** Each step adds latency: aggregate hydration, business logic execution, event persistence, saga evaluation, and projector updates—multiplied by every aggregate touched. A saga fanning out to ten aggregates takes roughly ten times longer than a single-aggregate command. `SYNC_MODE_NONE` with eventual consistency is the better default.
+**Warning: `SYNC_MODE_CASCADE` is expensive and should be avoided when possible.** Each step adds latency: aggregate hydration, client logic execution, event persistence, saga evaluation, and projector updates—multiplied by every aggregate touched. A saga fanning out to ten aggregates takes roughly ten times longer than a single-aggregate command. `SYNC_MODE_NONE` with eventual consistency is the better default.
 
 That said, cascade mode exists because it will be necessary at times. Some workflows genuinely require atomic consistency guarantees before returning to the caller. When you need it, you need it—just understand the cost.
 
@@ -579,7 +579,7 @@ bus:
   type: amqp
   url: amqp://user:pass@rabbitmq:5672
 
-business_logic:
+client_logic:
   - domain: inventory
     address: localhost:50051
 
@@ -602,7 +602,7 @@ storage:
 bus:
   type: direct  # gRPC calls, no message broker
 
-business_logic:
+client_logic:
   - domain: inventory
     address: localhost:50051
 ```
@@ -611,7 +611,7 @@ business_logic:
 
 ## Sidecar Deployment Model
 
-Angzarr runs as a sidecar container alongside your business logic. Each pod contains your service and an Angzarr instance communicating over localhost gRPC.
+Angzarr runs as a sidecar container alongside your client logic. Each pod contains your service and an Angzarr instance communicating over localhost gRPC.
 
 **Security posture:**
 - **Minimal attack surface**: ~8MB distroless container with no shell, no package manager, no unnecessary binaries
@@ -676,11 +676,11 @@ just deploy
 
 ## Observability
 
-Implementing teams get OpenTelemetry instrumentation for free. The sidecar/coordinator layer instruments every pipeline—aggregate command handling, saga orchestration, process manager workflows, and projector event processing—so business logic code requires zero observability boilerplate.
+Implementing teams get OpenTelemetry instrumentation for free. The sidecar/coordinator layer instruments every pipeline—aggregate command handling, saga orchestration, process manager workflows, and projector event processing—so client logic code requires zero observability boilerplate.
 
 ### What You Get Without Writing Any Instrumentation Code
 
-Every command, saga, and projector execution is traced and metered at the coordinator level. The granularity is the `Handle` and `Prepare` boundaries—the exact points where the framework calls into your business logic:
+Every command, saga, and projector execution is traced and metered at the coordinator level. The granularity is the `Handle` and `Prepare` boundaries—the exact points where the framework calls into your client logic:
 
 | Pipeline | Traced Spans | Metrics |
 |----------|-------------|---------|
@@ -708,7 +708,7 @@ let store = Instrumented::new(store, "sqlite");
 ```
 
 **3. OpenTelemetry export (opt-in via `otel` feature).** When built with `--features otel`, the sidecar exports all three telemetry signals via OTLP:
-- **Traces** — Every pipeline span (`aggregate.execute`, `saga.orchestrate`, etc.) is exported as OTLP spans. W3C TraceContext propagation from inbound gRPC headers means traces from your client through the sidecar to your business logic appear as a single distributed trace.
+- **Traces** — Every pipeline span (`aggregate.execute`, `saga.orchestrate`, etc.) is exported as OTLP spans. W3C TraceContext propagation from inbound gRPC headers means traces from your client through the sidecar to your client logic appear as a single distributed trace.
 - **Metrics** — Command duration, saga duration, bus publish latency, storage operation counters, and all other instruments are exported as OTLP metrics with domain and outcome labels.
 - **Logs** — Structured tracing events are exported as OTLP logs, correlated with traces via trace/span IDs.
 
@@ -777,7 +777,7 @@ The framework core is implemented in Rust. This choice is pragmatic, not ideolog
 - **Predictable performance**: Latency-sensitive paths (command routing, event serialization) benefit from zero-cost abstractions and control over allocation.
 - **Strong ecosystem for the domain**: `tonic` (gRPC), `prost` (protobuf), `sqlx`/`mongodb`/`bigtable` drivers, and `tokio` (async runtime) are mature and actively maintained.
 
-Business logic runs in whatever language suits the domain and team. Rust proficiency is not required to use Angzarr. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf.
+client logic runs in whatever language suits the domain and team. Rust proficiency is not required to use Angzarr. Domain code *may* import Angzarr client libraries to simplify development, but this is not required — the only contract is gRPC + protobuf.
 
 ---
 
@@ -791,7 +791,7 @@ Adapting Angzarr to your infrastructure requires a one-time DevOps effort:
 | Existing Kubernetes cluster | Helm install to namespace |
 | Custom infrastructure | Integrate storage/messaging backends |
 
-Once deployed, business logic development requires zero infrastructure knowledge.
+Once deployed, client logic development requires zero infrastructure knowledge.
 
 ---
 

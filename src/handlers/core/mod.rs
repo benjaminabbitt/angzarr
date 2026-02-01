@@ -1,7 +1,7 @@
 //! Core angzarr sidecar handlers.
 //!
 //! These handlers receive events from the AMQP bus and forward them to
-//! business logic coordinators (projectors, sagas, process managers) via gRPC.
+//! client logic coordinators (projectors, sagas, process managers) via gRPC.
 
 pub mod process_manager;
 pub mod projector;

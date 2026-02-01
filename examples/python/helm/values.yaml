@@ -17,7 +17,7 @@ angzarr:
     port: 1316
     streamTimeoutSecs: 30
 
-# Business logic services
+# client logic services
 services:
   customer:
     image: py-customer:latest

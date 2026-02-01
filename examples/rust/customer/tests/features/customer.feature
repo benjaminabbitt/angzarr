@@ -1,6 +1,6 @@
-Feature: Customer Business Logic
+Feature: Customer client logic
   Tests customer aggregate behavior independent of transport.
-  These scenarios verify pure business logic for customer lifecycle and loyalty points.
+  These scenarios verify pure client logic for customer lifecycle and loyalty points.
 
   # --- CreateCustomer scenarios ---
 

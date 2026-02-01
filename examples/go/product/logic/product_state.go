@@ -1,4 +1,4 @@
-// Package logic provides pure business logic for the product domain.
+// Package logic provides pure client logic for the product domain.
 package logic
 
 // ProductState represents the current state of a product aggregate.

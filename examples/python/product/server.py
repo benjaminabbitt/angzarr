@@ -43,7 +43,7 @@ DOMAIN = "product"
 
 class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
     def __init__(self) -> None:
-        self.log = logger.bind(domain=DOMAIN, service="business_logic")
+        self.log = logger.bind(domain=DOMAIN, service="client_logic")
 
     def Handle(
         self,

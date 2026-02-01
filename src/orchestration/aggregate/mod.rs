@@ -3,7 +3,7 @@
 //! `AggregateContext` trait + `execute_command_pipeline` for the shared
 //! command execution flow (parse → load → validate → invoke → persist → publish).
 //!
-//! Business logic invocation is via the `BusinessLogic` trait, decoupling the
+//! client logic invocation is via the `ClientLogic` trait, decoupling the
 //! pipeline from transport (gRPC over TCP, UDS, or in-process calls).
 //! The `AggregateContext` trait covers storage access, post-persist behavior, and optional hooks.
 //! - `local/`: SQLite-backed storage with static service discovery
@@ -17,6 +17,7 @@ pub mod grpc;
 pub mod local;
 
 use async_trait::async_trait;
+use backon::ExponentialBuilder;
 use tokio::sync::Mutex;
 use tonic::Status;
 use uuid::Uuid;
@@ -26,6 +27,7 @@ use crate::proto::{
     ContextualCommand, EventBook, Projection,
 };
 use crate::utils::response_builder::extract_events_from_response;
+use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
 /// How to load prior events.
 #[derive(Debug, Clone)]
@@ -56,7 +58,7 @@ pub enum PipelineMode {
 /// Context for aggregate command pipeline.
 ///
 /// Implementations provide storage access and post-persist behavior.
-/// Business logic invocation is always via gRPC and handled by the pipeline.
+/// client logic invocation is always via gRPC and handled by the pipeline.
 ///
 /// All domain-scoped methods take `domain` and `edition` as separate parameters.
 /// Domain is the bare aggregate domain (`"order"`, `"cart"`).
@@ -108,17 +110,17 @@ pub trait AggregateContext: Send + Sync {
     }
 }
 
-/// Abstraction for aggregate business logic invocation.
+/// Abstraction for aggregate client logic invocation.
 ///
-/// Decouples the command pipeline from the transport used to call business logic.
+/// Decouples the command pipeline from the transport used to call client logic.
 /// Implementations may use gRPC (over TCP, UDS), in-process trait calls, etc.
 #[async_trait]
-pub trait BusinessLogic: Send + Sync {
-    /// Invoke business logic with prior events and a command.
+pub trait ClientLogic: Send + Sync {
+    /// Invoke client logic with prior events and a command.
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
 }
 
-/// Business logic invocation via gRPC `AggregateClient`.
+/// client logic invocation via gRPC `AggregateClient`.
 ///
 /// Wraps a tonic `AggregateClient` channel (TCP, UDS, or duplex).
 pub struct GrpcBusinessLogic {
@@ -126,7 +128,7 @@ pub struct GrpcBusinessLogic {
 }
 
 impl GrpcBusinessLogic {
-    /// Wrap a gRPC aggregate client as a `BusinessLogic` implementation.
+    /// Wrap a gRPC aggregate client as a `ClientLogic` implementation.
     pub fn new(client: AggregateClient<tonic::transport::Channel>) -> Self {
         Self {
             client: Mutex::new(client),
@@ -135,7 +137,7 @@ impl GrpcBusinessLogic {
 }
 
 #[async_trait]
-impl BusinessLogic for GrpcBusinessLogic {
+impl ClientLogic for GrpcBusinessLogic {
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
         Ok(self.client.lock().await.handle(cmd).await?.into_inner())
     }
@@ -204,7 +206,7 @@ fn extract_edition(command_book: &CommandBook) -> String {
 ///   response (no persist)
 pub async fn execute_command_pipeline(
     ctx: &dyn AggregateContext,
-    business: &dyn BusinessLogic,
+    business: &dyn ClientLogic,
     command_book: CommandBook,
     mode: PipelineMode,
 ) -> Result<CommandResponse, Status> {
@@ -230,10 +232,58 @@ pub async fn execute_command_pipeline(
     }
 }
 
+/// State for a retryable aggregate command operation.
+struct AggregateOperation<'a> {
+    ctx: &'a dyn AggregateContext,
+    business: &'a dyn ClientLogic,
+    command_book: CommandBook,
+    validate_sequence: bool,
+}
+
+#[async_trait]
+impl<'a> RetryableOperation for AggregateOperation<'a> {
+    type Success = CommandResponse;
+    type Failure = Status;
+
+    fn name(&self) -> &str {
+        "aggregate_command"
+    }
+
+    async fn try_execute(&mut self) -> RetryOutcome<Self::Success, Self::Failure> {
+        match execute_mode(self.ctx, self.business, self.command_book.clone(), self.validate_sequence).await {
+            Ok(response) => RetryOutcome::Success(response),
+            Err(status) => {
+                if is_retryable_status(&status) {
+                    RetryOutcome::Retryable(status)
+                } else {
+                    RetryOutcome::Fatal(status)
+                }
+            }
+        }
+    }
+}
+
+/// Execute the aggregate command pipeline with retry on sequence conflicts.
+pub async fn execute_command_with_retry(
+    ctx: &dyn AggregateContext,
+    business: &dyn ClientLogic,
+    command_book: CommandBook,
+    validate_sequence: bool,
+    backoff: ExponentialBuilder,
+) -> Result<CommandResponse, Status> {
+    let operation = AggregateOperation {
+        ctx,
+        business,
+        command_book,
+        validate_sequence,
+    };
+    run_with_retry(operation, backoff).await
+}
+
 #[tracing::instrument(name = "aggregate.execute", skip_all, fields(domain, edition, root_uuid))]
 async fn execute_mode(
     ctx: &dyn AggregateContext,
-    business: &dyn BusinessLogic,
+    business: &dyn ClientLogic,
     command_book: CommandBook,
     validate_sequence: bool,
 ) -> Result<CommandResponse, Status> {
@@ -273,14 +323,14 @@ async fn execute_mode(
         }
     }
 
-    // Invoke business logic
+    // Invoke client logic
     let contextual_command = ContextualCommand {
         events: Some(prior_events),
         command: Some(command_book),
     };
 
     let response = business.invoke(contextual_command).await.map_err(|e| {
-        tracing::error!(error = %e, "Business logic invocation failed");
+        tracing::error!(error = %e, "client logic invocation failed");
         e
     })?;
     let new_events = extract_events_from_response(response, correlation_id.to_string())?;
@@ -302,7 +352,7 @@ async fn execute_mode(
 #[tracing::instrument(name = "aggregate.dry_run", skip_all, fields(domain, edition, root_uuid, ?temporal))]
 async fn dry_run_mode(
     ctx: &dyn AggregateContext,
-    business: &dyn BusinessLogic,
+    business: &dyn ClientLogic,
     command_book: CommandBook,
     temporal: TemporalQuery,
 ) -> Result<CommandResponse, Status> {
@@ -325,7 +375,7 @@ async fn dry_run_mode(
     };
 
     let response = business.invoke(contextual_command).await.map_err(|e| {
-        tracing::error!(error = %e, "Business logic invocation failed");
+        tracing::error!(error = %e, "client logic invocation failed");
         e
     })?;
 

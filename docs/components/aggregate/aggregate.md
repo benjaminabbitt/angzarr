@@ -4,7 +4,7 @@
 
 A **command handler** processes commands for a domain, validates business rules against current state, and emits events. In DDD terminology, this is the **aggregate**—the consistency boundary for a cluster of domain objects.
 
-There is exactly **one aggregate codebase per domain**. The "flights" domain has one aggregate that handles all flight-related commands (CreateFlight, BoardPassenger, DepartFlight, etc.). This single codebase scales horizontally across many processes, but the business logic is defined once.
+There is exactly **one aggregate codebase per domain**. The "flights" domain has one aggregate that handles all flight-related commands (CreateFlight, BoardPassenger, DepartFlight, etc.). This single codebase scales horizontally across many processes, but the client logic is defined once.
 
 ## Concepts
 
@@ -71,11 +71,11 @@ pub fn product_root(sku: &str) -> Uuid {
 
 When a client sends `CreateCustomer` with email `alice@example.com`:
 
-1. Business logic computes `root = hash("angzarr" + "customer" + "alice@example.com")`
+1. client logic computes `root = hash("angzarr" + "customer" + "alice@example.com")`
 2. Command is sent with `Cover { domain: "customer", root: <computed> }`
 3. If aggregate already exists (prior events for this root), command is rejected
 
-This means duplicate detection happens at the Angzarr level—business logic only needs to check "does this root have events?" rather than querying across all customers.
+This means duplicate detection happens at the Angzarr level—client logic only needs to check "does this root have events?" rather than querying across all customers.
 
 ---
 
@@ -122,7 +122,7 @@ sequenceDiagram
     Angzarr->>Logic: ContextualCommand
     Note right of Logic: 1. Rebuild state from events
     Note right of Logic: 2. Validate command
-    Note right of Logic: 3. Execute business logic
+    Note right of Logic: 3. Execute client logic
     Logic-->>Angzarr: BusinessResponse (events | rejection)
 
     alt Success
@@ -216,7 +216,7 @@ Every command handler follows this pattern:
 1. **Receive** command + prior events
 2. **Rebuild** current state from events (applying snapshot if present)
 3. **Validate** command against state (preconditions + input validation)
-4. **Execute** business logic
+4. **Execute** client logic
 5. **Return** new events with updated snapshot state
 
 **Input: ContextualCommand**
@@ -497,19 +497,19 @@ pub fn dispatch_aggregate<S>(
 }
 ```
 
-The framework calls `dispatch_aggregate` with the prior events loaded from storage. Business logic never touches storage directly — it receives state and returns events.
+The framework calls `dispatch_aggregate` with the prior events loaded from storage. client logic never touches storage directly — it receives state and returns events.
 
 ---
 
 ## Event Sequencing
 
-**Business logic is responsible for assigning explicit sequence numbers to new events.**
+**client logic is responsible for assigning explicit sequence numbers to new events.**
 
-Each event has a `sequence` field that must be set to `Sequence::Num(n)` where `n` is the next available sequence number. The framework provides prior events with their sequences, so business logic can compute the next sequence.
+Each event has a `sequence` field that must be set to `Sequence::Num(n)` where `n` is the next available sequence number. The framework provides prior events with their sequences, so client logic can compute the next sequence.
 
 ### Why Explicit Sequences?
 
-1. **Idempotency**: Business logic can detect duplicate commands by checking if expected sequences already exist
+1. **Idempotency**: client logic can detect duplicate commands by checking if expected sequences already exist
 2. **Correctness**: No counting or off-by-one errors—sequences flow directly from data
 3. **Simplicity**: Framework doesn't need to track or compute sequences
 4. **Visibility**: Sequences are explicit in the data, not hidden in framework state
@@ -566,7 +566,7 @@ if should_emit_alert {
 
 ### Snapshot Sequence
 
-The framework uses the last event's sequence to compute the snapshot sequence. If business logic provides `snapshot_state`, the framework stores a snapshot at `last_event.sequence + 1`.
+The framework uses the last event's sequence to compute the snapshot sequence. If client logic provides `snapshot_state`, the framework stores a snapshot at `last_event.sequence + 1`.
 
 ---
 

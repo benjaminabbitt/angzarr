@@ -67,23 +67,23 @@ transport:
 #   ANGZARR_TARGET__ADDRESS=/tmp/angzarr/business-customers.sock \
 #   cargo run --features standalone --bin angzarr-aggregate
 #
-# Terminal 3 - Business logic (orders):
-#   # Your business logic service listening on /tmp/angzarr/business-orders.sock
+# Terminal 3 - client logic (orders):
+#   # Your client logic service listening on /tmp/angzarr/business-orders.sock
 #
-# Terminal 4 - Business logic (customers):
-#   # Your business logic service listening on /tmp/angzarr/business-customers.sock
+# Terminal 4 - client logic (customers):
+#   # Your client logic service listening on /tmp/angzarr/business-customers.sock
 
 # =============================================================================
 # Target Service (Sidecar Mode)
 # =============================================================================
-# The target configures which business logic service the sidecar connects to.
+# The target configures which client logic service the sidecar connects to.
 #
 # Basic configuration (external process):
 # target:
 #   address: /tmp/angzarr/business-orders.sock  # UDS path or tcp host:port
 #   domain: orders
 #
-# With process spawning (sidecar starts the business logic):
+# With process spawning (sidecar starts the client logic):
 # target:
 #   address: /tmp/angzarr/business-orders.sock
 #   domain: orders
@@ -91,7 +91,7 @@ transport:
 #   working_dir: /path/to/project
 #
 # When 'command' is set, the sidecar will:
-# 1. Spawn the business logic process with transport config as env vars:
+# 1. Spawn the client logic process with transport config as env vars:
 #    - TRANSPORT_TYPE=uds
 #    - UDS_BASE_PATH=/tmp/angzarr
 #    - SERVICE_NAME=business
@@ -102,10 +102,10 @@ transport:
 # This enables single-command startup of the entire stack.
 
 # =============================================================================
-# Business Logic Endpoints (Gateway Mode)
+# client logic Endpoints (Gateway Mode)
 # =============================================================================
 # For gateway to route commands to aggregates:
-# business_logic:
+# client_logic:
 #   - domain: orders
 #     address: /tmp/angzarr/aggregate-orders.sock
 #   - domain: customers

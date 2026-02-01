@@ -1,8 +1,8 @@
-//! Cart bounded context business logic.
+//! Cart bounded context client logic.
 //!
 //! Handles shopping cart lifecycle including item management and checkout.
 
-mod business_logic_client;
+mod client_logic_client;
 pub mod handlers;
 pub mod state;
 
@@ -25,7 +25,7 @@ pub mod errmsg {
     pub const COUPON_ALREADY_APPLIED: &str = "Coupon already applied";
 }
 
-/// Business logic for Cart aggregate.
+/// client logic for Cart aggregate.
 pub struct CartLogic;
 
 common::define_aggregate!(CartLogic, "cart");

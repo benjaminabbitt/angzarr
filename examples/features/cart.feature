@@ -1,6 +1,6 @@
-Feature: Shopping Cart Business Logic
+Feature: Shopping Cart client logic
   Tests cart aggregate behavior independent of transport.
-  These scenarios verify pure business logic for shopping cart operations.
+  These scenarios verify pure client logic for shopping cart operations.
 
   # --- CreateCart scenarios ---
 

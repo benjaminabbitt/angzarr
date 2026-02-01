@@ -1,5 +1,5 @@
 # Local development configuration
-# Evented runs as a sidecar to your business logic applications
+# Evented runs as a sidecar to your client logic applications
 
 # Kubernetes configuration
 kubeconfig_path    = "~/.kube/config"
@@ -23,7 +23,7 @@ enable_rabbitmq   = true
 rabbitmq_user     = ""  # Required: set in terraform.tfvars (not committed)
 rabbitmq_password = ""  # Required: set in terraform.tfvars (not committed)
 
-# Business logic applications (evented as sidecar)
+# client logic applications (evented as sidecar)
 # business_applications = [
 #   {
 #     name   = "discount-service"

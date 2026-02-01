@@ -1,6 +1,6 @@
-Feature: Inventory Management Business Logic
+Feature: Inventory Management client logic
   Tests inventory aggregate behavior independent of transport.
-  These scenarios verify pure business logic for stock management and reservations.
+  These scenarios verify pure client logic for stock management and reservations.
 
   # --- InitializeStock scenarios ---
 

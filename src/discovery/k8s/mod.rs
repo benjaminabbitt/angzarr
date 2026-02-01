@@ -32,6 +32,7 @@ use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tracing::{debug, error, info, warn};
 
+use crate::config::{EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR};
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::event_query_client::EventQueryClient;
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
@@ -199,10 +200,10 @@ impl K8sServiceDiscovery {
 
     /// Create from environment variables.
     ///
-    /// Reads namespace from NAMESPACE or POD_NAMESPACE env vars.
+    /// Reads namespace from NAMESPACE_ENV_VAR or POD_NAMESPACE_ENV_VAR env vars.
     pub async fn from_env() -> Result<Self, DiscoveryError> {
-        let namespace = std::env::var("NAMESPACE")
-            .or_else(|_| std::env::var("POD_NAMESPACE"))
+        let namespace = std::env::var(NAMESPACE_ENV_VAR)
+            .or_else(|_| std::env::var(POD_NAMESPACE_ENV_VAR))
             .unwrap_or_else(|_| "default".to_string());
 
         Self::new(namespace).await
@@ -453,8 +454,8 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
             return self.get_or_create_event_query_client(&service).await;
         }
 
-        // Fallback to EVENT_QUERY_ADDRESS env var
-        if let Ok(addr) = std::env::var("EVENT_QUERY_ADDRESS") {
+        // Fallback to EVENT_QUERY_ADDRESS_ENV_VAR env var
+        if let Ok(addr) = std::env::var(EVENT_QUERY_ADDRESS_ENV_VAR) {
             // Parse address - may be "host:port" or "http://host:port"
             let (host, port) = if addr.starts_with("http://") || addr.starts_with("https://") {
                 // Already a URL, extract host:port

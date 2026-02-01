@@ -1,6 +1,6 @@
 //! Command routing for standalone runtime.
 //!
-//! Dispatches commands to registered aggregate business logic.
+//! Dispatches commands to registered aggregate client logic.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::local::LocalAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, parse_command_cover, BusinessLogic, PipelineMode,
+    execute_command_pipeline, parse_command_cover, ClientLogic, PipelineMode,
 };
 use crate::proto::{CommandBook, CommandResponse, Cover, Uuid as ProtoUuid};
 use crate::storage::{EventStore, SnapshotStore};
@@ -39,12 +39,12 @@ pub struct SyncProjectorEntry {
 
 /// Command router for standalone runtime.
 ///
-/// Routes commands to registered aggregate business logic.
+/// Routes commands to registered aggregate client logic.
 /// Each domain has its own isolated storage.
 #[derive(Clone)]
 pub struct CommandRouter {
-    /// Business logic implementations by domain.
-    business: Arc<HashMap<String, Arc<dyn BusinessLogic>>>,
+    /// client logic implementations by domain.
+    business: Arc<HashMap<String, Arc<dyn ClientLogic>>>,
     /// Per-domain storage.
     stores: Arc<HashMap<String, DomainStorage>>,
     /// Service discovery for projectors.
@@ -58,7 +58,7 @@ pub struct CommandRouter {
 impl CommandRouter {
     /// Create a new command router.
     pub fn new(
-        business: HashMap<String, Arc<dyn BusinessLogic>>,
+        business: HashMap<String, Arc<dyn ClientLogic>>,
         stores: HashMap<String, DomainStorage>,
         discovery: Arc<dyn ServiceDiscovery>,
         event_bus: Arc<dyn EventBus>,
@@ -93,7 +93,7 @@ impl CommandRouter {
     /// Execute a command and return the response.
     ///
     /// Validates the command's sequence against the aggregate's current sequence
-    /// (optimistic concurrency check) before running business logic.
+    /// (optimistic concurrency check) before running client logic.
     pub async fn execute(&self, command_book: CommandBook) -> Result<CommandResponse, Status> {
         self.execute_inner(command_book, true).await
     }

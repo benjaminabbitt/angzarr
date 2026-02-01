@@ -5,7 +5,7 @@
 //!
 //! ## Architecture
 //! ```text
-//! [Client] -> [angzarr-gateway] -> [angzarr-aggregate-*] -> [Business Logic]
+//! [Client] -> [angzarr-gateway] -> [angzarr-aggregate-*] -> [Client Logic]
 //!    ^              |                      |
 //!    |              |    (domain routing)  v
 //!    |              |                 [AMQP Events]
@@ -47,7 +47,7 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
-use angzarr::config::Config;
+use angzarr::config::{Config, STATIC_ENDPOINTS_ENV_VAR, STREAM_ADDRESS_ENV_VAR, STREAM_TIMEOUT_ENV_VAR};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::handlers::gateway::{EventQueryProxy, GatewayService};
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize service discovery - try static endpoints first, then K8s
     let discovery: Arc<dyn ServiceDiscovery> =
-        if let Ok(endpoints_str) = std::env::var("ANGZARR_STATIC_ENDPOINTS") {
+        if let Ok(endpoints_str) = std::env::var(STATIC_ENDPOINTS_ENV_VAR) {
             info!("Using static endpoint configuration");
             let discovery = K8sServiceDiscovery::new_static();
 
@@ -114,12 +114,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Stream service connection (optional for embedded mode)
-    let stream_timeout_secs: u64 = std::env::var("STREAM_TIMEOUT_SECS")
+    let stream_timeout_secs: u64 = std::env::var(STREAM_TIMEOUT_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_STREAM_TIMEOUT_SECS);
 
-    let stream_client = match std::env::var("STREAM_ADDRESS") {
+    let stream_client = match std::env::var(STREAM_ADDRESS_ENV_VAR) {
         Ok(stream_address) => {
             let stream_addr = stream_address.clone();
             Some(

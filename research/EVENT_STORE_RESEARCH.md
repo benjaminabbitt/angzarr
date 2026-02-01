@@ -1,6 +1,6 @@
 # angzarr Architecture Research
 
-## Multi-Language Business Logic
+## Multi-Language client logic
 
 | Language | Integration | Feature Flag | Latency | Deployment |
 |----------|-------------|--------------|---------|------------|
@@ -25,7 +25,7 @@ cargo build --release --features go-ffi
 cargo build --release --features "python,go-ffi"
 ```
 
-### Go Business Logic (FFI)
+### Go client logic (FFI)
 
 ```go
 // business/main.go
@@ -37,7 +37,7 @@ import "unsafe"
 //export Handle
 func Handle(cmdPtr *C.char, cmdLen C.int) (*C.char, C.int) {
     cmdBytes := C.GoBytes(unsafe.Pointer(cmdPtr), cmdLen)
-    // Unmarshal protobuf, execute business logic
+    // Unmarshal protobuf, execute client logic
     resultBytes := executeBusinessLogic(cmdBytes)
     return (*C.char)(C.CBytes(resultBytes)), C.int(len(resultBytes))
 }

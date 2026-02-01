@@ -18,7 +18,7 @@ pub use crate::orchestration::correlation::ensure_correlation_id as generate_cor
 /// Extracts events from a BusinessResponse, handling revocation and empty responses.
 ///
 /// # Arguments
-/// * `response` - The business logic response
+/// * `response` - The client logic response
 /// * `correlation_id` - The correlation ID to propagate to events
 ///
 /// # Returns
@@ -30,7 +30,7 @@ pub fn extract_events_from_response(
     let mut events = match response.result {
         Some(business_response::Result::Events(events)) => events,
         Some(business_response::Result::Revocation(revocation)) => {
-            // Business logic explicitly requested framework handling
+            // client logic explicitly requested framework handling
             return Err(Status::failed_precondition(format!(
                 "Command revoked: {}",
                 revocation.reason

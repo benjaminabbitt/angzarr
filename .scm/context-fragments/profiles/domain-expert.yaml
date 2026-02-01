@@ -39,7 +39,7 @@ content: |-
 
     ## Edge Cases
 
-    - Are edge cases in business logic handled?
+    - Are edge cases in client logic handled?
     - What happens at boundary conditions?
     - Are exceptional business scenarios covered?
 
@@ -78,7 +78,7 @@ distilled: |-
     - State transitions valid per domain rules?
 
     ## Edge Cases
-    - Business logic edge cases handled?
+    - client logic edge cases handled?
     - Boundary conditions addressed?
     - Exceptional scenarios covered?
 

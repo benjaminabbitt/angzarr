@@ -4,6 +4,8 @@
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::config::{LOG_ENV_VAR, OTEL_SERVICE_NAME_ENV_VAR};
+
 /// Global handle to the LoggerProvider so it stays alive for the process lifetime.
 ///
 /// The batch exporter lives inside the provider — dropping it kills log export.
@@ -11,9 +13,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 static LOG_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::logs::LoggerProvider> =
     std::sync::OnceLock::new();
 
-/// Initialize tracing and metrics with ANGZARR_LOG environment variable.
+/// Initialize tracing and metrics with LOG_ENV_VAR environment variable.
 ///
-/// Defaults to "info" level if ANGZARR_LOG is not set.
+/// Defaults to "info" level if LOG_ENV_VAR is not set.
 ///
 /// When the `otel` feature is enabled, configures:
 /// - OTLP trace exporter (spans → OTel Collector)
@@ -26,7 +28,7 @@ static LOG_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::logs::LoggerProvider
 /// - `OTEL_SERVICE_NAME` — Service name for resource attribution
 /// - `OTEL_RESOURCE_ATTRIBUTES` — Additional resource key=value pairs
 pub fn init_tracing() {
-    let env_filter = tracing_subscriber::EnvFilter::try_from_env("ANGZARR_LOG")
+    let env_filter = tracing_subscriber::EnvFilter::try_from_env(LOG_ENV_VAR)
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
     let fmt_layer = tracing_subscriber::fmt::layer();
@@ -136,13 +138,13 @@ pub fn init_tracing() {
 
 /// Build the OpenTelemetry resource from environment variables.
 ///
-/// Uses `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` per OTel spec.
+/// Uses `OTEL_SERVICE_NAME_ENV_VAR` and `OTEL_RESOURCE_ATTRIBUTES` per OTel spec.
 #[cfg(feature = "otel")]
 fn otel_resource() -> opentelemetry_sdk::Resource {
     use opentelemetry::KeyValue;
     use opentelemetry_sdk::Resource;
 
-    let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "angzarr".to_string());
+    let service_name = std::env::var(OTEL_SERVICE_NAME_ENV_VAR).unwrap_or_else(|_| "angzarr".to_string());
 
     Resource::new(vec![
         KeyValue::new("service.name", service_name),

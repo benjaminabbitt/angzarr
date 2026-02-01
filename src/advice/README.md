@@ -14,7 +14,7 @@ The term "advice" comes from Aspect-Oriented Programming (AOP), where:
 - **Join points** = where advice can be applied (method calls, etc.)
 
 We use "advice" to emphasize these are orthogonal concerns (metrics, tracing, retries)
-that don't belong in business logic.
+that don't belong in client logic.
 
 ## Available Advice
 

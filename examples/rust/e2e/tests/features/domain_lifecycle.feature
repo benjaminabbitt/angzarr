@@ -1,6 +1,6 @@
 Feature: Domain Lifecycle Operations
   Exercises every command in every bounded context to ensure
-  comprehensive coverage of all business logic.
+  comprehensive coverage of all client logic.
 
   # ===========================================================================
   # Product Domain

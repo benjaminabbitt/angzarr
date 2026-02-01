@@ -1,7 +1,7 @@
 //! Local (in-process) aggregate context.
 //!
 //! Uses SQLite-backed storage with static service discovery for projectors.
-//! Business logic invocation is handled by the pipeline via gRPC client.
+//! client logic invocation is handled by the pipeline via gRPC client.
 
 use std::sync::Arc;
 

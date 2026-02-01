@@ -9,7 +9,8 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::grpc::GrpcAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, BusinessLogic, GrpcBusinessLogic, PipelineMode,
+    execute_command_pipeline, execute_command_with_retry, ClientLogic, GrpcBusinessLogic,
+    PipelineMode,
 };
 use crate::proto::{
     aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinator,
@@ -19,19 +20,20 @@ use crate::proto::{
 use crate::proto_ext::CoverExt;
 use crate::services::upcaster::Upcaster;
 use crate::storage::{EventStore, SnapshotStore};
+use crate::utils::retry::saga_backoff;
 
 /// Aggregate service.
 ///
-/// Receives commands, loads prior state, calls business logic,
+/// Receives commands, loads prior state, calls client logic,
 /// persists new events, and notifies projectors.
 ///
 /// Uses the shared aggregate pipeline for both async and sync operations.
 pub struct AggregateService {
     event_store: Arc<dyn EventStore>,
     snapshot_store: Arc<dyn SnapshotStore>,
-    business: Arc<dyn BusinessLogic>,
+    business: Arc<dyn ClientLogic>,
     event_bus: Arc<dyn EventBus>,
-    /// When false, snapshots are not written even if business logic returns snapshot_state.
+    /// When false, snapshots are not written even if client logic returns snapshot_state.
     snapshot_write_enabled: bool,
     /// When false, snapshots are not read (for testing/debugging).
     snapshot_read_enabled: bool,
@@ -141,13 +143,12 @@ impl AggregateCoordinator for AggregateService {
 
         let ctx = self.create_async_context();
 
-        let result = execute_command_pipeline(
+        let result = execute_command_with_retry(
             &ctx,
             &*self.business,
             command_book,
-            PipelineMode::Execute {
-                validate_sequence: true,
-            },
+            true,
+            saga_backoff(),
         )
         .await;
 
@@ -190,13 +191,12 @@ impl AggregateCoordinator for AggregateService {
 
         let ctx = self.create_sync_context(sync_mode);
 
-        let result = execute_command_pipeline(
+        let result = execute_command_with_retry(
             &ctx,
             &*self.business,
             command_book,
-            PipelineMode::Execute {
-                validate_sequence: true,
-            },
+            true,
+            saga_backoff(),
         )
         .await;
 

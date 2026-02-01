@@ -163,7 +163,7 @@ infrastructure:
         memory: "128Mi"
         cpu: "100m"
 
-# Business logic applications - each gets angzarr as sidecar
+# client logic applications - each gets angzarr as sidecar
 # Note: skaffold setValueTemplates override repository/tag with sha256-based tags
 # pullPolicy: IfNotPresent works because sha256 tags ensure new content = new tag
 applications:

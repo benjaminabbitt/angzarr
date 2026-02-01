@@ -1,4 +1,4 @@
-Feature: Fulfillment Business Logic
+Feature: Fulfillment client logic
   Tests fulfillment aggregate behavior independent of transport.
   Manages shipment lifecycle: pending → picking → packing → shipped → delivered.
 

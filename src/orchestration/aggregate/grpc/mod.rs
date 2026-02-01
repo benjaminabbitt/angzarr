@@ -1,7 +1,7 @@
 //! gRPC aggregate context.
 //!
 //! Uses EventBookRepository for storage and K8s service discovery for projectors.
-//! Business logic invocation is handled by the pipeline via gRPC client.
+//! client logic invocation is handled by the pipeline via gRPC client.
 
 use std::sync::Arc;
 

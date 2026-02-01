@@ -1,6 +1,6 @@
 //! Handler traits for standalone mode.
 //!
-//! Users implement these traits to provide business logic, projectors, and sagas.
+//! Users implement these traits to provide client logic, projectors, and sagas.
 
 use async_trait::async_trait;
 use tonic::Status;
@@ -9,7 +9,7 @@ use crate::proto::{
     CommandBook, ContextualCommand, Cover, EventBook, Projection, SagaResponse, Subscription,
 };
 
-/// Business logic handler for a domain aggregate.
+/// client logic handler for a domain aggregate.
 ///
 /// Implement this trait to handle commands for a specific domain.
 /// The handler receives a contextual command (command + prior events)
@@ -68,7 +68,7 @@ pub enum ProjectionMode {
 /// asynchronous (running in background).
 ///
 /// The same handler instance is used for both normal and speculative
-/// execution. Business logic runs identically in both modes — only
+/// execution. client logic runs identically in both modes — only
 /// persistence side effects are gated on `ProjectionMode`.
 ///
 /// # Example
@@ -90,7 +90,7 @@ pub enum ProjectionMode {
 ///     ) -> Result<Projection, tonic::Status> {
 ///         let mut entries = Vec::new();
 ///         for page in &events.pages {
-///             // Business logic: always runs
+///             // client logic: always runs
 ///             entries.push(compute_ledger_entry(&page.event)?);
 ///         }
 ///         // Persistence: only in execute mode

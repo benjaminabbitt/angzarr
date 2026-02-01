@@ -1,6 +1,6 @@
-Feature: Product Catalog Business Logic
+Feature: Product Catalog client logic
   Tests product aggregate behavior independent of transport.
-  These scenarios verify pure business logic for product lifecycle and pricing.
+  These scenarios verify pure client logic for product lifecycle and pricing.
 
   # --- CreateProduct scenarios ---
 

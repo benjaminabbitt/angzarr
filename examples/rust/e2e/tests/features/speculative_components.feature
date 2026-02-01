@@ -1,5 +1,5 @@
 Feature: Speculative Component Execution
-  Speculative execution reuses the same registered business logic handlers
+  Speculative execution reuses the same registered client logic handlers
   as normal execution. No duplication, no forked paths. The framework
   controls side effects: projectors skip writes, sagas return commands
   without executing them, and process managers return events without

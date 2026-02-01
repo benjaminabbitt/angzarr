@@ -1,7 +1,7 @@
 //! gRPC handler adapters for standalone mode.
 //!
 //! Bridges between handler traits and gRPC clients, enabling:
-//! - In-process `AggregateHandler` to be used as `BusinessLogic` (no TCP bridge)
+//! - In-process `AggregateHandler` to be used as `ClientLogic` (no TCP bridge)
 //! - Remote gRPC `ProjectorCoordinator` to be used as `ProjectorHandler`
 
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tonic::Status;
 
-use crate::orchestration::aggregate::BusinessLogic;
+use crate::orchestration::aggregate::ClientLogic;
 use crate::proto::business_response::Result as BusinessResult;
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use crate::proto::{
@@ -19,7 +19,7 @@ use crate::proto::{
 
 use super::traits::{AggregateHandler, ProjectorHandler};
 
-/// Adapts an in-process `AggregateHandler` as `BusinessLogic`.
+/// Adapts an in-process `AggregateHandler` as `ClientLogic`.
 ///
 /// Eliminates the TCP bridge: calls the handler directly and wraps the
 /// result in a `BusinessResponse`. Used by the standalone `Runtime` to avoid
@@ -29,14 +29,14 @@ pub struct AggregateHandlerAdapter {
 }
 
 impl AggregateHandlerAdapter {
-    /// Wrap an aggregate handler as a `BusinessLogic` implementation.
+    /// Wrap an aggregate handler as a `ClientLogic` implementation.
     pub fn new(handler: Arc<dyn AggregateHandler>) -> Self {
         Self { handler }
     }
 }
 
 #[async_trait]
-impl BusinessLogic for AggregateHandlerAdapter {
+impl ClientLogic for AggregateHandlerAdapter {
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
         let events = self.handler.handle(cmd).await?;
         Ok(BusinessResponse {

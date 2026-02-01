@@ -1,4 +1,4 @@
-//! Order bounded context business logic.
+//! Order bounded context client logic.
 //!
 //! Handles order lifecycle, loyalty discounts, and payment processing.
 
@@ -32,7 +32,7 @@ pub mod errmsg {
     pub use common::errmsg::*;
 }
 
-/// Business logic for Order aggregate.
+/// client logic for Order aggregate.
 pub struct OrderLogic;
 
 common::define_aggregate!(OrderLogic, "order");

@@ -40,7 +40,7 @@ impl<T: AggregateLogic + 'static> AggregateHandler for AggregateLogicAdapter<T> 
             Some(business_response::Result::Events(events)) => Ok(events),
             Some(business_response::Result::Revocation(rev)) => {
                 let reason = if rev.reason.is_empty() {
-                    "command revoked by business logic".to_string()
+                    "command revoked by client logic".to_string()
                 } else {
                     rev.reason
                 };

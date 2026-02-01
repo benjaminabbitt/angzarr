@@ -12,7 +12,7 @@ use crate::bus::{EventBus, MessagingConfig};
 use crate::discovery::k8s::K8sServiceDiscovery;
 use crate::discovery::ServiceDiscovery;
 use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
-use crate::orchestration::aggregate::{BusinessLogic, DEFAULT_EDITION};
+use crate::orchestration::aggregate::{ClientLogic, DEFAULT_EDITION};
 use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
@@ -40,7 +40,7 @@ use super::traits::{
 /// Manages all components for running angzarr locally:
 /// - Storage (events and snapshots per domain)
 /// - Event bus (for pub/sub)
-/// - Aggregate handlers (business logic)
+/// - Aggregate handlers (client logic)
 /// - Projector handlers (read models)
 /// - Saga handlers (cross-aggregate workflows)
 /// - Optional gateway (for external clients)
@@ -153,8 +153,8 @@ impl Runtime {
             .map(|(domain, handler)| (domain.clone(), handler.clone()))
             .collect();
 
-        // Wrap aggregate handlers as BusinessLogic (in-process, no TCP bridge)
-        let mut business: HashMap<String, Arc<dyn BusinessLogic>> = HashMap::new();
+        // Wrap aggregate handlers as ClientLogic (in-process, no TCP bridge)
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
         for (domain, handler) in aggregates {
             business.insert(domain, Arc::new(AggregateHandlerAdapter::new(handler)));
         }
@@ -390,7 +390,7 @@ impl Runtime {
     /// Get the speculative executor for dry-run of projectors, sagas, and PMs.
     ///
     /// The executor holds `Arc` clones of the same handler instances registered
-    /// with this runtime. Speculative execution invokes the same business logic
+    /// with this runtime. Speculative execution invokes the same client logic
     /// without persistence, publishing, or command execution.
     pub fn speculative_executor(&self) -> Arc<SpeculativeExecutor> {
         self.speculative.clone()

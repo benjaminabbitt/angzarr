@@ -11,7 +11,7 @@ use tonic::transport::Channel;
 use tonic::{Request, Response, Status};
 use tracing::{error, info, warn};
 
-use crate::clients::ServiceEndpoint;
+use crate::config::ServiceEndpoint;
 use crate::grpc::connect_channel;
 use crate::proto::{
     projector_client::ProjectorClient, projector_coordinator_server::ProjectorCoordinator,

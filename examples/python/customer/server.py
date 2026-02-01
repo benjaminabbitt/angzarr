@@ -42,10 +42,10 @@ DOMAIN = "customer"
 
 
 class AggregateServicer(angzarr_pb2_grpc.AggregateServicer):
-    """gRPC service implementation for Customer business logic."""
+    """gRPC service implementation for Customer client logic."""
 
     def __init__(self) -> None:
-        self.log = logger.bind(domain=DOMAIN, service="business_logic")
+        self.log = logger.bind(domain=DOMAIN, service="client_logic")
 
     def Handle(
         self,

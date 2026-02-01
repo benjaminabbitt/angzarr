@@ -11,8 +11,8 @@ Each pod uses a base port (e.g., 50050, 50060, 50070) with offsets 0-9:
 | 0 | Coordinator gRPC | Yes | Angzarr sidecar coordinator (aggregate, projector, saga) |
 | 1 | REST Proxy | Optional | REST → gRPC proxy for HTTP clients |
 | 2 | Coordinator Debug | No | Angzarr sidecar debug/diagnostics endpoint |
-| 3 | Client Logic | No | Business logic gRPC (internal sidecar-to-logic communication) |
-| 4 | Client Debug | No | Business logic debug/diagnostics endpoint |
+| 3 | Client Logic | No | client logic gRPC (internal sidecar-to-logic communication) |
+| 4 | Client Debug | No | client logic debug/diagnostics endpoint |
 | 5-8 | Reserved | No | Future use |
 | 9 | Control/Meta UI | Optional | Admin UI, metrics dashboard, or control plane |
 
@@ -64,9 +64,9 @@ Each language example uses a distinct range to allow concurrent local developmen
 
 3. **Coordinator Debug (offset 2)**: Health checks, metrics, and debugging endpoints for the sidecar. Exposed only in development or for monitoring.
 
-4. **Client Logic (offset 3)**: Internal communication between sidecar and business logic. **Should not be exposed externally** - the sidecar handles all external communication.
+4. **Client Logic (offset 3)**: Internal communication between sidecar and client logic. **Should not be exposed externally** - the sidecar handles all external communication.
 
-5. **Client Debug (offset 4)**: Business logic health/debug endpoints. Useful for development troubleshooting.
+5. **Client Debug (offset 4)**: client logic health/debug endpoints. Useful for development troubleshooting.
 
 6. **Reserved (offsets 5-8)**: Available for future expansion without restructuring.
 
@@ -103,7 +103,7 @@ The mesh/ingress routes to the coordinator port (offset 0). Internal sidecar-to-
 | `PORT` | varies | Coordinator gRPC port (offset 0) |
 | `REST_PORT` | PORT+1 | REST proxy port (offset 1) |
 | `DEBUG_PORT` | PORT+2 | Debug endpoint port (offset 2) |
-| `TARGET_PORT` | PORT+3 | Business logic port (offset 3) |
+| `TARGET_PORT` | PORT+3 | client logic port (offset 3) |
 
 ## See Also
 

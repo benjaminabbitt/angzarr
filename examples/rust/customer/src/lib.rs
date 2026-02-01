@@ -1,4 +1,4 @@
-//! Customer bounded context business logic.
+//! Customer bounded context client logic.
 //!
 //! Handles customer lifecycle and loyalty points management.
 
@@ -23,7 +23,7 @@ pub mod errmsg {
     pub const INSUFFICIENT_POINTS: &str = "Insufficient points";
 }
 
-/// Business logic for Customer aggregate.
+/// client logic for Customer aggregate.
 pub struct CustomerLogic;
 
 common::define_aggregate!(CustomerLogic, "customer");

@@ -507,7 +507,7 @@ flowchart TD
     S --> C[2. Command sent to Customer aggregate]
     C -->|Rejected| R[3. Command rejected: customer not found]
     R --> Rev[4. RevokeEventCommand sent to Transaction aggregate]
-    Rev --> BL{5. Business logic decides}
+    Rev --> BL{5. client logic decides}
     BL -->|Emit events| Comp[Compensation events recorded]
     BL -->|Cannot handle| Fall[SagaCompensationFailed event]
     Fall --> DLQ[Dead letter queue / escalation]
@@ -518,7 +518,7 @@ flowchart TD
 1. **Command rejection detected** — Target aggregate rejects saga command
 2. **RevokeEventCommand built** — Contains saga origin, rejection reason, original command
 3. **Sent to triggering aggregate** — The aggregate that emitted the event triggering the saga
-4. **Business logic decides**:
+4. **client logic decides**:
    - Emit compensation events (e.g., `TransactionReversed`)
    - Request system revocation (emit `SagaCompensationFailed`)
    - Send to dead letter queue for manual review
@@ -536,11 +536,11 @@ message RevokeEventCommand {
 }
 ```
 
-Business logic handles this like any other command, deciding what compensation events to emit.
+client logic handles this like any other command, deciding what compensation events to emit.
 
 ### Fallback Domain
 
-When business logic cannot handle compensation (or explicitly requests system handling), a `SagaCompensationFailed` event is emitted to a fallback domain (default: `angzarr.saga-failures`). This domain can be monitored, trigger alerts, or feed manual review queues.
+When client logic cannot handle compensation (or explicitly requests system handling), a `SagaCompensationFailed` event is emitted to a fallback domain (default: `angzarr.saga-failures`). This domain can be monitored, trigger alerts, or feed manual review queues.
 
 ---
 

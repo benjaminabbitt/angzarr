@@ -1,4 +1,4 @@
-// Package logic provides pure business logic for the customer domain.
+// Package logic provides pure client logic for the customer domain.
 // This package has no gRPC dependencies and can be tested in isolation.
 package logic
 

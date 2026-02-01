@@ -70,7 +70,7 @@ mongodb:
 
 # Example applications - each gets angzarr as sidecar
 applications:
-  # Business logic aggregates
+  # client logic aggregates
   business:
     # Rust customer aggregate
     - name: entity-customer-rs

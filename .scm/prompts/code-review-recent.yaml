@@ -22,7 +22,7 @@ content: |-
     - **Performance** - Algorithms, data structures, complexity, efficiency
     - **Standards** - Readability, naming, documentation, canonical patterns
     - **Concurrency** - Thread safety, race conditions, synchronization (if applicable)
-    - **Domain** - Business logic correctness, domain model accuracy (if applicable)
+    - **Domain** - client logic correctness, domain model accuracy (if applicable)
 
     ## Step 3: Report Findings
 
@@ -54,7 +54,7 @@ distilled: |-
     - **Performance** - Algorithms, data structures, complexity
     - **Standards** - Readability, naming, docs, patterns
     - **Concurrency** - Thread safety, races, sync (if applicable)
-    - **Domain** - Business logic, domain model (if applicable)
+    - **Domain** - client logic, domain model (if applicable)
 
     ## Step 3: Report
     - **Summary** - What changes accomplish

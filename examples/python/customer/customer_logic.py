@@ -17,7 +17,7 @@ from handlers import (
 
 
 class CustomerLogic:
-    """Business logic for Customer aggregate.
+    """client logic for Customer aggregate.
 
     Legacy class-based interface for Python FFI.
     """

@@ -4,12 +4,12 @@ Core angzarr sidecar event handlers.
 
 ## Purpose
 
-These handlers receive events from the AMQP message bus and forward them to business logic coordinators via gRPC. They are the bridge between the event bus infrastructure and user-defined business logic.
+These handlers receive events from the AMQP message bus and forward them to client logic coordinators via gRPC. They are the bridge between the event bus infrastructure and user-defined client logic.
 
 ## Architecture
 
 ```
-[AMQP Event Bus] --> [core handlers] --> [Business Logic Coordinators]
+[AMQP Event Bus] --> [core handlers] --> [client logic Coordinators]
                           |
                           v
                     (gRPC calls)

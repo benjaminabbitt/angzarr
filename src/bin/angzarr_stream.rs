@@ -15,7 +15,7 @@
 //!                                               [EventStream gRPC] --> [angzarr-gateway]
 //! ```
 //!
-//! Unlike business logic projectors, the stream projector is core infrastructure
+//! Unlike client logic projectors, the stream projector is core infrastructure
 //! that enables real-time event streaming to connected clients via the gateway.
 //!
 //! ## Configuration

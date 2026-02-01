@@ -26,16 +26,16 @@ pub use validation::{
 };
 
 // ============================================================================
-// Error Types for Business Logic
+// Error Types for client logic
 // ============================================================================
 
-/// Result type for business logic operations.
+/// Result type for client logic operations.
 pub type Result<T> = std::result::Result<T, BusinessError>;
 
-/// Errors that can occur during business logic operations.
+/// Errors that can occur during client logic operations.
 #[derive(Debug, thiserror::Error)]
 pub enum BusinessError {
-    #[error("Business logic rejected command: {0}")]
+    #[error("client logic rejected command: {0}")]
     Rejected(String),
 }
 

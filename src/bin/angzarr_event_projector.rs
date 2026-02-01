@@ -14,6 +14,10 @@ use tonic::transport::Server;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
+use angzarr::config::{
+    DATABASE_URL_ENV_VAR, DESCRIPTOR_PATH_ENV_VAR, PORT_ENV_VAR, TRANSPORT_TYPE_ENV_VAR,
+    UDS_BASE_PATH_ENV_VAR,
+};
 use angzarr::handlers::projectors::{connect_pool, EventService, EventServiceHandle};
 use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
 use angzarr::transport::grpc_trace_layer;
@@ -27,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Get database URL from environment
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let database_url = env::var(DATABASE_URL_ENV_VAR).expect("DATABASE_URL must be set");
 
     // Connect to database
     info!(database = %database_url, "Connecting to database");
@@ -35,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create service, optionally with descriptors
     let mut service = EventService::new(pool);
-    if let Ok(path) = env::var("DESCRIPTOR_PATH") {
+    if let Ok(path) = env::var(DESCRIPTOR_PATH_ENV_VAR) {
         service = service.load_descriptors(&path);
     }
 
@@ -52,10 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     // Check transport type
-    let transport_type = env::var("TRANSPORT_TYPE").unwrap_or_else(|_| "tcp".to_string());
+    let transport_type = env::var(TRANSPORT_TYPE_ENV_VAR).unwrap_or_else(|_| "tcp".to_string());
 
     if transport_type == "uds" {
-        let base_path = env::var("UDS_BASE_PATH").unwrap_or_else(|_| "/tmp/angzarr".to_string());
+        let base_path = env::var(UDS_BASE_PATH_ENV_VAR).unwrap_or_else(|_| "/tmp/angzarr".to_string());
         let socket_path = PathBuf::from(format!("{}/projector-event.sock", base_path));
 
         if socket_path.exists() {
@@ -78,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .serve_with_incoming(uds_stream)
             .await?;
     } else {
-        let port = env::var("PORT").unwrap_or_else(|_| "50160".to_string());
+        let port = env::var(PORT_ENV_VAR).unwrap_or_else(|_| "50160".to_string());
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
 
         info!(

@@ -67,7 +67,7 @@ name = "angzarr"
 version = "0.1.0"
 edition = "2021"
 authors = ["Benjamin Abbitt"]
-description = "Schema-first CQRS/ES framework for polyglot business logic"
+description = "Schema-first CQRS/ES framework for polyglot client logic"
 license-file = "LICENSE"
 
 [features]

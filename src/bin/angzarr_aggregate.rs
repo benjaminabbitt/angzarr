@@ -1,11 +1,11 @@
 //! angzarr-aggregate: Aggregate sidecar
 //!
-//! Kubernetes sidecar for business logic services. Handles command processing,
+//! Kubernetes sidecar for client logic services. Handles command processing,
 //! event storage, and event publishing.
 //!
 //! ## Architecture
 //! ```text
-//! [External Client] -> [angzarr-aggregate] -> [Business Logic Service]
+//! [External Client] -> [angzarr-aggregate] -> [Client Logic Service]
 //!                            |
 //!                            v
 //!                      [Event Store] + [AMQP Publisher]
@@ -15,15 +15,15 @@
 //! ```
 //!
 //! ## Configuration
-//! - TARGET_ADDRESS: Business logic gRPC address (e.g., "localhost:50051")
+//! - TARGET_ADDRESS: Client logic gRPC address (e.g., "localhost:50051")
 //! - TARGET_DOMAIN: Domain this service handles (e.g., "customers")
-//! - TARGET_COMMAND: Optional command to spawn business logic (embedded mode)
+//! - TARGET_COMMAND: Optional command to spawn client logic (embedded mode)
 //! - STORAGE_TYPE/PATH: Event store configuration
 //! - AMQP_URL: Optional RabbitMQ for event publishing
 //!
 //! ## Embedded Mode
 //! When `target.command` is configured, the sidecar will:
-//! 1. Spawn the business logic process with transport configuration
+//! 1. Spawn the client logic process with transport configuration
 //! 2. Wait for it to become ready (health check)
 //! 3. Connect and proceed normally
 //!
@@ -44,7 +44,7 @@ use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEventBus};
-use angzarr::config::Config;
+use angzarr::config::{Config, DISCOVERY_ENV_VAR};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
     aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
@@ -79,13 +79,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Resolve address: use explicit if set, otherwise derive from transport
     let address = target.resolve_address(&config.transport, "business");
 
-    info!("Target business logic: {} (domain: {})", address, domain);
+    info!("Target client logic: {} (domain: {})", address, domain);
 
-    // Connect to business logic
+    // Connect to client logic
     use angzarr::transport::connect_to_address;
     let channel = connect_to_address(&address).await?;
 
-    let business_client = AggregateClient::new(channel);
+    let client_logic_client = AggregateClient::new(channel);
 
     let event_bus: Arc<dyn EventBus> = match &config.messaging {
         Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {
@@ -111,9 +111,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Load service discovery for sync processing
-    // In standalone mode, ANGZARR_DISCOVERY=static skips K8s entirely
+    // In standalone mode, DISCOVERY_ENV_VAR=static skips K8s entirely
     let discovery: Arc<dyn ServiceDiscovery> =
-        if std::env::var("ANGZARR_DISCOVERY").as_deref() == Ok("static") {
+        if std::env::var(DISCOVERY_ENV_VAR).as_deref() == Ok("static") {
             info!("Using static service discovery (standalone mode)");
             Arc::new(K8sServiceDiscovery::new_static())
         } else {
@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let aggregate_service = AggregateService::new(
         event_store.clone(),
         snapshot_store.clone(),
-        business_client,
+        client_logic_client,
         event_bus,
         discovery,
     );

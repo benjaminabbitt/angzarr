@@ -5,7 +5,7 @@
 //! `EditionEventStore` composites main events (from `"angzarr.{domain}"`)
 //! up to divergence with edition-specific events (under `"{name}.{domain}"`).
 //!
-//! Business logic handlers are the **same `Arc` instances** used by the
+//! client logic handlers are the **same `Arc` instances** used by the
 //! main runtime — editions reuse registered handlers with edition-aware
 //! storage and bus subscriptions.
 //!
@@ -25,7 +25,7 @@ use tracing::{info, warn};
 
 use crate::bus::EventBus;
 use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
-use crate::orchestration::aggregate::BusinessLogic;
+use crate::orchestration::aggregate::ClientLogic;
 use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
@@ -121,8 +121,8 @@ impl EditionManager {
             );
         }
 
-        // Build business logic adapters (same handlers)
-        let mut business: HashMap<String, Arc<dyn BusinessLogic>> = HashMap::new();
+        // Build client logic adapters (same handlers)
+        let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
         for (domain, handler) in &self.handlers.aggregates {
             business.insert(
                 domain.clone(),

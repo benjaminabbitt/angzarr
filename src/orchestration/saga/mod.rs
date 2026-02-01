@@ -15,12 +15,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use backon::{BackoffBuilder, ExponentialBuilder};
+use backon::ExponentialBuilder;
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
 use crate::proto::{CommandBook, Cover, EventBook};
 use crate::proto_ext::CoverExt;
+use crate::utils::retry::{run_with_retry, RetryOutcome, RetryableOperation};
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -68,16 +69,101 @@ pub trait SagaRetryContext: Send + Sync {
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str);
 }
 
+/// State for a retryable saga command execution operation.
+struct SagaOperation<'a> {
+    context: &'a dyn SagaRetryContext,
+    executor: &'a dyn CommandExecutor,
+    fetcher: Option<&'a dyn DestinationFetcher>,
+    correlation_id: &'a str,
+    commands: Vec<CommandBook>,
+    cached_states: HashMap<String, EventBook>,
+}
+
+#[async_trait]
+impl<'a> RetryableOperation for SagaOperation<'a> {
+    type Success = ();
+    type Failure = String;
+
+    fn name(&self) -> &str {
+        "saga_command_execution"
+    }
+
+    async fn try_execute(&mut self) -> RetryOutcome<Self::Success, Self::Failure> {
+        let mut needs_retry = false;
+        self.cached_states.clear();
+
+        for command in &self.commands {
+            let mut command = command.clone();
+            if let Some(ref mut cover) = command.cover {
+                if cover.correlation_id.is_empty() {
+                    cover.correlation_id = self.correlation_id.to_string();
+                }
+            }
+
+            let domain = command.domain();
+
+            match self.executor.execute(command.clone()).await {
+                CommandOutcome::Success(_) => {
+                    debug!(%domain, "Saga command executed successfully");
+                }
+                CommandOutcome::Retryable {
+                    reason,
+                    current_state,
+                } => {
+                    warn!(%domain, error = %reason, "Sequence conflict, will retry");
+                    needs_retry = true;
+                    if let Some(state) = current_state {
+                        self.cached_states.insert(state.cache_key(), state);
+                    }
+                }
+                CommandOutcome::Rejected(reason) => {
+                    error!(%domain, error = %reason, "Saga command rejected (non-retryable)");
+                    self.context.on_command_rejected(&command, &reason).await;
+                }
+            }
+        }
+
+        if needs_retry {
+            RetryOutcome::Retryable("Sequence conflict".to_string())
+        } else {
+            RetryOutcome::Success(())
+        }
+    }
+
+    async fn prepare_for_retry(&mut self, _failure: &Self::Failure) -> Result<(), Self::Failure> {
+        // Re-prepare: get fresh destination covers
+        let covers = self
+            .context
+            .prepare_destinations()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Fetch state for destinations
+        let mut destinations = Vec::with_capacity(covers.len());
+        for cover in &covers {
+            if let Some(cached) = self.cached_states.remove(&cover.cache_key()) {
+                destinations.push(cached);
+            } else if let Some(f) = self.fetcher {
+                if let Some(dest) = f.fetch(cover).await {
+                    destinations.push(dest);
+                }
+            }
+        }
+
+        // Re-execute saga with fresh state
+        self.commands = self
+            .context
+            .re_execute_saga(destinations)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+}
+
 /// Execute saga commands with retry on sequence conflicts.
-///
-/// On retryable errors: refreshes destination state via prepare + fetch,
-/// re-invokes the saga, and retries with new commands.
-/// On non-retryable errors: delegates to context for compensation.
-///
-/// When sequence conflicts include current aggregate state in the error response,
-/// that state is cached and reused during retry to avoid redundant fetches.
 #[tracing::instrument(name = "saga.retry", skip_all, fields(%saga_name, %correlation_id))]
-pub async fn execute_with_retry(
+async fn execute_with_retry(
     context: &dyn SagaRetryContext,
     executor: &dyn CommandExecutor,
     fetcher: Option<&dyn DestinationFetcher>,
@@ -90,172 +176,17 @@ pub async fn execute_with_retry(
         return;
     }
 
-    let mut commands = initial_commands;
-    let mut delays = backoff.build();
-    let mut attempt = 0u32;
+    let operation = SagaOperation {
+        context,
+        executor,
+        fetcher,
+        correlation_id,
+        commands: initial_commands,
+        cached_states: HashMap::new(),
+    };
 
-    loop {
-        let mut needs_retry = false;
-        // Cache states received from sequence conflict errors to avoid refetching
-        let mut cached_states: HashMap<String, EventBook> = HashMap::new();
-
-        for command in commands {
-            // Ensure correlation_id is set on cover
-            let mut command = command;
-            if let Some(ref mut cover) = command.cover {
-                if cover.correlation_id.is_empty() {
-                    cover.correlation_id = correlation_id.to_string();
-                }
-            }
-
-            let domain = command
-                .cover
-                .as_ref()
-                .map(|c| c.domain.as_str())
-                .unwrap_or("unknown");
-
-            debug!(
-                %domain,
-                attempt,
-                "Executing saga command"
-            );
-
-            match executor.execute(command.clone()).await {
-                CommandOutcome::Success(_) => {
-                    debug!(
-                        %domain,
-                        "Saga command executed successfully"
-                    );
-                }
-                CommandOutcome::Retryable {
-                    reason,
-                    current_state,
-                } => {
-                    warn!(
-                        %domain,
-                        attempt,
-                        error = %reason,
-                        has_state = current_state.is_some(),
-                        "Sequence conflict, will retry with fresh state"
-                    );
-                    needs_retry = true;
-
-                    // Cache the state if provided to avoid refetching
-                    if let Some(state) = current_state {
-                        let key = state.cache_key();
-                        cached_states.insert(key, state);
-                    }
-                }
-                CommandOutcome::Rejected(reason) => {
-                    error!(
-                        %domain,
-                        error = %reason,
-                        "Saga command rejected (non-retryable)"
-                    );
-
-                    #[cfg(feature = "otel")]
-                    {
-                        use crate::utils::metrics::{self, SAGA_COMPENSATION_TOTAL};
-                        SAGA_COMPENSATION_TOTAL.add(1, &[
-                            metrics::component_attr("saga"),
-                            metrics::name_attr(saga_name),
-                        ]);
-                    }
-
-                    context.on_command_rejected(&command, &reason).await;
-                }
-            }
-        }
-
-        if !needs_retry {
-            break;
-        }
-
-        #[cfg(feature = "otel")]
-        {
-            use crate::utils::metrics::{self, SAGA_RETRY_TOTAL};
-            SAGA_RETRY_TOTAL.add(1, &[
-                metrics::component_attr("saga"),
-                metrics::name_attr(saga_name),
-            ]);
-        }
-
-        // Wait before retry using backon backoff iterator
-        match delays.next() {
-            Some(delay) => {
-                tokio::time::sleep(delay).await;
-                attempt += 1;
-            }
-            None => {
-                error!(
-                    attempts = attempt + 1,
-                    "Saga retry exhausted"
-                );
-                break;
-            }
-        }
-
-        // Re-prepare: get fresh destination covers
-        let covers = match context.prepare_destinations().await {
-            Ok(c) => c,
-            Err(e) => {
-                error!(
-                    error = %e,
-                    "Saga re-prepare failed, aborting retry"
-                );
-                break;
-            }
-        };
-
-        // Fetch state for destinations, using cached states when available
-        let mut destinations = Vec::with_capacity(covers.len());
-        let mut fetched_count = 0;
-        let mut cached_count = 0;
-
-        for cover in &covers {
-            let cache_key = cover.cache_key();
-            if let Some(cached) = cached_states.remove(&cache_key) {
-                debug!(
-                    domain = %cover.domain,
-                    "Using cached state from conflict response"
-                );
-                destinations.push(cached);
-                cached_count += 1;
-            } else if let Some(f) = fetcher {
-                if let Some(dest) = f.fetch(cover).await {
-                    destinations.push(dest);
-                    fetched_count += 1;
-                }
-            }
-        }
-
-        info!(
-            attempt,
-            destinations = destinations.len(),
-            fetched = fetched_count,
-            cached = cached_count,
-            "Retry prepared destination state"
-        );
-
-        // Re-execute saga with fresh state
-        commands = match context.re_execute_saga(destinations).await {
-            Ok(cmds) => {
-                debug!(
-                    attempt,
-                    commands = cmds.len(),
-                    "Saga retry produced new commands"
-                );
-                cmds
-            }
-            Err(e) => {
-                error!(
-                    attempt,
-                    error = %e,
-                    "Saga re-execute failed, aborting retry"
-                );
-                break;
-            }
-        };
+    if let Err(e) = run_with_retry(operation, backoff).await {
+        error!(error = %e, "Saga execution failed after multiple retries");
     }
 }
 
@@ -321,7 +252,16 @@ pub async fn orchestrate_saga(
     }
 
     // Phase 5: Execute commands with retry
-    execute_with_retry(ctx, executor, fetcher, commands, saga_name, correlation_id, backoff).await;
+    execute_with_retry(
+        ctx,
+        executor,
+        fetcher,
+        commands,
+        saga_name,
+        correlation_id,
+        backoff,
+    )
+    .await;
 
     #[cfg(feature = "otel")]
     {

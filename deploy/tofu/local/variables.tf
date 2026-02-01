@@ -127,7 +127,7 @@ variable "storage_type" {
 
 # Application configurations
 variable "business_applications" {
-  description = "List of business logic applications (evented runs as sidecar)"
+  description = "List of client logic applications (evented runs as sidecar)"
   type = list(object({
     name   = string
     domain = string

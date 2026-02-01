@@ -1,4 +1,4 @@
-# Example: Angzarr as sidecar to business logic applications
+# Example: Angzarr as sidecar to client logic applications
 # Each application type gets its own pod with angzarr sidecar
 
 replicaCount: 1
@@ -43,9 +43,9 @@ rabbitmq:
 
 # Application deployments - each gets angzarr as sidecar
 applications:
-  # Business logic applications
+  # client logic applications
   # Pod structure: [business-app] <-> [angzarr sidecar]
-  # - Business app implements angzarr.BusinessLogic gRPC service
+  # - Business app implements angzarr.ClientLogic gRPC service
   # - Angzarr sidecar provides BusinessCoordinator + EventQuery services
   # - External clients call angzarr's BusinessCoordinator
   # - Angzarr calls business app to process commands

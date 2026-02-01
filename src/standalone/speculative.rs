@@ -2,7 +2,7 @@
 //!
 //! Runs handler logic without persistence, publishing, command execution,
 //! or any side effects. Reuses the **same handler instances** registered
-//! with the runtime — business logic is never duplicated. The framework
+//! with the runtime — client logic is never duplicated. The framework
 //! controls which side effects are suppressed; handlers are unaware of
 //! the execution mode (except projectors, which receive `ProjectionMode`).
 //!

@@ -1,4 +1,4 @@
-//! Product bounded context business logic.
+//! Product bounded context client logic.
 //!
 //! Handles product catalog lifecycle and pricing.
 
@@ -77,7 +77,7 @@ fn build_event_response(
     )
 }
 
-/// Business logic for Product aggregate.
+/// client logic for Product aggregate.
 pub struct ProductLogic;
 
 common::define_aggregate!(ProductLogic, "product");

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// ProductLogic provides business logic operations for the product domain.
+// ProductLogic provides client logic operations for the product domain.
 type ProductLogic interface {
 	// RebuildState reconstructs product state from an event book.
 	RebuildState(eventBook *angzarr.EventBook) *ProductState

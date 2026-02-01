@@ -262,7 +262,7 @@ fn default_health_timeout() -> u64 {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct StandaloneConfig {
-    /// Aggregate services (business logic handlers).
+    /// Aggregate services (client logic handlers).
     pub aggregates: Vec<ServiceConfig>,
     /// Saga services (cross-aggregate workflows).
     pub sagas: Vec<ServiceConfig>,

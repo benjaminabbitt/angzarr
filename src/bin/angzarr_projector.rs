@@ -32,7 +32,7 @@ use backon::Retryable;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
-use angzarr::config::Config;
+use angzarr::config::{Config, STREAM_OUTPUT_ENV_VAR, TARGET_COMMAND_JSON_ENV_VAR};
 use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
@@ -66,9 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Target projector: {} (name: {})", address, projector_name);
 
     // Get command: prefer env var (for standalone mode), fall back to config
-    let command = match std::env::var("ANGZARR__TARGET__COMMAND_JSON") {
+    let command = match std::env::var(TARGET_COMMAND_JSON_ENV_VAR) {
         Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
-            warn!("Failed to parse ANGZARR__TARGET__COMMAND_JSON, falling back to config");
+            warn!("Failed to parse {}, falling back to config", TARGET_COMMAND_JSON_ENV_VAR);
             target.command.clone()
         }),
         Err(_) => target.command.clone(),
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
 
     // Check if streaming output is enabled
-    let stream_output = std::env::var("STREAM_OUTPUT")
+    let stream_output = std::env::var(STREAM_OUTPUT_ENV_VAR)
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false);
 

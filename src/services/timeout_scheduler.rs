@@ -24,7 +24,7 @@ use tokio::time::interval;
 use tracing::{debug, error, info, warn};
 
 use crate::bus::EventBus;
-use crate::clients::TimeoutConfig;
+use crate::config::TimeoutConfig;
 use crate::proto::{Cover, EventBook, EventPage, ProcessTimeout, Uuid as ProtoUuid};
 
 /// Represents a process instance that has timed out.

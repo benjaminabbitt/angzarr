@@ -42,7 +42,7 @@ pub fn validate_sequence(expected_sequence: u32, actual_sequence: u32) -> Sequen
 ///
 /// Uses `Aborted` because sequence mismatches are retryable optimistic
 /// concurrency errors — the caller should re-fetch state and retry.
-/// `FailedPrecondition` is reserved for non-retryable business logic errors.
+/// `FailedPrecondition` is reserved for non-retryable client logic errors.
 pub fn sequence_mismatch_error(expected: u32, actual: u32) -> Status {
     Status::aborted(format!(
         "Sequence mismatch: command expects {}, aggregate at {}",

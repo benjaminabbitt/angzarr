@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::bus::EventBus;
-use crate::clients::SagaCompensationConfig;
+use crate::config::SagaCompensationConfig;
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::saga_client::SagaClient;
 use crate::proto::{CommandBook, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest};
@@ -135,7 +135,7 @@ impl SagaRetryContext for GrpcSagaContext {
 ///
 /// If the command has a saga_origin (meaning it came from a saga),
 /// sends a RevokeEventCommand to the triggering aggregate for compensation.
-/// If compensation fails or business logic requests it, emits a fallback event.
+/// If compensation fails or client logic requests it, emits a fallback event.
 async fn handle_command_rejection(
     rejected_command: &CommandBook,
     rejection_error: &tonic::Status,

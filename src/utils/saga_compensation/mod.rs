@@ -10,7 +10,7 @@ use prost::Message;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::clients::SagaCompensationConfig;
+use crate::config::SagaCompensationConfig;
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage,
     RevocationResponse, RevokeEventCommand, SagaCommandOrigin, SagaCompensationFailed,
@@ -124,7 +124,7 @@ pub fn build_revoke_command_book(context: &CompensationContext) -> Result<Comman
 
 /// Build a SagaCompensationFailed event.
 ///
-/// This is emitted when business logic cannot handle the revocation
+/// This is emitted when client logic cannot handle the revocation
 /// or explicitly requests system revocation.
 pub fn build_compensation_failed_event(
     context: &CompensationContext,
@@ -226,7 +226,7 @@ pub fn handle_business_response(
                 send_to_dead_letter_queue: config.fallback_send_to_dlq,
                 escalate: config.fallback_escalate,
                 abort: false, // Don't abort on fallback
-                reason: "Business logic returned empty response".to_string(),
+                reason: "client logic returned empty response".to_string(),
             }
         }
         Err(status) => {
@@ -234,7 +234,7 @@ pub fn handle_business_response(
             error!(
                 saga = %context.saga_origin.saga_name,
                 error = %status,
-                "gRPC error from business logic, using fallback"
+                "gRPC error from client logic, using fallback"
             );
             RevocationResponse {
                 emit_system_revocation: config.fallback_emit_system_revocation,

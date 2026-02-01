@@ -219,7 +219,7 @@ impl client_traits::QueryClient for StandaloneQueryClient {
 /// Client for speculative (dry-run) execution of projectors, sagas, and PMs.
 ///
 /// Wraps a `SpeculativeExecutor` with the same handler instances registered
-/// in the runtime. All methods invoke real business logic without side effects.
+/// in the runtime. All methods invoke real client logic without side effects.
 #[derive(Clone)]
 pub struct SpeculativeClient {
     executor: Arc<SpeculativeExecutor>,

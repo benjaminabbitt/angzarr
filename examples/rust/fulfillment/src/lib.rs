@@ -1,4 +1,4 @@
-//! Fulfillment bounded context business logic.
+//! Fulfillment bounded context client logic.
 //!
 //! Manages shipment lifecycle: pending -> picking -> packing -> shipped -> delivered.
 
@@ -84,7 +84,7 @@ fn build_event_response(
     )
 }
 
-/// Business logic for Fulfillment aggregate.
+/// client logic for Fulfillment aggregate.
 pub struct FulfillmentLogic;
 
 common::define_aggregate!(FulfillmentLogic, "fulfillment");

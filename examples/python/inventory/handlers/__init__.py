@@ -1,6 +1,6 @@
 """Inventory command handlers.
 
-Business logic for processing inventory commands.
+client logic for processing inventory commands.
 """
 
 from handlers.errors import CommandRejectedError

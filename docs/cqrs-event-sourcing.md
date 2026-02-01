@@ -146,7 +146,7 @@ A **domain** represents a business capability—"flights", "customers", "invento
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-The aggregate codebase scales horizontally across many processes, but the business logic is defined once.
+The aggregate codebase scales horizontally across many processes, but the client logic is defined once.
 
 ### Aggregate Roots
 
@@ -163,7 +163,7 @@ Each aggregate root has its own event stream. The same aggregate codebase handle
 
 ### Cross-Domain Communication
 
-When business logic needs to coordinate across domains, **sagas** (also called **process coordinators**) bridge the gap:
+When client logic needs to coordinate across domains, **sagas** (also called **process coordinators**) bridge the gap:
 
 ```
 ┌──────────────┐                    ┌──────────────┐

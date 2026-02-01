@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Count lines of code in example implementations.
 
-Counts non-blank, non-comment lines for business logic files.
+Counts non-blank, non-comment lines for client logic files.
 Used to generate accurate LOC statistics for documentation.
 """
 
@@ -131,14 +131,14 @@ def count_loc(file_path: Path) -> int:
 
 
 def find_example_files(repo_root: Path) -> dict:
-    """Find all business logic files in examples."""
+    """Find all client logic files in examples."""
     examples = {}
 
     examples_dir = repo_root / "examples"
     if not examples_dir.exists():
         return examples
 
-    # Define what constitutes "business logic" files per domain
+    # Define what constitutes "client logic" files per domain
     domains = ["customer", "product", "cart", "order", "inventory", "fulfillment"]
 
     for lang in ["go", "python", "rust"]:

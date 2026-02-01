@@ -174,7 +174,7 @@ async def handle_message(message):
 
     async with db.transaction():
         # Process the message
-        await process_business_logic(message)
+        await process_client_logic(message)
 
         # Record as processed (same transaction)
         await db.execute("""
@@ -364,7 +364,7 @@ message UpcastResponse {
 1. Events loaded from storage
 2. Entire EventBook passed to upcaster in one call
 3. Upcaster returns transformed events (same order, same count)
-4. Transformed events passed to business logic
+4. Transformed events passed to client logic
 
 This design allows:
 - Language-agnostic upcasters (implement in any language)

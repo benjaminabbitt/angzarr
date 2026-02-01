@@ -288,7 +288,7 @@ class CustomerLogic:
 Register it in `config.yaml`:
 
 ```yaml
-business_logic:
+client_logic:
   - domain: customer
     address: localhost:50052
 ```
@@ -372,7 +372,7 @@ Examples use a submodule - access them with `just examples <command>`:
 
 **Integration Tests** (`just integration-test-only`)
 - Run against deployed Kubernetes pods via gRPC
-- Test full end-to-end flow: commands -> business logic -> events -> projectors
+- Test full end-to-end flow: commands -> client logic -> events -> projectors
 - Includes streaming tests for angzarr-gateway and angzarr-stream services
 - Requires `just deploy` first (or use `just integration-test` to deploy and test)
 - Feature files: `tests/integration/features/*.feature`
@@ -476,7 +476,7 @@ just k8s-port-forward
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| "Connection refused" on startup | Business logic service not running | Start your domain service first |
+| "Connection refused" on startup | client logic service not running | Start your domain service first |
 | "Failed to connect to projector" | Projector not reachable | Check projector address in config.yaml |
 | Events not persisting | Database path not writable | Ensure `data/` directory exists with write permissions |
 | AMQP connection failed | RabbitMQ not running | Start RabbitMQ via Kind cluster or Docker |

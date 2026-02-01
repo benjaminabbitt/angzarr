@@ -72,16 +72,16 @@ pub fn get_transport(service_name: &str, domain: &str, default_port: &str) -> Tr
 }
 
 // ============================================================================
-// Aggregate Support
+// Client Logic Support
 // ============================================================================
 
-/// Trait for aggregate business logic implementations.
+/// Trait for aggregate client logic implementations.
 ///
-/// Business logic receives contextual commands (prior events + new command)
+/// Client logic receives contextual commands (prior events + new command)
 /// and returns a response with new events or rejection.
 #[tonic::async_trait]
 pub trait AggregateLogic: Send + Sync {
-    /// Handle a contextual command and return a business response.
+    /// Handle a contextual command and return a client response.
     async fn handle(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
 }
 
@@ -108,7 +108,7 @@ impl<T: AggregateLogic + 'static> Aggregate for AggregateWrapper<T> {
     }
 }
 
-/// Run an aggregate server with the given business logic.
+/// Run an aggregate server with the given client logic.
 ///
 /// # Example
 /// ```ignore

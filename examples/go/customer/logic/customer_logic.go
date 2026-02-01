@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// CustomerLogic provides business logic operations for the customer domain.
+// CustomerLogic provides client logic operations for the customer domain.
 type CustomerLogic interface {
 	// RebuildState reconstructs customer state from an event book.
 	RebuildState(eventBook *angzarr.EventBook) *CustomerState

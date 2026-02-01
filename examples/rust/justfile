@@ -169,7 +169,7 @@ run-aggregate DOMAIN: build-angzarr build
     export SERVICE_NAME=business
     export DOMAIN={{DOMAIN}}
     
-    # Start business logic in background
+    # Start client logic in background
     # It will listen on $UDS_BASE_PATH/business-$DOMAIN.sock
     ./target/debug/{{DOMAIN}}-server &
     BUSINESS_PID=$!

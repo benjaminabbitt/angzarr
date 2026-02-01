@@ -1,6 +1,8 @@
 lm:
   plugins:
     claude-code:
+      default: false
+    gemini:
       default: true
 
 editor:

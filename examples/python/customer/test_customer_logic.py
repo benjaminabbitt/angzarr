@@ -1,4 +1,4 @@
-"""Tests for customer business logic."""
+"""Tests for customer client logic."""
 
 from google.protobuf.any_pb2 import Any as AnyProto
 from proto import domains_pb2 as domains

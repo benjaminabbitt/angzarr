@@ -37,7 +37,7 @@ kill:
             echo "$pids" | xargs kill -9 2>/dev/null || true
         fi
     done
-    # Kill business logic servers (Rust)
+    # Kill client logic servers (Rust)
     pkill -f "customer-server|product-server|inventory-server|order-server|cart-server|fulfillment-server|saga-.*-server|projector-.*-server" 2>/dev/null || true
     # Kill Python servers
     pkill -f "python server.py" 2>/dev/null || true
@@ -124,7 +124,7 @@ test LANG: build-angzarr kill clean-sockets (build-lang LANG)
         sleep 1
     done
 
-    # Additional wait for business logic services
+    # Additional wait for client logic services
     sleep 3
 
     # Run acceptance tests based on language

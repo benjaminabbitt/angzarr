@@ -46,7 +46,7 @@ message EventBook {
   Snapshot snapshot = 2;                    // Framework-populated when loading (has sequence)
   repeated EventPage pages = 3;
   // Field 4 removed: correlation_id moved to Cover
-  // Business logic sets this; framework computes sequence.
+  // client logic sets this; framework computes sequence.
   // State must be a protobuf Message for serialization into Any.
   google.protobuf.Any snapshot_state = 5;
 }
@@ -112,7 +112,7 @@ message RevokeEventCommand {
   CommandBook rejected_command = 4;      // The command that was rejected
 }
 
-// Business logic requests framework to handle revocation
+// client logic requests framework to handle revocation
 message RevocationResponse {
   bool emit_system_revocation = 1;      // Emit SagaCompensationFailed event
   bool send_to_dead_letter_queue = 2;   // Send to DLQ

@@ -6,9 +6,9 @@ option java_multiple_files = true;
 
 import "angzarr/types.proto";
 
-// Aggregate: business logic that processes commands and emits events
+// Aggregate: client logic that processes commands and emits events
 // Also known as Command Handler in CQRS terminology
-// Business logic doesn't care about sync - coordinator decides
+// client logic doesn't care about sync - coordinator decides
 service Aggregate {
   rpc Handle (ContextualCommand) returns (BusinessResponse);
 }

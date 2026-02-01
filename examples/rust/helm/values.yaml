@@ -18,7 +18,7 @@ angzarr:
     port: 1316
     streamTimeoutSecs: 30
 
-# Business logic services (logic port = base + 3)
+# client logic services (logic port = base + 3)
 services:
   customer:
     image: rs-customer:latest

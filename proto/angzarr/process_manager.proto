@@ -24,7 +24,7 @@ import "google/protobuf/timestamp.proto";
 // It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 service ProcessManager {
   // Get subscription filters - called at startup to configure event routing.
-  // PM business logic defines which domains/events it subscribes to.
+  // PM client logic defines which domains/events it subscribes to.
   rpc GetSubscriptions (GetSubscriptionsRequest) returns (GetSubscriptionsResponse);
 
   // Phase 1: Declare which additional destinations are needed beyond the trigger.

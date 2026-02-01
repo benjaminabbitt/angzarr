@@ -1,6 +1,6 @@
 {{- /* Generate deployments for each application type with angzarr as sidecar */}}
 
-{{- /* Business logic deployments */}}
+{{- /* client logic deployments */}}
 {{- range .Values.applications.business }}
 ---
 apiVersion: apps/v1
@@ -72,7 +72,7 @@ spec:
               echo "RabbitMQ is ready"
         {{- end }}
       containers:
-        # Main container: Business logic application
+        # Main container: client logic application
         # Port scheme: base+3 = client logic, base+4 = client debug
         - name: {{ .name }}
           image: "{{ .image.repository }}:{{ .image.tag }}"
@@ -87,7 +87,7 @@ spec:
               protocol: TCP
             {{- end }}
           env:
-            # Business logic application port (sidecar calls this)
+            # client logic application port (sidecar calls this)
             - name: PORT
               value: "{{ .port }}"
             - name: DOMAIN
@@ -98,7 +98,7 @@ spec:
             - name: ANGZARR_PORT
               value: "{{ $.Values.service.aggregatePort }}"
             {{- if eq .type "python" }}
-            - name: BUSINESS_LOGIC_TYPE
+            - name: client_logic_TYPE
               value: "python"
             - name: PYTHON_MODULE
               value: {{ .python.module | quote }}
@@ -106,7 +106,7 @@ spec:
               value: {{ .python.path | quote }}
             {{- end }}
             {{- if eq .type "go" }}
-            - name: BUSINESS_LOGIC_TYPE
+            - name: client_logic_TYPE
               value: "go"
             - name: GO_LIBRARY
               value: {{ .go.library | quote }}

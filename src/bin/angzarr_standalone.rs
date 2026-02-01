@@ -1,20 +1,20 @@
 //! angzarr-standalone: All-in-one infrastructure host
 //!
 //! Runs all angzarr infrastructure in a single process while spawning
-//! business logic processes as separate gRPC servers over UDS.
+//! client logic processes as separate gRPC servers over UDS.
 //!
 //! ## Architecture
 //! ```text
 //! angzarr-standalone (single process, all infrastructure)
 //!     │
-//!     │  Business logic processes (gRPC over UDS):
+//!     │  client logic processes (gRPC over UDS):
 //!     ├── business-customer (Python)      → business-customer.sock
 //!     ├── business-order (Python)         → business-order.sock
 //!     ├── saga-fulfillment (Python)       → saga-fulfillment.sock
 //!     ├── projector-web (Go)              → projector-web.sock
 //!     │
 //!     │  Infrastructure (all in-process, channels):
-//!     ├── CommandRouter + BusinessLogic ──gRPC/UDS──→ business-*.sock
+//!     ├── CommandRouter + ClientLogic ──gRPC/UDS──→ business-*.sock
 //!     ├── ProjectorEventHandler       ──gRPC/UDS──→ projector-*.sock
 //!     ├── SagaEventHandler            ──gRPC/UDS──→ saga-*.sock
 //!     ├── EventBus (tokio broadcast channels)
@@ -69,11 +69,14 @@ use tracing::{error, info, warn};
 
 use angzarr::bus::{ChannelConfig, ChannelEventBus, EventBus};
 use angzarr::clients::SagaCompensationConfig;
-use angzarr::config::{Config, ExternalServiceConfig, HealthCheckConfig};
+use angzarr::config::{
+    Config, ExternalServiceConfig, HealthCheckConfig, CONFIG_ENV_PREFIX, CONFIG_ENV_VAR,
+    TRANSPORT_TYPE_ENV_VAR,
+};
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::handlers::core::{ProjectorEventHandler, SagaEventHandler};
-use angzarr::orchestration::aggregate::{GrpcBusinessLogic, DEFAULT_EDITION};
+use angzarr::orchestration::aggregate::{DEFAULT_EDITION, GrpcBusinessLogic};
 use angzarr::orchestration::command::local::LocalCommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
 use angzarr::orchestration::projector::local::LocalProjectorContext;
@@ -97,7 +100,7 @@ struct ManagedChild {
 }
 
 impl ManagedChild {
-    /// Spawn a business logic process from a command array.
+    /// Spawn a client logic process from a command array.
     async fn spawn(
         name: &str,
         command: &[String],
@@ -203,7 +206,7 @@ impl Drop for ManagedChild {
     }
 }
 
-/// Resolve UDS socket path for a business logic process.
+/// Resolve UDS socket path for a client logic process.
 fn socket_path(base_path: &std::path::Path, prefix: &str, name: &str) -> String {
     format!("{}/{}-{}.sock", base_path.display(), prefix, name)
 }
@@ -241,10 +244,10 @@ async fn wait_for_socket(
     }
 }
 
-/// Spawn a business logic process and wait for its UDS socket.
+/// Spawn a client logic process and wait for its UDS socket.
 ///
 /// Returns immediately if command is empty (pre-existing process).
-async fn spawn_business_process(
+async fn spawn_client_process(
     name: &str,
     command: &[String],
     working_dir: Option<&str>,
@@ -257,14 +260,14 @@ async fn spawn_business_process(
     }
 
     let mut process_env = env.clone();
-    // Tell business logic servers to listen on UDS instead of TCP
-    process_env.insert("TRANSPORT_TYPE".to_string(), "uds".to_string());
+    // Tell client logic servers to listen on UDS instead of TCP
+    process_env.insert(TRANSPORT_TYPE_ENV_VAR.to_string(), "uds".to_string());
     process_env.insert(
-        "ANGZARR__TARGET__ADDRESS".to_string(),
+        format!("{}__{}__{}", CONFIG_ENV_PREFIX, "TARGET", "ADDRESS"),
         socket_path.to_string(),
     );
     if let Some(config_path) = angzarr::utils::bootstrap::parse_config_path() {
-        process_env.insert("ANGZARR_CONFIG".to_string(), config_path);
+        process_env.insert(CONFIG_ENV_VAR.to_string(), config_path);
     }
 
     let child = ManagedChild::spawn(name, command, working_dir, &process_env).await?;
@@ -326,8 +329,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let channel_bus = Arc::new(ChannelEventBus::new(ChannelConfig::publisher()));
     let event_bus: Arc<dyn EventBus> = channel_bus.clone();
 
-    // Spawn and connect aggregate business logic processes
-    let mut business: HashMap<String, Arc<dyn angzarr::orchestration::aggregate::BusinessLogic>> =
+    // Spawn and connect aggregate client logic processes
+    let mut client_logic: HashMap<String, Arc<dyn angzarr::orchestration::aggregate::ClientLogic>> =
         HashMap::new();
 
     for svc in &config.standalone.aggregates {
@@ -336,7 +339,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .clone()
             .unwrap_or_else(|| socket_path(base_path, "business", &svc.domain));
 
-        spawn_business_process(
+        spawn_client_process(
             &format!("business-{}", svc.domain),
             &svc.command,
             svc.working_dir.as_deref(),
@@ -348,12 +351,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let channel = connect_to_address(&path).await?;
         let client = AggregateClient::new(channel);
-        business.insert(
+        client_logic.insert(
             svc.domain.clone(),
             Arc::new(GrpcBusinessLogic::new(client)),
         );
 
-        info!(domain = %svc.domain, "Connected to aggregate business logic");
+        info!(domain = %svc.domain, "Connected to aggregate client logic");
     }
 
     // Service discovery (static — no K8s in standalone)
@@ -361,7 +364,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create command router (no in-process sync projectors in binary mode)
     let router = Arc::new(CommandRouter::new(
-        business,
+        client_logic,
         domain_stores.clone(),
         discovery,
         event_bus.clone(),
@@ -383,7 +386,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .clone()
             .unwrap_or_else(|| socket_path(base_path, "projector", &socket_name));
 
-        spawn_business_process(
+        spawn_client_process(
             &format!("projector-{}", socket_name),
             &svc.command,
             svc.working_dir.as_deref(),
@@ -429,7 +432,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .clone()
             .unwrap_or_else(|| socket_path(base_path, "saga", &svc.domain));
 
-        spawn_business_process(
+        spawn_client_process(
             &format!("saga-{}", svc.domain),
             &svc.command,
             svc.working_dir.as_deref(),
@@ -473,7 +476,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for svc in &config.standalone.services {
         let mut svc_with_env = svc.clone();
         if let Some(ref path) = config_path {
-            svc_with_env.env.insert("ANGZARR_CONFIG".to_string(), path.clone());
+            svc_with_env.env.insert(CONFIG_ENV_VAR.to_string(), path.clone());
         }
         let child = spawn_external_service(&svc_with_env.name, &svc_with_env).await?;
         children.push(child);

@@ -1,4 +1,4 @@
-{{- /* Services for aggregate (business logic) applications */}}
+{{- /* Services for aggregate (client logic) applications */}}
 {{- range .Values.applications.business }}
 ---
 apiVersion: v1
@@ -34,7 +34,7 @@ spec:
       name: coord-debug
     {{- end }}
     {{- if $.Values.ports.clientLogic.enabled }}
-    # Business logic gRPC (base + 3, usually internal only)
+    # client logic gRPC (base + 3, usually internal only)
     - port: {{ .port }}
       targetPort: grpc
       protocol: TCP

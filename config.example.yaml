@@ -80,8 +80,8 @@ server:
 #   address: localhost:50051
 #   domain: orders
 
-# Business logic services (gateway mode)
-# business_logic:
+# client logic services (gateway mode)
+# client_logic:
 #   - domain: orders
 #     address: localhost:50051
 #   - domain: inventory

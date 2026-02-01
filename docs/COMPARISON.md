@@ -205,7 +205,7 @@ Producer → Kafka Topics → Consumer Groups → Your Projectors/Sagas
 
 ### Choose Angzarr if you need:
 
-1. **Language freedom** - Write business logic in any gRPC-supported language; most teams pick one, but the choice is theirs
+1. **Language freedom** - Write client logic in any gRPC-supported language; most teams pick one, but the choice is theirs
 2. **Infrastructure abstraction** - Swap storage/bus without code changes (4 storage backends, 6 bus implementations)
 3. **Built-in ES patterns** - Optimistic concurrency, snapshots, sagas, projectors, process managers, event upcasting
 4. **Flexible deployment** - K8s sidecars for distributed, standalone mode for development/simple deployments
@@ -310,7 +310,7 @@ Unlike Axon Cloud or AWS/GCP managed services:
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Event upcasting / schema evolution** | Implemented | External upcaster sidecar via gRPC, configurable per deployment |
-| **Automatic snapshotting** | Implemented | Automatic when business logic returns snapshot state; configurable read/write toggles |
+| **Automatic snapshotting** | Implemented | Automatic when client logic returns snapshot state; configurable read/write toggles |
 | **[PostgreSQL backend](../src/storage/postgres/README.md)** | Implemented (untested) | Full EventStore + SnapshotStore with sea-query; not yet integration tested |
 | **SQLite backend** | Implemented | Full EventStore + SnapshotStore with sqlx migrations; standalone and embedded modes |
 | **[Redis backend](../src/storage/redis/README.md)** | Implemented (untested) | Full EventStore + SnapshotStore with sorted sets; not yet integration tested |

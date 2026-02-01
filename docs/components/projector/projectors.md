@@ -326,11 +326,11 @@ cargo test -p projector-logging --lib
 
 ## Infrastructure Projectors
 
-In addition to business logic projectors, Angzarr includes infrastructure projectors that are part of the core framework:
+In addition to client logic projectors, Angzarr includes infrastructure projectors that are part of the core framework:
 
 ### Stream Projector (angzarr-stream)
 
-The stream projector enables real-time event streaming to clients via the gateway. Unlike business logic projectors that build read models, the stream projector's "projection" is an in-memory registry of active subscriptions.
+The stream projector enables real-time event streaming to clients via the gateway. Unlike client logic projectors that build read models, the stream projector's "projection" is an in-memory registry of active subscriptions.
 
 **Architecture:**
 ```
@@ -355,7 +355,7 @@ The stream projector enables real-time event streaming to clients via the gatewa
 |----------|-------------|---------|
 | `PORT` | Port for gRPC services | 50051 |
 
-The stream projector is a **standalone infrastructure service**, not a sidecar. It deploys with an `angzarr-projector` sidecar that subscribes to AMQP and forwards events to it via the Projector gRPC interface—the same pattern as business logic projectors, but the "business logic" here is event filtering and streaming.
+The stream projector is a **standalone infrastructure service**, not a sidecar. It deploys with an `angzarr-projector` sidecar that subscribes to AMQP and forwards events to it via the Projector gRPC interface—the same pattern as client logic projectors, but the "client logic" here is event filtering and streaming.
 
 ---
 
