@@ -13,10 +13,12 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::local::LocalAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, parse_command_cover, ClientLogic, PipelineMode,
+    execute_command_pipeline, execute_command_with_retry, parse_command_cover, ClientLogic,
+    PipelineMode,
 };
 use crate::proto::{CommandBook, CommandResponse, Cover, Uuid as ProtoUuid};
 use crate::storage::{EventStore, SnapshotStore};
+use crate::utils::retry::saga_backoff;
 
 use super::traits::ProjectorHandler;
 
@@ -161,11 +163,12 @@ impl CommandRouter {
             self.event_bus.clone(),
         );
 
-        let mut response = execute_command_pipeline(
+        let mut response = execute_command_with_retry(
             &ctx,
             &**business,
             command_book,
-            PipelineMode::Execute { validate_sequence },
+            validate_sequence,
+            saga_backoff(),
         )
         .await?;
 

@@ -8,6 +8,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
@@ -43,7 +44,11 @@ impl EditionEventStore {
 
     /// Load main timeline events up to the divergence point.
     async fn main_events(&self, domain: &str, root: Uuid) -> Result<Vec<EventPage>> {
-        match &self.divergence {
+        debug!(
+            "EditionEventStore::main_events: domain={}, root={}, divergence={:?}",
+            domain, root, self.divergence
+        );
+        let result = match &self.divergence {
             DivergencePoint::AtSequence(seq) => {
                 self.inner
                     .get_from_to(domain, DEFAULT_EDITION, root, 0, seq.saturating_add(1))
@@ -54,12 +59,20 @@ impl EditionEventStore {
                     .get_until_timestamp(domain, DEFAULT_EDITION, root, ts)
                     .await
             }
-        }
+        };
+        debug!("EditionEventStore::main_events: result={:?}", result);
+        result
     }
 
     /// Load edition-specific events (written after divergence).
     async fn edition_events(&self, domain: &str, root: Uuid) -> Result<Vec<EventPage>> {
-        self.inner.get(domain, &self.edition_name, root).await
+        debug!(
+            "EditionEventStore::edition_events: domain={}, root={}, edition={}",
+            domain, root, self.edition_name
+        );
+        let result = self.inner.get(domain, &self.edition_name, root).await;
+        debug!("EditionEventStore::edition_events: result={:?}", result);
+        result
     }
 }
 
@@ -80,10 +93,15 @@ impl EventStore for EditionEventStore {
     }
 
     /// Composite read: main events up to divergence + edition events after.
-    async fn get(&self, domain: &str, _edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
+    async fn get(&self, domain: &str, edition: &str, root: Uuid) -> Result<Vec<EventPage>> {
+        debug!(
+            "EditionEventStore::get: domain={}, edition={}, root={}",
+            domain, edition, root
+        );
         let mut events = self.main_events(domain, root).await?;
-        let edition = self.edition_events(domain, root).await?;
-        events.extend(edition);
+        let edition_events = self.edition_events(domain, root).await?;
+        events.extend(edition_events);
+        debug!("EditionEventStore::get: combined events count={}", events.len());
         Ok(events)
     }
 

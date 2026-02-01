@@ -28,6 +28,14 @@ pub trait Backend: Send + Sync {
     /// Query all events for a domain/root.
     async fn query_events(&self, domain: &str, root: Uuid) -> BackendResult<Vec<EventPage>>;
 
+    /// Query events for a specific edition.
+    async fn query_events_in_edition(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+    ) -> BackendResult<Vec<EventPage>>;
+
     /// Query events at a temporal point (by sequence or timestamp).
     async fn query_events_temporal(
         &self,
@@ -98,6 +106,7 @@ use crate::projectors::{create_projector_pool, AccountingProjector, WebProjector
 struct StandaloneBackend {
     client: CommandClient,
     domain_stores: HashMap<String, DomainStorage>,
+    edition_client: angzarr::standalone::EditionClient,
     // Runtime kept alive for event distribution (projectors, sagas, PMs)
     _runtime: Runtime,
 }
@@ -198,6 +207,7 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
         backend: Arc::new(StandaloneBackend {
             client,
             domain_stores,
+            edition_client: edition.clone(),
             _runtime: runtime,
         }),
         web_db: Some(web_pool),
@@ -220,6 +230,18 @@ impl Backend for StandaloneBackend {
             .ok_or_else(|| format!("No storage for domain: {}", domain))?;
         let pages = storage.event_store.get(domain, DEFAULT_EDITION, root).await?;
         Ok(pages)
+    }
+
+    async fn query_events_in_edition(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+    ) -> BackendResult<Vec<EventPage>> {
+        self.edition_client
+            .query_events(edition, domain, root)
+            .await
+            .map_err(|e| format!("Edition client error: {}", e).into()) // Convert Status to Box<dyn Error>
     }
 
     async fn query_events_temporal(
@@ -328,6 +350,23 @@ impl Backend for GatewayBackend {
             .client
             .query
             .query(domain, root)
+            .range(0)
+            .get_event_book()
+            .await?;
+        Ok(event_book.pages)
+    }
+
+    async fn query_events_in_edition(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+    ) -> BackendResult<Vec<EventPage>> {
+        let event_book = self
+            .client
+            .query
+            .query(domain, root)
+            .edition(edition)
             .range(0)
             .get_event_book()
             .await?;

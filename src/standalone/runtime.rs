@@ -476,7 +476,8 @@ impl Runtime {
 
         let gateway =
             StandaloneGatewayService::new(self.router.clone(), self.edition_manager.clone());
-        let event_query = StandaloneEventQueryBridge::new(self.domain_stores.clone());
+        let event_query =
+            StandaloneEventQueryBridge::new(self.domain_stores.clone(), self.edition_manager.clone());
 
         let router = tonic::transport::Server::builder()
             .layer(crate::transport::grpc_trace_layer())

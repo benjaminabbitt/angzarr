@@ -68,7 +68,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{ChannelConfig, ChannelEventBus, EventBus};
-use angzarr::clients::SagaCompensationConfig;
+use angzarr::config::SagaCompensationConfig;
 use angzarr::config::{
     Config, ExternalServiceConfig, HealthCheckConfig, CONFIG_ENV_PREFIX, CONFIG_ENV_VAR,
     TRANSPORT_TYPE_ENV_VAR,
@@ -487,25 +487,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Initialize the EditionManager (even if gateway is disabled, for internal use)
+    let edition_handler_refs = EditionHandlerRefs {
+        aggregates: HashMap::new(),
+        projectors: HashMap::new(),
+        sagas: HashMap::new(),
+        process_managers: HashMap::new(),
+    };
+    let edition_manager = Arc::new(EditionManager::new(
+        edition_handler_refs,
+        domain_stores.clone(),
+        event_bus.clone(),
+    ));
+
     // Start gateway if enabled
     let mut servers: Vec<ServerInfo> = Vec::new();
     if config.standalone.gateway.enabled {
         let port = config.standalone.gateway.port.unwrap_or(50051);
         let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
-        let edition_handler_refs = EditionHandlerRefs {
-            aggregates: HashMap::new(),
-            projectors: HashMap::new(),
-            sagas: HashMap::new(),
-            process_managers: HashMap::new(),
-        };
-        let edition_manager = Arc::new(EditionManager::new(
-            edition_handler_refs,
-            domain_stores.clone(),
-            event_bus.clone(),
-        ));
-        let gateway = StandaloneGatewayService::new(router.clone(), edition_manager);
-        let event_query = StandaloneEventQueryBridge::new(domain_stores.clone());
+        let gateway = StandaloneGatewayService::new(router.clone(), edition_manager.clone());
+        let event_query =
+            StandaloneEventQueryBridge::new(domain_stores.clone(), edition_manager);
 
         let grpc_router = tonic::transport::Server::builder()
             .layer(grpc_trace_layer())

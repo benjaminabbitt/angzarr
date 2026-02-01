@@ -145,6 +145,7 @@ pub struct QueryBuilder<'a, C: traits::QueryClient> {
     root: Option<Uuid>,
     correlation_id: Option<String>,
     selection: Option<Selection>,
+    edition: Option<String>,
 }
 
 impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
@@ -155,6 +156,7 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
             root,
             correlation_id: None,
             selection: None,
+            edition: None,
         }
     }
 
@@ -162,6 +164,12 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
     pub fn by_correlation_id(mut self, id: impl Into<String>) -> Self {
         self.correlation_id = Some(id.into());
         self.root = None;
+        self
+    }
+
+    /// Query events from a specific edition (diverged timeline).
+    pub fn edition(mut self, edition: impl Into<String>) -> Self {
+        self.edition = Some(edition.into());
         self
     }
 
@@ -208,7 +216,7 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
                 domain: self.domain.clone(),
                 root: self.root.map(uuid_to_proto),
                 correlation_id: self.correlation_id.clone().unwrap_or_default(),
-                edition: None,
+                edition: self.edition.clone(),
             }),
             selection: self.selection.clone(),
         }

@@ -150,20 +150,28 @@ impl ServerInfo {
 /// without service discovery.
 pub struct StandaloneEventQueryBridge {
     stores: HashMap<String, DomainStorage>,
+    edition_manager: Arc<EditionManager>,
 }
 
 impl StandaloneEventQueryBridge {
     /// Create a new event query bridge wrapping the given domain stores.
-    pub fn new(stores: HashMap<String, DomainStorage>) -> Self {
-        Self { stores }
+    pub fn new(stores: HashMap<String, DomainStorage>, edition_manager: Arc<EditionManager>) -> Self {
+        Self { stores, edition_manager }
     }
 
     #[allow(clippy::result_large_err)]
-    fn get_repo(&self, domain: &str) -> Result<EventBookRepository, Status> {
-        let store = self
-            .stores
-            .get(domain)
-            .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
+    async fn get_repo(&self, domain: &str, edition: Option<&str>) -> Result<EventBookRepository, Status> {
+        let edition_stores = match edition {
+            Some(name) => self.edition_manager.get_stores(name).await,
+            None => None,
+        };
+
+        let store = match edition_stores {
+            Some(ref stores) => stores.get(domain),
+            None => self.stores.get(domain),
+        }
+        .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
+
         // Disable snapshot reading — event queries return full event history,
         // not snapshot-optimized views for aggregate state reconstruction.
         Ok(EventBookRepository::with_config(
@@ -183,6 +191,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
         let domain = &cover.domain;
+        let edition = cover.edition.as_deref();
         let root = cover
             .root
             .as_ref()
@@ -190,22 +199,22 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 
-        let repo = self.get_repo(domain)?;
+        let repo = self.get_repo(domain, edition).await?;
 
         let book = match query.selection {
             Some(crate::proto::query::Selection::Range(ref range)) => {
                 let lower = range.lower;
                 let upper = range.upper.map(|u| u.saturating_add(1)).unwrap_or(u32::MAX);
-                repo.get_from_to(domain, DEFAULT_EDITION, root_uuid, lower, upper).await
+                repo.get_from_to(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid, lower, upper).await
             }
             Some(crate::proto::query::Selection::Temporal(ref tq)) => match tq.point_in_time {
                 Some(crate::proto::temporal_query::PointInTime::AsOfTime(ref ts)) => {
                     let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(ts)
                         .map_err(|e| Status::invalid_argument(e.to_string()))?;
-                    repo.get_temporal_by_time(domain, DEFAULT_EDITION, root_uuid, &rfc3339).await
+                    repo.get_temporal_by_time(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid, &rfc3339).await
                 }
                 Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
-                    repo.get_temporal_by_sequence(domain, DEFAULT_EDITION, root_uuid, seq).await
+                    repo.get_temporal_by_sequence(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid, seq).await
                 }
                 None => {
                     return Err(Status::invalid_argument(
@@ -213,7 +222,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
                     ))
                 }
             },
-            _ => repo.get(domain, DEFAULT_EDITION, root_uuid).await,
+            _ => repo.get(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid).await,
         }
         .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -232,6 +241,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
         let domain = cover.domain.clone();
+        let edition = cover.edition.clone();
         let root = cover
             .root
             .as_ref()
@@ -239,11 +249,11 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 
-        let repo = self.get_repo(&domain)?;
+        let repo = self.get_repo(&domain, edition.as_deref()).await?;
         let (tx, rx) = tokio::sync::mpsc::channel(32);
 
         tokio::spawn(async move {
-            match repo.get(&domain, DEFAULT_EDITION, root_uuid).await {
+            match repo.get(&domain, edition.as_deref().unwrap_or(DEFAULT_EDITION), root_uuid).await {
                 Ok(book) => {
                     let _ = tx.send(Ok(book)).await;
                 }

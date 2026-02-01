@@ -21,7 +21,7 @@ default:
 
 # Build angzarr binaries for standalone mode
 build-angzarr:
-    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-gateway --bin angzarr-standalone
+    cd {{TOP}} && cargo build --features sqlite,standalone --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-gateway --bin angzarr-standalone
 
 # Clean up stale UDS sockets
 clean-sockets:
