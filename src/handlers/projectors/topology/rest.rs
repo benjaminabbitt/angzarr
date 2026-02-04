@@ -11,10 +11,11 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, Method, StatusCode};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 
 use super::store::TopologyStore;
@@ -41,10 +42,17 @@ pub async fn serve(
 
 /// Build the axum router (separated for testing).
 pub fn router(store: Arc<dyn TopologyStore>) -> Router {
+    // CORS layer for Grafana Node Graph API plugin (direct mode)
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::OPTIONS])
+        .allow_headers(Any);
+
     Router::new()
         .route("/api/health", get(health))
         .route("/api/graph/fields", get(graph_fields))
         .route("/api/graph/data", get(graph_data))
+        .layer(cors)
         .with_state(store)
 }
 
