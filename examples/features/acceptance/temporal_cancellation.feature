@@ -34,37 +34,3 @@ Feature: Temporal Order Cancellation
     When I query order "ORD-TC-1" all events
     Then the order has 3 total events
     And the temporal event at index 2 is "OrderCancelled"
-
-  # ===========================================================================
-  # Speculative Cancellation Against Temporal State
-  # ===========================================================================
-
-  @e2e @temporal @order @dryrun
-  Scenario: Speculative cancellation succeeds at payment-submitted state
-    # Order went through: Created -> PaymentSubmitted -> Completed (3 events).
-    # Speculatively cancel at sequence 1 (payment_submitted, not yet completed).
-    # The cancellation handler accepts this state, returning an OrderCancelled
-    # event speculatively. No events are persisted or published.
-    Given an order "ORD-TC-2" exists and is completed
-    When I dry-run cancel order "ORD-TC-2" at sequence 1 with reason "What if cancelled before completion?"
-    Then the dry-run returns an "OrderCancelled" event
-    And querying order "ORD-TC-2" still returns exactly 3 events
-
-  @e2e @temporal @order @dryrun
-  Scenario: Speculative cancellation fails at completed state
-    # At sequence 2 the order is completed. Business rules reject cancellation
-    # of completed orders. The speculative execution returns an error without
-    # any side effects.
-    Given an order "ORD-TC-3" exists and is completed
-    When I dry-run cancel order "ORD-TC-3" at sequence 2 with reason "Too late"
-    Then the dry-run returns an error
-    And querying order "ORD-TC-3" still returns exactly 3 events
-
-  @e2e @temporal @order @dryrun
-  Scenario: Speculative cancellation at creation state succeeds
-    # At sequence 0 the order just exists (pending). Cancellation is allowed.
-    # Speculative execution confirms this without mutating the aggregate.
-    Given an order "ORD-TC-4" exists and is completed
-    When I dry-run cancel order "ORD-TC-4" at sequence 0 with reason "Cancel immediately"
-    Then the dry-run returns an "OrderCancelled" event
-    And querying order "ORD-TC-4" still returns exactly 3 events

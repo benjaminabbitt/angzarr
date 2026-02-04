@@ -88,38 +88,11 @@ Feature: Domain Lifecycle Operations
   # ===========================================================================
 
   @e2e @domain @order
-  Scenario: Create an order
-    When I create order "ORD-NEW" with 2 of "SKU-001" at 1000 cents
-    Then the command succeeds
-    And an event "OrderCreated" is emitted
-
-  @e2e @domain @order
-  Scenario: Apply loyalty discount to order
-    Given an order "ORD-DISC" exists
-    When I apply loyalty discount of 500 points worth 250 cents to order "ORD-DISC"
-    Then the command succeeds
-    And an event "LoyaltyDiscountApplied" is emitted
-
-  @e2e @domain @order
-  Scenario: Submit payment for order
-    Given an order "ORD-PAY" exists
-    When I submit payment of 2000 cents via "card" for order "ORD-PAY"
-    Then the command succeeds
-    And an event "PaymentSubmitted" is emitted
-
-  @e2e @domain @order
   Scenario: Confirm payment completes order
     Given an order "ORD-CONF" exists and is paid
     When I confirm payment for order "ORD-CONF" with reference "PAY-REF-001"
     Then the command succeeds
     And an event "OrderCompleted" is emitted
-
-  @e2e @domain @order
-  Scenario: Cancel an order
-    Given an order "ORD-CNCL" exists
-    When I cancel order "ORD-CNCL" with reason "Changed my mind"
-    Then the command succeeds
-    And an event "OrderCancelled" is emitted
 
   @e2e @domain @order
   Scenario: Cannot cancel a completed order

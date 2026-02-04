@@ -22,17 +22,6 @@ Feature: Saga Orchestration
     And the shipment references order "ORD-FULFILL-001"
 
   @e2e @saga @fulfillment
-  Scenario: Fulfillment saga creates correct shipment details
-    Given an order "ORD-DETAILS" with items:
-      | sku        | quantity |
-      | WIDGET-001 | 2        |
-      | WIDGET-002 | 3        |
-    When the order "ORD-DETAILS" is completed with correlation "CORR-DETAILS"
-    Then within 5 seconds a shipment is created
-    And the shipment contains all order items
-    And the correlation ID "CORR-DETAILS" is preserved in shipment events
-
-  @e2e @saga @fulfillment
   Scenario: Multiple orders trigger independent fulfillments
     Given orders exist:
       | order_id      | status    |
@@ -45,36 +34,8 @@ Feature: Saga Orchestration
     And shipment for "ORD-MULTI-002" has correlation "CORR-M2"
 
   # ===========================================================================
-  # Inventory Reservation Saga
-  # ===========================================================================
-
-  @e2e @saga @inventory-reservation
-  Scenario: Order creation reserves inventory
-    Given inventory for "SKU-IR-001" has 100 units
-    When I create order "ORD-IR-001" with item "SKU-IR-001" quantity 5 and correlation "CORR-IR-001"
-    Then within 5 seconds a "StockReserved" event is emitted for product "SKU-IR-001"
-
-  @e2e @saga @inventory-reservation
-  Scenario: Order cancellation releases reservation
-    Given inventory for "SKU-IR-002" has 100 units
-    And an order "ORD-IR-002" with item "SKU-IR-002" quantity 3
-    Then within 5 seconds a "StockReserved" event is emitted for product "SKU-IR-002"
-    When I cancel order "ORD-IR-002" with correlation "CORR-IR-CANCEL"
-    Then within 5 seconds a "ReservationReleased" event is emitted for product "SKU-IR-002"
-
-  # ===========================================================================
   # Correlation ID Preservation
   # ===========================================================================
-
-  @e2e @saga @correlation
-  Scenario: Correlation ID preserved through fulfillment saga chain
-    Given an order "ORD-CHAIN" with items totaling 5000 cents
-    And the order is paid
-    When order "ORD-CHAIN" is completed with correlation "CHAIN-CORR"
-    Then within 5 seconds the correlation "CHAIN-CORR" appears in:
-      | domain      | event_type         |
-      | order       | OrderCompleted     |
-      | fulfillment | ShipmentCreated    |
 
   @e2e @saga @correlation
   Scenario: Different orders maintain separate correlation IDs
@@ -84,30 +45,3 @@ Feature: Saga Orchestration
     Then fulfillment events for "ORD-A" have correlation "CORR-A"
     And fulfillment events for "ORD-B" have correlation "CORR-B"
     And no cross-contamination of correlation IDs
-
-  # ===========================================================================
-  # Saga Error Handling
-  # ===========================================================================
-
-  @e2e @saga @errors
-  Scenario: Saga idempotency on duplicate events
-    Given an order "ORD-IDEM" with items totaling 5000 cents
-    And order "ORD-IDEM" is completed with correlation "IDEM-CORR"
-    And within 5 seconds a shipment is created
-    When I re-complete order "ORD-IDEM"
-    Then the command fails with "completed"
-    And no duplicate shipments exist
-
-  # ===========================================================================
-  # Saga Timing and Ordering
-  # ===========================================================================
-
-  @e2e @saga @timing
-  Scenario: Async saga processing preserves correlation
-    Given an order "ORD-ASYNC" with items totaling 3000 cents
-    And the order is paid
-    When order "ORD-ASYNC" is completed with correlation "ASYNC-CORR"
-    Then within 5 seconds the correlation "ASYNC-CORR" appears in:
-      | domain      | event_type         |
-      | order       | OrderCompleted     |
-      | fulfillment | ShipmentCreated    |

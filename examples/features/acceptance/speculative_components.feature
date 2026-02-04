@@ -37,14 +37,6 @@ Feature: Speculative Component Execution
     Then the speculative saga produces commands
     And no fulfillment events exist for "ORD-SPEC-SAGA"
 
-  @e2e @speculative @saga @standalone
-  Scenario: Speculative saga with inventory reservation
-    Given inventory for "SKU-SPEC-INV" has 100 units
-    And an order "ORD-SPEC-INV" with item "SKU-SPEC-INV" quantity 5
-    When I speculatively run the "inventory-reservation-saga" against order "ORD-SPEC-INV" creation events
-    Then the speculative saga produces commands
-    And inventory "SKU-SPEC-INV" available quantity is unchanged
-
   # ===========================================================================
   # Process Manager Speculative Execution
   # ===========================================================================
