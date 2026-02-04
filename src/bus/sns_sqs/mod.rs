@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use base64::prelude::*;
@@ -583,6 +584,13 @@ impl EventBus for SnsSqsEventBus {
             tokio::spawn(async move {
                 info!(queue_url = %queue_url, domain = %domain, "Starting SQS consumer");
 
+                // Exponential backoff with jitter for error recovery
+                let backoff_builder = ExponentialBuilder::default()
+                    .with_min_delay(Duration::from_millis(100))
+                    .with_max_delay(Duration::from_secs(30))
+                    .with_jitter();
+                let mut backoff_iter = backoff_builder.build();
+
                 loop {
                     match sqs
                         .receive_message()
@@ -594,6 +602,9 @@ impl EventBus for SnsSqsEventBus {
                         .await
                     {
                         Ok(output) => {
+                            // Reset backoff on successful receive
+                            backoff_iter = backoff_builder.build();
+
                             let messages = output.messages();
                             for message in messages {
                                 let body = match message.body() {
@@ -741,8 +752,13 @@ impl EventBus for SnsSqsEventBus {
                             }
                         }
                         Err(e) => {
-                            error!(error = %e, "Failed to receive messages from SQS");
-                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            let delay = backoff_iter.next().unwrap_or(Duration::from_secs(30));
+                            error!(
+                                error = %e,
+                                backoff_ms = %delay.as_millis(),
+                                "Failed to receive messages from SQS, retrying after backoff"
+                            );
+                            tokio::time::sleep(delay).await;
                         }
                     }
                 }

@@ -18,24 +18,13 @@ fn mongodb_database() -> String {
     std::env::var("MONGODB_DATABASE").unwrap_or_else(|_| "angzarr".to_string())
 }
 
-/// Clean up test data from MongoDB collections
-async fn cleanup_test_data(client: &mongodb::Client, db_name: &str) {
+/// Clean up test data from a specific collection only.
+/// Each test cleans only its own collection to avoid interference when running in parallel.
+async fn cleanup_collection(client: &mongodb::Client, db_name: &str, collection: &str, field: &str) {
     let db = client.database(db_name);
-
-    // Delete all documents with test domains (domains starting with "test_")
-    let events = db.collection::<mongodb::bson::Document>("events");
-    let _ = events
-        .delete_many(mongodb::bson::doc! { "domain": { "$regex": "^test_" } })
-        .await;
-
-    let snapshots = db.collection::<mongodb::bson::Document>("snapshots");
-    let _ = snapshots
-        .delete_many(mongodb::bson::doc! { "domain": { "$regex": "^test_" } })
-        .await;
-
-    let positions = db.collection::<mongodb::bson::Document>("positions");
-    let _ = positions
-        .delete_many(mongodb::bson::doc! { "handler": { "$regex": "^test_" } })
+    let coll = db.collection::<mongodb::bson::Document>(collection);
+    let _ = coll
+        .delete_many(mongodb::bson::doc! { field: { "$regex": "^test_" } })
         .await;
 }
 
@@ -52,8 +41,8 @@ async fn test_mongodb_event_store() {
     let db_name = mongodb_database();
     println!("Using database: {}", db_name);
 
-    // Clean up before tests
-    cleanup_test_data(&client, &db_name).await;
+    // Clean up only events collection before tests (isolated from other store tests)
+    cleanup_collection(&client, &db_name, "events", "domain").await;
 
     let store = MongoEventStore::new(&client, &db_name)
         .await
@@ -61,8 +50,8 @@ async fn test_mongodb_event_store() {
 
     run_event_store_tests!(&store);
 
-    // Clean up after tests
-    cleanup_test_data(&client, &db_name).await;
+    // Clean up only events collection after tests
+    cleanup_collection(&client, &db_name, "events", "domain").await;
 
     println!("=== All MongoDB EventStore tests PASSED ===");
 }
@@ -80,8 +69,8 @@ async fn test_mongodb_snapshot_store() {
     let db_name = mongodb_database();
     println!("Using database: {}", db_name);
 
-    // Clean up before tests
-    cleanup_test_data(&client, &db_name).await;
+    // Clean up only snapshots collection before tests (isolated from other store tests)
+    cleanup_collection(&client, &db_name, "snapshots", "domain").await;
 
     let store = MongoSnapshotStore::new(&client, &db_name)
         .await
@@ -89,8 +78,8 @@ async fn test_mongodb_snapshot_store() {
 
     run_snapshot_store_tests!(&store);
 
-    // Clean up after tests
-    cleanup_test_data(&client, &db_name).await;
+    // Clean up only snapshots collection after tests
+    cleanup_collection(&client, &db_name, "snapshots", "domain").await;
 
     println!("=== All MongoDB SnapshotStore tests PASSED ===");
 }
@@ -108,8 +97,8 @@ async fn test_mongodb_position_store() {
     let db_name = mongodb_database();
     println!("Using database: {}", db_name);
 
-    // Clean up before tests
-    cleanup_test_data(&client, &db_name).await;
+    // Clean up only positions collection before tests (isolated from other store tests)
+    cleanup_collection(&client, &db_name, "positions", "handler").await;
 
     let store = MongoPositionStore::new(&client, &db_name)
         .await
@@ -117,8 +106,8 @@ async fn test_mongodb_position_store() {
 
     run_position_store_tests!(&store);
 
-    // Clean up after tests
-    cleanup_test_data(&client, &db_name).await;
+    // Clean up only positions collection after tests
+    cleanup_collection(&client, &db_name, "positions", "handler").await;
 
     println!("=== All MongoDB PositionStore tests PASSED ===");
 }

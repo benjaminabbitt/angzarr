@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use deadpool_lapin::{Manager, Pool, PoolError};
 use hex;
 use lapin::{
@@ -184,7 +185,7 @@ impl AmqpEventBus {
         Ok(())
     }
 
-    /// Consumer loop with automatic reconnection and exponential backoff.
+    /// Consumer loop with automatic reconnection and exponential backoff with jitter.
     async fn consume_with_reconnect(
         pool: Pool,
         exchange: String,
@@ -195,10 +196,13 @@ impl AmqpEventBus {
         use futures::StreamExt;
         use std::time::Duration;
 
-        const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
-        const MAX_BACKOFF: Duration = Duration::from_secs(30);
+        // Exponential backoff with jitter to prevent thundering herd
+        let backoff_builder = ExponentialBuilder::default()
+            .with_min_delay(Duration::from_millis(100))
+            .with_max_delay(Duration::from_secs(30))
+            .with_jitter();
 
-        let mut backoff = INITIAL_BACKOFF;
+        let mut backoff_iter = backoff_builder.build();
 
         loop {
             // Try to set up consumer
@@ -210,7 +214,7 @@ impl AmqpEventBus {
                         "Consumer connected, processing messages"
                     );
                     // Reset backoff on successful connection
-                    backoff = INITIAL_BACKOFF;
+                    backoff_iter = backoff_builder.build();
 
                     // Process messages until stream ends
                     while let Some(delivery) = consumer.next().await {
@@ -228,18 +232,21 @@ impl AmqpEventBus {
                     info!(queue = %queue, "Consumer stream ended, reconnecting...");
                 }
                 Err(e) => {
+                    let delay = backoff_iter.next().unwrap_or(Duration::from_secs(30));
                     error!(
                         error = %e,
-                        backoff_ms = %backoff.as_millis(),
+                        backoff_ms = %delay.as_millis(),
                         queue = %queue,
                         "Failed to set up consumer, retrying after backoff"
                     );
+                    tokio::time::sleep(delay).await;
+                    continue;
                 }
             }
 
-            // Wait before reconnecting with exponential backoff
-            tokio::time::sleep(backoff).await;
-            backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
+            // Brief pause before reconnecting after stream end (not error)
+            let delay = backoff_iter.next().unwrap_or(Duration::from_secs(30));
+            tokio::time::sleep(delay).await;
         }
     }
 
@@ -359,17 +366,26 @@ impl EventBus for AmqpEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         use std::time::Duration;
 
-        const MAX_RETRIES: u32 = 5;
-        const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
-        const MAX_BACKOFF: Duration = Duration::from_secs(5);
+        const MAX_RETRIES: usize = 5;
 
         let routing_key = Self::routing_key(&book);
         let payload = book.encode_to_vec();
 
-        let mut backoff = INITIAL_BACKOFF;
+        // Exponential backoff with jitter to prevent thundering herd
+        let backoff = ExponentialBuilder::default()
+            .with_min_delay(Duration::from_millis(100))
+            .with_max_delay(Duration::from_secs(5))
+            .with_max_times(MAX_RETRIES)
+            .with_jitter()
+            .build();
+
         let mut last_error = None;
 
-        for attempt in 0..MAX_RETRIES {
+        for (attempt, delay) in std::iter::once(Duration::ZERO).chain(backoff).enumerate() {
+            if attempt > 0 {
+                tokio::time::sleep(delay).await;
+            }
+
             // Get fresh channel for each attempt (handles reconnection)
             let channel = match self.get_channel().await {
                 Ok(ch) => ch,
@@ -381,8 +397,6 @@ impl EventBus for AmqpEventBus {
                         "Failed to get channel, retrying..."
                     );
                     last_error = Some(e);
-                    tokio::time::sleep(backoff).await;
-                    backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
                     continue;
                 }
             };
@@ -445,9 +459,6 @@ impl EventBus for AmqpEventBus {
                     last_error = Some(BusError::Publish(format!("Failed to publish: {}", e)));
                 }
             }
-
-            tokio::time::sleep(backoff).await;
-            backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
         }
 
         Err(last_error.unwrap_or_else(|| BusError::Publish("Max retries exceeded".to_string())))

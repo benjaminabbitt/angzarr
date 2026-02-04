@@ -3,10 +3,14 @@
 mod event_store;
 mod position_store;
 mod snapshot_store;
+#[cfg(feature = "topology")]
+mod topology_store;
 
 pub use event_store::RedisEventStore;
 pub use position_store::RedisPositionStore;
 pub use snapshot_store::RedisSnapshotStore;
+#[cfg(feature = "topology")]
+pub use topology_store::RedisTopologyStore;
 
 #[cfg(test)]
 mod tests {

@@ -308,7 +308,8 @@ impl TopologyProjector {
 // publish_descriptors lives in proto_ext (non-feature-gated) so that
 // distributed binaries can call it without enabling the topology feature.
 
-// ProjectorHandler impl for standalone mode
+// ProjectorHandler impl for standalone mode (requires sqlite for standalone runtime)
+#[cfg(feature = "sqlite")]
 mod handler {
     use async_trait::async_trait;
     use tracing::warn;

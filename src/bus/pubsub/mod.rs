@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use google_cloud_pubsub::client::{Client, ClientConfig};
 use google_cloud_pubsub::publisher::Publisher;
 use google_cloud_pubsub::subscription::SubscriptionConfig;
@@ -452,9 +453,19 @@ impl EventBus for PubSubEventBus {
             tokio::spawn(async move {
                 info!(subscription = %subscription_name, "Starting Pub/Sub consumer");
 
+                // Exponential backoff with jitter for error recovery
+                let backoff_builder = ExponentialBuilder::default()
+                    .with_min_delay(Duration::from_millis(100))
+                    .with_max_delay(Duration::from_secs(30))
+                    .with_jitter();
+                let mut backoff_iter = backoff_builder.build();
+
                 loop {
                     match subscription.pull(10, None).await {
                         Ok(messages) => {
+                            // Reset backoff on successful pull
+                            backoff_iter = backoff_builder.build();
+
                             for message in messages {
                                 let data = message.message.data.as_slice();
 
@@ -551,8 +562,13 @@ impl EventBus for PubSubEventBus {
                             }
                         }
                         Err(e) => {
-                            error!(error = %e, "Failed to pull messages from Pub/Sub");
-                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            let delay = backoff_iter.next().unwrap_or(Duration::from_secs(30));
+                            error!(
+                                error = %e,
+                                backoff_ms = %delay.as_millis(),
+                                "Failed to pull messages from Pub/Sub, retrying after backoff"
+                            );
+                            tokio::time::sleep(delay).await;
                         }
                     }
                 }

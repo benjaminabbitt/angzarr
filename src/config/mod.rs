@@ -53,6 +53,12 @@ pub const TOPOLOGY_STORAGE_TYPE_ENV_VAR: &str = "TOPOLOGY_STORAGE_TYPE";
 pub const TOPOLOGY_SQLITE_PATH_ENV_VAR: &str = "TOPOLOGY_SQLITE_PATH";
 /// Environment variable for topology Postgres URI.
 pub const TOPOLOGY_POSTGRES_URI_ENV_VAR: &str = "TOPOLOGY_POSTGRES_URI";
+/// Environment variable for topology MongoDB URI.
+pub const TOPOLOGY_MONGODB_URI_ENV_VAR: &str = "TOPOLOGY_MONGODB_URI";
+/// Environment variable for topology MongoDB database name.
+pub const TOPOLOGY_MONGODB_DATABASE_ENV_VAR: &str = "TOPOLOGY_MONGODB_DATABASE";
+/// Environment variable for topology Redis URI.
+pub const TOPOLOGY_REDIS_URI_ENV_VAR: &str = "TOPOLOGY_REDIS_URI";
 
 /// Environment variable for stream output enablement.
 pub const STREAM_OUTPUT_ENV_VAR: &str = "STREAM_OUTPUT";

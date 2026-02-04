@@ -7,7 +7,9 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use backon::{BackoffBuilder, ExponentialBuilder};
 use hyper_util::rt::TokioIo;
 use serde::Deserialize;
 use tokio::net::{UnixListener, UnixStream};
@@ -19,7 +21,7 @@ use tower::service_fn;
 use tower::Layer;
 use tower::Service;
 use tower_http::trace::TraceLayer;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Transport type discriminator.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -312,7 +314,7 @@ pub fn is_uds_address(address: &str) -> bool {
     address.starts_with('/') || address.starts_with("./")
 }
 
-/// Connect to a gRPC service by address.
+/// Connect to a gRPC service by address with retry and exponential backoff.
 ///
 /// Automatically detects whether the address is a UDS path or TCP address:
 /// - Paths starting with `/` or `./` are treated as Unix domain sockets
@@ -321,7 +323,46 @@ pub fn is_uds_address(address: &str) -> bool {
 /// This allows config files to use either:
 /// - `address: /tmp/angzarr/business-orders.sock` (UDS)
 /// - `address: localhost:50051` (TCP)
+///
+/// Retries connection with exponential backoff and jitter on failure.
 pub async fn connect_to_address(address: &str) -> Result<Channel, Box<dyn std::error::Error>> {
+    // Exponential backoff with jitter for connection retries
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(100))
+        .with_max_delay(Duration::from_secs(5))
+        .with_max_times(10)
+        .with_jitter()
+        .build();
+
+    let mut last_error_msg: Option<String> = None;
+
+    for (attempt, delay) in std::iter::once(Duration::ZERO).chain(backoff).enumerate() {
+        if attempt > 0 {
+            warn!(
+                address = %address,
+                attempt = attempt,
+                backoff_ms = %delay.as_millis(),
+                "Connection failed, retrying after backoff"
+            );
+            tokio::time::sleep(delay).await;
+        }
+
+        let result = connect_to_address_once(address).await;
+        match result {
+            Ok(channel) => return Ok(channel),
+            Err(e) => {
+                last_error_msg = Some(e.to_string());
+            }
+        }
+    }
+
+    Err(last_error_msg
+        .unwrap_or_else(|| "Connection failed after max retries".to_string())
+        .into())
+}
+
+/// Single connection attempt (internal helper).
+async fn connect_to_address_once(address: &str) -> Result<Channel, Box<dyn std::error::Error>> {
     if address.starts_with('/') || address.starts_with("./") {
         // UDS path
         let socket_path = PathBuf::from(address);
@@ -361,7 +402,7 @@ pub async fn connect_to_address(address: &str) -> Result<Channel, Box<dyn std::e
     }
 }
 
-/// Connect to a gRPC service using the configured transport.
+/// Connect to a gRPC service using the configured transport with retry.
 ///
 /// # Arguments
 /// * `config` - Transport configuration
@@ -371,7 +412,56 @@ pub async fn connect_to_address(address: &str) -> Result<Channel, Box<dyn std::e
 ///
 /// For TCP transport, uses the provided `tcp_address`.
 /// For UDS transport, derives socket path from `service_name` and `qualifier`.
+///
+/// Retries connection with exponential backoff and jitter on failure.
 pub async fn connect_with_transport(
+    config: &TransportConfig,
+    service_name: &str,
+    qualifier: Option<&str>,
+    tcp_address: &str,
+) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+    let display_name = match qualifier {
+        Some(q) => format!("{}-{}", service_name, q),
+        None => service_name.to_string(),
+    };
+
+    // Exponential backoff with jitter for connection retries
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(100))
+        .with_max_delay(Duration::from_secs(5))
+        .with_max_times(10)
+        .with_jitter()
+        .build();
+
+    let mut last_error_msg: Option<String> = None;
+
+    for (attempt, delay) in std::iter::once(Duration::ZERO).chain(backoff).enumerate() {
+        if attempt > 0 {
+            warn!(
+                service = %display_name,
+                attempt = attempt,
+                backoff_ms = %delay.as_millis(),
+                "Connection failed, retrying after backoff"
+            );
+            tokio::time::sleep(delay).await;
+        }
+
+        let result = connect_with_transport_once(config, service_name, qualifier, tcp_address).await;
+        match result {
+            Ok(channel) => return Ok(channel),
+            Err(e) => {
+                last_error_msg = Some(e.to_string());
+            }
+        }
+    }
+
+    Err(last_error_msg
+        .unwrap_or_else(|| "Connection failed after max retries".to_string())
+        .into())
+}
+
+/// Single connection attempt using configured transport (internal helper).
+async fn connect_with_transport_once(
     config: &TransportConfig,
     service_name: &str,
     qualifier: Option<&str>,

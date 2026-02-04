@@ -48,12 +48,16 @@ pub use bigtable::{BigtableEventStore, BigtablePositionStore, BigtableSnapshotSt
 pub use dynamo::{DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
 #[cfg(feature = "mongodb")]
 pub use mongodb::{MongoEventStore, MongoPositionStore, MongoSnapshotStore};
+#[cfg(all(feature = "mongodb", feature = "topology"))]
+pub use mongodb::MongoTopologyStore;
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
 #[cfg(all(feature = "postgres", feature = "topology"))]
 pub use postgres::PostgresTopologyStore;
 #[cfg(feature = "redis")]
 pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
+#[cfg(all(feature = "redis", feature = "topology"))]
+pub use redis::RedisTopologyStore;
 #[cfg(feature = "sqlite")]
 pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
 #[cfg(all(feature = "sqlite", feature = "topology"))]

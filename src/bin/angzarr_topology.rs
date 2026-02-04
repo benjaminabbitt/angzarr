@@ -9,7 +9,7 @@
 //! [Event Bus] -> [angzarr-topology] -> [TopologyProjector]
 //!                        |                      |
 //!                        v                      v
-//!                 [REST API :9099]       [SQLite/Postgres]
+//!                 [REST API :9099]       [Storage Backend]
 //!                        |
 //!                        v
 //!                 [Grafana Node Graph]
@@ -17,8 +17,12 @@
 //!
 //! ## Configuration
 //! - TOPOLOGY_REST_PORT: REST API port (default: 9099)
-//! - TOPOLOGY_STORAGE_TYPE: "sqlite" or "postgres" (default: sqlite)
+//! - TOPOLOGY_STORAGE_TYPE: "sqlite", "postgres", "mongodb", or "redis" (default: sqlite)
 //! - TOPOLOGY_SQLITE_PATH: SQLite database path (default: /data/topology.db)
+//! - TOPOLOGY_POSTGRES_URI: PostgreSQL connection URI
+//! - TOPOLOGY_MONGODB_URI: MongoDB connection URI (default: mongodb://localhost:27017)
+//! - TOPOLOGY_MONGODB_DATABASE: MongoDB database name (default: angzarr)
+//! - TOPOLOGY_REDIS_URI: Redis connection URI (default: redis://localhost:6379)
 //! - MESSAGING_TYPE: amqp, kafka, or channel
 
 use std::sync::Arc;
@@ -27,12 +31,15 @@ use futures::future::BoxFuture;
 use tracing::{error, info};
 
 use angzarr::bus::{init_event_bus, BusError, EventBusMode, EventHandler};
+#[cfg(feature = "mongodb")]
+use angzarr::config::{TOPOLOGY_MONGODB_DATABASE_ENV_VAR, TOPOLOGY_MONGODB_URI_ENV_VAR};
 #[cfg(feature = "postgres")]
 use angzarr::config::TOPOLOGY_POSTGRES_URI_ENV_VAR;
-use angzarr::config::{
-    Config, TOPOLOGY_REST_PORT_ENV_VAR,
-    TOPOLOGY_SQLITE_PATH_ENV_VAR, TOPOLOGY_STORAGE_TYPE_ENV_VAR,
-};
+#[cfg(feature = "redis")]
+use angzarr::config::TOPOLOGY_REDIS_URI_ENV_VAR;
+#[cfg(feature = "sqlite")]
+use angzarr::config::TOPOLOGY_SQLITE_PATH_ENV_VAR;
+use angzarr::config::{Config, TOPOLOGY_REST_PORT_ENV_VAR, TOPOLOGY_STORAGE_TYPE_ENV_VAR};
 use angzarr::handlers::projectors::topology::store::TopologyStore;
 use angzarr::handlers::projectors::topology::TopologyProjector;
 use angzarr::proto::EventBook;
@@ -102,6 +109,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let pool = sqlx::PgPool::connect(&uri).await?;
             Arc::new(angzarr::storage::postgres::PostgresTopologyStore::new(pool))
+        }
+        #[cfg(feature = "mongodb")]
+        "mongodb" => {
+            let uri = std::env::var(TOPOLOGY_MONGODB_URI_ENV_VAR)
+                .unwrap_or_else(|_| "mongodb://localhost:27017".to_string());
+            let database = std::env::var(TOPOLOGY_MONGODB_DATABASE_ENV_VAR)
+                .unwrap_or_else(|_| "angzarr".to_string());
+
+            let client = mongodb::Client::with_uri_str(&uri).await?;
+            Arc::new(
+                angzarr::storage::mongodb::MongoTopologyStore::new(&client, &database)
+                    .await
+                    .map_err(|e| format!("failed to create MongoDB topology store: {}", e))?,
+            )
+        }
+        #[cfg(feature = "redis")]
+        "redis" => {
+            let uri = std::env::var(TOPOLOGY_REDIS_URI_ENV_VAR)
+                .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+
+            Arc::new(
+                angzarr::storage::redis::RedisTopologyStore::new(&uri, Some("angzarr"))
+                    .await
+                    .map_err(|e| format!("failed to create Redis topology store: {}", e))?,
+            )
         }
         _ => {
             return Err(format!("unsupported topology storage type: {}", storage_type).into());
