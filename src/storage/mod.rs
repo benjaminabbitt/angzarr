@@ -454,11 +454,19 @@ pub async fn init_position_store(
                 Err("SQLite position store requires the 'sqlite' feature".into())
             }
         }
-        _ => Err(format!(
-            "Position store not supported for {:?} storage type",
-            config.storage_type
-        )
-        .into()),
+        StorageType::Redis => {
+            #[cfg(feature = "redis")]
+            {
+                info!("PositionStore: redis at {}", config.redis.uri);
+                Ok(Arc::new(
+                    RedisPositionStore::new(&config.redis.uri, None).await?,
+                ))
+            }
+            #[cfg(not(feature = "redis"))]
+            {
+                Err("Redis position store requires the 'redis' feature".into())
+            }
+        }
     }
 }
 

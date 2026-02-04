@@ -1,4 +1,8 @@
 //! Redis EventStore implementation.
+//!
+//! Implements composite reads for editions: query edition events first to derive
+//! the implicit divergence point, then query main timeline up to that point,
+//! then merge the results.
 
 use async_trait::async_trait;
 use prost::Message;
@@ -6,6 +10,7 @@ use redis::{aio::ConnectionManager, AsyncCommands, Client};
 use tracing::{debug, info};
 use uuid::Uuid;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::storage::{EventStore, Result, StorageError};
 use crate::proto::EventPage;
 
@@ -51,6 +56,31 @@ impl RedisEventStore {
         format!("{}:domains", self.key_prefix)
     }
 
+    /// Build the correlation index key.
+    fn correlation_key(&self, correlation_id: &str) -> String {
+        format!("{}:correlation:{}", self.key_prefix, correlation_id)
+    }
+
+    /// Build an event reference for correlation index.
+    /// Format: domain:edition:root:sequence
+    fn event_ref(domain: &str, edition: &str, root: Uuid, sequence: u32) -> String {
+        format!("{}:{}:{}:{}", domain, edition, root, sequence)
+    }
+
+    /// Parse an event reference from correlation index.
+    fn parse_event_ref(event_ref: &str) -> Option<(String, String, Uuid, u32)> {
+        let parts: Vec<&str> = event_ref.splitn(4, ':').collect();
+        if parts.len() == 4 {
+            let domain = parts[0].to_string();
+            let edition = parts[1].to_string();
+            let root = Uuid::parse_str(parts[2]).ok()?;
+            let sequence: u32 = parts[3].parse().ok()?;
+            Some((domain, edition, root, sequence))
+        } else {
+            None
+        }
+    }
+
     /// Serialize an event page to bytes.
     fn serialize_event(event: &EventPage) -> Result<Vec<u8>> {
         Ok(event.encode_to_vec())
@@ -69,6 +99,122 @@ impl RedisEventStore {
             None => 0,
         }
     }
+
+    /// Check if edition is the main timeline.
+    fn is_main_timeline(edition: &str) -> bool {
+        edition.is_empty() || edition == DEFAULT_EDITION
+    }
+
+    /// Query events for a specific edition (internal helper).
+    async fn query_edition_events(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
+        let events_key = self.events_key(domain, edition, root);
+        let mut conn = self.conn.clone();
+
+        let bytes_list: Vec<Vec<u8>> = conn.zrangebyscore(&events_key, from as f64, "+inf").await?;
+
+        let events: Result<Vec<EventPage>> = bytes_list
+            .iter()
+            .map(|b| Self::deserialize_event(b))
+            .collect();
+
+        events
+    }
+
+    /// Get the minimum sequence number from edition events (implicit divergence point).
+    async fn get_edition_min_sequence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+    ) -> Result<Option<u32>> {
+        let events_key = self.events_key(domain, edition, root);
+        let mut conn = self.conn.clone();
+
+        // Get the first element (minimum score) from the sorted set
+        let result: Vec<(Vec<u8>, f64)> = conn
+            .zrange_withscores(&events_key, 0, 0)
+            .await?;
+
+        match result.first() {
+            Some((_, score)) => Ok(Some(*score as u32)),
+            None => Ok(None),
+        }
+    }
+
+    /// Query main timeline events in range [from, until).
+    async fn query_main_events_range(
+        &self,
+        domain: &str,
+        root: Uuid,
+        from: u32,
+        until_seq: u32,
+    ) -> Result<Vec<EventPage>> {
+        if from >= until_seq {
+            return Ok(Vec::new());
+        }
+
+        let events_key = self.events_key(domain, DEFAULT_EDITION, root);
+        let mut conn = self.conn.clone();
+
+        // Redis ZRANGEBYSCORE is inclusive on both ends, so use until_seq - 1
+        let bytes_list: Vec<Vec<u8>> = conn
+            .zrangebyscore(&events_key, from as f64, (until_seq - 1) as f64)
+            .await?;
+
+        let events: Result<Vec<EventPage>> = bytes_list
+            .iter()
+            .map(|b| Self::deserialize_event(b))
+            .collect();
+
+        events
+    }
+
+    /// Perform a composite read for an edition.
+    ///
+    /// Optimized to avoid full edition scan:
+    /// 1. Query only the min sequence (divergence point) - O(log n)
+    /// 2. Fetch only needed events based on `from` parameter
+    async fn composite_read(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
+        // Get divergence point without fetching all edition events
+        let divergence = match self.get_edition_min_sequence(domain, edition, root).await? {
+            Some(d) => d,
+            None => {
+                // No edition events - return main timeline only
+                return self.query_edition_events(domain, DEFAULT_EDITION, root, from).await;
+            }
+        };
+
+        // Now fetch only the events we need:
+        // - Main timeline: [from, divergence) if from < divergence
+        // - Edition: [max(from, divergence), ∞)
+
+        let mut result = Vec::new();
+
+        // Main timeline events: only if from < divergence
+        if from < divergence {
+            let main_events = self.query_main_events_range(domain, root, from, divergence).await?;
+            result.extend(main_events);
+        }
+
+        // Edition events: from max(from, divergence) onwards
+        let edition_from = from.max(divergence);
+        let edition_events = self.query_edition_events(domain, edition, root, edition_from).await?;
+        result.extend(edition_events);
+
+        Ok(result)
+    }
 }
 
 #[async_trait]
@@ -79,7 +225,7 @@ impl EventStore for RedisEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        _correlation_id: &str,
+        correlation_id: &str,
     ) -> Result<()> {
         if events.is_empty() {
             return Ok(());
@@ -107,12 +253,19 @@ impl EventStore for RedisEventStore {
             });
         }
 
-        // Prepare events for insertion
+        // Prepare events for insertion and collect event refs for correlation index
         let mut items: Vec<(f64, Vec<u8>)> = Vec::with_capacity(events.len());
+        let mut event_refs: Vec<String> = Vec::new();
+
         for event in &events {
             let seq = Self::get_sequence(event);
             let bytes = Self::serialize_event(event)?;
             items.push((seq as f64, bytes));
+
+            // Build event reference for correlation index
+            if !correlation_id.is_empty() {
+                event_refs.push(Self::event_ref(domain, edition, root, seq));
+            }
         }
 
         // Add events to sorted set
@@ -125,10 +278,19 @@ impl EventStore for RedisEventStore {
         let domains_key = self.domains_key();
         let _: () = conn.sadd(&domains_key, domain).await?;
 
+        // Add to correlation index if correlation_id is provided
+        if !correlation_id.is_empty() && !event_refs.is_empty() {
+            let correlation_key = self.correlation_key(correlation_id);
+            for event_ref in event_refs {
+                let _: () = conn.sadd(&correlation_key, event_ref).await?;
+            }
+        }
+
         debug!(
             domain = %domain,
             root = %root,
             count = events.len(),
+            correlation_id = %correlation_id,
             "Stored events in Redis"
         );
 
@@ -150,17 +312,13 @@ impl EventStore for RedisEventStore {
     }
 
     async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
-        let events_key = self.events_key(domain, edition, root);
-        let mut conn = self.conn.clone();
+        // Main timeline: simple query
+        if Self::is_main_timeline(edition) {
+            return self.query_edition_events(domain, DEFAULT_EDITION, root, from).await;
+        }
 
-        let bytes_list: Vec<Vec<u8>> = conn.zrangebyscore(&events_key, from as f64, "+inf").await?;
-
-        let events: Result<Vec<EventPage>> = bytes_list
-            .iter()
-            .map(|b| Self::deserialize_event(b))
-            .collect();
-
-        events
+        // Named edition: composite read (main timeline up to divergence + edition events)
+        self.composite_read(domain, edition, root, from).await
     }
 
     async fn get_from_to(
@@ -250,14 +408,138 @@ impl EventStore for RedisEventStore {
 
     async fn get_by_correlation(
         &self,
-        _correlation_id: &str,
+        correlation_id: &str,
     ) -> Result<Vec<crate::proto::EventBook>> {
-        // Not implemented for Redis - correlation_id not indexed
-        Ok(vec![])
+        use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
+        use std::collections::HashMap;
+
+        if correlation_id.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let correlation_key = self.correlation_key(correlation_id);
+        let mut conn = self.conn.clone();
+
+        // Get all event references for this correlation ID
+        let event_refs: Vec<String> = conn.smembers(&correlation_key).await?;
+
+        if event_refs.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Group event references by (domain, edition, root)
+        let mut refs_by_root: HashMap<(String, String, Uuid), Vec<u32>> = HashMap::new();
+
+        for event_ref in &event_refs {
+            if let Some((domain, edition, root, sequence)) = Self::parse_event_ref(event_ref) {
+                refs_by_root
+                    .entry((domain, edition, root))
+                    .or_default()
+                    .push(sequence);
+            }
+        }
+
+        // Fetch events for each unique (domain, edition, root) and filter by sequences
+        let mut books = Vec::new();
+
+        for ((domain, edition, root), sequences) in refs_by_root {
+            let events_key = self.events_key(&domain, &edition, root);
+
+            // Fetch all events for this root (we need to filter by sequence)
+            let bytes_list: Vec<(Vec<u8>, f64)> = conn
+                .zrange_withscores(&events_key, 0, -1)
+                .await?;
+
+            let mut pages = Vec::new();
+            for (bytes, score) in bytes_list {
+                let seq = score as u32;
+                if sequences.contains(&seq) {
+                    let event = Self::deserialize_event(&bytes)?;
+                    pages.push(event);
+                }
+            }
+
+            // Sort pages by sequence
+            pages.sort_by_key(Self::get_sequence);
+
+            if !pages.is_empty() {
+                books.push(EventBook {
+                    cover: Some(Cover {
+                        domain,
+                        root: Some(ProtoUuid {
+                            value: root.as_bytes().to_vec(),
+                        }),
+                        correlation_id: correlation_id.to_string(),
+                        edition: Some(Edition { name: edition, divergences: vec![] }),
+                    }),
+                    pages,
+                    snapshot: None,
+                    snapshot_state: None,
+                });
+            }
+        }
+
+        Ok(books)
     }
 
-    async fn delete_edition_events(&self, _domain: &str, _edition: &str) -> Result<u32> {
-        // Not implemented for Redis - would require key pattern scanning
-        Err(StorageError::NotImplemented("delete_edition_events not implemented for Redis".into()))
+    async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
+        let mut conn = self.conn.clone();
+        let mut deleted_count = 0u32;
+
+        // Pattern to find all event keys for this domain/edition
+        // Format: {prefix}:{domain}:{edition}:*:events
+        let pattern = format!("{}:{}:{}:*:events", self.key_prefix, domain, edition);
+
+        // Use SCAN to find matching keys (non-blocking iteration)
+        let mut cursor = 0u64;
+        let mut keys_to_delete: Vec<String> = Vec::new();
+
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&pattern)
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut conn)
+                .await?;
+
+            keys_to_delete.extend(keys);
+            cursor = next_cursor;
+
+            if cursor == 0 {
+                break;
+            }
+        }
+
+        // Delete found event keys and count events
+        for key in &keys_to_delete {
+            // Count events in this key before deleting
+            let count: u32 = conn.zcard(key).await.unwrap_or(0) as u32;
+            deleted_count += count;
+
+            // Delete the sorted set
+            let _: () = conn.del(key).await?;
+
+            // Extract root from key to remove from roots set
+            // Key format: {prefix}:{domain}:{edition}:{root}:events
+            if let Some(root_str) = key
+                .strip_prefix(&format!("{}:{}:{}:", self.key_prefix, domain, edition))
+                .and_then(|s| s.strip_suffix(":events"))
+            {
+                let roots_key = self.roots_key(domain, edition);
+                let _: () = conn.srem(&roots_key, root_str).await?;
+            }
+        }
+
+        debug!(
+            domain = %domain,
+            edition = %edition,
+            keys_deleted = keys_to_delete.len(),
+            events_deleted = deleted_count,
+            "Deleted edition events from Redis"
+        );
+
+        Ok(deleted_count)
     }
 }

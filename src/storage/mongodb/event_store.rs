@@ -1,4 +1,8 @@
 //! MongoDB EventStore implementation.
+//!
+//! Implements composite reads for editions: query edition events first to derive
+//! the implicit divergence point, then query main timeline up to that point,
+//! then merge the results.
 
 use async_trait::async_trait;
 use mongodb::bson::{doc, Binary, Bson};
@@ -7,10 +11,11 @@ use mongodb::{Client, Collection, Database, IndexModel};
 use prost::Message;
 use uuid::Uuid;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::storage::{EventStore, Result, StorageError};
 use crate::proto::EventPage;
 
-use super::{EVENTS_COLLECTION};
+use super::EVENTS_COLLECTION;
 
 /// MongoDB implementation of EventStore.
 pub struct MongoEventStore {
@@ -65,6 +70,153 @@ impl MongoEventStore {
     /// Get the database reference for transaction support.
     pub fn database(&self) -> &Database {
         &self.database
+    }
+
+    /// Check if edition is the main timeline.
+    fn is_main_timeline(edition: &str) -> bool {
+        edition.is_empty() || edition == DEFAULT_EDITION
+    }
+
+    /// Query events for a specific edition (internal helper).
+    async fn query_edition_events(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
+        let filter = doc! {
+            "edition": edition,
+            "domain": domain,
+            "root": root_str,
+            "sequence": { "$gte": from as i32 }
+        };
+
+        let options = FindOptions::builder().sort(doc! { "sequence": 1 }).build();
+        let mut cursor = self.events.find(filter).with_options(options).await?;
+
+        let mut events = Vec::new();
+        while cursor.advance().await? {
+            let doc = cursor.deserialize_current()?;
+            let event_data =
+                doc.get_binary_generic("event_data")
+                    .map_err(|_| StorageError::NotFound {
+                        domain: domain.to_string(),
+                        root: Uuid::parse_str(root_str).unwrap_or_default(),
+                    })?;
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    /// Get the minimum sequence number from edition events (implicit divergence point).
+    async fn get_edition_min_sequence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+    ) -> Result<Option<u32>> {
+        let filter = doc! {
+            "edition": edition,
+            "domain": domain,
+            "root": root_str
+        };
+
+        let options = FindOptions::builder()
+            .sort(doc! { "sequence": 1 })
+            .limit(1)
+            .build();
+
+        let mut cursor = self.events.find(filter).with_options(options).await?;
+
+        if cursor.advance().await? {
+            let doc = cursor.deserialize_current()?;
+            let min_seq = doc.get_i32("sequence").unwrap_or(0) as u32;
+            Ok(Some(min_seq))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Query main timeline events in range [from, until).
+    async fn query_main_events_range(
+        &self,
+        domain: &str,
+        root_str: &str,
+        from: u32,
+        until_seq: u32,
+    ) -> Result<Vec<EventPage>> {
+        if from >= until_seq {
+            return Ok(Vec::new());
+        }
+
+        let filter = doc! {
+            "edition": DEFAULT_EDITION,
+            "domain": domain,
+            "root": root_str,
+            "sequence": { "$gte": from as i32, "$lt": until_seq as i32 }
+        };
+
+        let options = FindOptions::builder().sort(doc! { "sequence": 1 }).build();
+        let mut cursor = self.events.find(filter).with_options(options).await?;
+
+        let mut events = Vec::new();
+        while cursor.advance().await? {
+            let doc = cursor.deserialize_current()?;
+            let event_data =
+                doc.get_binary_generic("event_data")
+                    .map_err(|_| StorageError::NotFound {
+                        domain: domain.to_string(),
+                        root: Uuid::parse_str(root_str).unwrap_or_default(),
+                    })?;
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    /// Perform a composite read for an edition.
+    ///
+    /// Optimized to avoid full edition scan:
+    /// 1. Query only the min sequence (divergence point) - O(log n)
+    /// 2. Fetch only needed events based on `from` parameter
+    async fn composite_read(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
+        // Get divergence point without fetching all edition events
+        let divergence = match self.get_edition_min_sequence(domain, edition, root_str).await? {
+            Some(d) => d,
+            None => {
+                // No edition events - return main timeline only
+                return self.query_edition_events(domain, DEFAULT_EDITION, root_str, from).await;
+            }
+        };
+
+        // Now fetch only the events we need:
+        // - Main timeline: [from, divergence) if from < divergence
+        // - Edition: [max(from, divergence), ∞)
+
+        let mut result = Vec::new();
+
+        // Main timeline events: only if from < divergence
+        if from < divergence {
+            let main_events = self.query_main_events_range(domain, root_str, from, divergence).await?;
+            result.extend(main_events);
+        }
+
+        // Edition events: from max(from, divergence) onwards
+        let edition_from = from.max(divergence);
+        let edition_events = self.query_edition_events(domain, edition, root_str, edition_from).await?;
+        result.extend(edition_events);
+
+        Ok(result)
     }
 }
 
@@ -149,53 +301,30 @@ impl EventStore for MongoEventStore {
     async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
         let root_str = root.to_string();
 
-        let filter = doc! {
-            "edition": edition,
-            "domain": domain,
-            "root": &root_str,
-            "sequence": { "$gte": from as i32 }
-        };
+        // Main timeline: simple query
+        if Self::is_main_timeline(edition) {
+            tracing::info!(
+                domain = domain,
+                root = %root_str,
+                from = from,
+                collection = %self.events.name(),
+                database = %self.database.name(),
+                "MongoDB get_from query starting (main timeline)"
+            );
+            return self.query_edition_events(domain, DEFAULT_EDITION, &root_str, from).await;
+        }
 
-        let options = FindOptions::builder().sort(doc! { "sequence": 1 }).build();
-
+        // Named edition: composite read (main timeline up to divergence + edition events)
         tracing::info!(
             domain = domain,
+            edition = edition,
             root = %root_str,
             from = from,
             collection = %self.events.name(),
             database = %self.database.name(),
-            "MongoDB get_from query starting"
+            "MongoDB get_from query starting (composite read)"
         );
-
-        let mut cursor = self.events.find(filter).with_options(options).await?;
-
-        tracing::info!("MongoDB cursor created");
-
-        let mut events = Vec::new();
-        let mut doc_count = 0;
-        while cursor.advance().await? {
-            doc_count += 1;
-            let doc = cursor.deserialize_current()?;
-            tracing::info!(doc_count, "Processing document from cursor");
-            let event_data =
-                doc.get_binary_generic("event_data")
-                    .map_err(|_| StorageError::NotFound {
-                        domain: domain.to_string(),
-                        root,
-                    })?;
-            let event = EventPage::decode(event_data.as_slice())?;
-            events.push(event);
-        }
-
-        tracing::info!(
-            domain = domain,
-            root = %root_str,
-            doc_count,
-            events_len = events.len(),
-            "MongoDB get_from completed"
-        );
-
-        Ok(events)
+        self.composite_read(domain, edition, &root_str, from).await
     }
 
     async fn get_from_to(
