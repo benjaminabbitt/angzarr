@@ -326,7 +326,7 @@ async fn test_saga_receives_events_and_produces_commands() {
         .filter(|e| {
             e.cover
                 .as_ref()
-                .map(|c| c.domain == format!("{DEFAULT_EDITION}.inventory"))
+                .map(|c| c.domain == "inventory")
                 .unwrap_or(false)
         })
         .collect();
@@ -1213,15 +1213,15 @@ async fn test_saga_chains_across_three_domains() {
         .collect();
 
     assert!(
-        domains.contains(&format!("{DEFAULT_EDITION}.orders")),
+        domains.contains(&"orders".to_string()),
         "Should have orders events"
     );
     assert!(
-        domains.contains(&format!("{DEFAULT_EDITION}.inventory")),
+        domains.contains(&"inventory".to_string()),
         "Should have inventory events"
     );
     assert!(
-        domains.contains(&format!("{DEFAULT_EDITION}.shipping")),
+        domains.contains(&"shipping".to_string()),
         "Should have shipping events"
     );
 

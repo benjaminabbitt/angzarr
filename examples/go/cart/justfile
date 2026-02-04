@@ -1,3 +1,0 @@
-SERVICE := "cart"
-
-import "../service.justfile"

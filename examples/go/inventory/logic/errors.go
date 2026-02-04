@@ -1,42 +1,14 @@
 package logic
 
-import "fmt"
-
-type StatusCode int
-
+// Error message constants for inventory domain.
 const (
-	StatusInvalidArgument StatusCode = iota
-	StatusFailedPrecondition
+	ErrMsgAlreadyInitialized  = "Inventory already initialized"
+	ErrMsgNotInitialized      = "Inventory not initialized"
+	ErrMsgProductIDRequired   = "Product ID is required"
+	ErrMsgQuantityNegative    = "Quantity cannot be negative"
+	ErrMsgQuantityPositive    = "Quantity must be positive"
+	ErrMsgThresholdNegative   = "Low stock threshold cannot be negative"
+	ErrMsgOrderIDRequired     = "Order ID is required"
+	ErrMsgReservationExists   = "Reservation already exists for this order"
+	ErrMsgReservationNotFound = "No reservation found for this order"
 )
-
-func (s StatusCode) String() string {
-	switch s {
-	case StatusInvalidArgument:
-		return "INVALID_ARGUMENT"
-	case StatusFailedPrecondition:
-		return "FAILED_PRECONDITION"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-type CommandError struct {
-	Code    StatusCode
-	Message string
-}
-
-func (e *CommandError) Error() string {
-	return e.Message
-}
-
-func NewInvalidArgument(message string) *CommandError {
-	return &CommandError{Code: StatusInvalidArgument, Message: message}
-}
-
-func NewFailedPrecondition(message string) *CommandError {
-	return &CommandError{Code: StatusFailedPrecondition, Message: message}
-}
-
-func NewFailedPreconditionf(format string, args ...interface{}) *CommandError {
-	return &CommandError{Code: StatusFailedPrecondition, Message: fmt.Sprintf(format, args...)}
-}

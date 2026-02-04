@@ -255,4 +255,9 @@ impl EventStore for RedisEventStore {
         // Not implemented for Redis - correlation_id not indexed
         Ok(vec![])
     }
+
+    async fn delete_edition_events(&self, _domain: &str, _edition: &str) -> Result<u32> {
+        // Not implemented for Redis - would require key pattern scanning
+        Err(StorageError::NotImplemented("delete_edition_events not implemented for Redis".into()))
+    }
 }

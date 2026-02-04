@@ -1,6 +1,8 @@
 # Rust example gRPC servers for angzarr e-commerce domain
-# Services: customer, product, inventory, order, cart, fulfillment
-# Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
+# Services: inventory, order, fulfillment
+# Sagas: saga-fulfillment, saga-inventory-reservation
+# Process Managers: process-manager-fulfillment
+# Projectors: projector-inventory
 #
 # Deployment Model:
 #   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm (see root justfile)
@@ -41,13 +43,16 @@ integration:
     TEST_LANGUAGE=rust cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
 
 # Run acceptance tests (assumes backing services already deployed via root `just infra`)
-# Deploy application services via Skaffold, then run BDD cucumber tests
+# Deploy application services via Skaffold, then run E2E cucumber tests in gateway mode
 acceptance:
+    @uv run "{{TOP}}/scripts/reset_event_store.py"
     skaffold run
     @echo "Waiting for application services to be ready..."
     @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
-    ANGZARR_PORT=9084 \
-    cargo test --workspace --test acceptance
+    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=saga -n angzarr --timeout=300s || true
+    ANGZARR_TEST_MODE=gateway \
+    ANGZARR_ENDPOINT=http://localhost:9084 \
+    cargo test -p e2e --test acceptance
 
 # Clean build artifacts
 clean:
@@ -72,15 +77,14 @@ helm-lint:
 # Build all Rust example images (uses multi-stage Containerfile)
 images:
     podman build --target builder -f Containerfile "{{TOP}}"
-    podman build --target customer -t localhost:{{REGISTRY_PORT}}/aggregate-customer-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target product -t localhost:{{REGISTRY_PORT}}/aggregate-product-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
     podman build --target inventory -t localhost:{{REGISTRY_PORT}}/aggregate-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
     podman build --target order -t localhost:{{REGISTRY_PORT}}/aggregate-order-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target cart -t localhost:{{REGISTRY_PORT}}/aggregate-cart-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
     podman build --target fulfillment -t localhost:{{REGISTRY_PORT}}/aggregate-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target saga-loyalty-earn -t localhost:{{REGISTRY_PORT}}/saga-loyalty-earn-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target saga-fulfillment -t localhost:{{REGISTRY_PORT}}/saga-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target saga-cancellation -t localhost:{{REGISTRY_PORT}}/saga-cancellation-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target saga-order-fulfillment -t localhost:{{REGISTRY_PORT}}/saga-order-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target saga-order-inventory -t localhost:{{REGISTRY_PORT}}/saga-order-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target saga-fulfillment-inventory -t localhost:{{REGISTRY_PORT}}/saga-fulfillment-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target process-manager-fulfillment -t localhost:{{REGISTRY_PORT}}/process-manager-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
+    podman build --target projector-inventory -t localhost:{{REGISTRY_PORT}}/projector-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
 
 # Build a single service image
 image SERVICE:
@@ -88,15 +92,14 @@ image SERVICE:
 
 # Push all images to local registry
 push:
-    podman push localhost:{{REGISTRY_PORT}}/aggregate-customer-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/aggregate-product-rs:{{IMAGE_TAG}} --tls-verify=false
     podman push localhost:{{REGISTRY_PORT}}/aggregate-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
     podman push localhost:{{REGISTRY_PORT}}/aggregate-order-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/aggregate-cart-rs:{{IMAGE_TAG}} --tls-verify=false
     podman push localhost:{{REGISTRY_PORT}}/aggregate-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/saga-loyalty-earn-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/saga-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/saga-cancellation-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/saga-order-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/saga-order-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/saga-fulfillment-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/process-manager-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
+    podman push localhost:{{REGISTRY_PORT}}/projector-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
 
 # ============================================================================
 # Skaffold Development (recommended workflow)
@@ -106,7 +109,7 @@ push:
 #   just dev    - watch mode, rebuilds on file change (framework + business)
 #   just run    - build and deploy once
 #
-# All 14 images (5 framework + 9 business) are built with sha256 tags.
+# All 12 images (5 framework + 7 business) are built with sha256 tags.
 # Skaffold caches aggressively - only changed images are rebuilt.
 #
 # With lefthook: commits automatically trigger deployment (see lefthook.yml)
@@ -120,11 +123,11 @@ setup:
     uv run "{{TOP}}/scripts/kind-with-registry.py"
 
 # Start skaffold dev loop (watches files, rebuilds on change)
-# Builds all 14 images (framework + business) via 'requires' directive
+# Builds all 12 images (framework + business) via 'requires' directive
 dev: setup
     cd "{{TOP}}" && just secrets-init
     @echo "=== Skaffold Dev Mode ==="
-    @echo "Building all images (5 framework + 9 business) with sha256 tags"
+    @echo "Building all images (5 framework + 7 business) with sha256 tags"
     @echo "Only changed images will be rebuilt (skaffold caching)"
     @echo ""
     skaffold dev
@@ -203,7 +206,7 @@ run-saga DOMAIN: build-angzarr build
     # Start angzarr sidecar
     # It will connect to $UDS_BASE_PATH/saga-$DOMAIN.sock
     # For standalone, we often need static endpoints for two-phase routing
-    export ANGZARR_STATIC_ENDPOINTS="customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock,product=/tmp/angzarr/aggregate-product.sock"
+    export ANGZARR_STATIC_ENDPOINTS="order=/tmp/angzarr/aggregate-order.sock,inventory=/tmp/angzarr/aggregate-inventory.sock,fulfillment=/tmp/angzarr/aggregate-fulfillment.sock"
     {{TOP}}/target/debug/angzarr-saga --config config/standalone.yaml \
         || kill $SAGA_PID
     
@@ -246,7 +249,7 @@ run-pm DOMAIN: build-angzarr build
     PM_PID=$!
     
     # Start angzarr sidecar
-    export ANGZARR_STATIC_ENDPOINTS="customer=/tmp/angzarr/aggregate-customer.sock,order=/tmp/angzarr/aggregate-order.sock,product=/tmp/angzarr/aggregate-product.sock"
+    export ANGZARR_STATIC_ENDPOINTS="order=/tmp/angzarr/aggregate-order.sock,inventory=/tmp/angzarr/aggregate-inventory.sock,fulfillment=/tmp/angzarr/aggregate-fulfillment.sock"
     {{TOP}}/target/debug/angzarr-process-manager --config config/standalone.yaml \
         || kill $PM_PID
     

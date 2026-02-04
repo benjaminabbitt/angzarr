@@ -6,26 +6,24 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::bus::{EventBus, MessagingConfig};
 use crate::discovery::k8s::K8sServiceDiscovery;
 use crate::discovery::ServiceDiscovery;
 use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
-use crate::orchestration::aggregate::{ClientLogic, DEFAULT_EDITION};
+use crate::orchestration::aggregate::ClientLogic;
 use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
-use crate::orchestration::projector::local::LocalProjectorContext;
 use crate::orchestration::saga::local::LocalSagaContextFactory;
-use crate::proto::CommandBook;
+use crate::proto::{CommandBook, ComponentDescriptor, Subscription};
 use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
 
 use super::builder::GatewayConfig;
 use super::client::CommandClient;
-use super::edition::{EditionHandlerRefs, EditionManager};
 use super::grpc_handlers::AggregateHandlerAdapter;
 use super::router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 use super::server::ServerInfo;
@@ -53,8 +51,8 @@ pub struct Runtime {
     router: Arc<CommandRouter>,
     /// Speculative executor for dry-run of projectors, sagas, and PMs.
     speculative: Arc<SpeculativeExecutor>,
-    /// Edition manager for diverged timelines.
-    edition_manager: Arc<EditionManager>,
+    /// Component descriptors collected from all registered handlers at build time.
+    descriptors: Vec<ComponentDescriptor>,
     /// Background task handles.
     tasks: Vec<JoinHandle<()>>,
     /// gRPC servers for cleanup on shutdown.
@@ -84,7 +82,32 @@ impl Runtime {
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         event_bus: Arc<dyn EventBus>,
+        #[cfg(feature = "topology")]
+        topology_projector: Option<Arc<crate::handlers::projectors::topology::TopologyProjector>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Collect descriptors from all registered handlers before they're consumed.
+        // Fills in name/component_type from registration keys and config when the
+        // handler returns a default descriptor (pre-router migration).
+        let descriptors = Self::collect_descriptors(
+            &aggregates,
+            &projectors,
+            &sagas,
+            &process_managers,
+        );
+
+        // Register component descriptors with topology projector for correct
+        // node types (saga, projector, PM) in the topology graph.
+        #[cfg(feature = "topology")]
+        if let Some(ref topology) = topology_projector {
+            topology.init().await.map_err(|e| {
+                Box::<dyn std::error::Error>::from(format!("topology init failed: {e}"))
+            })?;
+            topology.register_components(&descriptors).await.map_err(|e| {
+                Box::<dyn std::error::Error>::from(format!("topology registration failed: {e}"))
+            })?;
+            info!(components = descriptors.len(), "Topology components registered");
+        }
+
         // Initialize per-domain storage
         let mut domain_stores = HashMap::new();
 
@@ -147,12 +170,6 @@ impl Runtime {
             "Runtime initialized"
         );
 
-        // Clone aggregate handler Arcs for edition manager (before consumption)
-        let edition_aggregates: HashMap<String, Arc<dyn AggregateHandler>> = aggregates
-            .iter()
-            .map(|(domain, handler)| (domain.clone(), handler.clone()))
-            .collect();
-
         // Wrap aggregate handlers as ClientLogic (in-process, no TCP bridge)
         let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
         for (domain, handler) in aggregates {
@@ -179,19 +196,6 @@ impl Runtime {
                 (name.clone(), (handler.clone(), config.domain.clone()))
             })
             .collect();
-
-        // Clone handler Arcs for edition manager (before consumption into bus subscribers)
-        let edition_sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)> = sagas
-            .iter()
-            .map(|(name, (handler, config))| (name.clone(), (handler.clone(), config.clone())))
-            .collect();
-        let edition_pms: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)> =
-            process_managers
-                .iter()
-                .map(|(name, (handler, config))| {
-                    (name.clone(), (handler.clone(), config.clone()))
-                })
-                .collect();
 
         // Convert projectors to entries
         let projector_entries: Vec<ProjectorEntry> = projectors
@@ -220,6 +224,7 @@ impl Runtime {
             discovery.clone(),
             event_bus.clone(),
             sync_projector_entries,
+            None,
         ));
 
         // Start event distribution for sagas, PMs, and async projectors
@@ -228,13 +233,12 @@ impl Runtime {
 
         // Async projectors — each gets its own subscriber
         for entry in &projector_entries {
-            let ctx = Arc::new(LocalProjectorContext::new(entry.handler.clone()));
             let handler = ProjectorEventHandler::with_config(
-                ctx,
+                entry.handler.clone(),
                 None,
-                entry.config.domains.iter().map(|d| format!("{DEFAULT_EDITION}.{d}")).collect(),
+                entry.config.domains.clone(),
                 entry.config.synchronous,
-                format!("{DEFAULT_EDITION}.{}", entry.name),
+                entry.name.clone(),
             );
             let sub = event_bus
                 .create_subscriber(&format!("projector-{}", entry.name), None)
@@ -247,7 +251,7 @@ impl Runtime {
         for (name, (handler, config)) in sagas {
             let factory = Arc::new(LocalSagaContextFactory::new(
                 handler,
-                format!("{DEFAULT_EDITION}.{name}"),
+                name.clone(),
             ));
             let validator = build_output_domain_validator(&name, &config.output_domains);
             let handler = SagaEventHandler::from_factory_with_validator(
@@ -257,9 +261,8 @@ impl Runtime {
                 Some(Arc::new(validator)),
                 crate::utils::retry::saga_backoff(),
             );
-            let input_domain = format!("{DEFAULT_EDITION}.{}", config.input_domain);
             let sub = event_bus
-                .create_subscriber(&format!("saga-{name}"), Some(&input_domain))
+                .create_subscriber(&format!("saga-{name}"), Some(&config.input_domain))
                 .await?;
             sub.subscribe(Box::new(handler)).await?;
             sub.start_consuming().await?;
@@ -267,14 +270,7 @@ impl Runtime {
 
         // Process managers — subscriber_all with handler-level subscription filtering
         for (name, (handler, config)) in process_managers {
-            let subscriptions = handler
-                .subscriptions()
-                .into_iter()
-                .map(|mut s| {
-                    s.domain = format!("{DEFAULT_EDITION}.{}", s.domain);
-                    s
-                })
-                .collect::<Vec<_>>();
+            let subscriptions = handler.descriptor().inputs;
             let pm_store = match domain_stores.get(&config.domain) {
                 Some(store) => store.clone(),
                 None => continue,
@@ -308,29 +304,12 @@ impl Runtime {
             domain_stores.clone(),
         ));
 
-        // Build edition handler refs from cloned Arcs
-        let edition_projectors: HashMap<String, (Arc<dyn ProjectorHandler>, super::traits::ProjectorConfig)> = projector_entries
-            .iter()
-            .map(|e| (e.name.clone(), (e.handler.clone(), e.config.clone())))
-            .collect();
-        let edition_handler_refs = EditionHandlerRefs {
-            aggregates: edition_aggregates,
-            projectors: edition_projectors,
-            sagas: edition_sagas,
-            process_managers: edition_pms,
-        };
-        let edition_manager = Arc::new(EditionManager::new(
-            edition_handler_refs,
-            domain_stores.clone(),
-            event_bus.clone(),
-        ));
-
         Ok(Self {
             domain_stores,
             event_bus,
             router,
             speculative,
-            edition_manager,
+            descriptors,
             tasks: Vec::new(),
             servers,
             gateway_config,
@@ -396,23 +375,95 @@ impl Runtime {
         self.speculative.clone()
     }
 
-    /// Get a speculative client for dry-run of projectors, sagas, and PMs.
+    /// Get a speculative client for dry-run of commands, projectors, sagas, and PMs.
     ///
     /// Convenience wrapper around `speculative_executor()`.
     pub fn speculative_client(&self) -> super::client::SpeculativeClient {
-        super::client::SpeculativeClient::new(self.speculative.clone())
+        super::client::SpeculativeClient::new(self.speculative.clone(), self.router.clone())
     }
 
-    /// Get the edition manager for creating and managing diverged timelines.
-    pub fn edition_manager(&self) -> Arc<EditionManager> {
-        self.edition_manager.clone()
-    }
-
-    /// Get an edition client for creating, deleting, and listing editions.
+    /// Get the component descriptors collected at build time.
     ///
-    /// Convenience wrapper around `edition_manager()`.
-    pub fn edition_client(&self) -> super::client::EditionClient {
-        super::client::EditionClient::new(self.edition_manager.clone())
+    /// These describe all registered handlers (aggregates, projectors, sagas,
+    /// process managers) with their names, types, and input subscriptions.
+    /// Pass to `TopologyProjector::register_components()` for graph construction.
+    pub fn descriptors(&self) -> &[ComponentDescriptor] {
+        &self.descriptors
+    }
+
+    /// Collect descriptors from all registered handlers.
+    ///
+    /// Merges handler-declared descriptors with registration metadata (keys + config).
+    /// Handlers returning default descriptors get name/type/inputs filled from config.
+    fn collect_descriptors(
+        aggregates: &HashMap<String, Arc<dyn AggregateHandler>>,
+        projectors: &HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
+        sagas: &HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
+        process_managers: &HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
+    ) -> Vec<ComponentDescriptor> {
+        let mut descriptors = Vec::new();
+
+        for (domain, handler) in aggregates {
+            let mut desc = handler.descriptor();
+            if desc.name.is_empty() {
+                desc.name = domain.clone();
+            }
+            if desc.component_type.is_empty() {
+                desc.component_type = "aggregate".to_string();
+            }
+            descriptors.push(desc);
+        }
+
+        for (name, (handler, config)) in projectors {
+            let mut desc = handler.descriptor();
+            if desc.name.is_empty() {
+                desc.name = name.clone();
+            }
+            if desc.component_type.is_empty() {
+                desc.component_type = "projector".to_string();
+            }
+            if desc.inputs.is_empty() && !config.domains.is_empty() {
+                desc.inputs = config
+                    .domains
+                    .iter()
+                    .map(|d| Subscription {
+                        domain: d.clone(),
+                        event_types: vec![],
+                    })
+                    .collect();
+            }
+            descriptors.push(desc);
+        }
+
+        for (name, (handler, config)) in sagas {
+            let mut desc = handler.descriptor();
+            if desc.name.is_empty() {
+                desc.name = name.clone();
+            }
+            if desc.component_type.is_empty() {
+                desc.component_type = "saga".to_string();
+            }
+            if desc.inputs.is_empty() {
+                desc.inputs = vec![Subscription {
+                    domain: config.input_domain.clone(),
+                    event_types: vec![],
+                }];
+            }
+            descriptors.push(desc);
+        }
+
+        for (name, (handler, _config)) in process_managers {
+            let mut desc = handler.descriptor();
+            if desc.name.is_empty() {
+                desc.name = name.clone();
+            }
+            if desc.component_type.is_empty() {
+                desc.component_type = "process_manager".to_string();
+            }
+            descriptors.push(desc);
+        }
+
+        descriptors
     }
 
     /// Start the runtime without blocking.
@@ -421,7 +472,18 @@ impl Runtime {
     /// Use this for testing or when you need to interact with the runtime
     /// programmatically after starting.
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Event distribution is now started during construction.
+        // Publish descriptors to event bus for topology discovery.
+        // In standalone mode this reaches in-process topology projectors.
+        // In distributed mode each binary publishes its own descriptors.
+        if let Err(e) = crate::proto_ext::publish_descriptors(
+            self.event_bus.as_ref(),
+            &self.descriptors,
+        )
+        .await
+        {
+            warn!(error = %e, "Failed to publish component descriptors to event bus");
+        }
+
         info!("Runtime started");
         Ok(())
     }
@@ -474,10 +536,8 @@ impl Runtime {
         use crate::proto::command_gateway_server::CommandGatewayServer;
         use crate::proto::event_query_server::EventQueryServer;
 
-        let gateway =
-            StandaloneGatewayService::new(self.router.clone(), self.edition_manager.clone());
-        let event_query =
-            StandaloneEventQueryBridge::new(self.domain_stores.clone(), self.edition_manager.clone());
+        let gateway = StandaloneGatewayService::new(self.router.clone());
+        let event_query = StandaloneEventQueryBridge::new(self.domain_stores.clone());
 
         let router = tonic::transport::Server::builder()
             .layer(crate::transport::grpc_trace_layer())

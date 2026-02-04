@@ -1,12 +1,15 @@
 package logic
 
 import (
-	"inventory/proto/angzarr"
+	angzarrpb "angzarr/proto/angzarr"
 	"inventory/proto/examples"
 )
 
-func (l *DefaultInventoryLogic) RebuildState(eventBook *angzarr.EventBook) *InventoryState {
-	state := EmptyState()
+// RebuildState reconstructs inventory state from an event book.
+func RebuildState(eventBook *angzarrpb.EventBook) InventoryState {
+	state := InventoryState{
+		Reservations: make(map[string]int32),
+	}
 
 	if eventBook == nil || len(eventBook.Pages) == 0 {
 		return state
@@ -72,11 +75,4 @@ func (l *DefaultInventoryLogic) RebuildState(eventBook *angzarr.EventBook) *Inve
 	}
 
 	return state
-}
-
-func NextSequence(priorEvents *angzarr.EventBook) uint32 {
-	if priorEvents == nil || len(priorEvents.Pages) == 0 {
-		return 0
-	}
-	return uint32(len(priorEvents.Pages))
 }

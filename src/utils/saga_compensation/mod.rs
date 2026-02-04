@@ -11,6 +11,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::SagaCompensationConfig;
+use crate::proto_ext::CoverExt;
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage,
     RevocationResponse, RevokeEventCommand, SagaCommandOrigin, SagaCompensationFailed,
@@ -65,11 +66,7 @@ impl CompensationContext {
     /// (indicating it's not a saga-issued command).
     pub fn from_rejected_command(command: &CommandBook, rejection_reason: String) -> Option<Self> {
         let saga_origin = command.saga_origin.as_ref()?.clone();
-        let correlation_id = command
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let correlation_id = command.correlation_id().to_string();
 
         Some(Self {
             saga_origin,

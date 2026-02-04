@@ -710,6 +710,6 @@ async fn state_has_discount_cents(world: &mut OrderAcceptanceWorld, discount_cen
 #[tokio::main]
 async fn main() {
     OrderAcceptanceWorld::cucumber()
-        .run("tests/features/order.feature")
+        .run("../../features/unit/order.feature")
         .await;
 }

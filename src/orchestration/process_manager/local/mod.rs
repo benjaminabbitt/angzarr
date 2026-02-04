@@ -12,8 +12,8 @@ use tracing::error;
 
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
-use crate::proto::{CommandResponse, Cover, EventBook};
-use crate::proto_ext::CoverExt;
+use crate::proto::{CommandResponse, Cover, Edition, EventBook};
+use crate::proto_ext::{CoverExt, EditionExt};
 use crate::standalone::DomainStorage;
 use crate::standalone::ProcessManagerHandler;
 
@@ -57,7 +57,7 @@ impl ProcessManagerContext for LocalPMContext {
         // Stamp trigger edition onto outgoing covers
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(edition.clone());
+                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
             }
         }
         Ok(covers)
@@ -78,7 +78,7 @@ impl ProcessManagerContext for LocalPMContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(edition.clone());
+                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
                     }
                 }
                 cmd

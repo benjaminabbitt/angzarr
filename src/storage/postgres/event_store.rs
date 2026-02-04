@@ -1,4 +1,8 @@
 //! PostgreSQL EventStore implementation.
+//!
+//! Uses stored procedures for composite edition reads. The `get_edition_events`
+//! stored procedure handles implicit divergence (deriving divergence point from
+//! the first edition event).
 
 use async_trait::async_trait;
 use prost::Message;
@@ -6,6 +10,7 @@ use sea_query::{Expr, Order, PostgresQueryBuilder, Query};
 use sqlx::{Acquire, PgPool, Row};
 use uuid::Uuid;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::storage::schema::Events;
 use crate::storage::{EventStore, Result};
 use crate::proto::EventPage;
@@ -19,6 +24,66 @@ impl PostgresEventStore {
     /// Create a new PostgreSQL event store.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Check if edition is the main timeline.
+    fn is_main_timeline(edition: &str) -> bool {
+        edition.is_empty() || edition == DEFAULT_EDITION
+    }
+
+    /// Query events using the composite edition stored procedure.
+    ///
+    /// Calls `get_edition_events_from(domain, edition, root, from, explicit_divergence)`
+    /// which handles implicit divergence (from first edition event) and main timeline
+    /// merging.
+    async fn composite_read(&self, domain: &str, edition: &str, root: &str, from: u32) -> Result<Vec<EventPage>> {
+        // Use stored procedure for composite read
+        // The procedure handles: main timeline query if edition is 'angzarr',
+        // or composite query (main + edition) with implicit divergence
+        let query = format!(
+            "SELECT event_data FROM get_edition_events_from($1, $2, $3::uuid, $4, NULL)"
+        );
+
+        let rows = sqlx::query(&query)
+            .bind(domain)
+            .bind(edition)
+            .bind(root)
+            .bind(from as i32)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    /// Simple query for main timeline events (no composite logic needed).
+    async fn query_main_timeline(&self, domain: &str, root: &str, from: u32) -> Result<Vec<EventPage>> {
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(DEFAULT_EDITION))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(root))
+            .and_where(Expr::col(Events::Sequence).gte(from))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(PostgresQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
     }
 }
 
@@ -109,26 +174,13 @@ impl EventStore for PostgresEventStore {
     async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
         let root_str = root.to_string();
 
-        let query = Query::select()
-            .column(Events::EventData)
-            .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(edition))
-            .and_where(Expr::col(Events::Domain).eq(domain))
-            .and_where(Expr::col(Events::Root).eq(&root_str))
-            .and_where(Expr::col(Events::Sequence).gte(from))
-            .order_by(Events::Sequence, Order::Asc)
-            .to_string(PostgresQueryBuilder);
-
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
-
-        let mut events = Vec::with_capacity(rows.len());
-        for row in rows {
-            let event_data: Vec<u8> = row.get("event_data");
-            let event = EventPage::decode(event_data.as_slice())?;
-            events.push(event);
+        // Main timeline: simple query
+        if Self::is_main_timeline(edition) {
+            return self.query_main_timeline(domain, &root_str, from).await;
         }
 
-        Ok(events)
+        // Named edition: use stored procedure for composite read
+        self.composite_read(domain, edition, &root_str, from).await
     }
 
     async fn get_from_to(
@@ -267,6 +319,7 @@ impl EventStore for PostgresEventStore {
         let query = Query::select()
             .columns([
                 Events::Domain,
+                Events::Edition,
                 Events::Root,
                 Events::EventData,
                 Events::Sequence,
@@ -280,31 +333,32 @@ impl EventStore for PostgresEventStore {
 
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 
-        // Group events by (domain, root)
-        let mut books_map: HashMap<(String, Uuid), Vec<EventPage>> = HashMap::new();
+        // Group events by (domain, edition, root)
+        let mut books_map: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
 
         for row in rows {
             let domain: String = row.get("domain");
+            let edition: String = row.get("edition");
             let root_str: String = row.get("root");
             let event_data: Vec<u8> = row.get("event_data");
 
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map.entry((domain, root)).or_default().push(event);
+            books_map.entry((domain, edition, root)).or_default().push(event);
         }
 
         // Convert to EventBooks
         let books = books_map
             .into_iter()
-            .map(|((domain, root), pages)| EventBook {
+            .map(|((domain, edition, root), pages)| EventBook {
                 cover: Some(Cover {
                     domain,
                     root: Some(ProtoUuid {
                         value: root.as_bytes().to_vec(),
                     }),
                     correlation_id: correlation_id.to_string(),
-                    edition: None,
+                    edition: Some(edition),
                 }),
                 pages,
                 snapshot: None,
@@ -313,5 +367,17 @@ impl EventStore for PostgresEventStore {
             .collect();
 
         Ok(books)
+    }
+
+    async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
+        // The stored procedure handles main timeline protection
+        let row = sqlx::query("SELECT delete_edition_events($1, $2)")
+            .bind(edition)
+            .bind(domain)
+            .fetch_one(&self.pool)
+            .await?;
+
+        let count: i32 = row.get(0);
+        Ok(count as u32)
     }
 }

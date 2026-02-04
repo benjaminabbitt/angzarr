@@ -44,7 +44,7 @@ use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEventBus};
-use angzarr::config::{Config, DISCOVERY_ENV_VAR};
+use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
     aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load service discovery for sync processing
     // In standalone mode, DISCOVERY_ENV_VAR=static skips K8s entirely
     let discovery: Arc<dyn ServiceDiscovery> =
-        if std::env::var(DISCOVERY_ENV_VAR).as_deref() == Ok("static") {
+        if std::env::var(DISCOVERY_ENV_VAR).as_deref() == Ok(DISCOVERY_STATIC) {
             info!("Using static service discovery (standalone mode)");
             Arc::new(K8sServiceDiscovery::new_static())
         } else {
@@ -136,6 +136,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         };
+
+    // Publish component descriptor to event bus for topology discovery
+    let descriptor = angzarr::proto::ComponentDescriptor {
+        name: domain.clone(),
+        component_type: "aggregate".to_string(),
+        inputs: vec![],
+    };
+    if let Err(e) =
+        angzarr::proto_ext::publish_descriptors(event_bus.as_ref(), std::slice::from_ref(&descriptor)).await
+    {
+        warn!(error = %e, "Failed to publish component descriptor for topology");
+    }
+    angzarr::proto_ext::spawn_descriptor_heartbeat(
+        event_bus.clone(),
+        vec![descriptor],
+        std::time::Duration::from_secs(30),
+    );
 
     let aggregate_service = AggregateService::new(
         event_store.clone(),

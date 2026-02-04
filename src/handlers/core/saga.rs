@@ -19,6 +19,7 @@ use futures::future::BoxFuture;
 use tracing::{error, Instrument};
 
 use crate::bus::{BusError, EventHandler};
+use crate::proto_ext::CoverExt;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::saga::{orchestrate_saga, OutputDomainValidator, SagaContextFactory};
@@ -75,11 +76,7 @@ impl SagaEventHandler {
 
 impl EventHandler for SagaEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
-        let correlation_id = book
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let correlation_id = book.correlation_id().to_string();
         let saga_name = self.context_factory.name().to_string();
         let span = tracing::info_span!("saga.handle", %saga_name, %correlation_id);
 

@@ -14,6 +14,11 @@
 //! - PM maintains event-sourced state in its own domain
 //! - PM calls GetSubscriptions at startup to configure routing
 //!
+//! ## State Persistence
+//! PM state events are persisted directly to the event store and published
+//! to the event bus, bypassing the command pipeline. This avoids needing
+//! an aggregate sidecar for the PM's own domain.
+//!
 //! ## Configuration
 //! - TARGET_ADDRESS: ProcessManager gRPC address (e.g., "localhost:50060")
 //! - TARGET_DOMAIN: Process manager domain name (used for PM state storage)
@@ -21,15 +26,19 @@
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use backon::Retryable;
 use tracing::{info, warn};
 
+use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::handlers::core::ProcessManagerEventHandler;
+use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
 use angzarr::proto::process_manager_client::ProcessManagerClient;
-use angzarr::proto::GetSubscriptionsRequest;
+use angzarr::proto::GetDescriptorRequest;
+use angzarr::storage::init_storage;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
@@ -46,6 +55,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
 
+    // Initialize storage for direct PM state persistence
+    let (event_store, _snapshot_store) = init_storage(&bootstrap.config.storage).await?;
+    info!("PM storage initialized for direct state persistence");
+
+    // Initialize event bus (publisher) for PM state events
+    let event_bus: Arc<dyn EventBus> = match messaging.messaging_type {
+        MessagingType::Amqp => {
+            let amqp_config = AmqpConfig::publisher(&messaging.amqp.url);
+            Arc::new(AmqpEventBus::new(amqp_config).await?)
+        }
+        MessagingType::Ipc => {
+            let ipc_config = IpcConfig::publisher(&messaging.ipc.base_path);
+            Arc::new(IpcEventBus::new(ipc_config))
+        }
+        _ => {
+            warn!("No messaging configured for PM event publishing, using mock");
+            Arc::new(MockEventBus::new())
+        }
+    };
+
     // Connect to process manager service
     let pm_addr = bootstrap.address.clone();
     let mut pm_client = (|| {
@@ -61,16 +90,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await?;
 
-    // Get subscriptions from process manager
-    let subscriptions_response = pm_client
-        .get_subscriptions(GetSubscriptionsRequest {})
+    // Get component descriptor from process manager
+    let descriptor = pm_client
+        .get_descriptor(GetDescriptorRequest {})
         .await?
         .into_inner();
 
-    let subscriptions = subscriptions_response.subscriptions;
+    let subscriptions = descriptor.inputs;
     info!(
+        name = %descriptor.name,
+        component_type = %descriptor.component_type,
         subscriptions = subscriptions.len(),
-        "Process manager declared subscriptions"
+        "Process manager descriptor"
     );
 
     for sub in &subscriptions {
@@ -81,19 +112,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Connect to all aggregate endpoints
+    // Connect to all aggregate endpoints (business domains only)
     let endpoints_str = std::env::var(STATIC_ENDPOINTS_ENV_VAR).map_err(|_| {
         format!("Process manager requires {} for multi-domain routing", STATIC_ENDPOINTS_ENV_VAR)
     })?;
 
-    let (command_executor, destination_fetcher) = connect_endpoints(&endpoints_str).await?;
+    let (command_executor, remote_fetcher) = connect_endpoints(&endpoints_str).await?;
 
-    // Create handler
+    // Wrap the remote fetcher with hybrid that handles PM domain locally
+    let hybrid_fetcher = Arc::new(HybridDestinationFetcher::new(
+        bootstrap.domain.clone(),
+        event_store.clone(),
+        remote_fetcher,
+    ));
+
+    // Create handler with direct storage for PM state persistence
     let handler = ProcessManagerEventHandler::new(
         pm_client,
         bootstrap.domain.clone(),
-        destination_fetcher,
+        hybrid_fetcher,
         command_executor,
+        event_store,
+        event_bus,
     );
 
     let queue_name = format!("process-manager-{}", bootstrap.domain);

@@ -5,6 +5,7 @@
 
 pub mod adapters;
 pub mod backend;
+pub mod coverage;
 pub mod projectors;
 
 use std::collections::HashMap;
@@ -80,11 +81,8 @@ pub struct E2EWorld {
     /// Generic key-value context for multi-step scenarios (PM, saga).
     pub context: HashMap<String, String>,
 
-    /// Speculative client for dry-run of projectors, sagas, PMs (standalone only).
-    speculative: Option<angzarr::standalone::SpeculativeClient>,
-
-    /// Edition client for managing diverged timelines (standalone only).
-    edition: Option<angzarr::standalone::EditionClient>,
+    /// Speculative client for dry-run of projectors, sagas, PMs.
+    speculative: Option<Arc<dyn angzarr::client_traits::SpeculativeClient>>,
 }
 
 // cucumber::World derive requires Debug
@@ -127,7 +125,6 @@ impl E2EWorld {
             accounting_db: result.accounting_db,
             context: HashMap::new(),
             speculative: result.speculative,
-            edition: result.edition,
         }
     }
 
@@ -136,18 +133,12 @@ impl E2EWorld {
         self.backend.as_ref()
     }
 
-    /// Get the speculative client (standalone mode only).
-    pub fn speculative(&self) -> &angzarr::standalone::SpeculativeClient {
+    /// Get the speculative client.
+    pub fn speculative(&self) -> &dyn angzarr::client_traits::SpeculativeClient {
         self.speculative
             .as_ref()
-            .expect("Speculative client requires standalone mode")
-    }
-
-    /// Get the edition client (standalone mode only).
-    pub fn edition(&self) -> &angzarr::standalone::EditionClient {
-        self.edition
+            .expect("Speculative client not available")
             .as_ref()
-            .expect("Edition client requires standalone mode")
     }
 
     /// Get or create a root UUID for a given alias
@@ -221,7 +212,7 @@ impl E2EWorld {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id,
-                edition: Some(edition_name.to_string()),
+                edition: Some(edition_name.to_string().into()),
             }),
             pages: vec![CommandPage {
                 sequence: 0,

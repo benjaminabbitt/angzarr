@@ -4,7 +4,7 @@
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::config::{LOG_ENV_VAR, OTEL_SERVICE_NAME_ENV_VAR};
+use crate::config::LOG_ENV_VAR;
 
 /// Global handle to the LoggerProvider so it stays alive for the process lifetime.
 ///
@@ -143,6 +143,7 @@ pub fn init_tracing() {
 fn otel_resource() -> opentelemetry_sdk::Resource {
     use opentelemetry::KeyValue;
     use opentelemetry_sdk::Resource;
+    use crate::config::OTEL_SERVICE_NAME_ENV_VAR;
 
     let service_name = std::env::var(OTEL_SERVICE_NAME_ENV_VAR).unwrap_or_else(|_| "angzarr".to_string());
 

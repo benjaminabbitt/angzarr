@@ -1,3 +1,0 @@
-SERVICE := "saga-cancellation"
-
-import "../service.justfile"

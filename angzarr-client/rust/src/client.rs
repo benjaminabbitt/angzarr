@@ -4,8 +4,10 @@ use crate::error::{ClientError, Result};
 use crate::traits;
 use angzarr::proto::{
     command_gateway_client::CommandGatewayClient as TonicGatewayClient,
-    event_query_client::EventQueryClient as TonicQueryClient, CommandBook, CommandResponse,
-    DryRunRequest, EventBook, Query,
+    event_query_client::EventQueryClient as TonicQueryClient,
+    speculative_service_client::SpeculativeServiceClient as TonicSpeculativeClient, CommandBook,
+    CommandResponse, DryRunRequest, EventBook, ProcessManagerHandleResponse, Projection, Query,
+    SagaResponse, SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest,
 };
 use async_trait::async_trait;
 use tonic::transport::Channel;
@@ -45,11 +47,6 @@ impl GatewayClient {
 impl traits::GatewayClient for GatewayClient {
     async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
         let response = self.inner.clone().execute(command).await?;
-        Ok(response.into_inner())
-    }
-
-    async fn dry_run(&self, request: DryRunRequest) -> Result<CommandResponse> {
-        let response = self.inner.clone().dry_run_execute(request).await?;
         Ok(response.into_inner())
     }
 }
@@ -104,17 +101,80 @@ impl traits::QueryClient for QueryClient {
     }
 }
 
-/// Combined client providing both gateway and query operations.
+/// Default speculative client using tonic gRPC.
+#[derive(Clone)]
+pub struct SpeculativeClient {
+    inner: TonicSpeculativeClient<Channel>,
+}
+
+impl SpeculativeClient {
+    /// Connect to a speculative service at the given endpoint.
+    pub async fn connect(endpoint: &str) -> Result<Self> {
+        let channel = Channel::from_shared(endpoint.to_string())
+            .map_err(|e| ClientError::Connection(e.to_string()))?
+            .connect()
+            .await?;
+
+        Ok(Self::from_channel(channel))
+    }
+
+    /// Connect using an endpoint from environment variable with fallback.
+    pub async fn from_env(env_var: &str, default: &str) -> Result<Self> {
+        let endpoint = std::env::var(env_var).unwrap_or_else(|_| default.to_string());
+        Self::connect(&endpoint).await
+    }
+
+    /// Create a client from an existing channel.
+    pub fn from_channel(channel: Channel) -> Self {
+        Self {
+            inner: TonicSpeculativeClient::new(channel),
+        }
+    }
+}
+
+#[async_trait]
+impl traits::SpeculativeClient for SpeculativeClient {
+    async fn dry_run(&self, request: DryRunRequest) -> Result<CommandResponse> {
+        let response = self.inner.clone().dry_run_command(request).await?;
+        Ok(response.into_inner())
+    }
+
+    async fn projector(&self, request: SpeculateProjectorRequest) -> Result<Projection> {
+        let response = self.inner.clone().speculate_projector(request).await?;
+        Ok(response.into_inner())
+    }
+
+    async fn saga(&self, request: SpeculateSagaRequest) -> Result<SagaResponse> {
+        let response = self.inner.clone().speculate_saga(request).await?;
+        Ok(response.into_inner())
+    }
+
+    async fn process_manager(
+        &self,
+        request: SpeculatePmRequest,
+    ) -> Result<ProcessManagerHandleResponse> {
+        let response = self
+            .inner
+            .clone()
+            .speculate_process_manager(request)
+            .await?;
+        Ok(response.into_inner())
+    }
+}
+
+/// Combined client providing gateway, query, and speculative operations.
 #[derive(Clone)]
 pub struct Client {
     /// Gateway client for command execution.
     pub gateway: GatewayClient,
     /// Query client for event retrieval.
     pub query: QueryClient,
+    /// Speculative client for dry-run and what-if scenarios.
+    pub speculative: SpeculativeClient,
 }
 
 impl Client {
-    /// Connect to a server providing both gateway and query services.
+    /// Connect to a server providing gateway, query, and speculative services.
     pub async fn connect(endpoint: &str) -> Result<Self> {
         let channel = Channel::from_shared(endpoint.to_string())
             .map_err(|e| ClientError::Connection(e.to_string()))?
@@ -134,7 +194,8 @@ impl Client {
     pub fn from_channel(channel: Channel) -> Self {
         Self {
             gateway: GatewayClient::from_channel(channel.clone()),
-            query: QueryClient::from_channel(channel),
+            query: QueryClient::from_channel(channel.clone()),
+            speculative: SpeculativeClient::from_channel(channel),
         }
     }
 }

@@ -1,5 +1,0 @@
-PKG := "product"
-BIN_PKG := PKG
-BIN := PKG + "-server"
-
-import "../service.justfile"

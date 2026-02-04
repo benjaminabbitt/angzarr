@@ -38,11 +38,10 @@ fn test_messaging_config_default() {
 
 #[test]
 fn test_subscription_matches_domain_only() {
-    // Subscription domain uses routing key (edition-prefixed)
     let book = make_event_book("order", &["OrderCreated"]);
     let sub = Subscription {
-        domain: "angzarr.order".to_string(),
-        event_types: vec![], // Empty = all events
+        domain: "order".to_string(),
+        event_types: vec![],
     };
     assert!(subscription_matches(&book, &sub));
 }
@@ -51,7 +50,7 @@ fn test_subscription_matches_domain_only() {
 fn test_subscription_matches_wrong_domain() {
     let book = make_event_book("order", &["OrderCreated"]);
     let sub = Subscription {
-        domain: "angzarr.inventory".to_string(),
+        domain: "inventory".to_string(),
         event_types: vec![],
     };
     assert!(!subscription_matches(&book, &sub));
@@ -61,7 +60,7 @@ fn test_subscription_matches_wrong_domain() {
 fn test_subscription_matches_specific_event_type() {
     let book = make_event_book("order", &["OrderCreated", "OrderShipped"]);
     let sub = Subscription {
-        domain: "angzarr.order".to_string(),
+        domain: "order".to_string(),
         event_types: vec!["OrderCreated".to_string()],
     };
     assert!(subscription_matches(&book, &sub));
@@ -71,7 +70,7 @@ fn test_subscription_matches_specific_event_type() {
 fn test_subscription_matches_event_type_not_present() {
     let book = make_event_book("order", &["OrderCreated"]);
     let sub = Subscription {
-        domain: "angzarr.order".to_string(),
+        domain: "order".to_string(),
         event_types: vec!["OrderShipped".to_string()],
     };
     assert!(!subscription_matches(&book, &sub));
@@ -82,11 +81,11 @@ fn test_any_subscription_matches_first() {
     let book = make_event_book("order", &["OrderCreated"]);
     let subs = vec![
         Subscription {
-            domain: "angzarr.order".to_string(),
+            domain: "order".to_string(),
             event_types: vec!["OrderCreated".to_string()],
         },
         Subscription {
-            domain: "angzarr.inventory".to_string(),
+            domain: "inventory".to_string(),
             event_types: vec![],
         },
     ];
@@ -98,11 +97,11 @@ fn test_any_subscription_matches_second() {
     let book = make_event_book("inventory", &["StockReserved"]);
     let subs = vec![
         Subscription {
-            domain: "angzarr.order".to_string(),
+            domain: "order".to_string(),
             event_types: vec![],
         },
         Subscription {
-            domain: "angzarr.inventory".to_string(),
+            domain: "inventory".to_string(),
             event_types: vec![],
         },
     ];
@@ -114,11 +113,11 @@ fn test_any_subscription_matches_none() {
     let book = make_event_book("customer", &["CustomerCreated"]);
     let subs = vec![
         Subscription {
-            domain: "angzarr.order".to_string(),
+            domain: "order".to_string(),
             event_types: vec![],
         },
         Subscription {
-            domain: "angzarr.inventory".to_string(),
+            domain: "inventory".to_string(),
             event_types: vec![],
         },
     ];

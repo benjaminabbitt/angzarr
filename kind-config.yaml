@@ -1,5 +1,11 @@
 # Kind cluster configuration for angzarr-rs development
 # Create cluster: kind create cluster --config kind-config.yaml --name angzarr
+#
+# Port Mapping Categories:
+#   REQUIRED  - Core angzarr functionality
+#   OPTIONAL  - Debugging/monitoring, can be removed if not needed
+#   DEV-ONLY  - Local development convenience, not for CI
+#
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 # Configure containerd to use local registry
@@ -21,15 +27,43 @@ nodes:
       - |
         kind: KubeletConfiguration
         # Allow more pods and increase resource headroom
-        maxPods: 200
+        maxPods: 250
+        # Increase PID limit per pod (default 1000 is too low for RabbitMQ/Kafka)
+        podPidsLimit: 4096
+        # Reduce reservations to give more resources to pods
         systemReserved:
-          cpu: "500m"
-          memory: "512Mi"
+          cpu: "250m"
+          memory: "256Mi"
         kubeReserved:
-          cpu: "500m"
-          memory: "512Mi"
+          cpu: "250m"
+          memory: "256Mi"
+        # Prevent evictions during high load
+        evictionHard:
+          memory.available: "100Mi"
+          nodefs.available: "5%"
+          imagefs.available: "5%"
+        evictionSoft:
+          memory.available: "200Mi"
+          nodefs.available: "10%"
+          imagefs.available: "10%"
+        evictionSoftGracePeriod:
+          memory.available: "1m"
+          nodefs.available: "1m"
+          imagefs.available: "1m"
     extraPortMappings:
-      # Ingress HTTP (for gRPC via nginx-ingress)
+      # =============================================================================
+      # REQUIRED: Core Angzarr Services
+      # =============================================================================
+      # Gateway - primary angzarr ingress for commands and event streaming
+      - containerPort: 30084
+        hostPort: 9084
+        protocol: TCP
+
+      # =============================================================================
+      # OPTIONAL: Ingress Controller (if using nginx-ingress)
+      # Remove if not using ingress-based routing
+      # =============================================================================
+      # Ingress HTTP
       - containerPort: 80
         hostPort: 8080
         protocol: TCP
@@ -37,40 +71,47 @@ nodes:
       - containerPort: 443
         hostPort: 8443
         protocol: TCP
+
       # =============================================================================
-      # Angzarr Port Scheme (10-port ranges per component)
-      # x0: sidecar gRPC      x5: business gRPC
-      # x1: sidecar debug     x6: business debug
+      # DEV-ONLY: Direct Service Access (bypassing gateway)
+      # Useful for debugging individual components
+      # Can be removed for CI or minimal setups
       # =============================================================================
-      # Gateway - primary angzarr ingress (port 9084)
-      - containerPort: 30084
-        hostPort: 9084
-        protocol: TCP
-      # Stream (1340-1349)
+      # Stream service - direct event stream access
       - containerPort: 31340
         hostPort: 1340
         protocol: TCP
-      # Aggregate sidecar (1310-1319)
+      # Aggregate sidecar - direct aggregate access (bypasses gateway routing)
       - containerPort: 31310
         hostPort: 1310
         protocol: TCP
-      # RabbitMQ AMQP
+
+      # =============================================================================
+      # OPTIONAL: Backing Service Debug Access
+      # Remove all of these for CI or production-like testing
+      # =============================================================================
+      # RabbitMQ AMQP - direct message queue access
       - containerPort: 30672
         hostPort: 5672
         protocol: TCP
-      # RabbitMQ Management UI
+      # RabbitMQ Management UI - queue monitoring
       - containerPort: 31672
         hostPort: 15672
         protocol: TCP
-      # Redis
+      # Redis - direct cache/session access
       - containerPort: 30379
         hostPort: 6379
         protocol: TCP
-      # Grafana
+
+      # =============================================================================
+      # OPTIONAL: Observability Stack
+      # Remove if not using monitoring/tracing
+      # =============================================================================
+      # Grafana - dashboards and visualization
       - containerPort: 30300
         hostPort: 3000
         protocol: TCP
-      # OpenTelemetry Collector gRPC (OTLP)
+      # OpenTelemetry Collector gRPC - trace/metric ingestion
       - containerPort: 30417
         hostPort: 4317
         protocol: TCP

@@ -103,9 +103,77 @@ mod sqlite_tests {
 
         let edges = store.get_edges().await.expect("get_edges failed");
         assert_eq!(edges.len(), 1);
-        // Alphabetical: fulfillment < orders
-        assert_eq!(edges[0].source, "fulfillment");
-        assert_eq!(edges[0].target, "orders");
+        // Causal: orders appeared first in correlation chain, fulfillment second
+        assert_eq!(edges[0].source, "orders");
+        assert_eq!(edges[0].target, "fulfillment");
+    }
+
+    #[tokio::test]
+    async fn test_correlation_creates_edge_between_registered_aggregates() {
+        use crate::proto::ComponentDescriptor;
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        // Register both domains as aggregates
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "orders".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "fulfillment".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+        ];
+        projector.register_components(&descriptors).await.expect("register failed");
+
+        // Correlated events between two aggregates — edge created via correlation
+        let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
+        let book2 = make_event_book("fulfillment", "corr-1", &["ShipmentCreated"]);
+
+        projector.process_event(&book1).await.expect("process_event failed");
+        projector.process_event(&book2).await.expect("process_event failed");
+
+        let edges = store.get_edges().await.expect("get_edges failed");
+        let correlation_edges: Vec<_> = edges.iter().filter(|e| !e.last_correlation_id.is_empty()).collect();
+        assert_eq!(correlation_edges.len(), 1);
+        assert_eq!(correlation_edges[0].source, "orders");
+        assert_eq!(correlation_edges[0].target, "fulfillment");
+    }
+
+    #[tokio::test]
+    async fn test_correlation_creates_edge_between_aggregate_and_saga() {
+        use crate::proto::{ComponentDescriptor, Subscription};
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "orders".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "fulfillment-saga".into(),
+                component_type: "saga".into(),
+                inputs: vec![Subscription { domain: "orders".into(), event_types: vec![] }],
+            },
+        ];
+        projector.register_components(&descriptors).await.expect("register failed");
+
+        let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
+        let book2 = make_event_book("fulfillment-saga", "corr-1", &["SagaStarted"]);
+
+        projector.process_event(&book1).await.expect("process_event failed");
+        projector.process_event(&book2).await.expect("process_event failed");
+
+        let edges = store.get_edges().await.expect("get_edges failed");
+        let correlation_edges: Vec<_> = edges.iter().filter(|e| !e.last_correlation_id.is_empty()).collect();
+        assert_eq!(correlation_edges.len(), 1);
     }
 
     #[tokio::test]
@@ -173,6 +241,340 @@ mod sqlite_tests {
             .await
             .expect("record failed");
         assert_eq!(domains.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_register_components_creates_nodes_and_edges() {
+        use crate::proto::{ComponentDescriptor, Subscription};
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "orders".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "inventory".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "fulfillment-saga".into(),
+                component_type: "saga".into(),
+                inputs: vec![Subscription {
+                    domain: "orders".into(),
+                    event_types: vec![],
+                }],
+            },
+            ComponentDescriptor {
+                name: "accounting".into(),
+                component_type: "projector".into(),
+                inputs: vec![
+                    Subscription {
+                        domain: "orders".into(),
+                        event_types: vec![],
+                    },
+                    Subscription {
+                        domain: "inventory".into(),
+                        event_types: vec![],
+                    },
+                ],
+            },
+        ];
+
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register_components failed");
+
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+        assert_eq!(nodes.len(), 4);
+
+        let saga_node = nodes
+            .iter()
+            .find(|n| n.id == "fulfillment-saga")
+            .expect("saga node missing");
+        assert_eq!(saga_node.component_type, "saga");
+
+        let projector_node = nodes
+            .iter()
+            .find(|n| n.id == "accounting")
+            .expect("projector node missing");
+        assert_eq!(projector_node.component_type, "projector");
+
+        let aggregate_node = nodes
+            .iter()
+            .find(|n| n.id == "orders")
+            .expect("aggregate node missing");
+        assert_eq!(aggregate_node.component_type, "aggregate");
+
+        // Subscription edges: orders->fulfillment-saga, orders->accounting, inventory->accounting
+        let edges = store.get_edges().await.expect("get_edges failed");
+        assert_eq!(edges.len(), 3);
+
+        let has_edge = |source: &str, target: &str| {
+            edges.iter().any(|e| e.source == source && e.target == target)
+        };
+        assert!(has_edge("orders", "fulfillment-saga"));
+        assert!(has_edge("orders", "accounting"));
+        assert!(has_edge("inventory", "accounting"));
+    }
+
+    #[tokio::test]
+    async fn test_register_components_input_domain_not_in_batch() {
+        use crate::proto::{ComponentDescriptor, Subscription};
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        // Saga subscribes to "orders" but "orders" is NOT in the descriptor batch.
+        // The edge source node doesn't exist — must not FK-fail.
+        let descriptors = vec![ComponentDescriptor {
+            name: "fulfillment-saga".into(),
+            component_type: "saga".into(),
+            inputs: vec![Subscription {
+                domain: "orders".into(),
+                event_types: vec![],
+            }],
+        }];
+
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register_components failed");
+
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id, "fulfillment-saga");
+
+        // Edge should be skipped (source node doesn't exist)
+        let edges = store.get_edges().await.expect("get_edges failed");
+        assert!(edges.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_register_components_skips_empty_names() {
+        use crate::proto::ComponentDescriptor;
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: String::new(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "orders".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+        ];
+
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register_components failed");
+
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id, "orders");
+    }
+
+    #[tokio::test]
+    async fn test_descriptor_publish_roundtrip_preserves_component_type() {
+        use crate::proto::{ComponentDescriptor, Subscription};
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        // Build descriptors with correct component types.
+        // All referenced input domains must have corresponding nodes.
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "order".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "fulfillment".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "fulfillment-saga".into(),
+                component_type: "saga".into(),
+                inputs: vec![Subscription {
+                    domain: "order".into(),
+                    event_types: vec![],
+                }],
+            },
+            ComponentDescriptor {
+                name: "web".into(),
+                component_type: "projector".into(),
+                inputs: vec![Subscription {
+                    domain: "order".into(),
+                    event_types: vec![],
+                }],
+            },
+            ComponentDescriptor {
+                name: "order-fulfillment".into(),
+                component_type: "process_manager".into(),
+                inputs: vec![
+                    Subscription {
+                        domain: "order".into(),
+                        event_types: vec![],
+                    },
+                    Subscription {
+                        domain: "fulfillment".into(),
+                        event_types: vec![],
+                    },
+                ],
+            },
+        ];
+
+        // Simulate publish_descriptors: encode to EventBook
+        use prost::Message;
+        let pages: Vec<EventPage> = descriptors
+            .iter()
+            .enumerate()
+            .map(|(i, d)| EventPage {
+                sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
+                event: Some(Any {
+                    type_url: crate::proto_ext::DESCRIPTOR_TYPE_URL.to_string(),
+                    value: d.encode_to_vec(),
+                }),
+                created_at: None,
+            })
+            .collect();
+
+        let meta_book = EventBook {
+            cover: Some(Cover {
+                domain: crate::proto_ext::META_TOPOLOGY_DOMAIN.to_string(),
+                correlation_id: String::new(),
+                ..Default::default()
+            }),
+            pages,
+            ..Default::default()
+        };
+
+        // Process the meta-event (as topology projector would receive from bus)
+        projector
+            .process_event(&meta_book)
+            .await
+            .expect("process_event failed for meta-event");
+
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+        assert_eq!(nodes.len(), 5);
+
+        let saga_node = nodes.iter().find(|n| n.id == "fulfillment-saga").expect("saga node missing");
+        assert_eq!(saga_node.component_type, "saga");
+
+        let projector_node = nodes.iter().find(|n| n.id == "web").expect("projector node missing");
+        assert_eq!(projector_node.component_type, "projector");
+
+        let pm_node = nodes.iter().find(|n| n.id == "order-fulfillment").expect("PM node missing");
+        assert_eq!(pm_node.component_type, "process_manager");
+
+        let agg_node = nodes.iter().find(|n| n.id == "order").expect("aggregate node missing");
+        assert_eq!(agg_node.component_type, "aggregate");
+
+        // Now process domain events — verify registered types are NOT overwritten
+        let domain_book = make_event_book("order", "", &["OrderPlaced"]);
+        projector
+            .process_event(&domain_book)
+            .await
+            .expect("process_event failed for domain event");
+
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+        let agg_node = nodes.iter().find(|n| n.id == "order").expect("aggregate node missing after event");
+        assert_eq!(agg_node.component_type, "aggregate");
+        assert_eq!(agg_node.event_count, 1); // 0 from register + 1 from event
+
+        // Saga/projector/PM types still preserved
+        let saga_node = nodes.iter().find(|n| n.id == "fulfillment-saga").expect("saga node missing after event");
+        assert_eq!(saga_node.component_type, "saga");
+    }
+
+    #[tokio::test]
+    async fn test_register_node_overwrites_event_inferred_type() {
+        use crate::proto::{ComponentDescriptor, Subscription};
+
+        let store = test_store().await;
+        let projector = TopologyProjector::new(store.clone(), 0);
+
+        // Events arrive FIRST — all nodes created as "aggregate"
+        let book1 = make_event_book("order", "", &["OrderPlaced"]);
+        let book2 = make_event_book("fulfillment-saga", "", &["SagaStarted"]);
+        let book3 = make_event_book("web", "", &["ViewUpdated"]);
+        let book4 = make_event_book("order-fulfillment", "", &["ProcessStarted"]);
+
+        projector.process_event(&book1).await.expect("process_event failed");
+        projector.process_event(&book2).await.expect("process_event failed");
+        projector.process_event(&book3).await.expect("process_event failed");
+        projector.process_event(&book4).await.expect("process_event failed");
+
+        // Verify all nodes initially have type "aggregate"
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+        assert_eq!(nodes.len(), 4);
+        for node in &nodes {
+            assert_eq!(node.component_type, "aggregate", "node {} should be aggregate before registration", node.id);
+        }
+
+        // Descriptors arrive AFTER — register_node must overwrite component_type
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "order".into(),
+                component_type: "aggregate".into(),
+                inputs: vec![],
+            },
+            ComponentDescriptor {
+                name: "fulfillment-saga".into(),
+                component_type: "saga".into(),
+                inputs: vec![Subscription {
+                    domain: "order".into(),
+                    event_types: vec![],
+                }],
+            },
+            ComponentDescriptor {
+                name: "web".into(),
+                component_type: "projector".into(),
+                inputs: vec![Subscription {
+                    domain: "order".into(),
+                    event_types: vec![],
+                }],
+            },
+            ComponentDescriptor {
+                name: "order-fulfillment".into(),
+                component_type: "process_manager".into(),
+                inputs: vec![Subscription {
+                    domain: "order".into(),
+                    event_types: vec![],
+                }],
+            },
+        ];
+
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register_components failed");
+
+        let nodes = store.get_nodes().await.expect("get_nodes failed");
+
+        let find = |id: &str| nodes.iter().find(|n| n.id == id).expect(&format!("node {} missing", id));
+
+        assert_eq!(find("order").component_type, "aggregate");
+        assert_eq!(find("fulfillment-saga").component_type, "saga");
+        assert_eq!(find("web").component_type, "projector");
+        assert_eq!(find("order-fulfillment").component_type, "process_manager");
+
+        // Event counts preserved from initial process_event calls
+        assert_eq!(find("order").event_count, 1);
+        assert_eq!(find("fulfillment-saga").event_count, 1);
     }
 
     #[cfg(feature = "topology")]

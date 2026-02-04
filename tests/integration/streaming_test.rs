@@ -15,7 +15,7 @@ mod examples_proto {
     include!(concat!(env!("OUT_DIR"), "/examples.rs"));
 }
 
-use examples_proto::CreateCustomer;
+use examples_proto::InitializeStock;
 
 /// Returns true if container tests should run.
 fn should_run_container_tests() -> bool {
@@ -31,14 +31,15 @@ async fn test_execute_stream_returns_events() {
         return;
     }
     let mut client = create_gateway_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    let command = CreateCustomer {
-        name: "Stream Test".to_string(),
-        email: "stream@example.com".to_string(),
+    let command = InitializeStock {
+        product_id: "STREAM-SKU".to_string(),
+        quantity: 100,
+        low_stock_threshold: 10,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let correlation_id = command_book
         .cover
@@ -93,28 +94,29 @@ async fn test_stream_includes_expected_event_types() {
         return;
     }
     let mut client = create_gateway_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    let command = CreateCustomer {
-        name: "Event Type Test".to_string(),
-        email: "eventtype@example.com".to_string(),
+    let command = InitializeStock {
+        product_id: "EVENT-TYPE-SKU".to_string(),
+        quantity: 50,
+        low_stock_threshold: 5,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let response = client.execute_stream(command_book).await;
     assert!(response.is_ok());
 
     let mut stream = response.unwrap().into_inner();
-    let mut found_customer_created = false;
+    let mut found_stock_initialized = false;
 
     let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
         while let Ok(Some(event_book)) = stream.message().await {
             for page in &event_book.pages {
                 if let Some(event_any) = &page.event {
                     let event_type = extract_event_type(event_any);
-                    if event_type.contains("CustomerCreated") {
-                        found_customer_created = true;
+                    if event_type.contains("StockInitialized") {
+                        found_stock_initialized = true;
                         return;
                     }
                 }
@@ -124,8 +126,8 @@ async fn test_stream_includes_expected_event_types() {
     let _ = timeout.await;
 
     assert!(
-        found_customer_created,
-        "Expected to receive CustomerCreated event in stream"
+        found_stock_initialized,
+        "Expected to receive StockInitialized event in stream"
     );
 }
 
@@ -136,14 +138,15 @@ async fn test_execute_returns_immediate_response() {
         return;
     }
     let mut client = create_gateway_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    let command = CreateCustomer {
-        name: "Unary Test".to_string(),
-        email: "unary@example.com".to_string(),
+    let command = InitializeStock {
+        product_id: "UNARY-SKU".to_string(),
+        quantity: 75,
+        low_stock_threshold: 8,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let response = client.execute(command_book).await;
     assert!(response.is_ok());
@@ -153,25 +156,26 @@ async fn test_execute_returns_immediate_response() {
 }
 
 #[tokio::test]
-async fn test_multiple_customers_isolated_streams() {
+async fn test_multiple_inventories_isolated_streams() {
     if !should_run_container_tests() {
         println!("Skipping: set ANGZARR_TEST_MODE=container to run");
         return;
     }
     let mut client = create_gateway_client().await;
-    let customer_id_1 = Uuid::new_v4();
-    let customer_id_2 = Uuid::new_v4();
+    let inventory_id_1 = Uuid::new_v4();
+    let inventory_id_2 = Uuid::new_v4();
 
-    // Create first customer
-    let command1 = CreateCustomer {
-        name: "Customer One".to_string(),
-        email: "one@example.com".to_string(),
+    // Initialize first inventory
+    let command1 = InitializeStock {
+        product_id: "ISO-SKU-1".to_string(),
+        quantity: 100,
+        low_stock_threshold: 10,
     };
     let command_book1 = build_command_book(
-        "customer",
-        customer_id_1,
+        "inventory",
+        inventory_id_1,
         command1,
-        "examples.CreateCustomer",
+        "examples.InitializeStock",
     );
     let correlation_id_1 = command_book1
         .cover
@@ -194,16 +198,17 @@ async fn test_multiple_customers_isolated_streams() {
     });
     let _ = timeout1.await;
 
-    // Create second customer
-    let command2 = CreateCustomer {
-        name: "Customer Two".to_string(),
-        email: "two@example.com".to_string(),
+    // Initialize second inventory
+    let command2 = InitializeStock {
+        product_id: "ISO-SKU-2".to_string(),
+        quantity: 200,
+        low_stock_threshold: 20,
     };
     let command_book2 = build_command_book(
-        "customer",
-        customer_id_2,
+        "inventory",
+        inventory_id_2,
         command2,
-        "examples.CreateCustomer",
+        "examples.InitializeStock",
     );
     let correlation_id_2 = command_book2
         .cover
@@ -235,7 +240,7 @@ async fn test_multiple_customers_isolated_streams() {
             .unwrap_or("");
         assert_eq!(
             event_correlation_id, correlation_id_1,
-            "Customer 1 stream contains wrong correlation ID"
+            "Inventory 1 stream contains wrong correlation ID"
         );
     }
 
@@ -247,7 +252,7 @@ async fn test_multiple_customers_isolated_streams() {
             .unwrap_or("");
         assert_eq!(
             event_correlation_id, correlation_id_2,
-            "Customer 2 stream contains wrong correlation ID"
+            "Inventory 2 stream contains wrong correlation ID"
         );
     }
 }

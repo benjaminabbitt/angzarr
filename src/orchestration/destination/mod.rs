@@ -5,6 +5,7 @@
 //! - `grpc/`: wraps `EventQueryClient` for remote fetching
 
 pub mod grpc;
+pub mod hybrid;
 #[cfg(feature = "sqlite")]
 pub mod local;
 

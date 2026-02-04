@@ -1,19 +1,21 @@
 //! Common utilities for Angzarr example implementations.
 
 use angzarr::proto::{
-    business_response, event_page::Sequence, BusinessResponse, CommandBook, CommandPage,
-    ContextualCommand, Cover, EventBook, EventPage, Uuid as ProtoUuid,
+    event_page::Sequence, CommandBook, CommandPage, Cover, EventBook, EventPage,
+    Uuid as ProtoUuid,
 };
 use prost::Message;
 use tonic::Status;
 
 pub mod identity;
 pub mod proto;
+pub mod router;
 pub mod server;
 pub mod state;
 pub mod testing;
 pub mod validation;
 
+pub use router::{CommandRouter, EventRouter};
 pub use server::{
     init_tracing, run_aggregate_server, run_process_manager_server, run_projector_server,
     run_saga_server, AggregateLogic, AggregateWrapper, ProcessManagerLogic, ProcessManagerWrapper,
@@ -214,21 +216,6 @@ pub fn root_id_as_string(root: Option<&ProtoUuid>) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-/// Process all event pages in an EventBook, dispatching each to a handler function.
-///
-/// Extracts metadata (root, correlation_id) once and passes it to each handler invocation.
-/// The handler returns a `Vec<CommandBook>` for each event (empty vec to skip).
-pub fn process_event_pages<F>(book: &EventBook, handler: F) -> Vec<CommandBook>
-where
-    F: Fn(&prost_types::Any, Option<&ProtoUuid>, &str) -> Vec<CommandBook>,
-{
-    let meta = event_book_metadata(book);
-    book.pages
-        .iter()
-        .filter_map(|page| page.event.as_ref())
-        .flat_map(|event| handler(event, meta.root, meta.correlation_id))
-        .collect()
-}
 
 // ============================================================================
 // Common Error Messages
@@ -240,164 +227,3 @@ pub mod errmsg {
     pub const NO_COMMAND_PAGES: &str = "CommandBook has no pages";
 }
 
-/// Create a BusinessError for an unrecognized command type_url.
-pub fn unknown_command(type_url: &str) -> BusinessError {
-    BusinessError::Rejected(format!("{}: {}", errmsg::UNKNOWN_COMMAND, type_url))
-}
-
-// ============================================================================
-// Aggregate Dispatch
-// ============================================================================
-
-/// Dispatch a command through an aggregate's handler chain.
-///
-/// Handles common boilerplate: extracting command/events from ContextualCommand,
-/// rebuilding state, computing next sequence, and wrapping the EventBook result.
-#[allow(clippy::result_large_err)]
-pub fn dispatch_aggregate<S>(
-    cmd: ContextualCommand,
-    rebuild: impl Fn(Option<&EventBook>) -> S,
-    dispatch: impl FnOnce(&CommandBook, &prost_types::Any, &S, u32) -> Result<EventBook>,
-) -> std::result::Result<BusinessResponse, Status> {
-    let command_book = cmd.command.as_ref();
-    let prior_events = cmd.events.as_ref();
-
-    let state = rebuild(prior_events);
-    let next_seq = next_sequence(prior_events);
-
-    let Some(cb) = command_book else {
-        return Err(BusinessError::Rejected(errmsg::NO_COMMAND_PAGES.to_string()).into());
-    };
-
-    let command_any = extract_command(cb)?;
-    let events = dispatch(cb, command_any, &state, next_seq)?;
-
-    Ok(BusinessResponse {
-        result: Some(business_response::Result::Events(events)),
-    })
-}
-
-// ============================================================================
-// Macros
-// ============================================================================
-
-/// Define an aggregate's struct boilerplate: DOMAIN const, new(), Default.
-///
-/// Usage: `common::define_aggregate!(CartLogic, "cart");`
-#[macro_export]
-macro_rules! define_aggregate {
-    ($name:ident, $domain:expr) => {
-        impl $name {
-            pub const DOMAIN: &'static str = $domain;
-
-            pub fn new() -> Self {
-                Self
-            }
-        }
-
-        impl Default for $name {
-            fn default() -> Self {
-                Self::new()
-            }
-        }
-    };
-}
-
-/// Define a saga's struct boilerplate: new(), Default, SagaLogic::execute.
-///
-/// Requires the saga to implement `pub fn handle(&self, book: &EventBook) -> Vec<CommandBook>`.
-///
-/// Usage: `common::define_saga!(FulfillmentSaga);`
-#[macro_export]
-macro_rules! define_saga {
-    ($name:ident) => {
-        impl $name {
-            pub fn new() -> Self {
-                Self
-            }
-        }
-
-        impl Default for $name {
-            fn default() -> Self {
-                Self::new()
-            }
-        }
-
-        impl $crate::SagaLogic for $name {
-            fn execute(
-                &self,
-                source: &::angzarr::proto::EventBook,
-                _destinations: &[::angzarr::proto::EventBook],
-            ) -> Vec<::angzarr::proto::CommandBook> {
-                self.handle(source)
-            }
-        }
-    };
-}
-
-/// Generate public test wrapper methods for aggregate handler functions.
-///
-/// Two variants:
-/// - `fns`: for free-standing handler functions
-/// - `methods`: for handler methods on self
-///
-/// Usage:
-/// ```ignore
-/// common::expose_handlers!(fns, CartLogic, CartState, rebuild: rebuild_state, [
-///     (handle_create_cart_public, handle_create_cart),
-/// ]);
-///
-/// common::expose_handlers!(methods, InventoryLogic, InventoryState, rebuild: rebuild_state, [
-///     (handle_initialize_stock_public, handle_initialize_stock),
-/// ]);
-/// ```
-#[macro_export]
-macro_rules! expose_handlers {
-    (methods, $logic:ident, $state:ty, rebuild: $rebuild:ident,
-     [$(($pub_name:ident, $handler:ident)),* $(,)?]) => {
-        impl $logic {
-            pub fn rebuild_state_public(
-                &self,
-                event_book: Option<&::angzarr::proto::EventBook>,
-            ) -> $state {
-                self.$rebuild(event_book)
-            }
-
-            $(
-                pub fn $pub_name(
-                    &self,
-                    command_book: &::angzarr::proto::CommandBook,
-                    state: &$state,
-                    next_seq: u32,
-                ) -> $crate::Result<::angzarr::proto::EventBook> {
-                    let cmd = $crate::extract_command(command_book)?;
-                    self.$handler(command_book, &cmd.value, state, next_seq)
-                }
-            )*
-        }
-    };
-
-    (fns, $logic:ident, $state:ty, rebuild: $rebuild:path,
-     [$(($pub_name:ident, $handler:path)),* $(,)?]) => {
-        impl $logic {
-            pub fn rebuild_state_public(
-                &self,
-                event_book: Option<&::angzarr::proto::EventBook>,
-            ) -> $state {
-                $rebuild(event_book)
-            }
-
-            $(
-                pub fn $pub_name(
-                    &self,
-                    command_book: &::angzarr::proto::CommandBook,
-                    state: &$state,
-                    next_seq: u32,
-                ) -> $crate::Result<::angzarr::proto::EventBook> {
-                    let cmd = $crate::extract_command(command_book)?;
-                    $handler(command_book, &cmd.value, state, next_seq)
-                }
-            )*
-        }
-    };
-}

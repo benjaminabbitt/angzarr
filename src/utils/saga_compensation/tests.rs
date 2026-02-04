@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::DEFAULT_SAGA_FALLBACK_DOMAIN;
 use crate::proto::CommandPage;
 
 fn make_saga_origin() -> SagaCommandOrigin {
@@ -123,7 +124,7 @@ fn test_build_compensation_failed_event_book() {
 
     assert!(event_book.cover.is_some());
     let cover = event_book.cover.unwrap();
-    assert_eq!(cover.domain, "angzarr.saga-failures");
+    assert_eq!(cover.domain, DEFAULT_SAGA_FALLBACK_DOMAIN);
     assert_eq!(event_book.pages.len(), 1);
     assert_eq!(cover.correlation_id, "corr-123");
 }

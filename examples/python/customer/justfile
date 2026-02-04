@@ -1,4 +1,0 @@
-PROTO_DIR := "angzarr/proto"
-UNIT_TARGET := "test_customer_logic.py"
-
-import "../service.justfile"

@@ -1,0 +1,29 @@
+# Common Python utilities
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Install dependencies
+install:
+    uv venv --quiet 2>/dev/null || true
+    uv pip install --quiet protobuf>=5.0.0
+
+# Copy generated proto files
+proto:
+    mkdir -p angzarr proto
+    cp -r "{{TOP}}/generated/python/angzarr/"* angzarr/ 2>/dev/null || true
+    cp -r "{{TOP}}/generated/python/examples/"* proto/ 2>/dev/null || true
+    touch angzarr/__init__.py proto/__init__.py
+
+# Full setup
+setup: install proto
+
+# Clean
+clean:
+    rm -rf __pycache__ angzarr/*.py proto/*.py .venv
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

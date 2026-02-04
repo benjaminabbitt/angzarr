@@ -10,8 +10,9 @@ use tonic::Status;
 use tracing::{debug, warn};
 
 use crate::discovery::{DiscoveryError, ServiceDiscovery};
+use crate::orchestration::correlation::ANGZARR_UUID_NAMESPACE;
 use crate::proto::{CommandBook, CommandResponse, DryRunRequest, SyncCommandBook};
-use crate::proto_ext::correlated_request;
+use crate::proto_ext::{correlated_request, CoverExt, WILDCARD_DOMAIN};
 
 /// Command router for forwarding commands to aggregate services.
 #[derive(Clone)]
@@ -28,19 +29,14 @@ impl CommandRouter {
     /// Generate or use existing correlation ID.
     #[allow(clippy::result_large_err)]
     pub fn ensure_correlation_id(command_book: &mut CommandBook) -> Result<String, Status> {
-        let current_correlation_id = command_book
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let current_correlation_id = command_book.correlation_id().to_string();
 
         if current_correlation_id.is_empty() {
             let mut buf = Vec::new();
             command_book
                 .encode(&mut buf)
                 .map_err(|e| Status::internal(format!("Failed to encode command: {e}")))?;
-            let angzarr_ns = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev");
-            let generated = uuid::Uuid::new_v5(&angzarr_ns, &buf).to_string();
+            let generated = uuid::Uuid::new_v5(&ANGZARR_UUID_NAMESPACE, &buf).to_string();
             if let Some(ref mut cover) = command_book.cover {
                 cover.correlation_id = generated.clone();
             }
@@ -60,7 +56,7 @@ impl CommandRouter {
             .cover
             .as_ref()
             .map(|c| c.domain.clone())
-            .unwrap_or_else(|| "*".to_string());
+            .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
 
         debug!(
             %domain,
@@ -98,7 +94,7 @@ impl CommandRouter {
             .as_ref()
             .and_then(|c| c.cover.as_ref())
             .map(|c| c.domain.clone())
-            .unwrap_or_else(|| "*".to_string());
+            .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
 
         debug!(
             %domain,
@@ -136,7 +132,7 @@ impl CommandRouter {
             .cover
             .as_ref()
             .map(|c| c.domain.clone())
-            .unwrap_or_else(|| "*".to_string());
+            .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
 
         debug!(
             %domain,

@@ -179,6 +179,65 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
 
         Ok(Response::new(()))
     }
+
+    /// Handle events speculatively - returns projection without side effects.
+    ///
+    /// Same as handle_sync but explicitly for speculative execution.
+    async fn handle_speculative(
+        &self,
+        request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        let event_book = request.into_inner();
+
+        // Repair EventBook if incomplete
+        let event_book = self
+            .repairer
+            .lock()
+            .await
+            .repair(event_book)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to repair EventBook");
+                Status::internal(format!("Failed to repair EventBook: {}", e))
+            })?;
+
+        // Clone connections to minimize lock scope during async I/O
+        let connections: Vec<_> = {
+            let projectors = self.projectors.read().await;
+            projectors
+                .iter()
+                .map(|conn| (conn.config.clone(), conn.client.clone()))
+                .collect()
+        };
+
+        // Return the first successful projection
+        let correlation_id = event_book.correlation_id().to_string();
+        if let Some((config, mut client)) = connections.into_iter().next() {
+            let req = correlated_request(event_book.clone(), &correlation_id);
+            match client.handle(req).await {
+                Ok(response) => {
+                    info!(projector.name = %config.name, "Speculative projection completed");
+                    return Ok(response);
+                }
+                Err(e) => {
+                    error!(projector.name = %config.name, error = %e, "Speculative projector failed");
+                    return Err(Status::internal(format!(
+                        "Projector {} failed: {}",
+                        config.name, e
+                    )));
+                }
+            }
+        }
+
+        // No projectors, return empty projection
+        let cover = event_book.cover.clone();
+        Ok(Response::new(Projection {
+            cover,
+            projector: String::new(),
+            sequence: 0,
+            projection: None,
+        }))
+    }
 }
 
 #[cfg(test)]

@@ -1,30 +1,39 @@
 package logic
 
 import (
+	"angzarr"
+	angzarrpb "angzarr/proto/angzarr"
 	"order/proto/examples"
 
+	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (l *DefaultOrderLogic) HandleConfirmPayment(state *OrderState, paymentReference string) (*examples.OrderCompleted, error) {
+// HandleConfirmPayment validates and creates an OrderCompleted event.
+func HandleConfirmPayment(cb *angzarrpb.CommandBook, data []byte, state *OrderState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.ConfirmPayment
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
+	}
+
 	if !state.Exists() {
-		return nil, NewFailedPrecondition("Order does not exist")
+		return nil, angzarr.NewFailedPrecondition(ErrMsgOrderNotFound)
 	}
 	if !state.IsPaymentSubmitted() {
-		return nil, NewFailedPrecondition("Payment not submitted")
+		return nil, angzarr.NewFailedPrecondition(ErrMsgPaymentNotSubmitted)
 	}
-	if paymentReference == "" {
-		return nil, NewInvalidArgument("Payment reference is required")
+	if cmd.PaymentReference == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgPaymentRefRequired)
 	}
 
 	// 1 point per dollar spent
 	loyaltyPointsEarned := state.TotalAfterDiscount() / 100
 
-	return &examples.OrderCompleted{
+	return angzarr.PackEvent(cb.Cover, &examples.OrderCompleted{
 		FinalTotalCents:     state.TotalAfterDiscount(),
 		PaymentMethod:       state.PaymentMethod,
-		PaymentReference:    paymentReference,
+		PaymentReference:    cmd.PaymentReference,
 		LoyaltyPointsEarned: loyaltyPointsEarned,
 		CompletedAt:         timestamppb.Now(),
-	}, nil
+	}, seq)
 }

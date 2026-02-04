@@ -21,7 +21,8 @@
 use prost::Message;
 
 use angzarr::proto::{
-    event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Subscription, Uuid as ProtoUuid,
+    event_page::Sequence, CommandBook, ComponentDescriptor, Cover, EventBook, EventPage,
+    Subscription, Uuid as ProtoUuid,
 };
 use common::proto::{ItemsPacked, PaymentSubmitted, Ship, StockReserved};
 use common::{build_command_book, now, root_id_as_string, ProcessManagerLogic};
@@ -115,21 +116,25 @@ impl Default for OrderFulfillmentProcess {
 }
 
 impl ProcessManagerLogic for OrderFulfillmentProcess {
-    fn subscriptions(&self) -> Vec<Subscription> {
-        vec![
-            Subscription {
-                domain: ORDER_DOMAIN.to_string(),
-                event_types: vec!["PaymentSubmitted".to_string()],
-            },
-            Subscription {
-                domain: INVENTORY_DOMAIN.to_string(),
-                event_types: vec!["StockReserved".to_string()],
-            },
-            Subscription {
-                domain: FULFILLMENT_DOMAIN.to_string(),
-                event_types: vec!["ItemsPacked".to_string()],
-            },
-        ]
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor {
+            name: PM_NAME.to_string(),
+            component_type: "process_manager".to_string(),
+            inputs: vec![
+                Subscription {
+                    domain: ORDER_DOMAIN.to_string(),
+                    event_types: vec![],
+                },
+                Subscription {
+                    domain: INVENTORY_DOMAIN.to_string(),
+                    event_types: vec![],
+                },
+                Subscription {
+                    domain: FULFILLMENT_DOMAIN.to_string(),
+                    event_types: vec![],
+                },
+            ],
+        }
     }
 
     fn prepare(&self, _trigger: &EventBook, _process_state: Option<&EventBook>) -> Vec<Cover> {
@@ -274,8 +279,8 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
 // Standalone runtime support — delegates to ProcessManagerLogic methods.
 #[cfg(feature = "standalone")]
 impl angzarr::standalone::ProcessManagerHandler for OrderFulfillmentProcess {
-    fn subscriptions(&self) -> Vec<Subscription> {
-        ProcessManagerLogic::subscriptions(self)
+    fn descriptor(&self) -> ComponentDescriptor {
+        ProcessManagerLogic::descriptor(self)
     }
 
     fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover> {
@@ -512,15 +517,16 @@ mod tests {
     }
 
     #[test]
-    fn test_subscriptions() {
+    fn test_descriptor() {
         let pm = OrderFulfillmentProcess::new();
-        let subs = pm.subscriptions();
+        let desc = pm.descriptor();
 
-        assert_eq!(subs.len(), 3);
-        assert_eq!(subs[0].domain, ORDER_DOMAIN);
-        assert_eq!(subs[1].domain, INVENTORY_DOMAIN);
-        assert_eq!(subs[2].domain, FULFILLMENT_DOMAIN);
-        assert_eq!(subs[2].event_types, vec!["ItemsPacked"]);
+        assert_eq!(desc.name, PM_NAME);
+        assert_eq!(desc.component_type, "process_manager");
+        assert_eq!(desc.inputs.len(), 3);
+        assert_eq!(desc.inputs[0].domain, ORDER_DOMAIN);
+        assert_eq!(desc.inputs[1].domain, INVENTORY_DOMAIN);
+        assert_eq!(desc.inputs[2].domain, FULFILLMENT_DOMAIN);
     }
 
     /// Merge two PM state EventBooks (simulating persisted state accumulation).

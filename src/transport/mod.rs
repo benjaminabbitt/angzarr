@@ -484,7 +484,7 @@ pub fn grpc_trace_layer() -> TraceLayer<
     TraceLayer::new_for_grpc().make_span_with(|request: &http::Request<tonic::body::BoxBody>| {
         let correlation_id = request
             .headers()
-            .get("x-correlation-id")
+            .get(crate::proto_ext::CORRELATION_ID_HEADER)
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         let path = request.uri().path();

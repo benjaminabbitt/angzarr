@@ -8,6 +8,7 @@ pub mod client_traits;
 pub mod clients;
 pub mod config;
 pub mod discovery;
+pub mod edition;
 pub mod grpc;
 pub mod handlers;
 pub mod orchestration;
@@ -28,4 +29,7 @@ pub mod proto {
     tonic::include_proto!("angzarr");
 }
 
-pub use proto_ext::CoverExt;
+pub use proto_ext::{
+    CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt,
+    ProtoUuidExt, UuidExt,
+};

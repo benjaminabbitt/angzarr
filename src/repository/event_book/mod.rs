@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
+use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
 use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 
 /// Extract domain, root UUID, and correlation_id from an EventBook.
@@ -81,7 +81,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(edition.to_string()),
+                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
             }),
             snapshot,
             pages: events,
@@ -107,7 +107,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(edition.to_string()),
+                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
             }),
             snapshot: None,
             pages: events,
@@ -138,7 +138,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(edition.to_string()),
+                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
             }),
             snapshot: None,
             pages: events,
@@ -169,7 +169,7 @@ impl EventBookRepository {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(edition.to_string()),
+                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
             }),
             snapshot: None,
             pages: events,

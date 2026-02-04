@@ -1,0 +1,92 @@
+version: 1.0
+tags:
+    - workflow
+    - testing
+    - validation
+content: |-
+    # Prove It: Behavioural Diff Demonstration
+
+    Demonstrate that changes work by showing the concrete difference in behaviour between the main branch and the current branch.
+
+    ## Process
+
+    1. **Identify the behavioural claims** - What is this branch supposed to change? What should be different?
+    2. **Design demonstrations** - Create concrete scenarios that exercise the changed behaviour
+    3. **Show the before** - Run the demonstration against the main branch (or describe its behaviour based on the code)
+    4. **Show the after** - Run the same demonstration against the current branch
+    5. **Present the diff** - Side-by-side comparison of inputs, outputs, and observable effects
+
+    ## Demonstration Methods
+
+    - **Test output**: Run tests on both branches, compare results
+    - **CLI invocation**: Execute the same command on both branches, show output differences
+    - **Code walkthrough**: Trace the same input through both code paths, show where behaviour diverges
+    - **API calls**: Same request, different responses
+    - **Error scenarios**: Show how failure modes differ between branches
+
+    ## Presentation Format
+
+    For each behavioural change:
+
+    ```
+    ## [Description of behaviour]
+
+    ### Main branch
+    Input: ...
+    Output/Behaviour: ...
+
+    ### This branch
+    Input: ...
+    Output/Behaviour: ...
+
+    ### What changed
+    [Concise explanation of the difference and why it matters]
+    ```
+
+    ## Rules
+
+    - Cover all intended behavioural changes, not just the happy path
+    - Include edge cases and error conditions
+    - If a change is purely structural (refactoring), demonstrate that behaviour is preserved
+    - Do not claim changes work without evidence - show, don't tell
+    - If demonstration requires infrastructure not available locally, describe what would be tested and how
+content_hash: sha256:1622d2d201fe61888fc46c71e5e4cb9cdd8381c07b4c3ca1cfe0fcdea2c342d2
+distilled: |-
+    # Prove It: Behavioural Diff Demonstration
+
+    Show concrete behaviour difference between main branch and current branch.
+
+    ## Process
+    1. Identify behavioural claims - what should differ?
+    2. Design demonstrations exercising changed behaviour
+    3. Show before (main branch behaviour)
+    4. Show after (current branch behaviour)
+    5. Present side-by-side diff of inputs, outputs, effects
+
+    ## Demonstration Methods
+    - Test output comparison across branches
+    - CLI invocation: same command, different output
+    - Code walkthrough: trace input through both paths, show divergence
+    - API calls: same request, different responses
+    - Error scenarios: differing failure modes
+
+    ## Format
+
+    Per behavioural change:
+    ```
+    ## [Behaviour description]
+    ### Main branch
+    Input: ... Output/Behaviour: ...
+    ### This branch
+    Input: ... Output/Behaviour: ...
+    ### What changed
+    [Concise diff explanation + why it matters]
+    ```
+
+    ## Rules
+    - Cover all intended changes, not just happy path
+    - Include edge cases and error conditions
+    - For pure refactors, demonstrate preserved behaviour
+    - Show evidence, don't just claim
+    - If local demo impossible, describe what would be tested and how
+distilled_by: claude-code

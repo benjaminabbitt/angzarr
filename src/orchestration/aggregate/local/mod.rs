@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
-use crate::proto::{event_page, Cover, EventBook, Projection, SyncEventBook, Uuid as ProtoUuid};
+use crate::proto::{event_page, Cover, Edition, EventBook, Projection, SyncEventBook, Uuid as ProtoUuid};
 use crate::proto_ext::CoverExt;
 use crate::standalone::DomainStorage;
 use crate::storage::StorageError;
@@ -28,16 +28,19 @@ fn extract_sequence(page: Option<&crate::proto::EventPage>) -> u32 {
     .unwrap_or(0)
 }
 
-/// Local aggregate context using SQLite storage and static service discovery.
+/// Local aggregate context using in-process storage with optional service discovery.
+///
+/// When `discovery` is `Some`, sync projectors are called after persist.
+/// When `None` (edition mode), only publishes to the event bus.
 pub struct LocalAggregateContext {
     storage: DomainStorage,
-    discovery: Arc<dyn ServiceDiscovery>,
+    discovery: Option<Arc<dyn ServiceDiscovery>>,
     event_bus: Arc<dyn EventBus>,
     snapshot_write_enabled: bool,
 }
 
 impl LocalAggregateContext {
-    /// Create a new local aggregate context.
+    /// Create a new local aggregate context with sync projector support.
     pub fn new(
         storage: DomainStorage,
         discovery: Arc<dyn ServiceDiscovery>,
@@ -45,7 +48,20 @@ impl LocalAggregateContext {
     ) -> Self {
         Self {
             storage,
-            discovery,
+            discovery: Some(discovery),
+            event_bus,
+            snapshot_write_enabled: true,
+        }
+    }
+
+    /// Create without service discovery (no sync projectors).
+    pub fn without_discovery(
+        storage: DomainStorage,
+        event_bus: Arc<dyn EventBus>,
+    ) -> Self {
+        Self {
+            storage,
+            discovery: None,
             event_bus,
             snapshot_write_enabled: true,
         }
@@ -60,7 +76,12 @@ impl LocalAggregateContext {
     /// Call sync projectors via service discovery.
     #[tracing::instrument(name = "aggregate.sync_projectors", skip_all)]
     async fn call_sync_projectors(&self, events: &EventBook) -> Vec<Projection> {
-        let clients = match self.discovery.get_all_projectors().await {
+        let discovery = match &self.discovery {
+            Some(d) => d,
+            None => return vec![],
+        };
+
+        let clients = match discovery.get_all_projectors().await {
             Ok(c) => c,
             Err(e) => {
                 warn!(error = %e, "Failed to get projector clients");
@@ -135,7 +156,7 @@ impl AggregateContext for LocalAggregateContext {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: String::new(),
-                        edition: Some(edition.to_string()),
+                        edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
                     }),
                     pages: events,
                     snapshot: snapshot_data,
@@ -160,7 +181,7 @@ impl AggregateContext for LocalAggregateContext {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: String::new(),
-                        edition: Some(edition.to_string()),
+                        edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
                     }),
                     pages: events,
                     snapshot: None,
@@ -184,7 +205,7 @@ impl AggregateContext for LocalAggregateContext {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: String::new(),
-                        edition: Some(edition.to_string()),
+                        edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
                     }),
                     pages: events,
                     snapshot: None,
@@ -270,7 +291,7 @@ impl AggregateContext for LocalAggregateContext {
             if c.correlation_id.is_empty() {
                 c.correlation_id = correlation_id.to_string();
             }
-            c.edition = Some(edition.to_string());
+            c.edition = Some(Edition { name: edition.to_string(), divergences: vec![] });
             c
         });
         Ok(EventBook {

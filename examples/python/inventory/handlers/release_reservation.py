@@ -1,18 +1,24 @@
-"""Release reservation command handler."""
+"""Handler for ReleaseReservation command."""
 
 from datetime import datetime, timezone
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from angzarr import angzarr_pb2 as angzarr
+from angzarr import types_pb2 as types
+from errors import CommandRejectedError
 from proto import domains_pb2 as domains
 
-from state import InventoryState
-from handlers.errors import CommandRejectedError
+from handlers.state import InventoryState
 
 
-def handle_release_reservation(command_book, command_any, state: InventoryState, seq: int, log) -> angzarr.EventBook:
+def handle_release_reservation(
+    command_book: types.CommandBook,
+    command_any: Any,
+    state: InventoryState,
+    seq: int,
+) -> types.EventBook:
+    """Handle ReleaseReservation command."""
     if not state.exists():
         raise CommandRejectedError("Inventory not initialized")
 
@@ -26,8 +32,6 @@ def handle_release_reservation(command_book, command_any, state: InventoryState,
 
     qty = state.reservations[cmd.order_id]
 
-    log.info("releasing_reservation", order_id=cmd.order_id, quantity=qty)
-
     event = domains.ReservationReleased(
         order_id=cmd.order_id,
         quantity=qty,
@@ -38,7 +42,13 @@ def handle_release_reservation(command_book, command_any, state: InventoryState,
     event_any = Any()
     event_any.Pack(event, type_url_prefix="type.examples/")
 
-    return angzarr.EventBook(
+    return types.EventBook(
         cover=command_book.cover,
-        pages=[angzarr.EventPage(num=seq, event=event_any, created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())))],
+        pages=[
+            types.EventPage(
+                num=seq,
+                event=event_any,
+                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+            )
+        ],
     )

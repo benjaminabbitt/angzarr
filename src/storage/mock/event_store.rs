@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::proto::{Cover, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::storage::{EventStore, Result, StorageError};
 
 /// Stored event with correlation tracking.
@@ -202,7 +202,7 @@ impl EventStore for MockEventStore {
                         value: root.as_bytes().to_vec(),
                     }),
                     correlation_id: correlation_id.to_string(),
-                    edition: Some(edition),
+                    edition: Some(Edition { name: edition.clone(), divergences: vec![] }),
                 }),
                 pages,
                 snapshot: None,
@@ -211,5 +211,22 @@ impl EventStore for MockEventStore {
         }
 
         Ok(books)
+    }
+
+    async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
+        let mut store = self.events.write().await;
+        let keys_to_remove: Vec<_> = store
+            .keys()
+            .filter(|(d, e, _)| d == domain && e == edition)
+            .cloned()
+            .collect();
+
+        let mut count = 0u32;
+        for key in keys_to_remove {
+            if let Some(events) = store.remove(&key) {
+                count += events.len() as u32;
+            }
+        }
+        Ok(count)
     }
 }

@@ -1,8 +1,8 @@
-"""Order state management and event sourcing."""
+"""Order state rebuilding logic."""
 
 from dataclasses import dataclass, field
 
-from angzarr import angzarr_pb2 as angzarr
+from angzarr import types_pb2 as types
 from proto import domains_pb2 as domains
 
 
@@ -44,13 +44,8 @@ class OrderState:
         return self.subtotal_cents - self.discount_cents
 
 
-def next_sequence(event_book: angzarr.EventBook | None) -> int:
-    if event_book is None or not event_book.pages:
-        return 0
-    return len(event_book.pages)
-
-
-def rebuild_state(event_book: angzarr.EventBook | None) -> OrderState:
+def rebuild_state(event_book: types.EventBook | None) -> OrderState:
+    """Rebuild order state from events."""
     state = OrderState()
 
     if event_book is None or not event_book.pages:

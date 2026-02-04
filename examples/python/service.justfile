@@ -1,6 +1,7 @@
 # Python service template - define variables before importing:
 #   PROTO_DIR   - proto output directory (e.g., "angzarr" or "angzarr/proto")
 #   UNIT_TARGET - pytest unit test target (e.g., "--ignore=features/ --ignore=acceptance/")
+#   RUN_FILE    - entrypoint script (default: "server.py")
 
 set shell := ["bash", "-c"]
 
@@ -21,13 +22,13 @@ proto:
 setup: install proto
 
 run: setup
-    uv run python server.py
+    uv run python {{RUN_FILE}}
 
 debug: setup
-    uv run python -m debugpy --listen 0.0.0.0:5678 --wait-for-client server.py
+    uv run python -m debugpy --listen 0.0.0.0:5678 --wait-for-client {{RUN_FILE}}
 
 run-port port:
-    PORT={{port}} uv run python server.py
+    PORT={{port}} uv run python {{RUN_FILE}}
 
 copy-features:
     rm -rf features

@@ -13,13 +13,15 @@ use futures::future::BoxFuture;
 use tokio::sync::Mutex;
 use tracing::{debug, error, Instrument};
 
-use crate::bus::{BusError, EventHandler};
+use crate::bus::{BusError, EventBus, EventHandler};
+use crate::proto_ext::CoverExt;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::proto::process_manager_client::ProcessManagerClient;
 use crate::proto::{EventBook, Subscription};
+use crate::storage::EventStore;
 use crate::utils::retry::saga_backoff;
 
 /// Event handler that orchestrates process manager execution via a context factory.
@@ -65,15 +67,21 @@ impl ProcessManagerEventHandler {
     }
 
     /// Create a new process manager event handler using gRPC client.
+    ///
+    /// PM state events are persisted directly to the event store and published
+    /// to the event bus, bypassing the command pipeline.
     pub fn new(
         client: ProcessManagerClient<tonic::transport::Channel>,
         process_domain: String,
         destination_fetcher: Arc<dyn DestinationFetcher>,
         command_executor: Arc<dyn CommandExecutor>,
+        event_store: Arc<dyn EventStore>,
+        event_bus: Arc<dyn EventBus>,
     ) -> Self {
         let factory = Arc::new(GrpcPMContextFactory::new(
             Arc::new(Mutex::new(client)),
-            command_executor.clone(),
+            event_store,
+            event_bus,
             process_domain.clone(),
             process_domain,
         ));
@@ -96,11 +104,7 @@ impl EventHandler for ProcessManagerEventHandler {
             return Box::pin(async { Ok(()) });
         }
 
-        let correlation_id = book
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let correlation_id = book.correlation_id().to_string();
         let pm_name = self.context_factory.name().to_string();
         let pm_domain = self.context_factory.pm_domain().to_string();
         let span = tracing::info_span!("pm.handle", %pm_name, %correlation_id, %pm_domain);

@@ -136,6 +136,10 @@ deploy: _cluster-ready
         localhost:9084 || true
     @kubectl get pods -n angzarr
 
+# Watch and redeploy examples on change
+dev: _cluster-ready
+    cd "{{TOP}}/examples/rust" && skaffold dev
+
 # Fresh deploy: regenerate protos, bust caches, rebuild
 fresh-deploy: _cluster-ready
     just proto rust
@@ -145,6 +149,28 @@ fresh-deploy: _cluster-ready
     @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
         localhost:9084 || true
     @kubectl get pods -n angzarr
+
+# Nuke deploy: tear down existing deployment, bust all caches, rebuild and redeploy from scratch
+nuke-deploy: _cluster-ready
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Tearing down existing deployment ==="
+    cd "{{TOP}}/examples/rust" && skaffold delete || true
+    cd "{{TOP}}" && skaffold delete || true
+
+    echo "=== Busting caches ==="
+    rm -f ~/.skaffold/cache
+
+    echo "=== Regenerating protos (skipped if container build fails) ==="
+    just proto rust || echo "Proto generation skipped (existing files used)"
+
+    echo "=== Building and deploying (no cache) ==="
+    cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold run --cache-artifacts=false --force
+
+    echo "=== Waiting for services ==="
+    uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
+        localhost:9084 || true
+    kubectl get pods -n angzarr
 
 # Run integration tests
 integration: _cluster-ready

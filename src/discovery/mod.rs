@@ -45,6 +45,12 @@ pub trait ServiceDiscovery: Send + Sync {
         &self,
     ) -> Result<Vec<ProjectorCoordinatorClient<Channel>>, DiscoveryError>;
 
+    /// Get projector coordinator client by name.
+    async fn get_projector_by_name(
+        &self,
+        name: &str,
+    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError>;
+
     /// Get all aggregate domains.
     async fn aggregate_domains(&self) -> Vec<String>;
 

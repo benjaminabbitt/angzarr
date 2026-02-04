@@ -10,17 +10,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/gateway.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/edition.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/upcaster.proto");
-    println!("cargo:rerun-if-changed=proto/examples/customer.proto");
-    println!("cargo:rerun-if-changed=proto/examples/product.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/speculative.proto");
     println!("cargo:rerun-if-changed=proto/examples/inventory.proto");
     println!("cargo:rerun-if-changed=proto/examples/order.proto");
-    println!("cargo:rerun-if-changed=proto/examples/cart.proto");
     println!("cargo:rerun-if-changed=proto/examples/fulfillment.proto");
     println!("cargo:rerun-if-changed=proto/examples/projections.proto");
 
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
+        .type_attribute(
+            ".angzarr.BusinessResponse.result",
+            "#[allow(clippy::large_enum_variant)]",
+        )
         .compile_protos(
             &[
                 "proto/angzarr/types.proto",
@@ -32,11 +34,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/gateway.proto",
                 "proto/angzarr/edition.proto",
                 "proto/angzarr/upcaster.proto",
-                "proto/examples/customer.proto",
-                "proto/examples/product.proto",
+                "proto/angzarr/speculative.proto",
                 "proto/examples/inventory.proto",
                 "proto/examples/order.proto",
-                "proto/examples/cart.proto",
                 "proto/examples/fulfillment.proto",
                 "proto/examples/projections.proto",
             ],

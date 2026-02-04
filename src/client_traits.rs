@@ -7,7 +7,11 @@
 use async_trait::async_trait;
 use tonic::{Code, Status};
 
-use crate::proto::{CommandBook, CommandResponse, DryRunRequest, EventBook, Query};
+use crate::proto::{
+    CommandBook, CommandResponse, DryRunRequest, EventBook, ProcessManagerHandleResponse,
+    Projection, Query, SagaResponse, SpeculatePmRequest, SpeculateProjectorRequest,
+    SpeculateSagaRequest,
+};
 
 /// Result type for client operations.
 pub type Result<T> = std::result::Result<T, ClientError>;
@@ -100,9 +104,28 @@ impl ClientError {
 pub trait GatewayClient: Send + Sync {
     /// Execute a command asynchronously (fire and forget).
     async fn execute(&self, command: CommandBook) -> Result<CommandResponse>;
+}
 
+/// Trait for speculative execution operations.
+///
+/// Supports "what-if" scenarios: executing commands, projectors, sagas,
+/// and process managers without persisting side effects.
+#[async_trait]
+pub trait SpeculativeClient: Send + Sync {
     /// Execute a command with dry-run (no persistence).
     async fn dry_run(&self, request: DryRunRequest) -> Result<CommandResponse>;
+
+    /// Speculatively execute a projector against events.
+    async fn projector(&self, request: SpeculateProjectorRequest) -> Result<Projection>;
+
+    /// Speculatively execute a saga against events.
+    async fn saga(&self, request: SpeculateSagaRequest) -> Result<SagaResponse>;
+
+    /// Speculatively execute a process manager against events.
+    async fn process_manager(
+        &self,
+        request: SpeculatePmRequest,
+    ) -> Result<ProcessManagerHandleResponse>;
 }
 
 /// Trait for event query client operations.

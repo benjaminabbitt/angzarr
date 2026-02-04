@@ -23,9 +23,8 @@ import "google/protobuf/timestamp.proto";
 // Process Manager IS an aggregate with its own domain, events, and state.
 // It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 service ProcessManager {
-  // Get subscription filters - called at startup to configure event routing.
-  // PM client logic defines which domains/events it subscribes to.
-  rpc GetSubscriptions (GetSubscriptionsRequest) returns (GetSubscriptionsResponse);
+  // Self-description: component type, subscribed domains, handled event types
+  rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
 
   // Phase 1: Declare which additional destinations are needed beyond the trigger.
   // PM automatically receives triggering event's domain state.
@@ -34,20 +33,6 @@ service ProcessManager {
   // Phase 2: Handle with trigger + process state + fetched destinations.
   // Returns commands for other aggregates and events for the PM's own domain.
   rpc Handle (ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
-}
-
-// Subscription configuration request - fetched from PM at startup.
-message GetSubscriptionsRequest {}
-
-// Subscription configuration response.
-message GetSubscriptionsResponse {
-  repeated Subscription subscriptions = 1;
-}
-
-// Event subscription filter.
-message Subscription {
-  string domain = 1;
-  repeated string event_types = 2;  // Empty = all events from domain
 }
 
 // Phase 1 request: PM declares additional destinations needed.
@@ -90,4 +75,10 @@ message ProcessTimeout {
   string process_type = 2;     // e.g., "order-fulfillment"
   string timeout_type = 3;     // e.g., "payment", "reservation"
   google.protobuf.Timestamp deadline = 4;
+}
+
+// ProcessManagerCoordinator: orchestrates PM execution
+service ProcessManagerCoordinator {
+  // Speculative execution - returns commands and events without persisting
+  rpc HandleSpeculative (ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
 }

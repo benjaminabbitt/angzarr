@@ -7,6 +7,7 @@ option csharp_namespace = "Angzarr.Examples";
 option ruby_package = "Angzarr::Examples";
 
 import "google/protobuf/timestamp.proto";
+import "examples/order.proto";  // for LineItem
 
 // =============================================================================
 // Fulfillment Domain - manages shipment lifecycle
@@ -15,6 +16,7 @@ import "google/protobuf/timestamp.proto";
 // Commands
 message CreateShipment {
   string order_id = 1;
+  repeated LineItem items = 2;  // order items for inventory commit on ship
 }
 
 message MarkPicked {
@@ -39,6 +41,7 @@ message ShipmentCreated {
   string order_id = 1;
   string status = 2;
   google.protobuf.Timestamp created_at = 3;
+  repeated LineItem items = 4;  // order items for inventory commit on ship
 }
 
 message ItemsPicked {
@@ -55,6 +58,8 @@ message Shipped {
   string carrier = 1;
   string tracking_number = 2;
   google.protobuf.Timestamp shipped_at = 3;
+  repeated LineItem items = 4;  // order items for inventory commit saga
+  string order_id = 5;  // order ID for inventory commit saga
 }
 
 message Delivered {
@@ -71,4 +76,5 @@ message FulfillmentState {
   string picker_id = 5;
   string packer_id = 6;
   string signature = 7;
+  repeated LineItem items = 8;  // order items for inventory commit
 }

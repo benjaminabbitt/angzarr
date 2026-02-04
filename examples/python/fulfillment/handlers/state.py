@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from angzarr import angzarr_pb2 as angzarr
+from angzarr import types_pb2 as types
 from proto import domains_pb2 as domains
 
 
@@ -35,13 +35,7 @@ class FulfillmentState:
         return self.status == "delivered"
 
 
-def next_sequence(event_book: angzarr.EventBook | None) -> int:
-    if event_book is None or not event_book.pages:
-        return 0
-    return len(event_book.pages)
-
-
-def rebuild_state(event_book: angzarr.EventBook | None) -> FulfillmentState:
+def rebuild_state(event_book: types.EventBook | None) -> FulfillmentState:
     state = FulfillmentState()
 
     if event_book is None or not event_book.pages:

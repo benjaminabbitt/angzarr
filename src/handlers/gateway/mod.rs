@@ -22,7 +22,7 @@ use tracing::debug;
 use crate::discovery::ServiceDiscovery;
 use crate::proto::command_gateway_server::CommandGateway;
 use crate::proto::event_stream_client::EventStreamClient;
-use crate::proto::{CommandBook, CommandResponse, DryRunRequest, EventBook, SyncCommandBook};
+use crate::proto::{CommandBook, CommandResponse, EventBook, SyncCommandBook};
 
 /// Command gateway service.
 ///
@@ -129,33 +129,6 @@ impl CommandGateway for GatewayService {
         );
 
         Ok(Response::new(stream))
-    }
-
-    /// Dry-run execute — execute command against temporal state without persisting.
-    #[tracing::instrument(name = "gateway.dry_run", skip_all)]
-    async fn dry_run_execute(
-        &self,
-        request: Request<DryRunRequest>,
-    ) -> Result<Response<CommandResponse>, Status> {
-        let mut dry_run_request = request.into_inner();
-
-        // Ensure correlation ID on the embedded command
-        let correlation_id = match dry_run_request.command.as_mut() {
-            Some(cmd) => CommandRouter::ensure_correlation_id(cmd)?,
-            None => {
-                return Err(Status::invalid_argument(
-                    "DryRunRequest must have a command",
-                ))
-            }
-        };
-
-        debug!("Executing command (dry-run)");
-
-        let response = self
-            .command_router
-            .forward_dry_run(dry_run_request, &correlation_id)
-            .await?;
-        Ok(Response::new(response))
     }
 }
 

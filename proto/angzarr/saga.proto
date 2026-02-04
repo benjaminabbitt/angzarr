@@ -9,8 +9,16 @@ import "angzarr/types.proto";
 // Saga: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
 service Saga {
+  // Self-description: component type, subscribed domains, handled event types
+  rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
   // Phase 1: Saga declares which destination aggregates it needs
   rpc Prepare (SagaPrepareRequest) returns (SagaPrepareResponse);
   // Phase 2: Execute with source + fetched destination state
   rpc Execute (SagaExecuteRequest) returns (SagaResponse);
+}
+
+// SagaCoordinator: orchestrates saga execution across domains
+service SagaCoordinator {
+  // Speculative execution - returns commands without executing them
+  rpc ExecuteSpeculative (SagaExecuteRequest) returns (SagaResponse);
 }

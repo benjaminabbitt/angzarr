@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::error;
 
-use crate::proto::{CommandBook, Cover, EventBook};
-use crate::proto_ext::CoverExt;
+use crate::proto::{CommandBook, Cover, Edition, EventBook};
+use crate::proto_ext::{CoverExt, EditionExt};
 use crate::standalone::SagaHandler;
 
 use super::{SagaContextFactory, SagaRetryContext};
@@ -48,7 +48,7 @@ impl SagaRetryContext for LocalSagaContext {
         // Stamp source edition onto outgoing covers
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(edition.clone());
+                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
             }
         }
         Ok(covers)
@@ -72,13 +72,17 @@ impl SagaRetryContext for LocalSagaContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(edition.clone());
+                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
                     }
                 }
                 cmd
             })
             .collect();
         Ok(commands)
+    }
+
+    fn source_cover(&self) -> Option<&crate::proto::Cover> {
+        self.source.cover.as_ref()
     }
 
     async fn on_command_rejected(&self, _command: &CommandBook, reason: &str) {

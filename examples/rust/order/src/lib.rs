@@ -5,9 +5,9 @@
 mod handlers;
 mod state;
 
-use angzarr::proto::{BusinessResponse, ContextualCommand};
+use angzarr::proto::{BusinessResponse, ComponentDescriptor, ContextualCommand};
 use common::proto::OrderState;
-use common::{dispatch_aggregate, unknown_command, AggregateLogic};
+use common::{AggregateLogic, CommandRouter};
 
 // Re-export state functions for tests and external use
 pub use state::{calculate_total, rebuild_state};
@@ -32,40 +32,43 @@ pub mod errmsg {
     pub use common::errmsg::*;
 }
 
-/// client logic for Order aggregate.
-pub struct OrderLogic;
+/// Client logic for Order aggregate.
+pub struct OrderLogic {
+    router: CommandRouter<OrderState>,
+}
 
-common::define_aggregate!(OrderLogic, "order");
+impl OrderLogic {
+    pub const DOMAIN: &'static str = "order";
 
-common::expose_handlers!(fns, OrderLogic, OrderState, rebuild: rebuild_state, [
-    (handle_create_order_public, handle_create_order),
-    (handle_apply_loyalty_discount_public, handle_apply_loyalty_discount),
-    (handle_submit_payment_public, handle_submit_payment),
-    (handle_confirm_payment_public, handle_confirm_payment),
-    (handle_cancel_order_public, handle_cancel_order),
-]);
+    pub fn new() -> Self {
+        Self {
+            router: CommandRouter::new("order", rebuild_state)
+                .on("CreateOrder", handle_create_order)
+                .on("ApplyLoyaltyDiscount", handle_apply_loyalty_discount)
+                .on("SubmitPayment", handle_submit_payment)
+                .on("ConfirmPayment", handle_confirm_payment)
+                .on("CancelOrder", handle_cancel_order),
+        }
+    }
+}
+
+impl Default for OrderLogic {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[tonic::async_trait]
 impl AggregateLogic for OrderLogic {
+    fn descriptor(&self) -> ComponentDescriptor {
+        self.router.descriptor()
+    }
+
     async fn handle(
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        dispatch_aggregate(cmd, rebuild_state, |cb, command_any, state, next_seq| {
-            if command_any.type_url.ends_with("CreateOrder") {
-                handle_create_order(cb, &command_any.value, state, next_seq)
-            } else if command_any.type_url.ends_with("ApplyLoyaltyDiscount") {
-                handle_apply_loyalty_discount(cb, &command_any.value, state, next_seq)
-            } else if command_any.type_url.ends_with("SubmitPayment") {
-                handle_submit_payment(cb, &command_any.value, state, next_seq)
-            } else if command_any.type_url.ends_with("ConfirmPayment") {
-                handle_confirm_payment(cb, &command_any.value, state, next_seq)
-            } else if command_any.type_url.ends_with("CancelOrder") {
-                handle_cancel_order(cb, &command_any.value, state, next_seq)
-            } else {
-                Err(unknown_command(&command_any.type_url))
-            }
-        })
+        self.router.dispatch(cmd)
     }
 }
 

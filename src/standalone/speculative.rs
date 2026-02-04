@@ -19,7 +19,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::proto::{CommandBook, Cover, EventBook, EventPage, Projection, Uuid as ProtoUuid};
+use crate::proto::{CommandBook, Cover, Edition, EventBook, EventPage, Projection, Uuid as ProtoUuid};
 
 use super::router::DomainStorage;
 use super::traits::{
@@ -32,6 +32,7 @@ use super::traits::{
 
 /// How to resolve state for a domain during speculative execution.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum DomainStateSpec {
     /// Fetch current (latest) state from the event store.
     Current,
@@ -317,7 +318,7 @@ impl SpeculativeExecutor {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(DEFAULT_EDITION.to_string()),
+                edition: Some(Edition { name: DEFAULT_EDITION.to_string(), divergences: vec![] }),
             }),
             snapshot: None,
             pages,

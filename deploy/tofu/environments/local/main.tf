@@ -1,6 +1,9 @@
 # Local development environment
 # Uses Helm charts for all infrastructure (no cloud-managed services)
 # Reads credentials from K8s secrets (created by `just secrets-init`)
+#
+# Note: MongoDB, PostgreSQL, RabbitMQ, Kafka, and Redis are deployed via
+# Helm subcharts (see values-rust.yaml) or externally in cloud environments.
 
 terraform {
   required_version = ">= 1.0"
@@ -46,14 +49,6 @@ data "kubernetes_secret" "angzarr_secrets" {
   }
 }
 
-locals {
-  # Read passwords from K8s secret, decode from base64
-  db_admin_password = data.kubernetes_secret.angzarr_secrets.data["postgres-admin-password"]
-  db_password       = data.kubernetes_secret.angzarr_secrets.data["postgres-password"]
-  mq_password       = data.kubernetes_secret.angzarr_secrets.data["rabbitmq-password"]
-  redis_password    = data.kubernetes_secret.angzarr_secrets.data["redis-password"]
-}
-
 # Namespace for angzarr workloads
 resource "kubernetes_namespace" "angzarr" {
   metadata {
@@ -61,149 +56,110 @@ resource "kubernetes_namespace" "angzarr" {
   }
 }
 
-# MongoDB - event store for angzarr core
-module "mongodb" {
-  source = "../../modules/database"
-
-  type           = "mongodb"
-  managed        = false
-  release_name   = "angzarr-db-mongodb"
-  namespace      = kubernetes_namespace.angzarr.metadata[0].name
-  admin_password = local.db_admin_password
-  username       = "angzarr"
-  password       = local.db_password
-  database       = "angzarr"
-
-  persistence_enabled = true
-  persistence_size    = "2Gi"
-
-  resources = {
-    requests = {
-      memory = "128Mi"
-      cpu    = "50m"
-    }
-    limits = {
-      memory = "512Mi"
-      cpu    = "500m"
-    }
-  }
-
-  metrics_enabled = false
-}
-
-# PostgreSQL - projectors read models
-module "postgresql" {
-  source = "../../modules/database"
-
-  type           = "postgresql"
-  managed        = false
-  release_name   = "angzarr-db-postgresql"
-  namespace      = kubernetes_namespace.angzarr.metadata[0].name
-  admin_password = local.db_admin_password
-  username       = "angzarr"
-  password       = local.db_password
-  database       = "angzarr"
-
-  persistence_enabled = true
-  persistence_size    = "2Gi"
-
-  resources = {
-    requests = {
-      memory = "128Mi"
-      cpu    = "50m"
-    }
-    limits = {
-      memory = "256Mi"
-      cpu    = "250m"
-    }
-  }
-
-  metrics_enabled = false
-}
-
-# Messaging - RabbitMQ for local dev
-module "messaging" {
-  source = "../../modules/messaging"
-
-  type         = "rabbitmq"
-  managed      = false
-  release_name = "angzarr-mq"
-  namespace    = kubernetes_namespace.angzarr.metadata[0].name
-  username     = "angzarr"
-  password     = local.mq_password
-
-  persistence_enabled = true
-  persistence_size    = "1Gi"
-
-  resources = {
-    requests = {
-      memory = "128Mi"
-      cpu    = "50m"
-    }
-    limits = {
-      memory = "256Mi"
-      cpu    = "250m"
-    }
-  }
-
-  metrics_enabled = false
-}
-
-# Redis - cache/session storage
-module "redis" {
-  source = "../../modules/redis"
-
-  managed      = false
-  release_name = "angzarr-redis"
-  namespace    = kubernetes_namespace.angzarr.metadata[0].name
-  password     = local.redis_password
-
-  auth_enabled        = true
-  replica_count       = 0
-  persistence_enabled = true
-  persistence_size    = "1Gi"
-
-  resources = {
-    requests = {
-      memory = "64Mi"
-      cpu    = "25m"
-    }
-    limits = {
-      memory = "128Mi"
-      cpu    = "100m"
-    }
-  }
-
-  metrics_enabled = false
-}
-
 # Observability - Grafana + Tempo + Prometheus + Loki + OTel Collector
-module "observability" {
-  count  = var.enable_observability ? 1 : 0
-  source = "../../modules/observability"
-
-  namespace      = "monitoring"
-  release_prefix = "angzarr"
-
-  grafana_admin_password = "angzarr"
-  grafana_service_type   = "NodePort"
-  grafana_node_port      = 30300
-
-  otel_collector_node_port = 30417
-
-  # Topology visualization (Node Graph API datasource for Grafana)
-  topology_endpoint = "http://angzarr-topology.angzarr.svc.cluster.local:9099"
-
-  resources = {
-    requests = {
-      memory = "128Mi"
-      cpu    = "50m"
-    }
-    limits = {
-      memory = "512Mi"
-      cpu    = "500m"
-    }
+resource "kubernetes_namespace" "monitoring" {
+  count = var.enable_observability ? 1 : 0
+  metadata {
+    name = "monitoring"
   }
+}
+
+resource "helm_release" "observability" {
+  count = var.enable_observability ? 1 : 0
+
+  name       = "angzarr"
+  chart      = "${path.module}/../../../helm/observability"
+  namespace  = kubernetes_namespace.monitoring[0].metadata[0].name
+  depends_on = [kubernetes_namespace.monitoring]
+
+  values = [
+    yamlencode({
+      topologyEndpoint = "http://angzarr-topology.angzarr.svc.cluster.local:9099"
+
+      grafana = {
+        adminPassword = "angzarr"
+        service = {
+          type     = "NodePort"
+          nodePort = 30300
+        }
+        # Add topology datasource
+        datasources = {
+          "datasources.yaml" = {
+            apiVersion = 1
+            datasources = [
+              {
+                name      = "Tempo"
+                type      = "tempo"
+                access    = "proxy"
+                url       = "http://angzarr-tempo:3100"
+                isDefault = false
+                jsonData = {
+                  tracesToLogsV2 = {
+                    datasourceUid   = "loki"
+                    filterByTraceID = true
+                  }
+                  tracesToMetrics = {
+                    datasourceUid = "prometheus"
+                  }
+                }
+              },
+              {
+                name      = "Prometheus"
+                type      = "prometheus"
+                access    = "proxy"
+                url       = "http://angzarr-prometheus-server:80"
+                isDefault = true
+                uid       = "prometheus"
+              },
+              {
+                name   = "Loki"
+                type   = "loki"
+                access = "proxy"
+                url    = "http://angzarr-loki:3100"
+                uid    = "loki"
+                jsonData = {
+                  derivedFields = [
+                    {
+                      datasourceUid = "tempo"
+                      matcherRegex  = "trace_id=(\\w+)"
+                      name          = "TraceID"
+                      url           = "$${__value.raw}"
+                    }
+                  ]
+                }
+              },
+              {
+                name      = "Angzarr Topology"
+                type      = "hamedkarbasi93-nodegraphapi-datasource"
+                access    = "proxy"
+                url       = "http://angzarr-topology.angzarr.svc.cluster.local:9099"
+                uid       = "topology"
+                isDefault = false
+              },
+            ]
+          }
+        }
+      }
+
+      "opentelemetry-collector" = {
+        service = {
+          type = "NodePort"
+        }
+        ports = {
+          otlp = {
+            enabled       = true
+            containerPort = 4317
+            servicePort   = 4317
+            hostPort      = 4317
+            protocol      = "TCP"
+            nodePort      = 30417
+          }
+        }
+      }
+    })
+  ]
+
+  wait = true
 }
 
 # Service Mesh - Linkerd for local (lightweight, optional)

@@ -3,6 +3,9 @@
 //! Direct implementations of `CommandGateway` and `EventQuery` that wrap the
 //! standalone `CommandRouter` and domain stores. No intermediate bridge servers
 //! or service discovery needed.
+//!
+//! Edition handling is implicit: the router extracts edition from the command's
+//! Cover and passes it to the event store, which handles composite reads.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -18,33 +21,29 @@ use tracing::error;
 use crate::proto::command_gateway_server::CommandGateway;
 use crate::proto::event_query_server::EventQuery as EventQueryTrait;
 use crate::proto::{
-    AggregateRoot, CommandBook, CommandResponse, DryRunRequest, EventBook, Query, SyncCommandBook,
+    AggregateRoot, CommandBook, CommandResponse, EventBook, Query, SyncCommandBook,
     Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
+use crate::proto_ext::CoverExt;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 
-use super::edition::EditionManager;
 use super::router::{CommandRouter, DomainStorage};
 
 /// Standalone `CommandGateway` implementation.
 ///
 /// Routes commands directly to the standalone `CommandRouter` without
-/// service discovery or intermediate gRPC bridges. Commands with a
-/// `Cover.edition` field are routed to the edition manager.
+/// service discovery or intermediate gRPC bridges. Edition is extracted
+/// from the command's Cover and used for edition-aware storage operations.
 pub struct StandaloneGatewayService {
     router: Arc<CommandRouter>,
-    edition_manager: Arc<EditionManager>,
 }
 
 impl StandaloneGatewayService {
-    /// Create a new standalone gateway wrapping the given router and edition manager.
-    pub fn new(router: Arc<CommandRouter>, edition_manager: Arc<EditionManager>) -> Self {
-        Self {
-            router,
-            edition_manager,
-        }
+    /// Create a new standalone gateway wrapping the given router.
+    pub fn new(router: Arc<CommandRouter>) -> Self {
+        Self { router }
     }
 }
 
@@ -55,15 +54,8 @@ impl CommandGateway for StandaloneGatewayService {
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let command = request.into_inner();
-        let edition_name = command
-            .cover
-            .as_ref()
-            .and_then(|c| c.edition.clone())
-            .filter(|e| !e.is_empty());
-        let response = match edition_name.as_deref() {
-            None | Some(DEFAULT_EDITION) => self.router.execute(command).await?,
-            Some(name) => self.edition_manager.execute(name, command).await?,
-        };
+        // Edition is extracted from Cover by the pipeline and used for storage
+        let response = self.router.execute(command).await?;
         Ok(Response::new(response))
     }
 
@@ -75,7 +67,7 @@ impl CommandGateway for StandaloneGatewayService {
         let command = sync_cmd
             .command
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
-        // Standalone sync projectors are inline — execute normally.
+        // Edition is extracted from Cover by the pipeline and used for storage
         let response = self.router.execute(command).await?;
         Ok(Response::new(response))
     }
@@ -90,37 +82,6 @@ impl CommandGateway for StandaloneGatewayService {
         Err(Status::unimplemented(
             "Event streaming not available in standalone mode",
         ))
-    }
-
-    async fn dry_run_execute(
-        &self,
-        request: Request<DryRunRequest>,
-    ) -> Result<Response<CommandResponse>, Status> {
-        let dry_run = request.into_inner();
-        let command = dry_run
-            .command
-            .ok_or_else(|| Status::invalid_argument("DryRunRequest must have a command"))?;
-
-        let (as_of_sequence, as_of_timestamp) = match dry_run.point_in_time {
-            Some(temporal) => match temporal.point_in_time {
-                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
-                    (Some(seq), None)
-                }
-                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ref ts)) => {
-                    let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(ts)
-                        .map_err(|e| Status::invalid_argument(e.to_string()))?;
-                    (None, Some(rfc3339))
-                }
-                None => (None, None),
-            },
-            None => (None, None),
-        };
-
-        let response = self
-            .router
-            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
-            .await?;
-        Ok(Response::new(response))
     }
 }
 
@@ -147,30 +108,23 @@ impl ServerInfo {
 /// Standalone `EventQuery` implementation.
 ///
 /// Routes queries by domain to the appropriate event store directly,
-/// without service discovery.
+/// without service discovery. Edition-aware queries are handled by the
+/// event store which does composite reads.
 pub struct StandaloneEventQueryBridge {
     stores: HashMap<String, DomainStorage>,
-    edition_manager: Arc<EditionManager>,
 }
 
 impl StandaloneEventQueryBridge {
     /// Create a new event query bridge wrapping the given domain stores.
-    pub fn new(stores: HashMap<String, DomainStorage>, edition_manager: Arc<EditionManager>) -> Self {
-        Self { stores, edition_manager }
+    pub fn new(stores: HashMap<String, DomainStorage>) -> Self {
+        Self { stores }
     }
 
     #[allow(clippy::result_large_err)]
-    async fn get_repo(&self, domain: &str, edition: Option<&str>) -> Result<EventBookRepository, Status> {
-        let edition_stores = match edition {
-            Some(name) => self.edition_manager.get_stores(name).await,
-            None => None,
-        };
-
-        let store = match edition_stores {
-            Some(ref stores) => stores.get(domain),
-            None => self.stores.get(domain),
-        }
-        .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
+    async fn get_repo(&self, domain: &str, _edition: Option<&str>) -> Result<EventBookRepository, Status> {
+        // Edition handling is done by the event store via composite reads
+        let store = self.stores.get(domain)
+            .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
 
         // Disable snapshot reading — event queries return full event history,
         // not snapshot-optimized views for aggregate state reconstruction.
@@ -191,7 +145,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
         let domain = &cover.domain;
-        let edition = cover.edition.as_deref();
+        let edition = cover.edition_opt();
         let root = cover
             .root
             .as_ref()
@@ -241,7 +195,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
         let domain = cover.domain.clone();
-        let edition = cover.edition.clone();
+        let edition = cover.edition_opt().map(String::from);
         let root = cover
             .root
             .as_ref()
@@ -287,6 +241,8 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let stores = self.stores.clone();
 
         tokio::spawn(async move {
+            // List roots from main timeline
+            // TODO: Support listing roots from named editions via events table query
             for (domain, storage) in &stores {
                 match storage.event_store.list_roots(domain, DEFAULT_EDITION).await {
                     Ok(roots) => {

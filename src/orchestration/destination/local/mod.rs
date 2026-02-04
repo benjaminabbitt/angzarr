@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use tracing::error;
 
-use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
+use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
+use crate::proto_ext::CoverExt;
 use crate::standalone::DomainStorage;
 
 use super::DestinationFetcher;
@@ -30,11 +30,7 @@ impl LocalDestinationFetcher {
 impl DestinationFetcher for LocalDestinationFetcher {
     async fn fetch(&self, cover: &Cover) -> Option<EventBook> {
         let domain = &cover.domain;
-        let edition = cover
-            .edition
-            .as_deref()
-            .filter(|e| !e.is_empty())
-            .unwrap_or(DEFAULT_EDITION);
+        let edition = cover.edition();
         let root_uuid = cover
             .root
             .as_ref()
@@ -50,7 +46,7 @@ impl DestinationFetcher for LocalDestinationFetcher {
                         value: root_uuid.as_bytes().to_vec(),
                     }),
                     correlation_id: cover.correlation_id.clone(),
-                    edition: Some(edition.to_string()),
+                    edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
                 }),
                 pages,
                 snapshot: None,

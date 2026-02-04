@@ -26,6 +26,9 @@ impl SagaRetryContext for AlwaysSucceeds {
         Ok(vec![])
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+    fn source_cover(&self) -> Option<&Cover> {
+        None
+    }
 }
 
 /// Context that always re-produces a single command on retry.
@@ -45,6 +48,9 @@ impl SagaRetryContext for RetryingSagaContext {
         Ok(vec![CommandBook::default()])
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+    fn source_cover(&self) -> Option<&Cover> {
+        None
+    }
 }
 
 struct AlwaysRejects {
@@ -66,6 +72,9 @@ impl SagaRetryContext for AlwaysRejects {
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {
         self.rejection_count.fetch_add(1, Ordering::SeqCst);
+    }
+    fn source_cover(&self) -> Option<&Cover> {
+        None
     }
 }
 
@@ -298,6 +307,9 @@ impl SagaRetryContext for CachedStateContext {
         Ok(vec![CommandBook::default()])
     }
     async fn on_command_rejected(&self, _command: &CommandBook, _reason: &str) {}
+    fn source_cover(&self) -> Option<&Cover> {
+        None
+    }
 }
 
 /// Fetcher that tracks fetch count.

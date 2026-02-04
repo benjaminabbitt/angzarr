@@ -11,9 +11,8 @@ default:
     @just --list
 
 proto:
-    mkdir -p proto/angzarr proto/examples
-    cp -r "{{TOP}}/generated/go/angzarr/"* proto/angzarr/ 2>/dev/null || true
-    cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
+    mkdir -p proto/examples
+    for f in "{{TOP}}/generated/go/examples/"*.go; do case "$f" in */domains.pb.go) ;; *) cp "$f" proto/examples/ ;; esac; done
 
 build: proto
     go mod tidy
@@ -27,7 +26,7 @@ run-port port:
 
 clean:
     rm -f {{SERVICE}}
-    rm -rf proto/angzarr/*.go proto/examples/*.go
+    rm -rf proto/examples/*.go
 
 copy-features:
     rm -rf features

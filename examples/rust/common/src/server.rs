@@ -28,10 +28,10 @@ use angzarr::proto::process_manager_server::{
 use angzarr::proto::projector_server::{Projector as ProjectorService, ProjectorServer};
 use angzarr::proto::saga_server::{Saga as SagaService, SagaServer};
 use angzarr::proto::{
-    BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook, GetSubscriptionsRequest,
-    GetSubscriptionsResponse, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
+    BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook,
+    GetDescriptorRequest, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
     ProcessManagerPrepareRequest, ProcessManagerPrepareResponse, Projection, SagaExecuteRequest,
-    SagaPrepareRequest, SagaPrepareResponse, SagaResponse, Subscription,
+    SagaPrepareRequest, SagaPrepareResponse, SagaResponse,
 };
 
 /// Initialize JSON tracing subscriber.
@@ -81,6 +81,10 @@ pub fn get_transport(service_name: &str, domain: &str, default_port: &str) -> Tr
 /// and returns a response with new events or rejection.
 #[tonic::async_trait]
 pub trait AggregateLogic: Send + Sync {
+    /// Self-description: component type, subscribed domains, handled command types.
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor::default()
+    }
     /// Handle a contextual command and return a client response.
     async fn handle(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
 }
@@ -98,6 +102,13 @@ impl<T> AggregateWrapper<T> {
 
 #[tonic::async_trait]
 impl<T: AggregateLogic + 'static> Aggregate for AggregateWrapper<T> {
+    async fn get_descriptor(
+        &self,
+        _request: Request<GetDescriptorRequest>,
+    ) -> Result<Response<ComponentDescriptor>, Status> {
+        Ok(Response::new(self.logic.descriptor()))
+    }
+
     async fn handle(
         &self,
         request: Request<ContextualCommand>,
@@ -166,6 +177,11 @@ pub async fn run_aggregate_server<T: AggregateLogic + 'static>(
 /// Phase 1 (Prepare): Saga receives source events, declares destination aggregates needed.
 /// Phase 2 (Execute): Saga receives source + destination state, produces commands.
 pub trait SagaLogic: Send + Sync {
+    /// Self-description: component type, subscribed domains, handled event types.
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor::default()
+    }
+
     /// Phase 1: Examine source events, return covers of destination aggregates needed.
     /// Default returns empty vec for stateless sagas that don't need destination state.
     fn prepare(&self, _source: &EventBook) -> Vec<Cover> {
@@ -189,6 +205,13 @@ impl<T> SagaWrapper<T> {
 
 #[tonic::async_trait]
 impl<T: SagaLogic + 'static> SagaService for SagaWrapper<T> {
+    async fn get_descriptor(
+        &self,
+        _request: Request<GetDescriptorRequest>,
+    ) -> Result<Response<ComponentDescriptor>, Status> {
+        Ok(Response::new(self.saga.descriptor()))
+    }
+
     /// Phase 1: Return destination covers needed by this saga.
     async fn prepare(
         &self,
@@ -276,8 +299,8 @@ pub async fn run_saga_server<T: SagaLogic + 'static>(
 /// Process managers coordinate long-running workflows across multiple domains.
 /// They maintain event-sourced state and subscribe to multiple event sources.
 pub trait ProcessManagerLogic: Send + Sync {
-    /// Declare which domains this process manager subscribes to.
-    fn subscriptions(&self) -> Vec<Subscription>;
+    /// Self-description: component type, subscribed domains, handled event types.
+    fn descriptor(&self) -> ComponentDescriptor;
 
     /// Phase 1: Examine trigger + PM state, return covers of additional destinations needed.
     fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover>;
@@ -304,12 +327,11 @@ impl<T> ProcessManagerWrapper<T> {
 
 #[tonic::async_trait]
 impl<T: ProcessManagerLogic + 'static> ProcessManagerService for ProcessManagerWrapper<T> {
-    async fn get_subscriptions(
+    async fn get_descriptor(
         &self,
-        _request: Request<GetSubscriptionsRequest>,
-    ) -> Result<Response<GetSubscriptionsResponse>, Status> {
-        let subscriptions = self.logic.subscriptions();
-        Ok(Response::new(GetSubscriptionsResponse { subscriptions }))
+        _request: Request<GetDescriptorRequest>,
+    ) -> Result<Response<ComponentDescriptor>, Status> {
+        Ok(Response::new(self.logic.descriptor()))
     }
 
     async fn prepare(
@@ -401,6 +423,10 @@ pub async fn run_process_manager_server<T: ProcessManagerLogic + 'static>(
 /// Projectors receive events and produce projections (read model updates).
 #[tonic::async_trait]
 pub trait ProjectorLogic: Send + Sync {
+    /// Self-description: component type, subscribed domains, handled event types.
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor::default()
+    }
     /// Handle an event book, returning an optional projection.
     async fn handle(&self, book: &EventBook) -> Result<Option<Projection>, Status>;
 }
@@ -418,6 +444,13 @@ impl<T> ProjectorWrapper<T> {
 
 #[tonic::async_trait]
 impl<T: ProjectorLogic + 'static> ProjectorService for ProjectorWrapper<T> {
+    async fn get_descriptor(
+        &self,
+        _request: Request<GetDescriptorRequest>,
+    ) -> Result<Response<ComponentDescriptor>, Status> {
+        Ok(Response::new(self.projector.descriptor()))
+    }
+
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
         let event_book = request.into_inner();
         let projection = self.projector.handle(&event_book).await?;

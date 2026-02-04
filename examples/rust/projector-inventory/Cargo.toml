@@ -1,0 +1,26 @@
+[package]
+name = "projector-inventory"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "projector-inventory-server"
+path = "src/main.rs"
+
+[features]
+standalone = ["angzarr/sqlite"]
+
+[dependencies]
+angzarr.workspace = true
+common.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+async-trait.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

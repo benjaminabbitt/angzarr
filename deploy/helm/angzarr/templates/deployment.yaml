@@ -134,7 +134,7 @@ spec:
               containerPort: {{ $.Values.service.aggregatePort }}
               protocol: TCP
             - name: query
-              containerPort: {{ $.Values.service.aggregatePort }}
+              containerPort: {{ $.Values.service.queryPort }}
               protocol: TCP
             {{- if $.Values.ports.coordinatorDebug.enabled }}
             - name: coord-debug
@@ -157,7 +157,7 @@ spec:
               value: "localhost:{{ .port }}"
             - name: ANGZARR__TARGET__DOMAIN
               value: {{ .domain | quote }}
-            # Storage configuration - override from secret if provided
+            # Storage configuration - from secret if provided, else inline
             {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
@@ -171,6 +171,13 @@ spec:
                 secretKeyRef:
                   name: {{ $.Values.storage.existingSecret }}
                   key: database
+            {{- else if eq $.Values.storage.type "mongodb" }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              value: {{ $.Values.storage.mongodb.uri | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              value: {{ $.Values.storage.mongodb.database | quote }}
             {{- end }}
             # AMQP configuration
             {{- if $.Values.amqp.enabled }}
@@ -307,6 +314,16 @@ spec:
               value: {{ .topics | join "," | quote }}
             - name: ANGZARR_LOG
               value: {{ $.Values.logging.level }}
+            # PostgreSQL for read model storage
+            - name: DATABASE_URL
+              {{- if $.Values.storage.postgres.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.postgres.existingSecret }}
+                  key: uri
+              {{- else }}
+              value: {{ $.Values.storage.postgres.uri | quote }}
+              {{- end }}
           resources:
             {{- if .resources }}
             {{- toYaml .resources | nindent 12 }}
@@ -341,6 +358,8 @@ spec:
             # Projector sidecar target address
             - name: ANGZARR__TARGET__ADDRESS
               value: "localhost:{{ .port | default 50051 }}"
+            - name: ANGZARR__TARGET__DOMAIN
+              value: {{ .domain | quote }}
             # Storage configuration - from secret if provided
             {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
@@ -579,6 +598,172 @@ spec:
             {{- end }}
             {{- include "angzarr.otel-env" (dict "root" $ "service" "saga" "domain" (.domain | trimPrefix "saga-")) | nindent 12 }}
           # NOTE: No liveness/readiness probes - saga sidecar is a pure consumer (no server ports)
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Process Manager deployments */}}
+{{- range .Values.applications.processManagers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "angzarr.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: process-manager
+  {{- if $.Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "angzarr.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: process-manager
+      angzarr.io/app: {{ .name }}
+  template:
+    metadata:
+      annotations:
+        {{- if $.Values.reloader.enabled }}
+        reloader.stakater.com/auto: "true"
+        {{- end }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "angzarr.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: process-manager
+        angzarr.io/app: {{ .name }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if $.Values.amqp.enabled }}
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for RabbitMQ..."
+              until nc -z angzarr-mq-rabbitmq 5672 2>/dev/null; do sleep 2; done
+              echo "RabbitMQ is ready"
+        {{- end }}
+      containers:
+        # Main container: Process Manager application
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: grpc
+              containerPort: {{ .port | default 50051 }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "{{ .port | default 50051 }}"
+            - name: ANGZARR_HOST
+              value: "localhost"
+            - name: ANGZARR_PORT
+              value: "{{ $.Values.service.aggregatePort }}"
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+          resources:
+            {{- if .resources }}
+            {{- toYaml .resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.applicationResources | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
+
+        # Sidecar: Angzarr process-manager sidecar
+        - name: angzarr
+          securityContext:
+            {{- include "angzarr.containerSecurityContext" $ | nindent 12 }}
+          image: "{{ $.Values.images.processManager.repository }}:{{ $.Values.images.processManager.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.images.processManager.pullPolicy }}
+          ports:
+            - name: aggregate
+              containerPort: {{ $.Values.service.aggregatePort }}
+              protocol: TCP
+            - name: query
+              containerPort: {{ $.Values.service.queryPort }}
+              protocol: TCP
+          env:
+            - name: ANGZARR_LOG
+              value: {{ $.Values.logging.level }}
+            - name: ANGZARR__SERVER__AGGREGATE_PORT
+              value: "{{ $.Values.service.aggregatePort }}"
+            - name: ANGZARR__SERVER__EVENT_QUERY_PORT
+              value: "{{ $.Values.service.queryPort }}"
+            - name: ANGZARR__TARGET__ADDRESS
+              value: "localhost:{{ .port | default 50051 }}"
+            - name: ANGZARR__TARGET__DOMAIN
+              value: {{ .domain | quote }}
+            # Static endpoints for multi-domain command routing (business aggregates only)
+            # PM state persistence is handled directly by the sidecar (no self-reference needed)
+            - name: ANGZARR_STATIC_ENDPOINTS
+              value: "{{ range $i, $app := $.Values.applications.business }}{{ if $i }},{{ end }}{{ $app.domain }}={{ include "angzarr.fullname" $ }}-{{ $app.name }}:{{ $.Values.service.aggregatePort }}{{ end }}"
+            # Storage configuration
+            {{- if $.Values.storage.existingSecret }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: uri
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.storage.existingSecret }}
+                  key: database
+            {{- else }}
+            - name: ANGZARR__STORAGE__TYPE
+              value: {{ $.Values.storage.type | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__URI
+              value: {{ $.Values.storage.mongodb.uri | quote }}
+            - name: ANGZARR__STORAGE__MONGODB__DATABASE
+              value: {{ $.Values.storage.mongodb.database | quote }}
+            {{- end }}
+            # Messaging configuration
+            {{- if $.Values.amqp.enabled }}
+            - name: ANGZARR__MESSAGING__TYPE
+              value: "amqp"
+            - name: ANGZARR__MESSAGING__AMQP__URL
+              {{- if $.Values.amqp.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.amqp.existingSecret }}
+                  key: uri
+              {{- else }}
+              value: {{ $.Values.amqp.url }}
+              {{- end }}
+            - name: ANGZARR__MESSAGING__AMQP__DOMAIN
+              value: {{ .topics | join "," | quote }}
+            {{- end }}
+            {{- include "angzarr.otel-env" (dict "root" $ "service" "process-manager" "domain" .domain) | nindent 12 }}
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
       {{- with $.Values.nodeSelector }}
@@ -976,7 +1161,14 @@ spec:
             {{- end }}
             {{- if eq .Values.infrastructure.topology.storage.type "postgres" }}
             - name: TOPOLOGY_POSTGRES_URI
+              {{- if .Values.storage.postgres.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.storage.postgres.existingSecret }}
+                  key: uri
+              {{- else }}
               value: {{ .Values.storage.postgres.uri | quote }}
+              {{- end }}
             {{- end }}
             # Messaging configuration (topology subscribes directly to bus)
             {{- if .Values.amqp.enabled }}

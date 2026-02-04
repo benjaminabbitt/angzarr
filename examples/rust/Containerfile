@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
 # Rust example images - unified dev/release build
 #
-# Dev (fast):     podman build --target customer-dev -t aggregate-customer-rs -f examples/rust/Containerfile .
-# Release (slow): podman build --target customer -t aggregate-customer-rs -f examples/rust/Containerfile .
+# Dev (fast):     podman build --target order-dev -t aggregate-order-rs -f examples/rust/Containerfile .
+# Release (slow): podman build --target order -t aggregate-order-rs -f examples/rust/Containerfile .
 #
 # Dev uses native glibc target + debian runtime (no cross-compilation)
 # Release uses musl static target + scratch runtime (smallest images)
@@ -39,15 +39,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,id=examples-target,target=/app/target \
     cargo build --profile container-dev \
-    -p customer --bin customer-server \
-    -p product --bin product-server \
-    -p inventory-svc --bin inventory-server \
     -p order --bin order-server \
-    -p cart --bin cart-server \
+    -p inventory-svc --bin inventory-server \
     -p fulfillment --bin fulfillment-server \
-    -p saga-loyalty-earn --bin saga-loyalty-earn-server \
-    -p saga-fulfillment --bin saga-fulfillment-server \
-    -p saga-cancellation --bin saga-cancellation-server && \
+    -p saga-order-fulfillment --bin saga-order-fulfillment-server \
+    -p saga-order-inventory --bin saga-order-inventory-server \
+    -p saga-fulfillment-inventory --bin saga-fulfillment-inventory-server \
+    -p process-manager-fulfillment --bin process-manager-fulfillment-server \
+    -p projector-inventory --bin projector-inventory-server && \
     cp target/container-dev/*-server /tmp/
 
 # =============================================================================
@@ -90,15 +89,14 @@ RUN mkdir -p tests/integration && \
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo build --release --target x86_64-unknown-linux-musl \
-    -p customer --bin customer-server \
-    -p product --bin product-server \
-    -p inventory-svc --bin inventory-server \
     -p order --bin order-server \
-    -p cart --bin cart-server \
+    -p inventory-svc --bin inventory-server \
     -p fulfillment --bin fulfillment-server \
-    -p saga-loyalty-earn --bin saga-loyalty-earn-server \
-    -p saga-fulfillment --bin saga-fulfillment-server \
-    -p saga-cancellation --bin saga-cancellation-server && \
+    -p saga-order-fulfillment --bin saga-order-fulfillment-server \
+    -p saga-order-inventory --bin saga-order-inventory-server \
+    -p saga-fulfillment-inventory --bin saga-fulfillment-inventory-server \
+    -p process-manager-fulfillment --bin process-manager-fulfillment-server \
+    -p projector-inventory --bin projector-inventory-server && \
     cp target/x86_64-unknown-linux-musl/release/*-server /tmp/
 
 # =============================================================================
@@ -116,37 +114,18 @@ FROM scratch AS runtime-release-base
 WORKDIR /app
 
 # =============================================================================
-# Dev images - Domain Aggregates (logic port = base + 3)
-# See docs/port-conventions.md for port scheme
+# Dev images - Domain Aggregates
 # =============================================================================
-FROM runtime-dev-base AS customer-dev
-COPY --from=builder-dev /tmp/customer-server ./server
-ENV PORT=50053
-EXPOSE 50053
-ENTRYPOINT ["./server"]
-
-FROM runtime-dev-base AS product-dev
-COPY --from=builder-dev /tmp/product-server ./server
-ENV PORT=50063
-EXPOSE 50063
-ENTRYPOINT ["./server"]
-
-FROM runtime-dev-base AS inventory-dev
-COPY --from=builder-dev /tmp/inventory-server ./server
-ENV PORT=50073
-EXPOSE 50073
-ENTRYPOINT ["./server"]
-
 FROM runtime-dev-base AS order-dev
 COPY --from=builder-dev /tmp/order-server ./server
 ENV PORT=50083
 EXPOSE 50083
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS cart-dev
-COPY --from=builder-dev /tmp/cart-server ./server
-ENV PORT=50093
-EXPOSE 50093
+FROM runtime-dev-base AS inventory-dev
+COPY --from=builder-dev /tmp/inventory-server ./server
+ENV PORT=50073
+EXPOSE 50073
 ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS fulfillment-dev
@@ -156,59 +135,57 @@ EXPOSE 50103
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Dev images - Sagas (logic port = base + 3)
-# See docs/port-conventions.md for port scheme
+# Dev images - Sagas
 # =============================================================================
-FROM runtime-dev-base AS saga-loyalty-earn-dev
-COPY --from=builder-dev /tmp/saga-loyalty-earn-server ./server
-ENV PORT=50113
-EXPOSE 50113
-ENTRYPOINT ["./server"]
-
-FROM runtime-dev-base AS saga-fulfillment-dev
-COPY --from=builder-dev /tmp/saga-fulfillment-server ./server
+FROM runtime-dev-base AS saga-order-fulfillment-dev
+COPY --from=builder-dev /tmp/saga-order-fulfillment-server ./server
 ENV PORT=50123
 EXPOSE 50123
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS saga-cancellation-dev
-COPY --from=builder-dev /tmp/saga-cancellation-server ./server
-ENV PORT=50133
-EXPOSE 50133
+FROM runtime-dev-base AS saga-order-inventory-dev
+COPY --from=builder-dev /tmp/saga-order-inventory-server ./server
+ENV PORT=50153
+EXPOSE 50153
+ENTRYPOINT ["./server"]
+
+FROM runtime-dev-base AS saga-fulfillment-inventory-dev
+COPY --from=builder-dev /tmp/saga-fulfillment-inventory-server ./server
+ENV PORT=50127
+EXPOSE 50127
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Release images - Domain Aggregates (logic port = base + 3)
-# See docs/port-conventions.md for port scheme
+# Dev images - Process Managers
 # =============================================================================
-FROM runtime-release-base AS customer
-COPY --from=builder-release /tmp/customer-server ./server
-ENV PORT=50053
-EXPOSE 50053
+FROM runtime-dev-base AS process-manager-fulfillment-dev
+COPY --from=builder-dev /tmp/process-manager-fulfillment-server ./server
+ENV PORT=50163
+EXPOSE 50163
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS product
-COPY --from=builder-release /tmp/product-server ./server
-ENV PORT=50063
-EXPOSE 50063
+# =============================================================================
+# Dev images - Projectors
+# =============================================================================
+FROM runtime-dev-base AS projector-inventory-dev
+COPY --from=builder-dev /tmp/projector-inventory-server ./server
+ENV PORT=50183
+EXPOSE 50183
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS inventory
-COPY --from=builder-release /tmp/inventory-server ./server
-ENV PORT=50073
-EXPOSE 50073
-ENTRYPOINT ["./server"]
-
+# =============================================================================
+# Release images - Domain Aggregates
+# =============================================================================
 FROM runtime-release-base AS order
 COPY --from=builder-release /tmp/order-server ./server
 ENV PORT=50083
 EXPOSE 50083
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS cart
-COPY --from=builder-release /tmp/cart-server ./server
-ENV PORT=50093
-EXPOSE 50093
+FROM runtime-release-base AS inventory
+COPY --from=builder-release /tmp/inventory-server ./server
+ENV PORT=50073
+EXPOSE 50073
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS fulfillment
@@ -218,23 +195,40 @@ EXPOSE 50103
 ENTRYPOINT ["./server"]
 
 # =============================================================================
-# Release images - Sagas (logic port = base + 3)
-# See docs/port-conventions.md for port scheme
+# Release images - Sagas
 # =============================================================================
-FROM runtime-release-base AS saga-loyalty-earn
-COPY --from=builder-release /tmp/saga-loyalty-earn-server ./server
-ENV PORT=50113
-EXPOSE 50113
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS saga-fulfillment
-COPY --from=builder-release /tmp/saga-fulfillment-server ./server
+FROM runtime-release-base AS saga-order-fulfillment
+COPY --from=builder-release /tmp/saga-order-fulfillment-server ./server
 ENV PORT=50123
 EXPOSE 50123
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS saga-cancellation
-COPY --from=builder-release /tmp/saga-cancellation-server ./server
-ENV PORT=50133
-EXPOSE 50133
+FROM runtime-release-base AS saga-order-inventory
+COPY --from=builder-release /tmp/saga-order-inventory-server ./server
+ENV PORT=50153
+EXPOSE 50153
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS saga-fulfillment-inventory
+COPY --from=builder-release /tmp/saga-fulfillment-inventory-server ./server
+ENV PORT=50127
+EXPOSE 50127
+ENTRYPOINT ["./server"]
+
+# =============================================================================
+# Release images - Process Managers
+# =============================================================================
+FROM runtime-release-base AS process-manager-fulfillment
+COPY --from=builder-release /tmp/process-manager-fulfillment-server ./server
+ENV PORT=50163
+EXPOSE 50163
+ENTRYPOINT ["./server"]
+
+# =============================================================================
+# Release images - Projectors
+# =============================================================================
+FROM runtime-release-base AS projector-inventory
+COPY --from=builder-release /tmp/projector-inventory-server ./server
+ENV PORT=50183
+EXPOSE 50183
 ENTRYPOINT ["./server"]

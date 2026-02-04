@@ -226,6 +226,21 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 80
 
+# Pod Disruption Budget configuration
+# Ensures minimum availability during voluntary disruptions (node drains, upgrades)
+# Only creates PDBs when replicaCount > 1 (PDBs require multiple replicas to be useful)
+podDisruptionBudget:
+  enabled: false
+  # For aggregates: use minAvailable OR maxUnavailable (not both)
+  # minAvailable: 1
+  maxUnavailable: 1
+  # Sagas can tolerate brief interruption (events replay on restart)
+  sagaMaxUnavailable: 1
+  # Projectors can tolerate brief interruption (events replay on restart)
+  projectorMaxUnavailable: 1
+  # Process managers similar to sagas
+  processManagerMaxUnavailable: 1
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

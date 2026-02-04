@@ -89,4 +89,12 @@ pub trait EventStore: Send + Sync {
         &self,
         correlation_id: &str,
     ) -> Result<Vec<crate::proto::EventBook>>;
+
+    /// Delete all events for an edition+domain combination.
+    ///
+    /// Returns the number of events deleted.
+    /// Note: This is a destructive operation - events cannot be recovered.
+    /// Main timeline ('angzarr' or empty edition) protection must be enforced
+    /// by the caller.
+    async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32>;
 }

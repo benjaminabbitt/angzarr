@@ -15,7 +15,40 @@ message Cover {
   string domain = 2;
   UUID root = 1;
   string correlation_id = 3;  // Workflow correlation - flows through all commands/events
-  optional string edition = 4; // Edition name for diverged timelines; empty = main timeline
+  Edition edition = 4;        // Edition for diverged timelines; empty name = main timeline
+}
+
+// Edition identifier with optional explicit divergence points.
+//
+// Two modes:
+// - Implicit (divergences empty): Divergence derived from first edition event's sequence
+// - Explicit (divergences populated): Per-domain divergence points for historical branching,
+//  saga coordination, or speculative execution
+message Edition {
+  string name = 1;                              // Edition name, e.g., "v2"; empty = main timeline
+  repeated DomainDivergence divergences = 2;   // Optional: explicit per-domain divergence points
+}
+
+// Explicit divergence point for a specific domain.
+// Used when creating historical branches or coordinating saga writes across domains.
+message DomainDivergence {
+  string domain = 1;    // Domain name
+  uint32 sequence = 2;  // Divergence sequence number
+}
+
+// Delete all events for an edition+domain combination.
+// Main timeline ('angzarr' or empty edition name) cannot be deleted.
+message DeleteEditionEvents {
+  string edition = 1;   // Edition name to delete from
+  string domain = 2;    // Domain to delete from
+}
+
+// Response from edition event deletion.
+message EditionEventsDeleted {
+  string edition = 1;
+  string domain = 2;
+  uint32 deleted_count = 3;
+  string deleted_at = 4;
 }
 
 // Controls synchronous processing behavior
@@ -219,3 +252,21 @@ message DryRunRequest {
 message EventStreamFilter {
   string correlation_id = 1;
 }
+
+// Event subscription filter — declares which domain a component subscribes to.
+// event_types auto-derived from router registrations, never manually configured.
+message Subscription {
+  string domain = 1;
+  repeated string event_types = 2;
+}
+
+// Self-description of a runtime component (aggregate, saga, projector, process_manager).
+// Inputs are declared; outputs are discovered at runtime by the topology projector.
+message ComponentDescriptor {
+  string name = 1;
+  string component_type = 2;
+  repeated Subscription inputs = 3;
+}
+
+// Request for GetDescriptor RPC.
+message GetDescriptorRequest {}

@@ -1,4 +1,8 @@
 //! SQLite EventStore implementation.
+//!
+//! Implements composite reads for editions: query edition events first to derive
+//! the implicit divergence point, then query main timeline up to that point,
+//! then merge the results.
 
 use async_trait::async_trait;
 use prost::Message;
@@ -6,6 +10,7 @@ use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::storage::schema::Events;
 use crate::storage::{EventStore, Result};
 use crate::proto::EventPage;
@@ -19,6 +24,145 @@ impl SqliteEventStore {
     /// Create a new SQLite event store.
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// Check if edition is the main timeline.
+    fn is_main_timeline(edition: &str) -> bool {
+        edition.is_empty() || edition == DEFAULT_EDITION
+    }
+
+    /// Query events for a specific edition (internal helper).
+    async fn query_edition_events(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(root_str))
+            .and_where(Expr::col(Events::Sequence).gte(from))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(SqliteQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    /// Get the minimum sequence number from edition events (implicit divergence point).
+    async fn get_edition_min_sequence(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+    ) -> Result<Option<u32>> {
+        let query = Query::select()
+            .expr(Expr::col(Events::Sequence).min())
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(root_str))
+            .to_string(SqliteQueryBuilder);
+
+        let row = sqlx::query(&query).fetch_optional(&self.pool).await?;
+
+        match row {
+            Some(row) => {
+                let min_seq: Option<i32> = row.get(0);
+                Ok(min_seq.map(|s| s as u32))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Query main timeline events up to (but not including) a sequence number.
+    async fn query_main_events_until(
+        &self,
+        domain: &str,
+        root_str: &str,
+        until_seq: u32,
+    ) -> Result<Vec<EventPage>> {
+        let query = Query::select()
+            .column(Events::EventData)
+            .from(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(DEFAULT_EDITION))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .and_where(Expr::col(Events::Root).eq(root_str))
+            .and_where(Expr::col(Events::Sequence).lt(until_seq))
+            .order_by(Events::Sequence, Order::Asc)
+            .to_string(SqliteQueryBuilder);
+
+        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+
+        let mut events = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event_data: Vec<u8> = row.get("event_data");
+            let event = EventPage::decode(event_data.as_slice())?;
+            events.push(event);
+        }
+
+        Ok(events)
+    }
+
+    /// Perform a composite read for an edition.
+    ///
+    /// 1. Query edition events to get implicit divergence point (min sequence)
+    /// 2. Query main timeline events up to divergence point
+    /// 3. Merge: main events + edition events
+    async fn composite_read(
+        &self,
+        domain: &str,
+        edition: &str,
+        root_str: &str,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
+        // Query edition events first to determine divergence point
+        let edition_events = self.query_edition_events(domain, edition, root_str, 0).await?;
+
+        if edition_events.is_empty() {
+            // No edition events - return main timeline only
+            return self.query_edition_events(domain, DEFAULT_EDITION, root_str, from).await;
+        }
+
+        // Get implicit divergence point from first edition event
+        let divergence = self.get_edition_min_sequence(domain, edition, root_str).await?
+            .unwrap_or(0);
+
+        // Query main timeline events up to divergence point
+        let main_events = self.query_main_events_until(domain, root_str, divergence).await?;
+
+        // Merge: main events (filtered by from) + edition events (filtered by from)
+        let mut result = Vec::new();
+
+        // Add main events that are >= from and < divergence
+        for event in main_events {
+            let seq = crate::storage::helpers::event_sequence(&event);
+            if seq >= from {
+                result.push(event);
+            }
+        }
+
+        // Add edition events that are >= from
+        for event in edition_events {
+            let seq = crate::storage::helpers::event_sequence(&event);
+            if seq >= from {
+                result.push(event);
+            }
+        }
+
+        Ok(result)
     }
 
     /// Insert events within an already-started transaction.
@@ -131,26 +275,13 @@ impl EventStore for SqliteEventStore {
     async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
         let root_str = root.to_string();
 
-        let query = Query::select()
-            .column(Events::EventData)
-            .from(Events::Table)
-            .and_where(Expr::col(Events::Edition).eq(edition))
-            .and_where(Expr::col(Events::Domain).eq(domain))
-            .and_where(Expr::col(Events::Root).eq(&root_str))
-            .and_where(Expr::col(Events::Sequence).gte(from))
-            .order_by(Events::Sequence, Order::Asc)
-            .to_string(SqliteQueryBuilder);
-
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
-
-        let mut events = Vec::with_capacity(rows.len());
-        for row in rows {
-            let event_data: Vec<u8> = row.get("event_data");
-            let event = EventPage::decode(event_data.as_slice())?;
-            events.push(event);
+        // Main timeline: simple query
+        if Self::is_main_timeline(edition) {
+            return self.query_edition_events(domain, DEFAULT_EDITION, &root_str, from).await;
         }
 
-        Ok(events)
+        // Named edition: composite read (main timeline up to divergence + edition events)
+        self.composite_read(domain, edition, &root_str, from).await
     }
 
     async fn get_from_to(
@@ -278,7 +409,7 @@ impl EventStore for SqliteEventStore {
         &self,
         correlation_id: &str,
     ) -> Result<Vec<crate::proto::EventBook>> {
-        use crate::proto::{Cover, EventBook, Uuid as ProtoUuid};
+        use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
         use std::collections::HashMap;
 
         if correlation_id.is_empty() {
@@ -288,6 +419,7 @@ impl EventStore for SqliteEventStore {
         let query = Query::select()
             .columns([
                 Events::Domain,
+                Events::Edition,
                 Events::Root,
                 Events::EventData,
                 Events::Sequence,
@@ -301,29 +433,30 @@ impl EventStore for SqliteEventStore {
 
         let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
 
-        let mut books_map: HashMap<(String, Uuid), Vec<EventPage>> = HashMap::new();
+        let mut books_map: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
 
         for row in rows {
             let domain: String = row.get("domain");
+            let edition: String = row.get("edition");
             let root_str: String = row.get("root");
             let event_data: Vec<u8> = row.get("event_data");
 
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map.entry((domain, root)).or_default().push(event);
+            books_map.entry((domain, edition, root)).or_default().push(event);
         }
 
         let books = books_map
             .into_iter()
-            .map(|((domain, root), pages)| EventBook {
+            .map(|((domain, edition, root), pages)| EventBook {
                 cover: Some(Cover {
                     domain,
                     root: Some(ProtoUuid {
                         value: root.as_bytes().to_vec(),
                     }),
                     correlation_id: correlation_id.to_string(),
-                    edition: None,
+                    edition: Some(Edition { name: edition, divergences: vec![] }),
                 }),
                 pages,
                 snapshot: None,
@@ -332,5 +465,16 @@ impl EventStore for SqliteEventStore {
             .collect();
 
         Ok(books)
+    }
+
+    async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
+        let query = Query::delete()
+            .from_table(Events::Table)
+            .and_where(Expr::col(Events::Edition).eq(edition))
+            .and_where(Expr::col(Events::Domain).eq(domain))
+            .to_string(SqliteQueryBuilder);
+
+        let result = sqlx::query(&query).execute(&self.pool).await?;
+        Ok(result.rows_affected() as u32)
     }
 }

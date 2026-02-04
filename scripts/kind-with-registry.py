@@ -105,6 +105,23 @@ def registry_running(name: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+def network_exists(name: str) -> bool:
+    """Check if a podman network exists."""
+    result = podman("network", "inspect", name, capture=True, check=False)
+    return result.returncode == 0
+
+
+def registry_on_network(registry_name: str, network_name: str) -> bool:
+    """Check if registry is connected to the specified network."""
+    result = podman(
+        "container", "inspect", registry_name,
+        "--format", f"{{{{index .NetworkSettings.Networks \"{network_name}\"}}}}",
+        capture=True, check=False
+    )
+    # If network exists, output is non-empty (the network config map)
+    return result.returncode == 0 and result.stdout.strip() not in ("", "<no value>")
+
+
 def ensure_volume(name: str) -> None:
     """Ensure a podman volume exists."""
     result = podman("volume", "inspect", name, capture=True, check=False)
@@ -115,13 +132,51 @@ def ensure_volume(name: str) -> None:
         print(f"Volume '{name}' already exists")
 
 
-def ensure_registry(cfg: Config) -> None:
-    """Ensure the registry container is running with persistent storage."""
+def ensure_registry(cfg: Config, require_kind_network: bool = False) -> None:
+    """Ensure the registry container is running with persistent storage.
+
+    Args:
+        cfg: Cluster configuration.
+        require_kind_network: If True, requires kind network to exist and creates
+            registry on it. If False, creates registry without network requirement.
+    """
     volume_name = f"{cfg.registry_name}-data"
     ensure_volume(volume_name)
 
-    if not registry_exists(cfg.registry_name):
-        print(f"Creating local registry on port {cfg.registry_port}...")
+    kind_network_available = network_exists("kind")
+
+    if registry_exists(cfg.registry_name):
+        # Registry exists - check if it needs to be recreated on kind network
+        if kind_network_available and not registry_on_network(cfg.registry_name, "kind"):
+            print("Registry exists but not on kind network, recreating...")
+            podman("stop", cfg.registry_name, check=False)
+            podman("rm", cfg.registry_name, check=False)
+        elif not registry_running(cfg.registry_name):
+            print("Starting stopped registry...")
+            podman("start", cfg.registry_name)
+            return
+        else:
+            print("Registry already running on correct network")
+            return
+
+    # Create registry - use kind network if available
+    if kind_network_available:
+        print(f"Creating local registry on port {cfg.registry_port} (network: kind)...")
+        podman(
+            "run", "-d",
+            "--restart=always",
+            "--network", "kind",
+            "-p", f"127.0.0.1:{cfg.registry_port}:5000",
+            "-v", f"{volume_name}:/var/lib/registry",
+            "-e", "REGISTRY_STORAGE_DELETE_ENABLED=true",
+            "--name", cfg.registry_name,
+            "docker.io/library/registry:2",
+        )
+    elif require_kind_network:
+        print("Error: kind network required but does not exist", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print(f"Creating local registry on port {cfg.registry_port} (no kind network yet)...")
         podman(
             "run", "-d",
             "--restart=always",
@@ -131,14 +186,6 @@ def ensure_registry(cfg: Config) -> None:
             "--name", cfg.registry_name,
             "docker.io/library/registry:2",
         )
-    elif not registry_running(cfg.registry_name):
-        print("Starting stopped registry...")
-        podman("start", cfg.registry_name)
-    else:
-        print("Registry already running")
-
-    # Connect to kind network (ignore errors if already connected or network doesn't exist)
-    podman("network", "connect", "kind", cfg.registry_name, check=False, capture=True)
 
 
 def create_registry_configmap(cfg: Config) -> None:
@@ -182,9 +229,8 @@ def create_cluster(cfg: Config) -> None:
          "--config", str(config_path), "--image", cfg.node_image,
          use_scope=True, cwd=REPO_ROOT)
 
-    # Connect registry to kind network
-    print("Connecting registry to kind network...")
-    podman("network", "connect", "kind", cfg.registry_name, check=False, capture=True)
+    # Now that kind network exists, ensure registry is on it
+    ensure_registry(cfg, require_kind_network=True)
 
     # Create ConfigMap
     create_registry_configmap(cfg)
@@ -240,8 +286,10 @@ def status(cfg: Config) -> None:
     print("=== Registry Status ===")
     if registry_exists(cfg.registry_name):
         running = registry_running(cfg.registry_name)
+        on_kind = registry_on_network(cfg.registry_name, "kind")
         state = "RUNNING" if running else "STOPPED"
-        print(f"Registry '{cfg.registry_name}': {state}")
+        network_state = "kind" if on_kind else "NOT on kind network"
+        print(f"Registry '{cfg.registry_name}': {state} ({network_state})")
         if running:
             # Test registry connectivity
             import urllib.request
@@ -251,6 +299,9 @@ def status(cfg: Config) -> None:
                         print(f"Registry API: OK (http://localhost:{cfg.registry_port}/v2/)")
             except Exception as e:
                 print(f"Registry API: UNREACHABLE ({e})")
+            if not on_kind and cluster_exists(cfg.cluster_name):
+                print("WARNING: Registry not on kind network - pods cannot pull images!")
+                print("Run 'just cluster-create' to fix this.")
     else:
         print(f"Registry '{cfg.registry_name}': NOT FOUND")
 
@@ -311,11 +362,12 @@ Examples:
         if args.command == "create":
             if cluster_exists(cfg.cluster_name):
                 print(f"Cluster '{cfg.cluster_name}' already exists")
-                ensure_registry(cfg)
+                # Cluster exists, so kind network exists - ensure registry is on it
+                ensure_registry(cfg, require_kind_network=True)
                 kubectl("config", "use-context", f"kind-{cfg.cluster_name}")
                 return 0
 
-            ensure_registry(cfg)
+            # Create cluster first (establishes kind network), then registry
             create_cluster(cfg)
             return 0
 

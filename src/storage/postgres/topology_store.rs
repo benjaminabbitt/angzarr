@@ -141,6 +141,46 @@ impl TopologyStore for PostgresTopologyStore {
         Ok(domains)
     }
 
+    async fn register_node(
+        &self,
+        node_id: &str,
+        component_type: &str,
+        domain: &str,
+        timestamp: &str,
+    ) -> Result<()> {
+        let query = Query::insert()
+            .into_table(TopologyNodes::Table)
+            .columns([
+                TopologyNodes::Id,
+                TopologyNodes::Title,
+                TopologyNodes::ComponentType,
+                TopologyNodes::Domain,
+                TopologyNodes::EventCount,
+                TopologyNodes::LastEventType,
+                TopologyNodes::LastSeen,
+                TopologyNodes::CreatedAt,
+            ])
+            .values_panic([
+                node_id.into(),
+                node_id.into(),
+                component_type.into(),
+                domain.into(),
+                0_i64.into(),
+                "registered".into(),
+                timestamp.into(),
+                timestamp.into(),
+            ])
+            .on_conflict(
+                OnConflict::column(TopologyNodes::Id)
+                    .update_columns([TopologyNodes::ComponentType])
+                    .to_owned(),
+            )
+            .to_string(PostgresQueryBuilder);
+
+        sqlx::query(&query).execute(&self.pool).await?;
+        Ok(())
+    }
+
     async fn upsert_node(
         &self,
         node_id: &str,
@@ -194,7 +234,14 @@ impl TopologyStore for PostgresTopologyStore {
         correlation_id: &str,
         timestamp: &str,
     ) -> Result<()> {
-        let edge_id = format!("{}--{}", source, target);
+        // Alphabetical ID for stable dedup — same pair always gets same ID
+        // regardless of which domain's event triggered the edge discovery.
+        let (id_a, id_b) = if source < target {
+            (source, target)
+        } else {
+            (target, source)
+        };
+        let edge_id = format!("{}--{}", id_a, id_b);
 
         let initial_types =
             serde_json::to_string(&vec![event_type]).unwrap_or_else(|_| "[]".to_string());

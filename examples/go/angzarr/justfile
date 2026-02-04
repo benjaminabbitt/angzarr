@@ -1,0 +1,25 @@
+# angzarr Go library — shared utilities for example implementations
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+# Show available commands
+default:
+    @just --list
+
+# Copy generated proto files
+# Excludes combined angzarr.pb.go / angzarr_grpc.pb.go which conflict with individual files
+proto:
+    mkdir -p proto/angzarr proto/examples
+    for f in "{{TOP}}/generated/go/angzarr/"*.go; do case "$f" in */angzarr.pb.go|*/angzarr_grpc.pb.go) ;; *) cp "$f" proto/angzarr/ ;; esac; done
+    cp -r "{{TOP}}/generated/go/examples/"* proto/examples/ 2>/dev/null || true
+
+# Build
+build: proto
+    go mod tidy
+    go build ./...
+
+# Clean
+clean:
+    rm -rf proto/angzarr/*.go proto/examples/*.go

@@ -45,6 +45,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
+    --bin angzarr-process-manager \
     --bin angzarr-stream \
     --bin angzarr-gateway \
     --bin angzarr-log \
@@ -54,11 +55,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Generate protobuf FileDescriptorSet for runtime event decoding
 RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
     -I proto \
-    proto/examples/customer.proto \
-    proto/examples/product.proto \
     proto/examples/inventory.proto \
     proto/examples/order.proto \
-    proto/examples/cart.proto \
     proto/examples/fulfillment.proto \
     proto/examples/projections.proto
 
@@ -123,6 +121,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
+    --bin angzarr-process-manager \
     --bin angzarr-stream \
     --bin angzarr-gateway \
     --bin angzarr-log \
@@ -132,11 +131,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Generate protobuf FileDescriptorSet for runtime event decoding
 RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
     -I proto \
-    proto/examples/customer.proto \
-    proto/examples/product.proto \
     proto/examples/inventory.proto \
     proto/examples/order.proto \
-    proto/examples/cart.proto \
     proto/examples/fulfillment.proto \
     proto/examples/projections.proto
 
@@ -171,6 +167,11 @@ ENTRYPOINT ["./server"]
 
 FROM runtime-dev-base AS angzarr-saga-dev
 COPY --from=builder-dev /tmp/angzarr-saga ./server
+EXPOSE 1313 1314
+ENTRYPOINT ["./server"]
+
+FROM runtime-dev-base AS angzarr-process-manager-dev
+COPY --from=builder-dev /tmp/angzarr-process-manager ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
@@ -210,6 +211,11 @@ ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS angzarr-saga
 COPY --from=builder-release /tmp/angzarr-saga ./server
+EXPOSE 1313 1314
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS angzarr-process-manager
+COPY --from=builder-release /tmp/angzarr-process-manager ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 

@@ -1,3 +1,0 @@
-SERVICE := "product"
-
-import "../service.justfile"

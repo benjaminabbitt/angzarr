@@ -81,6 +81,9 @@ pub enum StorageError {
     #[error("Invalid timestamp format: {0}")]
     InvalidTimestampFormat(String),
 
+    #[error("Invalid divergence point: {0}")]
+    InvalidDivergencePoint(String),
+
     #[error("Invalid UUID: {0}")]
     InvalidUuid(#[from] uuid::Error),
 
@@ -104,6 +107,9 @@ pub enum StorageError {
     #[cfg(feature = "redis")]
     #[error("Redis error: {0}")]
     Redis(#[from] ::redis::RedisError),
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 // ============================================================================

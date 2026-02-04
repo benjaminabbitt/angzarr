@@ -11,10 +11,11 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::bus::EventBus;
+use crate::proto_ext::EditionExt;
 use crate::config::SagaCompensationConfig;
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::saga_client::SagaClient;
-use crate::proto::{CommandBook, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest};
+use crate::proto::{CommandBook, Cover, Edition, EventBook, SagaExecuteRequest, SagaPrepareRequest};
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::saga_compensation::{build_revoke_command_book, CompensationContext};
 
@@ -74,7 +75,7 @@ impl SagaRetryContext for GrpcSagaContext {
         let mut covers = response.into_inner().destinations;
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(edition.clone());
+                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
             }
         }
         Ok(covers)
@@ -104,13 +105,17 @@ impl SagaRetryContext for GrpcSagaContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(edition.clone());
+                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
                     }
                 }
                 cmd
             })
             .collect();
         Ok(commands)
+    }
+
+    fn source_cover(&self) -> Option<&Cover> {
+        self.source.cover.as_ref()
     }
 
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str) {
@@ -188,17 +193,8 @@ async fn handle_command_rejection(
         }
     };
 
-    let triggering_domain = revoke_command
-        .cover
-        .as_ref()
-        .map(|c| c.domain.clone())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let correlation_id = revoke_command
-        .cover
-        .as_ref()
-        .map(|c| c.correlation_id.clone())
-        .unwrap_or_default();
+    let triggering_domain = revoke_command.domain().to_string();
+    let correlation_id = revoke_command.correlation_id().to_string();
 
     info!(
         saga = %saga_name,

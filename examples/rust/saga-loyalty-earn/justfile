@@ -1,5 +1,0 @@
-PKG := "saga-loyalty-earn"
-BIN_PKG := PKG
-BIN := PKG + "-server"
-
-import "../service.justfile"

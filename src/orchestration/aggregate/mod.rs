@@ -26,6 +26,7 @@ use crate::proto::{
     aggregate_client::AggregateClient, event_page, BusinessResponse, CommandBook, CommandResponse,
     ContextualCommand, EventBook, Projection,
 };
+use crate::proto_ext::CoverExt;
 use crate::utils::response_builder::extract_events_from_response;
 use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -183,18 +184,12 @@ pub fn compute_next_sequence(events: &EventBook) -> u32 {
 /// Default edition name for the canonical (main) timeline.
 pub const DEFAULT_EDITION: &str = "angzarr";
 
-/// Extract edition from a CommandBook's Cover.
+/// Extract edition name from a CommandBook's Cover.
 ///
-/// Returns the edition from `Cover.edition`, defaulting to [`DEFAULT_EDITION`]
+/// Returns the edition name from `Cover.edition`, defaulting to [`DEFAULT_EDITION`]
 /// when absent or empty.
 fn extract_edition(command_book: &CommandBook) -> String {
-    command_book
-        .cover
-        .as_ref()
-        .and_then(|c| c.edition.as_deref())
-        .filter(|e| !e.is_empty())
-        .unwrap_or(DEFAULT_EDITION)
-        .to_string()
+    command_book.edition().to_string()
 }
 
 /// Execute the aggregate command pipeline.

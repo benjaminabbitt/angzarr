@@ -1,18 +1,24 @@
-"""Initialize stock command handler."""
+"""Handler for InitializeStock command."""
 
 from datetime import datetime, timezone
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from angzarr import angzarr_pb2 as angzarr
+from angzarr import types_pb2 as types
+from errors import CommandRejectedError
 from proto import domains_pb2 as domains
 
-from state import InventoryState
-from handlers.errors import CommandRejectedError
+from handlers.state import InventoryState
 
 
-def handle_initialize_stock(command_book, command_any, state: InventoryState, seq: int, log) -> angzarr.EventBook:
+def handle_initialize_stock(
+    command_book: types.CommandBook,
+    command_any: Any,
+    state: InventoryState,
+    seq: int,
+) -> types.EventBook:
+    """Handle InitializeStock command."""
     if state.exists():
         raise CommandRejectedError("Inventory already initialized")
 
@@ -26,8 +32,6 @@ def handle_initialize_stock(command_book, command_any, state: InventoryState, se
     if cmd.low_stock_threshold < 0:
         raise CommandRejectedError("Low stock threshold cannot be negative")
 
-    log.info("initializing_stock", product_id=cmd.product_id, quantity=cmd.quantity)
-
     event = domains.StockInitialized(
         product_id=cmd.product_id,
         quantity=cmd.quantity,
@@ -38,7 +42,13 @@ def handle_initialize_stock(command_book, command_any, state: InventoryState, se
     event_any = Any()
     event_any.Pack(event, type_url_prefix="type.examples/")
 
-    return angzarr.EventBook(
+    return types.EventBook(
         cover=command_book.cover,
-        pages=[angzarr.EventPage(num=seq, event=event_any, created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())))],
+        pages=[
+            types.EventPage(
+                num=seq,
+                event=event_any,
+                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+            )
+        ],
     )

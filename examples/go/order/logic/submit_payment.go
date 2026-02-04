@@ -1,29 +1,38 @@
 package logic
 
 import (
+	"angzarr"
+	angzarrpb "angzarr/proto/angzarr"
 	"order/proto/examples"
 
+	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (l *DefaultOrderLogic) HandleSubmitPayment(state *OrderState, paymentMethod string, amountCents int32) (*examples.PaymentSubmitted, error) {
-	if !state.Exists() {
-		return nil, NewFailedPrecondition("Order does not exist")
-	}
-	if !state.IsPending() {
-		return nil, NewFailedPrecondition("Order is not in pending state")
-	}
-	if paymentMethod == "" {
-		return nil, NewInvalidArgument("Payment method is required")
-	}
-	expectedTotal := state.TotalAfterDiscount()
-	if amountCents != expectedTotal {
-		return nil, NewInvalidArgument("Payment amount must match order total")
+// HandleSubmitPayment validates and creates a PaymentSubmitted event.
+func HandleSubmitPayment(cb *angzarrpb.CommandBook, data []byte, state *OrderState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.SubmitPayment
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
 	}
 
-	return &examples.PaymentSubmitted{
-		PaymentMethod: paymentMethod,
-		AmountCents:   amountCents,
+	if !state.Exists() {
+		return nil, angzarr.NewFailedPrecondition(ErrMsgOrderNotFound)
+	}
+	if !state.IsPending() {
+		return nil, angzarr.NewFailedPrecondition(ErrMsgOrderNotPending)
+	}
+	if cmd.PaymentMethod == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgPaymentMethodReq)
+	}
+	expectedTotal := state.TotalAfterDiscount()
+	if cmd.AmountCents != expectedTotal {
+		return nil, angzarr.NewInvalidArgument(ErrMsgPaymentAmountMatch)
+	}
+
+	return angzarr.PackEvent(cb.Cover, &examples.PaymentSubmitted{
+		PaymentMethod: cmd.PaymentMethod,
+		AmountCents:   cmd.AmountCents,
 		SubmittedAt:   timestamppb.Now(),
-	}, nil
+	}, seq)
 }

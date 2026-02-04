@@ -1,91 +1,24 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"net"
-	"os"
+	"log"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	"angzarr"
 
 	"saga-fulfillment/logic"
-	"saga-fulfillment/proto/angzarr"
 )
-
-var (
-	logger    *zap.Logger
-	sagaLogic logic.FulfillmentSagaLogic
-)
-
-type server struct {
-	angzarr.UnimplementedSagaServer
-}
-
-// Prepare: Phase 1 - declare which destination aggregates are needed.
-func (s *server) Prepare(ctx context.Context, req *angzarr.SagaPrepareRequest) (*angzarr.SagaPrepareResponse, error) {
-	destinations := sagaLogic.Prepare(req.Source)
-	return &angzarr.SagaPrepareResponse{Destinations: destinations}, nil
-}
-
-// Execute: Phase 2 - produce commands given source and destination state.
-func (s *server) Execute(ctx context.Context, req *angzarr.SagaExecuteRequest) (*angzarr.SagaResponse, error) {
-	commands := sagaLogic.Execute(req.Source, req.Destinations)
-	if len(commands) > 0 {
-		logger.Info("processed events",
-			zap.Int("commands_generated", len(commands)))
-	}
-	return &angzarr.SagaResponse{Commands: commands}, nil
-}
-
-// Retry: Phase 2 (alternate) - retry after command rejection.
-func (s *server) Retry(ctx context.Context, req *angzarr.SagaRetryRequest) (*angzarr.SagaResponse, error) {
-	// For simple sagas, retry is the same as execute with updated state
-	commands := sagaLogic.Execute(req.Source, req.Destinations)
-	if len(commands) > 0 {
-		logger.Info("retrying saga",
-			zap.Uint32("attempt", req.Attempt),
-			zap.Int("commands_generated", len(commands)))
-	}
-	return &angzarr.SagaResponse{Commands: commands}, nil
-}
 
 func main() {
-	var err error
-	logger, err = zap.NewProduction()
-	if err != nil {
-		panic(err)
-	}
-	defer logger.Sync()
+	router := angzarr.NewEventRouter(logic.SagaName, logic.SourceDomain).
+		Output(logic.TargetDomain).
+		On("OrderCompleted", logic.HandleOrderCompleted)
 
-	sagaLogic = logic.NewFulfillmentSagaLogic()
+	handler := angzarr.NewSagaHandler(router).
+		WithPrepare(logic.Prepare).
+		WithExecute(logic.Execute)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "50207"
-	}
-
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
-	if err != nil {
-		logger.Fatal("failed to listen", zap.String("port", port), zap.Error(err))
-	}
-
-	s := grpc.NewServer()
-	angzarr.RegisterSagaServer(s, &server{})
-
-	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(s, healthServer)
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-
-	logger.Info("saga server started",
-		zap.String("saga", logic.SagaName),
-		zap.String("port", port),
-		zap.String("source_domain", logic.SourceDomain),
-		zap.String("target_domain", logic.TargetDomain))
-
-	if err := s.Serve(lis); err != nil {
-		logger.Fatal("failed to serve", zap.Error(err))
+	cfg := angzarr.ServerConfig{Domain: logic.SagaName, DefaultPort: "50207"}
+	if err := angzarr.RunSagaServer(cfg, handler); err != nil {
+		log.Fatal(err)
 	}
 }

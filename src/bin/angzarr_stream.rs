@@ -74,6 +74,16 @@ impl ProjectorCoordinator for StreamProjectorService {
         self.stream_service.handle(&book).await;
         Ok(Response::new(()))
     }
+
+    /// Speculative handle - stream projector doesn't produce projections.
+    async fn handle_speculative(
+        &self,
+        _request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        // Stream projector doesn't produce projection output
+        // Speculative execution is a no-op for streaming
+        Ok(Response::new(Projection::default()))
+    }
 }
 
 /// Wrapper to implement EventStream for Arc<StreamService>.

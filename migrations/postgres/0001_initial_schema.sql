@@ -39,3 +39,11 @@ CREATE TABLE IF NOT EXISTS positions (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (handler, domain, edition, root)
 );
+
+CREATE TABLE IF NOT EXISTS editions (
+    name TEXT NOT NULL PRIMARY KEY,
+    divergence_point_type TEXT NOT NULL,
+    divergence_point_value TEXT NOT NULL,
+    description TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);

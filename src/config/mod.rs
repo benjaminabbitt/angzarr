@@ -8,6 +8,7 @@ mod server;
 
 pub use client::{
     ProcessManagerConfig, SagaCompensationConfig, ServiceEndpoint, TimeoutConfig,
+    DEFAULT_SAGA_FALLBACK_DOMAIN,
 };
 pub use server::{
     ConfigError, ExternalServiceConfig, GatewayConfig, HealthCheckConfig, ResolvedStandaloneConfig,
@@ -24,6 +25,8 @@ pub const CONFIG_ENV_PREFIX: &str = "ANGZARR";
 pub const LOG_ENV_VAR: &str = "ANGZARR_LOG";
 /// Environment variable for service discovery type.
 pub const DISCOVERY_ENV_VAR: &str = "ANGZARR_DISCOVERY";
+/// Discovery mode value for static (non-K8s) service discovery.
+pub const DISCOVERY_STATIC: &str = "static";
 
 /// Environment variable for transport type (tcp/uds).
 pub const TRANSPORT_TYPE_ENV_VAR: &str = "TRANSPORT_TYPE";

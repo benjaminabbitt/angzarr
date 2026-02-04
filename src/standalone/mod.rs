@@ -23,7 +23,6 @@
 
 mod builder;
 mod client;
-pub mod edition;
 pub mod grpc_handlers;
 mod router;
 mod runtime;
@@ -32,10 +31,7 @@ mod speculative;
 mod traits;
 
 pub use builder::{GatewayConfig, RuntimeBuilder};
-pub use client::{CommandBuilder, CommandClient, EditionClient, SpeculativeClient, StandaloneQueryClient};
-pub use edition::{
-    EditionAggregateContext, EditionEventStore, EditionManager, EditionMetadata, DivergencePoint,
-};
+pub use client::{CommandBuilder, CommandClient, SpeculativeClient, StandaloneQueryClient};
 pub use grpc_handlers::{AggregateHandlerAdapter, GrpcProjectorHandler};
 pub use router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 pub use runtime::Runtime;

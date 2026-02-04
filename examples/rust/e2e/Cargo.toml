@@ -14,28 +14,27 @@ harness = false
 
 [dependencies]
 # Angzarr core (for proto types and clients)
-angzarr = { path = "../../..", features = ["sqlite"] }
+angzarr = { path = "../../..", features = ["sqlite", "topology"] }
 angzarr-client.workspace = true
 
 # Common proto types and server wrappers
 common = { path = "../common" }
 
 # Domain aggregate crates
-cart = { path = "../cart" }
-customer = { path = "../customer" }
 order = { path = "../order" }
 fulfillment = { path = "../fulfillment" }
 inventory-svc = { path = "../inventory" }
-product = { path = "../product" }
 
 # Saga crates
-saga-fulfillment = { path = "../saga-fulfillment" }
-saga-cancellation = { path = "../saga-cancellation" }
-saga-loyalty-earn = { path = "../saga-loyalty-earn" }
+saga-order-fulfillment = { path = "../saga-order-fulfillment" }
+saga-order-inventory = { path = "../saga-order-inventory" }
+saga-fulfillment-inventory = { path = "../saga-fulfillment-inventory" }
 
 # Process manager crates
 process-manager-fulfillment = { path = "../process-manager-fulfillment", features = ["standalone"] }
-process-manager-order-status = { path = "../process-manager-order-status", features = ["standalone"] }
+
+# Projector crates
+projector-inventory = { path = "../projector-inventory", features = ["standalone"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full", "macros", "rt-multi-thread"] }

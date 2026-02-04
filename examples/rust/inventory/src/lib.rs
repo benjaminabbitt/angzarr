@@ -5,19 +5,19 @@
 use prost::Message;
 
 use angzarr::proto::{
-    event_page::Sequence, BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook,
-    EventPage,
+    event_page::Sequence, BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand,
+    Cover, EventBook, EventPage,
 };
 use common::proto::{
     CommitReservation, InitializeStock, InventoryState, LowStockAlert, ReceiveStock,
     ReleaseReservation, ReservationCommitted, ReservationReleased, ReserveStock, StockInitialized,
     StockReceived, StockReserved,
 };
-use common::{decode_command, dispatch_aggregate, make_event_book, now, unknown_command};
+use common::{decode_command, make_event_book, now};
 use common::{
     rebuild_from_events, require_exists, require_non_negative, require_not_exists, require_positive,
 };
-use common::{AggregateLogic, BusinessError, Result};
+use common::{AggregateLogic, BusinessError, CommandRouter, Result};
 
 pub mod errmsg {
     pub const ALREADY_INITIALIZED: &str = "Inventory already initialized";
@@ -96,275 +96,261 @@ fn build_event_response(
     )
 }
 
-/// client logic for Inventory aggregate.
-pub struct InventoryLogic;
-
-common::define_aggregate!(InventoryLogic, "inventory");
-
-common::expose_handlers!(methods, InventoryLogic, InventoryState, rebuild: rebuild_state, [
-    (handle_initialize_stock_public, handle_initialize_stock),
-    (handle_receive_stock_public, handle_receive_stock),
-    (handle_reserve_stock_public, handle_reserve_stock),
-    (handle_release_reservation_public, handle_release_reservation),
-    (handle_commit_reservation_public, handle_commit_reservation),
-]);
+/// Client logic for Inventory aggregate.
+pub struct InventoryLogic {
+    router: CommandRouter<InventoryState>,
+}
 
 impl InventoryLogic {
-    /// Rebuild inventory state from events.
-    fn rebuild_state(&self, event_book: Option<&EventBook>) -> InventoryState {
-        rebuild_from_events(event_book, apply_event)
-    }
+    pub const DOMAIN: &'static str = "inventory";
 
-    fn available(&self, state: &InventoryState) -> i32 {
-        state.on_hand - state.reserved
-    }
-
-    fn handle_initialize_stock(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &InventoryState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_not_exists(&state.product_id, errmsg::ALREADY_INITIALIZED)?;
-
-        let cmd: InitializeStock = decode_command(command_data)?;
-
-        require_non_negative(cmd.quantity, errmsg::QUANTITY_POSITIVE)?;
-
-        let event = StockInitialized {
-            product_id: cmd.product_id.clone(),
-            quantity: cmd.quantity,
-            low_stock_threshold: cmd.low_stock_threshold,
-            initialized_at: Some(now()),
-        };
-
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.StockInitialized",
-            event,
-        ))
-    }
-
-    fn handle_receive_stock(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &InventoryState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
-
-        let cmd: ReceiveStock = decode_command(command_data)?;
-
-        require_positive(cmd.quantity, errmsg::QUANTITY_POSITIVE)?;
-
-        let new_on_hand = state.on_hand + cmd.quantity;
-
-        let event = StockReceived {
-            quantity: cmd.quantity,
-            new_on_hand,
-            reference: cmd.reference,
-            received_at: Some(now()),
-        };
-
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.StockReceived",
-            event,
-        ))
-    }
-
-    fn handle_reserve_stock(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &InventoryState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
-
-        let cmd: ReserveStock = decode_command(command_data)?;
-
-        let available = self.available(state);
-        if cmd.quantity > available {
-            return Err(BusinessError::Rejected(format!(
-                "{}: have {}, need {}",
-                errmsg::INSUFFICIENT_STOCK,
-                available,
-                cmd.quantity
-            )));
+    pub fn new() -> Self {
+        Self {
+            router: CommandRouter::new("inventory", rebuild_state)
+                .on("InitializeStock", handle_initialize_stock)
+                .on("ReceiveStock", handle_receive_stock)
+                .on("ReserveStock", handle_reserve_stock)
+                .on("ReleaseReservation", handle_release_reservation)
+                .on("CommitReservation", handle_commit_reservation),
         }
+    }
+}
 
-        let new_available = available - cmd.quantity;
-        let new_reserved = state.reserved + cmd.quantity;
+impl Default for InventoryLogic {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-        let event = StockReserved {
-            quantity: cmd.quantity,
-            order_id: cmd.order_id.clone(),
-            new_available,
-            reserved_at: Some(now()),
-            new_reserved,               // Fact: total reserved after this event
-            new_on_hand: state.on_hand, // Fact: on_hand unchanged by reserve
+fn rebuild_state(event_book: Option<&EventBook>) -> InventoryState {
+    rebuild_from_events(event_book, apply_event)
+}
+
+fn available(state: &InventoryState) -> i32 {
+    state.on_hand - state.reserved
+}
+
+fn handle_initialize_stock(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &InventoryState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_not_exists(&state.product_id, errmsg::ALREADY_INITIALIZED)?;
+
+    let cmd: InitializeStock = decode_command(command_data)?;
+
+    require_non_negative(cmd.quantity, errmsg::QUANTITY_POSITIVE)?;
+
+    let event = StockInitialized {
+        product_id: cmd.product_id.clone(),
+        quantity: cmd.quantity,
+        low_stock_threshold: cmd.low_stock_threshold,
+        initialized_at: Some(now()),
+    };
+
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.StockInitialized",
+        event,
+    ))
+}
+
+fn handle_receive_stock(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &InventoryState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
+
+    let cmd: ReceiveStock = decode_command(command_data)?;
+
+    require_positive(cmd.quantity, errmsg::QUANTITY_POSITIVE)?;
+
+    let new_on_hand = state.on_hand + cmd.quantity;
+
+    let event = StockReceived {
+        quantity: cmd.quantity,
+        new_on_hand,
+        reference: cmd.reference,
+        received_at: Some(now()),
+    };
+
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.StockReceived",
+        event,
+    ))
+}
+
+fn handle_reserve_stock(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &InventoryState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
+
+    let cmd: ReserveStock = decode_command(command_data)?;
+
+    let avail = available(state);
+    if cmd.quantity > avail {
+        return Err(BusinessError::Rejected(format!(
+            "{}: have {}, need {}",
+            errmsg::INSUFFICIENT_STOCK, avail, cmd.quantity
+        )));
+    }
+
+    let new_available = avail - cmd.quantity;
+    let new_reserved = state.reserved + cmd.quantity;
+
+    let event = StockReserved {
+        quantity: cmd.quantity,
+        order_id: cmd.order_id.clone(),
+        new_available,
+        reserved_at: Some(now()),
+        new_reserved,
+        new_on_hand: state.on_hand,
+    };
+
+    let event_bytes = event.encode_to_vec();
+    let mut new_state = state.clone();
+    apply_event(
+        &mut new_state,
+        &prost_types::Any {
+            type_url: "type.examples/examples.StockReserved".to_string(),
+            value: event_bytes.clone(),
+        },
+    );
+
+    let mut seq = next_seq;
+    let mut pages = vec![EventPage {
+        sequence: Some(Sequence::Num(seq)),
+        event: Some(prost_types::Any {
+            type_url: "type.examples/examples.StockReserved".to_string(),
+            value: event_bytes,
+        }),
+        created_at: Some(now()),
+    }];
+    seq += 1;
+
+    if state.low_stock_threshold > 0 && new_available < state.low_stock_threshold {
+        let alert = LowStockAlert {
+            product_id: state.product_id.clone(),
+            available: new_available,
+            threshold: state.low_stock_threshold,
+            alerted_at: Some(now()),
         };
-
-        // Derive state through apply_event (single source of truth)
-        let event_bytes = event.encode_to_vec();
-        let mut new_state = state.clone();
-        apply_event(
-            &mut new_state,
-            &prost_types::Any {
-                type_url: "type.examples/examples.StockReserved".to_string(),
-                value: event_bytes.clone(),
-            },
-        );
-
-        // Build event pages - main event plus optional alert
-        let mut seq = next_seq;
-        let mut pages = vec![EventPage {
+        pages.push(EventPage {
             sequence: Some(Sequence::Num(seq)),
             event: Some(prost_types::Any {
-                type_url: "type.examples/examples.StockReserved".to_string(),
-                value: event_bytes,
+                type_url: "type.examples/examples.LowStockAlert".to_string(),
+                value: alert.encode_to_vec(),
             }),
             created_at: Some(now()),
-        }];
-        seq += 1;
-
-        // Check for low stock alert
-        if state.low_stock_threshold > 0 && new_available < state.low_stock_threshold {
-            let alert = LowStockAlert {
-                product_id: state.product_id.clone(),
-                available: new_available,
-                threshold: state.low_stock_threshold,
-                alerted_at: Some(now()),
-            };
-            pages.push(EventPage {
-                sequence: Some(Sequence::Num(seq)),
-                event: Some(prost_types::Any {
-                    type_url: "type.examples/examples.LowStockAlert".to_string(),
-                    value: alert.encode_to_vec(),
-                }),
-                created_at: Some(now()),
-            });
-        }
-
-        Ok(EventBook {
-            cover: command_book.cover.clone(),
-            snapshot: None,
-            pages,
-            snapshot_state: Some(prost_types::Any {
-                type_url: STATE_TYPE_URL.to_string(),
-                value: new_state.encode_to_vec(),
-            }),
-        })
+        });
     }
 
-    fn handle_release_reservation(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &InventoryState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
+    Ok(EventBook {
+        cover: command_book.cover.clone(),
+        snapshot: None,
+        pages,
+        snapshot_state: Some(prost_types::Any {
+            type_url: STATE_TYPE_URL.to_string(),
+            value: new_state.encode_to_vec(),
+        }),
+    })
+}
 
-        let cmd: ReleaseReservation = decode_command(command_data)?;
+fn handle_release_reservation(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &InventoryState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
 
-        let quantity = state
-            .reservations
-            .get(&cmd.order_id)
-            .copied()
-            .ok_or_else(|| BusinessError::Rejected(errmsg::RESERVATION_NOT_FOUND.to_string()))?;
+    let cmd: ReleaseReservation = decode_command(command_data)?;
 
-        let new_available = self.available(state) + quantity;
-        let new_reserved = state.reserved - quantity;
+    let quantity = state
+        .reservations
+        .get(&cmd.order_id)
+        .copied()
+        .ok_or_else(|| BusinessError::Rejected(errmsg::RESERVATION_NOT_FOUND.to_string()))?;
 
-        let event = ReservationReleased {
-            order_id: cmd.order_id.clone(),
-            quantity,
-            new_available,
-            released_at: Some(now()),
-            new_reserved,               // Fact: total reserved after this event
-            new_on_hand: state.on_hand, // Fact: on_hand unchanged by release
-        };
+    let new_available = available(state) + quantity;
+    let new_reserved = state.reserved - quantity;
 
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.ReservationReleased",
-            event,
-        ))
-    }
+    let event = ReservationReleased {
+        order_id: cmd.order_id.clone(),
+        quantity,
+        new_available,
+        released_at: Some(now()),
+        new_reserved,
+        new_on_hand: state.on_hand,
+    };
 
-    fn handle_commit_reservation(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &InventoryState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.ReservationReleased",
+        event,
+    ))
+}
 
-        let cmd: CommitReservation = decode_command(command_data)?;
+fn handle_commit_reservation(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &InventoryState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.product_id, errmsg::NOT_INITIALIZED)?;
 
-        let quantity = state
-            .reservations
-            .get(&cmd.order_id)
-            .copied()
-            .ok_or_else(|| BusinessError::Rejected(errmsg::RESERVATION_NOT_FOUND.to_string()))?;
+    let cmd: CommitReservation = decode_command(command_data)?;
 
-        let new_on_hand = state.on_hand - quantity;
-        let new_reserved = state.reserved - quantity;
+    let quantity = state
+        .reservations
+        .get(&cmd.order_id)
+        .copied()
+        .ok_or_else(|| BusinessError::Rejected(errmsg::RESERVATION_NOT_FOUND.to_string()))?;
 
-        let event = ReservationCommitted {
-            order_id: cmd.order_id.clone(),
-            quantity,
-            new_on_hand,
-            committed_at: Some(now()),
-            new_reserved, // Fact: total reserved after this event
-        };
+    let new_on_hand = state.on_hand - quantity;
+    let new_reserved = state.reserved - quantity;
 
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.ReservationCommitted",
-            event,
-        ))
-    }
+    let event = ReservationCommitted {
+        order_id: cmd.order_id.clone(),
+        quantity,
+        new_on_hand,
+        committed_at: Some(now()),
+        new_reserved,
+    };
+
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.ReservationCommitted",
+        event,
+    ))
 }
 
 #[tonic::async_trait]
 impl AggregateLogic for InventoryLogic {
+    fn descriptor(&self) -> ComponentDescriptor {
+        self.router.descriptor()
+    }
+
     async fn handle(
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        dispatch_aggregate(
-            cmd,
-            |eb| self.rebuild_state(eb),
-            |cb, command_any, state, next_seq| {
-                if command_any.type_url.ends_with("InitializeStock") {
-                    self.handle_initialize_stock(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("ReceiveStock") {
-                    self.handle_receive_stock(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("ReserveStock") {
-                    self.handle_reserve_stock(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("ReleaseReservation") {
-                    self.handle_release_reservation(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("CommitReservation") {
-                    self.handle_commit_reservation(cb, &command_any.value, state, next_seq)
-                } else {
-                    Err(unknown_command(&command_any.type_url))
-                }
-            },
-        )
+        self.router.dispatch(cmd)
     }
 }
 

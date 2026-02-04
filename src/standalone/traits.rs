@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tonic::Status;
 
 use crate::proto::{
-    CommandBook, ContextualCommand, Cover, EventBook, Projection, SagaResponse, Subscription,
+    CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook, SagaResponse,
 };
 
 /// client logic handler for a domain aggregate.
@@ -41,78 +41,15 @@ use crate::proto::{
 /// ```
 #[async_trait]
 pub trait AggregateHandler: Send + Sync + 'static {
+    /// Self-description: component type, subscribed domains, handled command types.
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor::default()
+    }
     /// Handle a contextual command and return new events.
     async fn handle(&self, command: ContextualCommand) -> Result<EventBook, Status>;
 }
 
-/// Execution mode for projectors.
-///
-/// Passed to `ProjectorHandler::handle()` so implementations can skip
-/// persistence during speculative execution while keeping all business
-/// logic (event decoding, field computation) identical.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProjectionMode {
-    /// Normal execution: compute and persist projection.
-    Execute,
-    /// Speculative execution: compute projection, skip persistence.
-    ///
-    /// The handler must produce the same `Projection` as `Execute` mode
-    /// but must NOT write to databases, files, or external systems.
-    Speculate,
-}
-
-/// Projector handler for building read models.
-///
-/// Implement this trait to react to events and update read models.
-/// Projectors can be synchronous (blocking command response) or
-/// asynchronous (running in background).
-///
-/// The same handler instance is used for both normal and speculative
-/// execution. client logic runs identically in both modes — only
-/// persistence side effects are gated on `ProjectionMode`.
-///
-/// # Example
-///
-/// ```ignore
-/// use angzarr::standalone::{ProjectorHandler, ProjectionMode};
-/// use angzarr::proto::{EventBook, Projection};
-///
-/// struct AccountingProjector {
-///     db: DatabasePool,
-/// }
-///
-/// #[async_trait::async_trait]
-/// impl ProjectorHandler for AccountingProjector {
-///     async fn handle(
-///         &self,
-///         events: &EventBook,
-///         mode: ProjectionMode,
-///     ) -> Result<Projection, tonic::Status> {
-///         let mut entries = Vec::new();
-///         for page in &events.pages {
-///             // client logic: always runs
-///             entries.push(compute_ledger_entry(&page.event)?);
-///         }
-///         // Persistence: only in execute mode
-///         if mode == ProjectionMode::Execute {
-///             self.db.insert_entries(&entries).await?;
-///         }
-///         Ok(Projection::default())
-///     }
-/// }
-/// ```
-#[async_trait]
-pub trait ProjectorHandler: Send + Sync + 'static {
-    /// Handle events and update read model.
-    ///
-    /// `mode` controls whether persistence side effects should occur:
-    /// - `Execute`: compute and persist (normal path)
-    /// - `Speculate`: compute only, skip all writes
-    ///
-    /// Returns a Projection with any data to include in command response
-    /// (only used for synchronous projectors).
-    async fn handle(&self, events: &EventBook, mode: ProjectionMode) -> Result<Projection, Status>;
-}
+pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 
 /// Saga handler for cross-aggregate workflows using two-phase protocol.
 ///
@@ -198,6 +135,11 @@ pub trait ProjectorHandler: Send + Sync + 'static {
 /// ```
 #[async_trait]
 pub trait SagaHandler: Send + Sync + 'static {
+    /// Self-description: component type, subscribed domains, handled event types.
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor::default()
+    }
+
     /// Phase 1: Examine source events and declare destination aggregates needed.
     ///
     /// Return covers for aggregates whose state you need before producing commands.
@@ -299,16 +241,20 @@ impl SagaConfig {
 ///
 /// ```ignore
 /// use angzarr::standalone::ProcessManagerHandler;
-/// use angzarr::proto::{CommandBook, Cover, EventBook, Subscription};
+/// use angzarr::proto::{CommandBook, ComponentDescriptor, Cover, EventBook, Subscription};
 ///
 /// struct OrderFulfillmentPM;
 ///
 /// impl ProcessManagerHandler for OrderFulfillmentPM {
-///     fn subscriptions(&self) -> Vec<Subscription> {
-///         vec![
-///             Subscription { domain: "order".into(), event_types: vec!["PaymentSubmitted".into()] },
-///             Subscription { domain: "inventory".into(), event_types: vec!["StockReserved".into()] },
-///         ]
+///     fn descriptor(&self) -> ComponentDescriptor {
+///         ComponentDescriptor {
+///             name: "order-fulfillment".into(),
+///             component_type: "process_manager".into(),
+///             inputs: vec![
+///                 Subscription { domain: "order".into(), event_types: vec![] },
+///                 Subscription { domain: "inventory".into(), event_types: vec![] },
+///             ],
+///         }
 ///     }
 ///
 ///     fn prepare(&self, _trigger: &EventBook, _state: Option<&EventBook>) -> Vec<Cover> {
@@ -327,10 +273,10 @@ impl SagaConfig {
 /// }
 /// ```
 pub trait ProcessManagerHandler: Send + Sync + 'static {
-    /// Declare event subscriptions (domains + event types).
+    /// Self-description: component type, subscribed domains, handled event types.
     ///
-    /// Called at startup to configure event routing to this PM.
-    fn subscriptions(&self) -> Vec<Subscription>;
+    /// Called at startup to configure event routing and topology registration.
+    fn descriptor(&self) -> ComponentDescriptor;
 
     /// Phase 1: Declare additional destinations needed beyond trigger + PM state.
     ///

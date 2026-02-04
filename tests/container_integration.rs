@@ -24,7 +24,7 @@ mod examples_proto {
     include!(concat!(env!("OUT_DIR"), "/examples.rs"));
 }
 
-use examples_proto::{CreateCustomer, CustomerCreated};
+use examples_proto::{InitializeStock, StockInitialized};
 
 /// Container test world - connects to running gRPC services.
 ///
@@ -42,10 +42,10 @@ pub struct ContainerWorld {
     gateway_client: Option<CommandGatewayClient<Channel>>,
     query_client: Option<EventQueryClient<Channel>>,
 
-    /// Current customer aggregate ID
-    current_customer_id: Option<Uuid>,
-    /// Named customer IDs for multi-customer scenarios
-    named_customers: HashMap<String, Uuid>,
+    /// Current inventory aggregate ID
+    current_inventory_id: Option<Uuid>,
+    /// Named inventory IDs for multi-inventory scenarios
+    named_inventories: HashMap<String, Uuid>,
 
     /// Last command response
     last_response: Option<CommandResponse>,
@@ -64,7 +64,7 @@ impl std::fmt::Debug for ContainerWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ContainerWorld")
             .field("gateway_endpoint", &self.gateway_endpoint)
-            .field("current_customer_id", &self.current_customer_id)
+            .field("current_inventory_id", &self.current_inventory_id)
             .finish()
     }
 }
@@ -76,8 +76,8 @@ impl ContainerWorld {
             query_endpoint: "http://localhost:50052".to_string(),
             gateway_client: None,
             query_client: None,
-            current_customer_id: None,
-            named_customers: HashMap::new(),
+            current_inventory_id: None,
+            named_inventories: HashMap::new(),
             last_response: None,
             last_error: None,
             queried_events: Vec::new(),
@@ -171,34 +171,38 @@ async fn given_gateway_running(world: &mut ContainerWorld, endpoint: String) {
 }
 
 // =============================================================================
-// Customer ID Steps
+// Inventory ID Steps
 // =============================================================================
 
-#[given("a new customer id")]
-async fn given_new_customer_id(world: &mut ContainerWorld) {
-    world.current_customer_id = Some(Uuid::new_v4());
+#[given("a new inventory id")]
+async fn given_new_inventory_id(world: &mut ContainerWorld) {
+    world.current_inventory_id = Some(Uuid::new_v4());
 }
 
-#[given(expr = "a new customer id as {string}")]
-async fn given_named_customer_id(world: &mut ContainerWorld, name: String) {
+#[given(expr = "a new inventory id as {string}")]
+async fn given_named_inventory_id(world: &mut ContainerWorld, name: String) {
     let id = Uuid::new_v4();
-    world.named_customers.insert(name, id);
-    world.current_customer_id = Some(id);
+    world.named_inventories.insert(name, id);
+    world.current_inventory_id = Some(id);
 }
 
 // =============================================================================
 // Command Steps (via Gateway)
 // =============================================================================
 
-#[when(expr = "I send a CreateCustomer command with name {string} and email {string}")]
-async fn when_create_customer(world: &mut ContainerWorld, name: String, email: String) {
-    let customer_id = world
-        .current_customer_id
-        .expect("No customer ID set - call 'Given a new customer id' first");
+#[when(expr = "I send an InitializeStock command with product_id {string} and quantity {int}")]
+async fn when_initialize_stock(world: &mut ContainerWorld, product_id: String, quantity: i32) {
+    let inventory_id = world
+        .current_inventory_id
+        .expect("No inventory ID set - call 'Given a new inventory id' first");
 
-    let command = CreateCustomer { name, email };
+    let command = InitializeStock {
+        product_id,
+        quantity,
+        low_stock_threshold: 10,
+    };
     let command_book =
-        world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        world.make_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let client = world.get_gateway_client().await;
     match client.execute(command_book).await {
@@ -213,24 +217,24 @@ async fn when_create_customer(world: &mut ContainerWorld, name: String, email: S
     }
 }
 
-#[given(expr = "I send a CreateCustomer command with name {string} and email {string}")]
-async fn given_create_customer(world: &mut ContainerWorld, name: String, email: String) {
-    when_create_customer(world, name, email).await;
+#[given(expr = "I send an InitializeStock command with product_id {string} and quantity {int}")]
+async fn given_initialize_stock(world: &mut ContainerWorld, product_id: String, quantity: i32) {
+    when_initialize_stock(world, product_id, quantity).await;
 }
 
 // =============================================================================
 // Query Steps
 // =============================================================================
 
-#[when("I query events for the customer aggregate")]
-async fn when_query_customer_events(world: &mut ContainerWorld) {
-    let customer_id = world.current_customer_id.expect("No customer ID set");
+#[when("I query events for the inventory aggregate")]
+async fn when_query_inventory_events(world: &mut ContainerWorld) {
+    let inventory_id = world.current_inventory_id.expect("No inventory ID set");
 
     let query = Query {
         cover: Some(Cover {
-            domain: "customer".to_string(),
+            domain: "inventory".to_string(),
             root: Some(ProtoUuid {
-                value: customer_id.as_bytes().to_vec(),
+                value: inventory_id.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
             edition: None,
@@ -271,14 +275,14 @@ async fn given_command_succeeds(world: &mut ContainerWorld) {
     then_command_succeeds(world).await;
 }
 
-#[then(expr = "the customer aggregate has {int} event")]
-async fn then_customer_has_events(world: &mut ContainerWorld, count: usize) {
-    then_aggregate_has_events(world, "customer", count).await;
+#[then(expr = "the inventory aggregate has {int} event")]
+async fn then_inventory_has_events(world: &mut ContainerWorld, count: usize) {
+    then_aggregate_has_events(world, "inventory", count).await;
 }
 
-#[then(expr = "the customer aggregate has {int} events")]
-async fn then_customer_has_multiple_events(world: &mut ContainerWorld, count: usize) {
-    then_customer_has_events(world, count).await;
+#[then(expr = "the inventory aggregate has {int} events")]
+async fn then_inventory_has_multiple_events(world: &mut ContainerWorld, count: usize) {
+    then_inventory_has_events(world, count).await;
 }
 
 async fn then_aggregate_has_events(world: &mut ContainerWorld, domain: &str, expected: usize) {
@@ -286,7 +290,7 @@ async fn then_aggregate_has_events(world: &mut ContainerWorld, domain: &str, exp
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let root = match domain {
-        "customer" => world.current_customer_id,
+        "inventory" => world.current_inventory_id,
         _ => panic!("Unknown domain: {}", domain),
     }
     .expect("No aggregate ID set");
@@ -410,13 +414,21 @@ async fn then_event_at_sequence(
 // Gateway Streaming Steps
 // =============================================================================
 
-#[when(expr = "I send a CreateCustomer command via gateway with name {string} and email {string}")]
-async fn when_create_customer_via_gateway(world: &mut ContainerWorld, name: String, email: String) {
-    let customer_id = world.current_customer_id.expect("No customer ID set");
+#[when(expr = "I send an InitializeStock command via gateway with product_id {string} and quantity {int}")]
+async fn when_initialize_stock_via_gateway(
+    world: &mut ContainerWorld,
+    product_id: String,
+    quantity: i32,
+) {
+    let inventory_id = world.current_inventory_id.expect("No inventory ID set");
 
-    let command = CreateCustomer { name, email };
+    let command = InitializeStock {
+        product_id,
+        quantity,
+        low_stock_threshold: 10,
+    };
     let command_book =
-        world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        world.make_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     // Store correlation ID for later verification
     let correlation_id = command_book
@@ -446,44 +458,45 @@ async fn when_create_customer_via_gateway(world: &mut ContainerWorld, name: Stri
     }
 }
 
-#[given(expr = "I send a CreateCustomer command via gateway with name {string} and email {string}")]
-async fn given_create_customer_via_gateway(
+#[given(expr = "I send an InitializeStock command via gateway with product_id {string} and quantity {int}")]
+async fn given_initialize_stock_via_gateway(
     world: &mut ContainerWorld,
-    name: String,
-    email: String,
+    product_id: String,
+    quantity: i32,
 ) {
-    when_create_customer_via_gateway(world, name, email).await;
+    when_initialize_stock_via_gateway(world, product_id, quantity).await;
 }
 
 #[when(
-    expr = "I send a CreateCustomer command via gateway for {string} with name {string} and email {string}"
+    expr = "I send an InitializeStock command via gateway for {string} with product_id {string} and quantity {int}"
 )]
-async fn when_create_customer_via_gateway_named(
+async fn when_initialize_stock_via_gateway_named(
     world: &mut ContainerWorld,
-    customer_name: String,
-    name: String,
-    email: String,
+    inventory_name: String,
+    product_id: String,
+    quantity: i32,
 ) {
-    let customer_id = world
-        .named_customers
-        .get(&customer_name)
+    let inventory_id = world
+        .named_inventories
+        .get(&inventory_name)
         .copied()
-        .expect("Named customer not found");
+        .expect("Named inventory not found");
 
-    world.current_customer_id = Some(customer_id);
-    when_create_customer_via_gateway(world, name, email).await;
+    world.current_inventory_id = Some(inventory_id);
+    when_initialize_stock_via_gateway(world, product_id, quantity).await;
 }
 
 #[when("I subscribe to events with a non-matching correlation ID")]
 async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
     // Create a command with a random correlation ID that won't match any events
-    let customer_id = world.current_customer_id.unwrap_or_else(Uuid::new_v4);
-    let command = CreateCustomer {
-        name: "NonMatching".to_string(),
-        email: "none@test.com".to_string(),
+    let inventory_id = world.current_inventory_id.unwrap_or_else(Uuid::new_v4);
+    let command = InitializeStock {
+        product_id: "NON-MATCH-SKU".to_string(),
+        quantity: 1,
+        low_stock_threshold: 1,
     };
     let mut command_book =
-        world.make_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        world.make_command_book("inventory", inventory_id, command, "examples.InitializeStock");
     if let Some(ref mut cover) = command_book.cover {
         cover.correlation_id = "non-matching-correlation-id".to_string();
     }
@@ -560,41 +573,42 @@ async fn then_same_correlation_id(world: &mut ContainerWorld) {
     }
 }
 
-#[then(expr = "events for {string} only contain {string}")]
-async fn then_events_for_customer_contain(
+#[then(expr = "events for {string} only contain product_id {string}")]
+async fn then_events_for_inventory_contain(
     world: &mut ContainerWorld,
-    customer_name: String,
-    expected_name: String,
+    inventory_name: String,
+    expected_product_id: String,
 ) {
-    // Get the customer ID for this named customer
-    let customer_id = world
-        .named_customers
-        .get(&customer_name)
+    // Get the inventory ID for this named inventory
+    let inventory_id = world
+        .named_inventories
+        .get(&inventory_name)
         .copied()
-        .expect("Named customer not found");
+        .expect("Named inventory not found");
 
     let events = world.streamed_events.read().await;
 
-    // Find CustomerCreated events for this specific customer and verify name
+    // Find StockInitialized events for this specific inventory and verify product_id
     let mut found_event = false;
     for book in events.iter() {
-        // Check if this event book is for our customer
+        // Check if this event book is for our inventory
         if let Some(cover) = &book.cover {
             if let Some(root) = &cover.root {
                 let event_root = uuid::Uuid::from_slice(&root.value).ok();
-                if event_root == Some(customer_id) {
+                if event_root == Some(inventory_id) {
                     for page in &book.pages {
                         if let Some(event_any) = &page.event {
                             let type_name = ContainerWorld::extract_event_type(event_any);
-                            if type_name.contains("CustomerCreated") {
-                                let created = CustomerCreated::decode(event_any.value.as_slice())
-                                    .expect("Failed to decode CustomerCreated");
+                            if type_name.contains("StockInitialized") {
+                                let initialized =
+                                    StockInitialized::decode(event_any.value.as_slice())
+                                        .expect("Failed to decode StockInitialized");
                                 assert!(
-                                    created.name.contains(&expected_name),
-                                    "Expected customer {} name to contain '{}', got '{}'",
-                                    customer_name,
-                                    expected_name,
-                                    created.name
+                                    initialized.product_id.contains(&expected_product_id),
+                                    "Expected inventory {} product_id to contain '{}', got '{}'",
+                                    inventory_name,
+                                    expected_product_id,
+                                    initialized.product_id
                                 );
                                 found_event = true;
                             }
@@ -607,8 +621,8 @@ async fn then_events_for_customer_contain(
 
     assert!(
         found_event,
-        "No CustomerCreated event found for customer '{}'",
-        customer_name
+        "No StockInitialized event found for inventory '{}'",
+        inventory_name
     );
 }
 

@@ -5,21 +5,24 @@
 
 #![allow(clippy::result_large_err)]
 
+use std::sync::LazyLock;
+
 use tonic::Status;
 
 use crate::proto::CommandBook;
+use crate::proto_ext::CoverExt;
+
+/// Angzarr UUID namespace derived from DNS-based UUIDv5.
+///
+/// Used to generate deterministic correlation IDs from command content.
+pub static ANGZARR_UUID_NAMESPACE: LazyLock<uuid::Uuid> =
+    LazyLock::new(|| uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev"));
 
 /// Returns existing correlation ID from the command's cover, or generates
 /// a deterministic one from the serialized command content.
 pub fn ensure_correlation_id(command_book: &CommandBook) -> Result<String, Status> {
-    let existing = command_book
-        .cover
-        .as_ref()
-        .map(|c| c.correlation_id.as_str())
-        .unwrap_or("");
-
-    if !existing.is_empty() {
-        return Ok(existing.to_string());
+    if command_book.has_correlation_id() {
+        return Ok(command_book.correlation_id().to_string());
     }
 
     use prost::Message;
@@ -28,8 +31,7 @@ pub fn ensure_correlation_id(command_book: &CommandBook) -> Result<String, Statu
         Status::internal(format!("Failed to encode command for correlation ID: {e}"))
     })?;
 
-    let angzarr_ns = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev");
-    Ok(uuid::Uuid::new_v5(&angzarr_ns, &buf).to_string())
+    Ok(uuid::Uuid::new_v5(&ANGZARR_UUID_NAMESPACE, &buf).to_string())
 }
 
 #[cfg(test)]

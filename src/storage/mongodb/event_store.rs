@@ -52,6 +52,13 @@ impl MongoEventStore {
 
         self.events.create_index(temporal_index).await?;
 
+        // Index for correlation ID queries
+        let correlation_index = IndexModel::builder()
+            .keys(doc! { "correlation_id": 1 })
+            .build();
+
+        self.events.create_index(correlation_index).await?;
+
         Ok(())
     }
 
@@ -69,7 +76,7 @@ impl EventStore for MongoEventStore {
         edition: &str,
         root: Uuid,
         events: Vec<EventPage>,
-        _correlation_id: &str,
+        correlation_id: &str,
     ) -> Result<()> {
         if events.is_empty() {
             return Ok(());
@@ -110,6 +117,7 @@ impl EventStore for MongoEventStore {
                 "sequence": sequence as i32,
                 "created_at": &created_at,
                 "event_data": Binary { subtype: mongodb::bson::spec::BinarySubtype::Generic, bytes: event_data },
+                "correlation_id": correlation_id,
             };
 
             // Insert with unique index enforcing consistency
@@ -326,9 +334,74 @@ impl EventStore for MongoEventStore {
 
     async fn get_by_correlation(
         &self,
-        _correlation_id: &str,
+        correlation_id: &str,
     ) -> Result<Vec<crate::proto::EventBook>> {
-        // Not implemented for MongoDB - correlation_id not indexed
-        Ok(vec![])
+        use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
+        use std::collections::HashMap;
+
+        if correlation_id.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let filter = doc! { "correlation_id": correlation_id };
+        let options = FindOptions::builder()
+            .sort(doc! { "domain": 1, "root": 1, "sequence": 1 })
+            .build();
+
+        let mut cursor = self.events.find(filter).with_options(options).await?;
+
+        // Group events by (domain, edition, root)
+        let mut books_map: HashMap<(String, String, Uuid), Vec<EventPage>> = HashMap::new();
+
+        while cursor.advance().await? {
+            let doc = cursor.deserialize_current()?;
+
+            let domain = doc.get_str("domain").unwrap_or_default().to_string();
+            let edition = doc.get_str("edition").unwrap_or_default().to_string();
+            let root_str = doc.get_str("root").unwrap_or_default();
+            let event_data = doc
+                .get_binary_generic("event_data")
+                .map_err(|_| StorageError::NotFound {
+                    domain: domain.clone(),
+                    root: Uuid::nil(),
+                })?;
+
+            let root = Uuid::parse_str(root_str)?;
+            let event = EventPage::decode(event_data.as_slice())?;
+
+            books_map
+                .entry((domain, edition, root))
+                .or_default()
+                .push(event);
+        }
+
+        let books = books_map
+            .into_iter()
+            .map(|((domain, edition, root), pages)| EventBook {
+                cover: Some(Cover {
+                    domain,
+                    root: Some(ProtoUuid {
+                        value: root.as_bytes().to_vec(),
+                    }),
+                    correlation_id: correlation_id.to_string(),
+                    edition: Some(Edition { name: edition, divergences: vec![] }),
+                }),
+                pages,
+                snapshot: None,
+                snapshot_state: None,
+            })
+            .collect();
+
+        Ok(books)
+    }
+
+    async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {
+        let filter = doc! {
+            "edition": edition,
+            "domain": domain,
+        };
+
+        let result = self.events.delete_many(filter).await?;
+        Ok(result.deleted_count as u32)
     }
 }

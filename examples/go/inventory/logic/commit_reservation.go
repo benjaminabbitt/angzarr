@@ -1,27 +1,36 @@
 package logic
 
 import (
+	"angzarr"
+	angzarrpb "angzarr/proto/angzarr"
 	"inventory/proto/examples"
 
+	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (l *DefaultInventoryLogic) HandleCommitReservation(state *InventoryState, orderID string) (*examples.ReservationCommitted, error) {
-	if !state.Exists() {
-		return nil, NewFailedPrecondition("Inventory not initialized")
-	}
-	if orderID == "" {
-		return nil, NewInvalidArgument("Order ID is required")
-	}
-	qty, exists := state.Reservations[orderID]
-	if !exists {
-		return nil, NewFailedPrecondition("No reservation found for this order")
+// HandleCommitReservation validates and creates a ReservationCommitted event.
+func HandleCommitReservation(cb *angzarrpb.CommandBook, data []byte, state *InventoryState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.CommitReservation
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
 	}
 
-	return &examples.ReservationCommitted{
-		OrderId:     orderID,
+	if !state.Exists() {
+		return nil, angzarr.NewFailedPrecondition(ErrMsgNotInitialized)
+	}
+	if cmd.OrderId == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgOrderIDRequired)
+	}
+	qty, exists := state.Reservations[cmd.OrderId]
+	if !exists {
+		return nil, angzarr.NewFailedPrecondition(ErrMsgReservationNotFound)
+	}
+
+	return angzarr.PackEvent(cb.Cover, &examples.ReservationCommitted{
+		OrderId:     cmd.OrderId,
 		Quantity:    qty,
 		NewOnHand:   state.OnHand - qty,
 		CommittedAt: timestamppb.Now(),
-	}, nil
+	}, seq)
 }

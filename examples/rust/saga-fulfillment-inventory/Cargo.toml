@@ -1,0 +1,17 @@
+[package]
+name = "saga-fulfillment-inventory"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+angzarr = { path = "../../../" }
+common = { path = "../common" }
+prost = "0.13"
+prost-types = "0.13"
+tokio = { version = "1", features = ["full"] }
+tonic = "0.12"
+uuid = { version = "1", features = ["v4", "v5"] }
+
+[[bin]]
+name = "saga-fulfillment-inventory-server"
+path = "src/main.rs"

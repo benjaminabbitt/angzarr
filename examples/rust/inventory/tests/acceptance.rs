@@ -804,6 +804,6 @@ async fn state_has_available(world: &mut InventoryAcceptanceWorld, available: i3
 #[tokio::main]
 async fn main() {
     InventoryAcceptanceWorld::cucumber()
-        .run("tests/features/inventory.feature")
+        .run("../../features/unit/inventory.feature")
         .await;
 }

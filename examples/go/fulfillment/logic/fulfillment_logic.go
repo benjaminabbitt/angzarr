@@ -1,31 +1,17 @@
 package logic
 
 import (
-	"fulfillment/proto/angzarr"
+	"angzarr"
+	angzarrpb "angzarr/proto/angzarr"
 	"fulfillment/proto/examples"
 
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
+	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type FulfillmentLogic interface {
-	RebuildState(eventBook *angzarr.EventBook) *FulfillmentState
-	HandleCreateShipment(state *FulfillmentState, orderID string) (*examples.ShipmentCreated, error)
-	HandleMarkPicked(state *FulfillmentState, pickerID string) (*examples.ItemsPicked, error)
-	HandleMarkPacked(state *FulfillmentState, packerID string) (*examples.ItemsPacked, error)
-	HandleShip(state *FulfillmentState, carrier, trackingNumber string) (*examples.Shipped, error)
-	HandleRecordDelivery(state *FulfillmentState, signature string) (*examples.Delivered, error)
-}
-
-type DefaultFulfillmentLogic struct{}
-
-func NewFulfillmentLogic() FulfillmentLogic {
-	return &DefaultFulfillmentLogic{}
-}
-
-func (l *DefaultFulfillmentLogic) RebuildState(eventBook *angzarr.EventBook) *FulfillmentState {
-	state := EmptyState()
+// RebuildState reconstructs fulfillment state from an event book.
+func RebuildState(eventBook *angzarrpb.EventBook) FulfillmentState {
+	state := FulfillmentState{}
 
 	if eventBook == nil || len(eventBook.Pages) == 0 {
 		return state
@@ -91,111 +77,116 @@ func (l *DefaultFulfillmentLogic) RebuildState(eventBook *angzarr.EventBook) *Fu
 	return state
 }
 
-func (l *DefaultFulfillmentLogic) HandleCreateShipment(state *FulfillmentState, orderID string) (*examples.ShipmentCreated, error) {
-	if state.Exists() {
-		return nil, NewFailedPrecondition(ErrMsgShipmentExists)
-	}
-	if orderID == "" {
-		return nil, NewInvalidArgument(ErrMsgOrderIDRequired)
+// HandleCreateShipment validates and creates a ShipmentCreated event.
+func HandleCreateShipment(cb *angzarrpb.CommandBook, data []byte, state *FulfillmentState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.CreateShipment
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
 	}
 
-	return &examples.ShipmentCreated{
-		OrderId:   orderID,
+	if state.Exists() {
+		return nil, angzarr.NewFailedPrecondition(ErrMsgShipmentExists)
+	}
+	if cmd.OrderId == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgOrderIDRequired)
+	}
+
+	return angzarr.PackEvent(cb.Cover, &examples.ShipmentCreated{
+		OrderId:   cmd.OrderId,
 		Status:    "pending",
 		CreatedAt: timestamppb.Now(),
-	}, nil
+	}, seq)
 }
 
-func (l *DefaultFulfillmentLogic) HandleMarkPicked(state *FulfillmentState, pickerID string) (*examples.ItemsPicked, error) {
+// HandleMarkPicked validates and creates an ItemsPicked event.
+func HandleMarkPicked(cb *angzarrpb.CommandBook, data []byte, state *FulfillmentState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.MarkPicked
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
+	}
+
 	if !state.Exists() {
-		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsPending() {
-		return nil, NewFailedPrecondition(ErrMsgNotPending)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgNotPending)
 	}
-	if pickerID == "" {
-		return nil, NewInvalidArgument(ErrMsgPickerIDRequired)
+	if cmd.PickerId == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgPickerIDRequired)
 	}
 
-	return &examples.ItemsPicked{
-		PickerId: pickerID,
+	return angzarr.PackEvent(cb.Cover, &examples.ItemsPicked{
+		PickerId: cmd.PickerId,
 		PickedAt: timestamppb.Now(),
-	}, nil
+	}, seq)
 }
 
-func (l *DefaultFulfillmentLogic) HandleMarkPacked(state *FulfillmentState, packerID string) (*examples.ItemsPacked, error) {
+// HandleMarkPacked validates and creates an ItemsPacked event.
+func HandleMarkPacked(cb *angzarrpb.CommandBook, data []byte, state *FulfillmentState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.MarkPacked
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
+	}
+
 	if !state.Exists() {
-		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsPicking() {
-		return nil, NewFailedPrecondition(ErrMsgNotPicked)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgNotPicked)
 	}
-	if packerID == "" {
-		return nil, NewInvalidArgument(ErrMsgPackerIDRequired)
+	if cmd.PackerId == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgPackerIDRequired)
 	}
 
-	return &examples.ItemsPacked{
-		PackerId: packerID,
+	return angzarr.PackEvent(cb.Cover, &examples.ItemsPacked{
+		PackerId: cmd.PackerId,
 		PackedAt: timestamppb.Now(),
-	}, nil
+	}, seq)
 }
 
-func (l *DefaultFulfillmentLogic) HandleShip(state *FulfillmentState, carrier, trackingNumber string) (*examples.Shipped, error) {
+// HandleShip validates and creates a Shipped event.
+func HandleShip(cb *angzarrpb.CommandBook, data []byte, state *FulfillmentState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.Ship
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
+	}
+
 	if !state.Exists() {
-		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsPacking() {
-		return nil, NewFailedPrecondition(ErrMsgNotPacked)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgNotPacked)
 	}
-	if carrier == "" {
-		return nil, NewInvalidArgument(ErrMsgCarrierRequired)
+	if cmd.Carrier == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgCarrierRequired)
 	}
-	if trackingNumber == "" {
-		return nil, NewInvalidArgument(ErrMsgTrackingNumRequired)
+	if cmd.TrackingNumber == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgTrackingNumRequired)
 	}
 
-	return &examples.Shipped{
-		Carrier:        carrier,
-		TrackingNumber: trackingNumber,
+	return angzarr.PackEvent(cb.Cover, &examples.Shipped{
+		Carrier:        cmd.Carrier,
+		TrackingNumber: cmd.TrackingNumber,
 		ShippedAt:      timestamppb.Now(),
-	}, nil
+	}, seq)
 }
 
-func (l *DefaultFulfillmentLogic) HandleRecordDelivery(state *FulfillmentState, signature string) (*examples.Delivered, error) {
+// HandleRecordDelivery validates and creates a Delivered event.
+func HandleRecordDelivery(cb *angzarrpb.CommandBook, data []byte, state *FulfillmentState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.RecordDelivery
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
+	}
+
 	if !state.Exists() {
-		return nil, NewFailedPrecondition(ErrMsgShipmentNotFound)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgShipmentNotFound)
 	}
 	if !state.IsShipped() {
-		return nil, NewFailedPrecondition(ErrMsgNotShipped)
+		return nil, angzarr.NewFailedPrecondition(ErrMsgNotShipped)
 	}
 
-	return &examples.Delivered{
-		Signature:   signature,
+	return angzarr.PackEvent(cb.Cover, &examples.Delivered{
+		Signature:   cmd.Signature,
 		DeliveredAt: timestamppb.Now(),
-	}, nil
-}
-
-func PackEvent(cover *angzarr.Cover, event proto.Message, seq uint32) (*angzarr.EventBook, error) {
-	eventAny, err := anypb.New(event)
-	if err != nil {
-		return nil, err
-	}
-
-	return &angzarr.EventBook{
-		Cover: cover,
-		Pages: []*angzarr.EventPage{
-			{
-				Sequence:  &angzarr.EventPage_Num{Num: seq},
-				Event:     eventAny,
-				CreatedAt: timestamppb.Now(),
-			},
-		},
-	}, nil
-}
-
-func NextSequence(priorEvents *angzarr.EventBook) uint32 {
-	if priorEvents == nil || len(priorEvents.Pages) == 0 {
-		return 0
-	}
-	return uint32(len(priorEvents.Pages))
+	}, seq)
 }

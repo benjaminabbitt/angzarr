@@ -1,25 +1,95 @@
-//! Projector orchestration abstraction.
-//!
-//! `ProjectorContext` defines the interface for projector event handling.
-//! Implementations provide in-process (local) or gRPC (distributed) delegation.
-//!
-//! - `local/`: in-process ProjectorHandler calls
-//! - `grpc/`: remote ProjectorCoordinatorClient calls
+//! Projector abstraction shared across standalone and distributed modes.
 
-pub mod grpc;
-#[cfg(feature = "sqlite")]
-pub mod local;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::sync::Mutex;
+use tonic::Status;
 
-use crate::proto::{EventBook, Projection};
+use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use crate::proto::{ComponentDescriptor, EventBook, Projection, SyncEventBook, SyncMode};
+use crate::proto_ext::{correlated_request, CoverExt};
 
-/// Projector-specific operation abstracted over transport.
+/// Execution mode for projectors.
 ///
-/// Implementations handle events via in-process handler (local) or
-/// gRPC ProjectorCoordinator client (distributed).
+/// Passed to `ProjectorHandler::handle()` so implementations can skip
+/// persistence during speculative execution while keeping all business
+/// logic (event decoding, field computation) identical.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectionMode {
+    /// Normal execution: compute and persist projection.
+    Execute,
+    /// Speculative execution: compute projection, skip persistence.
+    ///
+    /// The handler must produce the same `Projection` as `Execute` mode
+    /// but must NOT write to databases, files, or external systems.
+    Speculate,
+}
+
+/// Projector handler for building read models.
+///
+/// Implement this trait to react to events and update read models.
+/// Projectors can be synchronous (blocking command response) or
+/// asynchronous (running in background).
+///
+/// The same handler instance is used for both normal and speculative
+/// execution. Business logic runs identically in both modes — only
+/// persistence side effects are gated on `ProjectionMode`.
 #[async_trait]
-pub trait ProjectorContext: Send + Sync {
-    /// Handle events and produce a projection result.
-    async fn handle_events(&self, events: &EventBook) -> Result<Projection, tonic::Status>;
+pub trait ProjectorHandler: Send + Sync + 'static {
+    /// Self-description: component type, subscribed domains, handled event types.
+    fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor::default()
+    }
+
+    /// Handle events and update read model.
+    ///
+    /// `mode` controls whether persistence side effects should occur:
+    /// - `Execute`: compute and persist (normal path)
+    /// - `Speculate`: compute only, skip all writes
+    ///
+    /// Returns a Projection with any data to include in command response
+    /// (only used for synchronous projectors).
+    async fn handle(&self, events: &EventBook, mode: ProjectionMode) -> Result<Projection, Status>;
+}
+
+/// gRPC projector handler that forwards to a remote `ProjectorCoordinator`.
+///
+/// Skips calls in `Speculate` mode since remote side effects can't be controlled.
+pub struct GrpcProjectorHandler {
+    client: Arc<Mutex<ProjectorCoordinatorClient<tonic::transport::Channel>>>,
+}
+
+impl GrpcProjectorHandler {
+    /// Wrap a gRPC projector client as a `ProjectorHandler`.
+    pub fn new(client: ProjectorCoordinatorClient<tonic::transport::Channel>) -> Self {
+        Self {
+            client: Arc::new(Mutex::new(client)),
+        }
+    }
+}
+
+#[async_trait]
+impl ProjectorHandler for GrpcProjectorHandler {
+    async fn handle(
+        &self,
+        events: &EventBook,
+        mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
+        if mode == ProjectionMode::Speculate {
+            return Ok(Projection::default());
+        }
+        let correlation_id = events.correlation_id();
+        let sync_book = SyncEventBook {
+            events: Some(events.clone()),
+            sync_mode: SyncMode::Simple.into(),
+        };
+        Ok(self
+            .client
+            .lock()
+            .await
+            .handle_sync(correlated_request(sync_book, correlation_id))
+            .await?
+            .into_inner())
+    }
 }

@@ -148,6 +148,46 @@ impl TopologyStore for SqliteTopologyStore {
         Ok(domains)
     }
 
+    async fn register_node(
+        &self,
+        node_id: &str,
+        component_type: &str,
+        domain: &str,
+        timestamp: &str,
+    ) -> Result<()> {
+        let query = Query::insert()
+            .into_table(TopologyNodes::Table)
+            .columns([
+                TopologyNodes::Id,
+                TopologyNodes::Title,
+                TopologyNodes::ComponentType,
+                TopologyNodes::Domain,
+                TopologyNodes::EventCount,
+                TopologyNodes::LastEventType,
+                TopologyNodes::LastSeen,
+                TopologyNodes::CreatedAt,
+            ])
+            .values_panic([
+                node_id.into(),
+                node_id.into(),
+                component_type.into(),
+                domain.into(),
+                0_i64.into(),
+                "registered".into(),
+                timestamp.into(),
+                timestamp.into(),
+            ])
+            .on_conflict(
+                OnConflict::column(TopologyNodes::Id)
+                    .update_columns([TopologyNodes::ComponentType])
+                    .to_owned(),
+            )
+            .to_string(SqliteQueryBuilder);
+
+        sqlx::query(&query).execute(&self.pool).await?;
+        Ok(())
+    }
+
     async fn upsert_node(
         &self,
         node_id: &str,
@@ -202,7 +242,14 @@ impl TopologyStore for SqliteTopologyStore {
         correlation_id: &str,
         timestamp: &str,
     ) -> Result<()> {
-        let edge_id = format!("{}--{}", source, target);
+        // Alphabetical ID for stable dedup — same pair always gets same ID
+        // regardless of which domain's event triggered the edge discovery.
+        let (id_a, id_b) = if source < target {
+            (source, target)
+        } else {
+            (target, source)
+        };
+        let edge_id = format!("{}--{}", id_a, id_b);
 
         // Build initial event_types JSON array
         let initial_types =
@@ -222,7 +269,7 @@ impl TopologyStore for SqliteTopologyStore {
                 TopologyEdges::CreatedAt,
             ])
             .values_panic([
-                edge_id.into(),
+                edge_id.clone().into(),
                 source.into(),
                 target.into(),
                 "event".into(),
@@ -260,7 +307,7 @@ impl TopologyStore for SqliteTopologyStore {
              WHERE topology_edges.id = ?2",
         )
         .bind(event_type)
-        .bind(format!("{}--{}", source, target))
+        .bind(&edge_id)
         .execute(&self.pool)
         .await
         .ok(); // Best-effort append; the ON CONFLICT already handles the core upsert
@@ -275,7 +322,7 @@ impl TopologyStore for SqliteTopologyStore {
              )",
         )
         .bind(event_type)
-        .bind(format!("{}--{}", source, target))
+        .bind(&edge_id)
         .execute(&self.pool)
         .await?;
 

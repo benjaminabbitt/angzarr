@@ -130,7 +130,10 @@ async fn shipment_created_event(world: &mut FulfillmentAcceptanceWorld, order_id
         world.current_sequence = 0;
     }
 
-    let command = CreateShipment { order_id };
+    let command = CreateShipment {
+        order_id,
+        items: vec![],
+    };
     let result = world
         .execute_command(command, "examples.CreateShipment")
         .await;
@@ -212,7 +215,10 @@ async fn handle_create_shipment(world: &mut FulfillmentAcceptanceWorld, order_id
         world.current_fulfillment_id = Some(Uuid::new_v4());
     }
 
-    let command = CreateShipment { order_id };
+    let command = CreateShipment {
+        order_id,
+        items: vec![],
+    };
     let result = world
         .execute_command(command, "examples.CreateShipment")
         .await;
@@ -518,6 +524,6 @@ async fn state_has_tracking_number(
 #[tokio::main]
 async fn main() {
     FulfillmentAcceptanceWorld::cucumber()
-        .run("tests/features/fulfillment.feature")
+        .run("../../features/unit/fulfillment.feature")
         .await;
 }

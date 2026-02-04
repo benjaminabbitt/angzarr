@@ -16,7 +16,7 @@ use tracing::{debug, info, warn};
 use crate::discovery::ServiceDiscovery;
 use crate::proto::event_query_server::EventQuery;
 use crate::proto::{AggregateRoot, EventBook, Query};
-use crate::proto_ext::correlated_request;
+use crate::proto_ext::{correlated_request, CoverExt};
 
 use super::map_discovery_error;
 
@@ -37,16 +37,8 @@ impl EventQuery for EventQueryProxy {
     /// Get a single EventBook for the domain/root.
     async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
         let query = request.into_inner();
-        let domain = query
-            .cover
-            .as_ref()
-            .map(|c| c.domain.as_str())
-            .unwrap_or("");
-        let correlation_id = query
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let domain = query.domain();
+        let correlation_id = query.correlation_id().to_string();
 
         debug!(domain = %domain, "Proxying GetEventBook query");
 
@@ -68,16 +60,8 @@ impl EventQuery for EventQueryProxy {
         request: Request<Query>,
     ) -> Result<Response<Self::GetEventsStream>, Status> {
         let query = request.into_inner();
-        let domain = query
-            .cover
-            .as_ref()
-            .map(|c| c.domain.clone())
-            .unwrap_or_default();
-        let correlation_id = query
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let domain = query.domain().to_string();
+        let correlation_id = query.correlation_id().to_string();
 
         debug!(domain = %domain, "Proxying GetEvents query");
 
@@ -117,16 +101,8 @@ impl EventQuery for EventQueryProxy {
             None => return Err(Status::invalid_argument("No queries provided")),
         };
 
-        let domain = first_query
-            .cover
-            .as_ref()
-            .map(|c| c.domain.clone())
-            .unwrap_or_default();
-        let correlation_id = first_query
-            .cover
-            .as_ref()
-            .map(|c| c.correlation_id.clone())
-            .unwrap_or_default();
+        let domain = first_query.domain().to_string();
+        let correlation_id = first_query.correlation_id().to_string();
         debug!(domain = %domain, "Proxying Synchronize stream");
 
         let mut client = self

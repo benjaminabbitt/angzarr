@@ -173,6 +173,15 @@ impl ProjectorCoordinator for LogService {
         self.handle(&book);
         Ok(Response::new(()))
     }
+
+    async fn handle_speculative(
+        &self,
+        request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        let book = request.into_inner();
+        self.handle(&book);
+        Ok(Response::new(Projection::default()))
+    }
 }
 
 /// Wrapper to share LogService across async contexts.
@@ -197,5 +206,12 @@ impl ProjectorCoordinator for LogServiceHandle {
 
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         ProjectorCoordinator::handle(&*self.0, request).await
+    }
+
+    async fn handle_speculative(
+        &self,
+        request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        ProjectorCoordinator::handle_speculative(&*self.0, request).await
     }
 }

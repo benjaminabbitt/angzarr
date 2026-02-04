@@ -43,7 +43,6 @@ use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::{COMMAND_ADDRESS_ENV_VAR, STATIC_ENDPOINTS_ENV_VAR};
-use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 use angzarr::config::SagaCompensationConfig;
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::command::grpc::SingleClientExecutor;
@@ -87,6 +86,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
+    // Publish component descriptor to event bus for topology discovery.
+    // Derive input domain from: explicit listen_domain > AMQP domain config > own domain.
+    let listen_domain = bootstrap
+        .config
+        .target
+        .as_ref()
+        .and_then(|t| t.listen_domain.clone())
+        .or_else(|| {
+            bootstrap
+                .config
+                .messaging
+                .as_ref()
+                .and_then(|m| m.amqp.domain.as_ref())
+                .and_then(|d| d.strip_suffix(".*").map(String::from))
+        })
+        .unwrap_or_else(|| bootstrap.domain.clone());
+    let descriptor = angzarr::proto::ComponentDescriptor {
+        name: bootstrap.domain.clone(),
+        component_type: "saga".to_string(),
+        inputs: vec![angzarr::proto::Subscription {
+            domain: listen_domain,
+            event_types: vec![],
+        }],
+    };
+    if let Err(e) =
+        angzarr::proto_ext::publish_descriptors(publisher.as_ref(), std::slice::from_ref(&descriptor)).await
+    {
+        warn!(error = %e, "Failed to publish component descriptor for topology");
+    }
+    angzarr::proto_ext::spawn_descriptor_heartbeat(
+        publisher.clone(),
+        vec![descriptor],
+        std::time::Duration::from_secs(30),
+    );
+
     // Build executor, fetcher, and factory based on configuration mode
     let handler = if let Ok(endpoints_str) = std::env::var(STATIC_ENDPOINTS_ENV_VAR) {
         info!("Using static endpoint configuration for two-phase saga routing");
@@ -96,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             publisher,
             SagaCompensationConfig::default(),
             None,
-            format!("{DEFAULT_EDITION}.{}", bootstrap.domain),
+            bootstrap.domain.clone(),
         ));
         SagaEventHandler::from_factory(factory, executor, Some(fetcher))
     } else if let Ok(command_address) = std::env::var(COMMAND_ADDRESS_ENV_VAR) {
@@ -122,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             publisher,
             SagaCompensationConfig::default(),
             Some(comp_handler),
-            format!("{DEFAULT_EDITION}.{}", bootstrap.domain),
+            bootstrap.domain.clone(),
         ));
         SagaEventHandler::from_factory(factory, executor, None)
     } else {

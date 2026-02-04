@@ -9,15 +9,13 @@
 # x5: business gRPC
 # x6: business debug
 #
-# customer:           50000-50009  (business: 50005)
-# product:            50010-50019  (business: 50015)
-# inventory:          50020-50029  (business: 50025)
 # order:              50030-50039  (business: 50035)
-# cart:               50040-50049  (business: 50045)
+# inventory:          50020-50029  (business: 50025)
 # fulfillment:        50050-50059  (business: 50055)
-# saga-loyalty-earn:  50060-50069  (business: 50065)
 # saga-fulfillment:   50070-50079  (business: 50075)
-# saga-cancellation:  50080-50089  (business: 50085)
+# saga-inv-reserv:    50100-50109  (business: 50105)
+# pm-fulfillment:     50110-50119  (business: 50115)
+# proj-inventory:     50130-50139  (business: 50135)
 # =============================================================================
 
 # Allow non-bitnami images for local development
@@ -41,6 +39,10 @@ images:
     tag: "latest"  # Overridden by skaffold setValueTemplates
   saga:
     repository: localhost:5001/angzarr-saga
+    pullPolicy: IfNotPresent
+    tag: "latest"  # Overridden by skaffold setValueTemplates
+  processManager:
+    repository: localhost:5001/angzarr-process-manager
     pullPolicy: IfNotPresent
     tag: "latest"  # Overridden by skaffold setValueTemplates
   stream:
@@ -73,43 +75,105 @@ applicationResources:
     memory: "128Mi"
     cpu: "100m"
 
-# Storage - deployed by Terraform
-# MongoDB for aggregates (event store): angzarr-db-mongodb
-# PostgreSQL for projectors (read models): angzarr-db-postgresql
-# Credentials are loaded from Terraform-created secrets
+# Storage configuration
+# MongoDB for aggregates (event store)
+# PostgreSQL for projectors (read models)
 storage:
   type: mongodb
-  existingSecret: "angzarr-db-mongodb-credentials"
   mongodb:
-    uri: ""  # Loaded from existingSecret
-    database: ""  # Loaded from existingSecret
+    uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
+    database: "angzarr"
   postgres:
-    uri: "postgres://angzarr:angzarr@angzarr-db-postgresql:5432/angzarr"  # TODO: use existingSecret
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
 
-# Messaging configuration - using Terraform-deployed RabbitMQ
+# Messaging configuration
 messaging:
   type: "amqp"
   amqp:
     enabled: true
-    url: ""  # Loaded from existingSecret
+    url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
 
-# AMQP event bus - using Terraform-deployed RabbitMQ credentials secret
+# AMQP event bus
 amqp:
   enabled: true
-  existingSecret: "angzarr-mq-credentials"
-  url: ""  # Loaded from existingSecret
+  url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
 
-# External secrets disabled - using manual sync via `just secrets-sync`
+# External secrets disabled for local dev
 externalSecrets:
   enabled: false
 
-# Backing services are deployed via Terraform (just infra-local), NOT Helm subcharts.
-# Disable Bitnami subcharts - Terraform handles PostgreSQL, RabbitMQ, and MongoDB.
+# =============================================================================
+# Backing Services - Bitnami Helm Subcharts
+# Local dev credentials (not for production!)
+# =============================================================================
 rabbitmq:
-  enabled: false
+  enabled: true
+  fullnameOverride: "angzarr-mq-rabbitmq"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/rabbitmq
+    tag: "4.0"
+  auth:
+    username: "angzarr"
+    password: "angzarr-dev"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
 
 mongodb:
-  enabled: false
+  enabled: true
+  fullnameOverride: "angzarr-db-mongodb"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/mongodb
+    tag: "8.0"
+  auth:
+    rootUsername: "root"
+    rootPassword: "angzarr-root-dev"
+    usernames: ["angzarr"]
+    passwords: ["angzarr-dev"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+postgresql:
+  enabled: true
+  fullnameOverride: "angzarr-db-postgresql"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/postgresql
+    tag: "17"
+  auth:
+    postgresPassword: "angzarr-postgres-dev"
+    username: "angzarr"
+    password: "angzarr-dev"
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+kafka:
+  enabled: false  # Disabled for local dev - AMQP via RabbitMQ is primary
 
 # Central infrastructure services
 infrastructure:
@@ -169,21 +233,13 @@ infrastructure:
 applications:
   business:
     # E-commerce Domain Aggregates (Rust: 500xx range)
-    - name: aggregate-customer-rs
+    - name: aggregate-order-rs
       image:
-        repository: localhost:5001/aggregate-customer-rs
+        repository: localhost:5001/aggregate-order-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "customer"
-      port: 50005        # customer business gRPC (50000+5)
-
-    - name: aggregate-product-rs
-      image:
-        repository: localhost:5001/aggregate-product-rs
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "product"
-      port: 50015        # product business gRPC (50010+5)
+      domain: "order"
+      port: 50035        # order business gRPC (50030+5)
 
     - name: aggregate-inventory-rs
       image:
@@ -193,22 +249,6 @@ applications:
       domain: "inventory"
       port: 50025        # inventory business gRPC (50020+5)
 
-    - name: aggregate-order-rs
-      image:
-        repository: localhost:5001/aggregate-order-rs
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "order"
-      port: 50035        # order business gRPC (50030+5)
-
-    - name: aggregate-cart-rs
-      image:
-        repository: localhost:5001/aggregate-cart-rs
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "cart"
-      port: 50045        # cart business gRPC (50040+5)
-
     - name: aggregate-fulfillment-rs
       image:
         repository: localhost:5001/aggregate-fulfillment-rs
@@ -217,41 +257,65 @@ applications:
       domain: "fulfillment"
       port: 50055        # fulfillment business gRPC (50050+5)
 
-  projectors: []
+  projectors:
+    # Inventory Projector - logs inventory stock changes
+    - name: projector-inventory-rs
+      image:
+        repository: localhost:5001/projector-inventory-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "projector-inventory"
+      port: 50135        # projector-inventory business gRPC (50130+5)
+      topics:
+        - "inventory"
 
   sagas:
-    # Loyalty Earn Saga - awards points when orders complete
-    - name: saga-loyalty-earn-rs
+    # Order-Fulfillment Saga - creates shipments when orders complete
+    - name: saga-order-fulfillment-rs
       image:
-        repository: localhost:5001/saga-loyalty-earn-rs
+        repository: localhost:5001/saga-order-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "saga-loyalty-earn"
-      port: 50065        # saga-loyalty-earn business gRPC (50060+5)
+      domain: "saga-order-fulfillment"
+      port: 50075        # saga-order-fulfillment business gRPC (50070+5)
       topics:
         - "order.*"
 
-    # Fulfillment Saga - creates shipments when orders complete
-    - name: saga-fulfillment-rs
+    # Order-Inventory Saga - reserves stock when orders are created
+    - name: saga-order-inventory-rs
       image:
-        repository: localhost:5001/saga-fulfillment-rs
+        repository: localhost:5001/saga-order-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "saga-fulfillment"
-      port: 50075        # saga-fulfillment business gRPC (50070+5)
+      domain: "saga-order-inventory"
+      port: 50105        # saga-order-inventory business gRPC (50100+5)
       topics:
         - "order.*"
 
-    # Cancellation Saga - handles compensation when orders are cancelled
-    - name: saga-cancellation-rs
+    # Fulfillment-Inventory Saga - commits inventory when shipments ship
+    - name: saga-fulfillment-inventory-rs
       image:
-        repository: localhost:5001/saga-cancellation-rs
+        repository: localhost:5001/saga-fulfillment-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "saga-cancellation"
-      port: 50085        # saga-cancellation business gRPC (50080+5)
+      domain: "saga-fulfillment-inventory"
+      port: 50127        # saga-fulfillment-inventory business gRPC
+      topics:
+        - "fulfillment.*"
+
+  processManagers:
+    # Order Fulfillment PM - fan-in: payment + inventory + fulfillment → Ship
+    - name: process-manager-fulfillment-rs
+      image:
+        repository: localhost:5001/process-manager-fulfillment-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "order-fulfillment"
+      port: 50115        # pm-fulfillment business gRPC (50110+5)
       topics:
         - "order.*"
+        - "inventory.*"
+        - "fulfillment.*"
 
 # Service configuration - Angzarr sidecar ports
 service:

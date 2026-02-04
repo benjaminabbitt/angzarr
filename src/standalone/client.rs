@@ -13,8 +13,9 @@ use uuid::Uuid;
 
 use crate::client_traits::{self, ClientError};
 use crate::proto::{
-    CommandBook, CommandPage, CommandResponse, Cover, DryRunRequest, EventBook, Query,
-    Uuid as ProtoUuid,
+    CommandBook, CommandPage, CommandResponse, Cover, DryRunRequest, Edition, EventBook,
+    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculatePmRequest,
+    SpeculateProjectorRequest, SpeculateSagaRequest, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
 
@@ -106,32 +107,6 @@ impl client_traits::GatewayClient for CommandClient {
             .await
             .map_err(ClientError::from)
     }
-
-    async fn dry_run(&self, request: DryRunRequest) -> client_traits::Result<CommandResponse> {
-        let command = request.command.ok_or_else(|| {
-            ClientError::InvalidArgument("DryRunRequest missing command".to_string())
-        })?;
-
-        let (as_of_sequence, as_of_timestamp) = match request.point_in_time {
-            Some(temporal) => match temporal.point_in_time {
-                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
-                    (Some(seq), None)
-                }
-                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
-                    let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(&ts)
-                        .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
-                    (None, Some(rfc3339))
-                }
-                None => (None, None),
-            },
-            None => (None, None),
-        };
-
-        self.router
-            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
-            .await
-            .map_err(ClientError::from)
-    }
 }
 
 /// In-process query client for standalone runtime.
@@ -216,19 +191,73 @@ impl client_traits::QueryClient for StandaloneQueryClient {
     }
 }
 
-/// Client for speculative (dry-run) execution of projectors, sagas, and PMs.
+impl StandaloneQueryClient {
+    /// Delete all events for an edition+domain combination.
+    ///
+    /// Main timeline ('angzarr' or empty edition) is protected and cannot be deleted.
+    /// Returns the number of events deleted.
+    ///
+    /// # Errors
+    /// - `INVALID_ARGUMENT` if attempting to delete main timeline
+    /// - `NOT_FOUND` if domain is unknown
+    /// - `INTERNAL` if storage operation fails
+    pub async fn delete_edition_events(
+        &self,
+        domain: &str,
+        edition: &str,
+    ) -> Result<crate::proto::EditionEventsDeleted, Status> {
+        // Protect main timeline
+        if edition.is_empty() || edition == DEFAULT_EDITION {
+            return Err(Status::invalid_argument("Cannot delete main timeline events"));
+        }
+
+        let store = self.domain_stores.get(domain).ok_or_else(|| {
+            Status::not_found(format!("Unknown domain: {domain}"))
+        })?;
+
+        let deleted_count = store
+            .event_store
+            .delete_edition_events(domain, edition)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(crate::proto::EditionEventsDeleted {
+            edition: edition.to_string(),
+            domain: domain.to_string(),
+            deleted_count,
+            deleted_at: chrono::Utc::now().to_rfc3339(),
+        })
+    }
+}
+
+/// Client for speculative (dry-run) execution of commands, projectors, sagas, and PMs.
 ///
 /// Wraps a `SpeculativeExecutor` with the same handler instances registered
 /// in the runtime. All methods invoke real client logic without side effects.
 #[derive(Clone)]
 pub struct SpeculativeClient {
     executor: Arc<SpeculativeExecutor>,
+    router: Arc<CommandRouter>,
 }
 
 impl SpeculativeClient {
-    /// Create from a speculative executor.
-    pub(crate) fn new(executor: Arc<SpeculativeExecutor>) -> Self {
-        Self { executor }
+    /// Create from a speculative executor and router.
+    pub(crate) fn new(executor: Arc<SpeculativeExecutor>, router: Arc<CommandRouter>) -> Self {
+        Self { executor, router }
+    }
+
+    /// Speculatively execute a command (dry-run) at a historical point.
+    ///
+    /// Returns the events that *would* be produced without persisting them.
+    pub async fn dry_run_command(
+        &self,
+        command: CommandBook,
+        as_of_sequence: Option<u32>,
+        as_of_timestamp: Option<&str>,
+    ) -> Result<CommandResponse, Status> {
+        self.router
+            .dry_run(command, as_of_sequence, as_of_timestamp)
+            .await
     }
 
     /// Speculatively run a projector against events.
@@ -239,7 +268,7 @@ impl SpeculativeClient {
         &self,
         name: &str,
         events: &EventBook,
-    ) -> Result<crate::proto::Projection, Status> {
+    ) -> Result<Projection, Status> {
         self.executor.speculate_projector(name, events).await
     }
 
@@ -273,73 +302,100 @@ impl SpeculativeClient {
     }
 }
 
-/// Client for edition lifecycle management (create, delete, list, execute).
-///
-/// Wraps an `EditionManager` to provide a convenient API for managing
-/// diverged event timelines.
-#[derive(Clone)]
-pub struct EditionClient {
-    manager: Arc<super::edition::EditionManager>,
-}
-
-impl EditionClient {
-    /// Create from an edition manager.
-    pub(crate) fn new(manager: Arc<super::edition::EditionManager>) -> Self {
-        Self { manager }
-    }
-
-    /// Create a new edition at the given divergence point.
-    pub async fn create(
-        &self,
-        name: impl Into<String>,
-        divergence: super::edition::DivergencePoint,
-        description: impl Into<String>,
-    ) -> Result<super::edition::EditionMetadata, Status> {
-        self.manager
-            .create_edition(name.into(), divergence, description.into())
-            .await
-    }
-
-    /// Delete an edition by name.
-    pub async fn delete(&self, name: &str) -> Result<(), Status> {
-        self.manager.delete_edition(name).await
-    }
-
-    /// List all active editions.
-    pub async fn list(&self) -> Vec<super::edition::EditionMetadata> {
-        self.manager.list_editions().await
-    }
-
-    /// Execute a command on a specific edition.
-    pub async fn execute(
-        &self,
-        edition_name: &str,
-        command: CommandBook,
-    ) -> Result<CommandResponse, Status> {
-        self.manager.execute(edition_name, command).await
-    }
-
-    /// Query events for a domain/root through an edition's composite store.
-    ///
-    /// Returns events from the main timeline up to divergence plus
-    /// edition-specific events after divergence.
-    pub async fn query_events(
-        &self,
-        edition_name: &str,
-        domain: &str,
-        root: Uuid,
-    ) -> Result<Vec<crate::proto::EventPage>, Status> {
-        let stores = self.manager.get_stores(edition_name).await.ok_or_else(|| {
-            Status::not_found(format!("Edition not found: {edition_name}"))
+#[async_trait]
+impl client_traits::SpeculativeClient for SpeculativeClient {
+    async fn dry_run(&self, request: DryRunRequest) -> client_traits::Result<CommandResponse> {
+        let command = request.command.ok_or_else(|| {
+            ClientError::InvalidArgument("DryRunRequest missing command".to_string())
         })?;
-        let storage = stores.get(domain).ok_or_else(|| {
-            Status::not_found(format!("No storage for domain: {domain}"))
-        })?;
-        storage
-            .event_store
-            .get(edition_name, domain, root)
+
+        let (as_of_sequence, as_of_timestamp) = match request.point_in_time {
+            Some(temporal) => match temporal.point_in_time {
+                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
+                    (Some(seq), None)
+                }
+                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
+                    let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(&ts)
+                        .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
+                    (None, Some(rfc3339))
+                }
+                None => (None, None),
+            },
+            None => (None, None),
+        };
+
+        self.router
+            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
             .await
-            .map_err(|e| Status::internal(e.to_string()))
+            .map_err(ClientError::from)
+    }
+
+    async fn projector(&self, request: SpeculateProjectorRequest) -> client_traits::Result<Projection> {
+        let events = request.events.ok_or_else(|| {
+            ClientError::InvalidArgument("SpeculateProjectorRequest missing events".to_string())
+        })?;
+        self.executor
+            .speculate_projector(&request.projector_name, &events)
+            .await
+            .map_err(ClientError::from)
+    }
+
+    async fn saga(&self, request: SpeculateSagaRequest) -> client_traits::Result<SagaResponse> {
+        let source = request.source.ok_or_else(|| {
+            ClientError::InvalidArgument("SpeculateSagaRequest missing source".to_string())
+        })?;
+
+        // Convert destinations to domain specs (explicit state)
+        let mut domain_specs = HashMap::new();
+        for dest in request.destinations {
+            if let Some(cover) = &dest.cover {
+                domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(dest));
+            }
+        }
+
+        let commands = self
+            .executor
+            .speculate_saga(&request.saga_name, &source, &domain_specs)
+            .await
+            .map_err(ClientError::from)?;
+
+        Ok(SagaResponse {
+            commands,
+            events: vec![],
+        })
+    }
+
+    async fn process_manager(
+        &self,
+        request: SpeculatePmRequest,
+    ) -> client_traits::Result<ProcessManagerHandleResponse> {
+        let trigger = request.trigger.ok_or_else(|| {
+            ClientError::InvalidArgument("SpeculatePmRequest missing trigger".to_string())
+        })?;
+
+        // Convert destinations and process_state to domain specs
+        let mut domain_specs = HashMap::new();
+        if let Some(ps) = request.process_state {
+            if let Some(cover) = &ps.cover {
+                domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(ps));
+            }
+        }
+        for dest in request.destinations {
+            if let Some(cover) = &dest.cover {
+                domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(dest));
+            }
+        }
+
+        let result = self
+            .executor
+            .speculate_pm(&request.pm_name, &trigger, &domain_specs)
+            .await
+            .map_err(ClientError::from)?;
+
+        Ok(ProcessManagerHandleResponse {
+            commands: result.commands,
+            process_events: result.process_events,
+        })
     }
 }
 
@@ -445,7 +501,7 @@ impl CommandBuilder {
                     value: self.root.as_bytes().to_vec(),
                 }),
                 correlation_id: self.correlation_id.unwrap_or_default(),
-                edition: self.edition,
+                edition: self.edition.map(|name| Edition { name, divergences: vec![] }),
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),

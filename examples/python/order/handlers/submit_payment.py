@@ -1,18 +1,24 @@
-"""SubmitPayment command handler."""
+"""Handler for SubmitPayment command."""
 
 from datetime import datetime, timezone
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from angzarr import angzarr_pb2 as angzarr
+from angzarr import types_pb2 as types
+from errors import CommandRejectedError
 from proto import domains_pb2 as domains
+
 from .state import OrderState
 
-from .exceptions import CommandRejectedError
 
-
-def handle_submit_payment(command_book, command_any, state: OrderState, seq: int, log) -> angzarr.EventBook:
+def handle_submit_payment(
+    command_book: types.CommandBook,
+    command_any: Any,
+    state: OrderState,
+    seq: int,
+) -> types.EventBook:
+    """Handle SubmitPayment command."""
     if not state.exists():
         raise CommandRejectedError("Order does not exist")
     if not state.is_pending():
@@ -27,8 +33,6 @@ def handle_submit_payment(command_book, command_any, state: OrderState, seq: int
     if cmd.amount_cents != expected_total:
         raise CommandRejectedError("Payment amount must match order total")
 
-    log.info("submitting_payment", method=cmd.payment_method, amount=cmd.amount_cents)
-
     event = domains.PaymentSubmitted(
         payment_method=cmd.payment_method,
         amount_cents=cmd.amount_cents,
@@ -38,7 +42,13 @@ def handle_submit_payment(command_book, command_any, state: OrderState, seq: int
     event_any = Any()
     event_any.Pack(event, type_url_prefix="type.examples/")
 
-    return angzarr.EventBook(
+    return types.EventBook(
         cover=command_book.cover,
-        pages=[angzarr.EventPage(num=seq, event=event_any, created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())))],
+        pages=[
+            types.EventPage(
+                num=seq,
+                event=event_any,
+                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+            )
+        ],
     )

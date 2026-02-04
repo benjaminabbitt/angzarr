@@ -13,6 +13,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use angzarr::client_traits::SpeculativeClient as SpeculativeClientTrait;
 use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 use angzarr::proto::{CommandBook, CommandResponse, EventPage};
 use angzarr::standalone::DomainStorage;
@@ -72,21 +73,22 @@ pub struct BackendWithProjectors {
     pub backend: Arc<dyn Backend>,
     pub web_db: Option<sqlx::SqlitePool>,
     pub accounting_db: Option<sqlx::SqlitePool>,
-    pub speculative: Option<angzarr::standalone::SpeculativeClient>,
-    pub edition: Option<angzarr::standalone::EditionClient>,
+    pub speculative: Option<Arc<dyn angzarr::client_traits::SpeculativeClient>>,
 }
 
 /// Create the appropriate backend based on `ANGZARR_TEST_MODE` env var.
 pub async fn create_backend() -> BackendWithProjectors {
     let mode = std::env::var("ANGZARR_TEST_MODE").unwrap_or_else(|_| "standalone".into());
     match mode.as_str() {
-        "gateway" => BackendWithProjectors {
-            backend: Arc::new(create_gateway_backend().await),
-            web_db: None,
-            accounting_db: None,
-            speculative: None,
-            edition: None,
-        },
+        "gateway" => {
+            let (backend, speculative) = create_gateway_backend().await;
+            BackendWithProjectors {
+                backend: Arc::new(backend),
+                web_db: None,
+                accounting_db: None,
+                speculative: Some(Arc::new(speculative)),
+            }
+        }
         _ => create_standalone_with_projectors().await,
     }
 }
@@ -95,56 +97,66 @@ pub async fn create_backend() -> BackendWithProjectors {
 // Standalone Backend
 // ============================================================================
 
+use angzarr::handlers::projectors::topology::TopologyProjector;
 use angzarr::standalone::{
     CommandClient, ProcessManagerConfig, ProjectorConfig, Runtime, RuntimeBuilder, SagaConfig,
 };
+use angzarr::storage::SqliteTopologyStore;
+use tokio::sync::OnceCell;
 
 use crate::adapters::{AggregateLogicAdapter, SagaLogicAdapter};
-use crate::projectors::{create_projector_pool, AccountingProjector, WebProjector};
+use crate::projectors::create_projector_pool;
+
+/// Shared topology projector across all test scenarios.
+///
+/// Intentionally not reset between tests — accumulates the full topology
+/// graph from the entire test suite for a realistic Grafana view.
+static SHARED_TOPOLOGY: OnceCell<Arc<TopologyProjector>> = OnceCell::const_new();
+
+async fn shared_topology_projector() -> Arc<TopologyProjector> {
+    SHARED_TOPOLOGY
+        .get_or_init(|| async {
+            let pool = create_projector_pool("e2e_topology")
+                .await
+                .expect("Failed to create topology pool");
+            let store = Arc::new(SqliteTopologyStore::new(pool));
+            let projector = Arc::new(TopologyProjector::new(store, 0));
+            projector
+                .init()
+                .await
+                .expect("Failed to init shared topology projector");
+            projector
+        })
+        .await
+        .clone()
+}
 
 /// In-process standalone backend using RuntimeBuilder.
 struct StandaloneBackend {
     client: CommandClient,
     domain_stores: HashMap<String, DomainStorage>,
-    edition_client: angzarr::standalone::EditionClient,
     // Runtime kept alive for event distribution (projectors, sagas, PMs)
     _runtime: Runtime,
 }
 
 async fn create_standalone_with_projectors() -> BackendWithProjectors {
-    use cart::CartLogic;
-    use customer::CustomerLogic;
     use fulfillment::FulfillmentLogic;
     use inventory_svc::InventoryLogic;
     use order::OrderLogic;
     use process_manager_fulfillment::OrderFulfillmentProcess;
-    use process_manager_order_status::OrderStatusProcess;
-    use product::ProductLogic;
-    use saga_cancellation::CancellationSaga;
-    use saga_fulfillment::FulfillmentSaga;
-    use saga_loyalty_earn::LoyaltyEarnSaga;
+    use projector_inventory::InventoryProjector;
+    use saga_order_fulfillment::OrderFulfillmentSaga;
+    use saga_order_inventory::OrderInventorySaga;
+    use saga_fulfillment_inventory::FulfillmentInventorySaga;
 
-    // Create projector SQLite pools
-    let web_pool = create_projector_pool("e2e_web_proj")
-        .await
-        .expect("Failed to create web projector pool");
-    let accounting_pool = create_projector_pool("e2e_acct_proj")
-        .await
-        .expect("Failed to create accounting projector pool");
-
-    // Create projector handlers
-    let web_projector = WebProjector::new(web_pool.clone())
-        .await
-        .expect("Failed to init web projector");
-    let accounting_projector = AccountingProjector::new(accounting_pool.clone())
-        .await
-        .expect("Failed to init accounting projector");
+    // Shared topology projector — accumulates across all scenarios
+    let topology_projector = shared_topology_projector().await;
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
-        // 6 aggregate domains
-        .register_aggregate("cart", AggregateLogicAdapter::new(CartLogic::new()))
-        .register_aggregate("customer", AggregateLogicAdapter::new(CustomerLogic::new()))
+        // Topology visualization
+        .register_topology(topology_projector, ProjectorConfig::async_())
+        // 3 aggregate domains
         .register_aggregate("order", AggregateLogicAdapter::new(OrderLogic::new()))
         .register_aggregate(
             "fulfillment",
@@ -154,44 +166,33 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
             "inventory",
             AggregateLogicAdapter::new(InventoryLogic::new()),
         )
-        .register_aggregate("product", AggregateLogicAdapter::new(ProductLogic::new()))
         // 3 sagas
         .register_saga(
-            "fulfillment-saga",
-            SagaLogicAdapter::new(FulfillmentSaga::new()),
+            "order-fulfillment-saga",
+            SagaLogicAdapter::new(OrderFulfillmentSaga::new()),
             SagaConfig::new("order", "fulfillment"),
         )
         .register_saga(
-            "cancellation-saga",
-            SagaLogicAdapter::new(CancellationSaga::new()),
-            SagaConfig::new("order", "inventory").with_output("customer"),
+            "order-inventory-saga",
+            SagaLogicAdapter::new(OrderInventorySaga::new()),
+            SagaConfig::new("order", "inventory"),
         )
         .register_saga(
-            "loyalty-earn-saga",
-            SagaLogicAdapter::new(LoyaltyEarnSaga::new()),
-            SagaConfig::new("order", "customer").with_output("inventory"),
+            "fulfillment-inventory-saga",
+            SagaLogicAdapter::new(FulfillmentInventorySaga::new()),
+            SagaConfig::new("fulfillment", "inventory"),
         )
-        // 2 process managers
+        // 1 process manager
         .register_process_manager(
             "order-fulfillment",
             OrderFulfillmentProcess::new(),
             ProcessManagerConfig::new("order-fulfillment"),
         )
-        .register_process_manager(
-            "order-status",
-            OrderStatusProcess::new(),
-            ProcessManagerConfig::new("order-status"),
-        )
-        // 2 projectors
+        // 1 projector
         .register_projector(
-            "web",
-            web_projector,
-            ProjectorConfig::async_().with_domains(vec!["order".into()]),
-        )
-        .register_projector(
-            "accounting",
-            accounting_projector,
-            ProjectorConfig::async_().with_domains(vec!["order".into(), "customer".into()]),
+            "inventory",
+            InventoryProjector::new(),
+            ProjectorConfig::async_().with_domains(vec!["inventory".into()]),
         )
         .build()
         .await
@@ -199,7 +200,6 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
 
     let client = runtime.command_client();
     let speculative = runtime.speculative_client();
-    let edition = runtime.edition_client();
     let domain_stores = runtime.domain_stores().clone();
     runtime.start().await.expect("Failed to start runtime");
 
@@ -207,13 +207,11 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
         backend: Arc::new(StandaloneBackend {
             client,
             domain_stores,
-            edition_client: edition.clone(),
             _runtime: runtime,
         }),
-        web_db: Some(web_pool),
-        accounting_db: Some(accounting_pool),
-        speculative: Some(speculative),
-        edition: Some(edition),
+        web_db: None,
+        accounting_db: None,
+        speculative: Some(Arc::new(speculative)),
     }
 }
 
@@ -238,10 +236,12 @@ impl Backend for StandaloneBackend {
         edition: &str,
         root: Uuid,
     ) -> BackendResult<Vec<EventPage>> {
-        self.edition_client
-            .query_events(edition, domain, root)
-            .await
-            .map_err(|e| format!("Edition client error: {}", e).into()) // Convert Status to Box<dyn Error>
+        let storage = self
+            .domain_stores
+            .get(domain)
+            .ok_or_else(|| format!("No storage for domain: {}", domain))?;
+        let pages = storage.event_store.get(domain, edition, root).await?;
+        Ok(pages)
     }
 
     async fn query_events_temporal(
@@ -330,12 +330,13 @@ struct GatewayBackend {
     client: Client,
 }
 
-async fn create_gateway_backend() -> GatewayBackend {
+async fn create_gateway_backend() -> (GatewayBackend, angzarr_client::SpeculativeClient) {
     let client = Client::from_env("ANGZARR_ENDPOINT", "http://localhost:50051")
         .await
         .expect("Failed to connect to gateway");
 
-    GatewayBackend { client }
+    let speculative = client.speculative.clone();
+    (GatewayBackend { client }, speculative)
 }
 
 #[async_trait]
@@ -428,7 +429,60 @@ impl Backend for GatewayBackend {
             point_in_time,
         };
 
-        let response = self.client.gateway.dry_run(request).await?;
+        let response = self.client.speculative.dry_run(request).await?;
         Ok(response)
+    }
+
+    async fn query_by_correlation(
+        &self,
+        correlation_id: &str,
+    ) -> BackendResult<Vec<(String, String, Uuid)>> {
+        const DOMAINS: &[&str] = &["order", "fulfillment", "inventory"];
+
+        let mut results = Vec::new();
+
+        for domain in DOMAINS {
+            let books = self
+                .client
+                .query
+                .query_domain(*domain)
+                .by_correlation_id(correlation_id)
+                .get_events()
+                .await;
+
+            match books {
+                Ok(books) => {
+                    for book in books {
+                        let root = book
+                            .cover
+                            .as_ref()
+                            .and_then(|c| c.root.as_ref())
+                            .and_then(|r| Uuid::from_slice(&r.value).ok())
+                            .unwrap_or_default();
+                        let book_domain = book
+                            .cover
+                            .as_ref()
+                            .map(|c| c.domain.clone())
+                            .unwrap_or_else(|| domain.to_string());
+                        for page in &book.pages {
+                            if let Some(event) = &page.event {
+                                let event_type = event
+                                    .type_url
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or(&event.type_url)
+                                    .to_string();
+                                results.push((book_domain.clone(), event_type, root));
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Domain may not have events for this correlation; continue
+                }
+            }
+        }
+
+        Ok(results)
     }
 }

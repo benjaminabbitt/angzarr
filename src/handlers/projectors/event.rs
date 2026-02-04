@@ -389,6 +389,16 @@ impl ProjectorCoordinator for EventService {
         self.handle_book(&book).await?;
         Ok(Response::new(()))
     }
+
+    async fn handle_speculative(
+        &self,
+        request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        // Event store projector doesn't produce a read model projection
+        let book = request.into_inner();
+        self.handle_book(&book).await?;
+        Ok(Response::new(Projection::default()))
+    }
 }
 
 /// Wrapper to share EventService across async contexts.
@@ -413,6 +423,13 @@ impl ProjectorCoordinator for EventServiceHandle {
 
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         ProjectorCoordinator::handle(&*self.0, request).await
+    }
+
+    async fn handle_speculative(
+        &self,
+        request: Request<EventBook>,
+    ) -> Result<Response<Projection>, Status> {
+        ProjectorCoordinator::handle_speculative(&*self.0, request).await
     }
 }
 

@@ -1,29 +1,38 @@
 package logic
 
 import (
+	"angzarr"
+	angzarrpb "angzarr/proto/angzarr"
 	"inventory/proto/examples"
 
+	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (l *DefaultInventoryLogic) HandleInitializeStock(state *InventoryState, productID string, quantity, lowStockThreshold int32) (*examples.StockInitialized, error) {
-	if state.Exists() {
-		return nil, NewFailedPrecondition("Inventory already initialized")
-	}
-	if productID == "" {
-		return nil, NewInvalidArgument("Product ID is required")
-	}
-	if quantity < 0 {
-		return nil, NewInvalidArgument("Quantity cannot be negative")
-	}
-	if lowStockThreshold < 0 {
-		return nil, NewInvalidArgument("Low stock threshold cannot be negative")
+// HandleInitializeStock validates and creates a StockInitialized event.
+func HandleInitializeStock(cb *angzarrpb.CommandBook, data []byte, state *InventoryState, seq uint32) (*angzarrpb.EventBook, error) {
+	var cmd examples.InitializeStock
+	if err := goproto.Unmarshal(data, &cmd); err != nil {
+		return nil, angzarr.NewInvalidArgument("failed to unmarshal command: " + err.Error())
 	}
 
-	return &examples.StockInitialized{
-		ProductId:         productID,
-		Quantity:          quantity,
-		LowStockThreshold: lowStockThreshold,
+	if state.Exists() {
+		return nil, angzarr.NewFailedPrecondition(ErrMsgAlreadyInitialized)
+	}
+	if cmd.ProductId == "" {
+		return nil, angzarr.NewInvalidArgument(ErrMsgProductIDRequired)
+	}
+	if cmd.Quantity < 0 {
+		return nil, angzarr.NewInvalidArgument(ErrMsgQuantityNegative)
+	}
+	if cmd.LowStockThreshold < 0 {
+		return nil, angzarr.NewInvalidArgument(ErrMsgThresholdNegative)
+	}
+
+	return angzarr.PackEvent(cb.Cover, &examples.StockInitialized{
+		ProductId:         cmd.ProductId,
+		Quantity:          cmd.Quantity,
+		LowStockThreshold: cmd.LowStockThreshold,
 		InitializedAt:     timestamppb.Now(),
-	}, nil
+	}, seq)
 }

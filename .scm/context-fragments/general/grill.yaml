@@ -1,0 +1,70 @@
+version: 1.0
+tags:
+    - workflow
+    - review
+    - quality
+content: |-
+    # Grill Me: Change Comprehension Gate
+
+    Before creating a PR, quiz the developer on their changes to verify understanding.
+
+    ## Process
+
+    1. **Analyze the diff** - Review all staged and unstaged changes on the current branch
+    2. **Identify key decisions** - Note architectural choices, trade-offs, edge cases, and non-obvious implications
+    3. **Formulate questions** - Create pointed questions that test genuine understanding, not surface-level recall
+    4. **Quiz the developer** - Ask questions one at a time, wait for responses
+    5. **Evaluate answers** - Assess whether the developer truly understands what they changed and why
+    6. **Gate the PR** - Only proceed with PR creation once the developer demonstrates sufficient understanding
+
+    ## Question Categories
+
+    - **Intent**: "What problem does this change solve?" "Why this approach over alternatives?"
+    - **Impact**: "What other parts of the system does this affect?" "What breaks if this fails?"
+    - **Edge cases**: "What happens when X is null/empty/concurrent?" "How does this behave under Y condition?"
+    - **Trade-offs**: "What did you sacrifice for this design?" "What technical debt does this introduce?"
+    - **Rollback**: "How would you revert this safely?" "What's the blast radius?"
+
+    ## Grading
+
+    - **Pass**: Developer can explain intent, impact, and trade-offs clearly. Proceed with PR.
+    - **Partial**: Developer understands some aspects but has gaps. Point out gaps, re-quiz on weak areas.
+    - **Fail**: Developer cannot explain core decisions. Do not create PR. Suggest areas to review.
+
+    ## Rules
+
+    - Be rigorous but fair - test understanding, not memorization
+    - Adapt difficulty to the complexity of the changes
+    - If the developer gets something wrong, explain why before moving on
+    - Do not create the PR until the developer passes
+content_hash: sha256:d197078abae67581aa40428ba173bebccf32c6fe7d8f915d8b2b3a7cbb1aed02
+distilled: |-
+    # Grill Me: Change Comprehension Gate
+
+    Quiz developer on their changes before PR creation to verify understanding.
+
+    ## Process
+    1. Analyze diff (staged + unstaged)
+    2. Identify key decisions, trade-offs, edge cases, non-obvious implications
+    3. Ask pointed questions one at a time testing genuine understanding
+    4. Evaluate answers for real comprehension
+    5. Gate PR on sufficient understanding
+
+    ## Question Categories
+    - **Intent**: What problem solved? Why this approach?
+    - **Impact**: What else affected? What breaks if this fails?
+    - **Edge cases**: Null/empty/concurrent behavior?
+    - **Trade-offs**: What sacrificed? Technical debt introduced?
+    - **Rollback**: How to revert safely? Blast radius?
+
+    ## Grading
+    - **Pass**: Explains intent, impact, trade-offs clearly → proceed with PR
+    - **Partial**: Gaps exist → point out gaps, re-quiz weak areas
+    - **Fail**: Can't explain core decisions → no PR, suggest review areas
+
+    ## Rules
+    - Rigorous but fair; test understanding, not memorization
+    - Scale difficulty to change complexity
+    - Explain wrong answers before continuing
+    - Never create PR until developer passes
+distilled_by: claude-code

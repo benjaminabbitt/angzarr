@@ -5,7 +5,7 @@ use crate::error::{ClientError, Result};
 use crate::traits;
 use angzarr::proto::{
     query::Selection, temporal_query::PointInTime, CommandBook, CommandPage, CommandResponse,
-    Cover, DryRunRequest, EventBook, EventPage, Query, SequenceRange, TemporalQuery,
+    Cover, Edition, EventBook, EventPage, Query, SequenceRange, TemporalQuery,
 };
 use prost::Message;
 use uuid::Uuid;
@@ -19,7 +19,6 @@ pub struct CommandBuilder<'a, C: traits::GatewayClient> {
     sequence: u32,
     type_url: Option<String>,
     payload: Option<Vec<u8>>,
-    dry_run_point: Option<TemporalQuery>,
 }
 
 impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
@@ -32,7 +31,6 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
             sequence: 0,
             type_url: None,
             payload: None,
-            dry_run_point: None,
         }
     }
 
@@ -54,23 +52,6 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
         self.type_url = Some(type_url.into());
         self.payload = Some(message.encode_to_vec());
         self
-    }
-
-    /// Configure for dry-run at a specific sequence number.
-    pub fn as_of_sequence(mut self, seq: u32) -> Self {
-        self.dry_run_point = Some(TemporalQuery {
-            point_in_time: Some(PointInTime::AsOfSequence(seq)),
-        });
-        self
-    }
-
-    /// Configure for dry-run at a specific timestamp (RFC3339 format).
-    pub fn as_of_time(mut self, rfc3339: &str) -> Result<Self> {
-        let timestamp = parse_timestamp(rfc3339)?;
-        self.dry_run_point = Some(TemporalQuery {
-            point_in_time: Some(PointInTime::AsOfTime(timestamp)),
-        });
-        Ok(self)
     }
 
     /// Build the CommandBook without executing.
@@ -113,28 +94,9 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
 
     /// Execute the command.
     pub async fn execute(self) -> Result<CommandResponse> {
-        if self.dry_run_point.is_some() {
-            return Err(ClientError::InvalidArgument(
-                "use dry_run() for temporal queries".to_string(),
-            ));
-        }
         let client = self.client;
         let command = self.build_inner()?;
         client.execute(command).await
-    }
-
-    /// Execute the command as a dry-run (no persistence).
-    pub async fn dry_run(self) -> Result<CommandResponse> {
-        let client = self.client;
-        let point_in_time = self.dry_run_point;
-        let command = self.build_inner()?;
-
-        let request = DryRunRequest {
-            command: Some(command),
-            point_in_time,
-        };
-
-        client.dry_run(request).await
     }
 }
 
@@ -216,7 +178,7 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
                 domain: self.domain.clone(),
                 root: self.root.map(uuid_to_proto),
                 correlation_id: self.correlation_id.clone().unwrap_or_default(),
-                edition: self.edition.clone(),
+                edition: self.edition.clone().map(Edition::from),
             }),
             selection: self.selection.clone(),
         }

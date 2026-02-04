@@ -76,10 +76,9 @@ use angzarr::config::{
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::handlers::core::{ProjectorEventHandler, SagaEventHandler};
-use angzarr::orchestration::aggregate::{DEFAULT_EDITION, GrpcBusinessLogic};
+use angzarr::orchestration::aggregate::GrpcBusinessLogic;
 use angzarr::orchestration::command::local::LocalCommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
-use angzarr::orchestration::projector::local::LocalProjectorContext;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_client::AggregateClient;
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
@@ -90,7 +89,6 @@ use angzarr::standalone::{
     CommandRouter, DomainStorage, GrpcProjectorHandler, ServerInfo, StandaloneEventQueryBridge,
     StandaloneGatewayService,
 };
-use angzarr::standalone::edition::{EditionHandlerRefs, EditionManager};
 use angzarr::transport::{connect_to_address, grpc_trace_layer};
 
 /// Managed child process with proper cleanup.
@@ -369,6 +367,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         discovery,
         event_bus.clone(),
         vec![],
+        None,
     ));
 
     // Create local command executor and destination fetcher
@@ -402,15 +401,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(GrpcProjectorHandler::new(client));
 
         let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        let ctx = Arc::new(LocalProjectorContext::new(handler));
-        let edition_listen = format!("{DEFAULT_EDITION}.{listen_domain}");
-        let edition_name = format!("{DEFAULT_EDITION}.{socket_name}");
         let proj_handler = ProjectorEventHandler::with_config(
-            ctx,
+            handler,
             None,
-            vec![edition_listen],
+            vec![listen_domain.clone()],
             false,
-            edition_name,
+            socket_name.clone(),
         );
 
         let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
@@ -446,13 +442,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let saga_client = Arc::new(Mutex::new(SagaClient::new(channel)));
         let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
 
-        let edition_domain = format!("{DEFAULT_EDITION}.{}", svc.domain);
         let factory = Arc::new(GrpcSagaContextFactory::new(
             saga_client,
             event_bus.clone(),
             compensation_config.clone(),
             None,
-            edition_domain,
+            svc.domain.clone(),
         ));
 
         let handler = SagaEventHandler::from_factory(
@@ -461,7 +456,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(fetcher.clone()),
         );
 
-        let input_domain = format!("{DEFAULT_EDITION}.{listen_domain}");
+        let input_domain = listen_domain.clone();
         let sub = channel_bus.with_config(ChannelConfig::subscriber(input_domain));
         sub.subscribe(Box::new(handler)).await?;
         sub.start_consuming().await?;
@@ -487,28 +482,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Initialize the EditionManager (even if gateway is disabled, for internal use)
-    let edition_handler_refs = EditionHandlerRefs {
-        aggregates: HashMap::new(),
-        projectors: HashMap::new(),
-        sagas: HashMap::new(),
-        process_managers: HashMap::new(),
-    };
-    let edition_manager = Arc::new(EditionManager::new(
-        edition_handler_refs,
-        domain_stores.clone(),
-        event_bus.clone(),
-    ));
-
     // Start gateway if enabled
     let mut servers: Vec<ServerInfo> = Vec::new();
     if config.standalone.gateway.enabled {
         let port = config.standalone.gateway.port.unwrap_or(50051);
         let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
-        let gateway = StandaloneGatewayService::new(router.clone(), edition_manager.clone());
-        let event_query =
-            StandaloneEventQueryBridge::new(domain_stores.clone(), edition_manager);
+        let gateway = StandaloneGatewayService::new(router.clone());
+        let event_query = StandaloneEventQueryBridge::new(domain_stores.clone());
 
         let grpc_router = tonic::transport::Server::builder()
             .layer(grpc_trace_layer())
@@ -533,6 +514,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         servers.push(ServerInfo::from_parts(local_addr, shutdown_tx));
         info!(addr = %local_addr, "Gateway listening");
     }
+
+    // Publish component descriptors to event bus for topology discovery
+    let descriptors = build_descriptors(&config);
+    if let Err(e) = angzarr::proto_ext::publish_descriptors(event_bus.as_ref(), &descriptors).await
+    {
+        warn!(error = %e, "Failed to publish component descriptors to event bus");
+    }
+    angzarr::proto_ext::spawn_descriptor_heartbeat(
+        event_bus.clone(),
+        descriptors,
+        std::time::Duration::from_secs(30),
+    );
 
     info!(
         aggregates = config.standalone.aggregates.len(),
@@ -716,4 +709,43 @@ async fn check_tcp_health(addr: &str) -> bool {
 /// Check gRPC health (TCP connectivity).
 async fn check_grpc_health(addr: &str) -> bool {
     check_tcp_health(addr).await
+}
+
+/// Build component descriptors from standalone config for topology discovery.
+fn build_descriptors(config: &angzarr::config::Config) -> Vec<angzarr::proto::ComponentDescriptor> {
+    let mut descriptors = Vec::new();
+
+    for svc in &config.standalone.aggregates {
+        descriptors.push(angzarr::proto::ComponentDescriptor {
+            name: svc.domain.clone(),
+            component_type: "aggregate".to_string(),
+            inputs: vec![],
+        });
+    }
+
+    for svc in &config.standalone.sagas {
+        let listen = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+        descriptors.push(angzarr::proto::ComponentDescriptor {
+            name: svc.domain.clone(),
+            component_type: "saga".to_string(),
+            inputs: vec![angzarr::proto::Subscription {
+                domain: listen.clone(),
+                event_types: vec![],
+            }],
+        });
+    }
+
+    for svc in &config.standalone.projectors {
+        let listen = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+        descriptors.push(angzarr::proto::ComponentDescriptor {
+            name: svc.name.clone().unwrap_or_else(|| svc.domain.clone()),
+            component_type: "projector".to_string(),
+            inputs: vec![angzarr::proto::Subscription {
+                domain: listen.clone(),
+                event_types: vec![],
+            }],
+        });
+    }
+
+    descriptors
 }

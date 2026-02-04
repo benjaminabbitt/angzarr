@@ -50,9 +50,11 @@ use tracing::{error, info, warn};
 use angzarr::config::{Config, STATIC_ENDPOINTS_ENV_VAR, STREAM_ADDRESS_ENV_VAR, STREAM_TIMEOUT_ENV_VAR};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::handlers::gateway::{EventQueryProxy, GatewayService};
+use angzarr::handlers::speculative::SpeculativeHandler;
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::event_stream_client::EventStreamClient;
+use angzarr::proto::speculative_service_server::SpeculativeServiceServer;
 use angzarr::transport::{connect_to_address, grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::{init_tracing, parse_static_endpoints};
 use angzarr::utils::retry::connection_backoff;
@@ -151,7 +153,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // EventQuery proxy routes queries to appropriate aggregate sidecars by domain
-    let event_query_proxy = EventQueryProxy::new(discovery);
+    let event_query_proxy = EventQueryProxy::new(discovery.clone());
+
+    // Speculative execution service
+    let speculative_service = SpeculativeHandler::new(discovery);
 
     info!(
         stream_timeout = stream_timeout_secs,
@@ -168,7 +173,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(CommandGatewayServer::new(gateway_service))
-        .add_service(EventQueryServer::new(event_query_proxy));
+        .add_service(EventQueryServer::new(event_query_proxy))
+        .add_service(SpeculativeServiceServer::new(speculative_service));
 
     serve_with_transport(router, &config.transport, "gateway", None).await?;
 

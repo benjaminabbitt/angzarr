@@ -51,6 +51,16 @@ pub fn parse_timestamp(event: &EventPage) -> Result<String> {
     }
 }
 
+/// Extract the sequence number from an EventPage.
+///
+/// Returns the explicit sequence if set, otherwise 0.
+pub fn event_sequence(event: &EventPage) -> u32 {
+    match &event.sequence {
+        Some(Sequence::Num(n)) => *n,
+        _ => 0,
+    }
+}
+
 /// Convert a protobuf Timestamp to RFC3339 string.
 pub fn timestamp_to_rfc3339(
     ts: &prost_types::Timestamp,

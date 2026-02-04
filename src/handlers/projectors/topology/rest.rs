@@ -23,6 +23,9 @@ use super::store::TopologyStore;
 type AppState = Arc<dyn TopologyStore>;
 
 /// Start the REST server on the given port.
+///
+/// When `port` is 0, the OS assigns an ephemeral port. The actual bound
+/// port is always logged so it can be discovered.
 pub async fn serve(
     store: Arc<dyn TopologyStore>,
     port: u16,
@@ -30,7 +33,8 @@ pub async fn serve(
     let app = router(store);
     let addr = format!("0.0.0.0:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    info!(port = port, "topology REST API listening");
+    let actual_port = listener.local_addr()?.port();
+    info!(port = actual_port, "topology REST API listening");
     axum::serve(listener, app).await?;
     Ok(())
 }

@@ -5,6 +5,9 @@
 
 use serde::Deserialize;
 
+/// Default domain for saga compensation fallback events.
+pub const DEFAULT_SAGA_FALLBACK_DOMAIN: &str = "angzarr.saga-failures";
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -45,7 +48,7 @@ pub struct SagaCompensationConfig {
 impl Default for SagaCompensationConfig {
     fn default() -> Self {
         Self {
-            fallback_domain: "angzarr.saga-failures".to_string(),
+            fallback_domain: DEFAULT_SAGA_FALLBACK_DOMAIN.to_string(),
             dead_letter_queue_url: None,
             escalation_webhook_url: None,
             fallback_emit_system_revocation: true,
@@ -102,7 +105,7 @@ mod tests {
     #[test]
     fn test_saga_compensation_config_default() {
         let config = SagaCompensationConfig::default();
-        assert_eq!(config.fallback_domain, "angzarr.saga-failures");
+        assert_eq!(config.fallback_domain, DEFAULT_SAGA_FALLBACK_DOMAIN);
         assert!(config.dead_letter_queue_url.is_none());
         assert!(config.escalation_webhook_url.is_none());
         assert!(config.fallback_emit_system_revocation);

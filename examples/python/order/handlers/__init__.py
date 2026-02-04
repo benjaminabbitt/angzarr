@@ -1,11 +1,12 @@
-"""Order command handlers."""
+"""Command handlers for Order bounded context."""
 
-from .exceptions import CommandRejectedError
-from .create_order import handle_create_order
-from .apply_loyalty_discount import handle_apply_loyalty_discount
-from .submit_payment import handle_submit_payment
-from .confirm_payment import handle_confirm_payment
-from .cancel_order import handle_cancel_order
+from errors import CommandRejectedError
+
+from handlers.create_order import handle_create_order
+from handlers.apply_loyalty_discount import handle_apply_loyalty_discount
+from handlers.submit_payment import handle_submit_payment
+from handlers.confirm_payment import handle_confirm_payment
+from handlers.cancel_order import handle_cancel_order
 
 __all__ = [
     "CommandRejectedError",

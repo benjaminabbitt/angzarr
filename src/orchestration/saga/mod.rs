@@ -16,10 +16,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use backon::ExponentialBuilder;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 use crate::bus::BusError;
-use crate::proto::{CommandBook, Cover, EventBook};
+use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin};
 use crate::proto_ext::CoverExt;
 use crate::utils::retry::{run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -67,6 +67,13 @@ pub trait SagaRetryContext: Send + Sync {
 
     /// Handle a permanently rejected command (compensation, logging, etc.)
     async fn on_command_rejected(&self, command: &CommandBook, reason: &str);
+
+    /// Cover of the source event that triggered this saga invocation.
+    ///
+    /// Used to populate `saga_origin` on outgoing commands, enabling
+    /// the aggregate to skip sequence validation and supporting
+    /// compensation flow on rejection.
+    fn source_cover(&self) -> Option<&Cover>;
 }
 
 /// State for a retryable saga command execution operation.
@@ -229,10 +236,24 @@ pub async fn orchestrate_saga(
     };
 
     // Phase 3: Execute saga with source + destinations
-    let commands = ctx
+    let mut commands = ctx
         .re_execute_saga(destinations)
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
+
+    // Stamp saga_origin on all commands so the aggregate can:
+    // (a) skip sequence validation (sagas don't track target sequences)
+    // (b) initiate compensation flow on rejection
+    let source_cover = ctx.source_cover().cloned();
+    for cmd in &mut commands {
+        if cmd.saga_origin.is_none() {
+            cmd.saga_origin = Some(SagaCommandOrigin {
+                saga_name: saga_name.to_string(),
+                triggering_aggregate: source_cover.clone(),
+                triggering_event_sequence: 0,
+            });
+        }
+    }
 
     debug!(
         commands = commands.len(),

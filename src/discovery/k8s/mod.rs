@@ -32,10 +32,11 @@ use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tracing::{debug, error, info, warn};
 
-use crate::config::{EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR};
+use crate::config::{DISCOVERY_STATIC, EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR};
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::event_query_client::EventQueryClient;
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use crate::proto_ext::WILDCARD_DOMAIN;
 
 /// Label for component type.
 const COMPONENT_LABEL: &str = "app.kubernetes.io/component";
@@ -189,7 +190,7 @@ impl K8sServiceDiscovery {
     pub fn new_static() -> Self {
         Self {
             client: None,
-            namespace: "static".to_string(),
+            namespace: DISCOVERY_STATIC.to_string(),
             aggregates: empty_cache(),
             projectors: empty_cache(),
             aggregate_clients: empty_cache(),
@@ -421,7 +422,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
             .or_else(|| {
                 aggregates
                     .values()
-                    .find(|s| s.domain.as_deref() == Some("*"))
+                    .find(|s| s.domain.as_deref() == Some(WILDCARD_DOMAIN))
             })
             .ok_or_else(|| DiscoveryError::DomainNotFound(domain.to_string()))?
             .clone();
@@ -444,7 +445,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
             .or_else(|| {
                 aggregates
                     .values()
-                    .find(|s| s.domain.as_deref() == Some("*"))
+                    .find(|s| s.domain.as_deref() == Some(WILDCARD_DOMAIN))
             })
             .cloned();
 
@@ -510,6 +511,23 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
         }
 
         Ok(clients)
+    }
+
+    async fn get_projector_by_name(
+        &self,
+        name: &str,
+    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError> {
+        let projectors = self.projectors.read().await;
+
+        let service = projectors
+            .values()
+            .find(|s| s.name == name || s.domain.as_deref() == Some(name))
+            .ok_or_else(|| DiscoveryError::NoServicesFound(format!("projector:{}", name)))?
+            .clone();
+
+        drop(projectors);
+
+        self.get_or_create_projector_client(&service).await
     }
 
     async fn aggregate_domains(&self) -> Vec<String> {

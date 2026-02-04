@@ -16,6 +16,25 @@ keywords:
   - sidecar
 maintainers:
   - name: Benjamin Abbitt
+
+dependencies:
+  - name: mongodb
+    version: "~16.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: mongodb.enabled
+  - name: postgresql
+    version: "~16.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: rabbitmq
+    version: "~15.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: rabbitmq.enabled
+  - name: kafka
+    version: "~31.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: kafka.enabled
+
 annotations:
   artifacthub.io/category: integration-delivery
   artifacthub.io/license: MIT

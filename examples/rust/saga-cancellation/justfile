@@ -1,5 +1,0 @@
-PKG := "saga-cancellation"
-BIN_PKG := PKG
-BIN := PKG + "-server"
-
-import "../service.justfile"

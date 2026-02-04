@@ -13,8 +13,8 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::local::LocalAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, execute_command_with_retry, parse_command_cover, ClientLogic,
-    PipelineMode,
+    execute_command_pipeline, execute_command_with_retry, parse_command_cover, AggregateContext,
+    ClientLogic, PipelineMode,
 };
 use crate::proto::{CommandBook, CommandResponse, Cover, Uuid as ProtoUuid};
 use crate::storage::{EventStore, SnapshotStore};
@@ -55,6 +55,8 @@ pub struct CommandRouter {
     event_bus: Arc<dyn EventBus>,
     /// In-process sync projectors (called during command response).
     sync_projectors: Arc<Vec<SyncProjectorEntry>>,
+    /// The name of the edition this router is operating within, if any.
+    edition_name: Option<String>,
 }
 
 impl CommandRouter {
@@ -65,11 +67,13 @@ impl CommandRouter {
         discovery: Arc<dyn ServiceDiscovery>,
         event_bus: Arc<dyn EventBus>,
         sync_projectors: Vec<SyncProjectorEntry>,
+        edition_name: Option<String>,
     ) -> Self {
         let domains: Vec<_> = business.keys().cloned().collect();
         info!(
             domains = ?domains,
             sync_projectors = sync_projectors.len(),
+            edition = ?edition_name,
             "Command router initialized"
         );
 
@@ -79,6 +83,7 @@ impl CommandRouter {
             discovery,
             event_bus,
             sync_projectors: Arc::new(sync_projectors),
+            edition_name,
         }
     }
 
@@ -157,14 +162,20 @@ impl CommandRouter {
             Status::not_found(format!("No storage configured for domain: {domain}"))
         })?;
 
-        let ctx = LocalAggregateContext::new(
-            storage.clone(),
-            self.discovery.clone(),
-            self.event_bus.clone(),
-        );
+        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
+            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
+                storage.clone(),
+                self.event_bus.clone(),
+            )),
+            None => Arc::new(LocalAggregateContext::new(
+                storage.clone(),
+                self.discovery.clone(),
+                self.event_bus.clone(),
+            )),
+        };
 
         let mut response = execute_command_with_retry(
-            &ctx,
+            &*ctx,
             &**business,
             command_book,
             validate_sequence,
@@ -215,14 +226,20 @@ impl CommandRouter {
             Status::not_found(format!("No storage configured for domain: {domain}"))
         })?;
 
-        let ctx = LocalAggregateContext::new(
-            storage.clone(),
-            self.discovery.clone(),
-            self.event_bus.clone(),
-        );
+        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
+            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
+                storage.clone(),
+                self.event_bus.clone(),
+            )),
+            None => Arc::new(LocalAggregateContext::new(
+                storage.clone(),
+                self.discovery.clone(),
+                self.event_bus.clone(),
+            )),
+        };
 
         execute_command_pipeline(
-            &ctx,
+            &*ctx,
             &**business,
             command_book,
             PipelineMode::DryRun {

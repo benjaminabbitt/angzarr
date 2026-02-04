@@ -4,16 +4,18 @@
 
 use prost::Message;
 
-use angzarr::proto::{BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook};
+use angzarr::proto::{
+    BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook,
+};
 use common::proto::{
     CreateShipment, Delivered, FulfillmentState, ItemsPacked, ItemsPicked, MarkPacked, MarkPicked,
     RecordDelivery, Ship, ShipmentCreated, Shipped,
 };
-use common::{decode_command, dispatch_aggregate, make_event_book, now, unknown_command};
+use common::{decode_command, make_event_book, now};
 use common::{
     rebuild_from_events, require_exists, require_not_exists, require_status, require_status_not,
 };
-use common::{AggregateLogic, Result};
+use common::{AggregateLogic, CommandRouter, Result};
 
 const STATE_TYPE_URL: &str = "type.examples/examples.FulfillmentState";
 
@@ -33,6 +35,7 @@ pub fn apply_event(state: &mut FulfillmentState, event: &prost_types::Any) {
         if let Ok(e) = ShipmentCreated::decode(event.value.as_slice()) {
             state.order_id = e.order_id;
             state.status = "pending".to_string();
+            state.items = e.items;
         }
     } else if event.type_url.ends_with("ItemsPicked") {
         if let Ok(e) = ItemsPicked::decode(event.value.as_slice()) {
@@ -84,182 +87,176 @@ fn build_event_response(
     )
 }
 
-/// client logic for Fulfillment aggregate.
-pub struct FulfillmentLogic;
-
-common::define_aggregate!(FulfillmentLogic, "fulfillment");
-
-common::expose_handlers!(methods, FulfillmentLogic, FulfillmentState, rebuild: rebuild_state, [
-    (handle_create_shipment_public, handle_create_shipment),
-    (handle_mark_picked_public, handle_mark_picked),
-    (handle_mark_packed_public, handle_mark_packed),
-    (handle_ship_public, handle_ship),
-    (handle_record_delivery_public, handle_record_delivery),
-]);
+/// Client logic for Fulfillment aggregate.
+pub struct FulfillmentLogic {
+    router: CommandRouter<FulfillmentState>,
+}
 
 impl FulfillmentLogic {
-    /// Rebuild fulfillment state from events.
-    fn rebuild_state(&self, event_book: Option<&EventBook>) -> FulfillmentState {
-        rebuild_from_events(event_book, apply_event)
+    pub const DOMAIN: &'static str = "fulfillment";
+
+    pub fn new() -> Self {
+        Self {
+            router: CommandRouter::new("fulfillment", rebuild_state)
+                .on("CreateShipment", handle_create_shipment)
+                .on("MarkPicked", handle_mark_picked)
+                .on("MarkPacked", handle_mark_packed)
+                .on("Ship", handle_ship)
+                .on("RecordDelivery", handle_record_delivery),
+        }
     }
+}
 
-    fn handle_create_shipment(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &FulfillmentState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_not_exists(&state.order_id, errmsg::SHIPMENT_EXISTS)?;
-
-        let cmd: CreateShipment = decode_command(command_data)?;
-
-        let event = ShipmentCreated {
-            order_id: cmd.order_id,
-            status: "pending".to_string(),
-            created_at: Some(now()),
-        };
-
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.ShipmentCreated",
-            event,
-        ))
+impl Default for FulfillmentLogic {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    fn handle_mark_picked(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &FulfillmentState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-        require_status(&state.status, "pending", errmsg::NOT_PENDING)?;
+fn rebuild_state(event_book: Option<&EventBook>) -> FulfillmentState {
+    rebuild_from_events(event_book, apply_event)
+}
 
-        let cmd: MarkPicked = decode_command(command_data)?;
+fn handle_create_shipment(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &FulfillmentState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_not_exists(&state.order_id, errmsg::SHIPMENT_EXISTS)?;
 
-        let event = ItemsPicked {
-            picker_id: cmd.picker_id,
-            picked_at: Some(now()),
-        };
+    let cmd: CreateShipment = decode_command(command_data)?;
 
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.ItemsPicked",
-            event,
-        ))
-    }
+    let event = ShipmentCreated {
+        order_id: cmd.order_id,
+        status: "pending".to_string(),
+        created_at: Some(now()),
+        items: cmd.items,
+    };
 
-    fn handle_mark_packed(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &FulfillmentState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-        require_status(&state.status, "picking", errmsg::NOT_PICKED)?;
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.ShipmentCreated",
+        event,
+    ))
+}
 
-        let cmd: MarkPacked = decode_command(command_data)?;
+fn handle_mark_picked(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &FulfillmentState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
+    require_status(&state.status, "pending", errmsg::NOT_PENDING)?;
 
-        let event = ItemsPacked {
-            packer_id: cmd.packer_id,
-            packed_at: Some(now()),
-        };
+    let cmd: MarkPicked = decode_command(command_data)?;
 
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.ItemsPacked",
-            event,
-        ))
-    }
+    let event = ItemsPicked {
+        picker_id: cmd.picker_id,
+        picked_at: Some(now()),
+    };
 
-    fn handle_ship(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &FulfillmentState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-        require_status(&state.status, "packing", errmsg::NOT_PACKED)?;
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.ItemsPicked",
+        event,
+    ))
+}
 
-        let cmd: Ship = decode_command(command_data)?;
+fn handle_mark_packed(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &FulfillmentState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
+    require_status(&state.status, "picking", errmsg::NOT_PICKED)?;
 
-        let event = Shipped {
-            carrier: cmd.carrier,
-            tracking_number: cmd.tracking_number,
-            shipped_at: Some(now()),
-        };
+    let cmd: MarkPacked = decode_command(command_data)?;
 
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.Shipped",
-            event,
-        ))
-    }
+    let event = ItemsPacked {
+        packer_id: cmd.packer_id,
+        packed_at: Some(now()),
+    };
 
-    fn handle_record_delivery(
-        &self,
-        command_book: &CommandBook,
-        command_data: &[u8],
-        state: &FulfillmentState,
-        next_seq: u32,
-    ) -> Result<EventBook> {
-        require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-        require_status_not(&state.status, "delivered", errmsg::ALREADY_DELIVERED)?;
-        require_status(&state.status, "shipped", errmsg::NOT_SHIPPED)?;
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.ItemsPacked",
+        event,
+    ))
+}
 
-        let cmd: RecordDelivery = decode_command(command_data)?;
+fn handle_ship(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &FulfillmentState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
+    require_status(&state.status, "packing", errmsg::NOT_PACKED)?;
 
-        let event = Delivered {
-            signature: cmd.signature,
-            delivered_at: Some(now()),
-        };
+    let cmd: Ship = decode_command(command_data)?;
 
-        Ok(build_event_response(
-            state,
-            command_book.cover.clone(),
-            next_seq,
-            "type.examples/examples.Delivered",
-            event,
-        ))
-    }
+    let event = Shipped {
+        carrier: cmd.carrier,
+        tracking_number: cmd.tracking_number,
+        shipped_at: Some(now()),
+        items: state.items.clone(),
+        order_id: state.order_id.clone(),
+    };
+
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.Shipped",
+        event,
+    ))
+}
+
+fn handle_record_delivery(
+    command_book: &CommandBook,
+    command_data: &[u8],
+    state: &FulfillmentState,
+    next_seq: u32,
+) -> Result<EventBook> {
+    require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
+    require_status_not(&state.status, "delivered", errmsg::ALREADY_DELIVERED)?;
+    require_status(&state.status, "shipped", errmsg::NOT_SHIPPED)?;
+
+    let cmd: RecordDelivery = decode_command(command_data)?;
+
+    let event = Delivered {
+        signature: cmd.signature,
+        delivered_at: Some(now()),
+    };
+
+    Ok(build_event_response(
+        state,
+        command_book.cover.clone(),
+        next_seq,
+        "type.examples/examples.Delivered",
+        event,
+    ))
 }
 
 #[tonic::async_trait]
 impl AggregateLogic for FulfillmentLogic {
+    fn descriptor(&self) -> ComponentDescriptor {
+        self.router.descriptor()
+    }
+
     async fn handle(
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        dispatch_aggregate(
-            cmd,
-            |eb| self.rebuild_state(eb),
-            |cb, command_any, state, next_seq| {
-                if command_any.type_url.ends_with("CreateShipment") {
-                    self.handle_create_shipment(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("MarkPicked") {
-                    self.handle_mark_picked(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("MarkPacked") {
-                    self.handle_mark_packed(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("Ship") {
-                    self.handle_ship(cb, &command_any.value, state, next_seq)
-                } else if command_any.type_url.ends_with("RecordDelivery") {
-                    self.handle_record_delivery(cb, &command_any.value, state, next_seq)
-                } else {
-                    Err(unknown_command(&command_any.type_url))
-                }
-            },
-        )
+        self.router.dispatch(cmd)
     }
 }

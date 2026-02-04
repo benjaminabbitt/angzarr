@@ -10,6 +10,7 @@ use crate::proto::{
     temporal_query::PointInTime, AggregateRoot, EventBook, Query, Uuid as ProtoUuid,
 };
 use crate::orchestration::aggregate::DEFAULT_EDITION;
+use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
 use crate::storage::EventStore;
 use crate::storage::SnapshotStore;
@@ -98,7 +99,7 @@ impl EventQueryTrait for EventQueryService {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
 
-        let edition = cover.edition.as_deref().filter(|e| !e.is_empty()).unwrap_or(DEFAULT_EDITION);
+        let edition = cover.edition();
 
         info!(
             domain = %domain,
@@ -251,7 +252,7 @@ impl EventQueryTrait for EventQueryService {
                             }
                         };
                         let domain = cover.domain.clone();
-                        let edition = cover.edition.as_deref().filter(|e| !e.is_empty()).unwrap_or(DEFAULT_EDITION);
+                        let edition = cover.edition();
                         let root = match cover.root.as_ref() {
                             Some(r) => match uuid::Uuid::from_slice(&r.value) {
                                 Ok(uuid) => uuid,

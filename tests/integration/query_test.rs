@@ -18,7 +18,7 @@ mod examples_proto {
     include!(concat!(env!("OUT_DIR"), "/examples.rs"));
 }
 
-use examples_proto::CreateCustomer;
+use examples_proto::InitializeStock;
 
 /// Returns true if container tests should run.
 fn should_run_container_tests() -> bool {
@@ -36,7 +36,7 @@ async fn test_query_empty_aggregate() {
     let mut query_client = create_query_client().await;
     let nonexistent_id = Uuid::new_v4();
 
-    let query = build_query("customer", nonexistent_id);
+    let query = build_query("inventory", nonexistent_id);
     let response = query_client.get_event_book(query).await;
 
     // Query should succeed but return empty events
@@ -60,15 +60,16 @@ async fn test_query_with_bounds() {
     }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    // Create customer
-    let command = CreateCustomer {
-        name: "Bounds Test".to_string(),
-        email: "bounds@example.com".to_string(),
+    // Initialize inventory
+    let command = InitializeStock {
+        product_id: "BOUNDS-SKU".to_string(),
+        quantity: 100,
+        low_stock_threshold: 10,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -79,9 +80,9 @@ async fn test_query_with_bounds() {
     use angzarr::proto::{query::Selection, Cover, SequenceRange};
     let query = Query {
         cover: Some(Cover {
-            domain: "customer".to_string(),
+            domain: "inventory".to_string(),
             root: Some(ProtoUuid {
-                value: customer_id.as_bytes().to_vec(),
+                value: inventory_id.as_bytes().to_vec(),
             }),
             correlation_id: String::new(),
             edition: None,
@@ -111,15 +112,16 @@ async fn test_query_returns_correct_domain() {
     }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    // Create customer
-    let command = CreateCustomer {
-        name: "Domain Test".to_string(),
-        email: "domain@example.com".to_string(),
+    // Initialize inventory
+    let command = InitializeStock {
+        product_id: "DOMAIN-SKU".to_string(),
+        quantity: 50,
+        low_stock_threshold: 5,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -127,7 +129,7 @@ async fn test_query_returns_correct_domain() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Query the events
-    let query = build_query("customer", customer_id);
+    let query = build_query("inventory", inventory_id);
     let response = query_client.get_event_book(query).await;
     assert!(response.is_ok());
 
@@ -135,11 +137,11 @@ async fn test_query_returns_correct_domain() {
 
     // Verify cover contains correct domain and root
     let cover = event_book.cover.expect("EventBook should have cover");
-    assert_eq!(cover.domain, "customer", "Domain should be 'customer'");
+    assert_eq!(cover.domain, "inventory", "Domain should be 'inventory'");
 
     let root = cover.root.expect("Cover should have root");
     let root_uuid = Uuid::from_slice(&root.value).expect("Invalid UUID in root");
-    assert_eq!(root_uuid, customer_id, "Root UUID should match customer ID");
+    assert_eq!(root_uuid, inventory_id, "Root UUID should match inventory ID");
 }
 
 #[tokio::test]
@@ -150,15 +152,16 @@ async fn test_query_events_preserve_order() {
     }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    // Create customer
-    let command = CreateCustomer {
-        name: "Order Test".to_string(),
-        email: "order@example.com".to_string(),
+    // Initialize inventory
+    let command = InitializeStock {
+        product_id: "ORDER-SKU".to_string(),
+        quantity: 75,
+        low_stock_threshold: 8,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -166,7 +169,7 @@ async fn test_query_events_preserve_order() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Query the events
-    let query = build_query("customer", customer_id);
+    let query = build_query("inventory", inventory_id);
     let response = query_client.get_event_book(query).await;
     assert!(response.is_ok());
 
@@ -184,18 +187,20 @@ async fn test_query_event_payloads() {
     }
     let mut gateway_client = create_gateway_client().await;
     let mut query_client = create_query_client().await;
-    let customer_id = Uuid::new_v4();
+    let inventory_id = Uuid::new_v4();
 
-    let name = "Payload Test Customer";
-    let email = "payload@example.com";
+    let product_id = "PAYLOAD-SKU";
+    let quantity = 200i32;
+    let threshold = 20i32;
 
-    // Create customer with specific name and email
-    let command = CreateCustomer {
-        name: name.to_string(),
-        email: email.to_string(),
+    // Initialize inventory with specific values
+    let command = InitializeStock {
+        product_id: product_id.to_string(),
+        quantity,
+        low_stock_threshold: threshold,
     };
     let command_book =
-        build_command_book("customer", customer_id, command, "examples.CreateCustomer");
+        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -203,7 +208,7 @@ async fn test_query_event_payloads() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Query the events
-    let query = build_query("customer", customer_id);
+    let query = build_query("inventory", inventory_id);
     let response = query_client.get_event_book(query).await;
     assert!(response.is_ok());
 
@@ -219,23 +224,23 @@ async fn test_query_event_payloads() {
 
     let event_type = extract_event_type(event_any);
     assert!(
-        event_type.contains("CustomerCreated"),
-        "Expected CustomerCreated event"
+        event_type.contains("StockInitialized"),
+        "Expected StockInitialized event"
     );
 
     // Decode and verify payload content
-    use examples_proto::CustomerCreated;
+    use examples_proto::StockInitialized;
     use prost::Message;
 
-    let customer_created = CustomerCreated::decode(event_any.value.as_slice())
-        .expect("Failed to decode CustomerCreated");
+    let stock_initialized = StockInitialized::decode(event_any.value.as_slice())
+        .expect("Failed to decode StockInitialized");
 
     assert_eq!(
-        customer_created.name, name,
-        "Decoded name should match input"
+        stock_initialized.product_id, product_id,
+        "Decoded product_id should match input"
     );
     assert_eq!(
-        customer_created.email, email,
-        "Decoded email should match input"
+        stock_initialized.quantity, quantity,
+        "Decoded quantity should match input"
     );
 }

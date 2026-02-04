@@ -1,0 +1,59 @@
+syntax = "proto3";
+package angzarr;
+option go_package = "github.com/angzarr/angzarr/proto/angzarr";
+option java_package = "dev.angzarr";
+option java_multiple_files = true;
+
+import "angzarr/types.proto";
+import "angzarr/process_manager.proto";
+
+// Speculative execution service - execute without persisting side effects.
+// Supports "what-if" scenarios for commands, projectors, sagas, and process managers.
+service SpeculativeService {
+  // Execute command against temporal state without persisting.
+  // Returns speculative events only — no side effects.
+  rpc DryRunCommand(DryRunRequest) returns (CommandResponse);
+
+  // Execute projector against provided events without persisting.
+  // Returns projection result.
+  rpc SpeculateProjector(SpeculateProjectorRequest) returns (Projection);
+
+  // Execute saga against provided events without persisting.
+  // Returns commands that would be produced.
+  rpc SpeculateSaga(SpeculateSagaRequest) returns (SagaResponse);
+
+  // Execute process manager against provided context without persisting.
+  // Returns commands and PM events that would be produced.
+  rpc SpeculateProcessManager(SpeculatePmRequest) returns (ProcessManagerHandleResponse);
+}
+
+// Request to speculatively execute a projector.
+message SpeculateProjectorRequest {
+  // Name of the projector to execute.
+  string projector_name = 1;
+  // Events to project.
+  EventBook events = 2;
+}
+
+// Request to speculatively execute a saga.
+message SpeculateSagaRequest {
+  // Name of the saga to execute.
+  string saga_name = 1;
+  // Source events that trigger the saga.
+  EventBook source = 2;
+  // Pre-fetched destination state (optional).
+  // If empty, saga will run with empty destinations.
+  repeated EventBook destinations = 3;
+}
+
+// Request to speculatively execute a process manager.
+message SpeculatePmRequest {
+  // Name of the process manager to execute.
+  string pm_name = 1;
+  // Triggering events.
+  EventBook trigger = 2;
+  // Current process manager state (optional).
+  EventBook process_state = 3;
+  // Pre-fetched destination state (optional).
+  repeated EventBook destinations = 4;
+}

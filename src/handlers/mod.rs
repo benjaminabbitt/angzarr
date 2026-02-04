@@ -3,3 +3,4 @@
 pub mod core;
 pub mod gateway;
 pub mod projectors;
+pub mod speculative;

@@ -3,7 +3,101 @@
 //! Provides convenient accessor methods for common patterns like extracting
 //! domain, correlation_id, and root_id from Cover-bearing types.
 
-use crate::proto::{CommandBook, Cover, EventBook};
+use crate::proto::{CommandBook, CommandPage, Cover, Edition, EventBook, EventPage, Query, Uuid as ProtoUuid};
+
+/// gRPC metadata key for correlation ID propagation.
+pub const CORRELATION_ID_HEADER: &str = "x-correlation-id";
+
+/// Fallback domain when cover is missing or has no domain set.
+pub const UNKNOWN_DOMAIN: &str = "unknown";
+
+/// Domain prefix for synthetic projection event books.
+///
+/// Projector output is published as `_projection.{projector_name}.{domain}`.
+pub const PROJECTION_DOMAIN_PREFIX: &str = "_projection";
+
+/// Protobuf type URL for serialized Projection messages in synthetic event books.
+pub const PROJECTION_TYPE_URL: &str = "angzarr.Projection";
+
+/// Wildcard domain for catch-all routing (matches any domain).
+pub const WILDCARD_DOMAIN: &str = "*";
+
+/// Domain for topology meta-events (component descriptor registration).
+///
+/// Services publish their `ComponentDescriptor`s under this domain at startup
+/// so the topology projector can register non-aggregate components (sagas,
+/// projectors, process managers) that don't emit domain events directly.
+pub const META_TOPOLOGY_DOMAIN: &str = "_meta.topology";
+
+/// Type URL for `ComponentDescriptor` messages in topology meta-events.
+pub const DESCRIPTOR_TYPE_URL: &str = "type.angzarr/angzarr.ComponentDescriptor";
+
+/// Publish component descriptors to the event bus for topology discovery.
+///
+/// Each service calls this at startup so the `angzarr-topology` binary (or any
+/// in-process topology projector) can register non-aggregate components that
+/// don't emit domain events directly.
+pub async fn publish_descriptors(
+    event_bus: &dyn crate::bus::EventBus,
+    descriptors: &[crate::proto::ComponentDescriptor],
+) -> std::result::Result<(), crate::bus::BusError> {
+    use prost::Message;
+    use std::sync::Arc;
+
+    if descriptors.is_empty() {
+        return Ok(());
+    }
+
+    let pages: Vec<crate::proto::EventPage> = descriptors
+        .iter()
+        .enumerate()
+        .map(|(i, d)| crate::proto::EventPage {
+            sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
+            event: Some(prost_types::Any {
+                type_url: DESCRIPTOR_TYPE_URL.to_string(),
+                value: d.encode_to_vec(),
+            }),
+            created_at: None,
+        })
+        .collect();
+
+    let book = crate::proto::EventBook {
+        cover: Some(Cover {
+            domain: META_TOPOLOGY_DOMAIN.to_string(),
+            root: None,
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        pages,
+        snapshot: None,
+        snapshot_state: None,
+    };
+
+    event_bus.publish(Arc::new(book)).await?;
+    tracing::info!(count = descriptors.len(), "Published component descriptors to event bus");
+    Ok(())
+}
+
+/// Periodically re-publish component descriptors to the event bus.
+///
+/// Handles the startup race in distributed mode: if the topology binary's
+/// queue isn't bound when the initial descriptor is published, it's lost.
+/// Re-publishing every `interval` ensures the topology projector eventually
+/// receives all descriptors.
+pub fn spawn_descriptor_heartbeat(
+    event_bus: std::sync::Arc<dyn crate::bus::EventBus>,
+    descriptors: Vec<crate::proto::ComponentDescriptor>,
+    interval: std::time::Duration,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+            if let Err(e) = publish_descriptors(event_bus.as_ref(), &descriptors).await {
+                tracing::debug!(error = %e, "Failed to re-publish component descriptors");
+            }
+        }
+    });
+}
 
 /// Extension trait for types with an optional Cover.
 ///
@@ -13,9 +107,9 @@ pub trait CoverExt {
     /// Get the cover, if present.
     fn cover(&self) -> Option<&Cover>;
 
-    /// Get the domain from the cover, or "unknown" if missing.
+    /// Get the domain from the cover, or [`UNKNOWN_DOMAIN`] if missing.
     fn domain(&self) -> &str {
-        self.cover().map(|c| c.domain.as_str()).unwrap_or("unknown")
+        self.cover().map(|c| c.domain.as_str()).unwrap_or(UNKNOWN_DOMAIN)
     }
 
     /// Get the correlation_id from the cover, or empty string if missing.
@@ -46,24 +140,37 @@ pub trait CoverExt {
 
     /// Get the edition name from the cover.
     ///
-    /// Returns the explicit edition if set and non-empty, otherwise
+    /// Returns the explicit edition name if set and non-empty, otherwise
     /// defaults to the canonical timeline name (`"angzarr"`).
     fn edition(&self) -> &str {
         self.cover()
-            .and_then(|c| c.edition.as_deref())
+            .and_then(|c| c.edition.as_ref())
+            .map(|e| e.name.as_str())
             .filter(|e| !e.is_empty())
             .unwrap_or(crate::orchestration::aggregate::DEFAULT_EDITION)
     }
 
-    /// Compute the bus routing key: `"{edition}.{domain}"`.
+    /// Get the Edition struct from the cover, if present.
+    fn edition_struct(&self) -> Option<&Edition> {
+        self.cover().and_then(|c| c.edition.as_ref())
+    }
+
+    /// Get the edition name as an Option, without defaulting.
+    ///
+    /// Returns `Some(&str)` if edition is set and non-empty, `None` otherwise.
+    fn edition_opt(&self) -> Option<&str> {
+        self.cover()
+            .and_then(|c| c.edition.as_ref())
+            .map(|e| e.name.as_str())
+            .filter(|n| !n.is_empty())
+    }
+
+    /// Compute the bus routing key: `"{domain}"`.
     ///
     /// The routing key is a transport concern used for bus subscription matching.
-    /// It combines the edition and bare domain so the bus can route events to
-    /// the correct edition-scoped subscribers without rewriting `cover.domain`.
+    /// Edition filtering is handled at the handler level, not the bus level.
     fn routing_key(&self) -> String {
-        let bare = self.domain();
-        let edition = self.edition();
-        format!("{edition}.{bare}")
+        self.domain().to_string()
     }
 
     /// Generate a cache key for this entity based on domain + root.
@@ -73,18 +180,6 @@ pub trait CoverExt {
         let domain = self.domain();
         let root = self.root_id_hex().unwrap_or_default();
         format!("{domain}:{root}")
-    }
-}
-
-impl Cover {
-    /// Generate a cache key for this cover based on domain + root.
-    pub fn cache_key(&self) -> String {
-        let root = self
-            .root
-            .as_ref()
-            .map(|u| hex::encode(&u.value))
-            .unwrap_or_default();
-        format!("{}:{}", self.domain, root)
     }
 }
 
@@ -100,6 +195,316 @@ impl CoverExt for CommandBook {
     }
 }
 
+impl CoverExt for Query {
+    fn cover(&self) -> Option<&Cover> {
+        self.cover.as_ref()
+    }
+}
+
+impl CoverExt for Cover {
+    fn cover(&self) -> Option<&Cover> {
+        Some(self)
+    }
+}
+
+// ============================================================================
+// Edition Extension Trait
+// ============================================================================
+
+/// Extension trait for Edition proto type.
+///
+/// Provides convenience methods for checking timeline status and accessing
+/// divergence information. Constructors remain as associated functions on Edition.
+pub trait EditionExt {
+    /// Get reference to the edition.
+    fn edition_inner(&self) -> &Edition;
+
+    /// Check if this edition has an empty name.
+    fn is_empty(&self) -> bool {
+        self.edition_inner().name.is_empty()
+    }
+
+    /// Check if this is the main timeline (empty or default edition name).
+    fn is_main_timeline(&self) -> bool {
+        let name = &self.edition_inner().name;
+        name.is_empty() || name == crate::orchestration::aggregate::DEFAULT_EDITION
+    }
+
+    /// Get the edition name, returning the default edition name if empty.
+    fn name_or_default(&self) -> &str {
+        let edition = self.edition_inner();
+        if edition.name.is_empty() {
+            crate::orchestration::aggregate::DEFAULT_EDITION
+        } else {
+            &edition.name
+        }
+    }
+
+    /// Get explicit divergence for a specific domain, if any.
+    fn divergence_for(&self, domain: &str) -> Option<u32> {
+        self.edition_inner()
+            .divergences
+            .iter()
+            .find(|d| d.domain == domain)
+            .map(|d| d.sequence)
+    }
+}
+
+impl EditionExt for Edition {
+    fn edition_inner(&self) -> &Edition {
+        self
+    }
+}
+
+/// Constructors for Edition (cannot be in trait).
+impl Edition {
+    /// Create an Edition for the main timeline (empty name).
+    pub fn main_timeline() -> Self {
+        Self {
+            name: String::new(),
+            divergences: vec![],
+        }
+    }
+
+    /// Create an Edition with implicit divergence (name only, no explicit divergences).
+    pub fn implicit(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            divergences: vec![],
+        }
+    }
+
+    /// Create an Edition with explicit divergence points.
+    pub fn explicit(name: impl Into<String>, divergences: Vec<crate::proto::DomainDivergence>) -> Self {
+        Self {
+            name: name.into(),
+            divergences,
+        }
+    }
+}
+
+impl From<&str> for Edition {
+    fn from(name: &str) -> Self {
+        Edition::implicit(name)
+    }
+}
+
+impl From<String> for Edition {
+    fn from(name: String) -> Self {
+        Edition::implicit(name)
+    }
+}
+
+// ============================================================================
+// ProtoUuid Extension Trait
+// ============================================================================
+
+/// Extension trait for ProtoUuid proto type.
+///
+/// Provides conversion methods to standard Uuid types.
+pub trait ProtoUuidExt {
+    /// Convert to a standard UUID.
+    fn to_uuid(&self) -> Result<uuid::Uuid, uuid::Error>;
+
+    /// Convert to a hex-encoded string.
+    fn to_hex(&self) -> String;
+}
+
+impl ProtoUuidExt for ProtoUuid {
+    fn to_uuid(&self) -> Result<uuid::Uuid, uuid::Error> {
+        uuid::Uuid::from_slice(&self.value)
+    }
+
+    fn to_hex(&self) -> String {
+        hex::encode(&self.value)
+    }
+}
+
+// ============================================================================
+// Uuid Extension Trait (reverse direction)
+// ============================================================================
+
+/// Extension trait for uuid::Uuid to convert to proto types.
+pub trait UuidExt {
+    /// Convert to a ProtoUuid.
+    fn to_proto_uuid(&self) -> ProtoUuid;
+}
+
+impl UuidExt for uuid::Uuid {
+    fn to_proto_uuid(&self) -> ProtoUuid {
+        ProtoUuid {
+            value: self.as_bytes().to_vec(),
+        }
+    }
+}
+
+// ============================================================================
+// EventPage Extension Trait
+// ============================================================================
+
+/// Extension trait for EventPage proto type.
+///
+/// Provides convenient accessors for sequence, type URL, and payload decoding.
+pub trait EventPageExt {
+    /// Get the sequence number from this page.
+    fn sequence_num(&self) -> u32;
+
+    /// Get the type URL of the event, if present.
+    fn type_url(&self) -> Option<&str>;
+
+    /// Get the raw payload bytes, if present.
+    fn payload(&self) -> Option<&[u8]>;
+
+    /// Decode the event payload as a specific message type.
+    ///
+    /// Returns None if the event is missing, type URL doesn't match the suffix,
+    /// or decoding fails.
+    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
+}
+
+impl EventPageExt for EventPage {
+    fn sequence_num(&self) -> u32 {
+        match &self.sequence {
+            Some(crate::proto::event_page::Sequence::Num(n)) => *n,
+            Some(crate::proto::event_page::Sequence::Force(_)) => 0,
+            None => 0,
+        }
+    }
+
+    fn type_url(&self) -> Option<&str> {
+        self.event.as_ref().map(|e| e.type_url.as_str())
+    }
+
+    fn payload(&self) -> Option<&[u8]> {
+        self.event.as_ref().map(|e| e.value.as_slice())
+    }
+
+    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
+        let event = self.event.as_ref()?;
+        if !event.type_url.ends_with(type_suffix) {
+            return None;
+        }
+        M::decode(event.value.as_slice()).ok()
+    }
+}
+
+// ============================================================================
+// CommandPage Extension Trait
+// ============================================================================
+
+/// Extension trait for CommandPage proto type.
+///
+/// Provides convenient accessors for sequence, type URL, and payload decoding.
+pub trait CommandPageExt {
+    /// Get the sequence number from this page.
+    fn sequence_num(&self) -> u32;
+
+    /// Get the type URL of the command, if present.
+    fn type_url(&self) -> Option<&str>;
+
+    /// Get the raw payload bytes, if present.
+    fn payload(&self) -> Option<&[u8]>;
+
+    /// Decode the command payload as a specific message type.
+    ///
+    /// Returns None if the command is missing, type URL doesn't match the suffix,
+    /// or decoding fails.
+    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
+}
+
+impl CommandPageExt for CommandPage {
+    fn sequence_num(&self) -> u32 {
+        self.sequence
+    }
+
+    fn type_url(&self) -> Option<&str> {
+        self.command.as_ref().map(|c| c.type_url.as_str())
+    }
+
+    fn payload(&self) -> Option<&[u8]> {
+        self.command.as_ref().map(|c| c.value.as_slice())
+    }
+
+    fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
+        let command = self.command.as_ref()?;
+        if !command.type_url.ends_with(type_suffix) {
+            return None;
+        }
+        M::decode(command.value.as_slice()).ok()
+    }
+}
+
+// ============================================================================
+// EventBook Extension Trait
+// ============================================================================
+
+/// Extension trait for EventBook proto type (beyond CoverExt).
+///
+/// Provides convenience methods for working with event pages.
+pub trait EventBookExt: CoverExt {
+    /// Compute the next sequence number based on existing pages.
+    ///
+    /// Returns 0 if no pages exist, otherwise max(page.sequence) + 1.
+    fn next_sequence(&self) -> u32;
+
+    /// Check if the event book has no pages.
+    fn is_empty(&self) -> bool;
+
+    /// Get the last event page, if any.
+    fn last_page(&self) -> Option<&EventPage>;
+
+    /// Get the first event page, if any.
+    fn first_page(&self) -> Option<&EventPage>;
+}
+
+impl EventBookExt for EventBook {
+    fn next_sequence(&self) -> u32 {
+        self.pages
+            .iter()
+            .map(|p| p.sequence_num())
+            .max()
+            .map(|n| n + 1)
+            .unwrap_or(0)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.pages.is_empty()
+    }
+
+    fn last_page(&self) -> Option<&EventPage> {
+        self.pages.last()
+    }
+
+    fn first_page(&self) -> Option<&EventPage> {
+        self.pages.first()
+    }
+}
+
+// ============================================================================
+// CommandBook Extension Trait
+// ============================================================================
+
+/// Extension trait for CommandBook proto type (beyond CoverExt).
+///
+/// Provides convenience methods for working with command pages.
+pub trait CommandBookExt: CoverExt {
+    /// Get the sequence number from the first command page.
+    fn command_sequence(&self) -> u32;
+
+    /// Get the first command page, if any.
+    fn first_command(&self) -> Option<&CommandPage>;
+}
+
+impl CommandBookExt for CommandBook {
+    fn command_sequence(&self) -> u32 {
+        self.pages.first().map(|p| p.sequence_num()).unwrap_or(0)
+    }
+
+    fn first_command(&self) -> Option<&CommandPage> {
+        self.pages.first()
+    }
+}
+
 /// Create a tonic Request with `x-correlation-id` gRPC metadata.
 ///
 /// Propagates the correlation_id into gRPC request headers so that
@@ -112,7 +517,7 @@ pub fn correlated_request<T>(msg: T, correlation_id: &str) -> tonic::Request<T> 
     let mut req = tonic::Request::new(msg);
     if !correlation_id.is_empty() {
         if let Ok(val) = correlation_id.parse() {
-            req.metadata_mut().insert("x-correlation-id", val);
+            req.metadata_mut().insert(CORRELATION_ID_HEADER, val);
         }
     }
 
@@ -155,7 +560,6 @@ impl opentelemetry::propagation::Injector for MetadataInjector<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::Uuid as ProtoUuid;
 
     fn make_cover(domain: &str, correlation_id: &str, root: Option<uuid::Uuid>) -> Cover {
         Cover {
@@ -213,5 +617,38 @@ mod tests {
         assert_eq!(book.correlation_id(), "corr-456");
         assert!(book.has_correlation_id());
         assert_eq!(book.root_uuid(), None);
+    }
+
+    #[test]
+    fn test_edition_main_timeline() {
+        let edition = Edition::main_timeline();
+        assert!(edition.is_main_timeline());
+        assert_eq!(edition.name_or_default(), "angzarr");
+    }
+
+    #[test]
+    fn test_edition_implicit() {
+        let edition = Edition::implicit("v2");
+        assert!(!edition.is_main_timeline());
+        assert_eq!(edition.name, "v2");
+        assert!(edition.divergences.is_empty());
+    }
+
+    #[test]
+    fn test_edition_explicit_divergence() {
+        let edition = Edition::explicit("v2", vec![
+            crate::proto::DomainDivergence { domain: "order".to_string(), sequence: 50 },
+            crate::proto::DomainDivergence { domain: "inventory".to_string(), sequence: 75 },
+        ]);
+        assert_eq!(edition.divergence_for("order"), Some(50));
+        assert_eq!(edition.divergence_for("inventory"), Some(75));
+        assert_eq!(edition.divergence_for("other"), None);
+    }
+
+    #[test]
+    fn test_edition_from_string() {
+        let edition: Edition = "v2".into();
+        assert_eq!(edition.name, "v2");
+        assert!(edition.divergences.is_empty());
     }
 }

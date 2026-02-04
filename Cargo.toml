@@ -3,21 +3,14 @@ members = [
     ".",
     "angzarr-client/rust",
     "examples/rust/common",
-    "examples/rust/customer",
-    "examples/rust/product",
-    "examples/rust/inventory",
     "examples/rust/order",
-    "examples/rust/cart",
+    "examples/rust/inventory",
     "examples/rust/fulfillment",
-    "examples/rust/saga-loyalty-earn",
-    "examples/rust/saga-fulfillment",
-    "examples/rust/saga-cancellation",
-    "examples/rust/saga-inventory-reservation",
+    "examples/rust/saga-order-fulfillment",
+    "examples/rust/saga-order-inventory",
+    "examples/rust/saga-fulfillment-inventory",
     "examples/rust/process-manager-fulfillment",
-    "examples/rust/process-manager-order-status",
-    "examples/rust/projectors/accounting",
-    "examples/rust/projectors/logging",
-    "examples/rust/projectors/web",
+    "examples/rust/projector-inventory",
     "examples/rust/e2e",
 ]
 resolver = "2"
@@ -214,6 +207,10 @@ name = "angzarr-saga"
 path = "src/bin/angzarr_saga.rs"
 
 [[bin]]
+name = "angzarr-process-manager"
+path = "src/bin/angzarr_process_manager.rs"
+
+[[bin]]
 name = "angzarr-gateway"
 path = "src/bin/angzarr_gateway.rs"
 
@@ -282,41 +279,25 @@ required-features = ["sqlite"]
 
 # === Build Profiles ===
 
-# Dev profile - fast compilation, slow runtime (default for `cargo build`)
+# Dev profile - optimized for size to keep disk usage sane
 [profile.dev]
-opt-level = 0
-debug = true
+opt-level = "z"
+debug = 0
+strip = true
 incremental = true
-codegen-units = 256  # More units = faster compile, slower code
 
-# Dev with some optimization - good balance for local testing
-[profile.dev.package."*"]
-opt-level = 2  # Optimize dependencies, not our code
-
-# Fast-dev profile - even faster compilation for rapid iteration
-# Usage: cargo build --profile fast-dev
-[profile.fast-dev]
-inherits = "dev"
-opt-level = 0
-debug = 0           # Skip debug info generation
-incremental = true
-codegen-units = 512
-
-# Container dev profile - fast compilation for container builds
-# No incremental (Docker doesn't preserve target dir between builds)
+# Container dev profile - optimized for size, no incremental
 # Usage: cargo build --profile container-dev
 [profile.container-dev]
 inherits = "dev"
-opt-level = 0
-debug = true           # Full debug info for debugging in containers
-incremental = false    # Pointless in containers
-codegen-units = 256    # Max parallelism
+incremental = false
 
-# Test profile - fast compilation for running tests
+# Test profile - optimized for size
 # Usage: cargo test (automatically used)
 [profile.test]
-opt-level = 0
-debug = 2           # Full debug info for test failures
+opt-level = "z"
+debug = 0
+strip = true
 incremental = true
 
 # Release profile - slow compilation, fast runtime (for production)

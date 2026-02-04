@@ -1,42 +1,22 @@
 package logic
 
-import "fmt"
-
-type StatusCode int
-
+// Error message constants for order domain.
 const (
-	StatusInvalidArgument StatusCode = iota
-	StatusFailedPrecondition
+	ErrMsgOrderExists         = "Order already exists"
+	ErrMsgOrderNotFound       = "Order does not exist"
+	ErrMsgCustomerIDRequired  = "Customer ID is required"
+	ErrMsgItemsRequired       = "Order must have at least one item"
+	ErrMsgItemQuantityPos     = "Item quantity must be positive"
+	ErrMsgOrderNotPending     = "Order is not in pending state"
+	ErrMsgCannotCancelDone    = "Cannot cancel completed order"
+	ErrMsgAlreadyCancelled    = "Order already cancelled"
+	ErrMsgReasonRequired      = "Cancellation reason is required"
+	ErrMsgPaymentMethodReq    = "Payment method is required"
+	ErrMsgPaymentAmountMatch  = "Payment amount must match order total"
+	ErrMsgPaymentNotSubmitted = "Payment not submitted"
+	ErrMsgPaymentRefRequired  = "Payment reference is required"
+	ErrMsgPointsPositive      = "Points must be positive"
+	ErrMsgDiscountPositive    = "Discount must be positive"
+	ErrMsgDiscountExceeds     = "Discount cannot exceed subtotal"
+	ErrMsgLoyaltyAlready      = "Loyalty discount already applied"
 )
-
-func (s StatusCode) String() string {
-	switch s {
-	case StatusInvalidArgument:
-		return "INVALID_ARGUMENT"
-	case StatusFailedPrecondition:
-		return "FAILED_PRECONDITION"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-type CommandError struct {
-	Code    StatusCode
-	Message string
-}
-
-func (e *CommandError) Error() string {
-	return e.Message
-}
-
-func NewInvalidArgument(message string) *CommandError {
-	return &CommandError{Code: StatusInvalidArgument, Message: message}
-}
-
-func NewFailedPrecondition(message string) *CommandError {
-	return &CommandError{Code: StatusFailedPrecondition, Message: message}
-}
-
-func NewFailedPreconditionf(format string, args ...interface{}) *CommandError {
-	return &CommandError{Code: StatusFailedPrecondition, Message: fmt.Sprintf(format, args...)}
-}

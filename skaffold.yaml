@@ -30,6 +30,12 @@ build:
         dockerfile: Containerfile
         target: angzarr-saga-dev
 
+    - image: localhost:5001/angzarr-process-manager
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-process-manager-dev
+
     - image: localhost:5001/angzarr-stream
       context: .
       docker:
@@ -76,6 +82,12 @@ profiles:
           docker:
             dockerfile: Containerfile
             target: angzarr-saga
+
+        - image: localhost:5001/angzarr-process-manager
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-process-manager
 
         - image: localhost:5001/angzarr-stream
           context: .

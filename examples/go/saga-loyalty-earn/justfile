@@ -1,3 +1,0 @@
-SERVICE := "saga-loyalty-earn"
-
-import "../service.justfile"

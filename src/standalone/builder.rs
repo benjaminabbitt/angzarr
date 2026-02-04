@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, MessagingType};
+#[cfg(feature = "topology")]
+use crate::handlers::projectors::topology::TopologyProjector;
 use crate::storage::{SqliteConfig, StorageConfig, StorageType};
 use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
@@ -75,6 +77,9 @@ pub struct RuntimeBuilder {
     process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
     /// Optional custom event bus (for testing or external transports).
     custom_event_bus: Option<Arc<dyn EventBus>>,
+    /// Optional topology projector for automatic descriptor registration.
+    #[cfg(feature = "topology")]
+    topology_projector: Option<Arc<TopologyProjector>>,
 }
 
 impl Default for RuntimeBuilder {
@@ -114,6 +119,8 @@ impl RuntimeBuilder {
             sagas: HashMap::new(),
             process_managers: HashMap::new(),
             custom_event_bus: None,
+            #[cfg(feature = "topology")]
+            topology_projector: None,
         }
     }
 
@@ -352,6 +359,28 @@ impl RuntimeBuilder {
     }
 
     // ========================================================================
+    // Topology
+    // ========================================================================
+
+    /// Register the topology projector.
+    ///
+    /// Registers it as an async projector for event observation AND calls
+    /// `register_components()` during build with all collected descriptors.
+    /// This ensures sagas, process managers, and projectors appear as correctly
+    /// typed nodes in the topology graph.
+    #[cfg(feature = "topology")]
+    pub fn register_topology(
+        mut self,
+        projector: Arc<TopologyProjector>,
+        config: ProjectorConfig,
+    ) -> Self {
+        self.topology_projector = Some(projector.clone());
+        self.projectors
+            .insert("topology".to_string(), (projector, config));
+        self
+    }
+
+    // ========================================================================
     // Build
     // ========================================================================
 
@@ -376,6 +405,8 @@ impl RuntimeBuilder {
             self.sagas,
             self.process_managers,
             event_bus,
+            #[cfg(feature = "topology")]
+            self.topology_projector,
         )
         .await
     }

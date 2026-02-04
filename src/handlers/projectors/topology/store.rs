@@ -73,6 +73,20 @@ pub trait TopologyStore: Send + Sync + 'static {
         timestamp: &str,
     ) -> Result<Vec<String>>;
 
+    /// Register a node with an authoritative component type.
+    ///
+    /// Unlike `upsert_node`, this always updates `component_type` on conflict.
+    /// Used by `register_components()` so that descriptor-provided types
+    /// (saga, projector, process_manager) win over the default "aggregate"
+    /// inferred by `process_event()`, regardless of insertion order.
+    async fn register_node(
+        &self,
+        node_id: &str,
+        component_type: &str,
+        domain: &str,
+        timestamp: &str,
+    ) -> Result<()>;
+
     /// Create or update a node for a discovered component.
     async fn upsert_node(
         &self,

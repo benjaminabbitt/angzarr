@@ -1,12 +1,12 @@
 lm:
   plugins:
     claude-code:
-      default: false
-    gemini:
       default: true
+    gemini:
+      default: false
 
 editor:
-  command: nano
+  command: vim
 
 generators:
   simple:
@@ -27,6 +27,9 @@ profiles:
       - general/documentation
       - general/problem-solving
       - general/pushback
+      - general/elegant-redo
+      - general/prove-it
+      - general/grill
 
   tooling:
     description: Common tooling for AI's use

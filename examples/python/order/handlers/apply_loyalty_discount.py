@@ -1,18 +1,24 @@
-"""ApplyLoyaltyDiscount command handler."""
+"""Handler for ApplyLoyaltyDiscount command."""
 
 from datetime import datetime, timezone
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from angzarr import angzarr_pb2 as angzarr
+from angzarr import types_pb2 as types
+from errors import CommandRejectedError
 from proto import domains_pb2 as domains
+
 from .state import OrderState
 
-from .exceptions import CommandRejectedError
 
-
-def handle_apply_loyalty_discount(command_book, command_any, state: OrderState, seq: int, log) -> angzarr.EventBook:
+def handle_apply_loyalty_discount(
+    command_book: types.CommandBook,
+    command_any: Any,
+    state: OrderState,
+    seq: int,
+) -> types.EventBook:
+    """Handle ApplyLoyaltyDiscount command."""
     if not state.exists():
         raise CommandRejectedError("Order does not exist")
     if not state.is_pending():
@@ -30,8 +36,6 @@ def handle_apply_loyalty_discount(command_book, command_any, state: OrderState, 
     if cmd.discount_cents > state.subtotal_cents:
         raise CommandRejectedError("Discount cannot exceed subtotal")
 
-    log.info("applying_loyalty_discount", points=cmd.points, discount_cents=cmd.discount_cents)
-
     event = domains.LoyaltyDiscountApplied(
         points_used=cmd.points,
         discount_cents=cmd.discount_cents,
@@ -41,7 +45,13 @@ def handle_apply_loyalty_discount(command_book, command_any, state: OrderState, 
     event_any = Any()
     event_any.Pack(event, type_url_prefix="type.examples/")
 
-    return angzarr.EventBook(
+    return types.EventBook(
         cover=command_book.cover,
-        pages=[angzarr.EventPage(num=seq, event=event_any, created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())))],
+        pages=[
+            types.EventPage(
+                num=seq,
+                event=event_any,
+                created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+            )
+        ],
     )

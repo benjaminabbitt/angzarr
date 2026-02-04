@@ -49,12 +49,6 @@
 //!         // Return mock response
 //!         Ok(angzarr::proto::CommandResponse::default())
 //!     }
-//!
-//!     async fn dry_run(&self, _req: angzarr::proto::DryRunRequest)
-//!         -> angzarr_client::Result<angzarr::proto::CommandResponse>
-//!     {
-//!         Ok(angzarr::proto::CommandResponse::default())
-//!     }
 //! }
 //! ```
 
@@ -65,7 +59,7 @@ pub mod error;
 pub mod traits;
 
 // Re-export main types at crate root
-pub use client::{Client, GatewayClient, QueryClient};
+pub use client::{Client, GatewayClient, QueryClient, SpeculativeClient};
 pub use error::{ClientError, Result};
 
 // Re-export builder extension traits for fluent API
@@ -76,4 +70,10 @@ pub use builder::{decode_event, events_from_response, root_from_cover};
 pub use convert::{
     now, parse_timestamp, proto_to_uuid, type_name_from_url, type_url, type_url_matches,
     uuid_to_proto, TYPE_URL_PREFIX,
+};
+
+// Re-export extension traits from main crate
+pub use angzarr::{
+    CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt,
+    ProtoUuidExt, UuidExt,
 };
