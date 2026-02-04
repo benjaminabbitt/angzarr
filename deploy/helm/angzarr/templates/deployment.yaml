@@ -1125,7 +1125,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
-        {{- if .Values.amqp.enabled }}
+        {{- if .Values.messaging.amqp.enabled }}
         - name: wait-for-rabbitmq
           image: busybox:1.36
           command:
@@ -1171,20 +1171,67 @@ spec:
               {{- end }}
             {{- end }}
             # Messaging configuration (topology subscribes directly to bus)
-            {{- if .Values.amqp.enabled }}
             - name: ANGZARR__MESSAGING__TYPE
-              value: "amqp"
+              value: {{ .Values.messaging.type | quote }}
+            {{- if eq .Values.messaging.type "amqp" }}
             - name: ANGZARR__MESSAGING__AMQP__URL
-              {{- if .Values.amqp.existingSecret }}
+              {{- if .Values.messaging.amqp.existingSecret }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.amqp.existingSecret }}
-                  key: uri
+                  name: {{ .Values.messaging.amqp.existingSecret }}
+                  key: {{ .Values.messaging.amqp.secretKey }}
               {{- else }}
-              value: {{ .Values.amqp.url }}
+              value: {{ .Values.messaging.amqp.url | quote }}
               {{- end }}
-            - name: ANGZARR__MESSAGING__AMQP__DOMAIN
-              value: "#"
+            {{- else if eq .Values.messaging.type "kafka" }}
+            - name: ANGZARR__MESSAGING__KAFKA__BOOTSTRAP_SERVERS
+              {{- if .Values.messaging.kafka.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.messaging.kafka.existingSecret }}
+                  key: {{ .Values.messaging.kafka.secretKeys.bootstrapServers }}
+              {{- else }}
+              value: {{ .Values.messaging.kafka.bootstrapServers | quote }}
+              {{- end }}
+            - name: ANGZARR__MESSAGING__KAFKA__TOPIC_PREFIX
+              value: {{ .Values.messaging.kafka.topicPrefix | quote }}
+            {{- if .Values.messaging.kafka.securityProtocol }}
+            - name: ANGZARR__MESSAGING__KAFKA__SECURITY_PROTOCOL
+              value: {{ .Values.messaging.kafka.securityProtocol | quote }}
+            {{- end }}
+            {{- if .Values.messaging.kafka.saslMechanism }}
+            - name: ANGZARR__MESSAGING__KAFKA__SASL_MECHANISM
+              {{- if .Values.messaging.kafka.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.messaging.kafka.existingSecret }}
+                  key: {{ .Values.messaging.kafka.secretKeys.saslMechanism }}
+              {{- else }}
+              value: {{ .Values.messaging.kafka.saslMechanism | quote }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.messaging.kafka.saslUsername }}
+            - name: ANGZARR__MESSAGING__KAFKA__SASL_USERNAME
+              {{- if .Values.messaging.kafka.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.messaging.kafka.existingSecret }}
+                  key: {{ .Values.messaging.kafka.secretKeys.saslUsername }}
+              {{- else }}
+              value: {{ .Values.messaging.kafka.saslUsername | quote }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.messaging.kafka.saslPassword }}
+            - name: ANGZARR__MESSAGING__KAFKA__SASL_PASSWORD
+              {{- if .Values.messaging.kafka.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.messaging.kafka.existingSecret }}
+                  key: {{ .Values.messaging.kafka.secretKeys.saslPassword }}
+              {{- else }}
+              value: {{ .Values.messaging.kafka.saslPassword | quote }}
+              {{- end }}
+            {{- end }}
             {{- end }}
             {{- include "angzarr.otel-env" (dict "root" . "service" "topology") | nindent 12 }}
           livenessProbe:

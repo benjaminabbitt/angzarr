@@ -247,10 +247,12 @@ impl KafkaEventBus {
                 .map(|d| self.config.topic_for_domain(d))
                 .collect(),
             None => {
-                // Subscribe to all - use regex pattern
-                // Note: This requires topic auto-creation or manual topic listing
-                warn!("Subscribing to all domains requires topics to exist. Consider specifying domains.");
-                vec![format!("{}.*", self.config.topic_prefix)]
+                // Subscribe to all using Kafka regex subscription.
+                // The ^prefix tells rdkafka to interpret this as a regex pattern.
+                // Pattern matches: {topic_prefix}.events.{any_domain}
+                let pattern = format!("^{}\\.events\\..*", self.config.topic_prefix);
+                info!(pattern = %pattern, "Using regex subscription for all domains");
+                vec![pattern]
             }
         };
 
