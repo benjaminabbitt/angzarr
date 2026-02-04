@@ -158,20 +158,106 @@ impl AmqpEventBus {
     }
 
     /// Declare queue, bind to exchange, and start consuming messages.
+    /// Spawns a background task that automatically reconnects on failure.
     async fn consume(&self) -> Result<()> {
         let queue = self
             .config
             .queue
-            .as_ref()
+            .clone()
             .ok_or_else(|| BusError::Subscribe("No queue configured".to_string()))?;
 
         let routing_key = self
             .config
             .routing_key
-            .as_ref()
+            .clone()
             .ok_or_else(|| BusError::Subscribe("No routing key configured".to_string()))?;
 
-        let channel = self.get_channel().await?;
+        let exchange = self.config.exchange.clone();
+        let pool = self.pool.clone();
+        let handlers = self.handlers.clone();
+
+        // Spawn consumer task with reconnection loop
+        tokio::spawn(async move {
+            Self::consume_with_reconnect(pool, exchange, queue, routing_key, handlers).await;
+        });
+
+        Ok(())
+    }
+
+    /// Consumer loop with automatic reconnection and exponential backoff.
+    async fn consume_with_reconnect(
+        pool: Pool,
+        exchange: String,
+        queue: String,
+        routing_key: String,
+        handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    ) {
+        use futures::StreamExt;
+        use std::time::Duration;
+
+        const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
+        const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+        let mut backoff = INITIAL_BACKOFF;
+
+        loop {
+            // Try to set up consumer
+            match Self::setup_consumer(&pool, &exchange, &queue, &routing_key).await {
+                Ok(mut consumer) => {
+                    info!(
+                        queue = %queue,
+                        routing_key = %routing_key,
+                        "Consumer connected, processing messages"
+                    );
+                    // Reset backoff on successful connection
+                    backoff = INITIAL_BACKOFF;
+
+                    // Process messages until stream ends
+                    while let Some(delivery) = consumer.next().await {
+                        match delivery {
+                            Ok(delivery) => {
+                                Self::process_delivery(delivery, &handlers).await;
+                            }
+                            Err(e) => {
+                                error!(error = %e, "Consumer delivery error, will reconnect");
+                                break;
+                            }
+                        }
+                    }
+
+                    info!(queue = %queue, "Consumer stream ended, reconnecting...");
+                }
+                Err(e) => {
+                    error!(
+                        error = %e,
+                        backoff_ms = %backoff.as_millis(),
+                        queue = %queue,
+                        "Failed to set up consumer, retrying after backoff"
+                    );
+                }
+            }
+
+            // Wait before reconnecting with exponential backoff
+            tokio::time::sleep(backoff).await;
+            backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
+        }
+    }
+
+    /// Set up consumer channel, queue, and bindings.
+    async fn setup_consumer(
+        pool: &Pool,
+        exchange: &str,
+        queue: &str,
+        routing_key: &str,
+    ) -> Result<lapin::Consumer> {
+        let conn = pool.get().await.map_err(|e: PoolError| {
+            BusError::Connection(format!("Failed to get connection from pool: {}", e))
+        })?;
+
+        let channel = conn
+            .create_channel()
+            .await
+            .map_err(|e| BusError::Connection(format!("Failed to create channel: {}", e)))?;
 
         // Declare queue
         channel
@@ -190,7 +276,7 @@ impl AmqpEventBus {
         channel
             .queue_bind(
                 queue,
-                &self.config.exchange,
+                exchange,
                 routing_key,
                 QueueBindOptions::default(),
                 FieldTable::default(),
@@ -204,8 +290,8 @@ impl AmqpEventBus {
             "Bound queue to exchange"
         );
 
-        // Start consumer
-        let mut consumer = channel
+        // Create consumer
+        let consumer = channel
             .basic_consume(
                 queue,
                 "angzarr-consumer",
@@ -215,67 +301,55 @@ impl AmqpEventBus {
             .await
             .map_err(|e| BusError::Subscribe(format!("Failed to start consumer: {}", e)))?;
 
-        let handlers = self.handlers.clone();
+        Ok(consumer)
+    }
 
-        // Spawn consumer task
-        tokio::spawn(async move {
-            use futures::StreamExt;
+    /// Process a single delivery from the consumer.
+    async fn process_delivery(
+        delivery: lapin::message::Delivery,
+        handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    ) {
+        // Deserialize event book
+        match EventBook::decode(delivery.data.as_slice()) {
+            Ok(book) => {
+                debug!(
+                    routing_key = %delivery.routing_key,
+                    "Received event book"
+                );
 
-            while let Some(delivery) = consumer.next().await {
-                match delivery {
-                    Ok(delivery) => {
-                        // Deserialize event book
-                        match EventBook::decode(delivery.data.as_slice()) {
-                            Ok(book) => {
-                                debug!(
-                                    routing_key = %delivery.routing_key,
-                                    "Received event book"
-                                );
+                // Create consume span (with trace parent when otel is enabled)
+                let consume_span =
+                    tracing::info_span!("bus.consume", routing_key = %delivery.routing_key);
 
-                                // Create consume span (with trace parent when otel is enabled)
-                                let consume_span = tracing::info_span!("bus.consume",
-                                    routing_key = %delivery.routing_key);
+                #[cfg(feature = "otel")]
+                amqp_extract_trace_context(&delivery.properties, &consume_span);
 
-                                #[cfg(feature = "otel")]
-                                amqp_extract_trace_context(&delivery.properties, &consume_span);
+                // Wrap in Arc for sharing across handlers
+                let book = Arc::new(book);
 
-                                // Wrap in Arc for sharing across handlers
-                                let book = Arc::new(book);
-
-                                // Call all handlers within the consume span
-                                let handlers_ref = &handlers;
-                                let book_ref = &book;
-                                async {
-                                    let handlers_guard = handlers_ref.read().await;
-                                    for handler in handlers_guard.iter() {
-                                        if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
-                                            error!(error = %e, "Handler failed");
-                                        }
-                                    }
-                                }
-                                .instrument(consume_span)
-                                .await;
-
-                                // Acknowledge message
-                                if let Err(e) = delivery.ack(Default::default()).await {
-                                    error!(error = %e, "Failed to ack message");
-                                }
-                            }
-                            Err(e) => {
-                                error!(error = %e, "Failed to decode event book");
-                                // Reject message (don't requeue malformed messages)
-                                let _ = delivery.reject(Default::default()).await;
-                            }
+                // Call all handlers within the consume span
+                async {
+                    let handlers_guard = handlers.read().await;
+                    for handler in handlers_guard.iter() {
+                        if let Err(e) = handler.handle(Arc::clone(&book)).await {
+                            error!(error = %e, "Handler failed");
                         }
                     }
-                    Err(e) => {
-                        error!(error = %e, "Consumer error");
-                    }
+                }
+                .instrument(consume_span)
+                .await;
+
+                // Acknowledge message
+                if let Err(e) = delivery.ack(Default::default()).await {
+                    error!(error = %e, "Failed to ack message");
                 }
             }
-        });
-
-        Ok(())
+            Err(e) => {
+                error!(error = %e, "Failed to decode event book");
+                // Reject message (don't requeue malformed messages)
+                let _ = delivery.reject(Default::default()).await;
+            }
+        }
     }
 }
 
@@ -283,47 +357,100 @@ impl AmqpEventBus {
 impl EventBus for AmqpEventBus {
     #[tracing::instrument(name = "bus.publish", skip_all, fields(domain = %book.domain()))]
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
-        let channel = self.get_channel().await?;
-        let routing_key = Self::routing_key(&book);
+        use std::time::Duration;
 
-        // Serialize event book to protobuf
+        const MAX_RETRIES: u32 = 5;
+        const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
+        const MAX_BACKOFF: Duration = Duration::from_secs(5);
+
+        let routing_key = Self::routing_key(&book);
         let payload = book.encode_to_vec();
 
-        let properties = BasicProperties::default()
-            .with_content_type("application/protobuf".into())
-            .with_delivery_mode(2); // persistent
+        let mut backoff = INITIAL_BACKOFF;
+        let mut last_error = None;
 
-        #[cfg(feature = "otel")]
-        let properties = {
-            let headers = amqp_inject_trace_context();
-            if headers.inner().is_empty() {
-                properties
-            } else {
-                properties.with_headers(headers)
+        for attempt in 0..MAX_RETRIES {
+            // Get fresh channel for each attempt (handles reconnection)
+            let channel = match self.get_channel().await {
+                Ok(ch) => ch,
+                Err(e) => {
+                    error!(
+                        attempt = attempt + 1,
+                        max_retries = MAX_RETRIES,
+                        error = %e,
+                        "Failed to get channel, retrying..."
+                    );
+                    last_error = Some(e);
+                    tokio::time::sleep(backoff).await;
+                    backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
+                    continue;
+                }
+            };
+
+            let properties = BasicProperties::default()
+                .with_content_type("application/protobuf".into())
+                .with_delivery_mode(2); // persistent
+
+            #[cfg(feature = "otel")]
+            let properties = {
+                let headers = amqp_inject_trace_context();
+                if headers.inner().is_empty() {
+                    properties
+                } else {
+                    properties.with_headers(headers)
+                }
+            };
+
+            match channel
+                .basic_publish(
+                    &self.config.exchange,
+                    &routing_key,
+                    BasicPublishOptions::default(),
+                    &payload,
+                    properties,
+                )
+                .await
+            {
+                Ok(confirm) => {
+                    match confirm.await {
+                        Ok(_) => {
+                            debug!(
+                                exchange = %self.config.exchange,
+                                routing_key = %routing_key,
+                                "Published event book"
+                            );
+                            return Ok(PublishResult::default());
+                        }
+                        Err(e) => {
+                            error!(
+                                attempt = attempt + 1,
+                                max_retries = MAX_RETRIES,
+                                error = %e,
+                                "Publish confirmation failed, retrying..."
+                            );
+                            last_error = Some(BusError::Publish(format!(
+                                "Publish confirmation failed: {}",
+                                e
+                            )));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        attempt = attempt + 1,
+                        max_retries = MAX_RETRIES,
+                        error = %e,
+                        "Publish failed, retrying..."
+                    );
+                    last_error = Some(BusError::Publish(format!("Failed to publish: {}", e)));
+                }
             }
-        };
 
-        channel
-            .basic_publish(
-                &self.config.exchange,
-                &routing_key,
-                BasicPublishOptions::default(),
-                &payload,
-                properties,
-            )
-            .await
-            .map_err(|e| BusError::Publish(format!("Failed to publish: {}", e)))?
-            .await
-            .map_err(|e| BusError::Publish(format!("Publish confirmation failed: {}", e)))?;
+            tokio::time::sleep(backoff).await;
+            backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
+        }
 
-        debug!(
-            exchange = %self.config.exchange,
-            routing_key = %routing_key,
-            "Published event book"
-        );
-
-        // AMQP is async-only, no synchronous projections
-        Ok(PublishResult::default())
+        Err(last_error.unwrap_or_else(|| BusError::Publish("Max retries exceeded".to_string())))
     }
 
     async fn subscribe(&self, handler: Box<dyn EventHandler>) -> Result<()> {

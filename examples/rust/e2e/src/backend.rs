@@ -26,6 +26,12 @@ pub trait Backend: Send + Sync {
     /// Execute a command and return the response.
     async fn execute(&self, command: CommandBook) -> BackendResult<CommandResponse>;
 
+    /// Clean up test data (called before test run).
+    /// Default implementation does nothing (for in-memory backends).
+    async fn cleanup(&self) -> BackendResult<()> {
+        Ok(())
+    }
+
     /// Query all events for a domain/root.
     async fn query_events(&self, domain: &str, root: Uuid) -> BackendResult<Vec<EventPage>>;
 
@@ -328,6 +334,8 @@ use angzarr_client::{parse_timestamp, Client, QueryBuilderExt};
 /// Remote gRPC gateway backend using angzarr-client.
 struct GatewayBackend {
     client: Client,
+    #[cfg(feature = "gateway-cleanup")]
+    mongodb_uri: String,
 }
 
 async fn create_gateway_backend() -> (GatewayBackend, angzarr_client::SpeculativeClient) {
@@ -336,7 +344,18 @@ async fn create_gateway_backend() -> (GatewayBackend, angzarr_client::Speculativ
         .expect("Failed to connect to gateway");
 
     let speculative = client.speculative.clone();
-    (GatewayBackend { client }, speculative)
+
+    let backend = GatewayBackend {
+        client,
+        #[cfg(feature = "gateway-cleanup")]
+        mongodb_uri: std::env::var("ANGZARR_MONGODB_URI")
+            .unwrap_or_else(|_| "mongodb://angzarr:angzarr-dev@localhost:27017/angzarr?authSource=angzarr".into()),
+    };
+
+    // Clean up before tests run
+    backend.cleanup().await.expect("Failed to cleanup before tests");
+
+    (backend, speculative)
 }
 
 #[async_trait]
@@ -344,6 +363,55 @@ impl Backend for GatewayBackend {
     async fn execute(&self, command: CommandBook) -> BackendResult<CommandResponse> {
         let response = self.client.gateway.execute(command).await?;
         Ok(response)
+    }
+
+    #[cfg(feature = "gateway-cleanup")]
+    async fn cleanup(&self) -> BackendResult<()> {
+        use tracing::{info, warn};
+
+        info!("Cleaning up MongoDB before tests...");
+
+        // Try to connect with a short timeout
+        let options = mongodb::options::ClientOptions::parse(&self.mongodb_uri)
+            .await
+            .map_err(|e| format!("Failed to parse MongoDB URI: {}", e))?;
+
+        let client = match mongodb::Client::with_options(options) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Could not connect to MongoDB for cleanup: {}. Tests may fail if data exists from previous runs.", e);
+                warn!("To enable cleanup, port-forward MongoDB: kubectl port-forward -n angzarr svc/angzarr-db-mongodb 27017:27017");
+                return Ok(());
+            }
+        };
+
+        let db = client.database("angzarr");
+
+        // Test connection before cleanup
+        if let Err(e) = db.list_collection_names().await {
+            warn!("MongoDB not accessible for cleanup: {}. Tests may fail if data exists from previous runs.", e);
+            warn!("To enable cleanup, port-forward MongoDB: kubectl port-forward -n angzarr svc/angzarr-db-mongodb 27017:27017");
+            return Ok(());
+        }
+
+        // Drop events and snapshots collections
+        if let Err(e) = db
+            .collection::<mongodb::bson::Document>("events")
+            .drop()
+            .await
+        {
+            warn!("Failed to drop events collection: {}", e);
+        }
+        if let Err(e) = db
+            .collection::<mongodb::bson::Document>("snapshots")
+            .drop()
+            .await
+        {
+            warn!("Failed to drop snapshots collection: {}", e);
+        }
+
+        info!("MongoDB cleanup complete");
+        Ok(())
     }
 
     async fn query_events(&self, domain: &str, root: Uuid) -> BackendResult<Vec<EventPage>> {
