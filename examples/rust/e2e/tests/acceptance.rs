@@ -7,13 +7,11 @@
 use std::time::{Duration, Instant};
 
 use cucumber::{gherkin::Step, given, then, when, World as _};
-use futures::future::join_all;
 use prost::Message;
 use uuid::Uuid;
 
 use e2e::{
-    assert_command_failed, assert_contiguous_sequences, examples_proto, extract_event_type,
-    extract_sequence_or_zero, proto, E2EWorld,
+    assert_command_failed, examples_proto, extract_event_type, proto, E2EWorld,
 };
 
 // ============================================================================

@@ -57,6 +57,10 @@ images:
     repository: localhost:5001/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"  # Overridden by skaffold setValueTemplates
+  topology:
+    repository: localhost:5001/angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"  # Overridden by skaffold setValueTemplates
 
 # Minimal resources for local dev
 resources:
@@ -264,7 +268,7 @@ applications:
         repository: localhost:5001/projector-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "projector-inventory"
+      domain: "inventory"
       port: 50135        # projector-inventory business gRPC (50130+5)
       topics:
         - "inventory"

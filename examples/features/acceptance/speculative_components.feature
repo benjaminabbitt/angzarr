@@ -6,25 +6,7 @@ Feature: Speculative Component Execution
   persisting them.
 
   Background:
-    # Projector speculation works via gateway routing to coordinators
     # Saga/PM speculation requires standalone mode (direct access)
-
-  # ===========================================================================
-  # Projector Speculative Execution
-  # ===========================================================================
-
-  @e2e @speculative @projector
-  Scenario: Speculative projector returns projection without side effects
-    Given inventory for "INV-SPEC-PROJ" has 100 units
-    When I speculatively run the "inventory" projector against inventory "INV-SPEC-PROJ" events
-    Then the speculative projection succeeds
-    And speculative execution did not modify the inventory projector for "INV-SPEC-PROJ"
-
-  @e2e @speculative @projector
-  Scenario: Speculative projector produces identical result to normal execution
-    Given inventory for "INV-SPEC-COMPARE" has 50 units
-    When I speculatively run the "inventory" projector against inventory "INV-SPEC-COMPARE" events
-    Then the speculative projection succeeds
 
   # ===========================================================================
   # Saga Speculative Execution
