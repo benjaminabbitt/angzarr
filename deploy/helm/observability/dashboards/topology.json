@@ -7,10 +7,10 @@
   "links": [],
   "panels": [
     {
-      "title": "Runtime Topology",
-      "description": "Live component graph discovered from event stream. Nodes are aggregates, sagas, process managers, and projectors. Edges represent event/command flows via correlation_id chains.",
+      "title": "System Topology",
+      "description": "Live component graph discovered from event stream. Nodes are aggregates, sagas, process managers, and projectors. Edges represent event/command flows via correlation_id chains.\n\nNode colors indicate component type:\n- Purple: Aggregates\n- Blue: Sagas\n- Green: Process Managers\n- Yellow: Projectors\n\nEdge thickness indicates event volume.",
       "type": "nodeGraph",
-      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 0 },
+      "gridPos": { "h": 24, "w": 24, "x": 0, "y": 0 },
       "datasource": { "type": "hamedkarbasi93-nodegraphapi-datasource", "uid": "topology" },
       "targets": [
         {
@@ -18,17 +18,90 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "nodeRadius": {
+              "fixed": 30,
+              "field": "detail__event_count",
+              "min": 20,
+              "max": 50
+            }
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "nodes": {
+          "mainStatUnit": "",
+          "secondaryStatUnit": "",
+          "arcs": []
+        },
+        "edges": {
+          "mainStatUnit": "",
+          "secondaryStatUnit": ""
+        }
+      }
+    },
+    {
+      "title": "Topology Stats",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+      "datasource": { "type": "hamedkarbasi93-nodegraphapi-datasource", "uid": "topology" },
+      "targets": [
+        {
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": ["count"]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "Components",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["count"],
+          "fields": "/^id$/"
+        }
+      }
+    },
+    {
+      "title": "About This Dashboard",
+      "type": "text",
+      "gridPos": { "h": 4, "w": 18, "x": 6, "y": 24 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Runtime Topology Visualization\n\nThis dashboard displays the live topology of your Angzarr event-sourced system.\n\n**Nodes** represent components:\n- **Aggregates** - Domain entities that process commands and emit events\n- **Sagas** - Cross-domain orchestrators that react to events\n- **Process Managers** - Long-running workflows coordinating multiple domains\n\n**Edges** show event flow between components, tracked via correlation IDs.\n\nData is automatically discovered from the event stream - no manual configuration required."
+      }
     }
   ],
+  "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["angzarr", "topology", "node-graph"],
+  "tags": ["angzarr", "topology", "node-graph", "event-sourcing"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
-  "timepicker": {},
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+  },
   "timezone": "browser",
   "title": "Angzarr: Topology",
   "uid": "angzarr-topology",
