@@ -3,6 +3,10 @@ kind: Config
 metadata:
   name: angzarr-mixed-examples
 
+# IMPORTANT: All image builds MUST go through skaffold.
+# Do NOT manually build with podman/docker and helm upgrade.
+# Kind nodes cache images by tag - skaffold uses unique git SHA tags to avoid this.
+
 # Require framework images - provides IMAGE_TAG_* template variables for deploy
 requires:
   - path: ../../skaffold.yaml

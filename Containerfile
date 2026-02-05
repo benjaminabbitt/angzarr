@@ -11,8 +11,9 @@
 
 # =============================================================================
 # Dev builder - native glibc (fast compilation)
+# Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
 # =============================================================================
-FROM docker.io/library/rust:1.92-bookworm AS builder-dev
+FROM docker.io/library/rust:1.92-bookworm AS builder-dev-deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler \
@@ -21,14 +22,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
-COPY src/ ./src/
-COPY angzarr-client/ ./angzarr-client/
-COPY examples/rust examples/rust/
-COPY migrations/ ./migrations/
+COPY angzarr-client/rust/Cargo.toml ./angzarr-client/rust/Cargo.toml
+COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 
-RUN mkdir -p tests/integration && \
+# Create minimal source stubs to satisfy cargo
+RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "pub fn stub() {}" > src/lib.rs && \
+    for bin in aggregate projector saga process_manager stream gateway log topology; do \
+      echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
+    done && \
+    echo "pub fn stub() {}" > angzarr-client/rust/src/lib.rs && \
+    echo "pub fn stub() {}" > examples/rust/common/src/lib.rs && \
+    mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
              standalone_integration; do \
@@ -36,12 +45,33 @@ RUN mkdir -p tests/integration && \
     done && \
     for f in gateway_test streaming_test query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
-    done
+    done && \
+    mkdir -p migrations && touch migrations/.keep
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,id=framework-target,target=/app/target \
-    cargo build --profile container-dev --features otel,topology,sqlite \
+# Build dependencies only (cached until Cargo.toml/Cargo.lock change)
+RUN cargo build --profile container-dev --features otel,topology,sqlite \
+    --bin angzarr-aggregate \
+    --bin angzarr-projector \
+    --bin angzarr-saga \
+    --bin angzarr-process-manager \
+    --bin angzarr-stream \
+    --bin angzarr-gateway \
+    --bin angzarr-log \
+    --bin angzarr-topology || true
+
+# =============================================================================
+# Dev builder - source build (invalidates when src/ changes)
+# =============================================================================
+FROM builder-dev-deps AS builder-dev
+
+# Copy real source (invalidates layer when source changes)
+COPY src/ ./src/
+COPY angzarr-client/ ./angzarr-client/
+COPY examples/rust examples/rust/
+COPY migrations/ ./migrations/
+
+# Rebuild with real source (deps already compiled in previous stage)
+RUN cargo build --profile container-dev --features otel,topology,sqlite \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
@@ -62,8 +92,9 @@ RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
 
 # =============================================================================
 # Release builder - musl static, multi-arch (small images, all features)
+# Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
 # =============================================================================
-FROM docker.io/library/rust:1.92-alpine AS builder-release
+FROM docker.io/library/rust:1.92-alpine AS builder-release-deps
 
 # Build argument for target architecture (set by buildx/podman)
 ARG TARGETARCH
@@ -91,14 +122,22 @@ ENV OPENSSL_DIR=/usr
 
 WORKDIR /app
 
+# Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
-COPY src/ ./src/
-COPY angzarr-client/ ./angzarr-client/
-COPY examples/rust examples/rust/
-COPY migrations/ ./migrations/
+COPY angzarr-client/rust/Cargo.toml ./angzarr-client/rust/Cargo.toml
+COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 
-RUN mkdir -p tests/integration && \
+# Create minimal source stubs to satisfy cargo
+RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "pub fn stub() {}" > src/lib.rs && \
+    for bin in aggregate projector saga process_manager stream gateway log topology; do \
+      echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
+    done && \
+    echo "pub fn stub() {}" > angzarr-client/rust/src/lib.rs && \
+    echo "pub fn stub() {}" > examples/rust/common/src/lib.rs && \
+    mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
              standalone_integration; do \
@@ -106,13 +145,40 @@ RUN mkdir -p tests/integration && \
     done && \
     for f in gateway_test streaming_test query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
-    done
+    done && \
+    mkdir -p migrations && touch migrations/.keep
 
-# Build with full features and production optimization
-# Uses TARGETARCH to select the correct musl target
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    if [ "$TARGETARCH" = "arm64" ]; then \
+# Build dependencies only (cached until Cargo.toml/Cargo.lock change)
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        TARGET="aarch64-unknown-linux-musl"; \
+    else \
+        TARGET="x86_64-unknown-linux-musl"; \
+    fi && \
+    cargo build --profile production --target $TARGET --features full \
+    --bin angzarr-aggregate \
+    --bin angzarr-projector \
+    --bin angzarr-saga \
+    --bin angzarr-process-manager \
+    --bin angzarr-stream \
+    --bin angzarr-gateway \
+    --bin angzarr-log \
+    --bin angzarr-topology || true
+
+# =============================================================================
+# Release builder - source build (invalidates when src/ changes)
+# =============================================================================
+FROM builder-release-deps AS builder-release
+
+ARG TARGETARCH
+
+# Copy real source (invalidates layer when source changes)
+COPY src/ ./src/
+COPY angzarr-client/ ./angzarr-client/
+COPY examples/rust examples/rust/
+COPY migrations/ ./migrations/
+
+# Rebuild with real source (deps already compiled in previous stage)
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
         TARGET="aarch64-unknown-linux-musl"; \
     else \
         TARGET="x86_64-unknown-linux-musl"; \

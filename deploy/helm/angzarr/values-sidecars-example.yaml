@@ -31,6 +31,9 @@ mongodb:
     databases: ["angzarr"]
   persistence:
     size: 10Gi
+  # Recreate strategy avoids mongod.lock conflicts during rolling updates
+  updateStrategy:
+    type: Recreate
 
 # RabbitMQ subchart
 rabbitmq:

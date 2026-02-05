@@ -86,6 +86,9 @@ mongodb:
     databases: ["angzarr"]
   persistence:
     size: 2Gi
+  # Recreate strategy avoids mongod.lock conflicts during rolling updates
+  updateStrategy:
+    type: Recreate
   resources:
     requests:
       memory: "128Mi"

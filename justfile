@@ -96,6 +96,28 @@ cluster-delete:
 cluster-delete-all:
     uv run "{{TOP}}/scripts/kind-with-registry.py" delete-all
 
+# === Port Forwarding ===
+
+# Kill all angzarr-related port-forwards
+port-forward-cleanup:
+    @pkill -f "kubectl.*port-forward.*angzarr" || true
+
+# Start gateway port-forward (9084)
+port-forward-gateway: port-forward-cleanup
+    @kubectl port-forward --address 127.0.0.1 -n angzarr svc/angzarr-gateway 9084:9084 &
+    @echo "Gateway available at localhost:9084"
+
+# Start topology port-forward (9099)
+port-forward-topology: port-forward-cleanup
+    @kubectl port-forward --address 127.0.0.1 -n angzarr svc/angzarr-topology 9099:9099 &
+    @echo "Topology API available at localhost:9099"
+
+# Start Grafana port-forward (3000)
+port-forward-grafana:
+    @pkill -f "kubectl.*port-forward.*grafana" || true
+    @kubectl port-forward --address 127.0.0.1 -n observability svc/observability-grafana 3000:80 &
+    @echo "Grafana available at localhost:3000"
+
 # === Infrastructure ===
 
 # Deploy local backing services (PostgreSQL, RabbitMQ)

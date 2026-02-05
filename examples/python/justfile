@@ -56,14 +56,19 @@ helm-lint:
     helm lint helm
 
 # ============================================================================
-# Container Images
+# Container Images - LOCAL DEV ONLY
 # ============================================================================
+#
+# These targets are for local development/testing in containers.
+# For K8s deployments, use `just deploy` or `just dev` which delegate to
+# skaffold via k8s.justfile. Skaffold uses unique git-commit tags to avoid
+# Kind's containerd image cache issues.
 
-# Build dev container
+# Build dev container (for local testing only, NOT for K8s)
 container-build:
     cd {{TOP}} && podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
 
-# Run tests in container
+# Run tests in container (for local testing only, NOT for K8s)
 container-test:
     cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
 

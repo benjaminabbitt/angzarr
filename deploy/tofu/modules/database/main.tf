@@ -126,6 +126,12 @@ resource "helm_release" "mongodb" {
         enabled = var.persistence_enabled
         size    = var.persistence_size
       }
+      # Use Recreate strategy to avoid lock file conflicts during rolling updates.
+      # RollingUpdate can cause the new pod to fail with "mongod.lock" errors when
+      # both pods try to access the same PVC simultaneously.
+      updateStrategy = {
+        type = "Recreate"
+      }
       resources = {
         requests = {
           memory = var.resources.requests.memory

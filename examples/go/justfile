@@ -57,40 +57,22 @@ helm-lint:
     helm lint helm
 
 # ============================================================================
-# Container Images
+# Container Images - DEPRECATED FOR K8S
 # ============================================================================
+#
+# WARNING: Do NOT use manual podman build + push for K8s deployments.
+# Kind nodes cache images by tag at the containerd level. Pushing a new
+# image with the same tag doesn't update pods - they continue using the
+# cached version. Skaffold solves this with unique git-commit-based tags.
+#
+# For K8s: Use `just deploy` or `just dev` (delegates to skaffold via k8s.justfile)
+# The container-build target exists only for local testing outside K8s.
 
-# Build all Go service images (no cache) and push to local registry
-images-push:
-    #!/usr/bin/env bash
-    set -e
-    REGISTRY="localhost:5001"
-    TARGETS=(
-        "order:aggregate-order-go"
-        "inventory:aggregate-inventory-go"
-        "fulfillment:aggregate-fulfillment-go"
-        "saga-fulfillment:saga-order-fulfillment-go"
-        "saga-inventory-reservation:saga-order-inventory-go"
-        "sag-fulfillment-inventory:saga-fulfillment-inventory-go"
-        "projector-inventory:projector-inventory-go"
-        "process-manager-fulfillment:process-manager-fulfillment-go"
-    )
-    cd {{TOP}}
-    for entry in "${TARGETS[@]}"; do
-        target="${entry%%:*}"
-        image="${entry##*:}"
-        echo "=== Building $image ==="
-        podman build --no-cache -f examples/go/Containerfile --target "$target" -t "$REGISTRY/$image:latest" .
-        echo "=== Pushing $image ==="
-        podman push "$REGISTRY/$image:latest" --tls-verify=false
-    done
-    echo "All Go images built and pushed."
-
-# Build dev container
+# Build dev container (for local testing only, NOT for K8s)
 container-build:
     cd {{TOP}} && podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
 
-# Run tests in container
+# Run tests in container (for local testing only, NOT for K8s)
 container-test:
     cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
 

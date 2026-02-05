@@ -149,12 +149,16 @@ def ensure_registry(cfg: Config, require_kind_network: bool = False) -> None:
         # Registry exists - check if it needs to be recreated on kind network
         if kind_network_available and not registry_on_network(cfg.registry_name, "kind"):
             print("Registry exists but not on kind network, recreating...")
-            podman("stop", cfg.registry_name, check=False)
-            podman("rm", cfg.registry_name, check=False)
+            podman("rm", "-f", cfg.registry_name, check=False)
         elif not registry_running(cfg.registry_name):
-            print("Starting stopped registry...")
-            podman("start", cfg.registry_name)
-            return
+            # Try to start stopped registry
+            result = podman("start", cfg.registry_name, capture=True, check=False)
+            if result.returncode == 0:
+                print("Started stopped registry")
+                return
+            # Start failed - recreate (handles containers in broken state)
+            print(f"Failed to start registry, recreating: {result.stderr.strip()}")
+            podman("rm", "-f", cfg.registry_name, check=False)
         else:
             print("Registry already running on correct network")
             return

@@ -13,28 +13,6 @@ Cluster created with:
 
 ## Known Issues (Unfixed)
 
-### MongoDB Lock File on Redeployment
-
-**Problem:** When redeploying, MongoDB may fail with a lock file error if the previous pod's data wasn't cleaned up properly.
-
-**Error:**
-```
-DBPathInUse: Unable to lock the lock file: /bitnami/mongodb/data/db/mongod.lock (Resource temporarily unavailable).
-Another mongod instance is already running on the /bitnami/mongodb/data/db directory
-```
-
-**Root Cause:** The emptyDir volume can persist across pod restarts within the same deployment revision, causing lock file conflicts.
-
-**Attempted Fix:** Init container to remove `mongod.lock` on startup was tried but caused rolling update failures with bitnami/mongodb chart (exit code 100 during initialization).
-
-**Workaround:** Delete the MongoDB deployment before redeploying:
-```bash
-kubectl delete deployment angzarr-db-mongodb -n angzarr
-skaffold run
-```
-
----
-
 ### Grafana NodeGraph API Datasource Plugin Proxy Error
 
 **Problem:** The `hamedkarbasi93-nodegraphapi-datasource` plugin returns 502 Bad Gateway with error `unsupported protocol scheme ""` even though the datasource URL is correctly configured.
@@ -53,6 +31,30 @@ skaffold run
 ---
 
 ## Resolved Issues
+
+### MongoDB Lock File on Redeployment
+
+**Problem:** When redeploying, MongoDB may fail with a lock file error if the previous pod's data wasn't cleaned up properly.
+
+**Error:**
+```
+DBPathInUse: Unable to lock the lock file: /bitnami/mongodb/data/db/mongod.lock (Resource temporarily unavailable).
+Another mongod instance is already running on the /bitnami/mongodb/data/db directory
+```
+
+**Root Cause:** The default `RollingUpdate` strategy creates a new pod before terminating the old one. Both pods try to access the same PVC simultaneously, causing the lock file conflict.
+
+**Solution:** Configure the Bitnami MongoDB subchart to use `Recreate` update strategy. This ensures the old pod fully terminates (releasing the lock file) before the new pod starts.
+
+```yaml
+mongodb:
+  updateStrategy:
+    type: Recreate
+```
+
+This is applied in all `values-*.yaml` files in `deploy/helm/angzarr/`.
+
+---
 
 ### Kind Node Image Cache (Use Skaffold)
 
