@@ -113,6 +113,9 @@ spec:
             {{- end }}
             - name: ANGZARR_LOG
               value: {{ $.Values.logging.level }}
+            {{- if .env }}
+            {{- toYaml .env | nindent 12 }}
+            {{- end }}
           resources:
             {{- if .resources }}
             {{- toYaml .resources | nindent 12 }}

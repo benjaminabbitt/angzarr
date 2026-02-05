@@ -27,6 +27,9 @@ async fn inventory_exists(world: &mut E2EWorld, product_alias: String, units: i3
     let det_root = common::identity::inventory_product_root(&product_alias);
     world.roots.insert(product_alias.clone(), det_root);
 
+    // Delete any existing events to ensure fresh state for this test
+    world.delete_aggregate("inventory", det_root).await;
+
     let command = examples_proto::InitializeStock {
         product_id: product_alias.clone(),
         quantity: units,

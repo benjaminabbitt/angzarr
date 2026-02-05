@@ -313,6 +313,12 @@ impl E2EWorld {
             .unwrap_or_default()
     }
 
+    /// Delete all events for a specific aggregate.
+    /// Used for test setup to ensure fresh state.
+    pub async fn delete_aggregate(&self, domain: &str, root: Uuid) {
+        let _ = self.backend.delete_aggregate(domain, root).await;
+    }
+
     /// Query events at a temporal point and store as last_temporal_events
     pub async fn query_events_temporal(
         &mut self,

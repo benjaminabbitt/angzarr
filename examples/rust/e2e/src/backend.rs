@@ -72,6 +72,14 @@ pub trait Backend: Send + Sync {
         let _ = correlation_id;
         Ok(vec![])
     }
+
+    /// Delete all events for a specific aggregate (domain/root).
+    /// Used for test setup to ensure fresh state.
+    /// Default implementation does nothing (standalone uses in-memory storage).
+    async fn delete_aggregate(&self, domain: &str, root: Uuid) -> BackendResult<()> {
+        let _ = (domain, root);
+        Ok(())
+    }
 }
 
 /// Result of backend creation, including projector database pools.
@@ -439,6 +447,46 @@ impl Backend for GatewayBackend {
         }
 
         info!("MongoDB cleanup complete");
+        Ok(())
+    }
+
+    #[cfg(feature = "gateway-cleanup")]
+    async fn delete_aggregate(&self, domain: &str, root: Uuid) -> BackendResult<()> {
+        use mongodb::bson::doc;
+        use tracing::debug;
+
+        let options = mongodb::options::ClientOptions::parse(&self.mongodb_uri)
+            .await
+            .map_err(|e| format!("Failed to parse MongoDB URI: {}", e))?;
+
+        let client = mongodb::Client::with_options(options)
+            .map_err(|e| format!("Failed to connect to MongoDB: {}", e))?;
+
+        let db = client.database("angzarr");
+        let root_bytes = root.as_bytes().to_vec();
+
+        // Delete events for this domain/root
+        let events_result = db
+            .collection::<mongodb::bson::Document>("events")
+            .delete_many(doc! {
+                "domain": domain,
+                "root": mongodb::bson::Binary { subtype: mongodb::bson::spec::BinarySubtype::Generic, bytes: root_bytes.clone() }
+            })
+            .await;
+
+        if let Ok(result) = events_result {
+            debug!(domain, %root, deleted = result.deleted_count, "Deleted events for aggregate");
+        }
+
+        // Delete snapshots for this domain/root
+        let _ = db
+            .collection::<mongodb::bson::Document>("snapshots")
+            .delete_many(doc! {
+                "domain": domain,
+                "root": mongodb::bson::Binary { subtype: mongodb::bson::spec::BinarySubtype::Generic, bytes: root_bytes }
+            })
+            .await;
+
         Ok(())
     }
 
