@@ -3,9 +3,23 @@ kind: Config
 metadata:
   name: angzarr-build
 
+# IMPORTANT: All image builds MUST go through skaffold.
+# Do NOT manually build with podman/docker and helm upgrade.
+#
+# Why: Kind nodes cache images by tag at the containerd level. If you push
+# a new image with the same tag (e.g., :latest), the node will continue
+# serving the old cached image even after `kubectl rollout restart`.
+#
+# Skaffold solves this by using content-addressable tags (git commit SHA).
+# Each build gets a unique tag, so there's never a cache collision.
+
 build:
+  # Use git commit SHA for tags - ensures unique tag per build, avoiding
+  # Kind node image cache collisions. Never use sha256 or latest tags.
   tagPolicy:
-    sha256: {}
+    gitCommit:
+      prefix: "dev-"
+      variant: AbbrevCommitSha
   local:
     push: true
     useBuildkit: false

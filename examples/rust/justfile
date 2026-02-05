@@ -71,46 +71,27 @@ helm-lint:
     helm lint helm
 
 # ============================================================================
-# Container Images
-# ============================================================================
-
-# Build all Rust example images (uses multi-stage Containerfile)
-images:
-    podman build --target builder -f Containerfile "{{TOP}}"
-    podman build --target inventory -t localhost:{{REGISTRY_PORT}}/aggregate-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target order -t localhost:{{REGISTRY_PORT}}/aggregate-order-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target fulfillment -t localhost:{{REGISTRY_PORT}}/aggregate-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target saga-order-fulfillment -t localhost:{{REGISTRY_PORT}}/saga-order-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target saga-order-inventory -t localhost:{{REGISTRY_PORT}}/saga-order-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target saga-fulfillment-inventory -t localhost:{{REGISTRY_PORT}}/saga-fulfillment-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target process-manager-fulfillment -t localhost:{{REGISTRY_PORT}}/process-manager-fulfillment-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-    podman build --target projector-inventory -t localhost:{{REGISTRY_PORT}}/projector-inventory-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-
-# Build a single service image
-image SERVICE:
-    podman build --target {{SERVICE}} -t localhost:{{REGISTRY_PORT}}/entity-{{SERVICE}}-rs:{{IMAGE_TAG}} -f Containerfile "{{TOP}}"
-
-# Push all images to local registry
-push:
-    podman push localhost:{{REGISTRY_PORT}}/aggregate-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/aggregate-order-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/aggregate-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/saga-order-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/saga-order-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/saga-fulfillment-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/process-manager-fulfillment-rs:{{IMAGE_TAG}} --tls-verify=false
-    podman push localhost:{{REGISTRY_PORT}}/projector-inventory-rs:{{IMAGE_TAG}} --tls-verify=false
-
-# ============================================================================
-# Skaffold Development (recommended workflow)
+# Container Images - DEPRECATED FOR K8S
 # ============================================================================
 #
-# UNIFIED WORKFLOW:
-#   just dev    - watch mode, rebuilds on file change (framework + business)
+# WARNING: Do NOT use manual podman build + push for K8s deployments.
+# Kind nodes cache images by tag at the containerd level. Pushing a new
+# image with the same tag doesn't update pods - they continue using the
+# cached version. Skaffold solves this with unique git-commit-based tags.
+#
+# For K8s: Use `just run` or `just dev` (skaffold)
+# These targets exist only for local testing outside K8s.
+
+# ============================================================================
+# Skaffold Development (REQUIRED workflow for K8s)
+# ============================================================================
+#
+# ALWAYS use skaffold for K8s deployments:
+#   just dev    - watch mode, rebuilds on file change
 #   just run    - build and deploy once
 #
-# All 12 images (5 framework + 7 business) are built with sha256 tags.
-# Skaffold caches aggressively - only changed images are rebuilt.
+# Skaffold uses git-commit-based tags (dev-<sha>) ensuring unique tags per
+# build. This avoids Kind's containerd image cache issues with reused tags.
 #
 # With lefthook: commits automatically trigger deployment (see lefthook.yml)
 
@@ -123,12 +104,12 @@ setup:
     uv run "{{TOP}}/scripts/kind-with-registry.py"
 
 # Start skaffold dev loop (watches files, rebuilds on change)
-# Builds all 12 images (framework + business) via 'requires' directive
+# Builds all images (framework + business) via 'requires' directive
 dev: setup
     cd "{{TOP}}" && just secrets-init
     @echo "=== Skaffold Dev Mode ==="
-    @echo "Building all images (5 framework + 7 business) with sha256 tags"
-    @echo "Only changed images will be rebuilt (skaffold caching)"
+    @echo "Building images with git-commit tags (dev-<sha>)"
+    @echo "Only changed images will be rebuilt"
     @echo ""
     skaffold dev
 
@@ -136,7 +117,7 @@ dev: setup
 run: setup
     cd "{{TOP}}" && just secrets-init
     @echo "=== Skaffold Deploy ==="
-    @echo "Building all images with sha256 tags"
+    @echo "Building images with git-commit tags"
     skaffold run
 
 # Build images only (no deploy)

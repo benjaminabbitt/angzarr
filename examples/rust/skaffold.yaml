@@ -3,14 +3,22 @@ kind: Config
 metadata:
   name: angzarr-rust-examples
 
+# IMPORTANT: All image builds MUST go through skaffold.
+# Do NOT manually build with podman/docker and helm upgrade.
+# Kind nodes cache images by tag - skaffold uses unique git SHA tags to avoid this.
+
 # Require framework images - provides IMAGE_TAG_* template variables for deploy
 requires:
   - path: ../../skaffold.yaml
     configs: [angzarr-build]
 
 build:
+  # Use git commit SHA for tags - ensures unique tag per build, avoiding
+  # Kind node image cache collisions. Never use sha256 or latest tags.
   tagPolicy:
-    sha256: {}
+    gitCommit:
+      prefix: "dev-"
+      variant: AbbrevCommitSha
   local:
     push: true
     useBuildkit: false

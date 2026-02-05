@@ -14,8 +14,23 @@ Use helm for all deployments.  Do not use kustomize.
 ### Python's Role
 Python is to be used for support files and general scripting.  Things like manage secrets, initializing a registry, and waiting for grpc health checks.  The author prefers python for this role over shell.
 
-### Skaffold
-Use skaffold for all deployments. (this uses helm under the hood)
+### Skaffold (CRITICAL)
+**ALL image builds and deployments MUST go through skaffold.** Never bypass with manual `podman build` + `helm upgrade` workflows.
+
+Why: Kind nodes cache images by tag at the containerd level. If you push a new image with the same tag (e.g., `:latest`), the node continues serving the old cached image even after `kubectl rollout restart`. Skaffold uses content-addressable tags (git commit SHA), ensuring each build gets a unique tag with no cache collisions.
+
+```bash
+# CORRECT - always use skaffold
+just deploy                    # Full deployment
+just dev                       # Watch mode
+skaffold run -f examples/rust/skaffold.yaml
+
+# WRONG - will cause stale image issues
+podman build -t localhost:5001/myimage:latest ...
+podman push localhost:5001/myimage:latest
+helm upgrade ...
+kubectl set image ...
+```
 
 ## Examples Projects
 Examples for many common languages are provided.  This should encompass the vast majority of general purpose software development.
