@@ -21,7 +21,7 @@ pub use server::{
     run_saga_server, AggregateLogic, AggregateWrapper, ProcessManagerLogic, ProcessManagerWrapper,
     ProjectorLogic, ProjectorWrapper, SagaLogic, SagaWrapper,
 };
-pub use state::rebuild_from_events;
+pub use state::{rebuild_from_events, StateApplier, StateBuilder};
 pub use validation::{
     require_exists, require_non_negative, require_not_empty, require_not_exists, require_positive,
     require_status, require_status_not,
