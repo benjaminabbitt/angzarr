@@ -5,7 +5,7 @@
 
 use angzarr::proto::{CommandBook, ComponentDescriptor, EventBook, Uuid as ProtoUuid};
 use common::proto::{CommitReservation, Shipped};
-use common::{build_command_book, decode_event, EventRouter, SagaLogic};
+use common::{build_command_book, decode_event, EventRouter, ProtoTypeName, SagaLogic};
 
 const TARGET_DOMAIN: &str = "inventory";
 
@@ -26,8 +26,8 @@ impl FulfillmentInventorySaga {
     pub fn new() -> Self {
         Self {
             router: EventRouter::new("sag-fulfillment-inventory", "fulfillment")
-                .sends(TARGET_DOMAIN, "CommitReservation")
-                .on("Shipped", handle_shipped),
+                .sends(TARGET_DOMAIN, CommitReservation::TYPE_NAME)
+                .on(Shipped::TYPE_NAME, handle_shipped),
         }
     }
 }
@@ -43,7 +43,7 @@ fn handle_shipped(
     _source_root: Option<&ProtoUuid>,
     correlation_id: &str,
 ) -> Vec<CommandBook> {
-    let Some(shipped) = decode_event::<Shipped>(event, "Shipped") else {
+    let Some(shipped) = decode_event::<Shipped>(event, Shipped::TYPE_NAME) else {
         return vec![];
     };
 
@@ -59,7 +59,7 @@ fn handle_shipped(
                 TARGET_DOMAIN,
                 Some(product_root(&item.product_id)),
                 correlation_id,
-                "type.examples/examples.CommitReservation",
+                &CommitReservation::type_url(),
                 &cmd,
             )
         })

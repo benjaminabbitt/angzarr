@@ -89,11 +89,11 @@ var stateBuilder = angzarr.NewStateBuilder(func() InventoryState {
 	return InventoryState{Reservations: make(map[string]int32)}
 }).
 	WithSnapshot(loadInventorySnapshot).
-	On("StockInitialized", applyStockInitialized).
-	On("StockReceived", applyStockReceived).
-	On("StockReserved", applyStockReserved).
-	On("ReservationReleased", applyReservationReleased).
-	On("ReservationCommitted", applyReservationCommitted)
+	On(angzarr.Name(&examples.StockInitialized{}), applyStockInitialized).
+	On(angzarr.Name(&examples.StockReceived{}), applyStockReceived).
+	On(angzarr.Name(&examples.StockReserved{}), applyStockReserved).
+	On(angzarr.Name(&examples.ReservationReleased{}), applyReservationReleased).
+	On(angzarr.Name(&examples.ReservationCommitted{}), applyReservationCommitted)
 
 // RebuildState reconstructs inventory state from an event book.
 func RebuildState(eventBook *angzarrpb.EventBook) InventoryState {

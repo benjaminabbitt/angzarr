@@ -24,12 +24,18 @@
 pub mod fraud_client;
 mod handlers;
 mod state;
+mod status;
+
+pub use status::OrderStatus;
 
 use std::sync::Arc;
 
 use angzarr::proto::{business_response, BusinessResponse, ComponentDescriptor, ContextualCommand};
-use common::proto::{ConfirmPayment, OrderCompleted, OrderState};
-use common::{decode_command, extract_command, next_sequence, now, require_exists, require_status_not, AggregateLogic, CommandRouter};
+use common::proto::{
+    ApplyLoyaltyDiscount, CancelOrder, ConfirmPayment, CreateOrder, OrderCompleted, OrderState,
+    SubmitPayment,
+};
+use common::{decode_command, extract_command, next_sequence, now, require_exists, require_status_not, AggregateLogic, CommandRouter, ProtoTypeName};
 use tracing::info;
 
 pub use fraud_client::{FraudCheckResult, FraudError, FraudServiceClient};
@@ -91,11 +97,11 @@ impl OrderLogic {
     pub fn with_fraud_service_url(url: Option<&str>) -> Self {
         Self {
             router: CommandRouter::new("order", rebuild_state)
-                .on("CreateOrder", handle_create_order)
-                .on("ApplyLoyaltyDiscount", handle_apply_loyalty_discount)
-                .on("SubmitPayment", handle_submit_payment)
+                .on(CreateOrder::TYPE_NAME, handle_create_order)
+                .on(ApplyLoyaltyDiscount::TYPE_NAME, handle_apply_loyalty_discount)
+                .on(SubmitPayment::TYPE_NAME, handle_submit_payment)
                 // ConfirmPayment is handled specially in dispatch to call fraud service
-                .on("CancelOrder", handle_cancel_order),
+                .on(CancelOrder::TYPE_NAME, handle_cancel_order),
             fraud_client: url.map(|u| Arc::new(FraudServiceClient::new(u))),
         }
     }
@@ -126,11 +132,11 @@ impl OrderLogic {
         // Validate preconditions
         require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)
             .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
-        require_status_not(&state.status, "pending", errmsg::PAYMENT_NOT_SUBMITTED)
+        require_status_not(&state.status, OrderStatus::Pending.as_str(), errmsg::PAYMENT_NOT_SUBMITTED)
             .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
-        require_status_not(&state.status, "completed", errmsg::ORDER_COMPLETED)
+        require_status_not(&state.status, OrderStatus::Completed.as_str(), errmsg::ORDER_COMPLETED)
             .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
-        require_status_not(&state.status, "cancelled", errmsg::ORDER_CANCELLED)
+        require_status_not(&state.status, OrderStatus::Cancelled.as_str(), errmsg::ORDER_CANCELLED)
             .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
 
         // Call external fraud service if configured
@@ -183,7 +189,7 @@ impl OrderLogic {
             &state,
             command_book.cover.clone(),
             next_seq,
-            "type.examples/examples.OrderCompleted",
+            &OrderCompleted::type_url(),
             event,
         );
 
@@ -217,7 +223,7 @@ impl AggregateLogic for OrderLogic {
             .unwrap_or("");
 
         // Special handling for ConfirmPayment to call fraud service
-        if command_type.ends_with("ConfirmPayment") {
+        if command_type.ends_with(ConfirmPayment::TYPE_NAME) {
             return self.handle_confirm_payment_with_fraud(cmd).await;
         }
 

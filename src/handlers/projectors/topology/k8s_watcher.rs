@@ -3,7 +3,11 @@
 //! Watches pods with angzarr component labels and reads their `angzarr.io/descriptor`
 //! annotations to build the topology graph. This replaces event bus-based descriptor
 //! discovery for K8s-native topology visualization.
+//!
+//! Uses reference counting to handle rolling updates correctly: a node is only
+//! deleted when ALL pods with that descriptor name are gone.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use futures::TryStreamExt;
@@ -13,6 +17,7 @@ use kube::{
     runtime::watcher::{self, Event},
     Client,
 };
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::discovery::k8s::DESCRIPTOR_ANNOTATION;
@@ -30,12 +35,17 @@ const WATCHED_COMPONENTS: &[&str] = &["aggregate", "saga", "projector", "process
 /// K8s pod watcher for topology discovery.
 ///
 /// Watches pods with angzarr component labels and registers their descriptors
-/// with the topology projector.
+/// with the topology projector. Uses reference counting to track which pods
+/// contribute to each topology node, ensuring nodes are only deleted when
+/// all contributing pods are gone (handles rolling updates correctly).
 pub struct TopologyK8sWatcher {
     client: Client,
     namespace: String,
     projector: Arc<TopologyProjector>,
     store: Arc<dyn TopologyStore>,
+    /// Tracks which pods contribute to each node: node_id -> {pod_names}
+    /// Used for reference counting during rolling updates.
+    node_pods: RwLock<HashMap<String, HashSet<String>>>,
 }
 
 impl TopologyK8sWatcher {
@@ -57,6 +67,7 @@ impl TopologyK8sWatcher {
             namespace,
             projector,
             store,
+            node_pods: RwLock::new(HashMap::new()),
         }
     }
 
@@ -109,15 +120,26 @@ impl TopologyK8sWatcher {
                 self.handle_pod_delete(&pod).await;
             }
             Event::Init => {
-                debug!("Pod watcher initialized");
+                // Clear reference counts - starting fresh snapshot from K8s
+                let mut node_pods = self.node_pods.write().await;
+                node_pods.clear();
+                debug!("Pod watcher initialized, cleared node reference counts");
             }
             Event::InitDone => {
-                debug!("Pod watcher init done");
+                let node_pods = self.node_pods.read().await;
+                debug!(
+                    node_count = node_pods.len(),
+                    "Pod watcher init done, tracking nodes"
+                );
             }
         }
     }
 
     /// Handle pod creation or update.
+    ///
+    /// Tracks the pod in our reference count map and registers the component
+    /// with the topology projector. Registration happens on every apply to
+    /// ensure the topology stays up-to-date with descriptor changes.
     async fn handle_pod_apply(&self, pod: &Pod) {
         let pod_name = match pod.metadata.name.as_ref() {
             Some(n) => n,
@@ -173,16 +195,35 @@ impl TopologyK8sWatcher {
             }
         };
 
-        info!(
-            pod = %pod_name,
-            descriptor_name = %descriptor.name,
-            component_type = %descriptor.component_type,
-            inputs = descriptor.inputs.len(),
-            outputs = descriptor.outputs.len(),
-            "Discovered component from K8s annotation"
-        );
+        let node_id = descriptor.name.clone();
 
-        // Register with topology projector
+        // Track this pod as contributing to this node
+        let is_first_pod = {
+            let mut node_pods = self.node_pods.write().await;
+            let pods = node_pods.entry(node_id.clone()).or_default();
+            let was_empty = pods.is_empty();
+            pods.insert(pod_name.clone());
+            was_empty
+        };
+
+        if is_first_pod {
+            info!(
+                pod = %pod_name,
+                descriptor_name = %descriptor.name,
+                component_type = %descriptor.component_type,
+                inputs = descriptor.inputs.len(),
+                outputs = descriptor.outputs.len(),
+                "Discovered new component from K8s annotation"
+            );
+        } else {
+            debug!(
+                pod = %pod_name,
+                descriptor_name = %descriptor.name,
+                "Additional pod for existing component"
+            );
+        }
+
+        // Always register - handles descriptor updates and ensures consistency
         if let Err(e) = self.projector.register_components(&[descriptor]).await {
             error!(
                 pod = %pod_name,
@@ -193,6 +234,10 @@ impl TopologyK8sWatcher {
     }
 
     /// Handle pod deletion.
+    ///
+    /// Uses reference counting: only deletes a node from the topology when
+    /// ALL pods contributing to that node are gone. This handles rolling
+    /// updates correctly where new pods are created before old ones are deleted.
     async fn handle_pod_delete(&self, pod: &Pod) {
         let pod_name = match pod.metadata.name.as_ref() {
             Some(n) => n,
@@ -210,8 +255,8 @@ impl TopologyK8sWatcher {
             _ => return,
         };
 
-        // Get the descriptor name from annotation (if still available)
-        let node_id = pod
+        // Try to get node_id from annotation first, fall back to searching our map
+        let node_id_from_annotation = pod
             .metadata
             .annotations
             .as_ref()
@@ -219,12 +264,62 @@ impl TopologyK8sWatcher {
             .and_then(|json| serde_json::from_str::<ComponentDescriptor>(json).ok())
             .map(|d| d.name);
 
-        if let Some(node_id) = node_id {
+        // Remove pod from tracking and check if we should delete the node
+        let should_delete = {
+            let mut node_pods = self.node_pods.write().await;
+
+            // Find which node this pod belongs to (prefer annotation, search map as fallback)
+            let node_id = node_id_from_annotation.or_else(|| {
+                node_pods
+                    .iter()
+                    .find(|(_, pods)| pods.contains(pod_name))
+                    .map(|(id, _)| id.clone())
+            });
+
+            match node_id {
+                Some(id) => {
+                    if let Some(pods) = node_pods.get_mut(&id) {
+                        pods.remove(pod_name);
+                        if pods.is_empty() {
+                            node_pods.remove(&id);
+                            Some(id) // Return node_id to delete
+                        } else {
+                            debug!(
+                                pod = %pod_name,
+                                node_id = %id,
+                                remaining_pods = pods.len(),
+                                "Pod removed, other pods still serving this node"
+                            );
+                            None // Other pods still exist, don't delete
+                        }
+                    } else {
+                        // Node not in our tracking - might have been cleared by Init
+                        debug!(
+                            pod = %pod_name,
+                            node_id = %id,
+                            "Pod deleted but node not in tracking map"
+                        );
+                        None
+                    }
+                }
+                None => {
+                    debug!(
+                        pod = %pod_name,
+                        component_type = %component_type,
+                        "Pod deleted but no node mapping found"
+                    );
+                    None
+                }
+            }
+        };
+
+        // Delete node outside the lock
+        if let Some(node_id) = should_delete {
             info!(
                 pod = %pod_name,
                 node_id = %node_id,
                 component_type = %component_type,
-                "Removing component from topology (pod deleted)"
+                "Last pod for node deleted, removing from topology"
             );
 
             if let Err(e) = self.store.delete_node(&node_id).await {
@@ -234,12 +329,6 @@ impl TopologyK8sWatcher {
                     "Failed to delete node from topology"
                 );
             }
-        } else {
-            debug!(
-                pod = %pod_name,
-                component_type = %component_type,
-                "Pod deleted but no descriptor annotation found"
-            );
         }
     }
 }

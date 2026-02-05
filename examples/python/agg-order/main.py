@@ -8,6 +8,7 @@ import structlog
 sys.path.insert(0, str(Path(__file__).parent.parent / "angzarr"))
 
 from aggregate_handler import run_aggregate_server
+from protoname import name
 from router import CommandRouter
 
 from handlers import (
@@ -18,6 +19,7 @@ from handlers import (
     handle_cancel_order,
 )
 from handlers.state import rebuild_state
+from proto import order_pb2 as order
 
 structlog.configure(
     processors=[
@@ -34,11 +36,11 @@ logger = structlog.get_logger()
 
 router = (
     CommandRouter("order", rebuild_state)
-    .on("CreateOrder", handle_create_order)
-    .on("ApplyLoyaltyDiscount", handle_apply_loyalty_discount)
-    .on("SubmitPayment", handle_submit_payment)
-    .on("ConfirmPayment", handle_confirm_payment)
-    .on("CancelOrder", handle_cancel_order)
+    .on(name(order.CreateOrder), handle_create_order)
+    .on(name(order.ApplyLoyaltyDiscount), handle_apply_loyalty_discount)
+    .on(name(order.SubmitPayment), handle_submit_payment)
+    .on(name(order.ConfirmPayment), handle_confirm_payment)
+    .on(name(order.CancelOrder), handle_cancel_order)
 )
 
 

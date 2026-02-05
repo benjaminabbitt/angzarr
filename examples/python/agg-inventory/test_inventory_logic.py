@@ -66,11 +66,22 @@ def _receive_stock_events(
 
 
 def _reserve_stock_events(
-    prior: types.EventBook, quantity: int, order_id: str, new_available: int,
+    prior: types.EventBook,
+    quantity: int,
+    order_id: str,
+    new_available: int,
+    new_on_hand: int = 100,
+    new_reserved: int = None,
 ) -> types.EventBook:
     """Append a StockReserved event to existing events."""
+    if new_reserved is None:
+        new_reserved = quantity
     event = inventory.StockReserved(
-        quantity=quantity, order_id=order_id, new_available=new_available,
+        quantity=quantity,
+        order_id=order_id,
+        new_available=new_available,
+        new_on_hand=new_on_hand,
+        new_reserved=new_reserved,
     )
     event_any = AnyProto()
     event_any.Pack(event, type_url_prefix="type.examples/")

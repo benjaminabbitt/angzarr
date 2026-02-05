@@ -13,7 +13,7 @@ use common::proto::{
     ReleaseReservation, ReservationCommitted, ReservationReleased, ReserveStock, StockInitialized,
     StockReceived, StockReserved,
 };
-use common::{decode_command, make_event_book, now};
+use common::{decode_command, make_event_book, now, ProtoTypeName};
 use common::{require_exists, require_non_negative, require_not_exists, require_positive};
 use common::{AggregateLogic, BusinessError, CommandRouter, Result, StateBuilder};
 
@@ -25,8 +25,6 @@ pub mod errmsg {
     pub const RESERVATION_NOT_FOUND: &str = "Reservation not found";
     pub use common::errmsg::*;
 }
-
-const STATE_TYPE_URL: &str = "type.examples/examples.InventoryState";
 
 // ============================================================================
 // Named event appliers
@@ -82,11 +80,11 @@ fn apply_reservation_committed(state: &mut InventoryState, event: &prost_types::
 /// Create the StateBuilder with all registered event handlers.
 fn state_builder() -> StateBuilder<InventoryState> {
     StateBuilder::new()
-        .on("StockInitialized", apply_stock_initialized)
-        .on("StockReceived", apply_stock_received)
-        .on("StockReserved", apply_stock_reserved)
-        .on("ReservationReleased", apply_reservation_released)
-        .on("ReservationCommitted", apply_reservation_committed)
+        .on(StockInitialized::TYPE_NAME, apply_stock_initialized)
+        .on(StockReceived::TYPE_NAME, apply_stock_received)
+        .on(StockReserved::TYPE_NAME, apply_stock_reserved)
+        .on(ReservationReleased::TYPE_NAME, apply_reservation_released)
+        .on(ReservationCommitted::TYPE_NAME, apply_reservation_committed)
 }
 
 fn rebuild_state(event_book: Option<&EventBook>) -> InventoryState {
@@ -119,7 +117,7 @@ fn build_event_response(
         next_seq,
         event_type_url,
         event_bytes,
-        STATE_TYPE_URL,
+        &InventoryState::type_url(),
         new_state.encode_to_vec(),
     )
 }
@@ -135,11 +133,11 @@ impl InventoryLogic {
     pub fn new() -> Self {
         Self {
             router: CommandRouter::new("inventory", rebuild_state)
-                .on("InitializeStock", handle_initialize_stock)
-                .on("ReceiveStock", handle_receive_stock)
-                .on("ReserveStock", handle_reserve_stock)
-                .on("ReleaseReservation", handle_release_reservation)
-                .on("CommitReservation", handle_commit_reservation),
+                .on(InitializeStock::TYPE_NAME, handle_initialize_stock)
+                .on(ReceiveStock::TYPE_NAME, handle_receive_stock)
+                .on(ReserveStock::TYPE_NAME, handle_reserve_stock)
+                .on(ReleaseReservation::TYPE_NAME, handle_release_reservation)
+                .on(CommitReservation::TYPE_NAME, handle_commit_reservation),
         }
     }
 }
@@ -177,7 +175,7 @@ fn handle_initialize_stock(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.StockInitialized",
+        &StockInitialized::type_url(),
         event,
     ))
 }
@@ -207,7 +205,7 @@ fn handle_receive_stock(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.StockReceived",
+        &StockReceived::type_url(),
         event,
     ))
 }
@@ -247,7 +245,7 @@ fn handle_reserve_stock(
     apply_event(
         &mut new_state,
         &prost_types::Any {
-            type_url: "type.examples/examples.StockReserved".to_string(),
+            type_url: StockReserved::type_url(),
             value: event_bytes.clone(),
         },
     );
@@ -256,7 +254,7 @@ fn handle_reserve_stock(
     let mut pages = vec![EventPage {
         sequence: Some(Sequence::Num(seq)),
         event: Some(prost_types::Any {
-            type_url: "type.examples/examples.StockReserved".to_string(),
+            type_url: StockReserved::type_url(),
             value: event_bytes,
         }),
         created_at: Some(now()),
@@ -273,7 +271,7 @@ fn handle_reserve_stock(
         pages.push(EventPage {
             sequence: Some(Sequence::Num(seq)),
             event: Some(prost_types::Any {
-                type_url: "type.examples/examples.LowStockAlert".to_string(),
+                type_url: LowStockAlert::type_url(),
                 value: alert.encode_to_vec(),
             }),
             created_at: Some(now()),
@@ -285,7 +283,7 @@ fn handle_reserve_stock(
         snapshot: None,
         pages,
         snapshot_state: Some(prost_types::Any {
-            type_url: STATE_TYPE_URL.to_string(),
+            type_url: InventoryState::type_url(),
             value: new_state.encode_to_vec(),
         }),
     })
@@ -323,7 +321,7 @@ fn handle_release_reservation(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.ReservationReleased",
+        &ReservationReleased::type_url(),
         event,
     ))
 }
@@ -359,7 +357,7 @@ fn handle_commit_reservation(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.ReservationCommitted",
+        &ReservationCommitted::type_url(),
         event,
     ))
 }

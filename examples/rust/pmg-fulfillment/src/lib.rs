@@ -25,7 +25,7 @@ use angzarr::proto::{
     Uuid as ProtoUuid,
 };
 use common::proto::{ItemsPacked, PaymentSubmitted, Ship, StockReserved};
-use common::{build_command_book, now, root_id_as_string, ProcessManagerLogic};
+use common::{build_command_book, now, root_id_as_string, ProcessManagerLogic, ProtoTypeName};
 use uuid::Uuid;
 
 pub const PM_NAME: &str = "pmg-fulfillment";
@@ -55,15 +55,15 @@ impl OrderFulfillmentProcess {
 
     /// Classify a trigger event into a prerequisite name.
     fn classify_event(event: &prost_types::Any) -> Option<&'static str> {
-        if event.type_url.ends_with("PaymentSubmitted") {
+        if event.type_url.ends_with(PaymentSubmitted::TYPE_NAME) {
             PaymentSubmitted::decode(event.value.as_slice())
                 .ok()
                 .map(|_| PREREQ_PAYMENT)
-        } else if event.type_url.ends_with("StockReserved") {
+        } else if event.type_url.ends_with(StockReserved::TYPE_NAME) {
             StockReserved::decode(event.value.as_slice())
                 .ok()
                 .map(|_| PREREQ_INVENTORY)
-        } else if event.type_url.ends_with("ItemsPacked") {
+        } else if event.type_url.ends_with(ItemsPacked::TYPE_NAME) {
             ItemsPacked::decode(event.value.as_slice())
                 .ok()
                 .map(|_| PREREQ_FULFILLMENT)
@@ -123,20 +123,20 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
             inputs: vec![
                 Target {
                     domain: ORDER_DOMAIN.to_string(),
-                    types: vec!["PaymentSubmitted".to_string()],
+                    types: vec![PaymentSubmitted::TYPE_NAME.to_string()],
                 },
                 Target {
                     domain: INVENTORY_DOMAIN.to_string(),
-                    types: vec!["StockReserved".to_string()],
+                    types: vec![StockReserved::TYPE_NAME.to_string()],
                 },
                 Target {
                     domain: FULFILLMENT_DOMAIN.to_string(),
-                    types: vec!["ItemsPacked".to_string()],
+                    types: vec![ItemsPacked::TYPE_NAME.to_string()],
                 },
             ],
             outputs: vec![Target {
                 domain: FULFILLMENT_DOMAIN.to_string(),
-                types: vec!["Ship".to_string()],
+                types: vec![Ship::TYPE_NAME.to_string()],
             }],
         }
     }
@@ -255,7 +255,7 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
                 FULFILLMENT_DOMAIN,
                 trigger.cover.as_ref().and_then(|c| c.root.clone()),
                 correlation_id,
-                "type.examples/examples.Ship",
+                &Ship::type_url(),
                 &ship_cmd,
             ));
         }

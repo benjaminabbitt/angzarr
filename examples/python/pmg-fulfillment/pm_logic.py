@@ -25,7 +25,10 @@ import uuid
 from google.protobuf.any_pb2 import Any
 
 from angzarr import types_pb2 as types
+from protoname import name
 from proto import fulfillment_pb2 as fulfillment
+from proto import inventory_pb2 as inventory
+from proto import order_pb2 as order
 
 PM_NAME = "pmg-fulfillment"
 PM_DOMAIN = "pmg-fulfillment"
@@ -60,11 +63,11 @@ def _extract_completed(process_state: types.EventBook) -> list[str]:
 
 def _classify_event(event: Any) -> str | None:
     """Classify a trigger event into a prerequisite name."""
-    if event.type_url.endswith("PaymentSubmitted"):
+    if event.type_url.endswith(name(order.PaymentSubmitted)):
         return PREREQ_PAYMENT
-    if event.type_url.endswith("StockReserved"):
+    if event.type_url.endswith(name(inventory.StockReserved)):
         return PREREQ_INVENTORY
-    if event.type_url.endswith("ItemsPacked"):
+    if event.type_url.endswith(name(fulfillment.ItemsPacked)):
         return PREREQ_FULFILLMENT
     return None
 

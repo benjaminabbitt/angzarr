@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"angzarr"
+	"angzarr/proto/examples"
 
 	"saga-fulfillment/logic"
 )
@@ -11,7 +12,7 @@ import (
 func main() {
 	router := angzarr.NewEventRouter(logic.SagaName, logic.SourceDomain).
 		Output(logic.TargetDomain).
-		On("OrderCompleted", logic.HandleOrderCompleted)
+		On(angzarr.Name(&examples.OrderCompleted{}), logic.HandleOrderCompleted)
 
 	handler := angzarr.NewSagaHandler(router).
 		WithPrepare(logic.Prepare).

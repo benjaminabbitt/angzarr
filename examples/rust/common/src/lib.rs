@@ -9,6 +9,7 @@ use tonic::Status;
 
 pub mod identity;
 pub mod proto;
+pub mod proto_name;
 pub mod router;
 pub mod server;
 pub mod state;
@@ -26,6 +27,7 @@ pub use validation::{
     require_exists, require_non_negative, require_not_empty, require_not_exists, require_positive,
     require_status, require_status_not,
 };
+pub use proto_name::{ProtoTypeName, TYPE_URL_PREFIX};
 
 // ============================================================================
 // Error Types for client logic

@@ -20,7 +20,7 @@ func applyShipmentCreated(state *FulfillmentState, event *anypb.Any) {
 		return
 	}
 	state.OrderID = e.OrderId
-	state.Status = e.Status
+	state.Status = FulfillmentStatus(e.Status)
 	state.Items = e.Items
 }
 
@@ -30,7 +30,7 @@ func applyItemsPicked(state *FulfillmentState, event *anypb.Any) {
 		return
 	}
 	state.PickerID = e.PickerId
-	state.Status = "picking"
+	state.Status = FulfillmentStatusPicking
 }
 
 func applyItemsPacked(state *FulfillmentState, event *anypb.Any) {
@@ -39,7 +39,7 @@ func applyItemsPacked(state *FulfillmentState, event *anypb.Any) {
 		return
 	}
 	state.PackerID = e.PackerId
-	state.Status = "packing"
+	state.Status = FulfillmentStatusPacking
 }
 
 func applyShipped(state *FulfillmentState, event *anypb.Any) {
@@ -49,7 +49,7 @@ func applyShipped(state *FulfillmentState, event *anypb.Any) {
 	}
 	state.Carrier = e.Carrier
 	state.TrackingNumber = e.TrackingNumber
-	state.Status = "shipped"
+	state.Status = FulfillmentStatusShipped
 }
 
 func applyDelivered(state *FulfillmentState, event *anypb.Any) {
@@ -58,7 +58,7 @@ func applyDelivered(state *FulfillmentState, event *anypb.Any) {
 		return
 	}
 	state.Signature = e.Signature
-	state.Status = "delivered"
+	state.Status = FulfillmentStatusDelivered
 }
 
 func loadFulfillmentSnapshot(state *FulfillmentState, snapshot *anypb.Any) {
@@ -67,7 +67,7 @@ func loadFulfillmentSnapshot(state *FulfillmentState, snapshot *anypb.Any) {
 		return
 	}
 	state.OrderID = snapState.OrderId
-	state.Status = snapState.Status
+	state.Status = FulfillmentStatus(snapState.Status)
 	state.TrackingNumber = snapState.TrackingNumber
 	state.Carrier = snapState.Carrier
 	state.PickerID = snapState.PickerId
@@ -83,11 +83,11 @@ func loadFulfillmentSnapshot(state *FulfillmentState, snapshot *anypb.Any) {
 // stateBuilder is the single source of truth for event type → applier mapping.
 var stateBuilder = angzarr.NewStateBuilder(func() FulfillmentState { return FulfillmentState{} }).
 	WithSnapshot(loadFulfillmentSnapshot).
-	On("ShipmentCreated", applyShipmentCreated).
-	On("ItemsPicked", applyItemsPicked).
-	On("ItemsPacked", applyItemsPacked).
-	On("Shipped", applyShipped).
-	On("Delivered", applyDelivered)
+	On(angzarr.Name(&examples.ShipmentCreated{}), applyShipmentCreated).
+	On(angzarr.Name(&examples.ItemsPicked{}), applyItemsPicked).
+	On(angzarr.Name(&examples.ItemsPacked{}), applyItemsPacked).
+	On(angzarr.Name(&examples.Shipped{}), applyShipped).
+	On(angzarr.Name(&examples.Delivered{}), applyDelivered)
 
 // RebuildState reconstructs fulfillment state from an event book.
 func RebuildState(eventBook *angzarrpb.EventBook) FulfillmentState {
@@ -115,7 +115,7 @@ func HandleCreateShipment(cb *angzarrpb.CommandBook, data []byte, state *Fulfill
 
 	return angzarr.PackEvent(cb.Cover, &examples.ShipmentCreated{
 		OrderId:   cmd.OrderId,
-		Status:    "pending",
+		Status:    FulfillmentStatusPending.String(),
 		CreatedAt: timestamppb.Now(),
 		Items:     cmd.Items,
 	}, seq)

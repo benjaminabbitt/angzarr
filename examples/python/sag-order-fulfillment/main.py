@@ -14,6 +14,7 @@ from google.protobuf.any_pb2 import Any
 sys.path.insert(0, str(Path(__file__).parent.parent / "angzarr"))
 
 from angzarr import types_pb2 as types
+from protoname import name
 from proto import fulfillment_pb2 as fulfillment
 from proto import order_pb2 as order
 from router import EventRouter
@@ -49,7 +50,7 @@ def prepare(source: types.EventBook) -> list[types.Cover]:
         return []
 
     for page in source.pages:
-        if not page.event.type_url.endswith("OrderCompleted"):
+        if not page.event.type_url.endswith(name(order.OrderCompleted)):
             continue
         return [types.Cover(domain=TARGET_DOMAIN, root=source.cover.root)]
 
@@ -74,7 +75,7 @@ def execute(
     commands = []
 
     for page in source.pages:
-        if not page.event.type_url.endswith("OrderCompleted"):
+        if not page.event.type_url.endswith(name(order.OrderCompleted)):
             continue
 
         event = order.OrderCompleted()
@@ -104,7 +105,7 @@ def execute(
 router = (
     EventRouter(SAGA_NAME, SOURCE_DOMAIN)
     .output(TARGET_DOMAIN)
-    .on("OrderCompleted", lambda source, event: [])
+    .on(name(order.OrderCompleted), lambda source, event: [])
 )
 
 handler = (

@@ -8,7 +8,7 @@ use common::proto::{
     LowStockAlert, ReservationCommitted, ReservationReleased, StockInitialized, StockReceived,
     StockReserved,
 };
-use common::{decode_event, ProjectorLogic};
+use common::{decode_event, ProjectorLogic, ProtoTypeName};
 use tonic::Status;
 use tracing::info;
 
@@ -32,12 +32,12 @@ impl InventoryProjector {
             inputs: vec![Target {
                 domain: SOURCE_DOMAIN.to_string(),
                 types: vec![
-                    "StockInitialized".to_string(),
-                    "StockReceived".to_string(),
-                    "StockReserved".to_string(),
-                    "ReservationReleased".to_string(),
-                    "ReservationCommitted".to_string(),
-                    "LowStockAlert".to_string(),
+                    StockInitialized::TYPE_NAME.to_string(),
+                    StockReceived::TYPE_NAME.to_string(),
+                    StockReserved::TYPE_NAME.to_string(),
+                    ReservationReleased::TYPE_NAME.to_string(),
+                    ReservationCommitted::TYPE_NAME.to_string(),
+                    LowStockAlert::TYPE_NAME.to_string(),
                 ],
             }],
             outputs: vec![],
@@ -89,50 +89,50 @@ impl angzarr::standalone::ProjectorHandler for InventoryProjector {
 }
 
 fn process_event(event: &prost_types::Any) {
-    if let Some(e) = decode_event::<StockInitialized>(event, "StockInitialized") {
+    if let Some(e) = decode_event::<StockInitialized>(event, StockInitialized::TYPE_NAME) {
         info!(
-            event = "StockInitialized",
+            event = StockInitialized::TYPE_NAME,
             product_id = %e.product_id,
             quantity = e.quantity,
             threshold = e.low_stock_threshold,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<StockReceived>(event, "StockReceived") {
+    } else if let Some(e) = decode_event::<StockReceived>(event, StockReceived::TYPE_NAME) {
         info!(
-            event = "StockReceived",
+            event = StockReceived::TYPE_NAME,
             quantity = e.quantity,
             new_on_hand = e.new_on_hand,
             reference = %e.reference,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<StockReserved>(event, "StockReserved") {
+    } else if let Some(e) = decode_event::<StockReserved>(event, StockReserved::TYPE_NAME) {
         info!(
-            event = "StockReserved",
+            event = StockReserved::TYPE_NAME,
             order_id = %e.order_id,
             quantity = e.quantity,
             new_available = e.new_available,
             new_reserved = e.new_reserved,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<ReservationReleased>(event, "ReservationReleased") {
+    } else if let Some(e) = decode_event::<ReservationReleased>(event, ReservationReleased::TYPE_NAME) {
         info!(
-            event = "ReservationReleased",
+            event = ReservationReleased::TYPE_NAME,
             order_id = %e.order_id,
             quantity = e.quantity,
             new_available = e.new_available,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<ReservationCommitted>(event, "ReservationCommitted") {
+    } else if let Some(e) = decode_event::<ReservationCommitted>(event, ReservationCommitted::TYPE_NAME) {
         info!(
-            event = "ReservationCommitted",
+            event = ReservationCommitted::TYPE_NAME,
             order_id = %e.order_id,
             quantity = e.quantity,
             new_on_hand = e.new_on_hand,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<LowStockAlert>(event, "LowStockAlert") {
+    } else if let Some(e) = decode_event::<LowStockAlert>(event, LowStockAlert::TYPE_NAME) {
         info!(
-            event = "LowStockAlert",
+            event = LowStockAlert::TYPE_NAME,
             product_id = %e.product_id,
             available = e.available,
             threshold = e.threshold,

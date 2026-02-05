@@ -18,9 +18,8 @@ def _make_source_with_event(type_url: str) -> types.EventBook:
     root = types.UUID(value=ROOT_BYTES)
     event_any = AnyProto(type_url=type_url, value=b"")
     return types.EventBook(
-        cover=types.Cover(domain="order", root=root),
+        cover=types.Cover(domain="order", root=root, correlation_id="corr-123"),
         pages=[types.EventPage(num=0, event=event_any)],
-        correlation_id="corr-123",
     )
 
 
@@ -31,9 +30,8 @@ def _make_order_completed_source() -> types.EventBook:
     event_any = AnyProto()
     event_any.Pack(event, type_url_prefix="type.examples/")
     return types.EventBook(
-        cover=types.Cover(domain="order", root=root),
+        cover=types.Cover(domain="order", root=root, correlation_id="corr-123"),
         pages=[types.EventPage(num=0, event=event_any)],
-        correlation_id="corr-123",
     )
 
 
@@ -71,7 +69,7 @@ class TestExecute:
         assert len(commands) == 1
         cmd_book = commands[0]
         assert cmd_book.cover.domain == TARGET_DOMAIN
-        assert cmd_book.correlation_id == "corr-123"
+        assert cmd_book.cover.correlation_id == "corr-123"
         assert len(cmd_book.pages) == 1
 
         cmd = fulfillment.CreateShipment()

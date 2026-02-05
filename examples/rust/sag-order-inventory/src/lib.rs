@@ -5,7 +5,7 @@
 
 use angzarr::proto::{CommandBook, ComponentDescriptor, EventBook, Uuid as ProtoUuid};
 use common::proto::{OrderCreated, ReserveStock};
-use common::{build_command_book, decode_event, root_id_as_string, EventRouter, SagaLogic};
+use common::{build_command_book, decode_event, root_id_as_string, EventRouter, ProtoTypeName, SagaLogic};
 
 const TARGET_DOMAIN: &str = "inventory";
 
@@ -26,8 +26,8 @@ impl OrderInventorySaga {
     pub fn new() -> Self {
         Self {
             router: EventRouter::new("sag-order-inventory", "order")
-                .sends(TARGET_DOMAIN, "ReserveStock")
-                .on("OrderCreated", handle_order_created),
+                .sends(TARGET_DOMAIN, ReserveStock::TYPE_NAME)
+                .on(OrderCreated::TYPE_NAME, handle_order_created),
         }
     }
 }
@@ -43,7 +43,7 @@ fn handle_order_created(
     source_root: Option<&ProtoUuid>,
     correlation_id: &str,
 ) -> Vec<CommandBook> {
-    let Some(created) = decode_event::<OrderCreated>(event, "OrderCreated") else {
+    let Some(created) = decode_event::<OrderCreated>(event, OrderCreated::TYPE_NAME) else {
         return vec![];
     };
 
@@ -62,7 +62,7 @@ fn handle_order_created(
                 TARGET_DOMAIN,
                 Some(product_root(&item.product_id)),
                 correlation_id,
-                "type.examples/examples.ReserveStock",
+                &ReserveStock::type_url(),
                 &cmd,
             )
         })

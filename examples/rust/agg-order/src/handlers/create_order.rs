@@ -2,7 +2,7 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateOrder, OrderCreated, OrderState};
-use common::{decode_command, now, require_not_empty, require_not_exists, require_positive, Result};
+use common::{decode_command, now, require_not_empty, require_not_exists, require_positive, ProtoTypeName, Result};
 
 use crate::errmsg;
 use crate::state::build_event_response;
@@ -42,7 +42,7 @@ pub fn handle_create_order(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.OrderCreated",
+        &OrderCreated::type_url(),
         event,
     ))
 }

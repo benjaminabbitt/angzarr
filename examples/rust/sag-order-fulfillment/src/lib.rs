@@ -5,7 +5,7 @@
 
 use angzarr::proto::{CommandBook, ComponentDescriptor, EventBook, Uuid as ProtoUuid};
 use common::proto::{CreateShipment, OrderCompleted};
-use common::{build_command_book, decode_event, root_id_as_string, EventRouter, SagaLogic};
+use common::{build_command_book, decode_event, root_id_as_string, EventRouter, ProtoTypeName, SagaLogic};
 
 const TARGET_DOMAIN: &str = "fulfillment";
 
@@ -18,8 +18,8 @@ impl OrderFulfillmentSaga {
     pub fn new() -> Self {
         Self {
             router: EventRouter::new("sag-order-fulfillment", "order")
-                .sends(TARGET_DOMAIN, "CreateShipment")
-                .on("OrderCompleted", handle_order_completed),
+                .sends(TARGET_DOMAIN, CreateShipment::TYPE_NAME)
+                .on(OrderCompleted::TYPE_NAME, handle_order_completed),
         }
     }
 }
@@ -35,7 +35,7 @@ fn handle_order_completed(
     source_root: Option<&ProtoUuid>,
     correlation_id: &str,
 ) -> Vec<CommandBook> {
-    let Some(completed) = decode_event::<OrderCompleted>(event, "OrderCompleted") else {
+    let Some(completed) = decode_event::<OrderCompleted>(event, OrderCompleted::TYPE_NAME) else {
         return vec![];
     };
 
@@ -50,7 +50,7 @@ fn handle_order_completed(
         TARGET_DOMAIN,
         source_root.cloned(),
         correlation_id,
-        "type.examples/examples.CreateShipment",
+        &CreateShipment::type_url(),
         &cmd,
     )]
 }

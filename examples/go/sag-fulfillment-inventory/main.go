@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"angzarr"
+	"angzarr/proto/examples"
 
 	"sag-fulfillment-inventory/logic"
 )
@@ -11,7 +12,7 @@ import (
 func main() {
 	router := angzarr.NewEventRouter(logic.SagaName, logic.SourceDomain).
 		Output(logic.TargetDomain).
-		On("Shipped", logic.HandleShipped)
+		On(angzarr.Name(&examples.Shipped{}), logic.HandleShipped)
 
 	handler := angzarr.NewSagaHandler(router)
 

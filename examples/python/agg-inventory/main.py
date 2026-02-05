@@ -8,6 +8,7 @@ import structlog
 sys.path.insert(0, str(Path(__file__).parent.parent / "angzarr"))
 
 from aggregate_handler import run_aggregate_server
+from protoname import name
 from router import CommandRouter
 
 from handlers import (
@@ -18,6 +19,7 @@ from handlers import (
     handle_commit_reservation,
 )
 from handlers.state import rebuild_state
+from proto import inventory_pb2 as inventory
 
 structlog.configure(
     processors=[
@@ -34,11 +36,11 @@ logger = structlog.get_logger()
 
 router = (
     CommandRouter("inventory", rebuild_state)
-    .on("InitializeStock", handle_initialize_stock)
-    .on("ReceiveStock", handle_receive_stock)
-    .on("ReserveStock", handle_reserve_stock)
-    .on("ReleaseReservation", handle_release_reservation)
-    .on("CommitReservation", handle_commit_reservation)
+    .on(name(inventory.InitializeStock), handle_initialize_stock)
+    .on(name(inventory.ReceiveStock), handle_receive_stock)
+    .on(name(inventory.ReserveStock), handle_reserve_stock)
+    .on(name(inventory.ReleaseReservation), handle_release_reservation)
+    .on(name(inventory.CommitReservation), handle_commit_reservation)
 )
 
 

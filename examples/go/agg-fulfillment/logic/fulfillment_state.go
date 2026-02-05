@@ -5,7 +5,7 @@ import "angzarr/proto/examples"
 // FulfillmentState represents the current state of a fulfillment aggregate.
 type FulfillmentState struct {
 	OrderID        string
-	Status         string // "pending", "picking", "packing", "shipped", "delivered"
+	Status         FulfillmentStatus
 	TrackingNumber string
 	Carrier        string
 	PickerID       string
@@ -21,25 +21,25 @@ func (s *FulfillmentState) Exists() bool {
 
 // IsPending returns true if the shipment is pending.
 func (s *FulfillmentState) IsPending() bool {
-	return s.Status == "pending"
+	return s.Status == FulfillmentStatusPending
 }
 
 // IsPicking returns true if the shipment is in picking status.
 func (s *FulfillmentState) IsPicking() bool {
-	return s.Status == "picking"
+	return s.Status == FulfillmentStatusPicking
 }
 
 // IsPacking returns true if the shipment is in packing status.
 func (s *FulfillmentState) IsPacking() bool {
-	return s.Status == "packing"
+	return s.Status == FulfillmentStatusPacking
 }
 
 // IsShipped returns true if the shipment has been shipped.
 func (s *FulfillmentState) IsShipped() bool {
-	return s.Status == "shipped"
+	return s.Status == FulfillmentStatusShipped
 }
 
 // IsDelivered returns true if the shipment has been delivered.
 func (s *FulfillmentState) IsDelivered() bool {
-	return s.Status == "delivered"
+	return s.Status == FulfillmentStatusDelivered
 }

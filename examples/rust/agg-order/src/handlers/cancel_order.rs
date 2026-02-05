@@ -2,10 +2,11 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CancelOrder, OrderCancelled, OrderState};
-use common::{decode_command, now, require_exists, require_status_not, Result};
+use common::{decode_command, now, require_exists, require_status_not, ProtoTypeName, Result};
 
 use crate::errmsg;
 use crate::state::build_event_response;
+use crate::status::OrderStatus;
 
 /// Handle the CancelOrder command.
 pub fn handle_cancel_order(
@@ -15,8 +16,8 @@ pub fn handle_cancel_order(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)?;
-    require_status_not(&state.status, "completed", errmsg::ORDER_COMPLETED)?;
-    require_status_not(&state.status, "cancelled", errmsg::ORDER_CANCELLED)?;
+    require_status_not(&state.status, OrderStatus::Completed.as_str(), errmsg::ORDER_COMPLETED)?;
+    require_status_not(&state.status, OrderStatus::Cancelled.as_str(), errmsg::ORDER_CANCELLED)?;
 
     let cmd: CancelOrder = decode_command(command_data)?;
 
@@ -33,7 +34,7 @@ pub fn handle_cancel_order(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.OrderCancelled",
+        &OrderCancelled::type_url(),
         event,
     ))
 }

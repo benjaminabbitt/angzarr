@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"strings"
 
+	"angzarr"
 	angzarrpb "angzarr/proto/angzarr"
 
 	"angzarr/proto/examples"
@@ -16,6 +17,9 @@ const (
 	SourceDomain = "order"
 	TargetDomain = "fulfillment"
 )
+
+// Event type name constants derived from proto.
+var orderCompletedName = angzarr.Name(&examples.OrderCompleted{})
 
 // HandleOrderCompleted processes a single OrderCompleted event.
 // Used as a SagaEventHandler for the EventRouter (simple mode without destination state).
@@ -60,7 +64,7 @@ func Prepare(source *angzarrpb.EventBook) []*angzarrpb.Cover {
 
 	hasOrderCompleted := false
 	for _, page := range source.Pages {
-		if page.Event != nil && strings.HasSuffix(page.Event.TypeUrl, "OrderCompleted") {
+		if page.Event != nil && strings.HasSuffix(page.Event.TypeUrl, orderCompletedName) {
 			hasOrderCompleted = true
 			break
 		}
@@ -97,7 +101,7 @@ func Execute(source *angzarrpb.EventBook, destinations []*angzarrpb.EventBook) [
 		if page.Event == nil {
 			continue
 		}
-		if !strings.HasSuffix(page.Event.TypeUrl, "OrderCompleted") {
+		if !strings.HasSuffix(page.Event.TypeUrl, orderCompletedName) {
 			continue
 		}
 

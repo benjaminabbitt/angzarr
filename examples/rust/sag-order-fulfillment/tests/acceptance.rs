@@ -51,6 +51,7 @@ async fn order_completed_event(world: &mut SagaWorld, order_id: String) {
         customer_root: vec![],
         cart_root: vec![],
         items: vec![],
+        fraud_check_result: "approved".to_string(),
     };
 
     world.current_event = Some(prost_types::Any {

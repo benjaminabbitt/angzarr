@@ -13,9 +13,11 @@ Feature: Editions - Diverged Event Timelines
 
   @e2e @edition @isolation @standalone
   Scenario: Events in edition are isolated from main timeline
+    # With implicit divergence, editions see the full main timeline until first write.
+    # The divergence point is where the first edition event is written.
     Given an order "ORD-ISOLATED" exists and is paid
-    When I create edition "what-if-v1" diverging at sequence 1
-    And I apply loyalty discount of 500 points worth 250 cents to order "ORD-ISOLATED" in edition "what-if-v1"
+    When I create edition "what-if-v1" diverging at sequence 2
+    And I confirm payment for order "ORD-ISOLATED" in edition "what-if-v1" with reference "PAY-WHAT-IF"
     Then the command succeeds
     And in the main timeline order "ORD-ISOLATED" has 2 events
     And in edition "what-if-v1" order "ORD-ISOLATED" has 3 events
@@ -84,10 +86,12 @@ Feature: Editions - Diverged Event Timelines
 
   @e2e @edition @multiple @standalone
   Scenario: Multiple editions can diverge from the same sequence
+    # With implicit divergence, both editions see the full main timeline (2 events).
+    # Each edition's first write creates its own divergent branch.
     Given an order "ORD-MULTI-ED" exists and is paid
-    When I create edition "branch-a" diverging at sequence 1
-    And I create edition "branch-b" diverging at sequence 1
-    And I apply loyalty discount of 100 points worth 50 cents to order "ORD-MULTI-ED" in edition "branch-a"
+    When I create edition "branch-a" diverging at sequence 2
+    And I create edition "branch-b" diverging at sequence 2
+    And I confirm payment for order "ORD-MULTI-ED" in edition "branch-a" with reference "PAY-BRANCH-A"
     And I confirm payment for order "ORD-MULTI-ED" in edition "branch-b" with reference "PAY-BRANCH-B"
     Then in edition "branch-a" order "ORD-MULTI-ED" has 3 events
     And in edition "branch-b" order "ORD-MULTI-ED" has 3 events

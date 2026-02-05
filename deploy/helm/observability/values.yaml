@@ -17,9 +17,8 @@ dashboards:
     orchestration: {}
     topology: {}
 
-# Topology datasource endpoint (Node Graph API plugin)
-# Set to empty string to disable
-topologyEndpoint: ""
+# Topology endpoint is configured directly in dashboard JSON queries
+# Uses Infinity plugin to fetch from topology REST API
 
 # Default resource configuration
 resources:
@@ -222,7 +221,7 @@ grafana:
     type: NodePort
     nodePort: 30300
   plugins:
-    - hamedkarbasi93-nodegraphapi-datasource
+    - yesoreyeram-infinity-datasource
   sidecar:
     dashboards:
       enabled: true
@@ -268,13 +267,15 @@ grafana:
                 name: TraceID
                 url: "$${__value.raw}"
         - name: Angzarr Topology
-          type: hamedkarbasi93-nodegraphapi-datasource
+          type: yesoreyeram-infinity-datasource
           access: proxy
-          url: http://angzarr-topology.angzarr.svc.cluster.local:9099
           uid: topology
           isDefault: false
           jsonData:
-            url: http://angzarr-topology.angzarr.svc.cluster.local:9099
+            # Base URL for the topology REST API
+            # Queries will append /api/graph, /api/nodes, /api/edges
+            global_queries: []
+          secureJsonData: {}
   resources:
     requests:
       memory: "128Mi"

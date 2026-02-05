@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from google.protobuf.any_pb2 import Any as AnyProto
 
 from angzarr import types_pb2 as types
-from angzarr.state_builder import StateBuilder
+from protoname import name
+from state_builder import StateBuilder
 from proto import inventory_pb2 as inventory
 
 
@@ -79,11 +80,11 @@ def apply_reservation_committed(state: InventoryState, event: AnyProto) -> None:
 # stateBuilder is the single source of truth for event type -> applier mapping.
 _state_builder = (
     StateBuilder(InventoryState)
-    .on("StockInitialized", apply_stock_initialized)
-    .on("StockReceived", apply_stock_received)
-    .on("StockReserved", apply_stock_reserved)
-    .on("ReservationReleased", apply_reservation_released)
-    .on("ReservationCommitted", apply_reservation_committed)
+    .on(name(inventory.StockInitialized), apply_stock_initialized)
+    .on(name(inventory.StockReceived), apply_stock_received)
+    .on(name(inventory.StockReserved), apply_stock_reserved)
+    .on(name(inventory.ReservationReleased), apply_reservation_released)
+    .on(name(inventory.ReservationCommitted), apply_reservation_committed)
 )
 
 

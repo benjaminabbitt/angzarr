@@ -445,7 +445,34 @@ impl EventStore for MongoEventStore {
     async fn get_next_sequence(&self, domain: &str, edition: &str, root: Uuid) -> Result<u32> {
         let root_str = root.to_string();
 
-        let filter = doc! { "edition": edition, "domain": domain, "root": &root_str };
+        // For non-default editions with implicit divergence, we need composite logic:
+        // If the edition has no events yet, use the main timeline's max sequence
+        if !Self::is_main_timeline(edition) {
+            let edition_filter = doc! { "edition": edition, "domain": domain, "root": &root_str };
+            let options = FindOptions::builder()
+                .sort(doc! { "sequence": -1 })
+                .limit(1)
+                .build();
+
+            let mut cursor = self.events.find(edition_filter).with_options(options).await?;
+
+            if cursor.advance().await? {
+                let doc = cursor.deserialize_current()?;
+                // Edition has events, use edition's max sequence
+                return Ok(doc.get_i32("sequence").unwrap_or(0) as u32 + 1);
+            }
+
+            // No edition events - fall through to check main timeline
+        }
+
+        // Query the target edition (or main timeline for fallback)
+        let target_edition = if Self::is_main_timeline(edition) {
+            edition
+        } else {
+            DEFAULT_EDITION
+        };
+
+        let filter = doc! { "edition": target_edition, "domain": domain, "root": &root_str };
         let options = FindOptions::builder()
             .sort(doc! { "sequence": -1 })
             .limit(1)

@@ -394,9 +394,34 @@ impl EventStore for RedisEventStore {
     }
 
     async fn get_next_sequence(&self, domain: &str, edition: &str, root: Uuid) -> Result<u32> {
-        let events_key = self.events_key(domain, edition, root);
         let mut conn = self.conn.clone();
 
+        // For non-default editions with implicit divergence, we need composite logic:
+        // If the edition has no events yet, use the main timeline's max sequence
+        if !Self::is_main_timeline(edition) {
+            let edition_key = self.events_key(domain, edition, root);
+            let max_seq: Option<f64> = conn
+                .zrevrange_withscores::<_, Vec<(Vec<u8>, f64)>>(&edition_key, 0, 0)
+                .await?
+                .first()
+                .map(|(_, score)| *score);
+
+            if let Some(seq) = max_seq {
+                // Edition has events, use edition's max sequence
+                return Ok(seq as u32 + 1);
+            }
+
+            // No edition events - fall through to check main timeline
+        }
+
+        // Query the target edition (or main timeline for fallback)
+        let target_edition = if Self::is_main_timeline(edition) {
+            edition
+        } else {
+            DEFAULT_EDITION
+        };
+
+        let events_key = self.events_key(domain, target_edition, root);
         let max_seq: Option<f64> = conn
             .zrevrange_withscores::<_, Vec<(Vec<u8>, f64)>>(&events_key, 0, 0)
             .await?

@@ -2,6 +2,10 @@
 //!
 //! Manages shipment lifecycle: pending -> picking -> packing -> shipped -> delivered.
 
+mod status;
+
+pub use status::FulfillmentStatus;
+
 use prost::Message;
 
 use angzarr::proto::{
@@ -11,11 +15,9 @@ use common::proto::{
     CreateShipment, Delivered, FulfillmentState, ItemsPacked, ItemsPicked, MarkPacked, MarkPicked,
     RecordDelivery, Ship, ShipmentCreated, Shipped,
 };
-use common::{decode_command, make_event_book, now};
+use common::{decode_command, make_event_book, now, ProtoTypeName};
 use common::{require_exists, require_not_exists, require_status, require_status_not};
 use common::{AggregateLogic, CommandRouter, Result, StateBuilder};
-
-const STATE_TYPE_URL: &str = "type.examples/examples.FulfillmentState";
 
 pub mod errmsg {
     pub const SHIPMENT_EXISTS: &str = "Shipment already exists";
@@ -35,7 +37,7 @@ pub mod errmsg {
 fn apply_shipment_created(state: &mut FulfillmentState, event: &prost_types::Any) {
     if let Ok(e) = ShipmentCreated::decode(event.value.as_slice()) {
         state.order_id = e.order_id;
-        state.status = "pending".to_string();
+        state.status = FulfillmentStatus::Pending.to_string();
         state.items = e.items;
     }
 }
@@ -43,14 +45,14 @@ fn apply_shipment_created(state: &mut FulfillmentState, event: &prost_types::Any
 fn apply_items_picked(state: &mut FulfillmentState, event: &prost_types::Any) {
     if let Ok(e) = ItemsPicked::decode(event.value.as_slice()) {
         state.picker_id = e.picker_id;
-        state.status = "picking".to_string();
+        state.status = FulfillmentStatus::Picking.to_string();
     }
 }
 
 fn apply_items_packed(state: &mut FulfillmentState, event: &prost_types::Any) {
     if let Ok(e) = ItemsPacked::decode(event.value.as_slice()) {
         state.packer_id = e.packer_id;
-        state.status = "packing".to_string();
+        state.status = FulfillmentStatus::Packing.to_string();
     }
 }
 
@@ -58,14 +60,14 @@ fn apply_shipped(state: &mut FulfillmentState, event: &prost_types::Any) {
     if let Ok(e) = Shipped::decode(event.value.as_slice()) {
         state.carrier = e.carrier;
         state.tracking_number = e.tracking_number;
-        state.status = "shipped".to_string();
+        state.status = FulfillmentStatus::Shipped.to_string();
     }
 }
 
 fn apply_delivered(state: &mut FulfillmentState, event: &prost_types::Any) {
     if let Ok(e) = Delivered::decode(event.value.as_slice()) {
         state.signature = e.signature;
-        state.status = "delivered".to_string();
+        state.status = FulfillmentStatus::Delivered.to_string();
     }
 }
 
@@ -76,11 +78,11 @@ fn apply_delivered(state: &mut FulfillmentState, event: &prost_types::Any) {
 /// Create the StateBuilder with all registered event handlers.
 fn state_builder() -> StateBuilder<FulfillmentState> {
     StateBuilder::new()
-        .on("ShipmentCreated", apply_shipment_created)
-        .on("ItemsPicked", apply_items_picked)
-        .on("ItemsPacked", apply_items_packed)
-        .on("Shipped", apply_shipped)
-        .on("Delivered", apply_delivered)
+        .on(ShipmentCreated::TYPE_NAME, apply_shipment_created)
+        .on(ItemsPicked::TYPE_NAME, apply_items_picked)
+        .on(ItemsPacked::TYPE_NAME, apply_items_packed)
+        .on(Shipped::TYPE_NAME, apply_shipped)
+        .on(Delivered::TYPE_NAME, apply_delivered)
 }
 
 fn rebuild_state(event_book: Option<&EventBook>) -> FulfillmentState {
@@ -113,7 +115,7 @@ fn build_event_response(
         next_seq,
         event_type_url,
         event_bytes,
-        STATE_TYPE_URL,
+        &FulfillmentState::type_url(),
         new_state.encode_to_vec(),
     )
 }
@@ -129,11 +131,11 @@ impl FulfillmentLogic {
     pub fn new() -> Self {
         Self {
             router: CommandRouter::new("fulfillment", rebuild_state)
-                .on("CreateShipment", handle_create_shipment)
-                .on("MarkPicked", handle_mark_picked)
-                .on("MarkPacked", handle_mark_packed)
-                .on("Ship", handle_ship)
-                .on("RecordDelivery", handle_record_delivery),
+                .on(CreateShipment::TYPE_NAME, handle_create_shipment)
+                .on(MarkPicked::TYPE_NAME, handle_mark_picked)
+                .on(MarkPacked::TYPE_NAME, handle_mark_packed)
+                .on(Ship::TYPE_NAME, handle_ship)
+                .on(RecordDelivery::TYPE_NAME, handle_record_delivery),
         }
     }
 }
@@ -156,7 +158,7 @@ fn handle_create_shipment(
 
     let event = ShipmentCreated {
         order_id: cmd.order_id,
-        status: "pending".to_string(),
+        status: FulfillmentStatus::Pending.to_string(),
         created_at: Some(now()),
         items: cmd.items,
     };
@@ -165,7 +167,7 @@ fn handle_create_shipment(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.ShipmentCreated",
+        &ShipmentCreated::type_url(),
         event,
     ))
 }
@@ -177,7 +179,7 @@ fn handle_mark_picked(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status(&state.status, "pending", errmsg::NOT_PENDING)?;
+    require_status(&state.status, FulfillmentStatus::Pending.as_str(), errmsg::NOT_PENDING)?;
 
     let cmd: MarkPicked = decode_command(command_data)?;
 
@@ -190,7 +192,7 @@ fn handle_mark_picked(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.ItemsPicked",
+        &ItemsPicked::type_url(),
         event,
     ))
 }
@@ -202,7 +204,7 @@ fn handle_mark_packed(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status(&state.status, "picking", errmsg::NOT_PICKED)?;
+    require_status(&state.status, FulfillmentStatus::Picking.as_str(), errmsg::NOT_PICKED)?;
 
     let cmd: MarkPacked = decode_command(command_data)?;
 
@@ -215,7 +217,7 @@ fn handle_mark_packed(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.ItemsPacked",
+        &ItemsPacked::type_url(),
         event,
     ))
 }
@@ -227,7 +229,7 @@ fn handle_ship(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status(&state.status, "packing", errmsg::NOT_PACKED)?;
+    require_status(&state.status, FulfillmentStatus::Packing.as_str(), errmsg::NOT_PACKED)?;
 
     let cmd: Ship = decode_command(command_data)?;
 
@@ -243,7 +245,7 @@ fn handle_ship(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.Shipped",
+        &Shipped::type_url(),
         event,
     ))
 }
@@ -255,8 +257,8 @@ fn handle_record_delivery(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status_not(&state.status, "delivered", errmsg::ALREADY_DELIVERED)?;
-    require_status(&state.status, "shipped", errmsg::NOT_SHIPPED)?;
+    require_status_not(&state.status, FulfillmentStatus::Delivered.as_str(), errmsg::ALREADY_DELIVERED)?;
+    require_status(&state.status, FulfillmentStatus::Shipped.as_str(), errmsg::NOT_SHIPPED)?;
 
     let cmd: RecordDelivery = decode_command(command_data)?;
 
@@ -269,7 +271,7 @@ fn handle_record_delivery(
         state,
         command_book.cover.clone(),
         next_seq,
-        "type.examples/examples.Delivered",
+        &Delivered::type_url(),
         event,
     ))
 }

@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"angzarr"
+	"angzarr/proto/examples"
 
 	"saga-inventory-reservation/logic"
 )
@@ -11,7 +12,7 @@ import (
 func main() {
 	router := angzarr.NewEventRouter(logic.SagaName, logic.SourceDomain).
 		Output(logic.TargetDomain).
-		On("OrderCreated", logic.HandleOrderCreated)
+		On(angzarr.Name(&examples.OrderCreated{}), logic.HandleOrderCreated)
 
 	handler := angzarr.NewSagaHandler(router)
 

@@ -6,8 +6,14 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::storage::{EventStore, Result, StorageError};
+
+/// Check if edition is the main timeline.
+fn is_main_timeline(edition: &str) -> bool {
+    edition.is_empty() || edition == DEFAULT_EDITION
+}
 
 /// Stored event with correlation tracking.
 struct StoredEvent {
@@ -170,8 +176,38 @@ impl EventStore for MockEventStore {
         if let Some(seq) = *self.next_sequence_override.read().await {
             return Ok(seq);
         }
-        let events = self.get(domain, edition, root).await?;
-        Ok(events.len() as u32)
+
+        // Helper to get max sequence from events
+        fn max_sequence(events: &[EventPage]) -> Option<u32> {
+            events
+                .iter()
+                .filter_map(|e| match e.sequence {
+                    Some(crate::proto::event_page::Sequence::Num(n)) => Some(n),
+                    _ => None,
+                })
+                .max()
+        }
+
+        // For non-default editions with implicit divergence, we need composite logic:
+        // If the edition has no events yet, use the main timeline's max sequence
+        if !is_main_timeline(edition) {
+            let edition_events = self.get(domain, edition, root).await?;
+            if let Some(max_seq) = max_sequence(&edition_events) {
+                // Edition has events, use edition's max sequence
+                return Ok(max_seq + 1);
+            }
+            // No edition events - fall through to check main timeline
+        }
+
+        // Query the target edition (or main timeline for fallback)
+        let target_edition = if is_main_timeline(edition) {
+            edition
+        } else {
+            DEFAULT_EDITION
+        };
+
+        let events = self.get(domain, target_edition, root).await?;
+        Ok(max_sequence(&events).map(|s| s + 1).unwrap_or(0))
     }
 
     async fn get_by_correlation(&self, correlation_id: &str) -> Result<Vec<EventBook>> {

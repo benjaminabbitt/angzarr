@@ -25,7 +25,7 @@ type OrderState struct {
 	LoyaltyPointsUsed int32
 	PaymentMethod     string
 	PaymentReference  string
-	Status            string // "pending", "payment_submitted", "completed", "cancelled"
+	Status            OrderStatus
 	CustomerRoot      []byte
 	CartRoot          []byte
 }
@@ -37,22 +37,22 @@ func (s *OrderState) Exists() bool {
 
 // IsPending returns true if the order is in pending state.
 func (s *OrderState) IsPending() bool {
-	return s.Status == "pending"
+	return s.Status == OrderStatusPending
 }
 
 // IsPaymentSubmitted returns true if payment has been submitted.
 func (s *OrderState) IsPaymentSubmitted() bool {
-	return s.Status == "payment_submitted"
+	return s.Status == OrderStatusPaymentSubmitted
 }
 
 // IsCompleted returns true if the order is completed.
 func (s *OrderState) IsCompleted() bool {
-	return s.Status == "completed"
+	return s.Status == OrderStatusCompleted
 }
 
 // IsCancelled returns true if the order is cancelled.
 func (s *OrderState) IsCancelled() bool {
-	return s.Status == "cancelled"
+	return s.Status == OrderStatusCancelled
 }
 
 // TotalAfterDiscount returns the subtotal minus any discount.
@@ -71,7 +71,7 @@ func applyOrderCreated(state *OrderState, event *anypb.Any) {
 	}
 	state.CustomerID = e.CustomerId
 	state.SubtotalCents = e.SubtotalCents
-	state.Status = "pending"
+	state.Status = OrderStatusPending
 	state.CustomerRoot = e.CustomerRoot
 	state.CartRoot = e.CartRoot
 	state.Items = make([]LineItem, 0, len(e.Items))
@@ -100,7 +100,7 @@ func applyPaymentSubmitted(state *OrderState, event *anypb.Any) {
 		return
 	}
 	state.PaymentMethod = e.PaymentMethod
-	state.Status = "payment_submitted"
+	state.Status = OrderStatusPaymentSubmitted
 }
 
 func applyOrderCompleted(state *OrderState, event *anypb.Any) {
@@ -109,11 +109,11 @@ func applyOrderCompleted(state *OrderState, event *anypb.Any) {
 		return
 	}
 	state.PaymentReference = e.PaymentReference
-	state.Status = "completed"
+	state.Status = OrderStatusCompleted
 }
 
 func applyOrderCancelled(state *OrderState, _ *anypb.Any) {
-	state.Status = "cancelled"
+	state.Status = OrderStatusCancelled
 }
 
 func loadOrderSnapshot(state *OrderState, snapshot *anypb.Any) {
@@ -127,7 +127,7 @@ func loadOrderSnapshot(state *OrderState, snapshot *anypb.Any) {
 	state.LoyaltyPointsUsed = snapState.LoyaltyPointsUsed
 	state.PaymentMethod = snapState.PaymentMethod
 	state.PaymentReference = snapState.PaymentReference
-	state.Status = snapState.Status
+	state.Status = OrderStatus(snapState.Status)
 	state.CustomerRoot = snapState.CustomerRoot
 	state.CartRoot = snapState.CartRoot
 	for _, item := range snapState.Items {
@@ -147,11 +147,11 @@ func loadOrderSnapshot(state *OrderState, snapshot *anypb.Any) {
 // stateBuilder is the single source of truth for event type → applier mapping.
 var stateBuilder = angzarr.NewStateBuilder(func() OrderState { return OrderState{} }).
 	WithSnapshot(loadOrderSnapshot).
-	On("OrderCreated", applyOrderCreated).
-	On("LoyaltyDiscountApplied", applyLoyaltyDiscount).
-	On("PaymentSubmitted", applyPaymentSubmitted).
-	On("OrderCompleted", applyOrderCompleted).
-	On("OrderCancelled", applyOrderCancelled)
+	On(angzarr.Name(&examples.OrderCreated{}), applyOrderCreated).
+	On(angzarr.Name(&examples.LoyaltyDiscountApplied{}), applyLoyaltyDiscount).
+	On(angzarr.Name(&examples.PaymentSubmitted{}), applyPaymentSubmitted).
+	On(angzarr.Name(&examples.OrderCompleted{}), applyOrderCompleted).
+	On(angzarr.Name(&examples.OrderCancelled{}), applyOrderCancelled)
 
 // RebuildState reconstructs order state from an event book.
 func RebuildState(eventBook *angzarrpb.EventBook) OrderState {

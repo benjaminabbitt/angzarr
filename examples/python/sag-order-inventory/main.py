@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "angzarr"))
 
 from angzarr import types_pb2 as types
 from identity import inventory_product_root, to_proto_bytes
+from protoname import name
 from proto import order_pb2 as order
 from proto import inventory_pb2 as inventory
 from router import EventRouter
@@ -79,7 +80,7 @@ def handle_order_created(
 router = (
     EventRouter(SAGA_NAME, SOURCE_DOMAIN)
     .output(TARGET_DOMAIN)
-    .on("OrderCreated", handle_order_created)
+    .on(name(order.OrderCreated), handle_order_created)
 )
 
 handler = SagaHandler(router)

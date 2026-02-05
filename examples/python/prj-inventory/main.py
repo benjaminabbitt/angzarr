@@ -12,6 +12,7 @@ import structlog
 sys.path.insert(0, str(Path(__file__).parent.parent / "angzarr"))
 
 from angzarr import types_pb2 as types
+from protoname import name
 from projector_handler import ProjectorHandler, run_projector_server
 from proto import inventory_pb2 as inventory
 
@@ -45,63 +46,63 @@ def process_event(event) -> None:
     """Process a single event and log it."""
     type_url = event.type_url
 
-    if type_url.endswith("StockInitialized"):
+    if type_url.endswith(name(inventory.StockInitialized)):
         e = inventory.StockInitialized()
         event.Unpack(e)
         logger.info(
             "inventory_projected",
-            event="StockInitialized",
+            event=name(inventory.StockInitialized),
             product_id=e.product_id,
             quantity=e.quantity,
             threshold=e.low_stock_threshold,
         )
-    elif type_url.endswith("StockReceived"):
+    elif type_url.endswith(name(inventory.StockReceived)):
         e = inventory.StockReceived()
         event.Unpack(e)
         logger.info(
             "inventory_projected",
-            event="StockReceived",
+            event=name(inventory.StockReceived),
             quantity=e.quantity,
             new_on_hand=e.new_on_hand,
             reference=e.reference,
         )
-    elif type_url.endswith("StockReserved"):
+    elif type_url.endswith(name(inventory.StockReserved)):
         e = inventory.StockReserved()
         event.Unpack(e)
         logger.info(
             "inventory_projected",
-            event="StockReserved",
+            event=name(inventory.StockReserved),
             order_id=e.order_id,
             quantity=e.quantity,
             new_available=e.new_available,
             new_reserved=e.new_reserved,
         )
-    elif type_url.endswith("ReservationReleased"):
+    elif type_url.endswith(name(inventory.ReservationReleased)):
         e = inventory.ReservationReleased()
         event.Unpack(e)
         logger.info(
             "inventory_projected",
-            event="ReservationReleased",
+            event=name(inventory.ReservationReleased),
             order_id=e.order_id,
             quantity=e.quantity,
             new_available=e.new_available,
         )
-    elif type_url.endswith("ReservationCommitted"):
+    elif type_url.endswith(name(inventory.ReservationCommitted)):
         e = inventory.ReservationCommitted()
         event.Unpack(e)
         logger.info(
             "inventory_projected",
-            event="ReservationCommitted",
+            event=name(inventory.ReservationCommitted),
             order_id=e.order_id,
             quantity=e.quantity,
             new_on_hand=e.new_on_hand,
         )
-    elif type_url.endswith("LowStockAlert"):
+    elif type_url.endswith(name(inventory.LowStockAlert)):
         e = inventory.LowStockAlert()
         event.Unpack(e)
         logger.info(
             "inventory_projected",
-            event="LowStockAlert",
+            event=name(inventory.LowStockAlert),
             product_id=e.product_id,
             available=e.available,
             threshold=e.threshold,

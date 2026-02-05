@@ -1,15 +1,15 @@
 //! Order state management and reconstruction from events.
 
 use common::proto::{
-    LoyaltyDiscountApplied, OrderCompleted, OrderCreated, OrderState, PaymentSubmitted,
+    LoyaltyDiscountApplied, OrderCancelled, OrderCompleted, OrderCreated, OrderState,
+    PaymentSubmitted,
 };
-use common::{make_event_book, StateBuilder};
+use common::{make_event_book, ProtoTypeName, StateBuilder};
 use prost::Message;
 
 use angzarr::proto::{Cover, EventBook};
 
-/// Protobuf type URL for OrderState snapshots.
-pub const STATE_TYPE_URL: &str = "type.examples/examples.OrderState";
+use crate::status::OrderStatus;
 
 // ============================================================================
 // Named event appliers
@@ -22,7 +22,7 @@ fn apply_order_created(state: &mut OrderState, event: &prost_types::Any) {
         state.subtotal_cents = e.subtotal_cents;
         state.discount_cents = 0;
         state.loyalty_points_used = 0;
-        state.status = "pending".to_string();
+        state.status = OrderStatus::Pending.to_string();
         state.customer_root = e.customer_root;
         state.cart_root = e.cart_root;
     }
@@ -38,19 +38,19 @@ fn apply_loyalty_discount(state: &mut OrderState, event: &prost_types::Any) {
 fn apply_payment_submitted(state: &mut OrderState, event: &prost_types::Any) {
     if let Ok(e) = PaymentSubmitted::decode(event.value.as_slice()) {
         state.payment_method = e.payment_method;
-        state.status = "payment_submitted".to_string();
+        state.status = OrderStatus::PaymentSubmitted.to_string();
     }
 }
 
 fn apply_order_completed(state: &mut OrderState, event: &prost_types::Any) {
     if let Ok(e) = OrderCompleted::decode(event.value.as_slice()) {
         state.payment_reference = e.payment_reference;
-        state.status = "completed".to_string();
+        state.status = OrderStatus::Completed.to_string();
     }
 }
 
 fn apply_order_cancelled(state: &mut OrderState, _event: &prost_types::Any) {
-    state.status = "cancelled".to_string();
+    state.status = OrderStatus::Cancelled.to_string();
 }
 
 // ============================================================================
@@ -62,11 +62,11 @@ fn apply_order_cancelled(state: &mut OrderState, _event: &prost_types::Any) {
 /// Single source of truth for event type → applier mapping.
 fn state_builder() -> StateBuilder<OrderState> {
     StateBuilder::new()
-        .on("OrderCreated", apply_order_created)
-        .on("LoyaltyDiscountApplied", apply_loyalty_discount)
-        .on("PaymentSubmitted", apply_payment_submitted)
-        .on("OrderCompleted", apply_order_completed)
-        .on("OrderCancelled", apply_order_cancelled)
+        .on(OrderCreated::TYPE_NAME, apply_order_created)
+        .on(LoyaltyDiscountApplied::TYPE_NAME, apply_loyalty_discount)
+        .on(PaymentSubmitted::TYPE_NAME, apply_payment_submitted)
+        .on(OrderCompleted::TYPE_NAME, apply_order_completed)
+        .on(OrderCancelled::TYPE_NAME, apply_order_cancelled)
 }
 
 /// Rebuild order state from event history using StateBuilder.
@@ -111,7 +111,7 @@ pub fn build_event_response(
         next_seq,
         event_type_url,
         event_bytes,
-        STATE_TYPE_URL,
+        &OrderState::type_url(),
         new_state.encode_to_vec(),
     )
 }
@@ -180,7 +180,7 @@ mod tests {
         let state = rebuild_state(Some(&event_book));
         assert_eq!(state.customer_id, "CUST-001");
         assert_eq!(state.subtotal_cents, 2000);
-        assert_eq!(state.status, "pending");
+        assert!(state.status == OrderStatus::Pending);
     }
 
     #[test]

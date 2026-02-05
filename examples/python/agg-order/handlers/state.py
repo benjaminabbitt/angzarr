@@ -5,8 +5,11 @@ from dataclasses import dataclass, field
 from google.protobuf.any_pb2 import Any as AnyProto
 
 from angzarr import types_pb2 as types
-from angzarr.state_builder import StateBuilder
+from protoname import name
+from state_builder import StateBuilder
 from proto import order_pb2 as order
+
+from .status import OrderStatus
 
 
 @dataclass
@@ -26,7 +29,7 @@ class OrderState:
     loyalty_points_used: int = 0
     payment_method: str = ""
     payment_reference: str = ""
-    status: str = ""
+    status: OrderStatus | str = ""
     customer_root: bytes = b""
     cart_root: bytes = b""
 
@@ -34,16 +37,16 @@ class OrderState:
         return bool(self.customer_id)
 
     def is_pending(self) -> bool:
-        return self.status == "pending"
+        return self.status == OrderStatus.PENDING
 
     def is_payment_submitted(self) -> bool:
-        return self.status == "payment_submitted"
+        return self.status == OrderStatus.PAYMENT_SUBMITTED
 
     def is_completed(self) -> bool:
-        return self.status == "completed"
+        return self.status == OrderStatus.COMPLETED
 
     def is_cancelled(self) -> bool:
-        return self.status == "cancelled"
+        return self.status == OrderStatus.CANCELLED
 
     def total_after_discount(self) -> int:
         return self.subtotal_cents - self.discount_cents
@@ -59,7 +62,7 @@ def apply_order_created(state: OrderState, event: AnyProto) -> None:
     event.Unpack(e)
     state.customer_id = e.customer_id
     state.subtotal_cents = e.subtotal_cents
-    state.status = "pending"
+    state.status = OrderStatus.PENDING
     state.items = [
         LineItem(i.product_id, i.name, i.quantity, i.unit_price_cents)
         for i in e.items
@@ -79,18 +82,18 @@ def apply_payment_submitted(state: OrderState, event: AnyProto) -> None:
     e = order.PaymentSubmitted()
     event.Unpack(e)
     state.payment_method = e.payment_method
-    state.status = "payment_submitted"
+    state.status = OrderStatus.PAYMENT_SUBMITTED
 
 
 def apply_order_completed(state: OrderState, event: AnyProto) -> None:
     e = order.OrderCompleted()
     event.Unpack(e)
     state.payment_reference = e.payment_reference
-    state.status = "completed"
+    state.status = OrderStatus.COMPLETED
 
 
 def apply_order_cancelled(state: OrderState, _event: AnyProto) -> None:
-    state.status = "cancelled"
+    state.status = OrderStatus.CANCELLED
 
 
 # ============================================================================
@@ -100,11 +103,11 @@ def apply_order_cancelled(state: OrderState, _event: AnyProto) -> None:
 # stateBuilder is the single source of truth for event type -> applier mapping.
 _state_builder = (
     StateBuilder(OrderState)
-    .on("OrderCreated", apply_order_created)
-    .on("LoyaltyDiscountApplied", apply_loyalty_discount)
-    .on("PaymentSubmitted", apply_payment_submitted)
-    .on("OrderCompleted", apply_order_completed)
-    .on("OrderCancelled", apply_order_cancelled)
+    .on(name(order.OrderCreated), apply_order_created)
+    .on(name(order.LoyaltyDiscountApplied), apply_loyalty_discount)
+    .on(name(order.PaymentSubmitted), apply_payment_submitted)
+    .on(name(order.OrderCompleted), apply_order_completed)
+    .on(name(order.OrderCancelled), apply_order_cancelled)
 )
 
 
