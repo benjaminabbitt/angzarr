@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import order_pb2 as order
 
 from .state import OrderState
 
@@ -26,7 +26,7 @@ def handle_apply_loyalty_discount(
     if state.loyalty_points_used > 0:
         raise CommandRejectedError("Loyalty discount already applied")
 
-    cmd = domains.ApplyLoyaltyDiscount()
+    cmd = order.ApplyLoyaltyDiscount()
     command_any.Unpack(cmd)
 
     if cmd.points <= 0:
@@ -36,7 +36,7 @@ def handle_apply_loyalty_discount(
     if cmd.discount_cents > state.subtotal_cents:
         raise CommandRejectedError("Discount cannot exceed subtotal")
 
-    event = domains.LoyaltyDiscountApplied(
+    event = order.LoyaltyDiscountApplied(
         points_used=cmd.points,
         discount_cents=cmd.discount_cents,
         applied_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),

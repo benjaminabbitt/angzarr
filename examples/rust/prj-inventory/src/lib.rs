@@ -3,7 +3,7 @@
 //! Listens to inventory domain events and logs stock level changes.
 //! Demonstrates the projector pattern for building read models.
 
-use angzarr::proto::{ComponentDescriptor, EventBook, Projection, Subscription};
+use angzarr::proto::{ComponentDescriptor, EventBook, Projection, Target};
 use common::proto::{
     LowStockAlert, ReservationCommitted, ReservationReleased, StockInitialized, StockReceived,
     StockReserved,
@@ -12,7 +12,7 @@ use common::{decode_event, ProjectorLogic};
 use tonic::Status;
 use tracing::info;
 
-pub const PROJECTOR_NAME: &str = "inventory";
+pub const PROJECTOR_NAME: &str = "prj-inventory";
 const SOURCE_DOMAIN: &str = "inventory";
 
 /// Inventory Projector implementation.
@@ -29,9 +29,9 @@ impl InventoryProjector {
         ComponentDescriptor {
             component_type: "projector".to_string(),
             name: PROJECTOR_NAME.to_string(),
-            inputs: vec![Subscription {
+            inputs: vec![Target {
                 domain: SOURCE_DOMAIN.to_string(),
-                event_types: vec![
+                types: vec![
                     "StockInitialized".to_string(),
                     "StockReceived".to_string(),
                     "StockReserved".to_string(),
@@ -40,6 +40,7 @@ impl InventoryProjector {
                     "LowStockAlert".to_string(),
                 ],
             }],
+            outputs: vec![],
         }
     }
 }
@@ -146,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_projector_name() {
-        assert_eq!(PROJECTOR_NAME, "inventory");
+        assert_eq!(PROJECTOR_NAME, "prj-inventory");
     }
 
     #[test]
@@ -154,7 +155,7 @@ mod tests {
         let projector = InventoryProjector::new();
         let desc = projector.descriptor();
         assert_eq!(desc.component_type, "projector");
-        assert_eq!(desc.name, "inventory");
+        assert_eq!(desc.name, "prj-inventory");
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.inputs[0].domain, "inventory");
     }

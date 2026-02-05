@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import inventory_pb2 as inventory
 
 from handlers.state import InventoryState
 
@@ -22,7 +22,7 @@ def handle_release_reservation(
     if not state.exists():
         raise CommandRejectedError("Inventory not initialized")
 
-    cmd = domains.ReleaseReservation()
+    cmd = inventory.ReleaseReservation()
     command_any.Unpack(cmd)
 
     if not cmd.order_id:
@@ -32,11 +32,14 @@ def handle_release_reservation(
 
     qty = state.reservations[cmd.order_id]
 
-    event = domains.ReservationReleased(
+    new_reserved = state.reserved - qty
+    event = inventory.ReservationReleased(
         order_id=cmd.order_id,
         quantity=qty,
         new_available=state.available() + qty,
         released_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+        new_reserved=new_reserved,
+        new_on_hand=state.on_hand,
     )
 
     event_any = Any()

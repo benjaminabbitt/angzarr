@@ -10,7 +10,7 @@ use angzarr::handlers::projectors::topology::rest::router;
 use angzarr::handlers::projectors::topology::store::TopologyStore;
 use angzarr::handlers::projectors::topology::TopologyProjector;
 use angzarr::proto::{
-    CommandBook, ComponentDescriptor, Cover, EventBook, Projection, SagaResponse, Subscription,
+    CommandBook, ComponentDescriptor, Cover, EventBook, Projection, SagaResponse, Target,
 };
 use angzarr::standalone::{
     ProcessManagerConfig, ProcessManagerHandler, ProjectionMode, ProjectorConfig, ProjectorHandler,
@@ -59,10 +59,11 @@ impl ProcessManagerHandler for NoopProcessManager {
         ComponentDescriptor {
             name: "test-pm".into(),
             component_type: "process_manager".into(),
-            inputs: vec![Subscription {
+            inputs: vec![Target {
                 domain: "orders".into(),
-                event_types: vec![],
+                types: vec![],
             }],
+            outputs: vec![],
         }
     }
 

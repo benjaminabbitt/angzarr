@@ -3,7 +3,7 @@ package logic
 import (
 	"angzarr"
 	angzarrpb "angzarr/proto/angzarr"
-	"inventory/proto/examples"
+	"angzarr/proto/examples"
 
 	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,10 +27,13 @@ func HandleReleaseReservation(cb *angzarrpb.CommandBook, data []byte, state *Inv
 		return nil, angzarr.NewFailedPrecondition(ErrMsgReservationNotFound)
 	}
 
+	newReserved := state.Reserved - qty
 	return angzarr.PackEvent(cb.Cover, &examples.ReservationReleased{
 		OrderId:      cmd.OrderId,
 		Quantity:     qty,
 		NewAvailable: state.Available() + qty,
 		ReleasedAt:   timestamppb.Now(),
+		NewReserved:  newReserved,
+		NewOnHand:    state.OnHand,
 	}, seq)
 }

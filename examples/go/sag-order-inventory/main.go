@@ -11,10 +11,7 @@ import (
 func main() {
 	router := angzarr.NewEventRouter(logic.SagaName, logic.SourceDomain).
 		Output(logic.TargetDomain).
-		On("ItemAdded", logic.HandleItemAdded).
-		On("ItemRemoved", logic.HandleItemRemoved).
-		On("QuantityUpdated", logic.HandleQuantityUpdated).
-		On("CartCleared", logic.HandleCartCleared)
+		On("OrderCreated", logic.HandleOrderCreated)
 
 	handler := angzarr.NewSagaHandler(router)
 

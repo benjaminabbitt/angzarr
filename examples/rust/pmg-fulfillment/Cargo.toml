@@ -1,5 +1,5 @@
 [package]
-name = "process-manager-fulfillment"
+name = "pmg-fulfillment"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,7 @@ standalone = ["angzarr/sqlite"]
 path = "src/lib.rs"
 
 [[bin]]
-name = "process-manager-fulfillment-server"
+name = "pmg-fulfillment-server"
 path = "src/main.rs"
 
 [dependencies]

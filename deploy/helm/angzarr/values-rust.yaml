@@ -2,20 +2,18 @@
 # Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-rust.yaml -n angzarr --create-namespace
 #
 # =============================================================================
-# Port Scheme - Rust (500xx range, 10 ports per domain)
+# Port Scheme - Rust (50000-50099, 3 ports per component)
 # =============================================================================
-# x0: sidecar gRPC (via service.aggregatePort)
-# x1: sidecar debug
-# x5: business gRPC
-# x6: business debug
+# Per-component: +0 gRPC, +1 debug, +2 visualization
 #
-# order:              50030-50039  (business: 50035)
-# inventory:          50020-50029  (business: 50025)
-# fulfillment:        50050-50059  (business: 50055)
-# saga-fulfillment:   50070-50079  (business: 50075)
-# saga-inv-reserv:    50100-50109  (business: 50105)
-# pm-fulfillment:     50110-50119  (business: 50115)
-# proj-inventory:     50130-50139  (business: 50135)
+# agg-order:              50000-50002  (gRPC: 50000)
+# agg-inventory:          50003-50005  (gRPC: 50003)
+# agg-fulfillment:        50006-50008  (gRPC: 50006)
+# sag-order-fulfillment:  50018-50020  (gRPC: 50018)
+# sag-order-inventory:    50021-50023  (gRPC: 50021)
+# sag-fulfillment-inv:    50024-50026  (gRPC: 50024)
+# prj-inventory:          50033-50035  (gRPC: 50033)
+# pmg-fulfillment:        50039-50041  (gRPC: 50039)
 # =============================================================================
 
 # Allow non-bitnami images for local development
@@ -176,6 +174,28 @@ postgresql:
         memory: "512Mi"
         cpu: "500m"
 
+# =============================================================================
+# Mock Services for Testing
+# These demonstrate external service integration patterns (fraud, pricing, tax, etc.)
+# =============================================================================
+mockServices:
+  fraud:
+    enabled: true
+    image:
+      repository: localhost:5001/mock-fraud-service
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    # customer_id=result pairs (format: "CUST-ID1=result1,CUST-ID2=result2")
+    # Results: approved, review_required, declined
+    responses: "CUST-FRAUD=declined,CUST-REVIEW=review_required"
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
 kafka:
   enabled: false  # Disabled for local dev - AMQP via RabbitMQ is primary
 
@@ -237,85 +257,88 @@ infrastructure:
 applications:
   business:
     # E-commerce Domain Aggregates (Rust: 500xx range)
-    - name: aggregate-order-rs
+    - name: agg-order-rs
       image:
-        repository: localhost:5001/aggregate-order-rs
+        repository: localhost:5001/agg-order-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
-      port: 50035        # order business gRPC (50030+5)
+      port: 50000        # order gRPC (50000-50002)
+      env:
+        - name: FRAUD_SERVICE_URL
+          value: "http://mock-fraud-service"  # K8s service DNS
 
-    - name: aggregate-inventory-rs
+    - name: agg-inventory-rs
       image:
-        repository: localhost:5001/aggregate-inventory-rs
+        repository: localhost:5001/agg-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
-      port: 50025        # inventory business gRPC (50020+5)
+      port: 50003        # inventory gRPC (50003-50005)
 
-    - name: aggregate-fulfillment-rs
+    - name: agg-fulfillment-rs
       image:
-        repository: localhost:5001/aggregate-fulfillment-rs
+        repository: localhost:5001/agg-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
-      port: 50055        # fulfillment business gRPC (50050+5)
+      port: 50006        # fulfillment gRPC (50006-50008)
 
   projectors:
     # Inventory Projector - logs inventory stock changes
-    - name: projector-inventory-rs
+    - name: prj-inventory-rs
       image:
-        repository: localhost:5001/projector-inventory-rs
+        repository: localhost:5001/prj-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
-      port: 50135        # projector-inventory business gRPC (50130+5)
+      port: 50033        # prj-inventory gRPC (50033-50035)
       topics:
         - "inventory"
 
   sagas:
     # Order-Fulfillment Saga - creates shipments when orders complete
-    - name: saga-order-fulfillment-rs
+    - name: sag-order-fulfillment-rs
       image:
-        repository: localhost:5001/saga-order-fulfillment-rs
+        repository: localhost:5001/sag-order-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "saga-order-fulfillment"
-      port: 50075        # saga-order-fulfillment business gRPC (50070+5)
+      domain: "sag-order-fulfillment"
+      port: 50018        # sag-order-fulfillment gRPC (50018-50020)
       topics:
         - "order.*"
 
     # Order-Inventory Saga - reserves stock when orders are created
-    - name: saga-order-inventory-rs
+    - name: sag-order-inventory-rs
       image:
-        repository: localhost:5001/saga-order-inventory-rs
+        repository: localhost:5001/sag-order-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "saga-order-inventory"
-      port: 50105        # saga-order-inventory business gRPC (50100+5)
+      domain: "sag-order-inventory"
+      port: 50021        # sag-order-inventory gRPC (50021-50023)
       topics:
         - "order.*"
 
     # Fulfillment-Inventory Saga - commits inventory when shipments ship
-    - name: saga-fulfillment-inventory-rs
+    - name: sag-fulfillment-inventory-rs
       image:
-        repository: localhost:5001/saga-fulfillment-inventory-rs
+        repository: localhost:5001/sag-fulfillment-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "saga-fulfillment-inventory"
-      port: 50127        # saga-fulfillment-inventory business gRPC
+      domain: "sag-fulfillment-inventory"
+      port: 50024        # sag-fulfillment-inventory gRPC (50024-50026)
       topics:
         - "fulfillment.*"
 
   processManagers:
     # Order Fulfillment PM - fan-in: payment + inventory + fulfillment → Ship
-    - name: process-manager-fulfillment-rs
+    - name: pmg-fulfillment-rs
       image:
-        repository: localhost:5001/process-manager-fulfillment-rs
+        repository: localhost:5001/pmg-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "order-fulfillment"
-      port: 50115        # pm-fulfillment business gRPC (50110+5)
+      domain: "pmg-fulfillment"
+      port: 50039        # pmg-fulfillment gRPC (50039-50041)
       topics:
         - "order.*"
         - "inventory.*"

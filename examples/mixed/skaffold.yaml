@@ -1,0 +1,64 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: angzarr-mixed-examples
+
+# Require framework images - provides IMAGE_TAG_* template variables for deploy
+requires:
+  - path: ../../skaffold.yaml
+    configs: [angzarr-build]
+  # Import language-specific builds
+  - path: ../rust/skaffold.yaml
+    configs: [angzarr-rust-examples]
+  - path: ../go/skaffold.yaml
+    configs: [angzarr-go-examples]
+  - path: ../python/skaffold.yaml
+    configs: [angzarr-python-examples]
+
+deploy:
+  helm:
+    releases:
+      - name: angzarr
+        chartPath: ../../deploy/helm/angzarr
+        namespace: angzarr
+        createNamespace: true
+        valuesFiles:
+          - ../../deploy/helm/angzarr/values-mixed.yaml
+        setValueTemplates:
+          # Framework sidecar images
+          images.aggregate.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_aggregate}}"
+          images.aggregate.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_aggregate}}"
+          images.projector.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_projector}}"
+          images.projector.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_projector}}"
+          images.saga.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_saga}}"
+          images.saga.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_saga}}"
+          images.processManager.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_process_manager}}"
+          images.processManager.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_process_manager}}"
+          images.gateway.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_gateway}}"
+          images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
+          # Business aggregate images - mixed languages
+          # Order: Rust
+          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_order_rs}}"
+          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_order_rs}}"
+          # Inventory: Go
+          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_inventory_go}}"
+          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_inventory_go}}"
+          # Fulfillment: Python
+          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_fulfillment_py}}"
+          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_fulfillment_py}}"
+          # Saga images - mixed languages
+          # Order-Fulfillment: Rust
+          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_order_fulfillment_rs}}"
+          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_order_fulfillment_rs}}"
+          # Order-Inventory: Go
+          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_order_inventory_go}}"
+          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_order_inventory_go}}"
+          # Fulfillment-Inventory: Python
+          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_fulfillment_inventory_py}}"
+          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_fulfillment_inventory_py}}"
+          # Process Manager images - Rust
+          applications.processManagers[0].image.repository: "{{.IMAGE_REPO_localhost_5001_pmg_fulfillment_rs}}"
+          applications.processManagers[0].image.tag: "{{.IMAGE_TAG_localhost_5001_pmg_fulfillment_rs}}"
+          # Projector images - Rust
+          applications.projectors[0].image.repository: "{{.IMAGE_REPO_localhost_5001_prj_inventory_rs}}"
+          applications.projectors[0].image.tag: "{{.IMAGE_TAG_localhost_5001_prj_inventory_rs}}"

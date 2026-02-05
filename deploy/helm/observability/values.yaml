@@ -267,6 +267,14 @@ grafana:
                 matcherRegex: "trace_id=(\\w+)"
                 name: TraceID
                 url: "$${__value.raw}"
+        - name: Angzarr Topology
+          type: hamedkarbasi93-nodegraphapi-datasource
+          access: proxy
+          url: http://angzarr-topology.angzarr.svc.cluster.local:9099
+          uid: topology
+          isDefault: false
+          jsonData:
+            url: http://angzarr-topology.angzarr.svc.cluster.local:9099
   resources:
     requests:
       memory: "128Mi"

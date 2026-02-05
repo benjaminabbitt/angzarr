@@ -91,62 +91,81 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn test_correlation_discovers_edge() {
+    async fn test_declarative_edges_from_outputs() {
+        use crate::proto::{ComponentDescriptor, Target};
+
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
 
-        let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
-        let book2 = make_event_book("fulfillment", "corr-1", &["ShipmentCreated"]);
-
-        projector.process_event(&book1).await.expect("process_event failed");
-        projector.process_event(&book2).await.expect("process_event failed");
+        // Edges come from descriptor outputs, not correlation
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "orders".into(),
+                component_type: "aggregate".into(),
+                ..Default::default()
+            },
+            ComponentDescriptor {
+                name: "fulfillment".into(),
+                component_type: "aggregate".into(),
+                ..Default::default()
+            },
+            ComponentDescriptor {
+                name: "order-fulfillment".into(),
+                component_type: "saga".into(),
+                inputs: vec![Target {
+                    domain: "orders".into(),
+                    types: vec![],
+                }],
+                outputs: vec![Target {
+                    domain: "fulfillment".into(),
+                    types: vec!["CreateShipment".into()],
+                }],
+            },
+        ];
+        projector.register_components(&descriptors).await.expect("register failed");
 
         let edges = store.get_edges().await.expect("get_edges failed");
-        assert_eq!(edges.len(), 1);
-        // Causal: orders appeared first in correlation chain, fulfillment second
-        assert_eq!(edges[0].source, "orders");
-        assert_eq!(edges[0].target, "fulfillment");
+        // Edges: orders -> order-fulfillment (subscription), order-fulfillment -> fulfillment (output)
+        assert_eq!(edges.len(), 2);
     }
 
     #[tokio::test]
-    async fn test_correlation_creates_edge_between_registered_aggregates() {
+    async fn test_no_edge_between_aggregates_without_intermediary() {
         use crate::proto::ComponentDescriptor;
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
 
-        // Register both domains as aggregates
+        // Register both domains as aggregates — no intermediary saga
         let descriptors = vec![
             ComponentDescriptor {
                 name: "orders".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "fulfillment".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
         ];
         projector.register_components(&descriptors).await.expect("register failed");
 
-        // Correlated events between two aggregates — edge created via correlation
+        // Correlated events between two aggregates — NO edge created (declarative only)
         let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
         let book2 = make_event_book("fulfillment", "corr-1", &["ShipmentCreated"]);
 
         projector.process_event(&book1).await.expect("process_event failed");
         projector.process_event(&book2).await.expect("process_event failed");
 
+        // No edges — edges come only from descriptors now
         let edges = store.get_edges().await.expect("get_edges failed");
-        let correlation_edges: Vec<_> = edges.iter().filter(|e| !e.last_correlation_id.is_empty()).collect();
-        assert_eq!(correlation_edges.len(), 1);
-        assert_eq!(correlation_edges[0].source, "orders");
-        assert_eq!(correlation_edges[0].target, "fulfillment");
+        assert!(edges.is_empty(), "Aggregates should not have direct edges without saga intermediary");
     }
 
     #[tokio::test]
-    async fn test_correlation_creates_edge_between_aggregate_and_saga() {
-        use crate::proto::{ComponentDescriptor, Subscription};
+    async fn test_subscription_edge_from_aggregate_to_saga() {
+        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
@@ -155,25 +174,23 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: "orders".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "fulfillment-saga".into(),
                 component_type: "saga".into(),
-                inputs: vec![Subscription { domain: "orders".into(), event_types: vec![] }],
+                inputs: vec![Target { domain: "orders".into(), types: vec![] }],
+                ..Default::default()
             },
         ];
         projector.register_components(&descriptors).await.expect("register failed");
 
-        let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
-        let book2 = make_event_book("fulfillment-saga", "corr-1", &["SagaStarted"]);
-
-        projector.process_event(&book1).await.expect("process_event failed");
-        projector.process_event(&book2).await.expect("process_event failed");
-
+        // Edges come from descriptors: orders -> fulfillment-saga (subscription)
         let edges = store.get_edges().await.expect("get_edges failed");
-        let correlation_edges: Vec<_> = edges.iter().filter(|e| !e.last_correlation_id.is_empty()).collect();
-        assert_eq!(correlation_edges.len(), 1);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source, "orders");
+        assert_eq!(edges[0].target, "fulfillment-saga");
+        // Note: edge_type is "subscription" in register_components, verified by edge existence
     }
 
     #[tokio::test]
@@ -245,7 +262,7 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn test_register_components_creates_nodes_and_edges() {
-        use crate::proto::{ComponentDescriptor, Subscription};
+        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
@@ -254,34 +271,36 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: "orders".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "inventory".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "fulfillment-saga".into(),
                 component_type: "saga".into(),
-                inputs: vec![Subscription {
+                inputs: vec![Target {
                     domain: "orders".into(),
-                    event_types: vec![],
+                    types: vec![],
                 }],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "accounting".into(),
                 component_type: "projector".into(),
                 inputs: vec![
-                    Subscription {
+                    Target {
                         domain: "orders".into(),
-                        event_types: vec![],
+                        types: vec![],
                     },
-                    Subscription {
+                    Target {
                         domain: "inventory".into(),
-                        event_types: vec![],
+                        types: vec![],
                     },
                 ],
+                ..Default::default()
             },
         ];
 
@@ -325,7 +344,7 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn test_register_components_input_domain_not_in_batch() {
-        use crate::proto::{ComponentDescriptor, Subscription};
+        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
@@ -335,10 +354,11 @@ mod sqlite_tests {
         let descriptors = vec![ComponentDescriptor {
             name: "fulfillment-saga".into(),
             component_type: "saga".into(),
-            inputs: vec![Subscription {
+            inputs: vec![Target {
                 domain: "orders".into(),
-                event_types: vec![],
+                types: vec![],
             }],
+            ..Default::default()
         }];
 
         projector
@@ -366,12 +386,12 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: String::new(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "orders".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
         ];
 
@@ -387,7 +407,7 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn test_descriptor_publish_roundtrip_preserves_component_type() {
-        use crate::proto::{ComponentDescriptor, Subscription};
+        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
@@ -398,42 +418,51 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: "order".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "fulfillment".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "fulfillment-saga".into(),
                 component_type: "saga".into(),
-                inputs: vec![Subscription {
+                inputs: vec![Target {
                     domain: "order".into(),
-                    event_types: vec![],
+                    types: vec![],
+                }],
+                outputs: vec![Target {
+                    domain: "fulfillment".into(),
+                    types: vec!["CreateShipment".into()],
                 }],
             },
             ComponentDescriptor {
                 name: "web".into(),
                 component_type: "projector".into(),
-                inputs: vec![Subscription {
+                inputs: vec![Target {
                     domain: "order".into(),
-                    event_types: vec![],
+                    types: vec![],
                 }],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "order-fulfillment".into(),
                 component_type: "process_manager".into(),
                 inputs: vec![
-                    Subscription {
+                    Target {
                         domain: "order".into(),
-                        event_types: vec![],
+                        types: vec![],
                     },
-                    Subscription {
+                    Target {
                         domain: "fulfillment".into(),
-                        event_types: vec![],
+                        types: vec![],
                     },
                 ],
+                outputs: vec![Target {
+                    domain: "fulfillment".into(),
+                    types: vec!["Ship".into()],
+                }],
             },
         ];
 
@@ -502,7 +531,7 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn test_register_node_overwrites_event_inferred_type() {
-        use crate::proto::{ComponentDescriptor, Subscription};
+        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
@@ -530,31 +559,34 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: "order".into(),
                 component_type: "aggregate".into(),
-                inputs: vec![],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "fulfillment-saga".into(),
                 component_type: "saga".into(),
-                inputs: vec![Subscription {
+                inputs: vec![Target {
                     domain: "order".into(),
-                    event_types: vec![],
+                    types: vec![],
                 }],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "web".into(),
                 component_type: "projector".into(),
-                inputs: vec![Subscription {
+                inputs: vec![Target {
                     domain: "order".into(),
-                    event_types: vec![],
+                    types: vec![],
                 }],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "order-fulfillment".into(),
                 component_type: "process_manager".into(),
-                inputs: vec![Subscription {
+                inputs: vec![Target {
                     domain: "order".into(),
-                    event_types: vec![],
+                    types: vec![],
                 }],
+                ..Default::default()
             },
         ];
 
@@ -602,14 +634,34 @@ mod sqlite_tests {
         use axum::body::Body;
         use http::Request;
         use tower::ServiceExt;
+        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
 
-        let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
-        let book2 = make_event_book("fulfillment", "corr-1", &["ShipmentCreated"]);
-        projector.process_event(&book1).await.unwrap();
-        projector.process_event(&book2).await.unwrap();
+        // Register components with declarative edges
+        let descriptors = vec![
+            ComponentDescriptor {
+                name: "orders".into(),
+                component_type: "aggregate".into(),
+                ..Default::default()
+            },
+            ComponentDescriptor {
+                name: "fulfillment".into(),
+                component_type: "aggregate".into(),
+                ..Default::default()
+            },
+            ComponentDescriptor {
+                name: "order-fulfillment".into(),
+                component_type: "saga".into(),
+                inputs: vec![Target { domain: "orders".into(), types: vec![] }],
+                outputs: vec![Target {
+                    domain: "fulfillment".into(),
+                    types: vec!["CreateShipment".into()],
+                }],
+            },
+        ];
+        projector.register_components(&descriptors).await.unwrap();
 
         let app = super::super::rest::router(store as Arc<dyn TopologyStore>);
 
@@ -628,8 +680,10 @@ mod sqlite_tests {
 
         assert!(json["nodes"].is_array());
         assert!(json["edges"].is_array());
-        assert_eq!(json["nodes"].as_array().unwrap().len(), 2);
-        assert_eq!(json["edges"].as_array().unwrap().len(), 1);
+        // 3 nodes: orders, fulfillment, order-fulfillment
+        assert_eq!(json["nodes"].as_array().unwrap().len(), 3);
+        // 2 edges: orders->order-fulfillment, order-fulfillment->fulfillment
+        assert_eq!(json["edges"].as_array().unwrap().len(), 2);
 
         let node = &json["nodes"][0];
         assert!(node["id"].is_string());

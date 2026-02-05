@@ -53,9 +53,23 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-inventory-reservation/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-checkout/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/accounting/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/agg-fulfillment/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/agg-fulfillment/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/agg-inventory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/agg-inventory/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/agg-order/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/agg-order/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/mock-fraud-service/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/pmg-fulfillment/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/prj-inventory/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projection-aggregate/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projection-bridge/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/projector-inventory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/sag-fulfillment-inventory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/sag-order-fulfillment/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/sag-order-fulfillment/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/sag-order-inventory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/rust/sag-order-inventory/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-accounting-cart/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-accounting-cart/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-accounting-customer/src" isTestSource="false" />

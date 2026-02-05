@@ -3,45 +3,70 @@ kind: Config
 metadata:
   name: angzarr-go-examples
 
+# Require framework images - provides IMAGE_TAG_* template variables for deploy
 requires:
   - path: ../../skaffold.yaml
-    activeProfiles:
-      - name: local
+    configs: [angzarr-build]
 
 build:
+  tagPolicy:
+    sha256: {}
   local:
     push: true
     useBuildkit: false
+    concurrency: 0
   artifacts:
-    - image: localhost:5001/aggregate-customer-go
-      context: .
+    # Domain Aggregates
+    - image: localhost:5001/aggregate-order-go
+      context: ../..
       docker:
-        dockerfile: Containerfile
-        target: customer
+        dockerfile: examples/go/Containerfile
+        target: order
 
-    - image: localhost:5001/aggregate-transaction-go
-      context: .
+    - image: localhost:5001/aggregate-inventory-go
+      context: ../..
       docker:
-        dockerfile: Containerfile
-        target: transaction
+        dockerfile: examples/go/Containerfile
+        target: inventory
 
-    - image: localhost:5001/saga-loyalty-go
-      context: .
+    - image: localhost:5001/aggregate-fulfillment-go
+      context: ../..
       docker:
-        dockerfile: Containerfile
-        target: saga-loyalty
+        dockerfile: examples/go/Containerfile
+        target: fulfillment
 
-    - image: localhost:5001/projector-log-customer-go
-      context: .
+    # Sagas
+    - image: localhost:5001/saga-order-fulfillment-go
+      context: ../..
       docker:
-        dockerfile: Containerfile
-        target: projector-log-customer
+        dockerfile: examples/go/Containerfile
+        target: saga-fulfillment
 
-    - image: localhost:5001/projector-log-transaction-go
-      context: .
+    - image: localhost:5001/saga-order-inventory-go
+      context: ../..
       docker:
-        dockerfile: Containerfile
-        target: projector-log-transaction
+        dockerfile: examples/go/Containerfile
+        target: saga-inventory-reservation
+
+    - image: localhost:5001/saga-fulfillment-inventory-go
+      context: ../..
+      docker:
+        dockerfile: examples/go/Containerfile
+        target: sag-fulfillment-inventory
+
+    # Projectors
+    - image: localhost:5001/projector-inventory-go
+      context: ../..
+      docker:
+        dockerfile: examples/go/Containerfile
+        target: projector-inventory
+
+    # Process Managers
+    - image: localhost:5001/process-manager-fulfillment-go
+      context: ../..
+      docker:
+        dockerfile: examples/go/Containerfile
+        target: process-manager-fulfillment
 
 deploy:
   helm:
@@ -52,32 +77,40 @@ deploy:
         createNamespace: true
         valuesFiles:
           - ../../deploy/helm/angzarr/values-go.yaml
-        setValues:
-          images.command.repository: localhost:5001/angzarr-entity
-          images.command.tag: latest
-          images.projector.repository: localhost:5001/angzarr-projector
-          images.projector.tag: latest
-          images.saga.repository: localhost:5001/angzarr-saga
-          images.saga.tag: latest
-          images.stream.repository: localhost:5001/angzarr-stream
-          images.stream.tag: latest
-          images.gateway.repository: localhost:5001/angzarr-gateway
-          images.gateway.tag: latest
-          applications.business[0].image.repository: localhost:5001/aggregate-customer-go
-          applications.business[0].image.tag: latest
-          applications.business[1].image.repository: localhost:5001/aggregate-transaction-go
-          applications.business[1].image.tag: latest
-          applications.projectors[2].image.repository: localhost:5001/projector-log-customer-go
-          applications.projectors[2].image.tag: latest
-          applications.projectors[3].image.repository: localhost:5001/projector-log-transaction-go
-          applications.projectors[3].image.tag: latest
-          applications.sagas[0].image.repository: localhost:5001/saga-loyalty-go
-          applications.sagas[0].image.tag: latest
+        setValueTemplates:
+          # Framework sidecar images
+          images.aggregate.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_aggregate}}"
+          images.aggregate.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_aggregate}}"
+          images.projector.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_projector}}"
+          images.projector.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_projector}}"
+          images.saga.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_saga}}"
+          images.saga.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_saga}}"
+          images.processManager.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_process_manager}}"
+          images.processManager.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_process_manager}}"
+          images.gateway.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_gateway}}"
+          images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
+          # Business aggregate images
+          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_order_go}}"
+          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_order_go}}"
+          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_inventory_go}}"
+          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_inventory_go}}"
+          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_fulfillment_go}}"
+          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_fulfillment_go}}"
+          # Saga images
+          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_order_fulfillment_go}}"
+          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_order_fulfillment_go}}"
+          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_order_inventory_go}}"
+          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_order_inventory_go}}"
+          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_fulfillment_inventory_go}}"
+          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_fulfillment_inventory_go}}"
+          # Process Manager images
+          applications.processManagers[0].image.repository: "{{.IMAGE_REPO_localhost_5001_process_manager_fulfillment_go}}"
+          applications.processManagers[0].image.tag: "{{.IMAGE_TAG_localhost_5001_process_manager_fulfillment_go}}"
+          # Projector images
+          applications.projectors[0].image.repository: "{{.IMAGE_REPO_localhost_5001_projector_inventory_go}}"
+          applications.projectors[0].image.tag: "{{.IMAGE_TAG_localhost_5001_projector_inventory_go}}"
 
 profiles:
   - name: dev
     activation:
       - command: dev
-    build:
-      local:
-        push: true

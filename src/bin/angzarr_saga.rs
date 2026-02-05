@@ -50,6 +50,7 @@ use angzarr::orchestration::command::CommandExecutor;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use angzarr::proto::saga_client::SagaClient;
+use angzarr::proto::GetDescriptorRequest;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
@@ -68,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to saga service with retry
     let saga_addr = bootstrap.address.clone();
-    let saga_client = (|| {
+    let mut saga_client = (|| {
         let addr = saga_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
@@ -86,40 +87,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
-    // Publish component descriptor to event bus for topology discovery.
-    // Derive input domain from: explicit listen_domain > AMQP domain config > own domain.
-    let listen_domain = bootstrap
-        .config
-        .target
-        .as_ref()
-        .and_then(|t| t.listen_domain.clone())
-        .or_else(|| {
-            bootstrap
+    // Fetch descriptor from saga service - includes outputs declared by business logic
+    let descriptor = match saga_client.get_descriptor(GetDescriptorRequest {}).await {
+        Ok(resp) => resp.into_inner(),
+        Err(e) => {
+            warn!(error = %e, "Failed to fetch descriptor from saga, using fallback");
+            // Fallback: derive input domain from config
+            let listen_domain = bootstrap
                 .config
-                .messaging
+                .target
                 .as_ref()
-                .and_then(|m| m.amqp.domain.as_ref())
-                .and_then(|d| d.strip_suffix(".*").map(String::from))
-        })
-        .unwrap_or_else(|| bootstrap.domain.clone());
-    let descriptor = angzarr::proto::ComponentDescriptor {
-        name: bootstrap.domain.clone(),
-        component_type: "saga".to_string(),
-        inputs: vec![angzarr::proto::Subscription {
-            domain: listen_domain,
-            event_types: vec![],
-        }],
+                .and_then(|t| t.listen_domain.clone())
+                .or_else(|| {
+                    bootstrap
+                        .config
+                        .messaging
+                        .as_ref()
+                        .and_then(|m| m.amqp.domain.as_ref())
+                        .and_then(|d| d.strip_suffix(".*").map(String::from))
+                })
+                .unwrap_or_else(|| bootstrap.domain.clone());
+            angzarr::proto::ComponentDescriptor {
+                name: bootstrap.domain.clone(),
+                component_type: "saga".to_string(),
+                inputs: vec![angzarr::proto::Target {
+                    domain: listen_domain,
+                    types: vec![],
+                }],
+                outputs: vec![],
+            }
+        }
     };
-    if let Err(e) =
-        angzarr::proto_ext::publish_descriptors(publisher.as_ref(), std::slice::from_ref(&descriptor)).await
-    {
-        warn!(error = %e, "Failed to publish component descriptor for topology");
-    }
-    angzarr::proto_ext::spawn_descriptor_heartbeat(
-        publisher.clone(),
-        vec![descriptor],
-        std::time::Duration::from_secs(30),
+    info!(
+        name = %descriptor.name,
+        inputs = descriptor.inputs.len(),
+        outputs = descriptor.outputs.len(),
+        "Fetched saga descriptor"
     );
+    // Write descriptor to pod annotation for K8s-native topology discovery
+    if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
+        warn!(error = %e, "Failed to write descriptor annotation");
+    }
 
     // Build executor, fetcher, and factory based on configuration mode
     let handler = if let Ok(endpoints_str) = std::env::var(STATIC_ENDPOINTS_ENV_VAR) {

@@ -1,6 +1,6 @@
 //! Fulfillment-Inventory Saga gRPC server.
 
-use saga_fulfillment_inventory::FulfillmentInventorySaga;
+use sag_fulfillment_inventory::FulfillmentInventorySaga;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

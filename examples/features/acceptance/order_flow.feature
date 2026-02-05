@@ -1,4 +1,4 @@
-Feature: Complete Order Lifecycle
+.  Feature: Complete Order Lifecycle
   Tests the full business flow from order creation through fulfillment,
   validating correlation ID propagation across all domains.
 

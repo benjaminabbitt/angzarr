@@ -1,5 +1,7 @@
 package logic
 
+import "angzarr/proto/examples"
+
 // FulfillmentState represents the current state of a fulfillment aggregate.
 type FulfillmentState struct {
 	OrderID        string
@@ -9,6 +11,7 @@ type FulfillmentState struct {
 	PickerID       string
 	PackerID       string
 	Signature      string
+	Items          []*examples.LineItem
 }
 
 // Exists returns true if the shipment has been created.

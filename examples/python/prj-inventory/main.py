@@ -28,7 +28,7 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-PROJECTOR_NAME = "inventory"
+PROJECTOR_NAME = "prj-inventory"
 SOURCE_DOMAIN = "inventory"
 
 

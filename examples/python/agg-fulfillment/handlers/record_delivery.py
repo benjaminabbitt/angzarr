@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import fulfillment_pb2 as fulfillment
 
 from .state import FulfillmentState
 
@@ -24,10 +24,10 @@ def handle_record_delivery(
     if not state.is_shipped():
         raise CommandRejectedError("Shipment is not shipped")
 
-    cmd = domains.RecordDelivery()
+    cmd = fulfillment.RecordDelivery()
     command_any.Unpack(cmd)
 
-    event = domains.Delivered(
+    event = fulfillment.Delivered(
         signature=cmd.signature,
         delivered_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
     )

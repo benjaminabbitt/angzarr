@@ -3,7 +3,7 @@ package logic
 import (
 	"angzarr"
 	angzarrpb "angzarr/proto/angzarr"
-	"inventory/proto/examples"
+	"angzarr/proto/examples"
 
 	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -32,12 +32,15 @@ func HandleReserveStock(cb *angzarrpb.CommandBook, data []byte, state *Inventory
 		return nil, angzarr.NewFailedPreconditionf("Insufficient stock: available %d, requested %d", state.Available(), cmd.Quantity)
 	}
 
+	newReserved := state.Reserved + cmd.Quantity
 	events := []goproto.Message{
 		&examples.StockReserved{
 			Quantity:     cmd.Quantity,
 			OrderId:      cmd.OrderId,
 			NewAvailable: state.Available() - cmd.Quantity,
 			ReservedAt:   timestamppb.Now(),
+			NewReserved:  newReserved,
+			NewOnHand:    state.OnHand,
 		},
 	}
 

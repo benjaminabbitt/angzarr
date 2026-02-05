@@ -154,12 +154,15 @@ impl TopologyStore for MongoTopologyStore {
         node_id: &str,
         component_type: &str,
         domain: &str,
+        outputs: &[String],
         timestamp: &str,
     ) -> Result<()> {
         let filter = doc! { "id": node_id };
+        let outputs_vec: Vec<&str> = outputs.iter().map(|s| s.as_str()).collect();
         let update = doc! {
             "$set": {
                 "component_type": component_type,
+                "outputs": &outputs_vec,
             },
             "$setOnInsert": {
                 "id": node_id,
@@ -278,11 +281,21 @@ impl TopologyStore for MongoTopologyStore {
                 .deserialize_current()
                 .map_err(|e| TopologyError::Database(e.to_string()))?;
 
+            let outputs = doc
+                .get_array("outputs")
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+
             nodes.push(NodeRecord {
                 id: doc.get_str("id").unwrap_or_default().to_string(),
                 title: doc.get_str("title").unwrap_or_default().to_string(),
                 component_type: doc.get_str("component_type").unwrap_or_default().to_string(),
                 domain: doc.get_str("domain").unwrap_or_default().to_string(),
+                outputs,
                 event_count: doc.get_i64("event_count").unwrap_or(0),
                 last_event_type: doc.get_str("last_event_type").unwrap_or_default().to_string(),
                 last_seen: doc.get_str("last_seen").unwrap_or_default().to_string(),
@@ -340,6 +353,27 @@ impl TopologyStore for MongoTopologyStore {
         }
 
         Ok(edges)
+    }
+
+    async fn delete_node(&self, node_id: &str) -> Result<()> {
+        // Delete edges where this node is source or target
+        self.edges
+            .delete_many(doc! {
+                "$or": [
+                    { "source": node_id },
+                    { "target": node_id }
+                ]
+            })
+            .await
+            .map_err(|e| TopologyError::Database(e.to_string()))?;
+
+        // Delete the node
+        self.nodes
+            .delete_one(doc! { "id": node_id })
+            .await
+            .map_err(|e| TopologyError::Database(e.to_string()))?;
+
+        Ok(())
     }
 
     async fn prune_correlations(&self, older_than: &str) -> Result<u64> {

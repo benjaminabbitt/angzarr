@@ -21,15 +21,15 @@
 use prost::Message;
 
 use angzarr::proto::{
-    event_page::Sequence, CommandBook, ComponentDescriptor, Cover, EventBook, EventPage,
-    Subscription, Uuid as ProtoUuid,
+    event_page::Sequence, CommandBook, ComponentDescriptor, Cover, EventBook, EventPage, Target,
+    Uuid as ProtoUuid,
 };
 use common::proto::{ItemsPacked, PaymentSubmitted, Ship, StockReserved};
 use common::{build_command_book, now, root_id_as_string, ProcessManagerLogic};
 use uuid::Uuid;
 
-pub const PM_NAME: &str = "order-fulfillment";
-pub const PM_DOMAIN: &str = "order-fulfillment";
+pub const PM_NAME: &str = "pmg-fulfillment";
+pub const PM_DOMAIN: &str = "pmg-fulfillment";
 
 const ORDER_DOMAIN: &str = "order";
 const INVENTORY_DOMAIN: &str = "inventory";
@@ -121,19 +121,23 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
             name: PM_NAME.to_string(),
             component_type: "process_manager".to_string(),
             inputs: vec![
-                Subscription {
+                Target {
                     domain: ORDER_DOMAIN.to_string(),
-                    event_types: vec![],
+                    types: vec!["PaymentSubmitted".to_string()],
                 },
-                Subscription {
+                Target {
                     domain: INVENTORY_DOMAIN.to_string(),
-                    event_types: vec![],
+                    types: vec!["StockReserved".to_string()],
                 },
-                Subscription {
+                Target {
                     domain: FULFILLMENT_DOMAIN.to_string(),
-                    event_types: vec![],
+                    types: vec!["ItemsPacked".to_string()],
                 },
             ],
+            outputs: vec![Target {
+                domain: FULFILLMENT_DOMAIN.to_string(),
+                types: vec!["Ship".to_string()],
+            }],
         }
     }
 
@@ -527,6 +531,9 @@ mod tests {
         assert_eq!(desc.inputs[0].domain, ORDER_DOMAIN);
         assert_eq!(desc.inputs[1].domain, INVENTORY_DOMAIN);
         assert_eq!(desc.inputs[2].domain, FULFILLMENT_DOMAIN);
+        assert_eq!(desc.outputs.len(), 1);
+        assert_eq!(desc.outputs[0].domain, FULFILLMENT_DOMAIN);
+        assert_eq!(desc.outputs[0].types, vec!["Ship"]);
     }
 
     /// Merge two PM state EventBooks (simulating persisted state accumulation).

@@ -1,5 +1,5 @@
 [package]
-name = "projector-inventory"
+name = "prj-inventory"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "projector-inventory-server"
+name = "prj-inventory-server"
 path = "src/main.rs"
 
 [features]

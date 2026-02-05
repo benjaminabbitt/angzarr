@@ -3,7 +3,7 @@
 # Build dev: podman build -t go-customer --target customer -f examples/go/Containerfile .
 # Build prod: podman build --build-arg COMPRESS=true -t go-customer --target customer -f examples/go/Containerfile .
 # Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
-# Context must be repo root for proto/generated access
+# Context must be repo root for angzarr library access
 #
 # Optimizations:
 # 1. Shared deps-fetcher stage - all go.mod downloaded once
@@ -38,134 +38,100 @@ WORKDIR /app
 FROM base AS deps-fetcher
 
 # Copy ALL go.mod/go.sum files first (changes rarely)
-COPY examples/go/customer/go.mod examples/go/customer/go.sum /deps/customer/
-COPY examples/go/product/go.mod examples/go/product/go.sum /deps/product/
-COPY examples/go/cart/go.mod examples/go/cart/go.sum /deps/cart/
+# angzarr shared library - full copy needed for replace directive resolution
+COPY examples/go/angzarr/ /deps/angzarr/
 COPY examples/go/order/go.mod examples/go/order/go.sum /deps/order/
 COPY examples/go/inventory/go.mod examples/go/inventory/go.sum /deps/inventory/
 COPY examples/go/fulfillment/go.mod examples/go/fulfillment/go.sum /deps/fulfillment/
-COPY examples/go/transaction/go.mod examples/go/transaction/go.sum /deps/transaction/
 COPY examples/go/saga-fulfillment/go.mod examples/go/saga-fulfillment/go.sum /deps/saga-fulfillment/
-COPY examples/go/saga-loyalty-earn/go.mod examples/go/saga-loyalty-earn/go.sum /deps/saga-loyalty-earn/
-COPY examples/go/saga-cancellation/go.mod examples/go/saga-cancellation/go.sum /deps/saga-cancellation/
+COPY examples/go/saga-inventory-reservation/go.mod examples/go/saga-inventory-reservation/go.sum /deps/saga-inventory-reservation/
+COPY examples/go/sag-fulfillment-inventory/go.mod examples/go/sag-fulfillment-inventory/go.sum /deps/sag-fulfillment-inventory/
+COPY examples/go/projector-inventory/go.mod examples/go/projector-inventory/go.sum /deps/projector-inventory/
+COPY examples/go/process-manager-fulfillment/go.mod examples/go/process-manager-fulfillment/go.sum /deps/process-manager-fulfillment/
 
 # Download ALL dependencies in one layer with persistent cache
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     for dir in /deps/*/; do cd "$dir" && go mod download; done
-
-# ============================================================================
-# Proto/generated files layer (changes occasionally)
-# ============================================================================
-FROM deps-fetcher AS with-protos
-
-COPY proto proto/
-COPY examples/go/generated generated/
 
 # ============================================================================
 # Pre-warm build cache with common dependencies
 # ============================================================================
-FROM with-protos AS cache-warmer
+FROM deps-fetcher AS cache-warmer
 
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    cd /deps/customer && \
+# Copy angzarr to /angzarr for replace directive resolution from /build
+COPY examples/go/angzarr/ /angzarr/
+
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
+    cd /deps/order && \
     go build -v google.golang.org/grpc/... 2>/dev/null || true && \
     go build -v google.golang.org/protobuf/... 2>/dev/null || true
 
 # ============================================================================
 # Service builds - each reuses the warm cache
 # ============================================================================
-FROM cache-warmer AS build-customer
-WORKDIR /build
-COPY examples/go/customer/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-product
-WORKDIR /build
-COPY examples/go/product/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-cart
-WORKDIR /build
-COPY examples/go/cart/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
 FROM cache-warmer AS build-order
 WORKDIR /build
 COPY examples/go/order/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
 FROM cache-warmer AS build-inventory
 WORKDIR /build
 COPY examples/go/inventory/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
 FROM cache-warmer AS build-fulfillment
 WORKDIR /build
 COPY examples/go/fulfillment/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-transaction
-WORKDIR /build
-COPY examples/go/transaction/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
 FROM cache-warmer AS build-saga-fulfillment
 WORKDIR /build
 COPY examples/go/saga-fulfillment/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
-FROM cache-warmer AS build-saga-loyalty-earn
+FROM cache-warmer AS build-saga-inventory-reservation
 WORKDIR /build
-COPY examples/go/saga-loyalty-earn/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+COPY examples/go/saga-inventory-reservation/ ./
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
-FROM cache-warmer AS build-saga-cancellation
+FROM cache-warmer AS build-sag-fulfillment-inventory
 WORKDIR /build
-COPY examples/go/saga-cancellation/ ./
-RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+COPY examples/go/sag-fulfillment-inventory/ ./
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
+    go build -ldflags="${LDFLAGS}" -o /server .
+
+FROM cache-warmer AS build-projector-inventory
+WORKDIR /build
+COPY examples/go/projector-inventory/ ./
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
+    go build -ldflags="${LDFLAGS}" -o /server .
+
+FROM cache-warmer AS build-process-manager-fulfillment
+WORKDIR /build
+COPY examples/go/process-manager-fulfillment/ ./
+RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
     go build -ldflags="${LDFLAGS}" -o /server .
 
 # ============================================================================
 # UPX compression stages (conditional - only used when COMPRESS=true)
 # ============================================================================
-FROM alpine:${ALPINE_VERSION} AS upx-base
+FROM docker.io/library/alpine:${ALPINE_VERSION} AS upx-base
 RUN apk add --no-cache upx
-
-FROM upx-base AS compress-customer
-ARG COMPRESS
-COPY --from=build-customer /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-product
-ARG COMPRESS
-COPY --from=build-product /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-cart
-ARG COMPRESS
-COPY --from=build-cart /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 FROM upx-base AS compress-order
 ARG COMPRESS
@@ -182,24 +148,29 @@ ARG COMPRESS
 COPY --from=build-fulfillment /server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
-FROM upx-base AS compress-transaction
-ARG COMPRESS
-COPY --from=build-transaction /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
 FROM upx-base AS compress-saga-fulfillment
 ARG COMPRESS
 COPY --from=build-saga-fulfillment /server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
-FROM upx-base AS compress-saga-loyalty-earn
+FROM upx-base AS compress-saga-inventory-reservation
 ARG COMPRESS
-COPY --from=build-saga-loyalty-earn /server /server
+COPY --from=build-saga-inventory-reservation /server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
-FROM upx-base AS compress-saga-cancellation
+FROM upx-base AS compress-sag-fulfillment-inventory
 ARG COMPRESS
-COPY --from=build-saga-cancellation /server /server
+COPY --from=build-sag-fulfillment-inventory /server /server
+RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
+
+FROM upx-base AS compress-projector-inventory
+ARG COMPRESS
+COPY --from=build-projector-inventory /server /server
+RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
+
+FROM upx-base AS compress-process-manager-fulfillment
+ARG COMPRESS
+COPY --from=build-process-manager-fulfillment /server /server
 RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
 
 # ============================================================================
@@ -213,24 +184,6 @@ WORKDIR /app
 # ============================================================================
 # Domain Aggregates
 # ============================================================================
-FROM runtime AS customer
-COPY --from=compress-customer /server ./server
-ENV PORT=50200
-EXPOSE 50200
-ENTRYPOINT ["./server"]
-
-FROM runtime AS product
-COPY --from=compress-product /server ./server
-ENV PORT=50201
-EXPOSE 50201
-ENTRYPOINT ["./server"]
-
-FROM runtime AS cart
-COPY --from=compress-cart /server ./server
-ENV PORT=50202
-EXPOSE 50202
-ENTRYPOINT ["./server"]
-
 FROM runtime AS order
 COPY --from=compress-order /server ./server
 ENV PORT=50203
@@ -249,12 +202,6 @@ ENV PORT=50205
 EXPOSE 50205
 ENTRYPOINT ["./server"]
 
-FROM runtime AS transaction
-COPY --from=compress-transaction /server ./server
-ENV PORT=50206
-EXPOSE 50206
-ENTRYPOINT ["./server"]
-
 # ============================================================================
 # Sagas
 # ============================================================================
@@ -264,15 +211,33 @@ ENV PORT=50210
 EXPOSE 50210
 ENTRYPOINT ["./server"]
 
-FROM runtime AS saga-loyalty-earn
-COPY --from=compress-saga-loyalty-earn /server ./server
-ENV PORT=50211
-EXPOSE 50211
+FROM runtime AS saga-inventory-reservation
+COPY --from=compress-saga-inventory-reservation /server ./server
+ENV PORT=50213
+EXPOSE 50213
 ENTRYPOINT ["./server"]
 
-FROM runtime AS saga-cancellation
-COPY --from=compress-saga-cancellation /server ./server
-ENV PORT=50212
-EXPOSE 50212
+FROM runtime AS sag-fulfillment-inventory
+COPY --from=compress-sag-fulfillment-inventory /server ./server
+ENV PORT=50214
+EXPOSE 50214
+ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Projectors
+# ============================================================================
+FROM runtime AS projector-inventory
+COPY --from=compress-projector-inventory /server ./server
+ENV PORT=50220
+EXPOSE 50220
+ENTRYPOINT ["./server"]
+
+# ============================================================================
+# Process Managers
+# ============================================================================
+FROM runtime AS process-manager-fulfillment
+COPY --from=compress-process-manager-fulfillment /server ./server
+ENV PORT=50230
+EXPOSE 50230
 ENTRYPOINT ["./server"]
 

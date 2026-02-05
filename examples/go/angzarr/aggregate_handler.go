@@ -34,11 +34,11 @@ func NewAggregateHandler[S any](router *CommandRouter[S]) *AggregateHandler[S] {
 // GetDescriptor returns the aggregate's component descriptor for service discovery.
 func (h *AggregateHandler[S]) GetDescriptor(_ context.Context, _ *angzarrpb.GetDescriptorRequest) (*angzarrpb.ComponentDescriptor, error) {
 	desc := h.router.Descriptor()
-	inputs := make([]*angzarrpb.Subscription, len(desc.Inputs))
+	inputs := make([]*angzarrpb.Target, len(desc.Inputs))
 	for i, inp := range desc.Inputs {
-		inputs[i] = &angzarrpb.Subscription{
-			Domain:     inp.Domain,
-			EventTypes: inp.EventTypes,
+		inputs[i] = &angzarrpb.Target{
+			Domain: inp.Domain,
+			Types:  inp.EventTypes,
 		}
 	}
 	return &angzarrpb.ComponentDescriptor{

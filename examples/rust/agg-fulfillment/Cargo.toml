@@ -1,5 +1,5 @@
 [package]
-name = "fulfillment"
+name = "agg-fulfillment"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "fulfillment-server"
+name = "agg-fulfillment-server"
 path = "src/main.rs"
 
 [dependencies]

@@ -11,7 +11,7 @@
 # 4. Pre-compiled Python bytecode
 # 5. Multi-arch support (amd64 + arm64)
 
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.11
 
 # ============================================================================
 # Base builder - common tooling and settings
@@ -32,14 +32,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # ============================================================================
-# Proto files layer - copy generated proto (changes occasionally)
+# Library layer - copy angzarr library (includes protos in angzarr/angzarr/)
 # ============================================================================
 FROM base AS with-protos
 
-# Copy generated proto files
-COPY examples/python/generated/angzarr angzarr/
-COPY examples/python/generated/examples examples_proto/
-RUN touch angzarr/__init__.py examples_proto/__init__.py
+# Copy angzarr library - includes handlers AND protos (angzarr/angzarr/)
+COPY examples/python/angzarr angzarr/
+COPY generated/python/examples examples_proto/
+RUN touch examples_proto/__init__.py && chmod -R a+r angzarr examples_proto
 
 # ============================================================================
 # Shared venv - single virtual environment with ALL common dependencies
@@ -62,59 +62,53 @@ RUN /shared-venv/bin/python -m compileall -q /shared-venv 2>/dev/null || true
 # ============================================================================
 # Service builds - copy shared venv, add service-specific deps if needed
 # ============================================================================
-FROM shared-venv AS build-customer
-WORKDIR /service
-RUN cp -r /shared-venv .venv
-COPY examples/python/customer/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
-
-FROM shared-venv AS build-product
-WORKDIR /service
-RUN cp -r /shared-venv .venv
-COPY examples/python/product/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
-
-FROM shared-venv AS build-cart
-WORKDIR /service
-RUN cp -r /shared-venv .venv
-COPY examples/python/cart/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
-
 FROM shared-venv AS build-order
 WORKDIR /service
 RUN cp -r /shared-venv .venv
-COPY examples/python/order/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+COPY examples/python/order/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
 
 FROM shared-venv AS build-inventory
 WORKDIR /service
 RUN cp -r /shared-venv .venv
-COPY examples/python/inventory/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+COPY examples/python/inventory/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
 
 FROM shared-venv AS build-fulfillment
 WORKDIR /service
 RUN cp -r /shared-venv .venv
-COPY examples/python/fulfillment/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+COPY examples/python/fulfillment/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
 
 FROM shared-venv AS build-saga-fulfillment
 WORKDIR /service
 RUN cp -r /shared-venv .venv
-COPY examples/python/saga-fulfillment/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+COPY examples/python/saga-fulfillment/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
 
-FROM shared-venv AS build-saga-loyalty-earn
+FROM shared-venv AS build-saga-inventory-reservation
 WORKDIR /service
 RUN cp -r /shared-venv .venv
-COPY examples/python/saga-loyalty-earn/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+COPY examples/python/saga-inventory-reservation/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
 
-FROM shared-venv AS build-saga-cancellation
+FROM shared-venv AS build-sag-fulfillment-inventory
 WORKDIR /service
 RUN cp -r /shared-venv .venv
-COPY examples/python/saga-cancellation/*.py ./
-RUN .venv/bin/python -m compileall -q . 2>/dev/null || true
+COPY examples/python/sag-fulfillment-inventory/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-projector-inventory
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/projector-inventory/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
+
+FROM shared-venv AS build-process-manager-fulfillment
+WORKDIR /service
+RUN cp -r /shared-venv .venv
+COPY examples/python/process-manager-fulfillment/ ./
+RUN chmod -R a+r . && .venv/bin/python -m compileall -q . 2>/dev/null || true
 
 # ============================================================================
 # Runtime base - distroless Python (minimal, secure)
@@ -125,79 +119,87 @@ USER nonroot:nonroot
 
 # ============================================================================
 # Domain Aggregates
+# Structure: /app/angzarr/ (library), /app/service/ (main.py, handlers/)
+# This matches local dev where main.py uses parent.parent to find angzarr
 # ============================================================================
-FROM runtime AS customer
-COPY --from=build-customer --chown=nonroot:nonroot /service ./
-COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
-COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50300 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
-EXPOSE 50300
-CMD ["server.py"]
-
-FROM runtime AS product
-COPY --from=build-product --chown=nonroot:nonroot /service ./
-COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
-COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50301 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
-EXPOSE 50301
-CMD ["server.py"]
-
-FROM runtime AS cart
-COPY --from=build-cart --chown=nonroot:nonroot /service ./
-COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
-COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50302 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
-EXPOSE 50302
-CMD ["server.py"]
-
 FROM runtime AS order
-COPY --from=build-order --chown=nonroot:nonroot /service ./
+COPY --from=build-order --chown=nonroot:nonroot /service ./service/
 COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
 COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50303 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+ENV PORT=50303 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
 EXPOSE 50303
-CMD ["server.py"]
+WORKDIR /app/service
+CMD ["main.py"]
 
 FROM runtime AS inventory
-COPY --from=build-inventory --chown=nonroot:nonroot /service ./
+COPY --from=build-inventory --chown=nonroot:nonroot /service ./service/
 COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
 COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50304 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+ENV PORT=50304 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
 EXPOSE 50304
-CMD ["server.py"]
+WORKDIR /app/service
+CMD ["main.py"]
 
 FROM runtime AS fulfillment
-COPY --from=build-fulfillment --chown=nonroot:nonroot /service ./
+COPY --from=build-fulfillment --chown=nonroot:nonroot /service ./service/
 COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
 COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50305 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+ENV PORT=50305 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
 EXPOSE 50305
-CMD ["server.py"]
+WORKDIR /app/service
+CMD ["main.py"]
 
 # ============================================================================
 # Sagas
 # ============================================================================
 FROM runtime AS saga-fulfillment
-COPY --from=build-saga-fulfillment --chown=nonroot:nonroot /service ./
+COPY --from=build-saga-fulfillment --chown=nonroot:nonroot /service ./service/
 COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
 COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50310 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
+ENV PORT=50310 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
 EXPOSE 50310
-CMD ["server.py"]
+WORKDIR /app/service
+CMD ["main.py"]
 
-FROM runtime AS saga-loyalty-earn
-COPY --from=build-saga-loyalty-earn --chown=nonroot:nonroot /service ./
+FROM runtime AS saga-inventory-reservation
+COPY --from=build-saga-inventory-reservation --chown=nonroot:nonroot /service ./service/
 COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
 COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50311 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
-EXPOSE 50311
-CMD ["server.py"]
+ENV PORT=50313 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
+EXPOSE 50313
+WORKDIR /app/service
+CMD ["main.py"]
 
-FROM runtime AS saga-cancellation
-COPY --from=build-saga-cancellation --chown=nonroot:nonroot /service ./
+FROM runtime AS sag-fulfillment-inventory
+COPY --from=build-sag-fulfillment-inventory --chown=nonroot:nonroot /service ./service/
 COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
 COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
-ENV PORT=50312 PYTHONPATH=/app/.venv/lib/python3.12/site-packages:/app
-EXPOSE 50312
-CMD ["server.py"]
+ENV PORT=50314 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
+EXPOSE 50314
+WORKDIR /app/service
+CMD ["main.py"]
+
+# ============================================================================
+# Projectors
+# ============================================================================
+FROM runtime AS projector-inventory
+COPY --from=build-projector-inventory --chown=nonroot:nonroot /service ./service/
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50320 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
+EXPOSE 50320
+WORKDIR /app/service
+CMD ["main.py"]
+
+# ============================================================================
+# Process Managers
+# ============================================================================
+FROM runtime AS process-manager-fulfillment
+COPY --from=build-process-manager-fulfillment --chown=nonroot:nonroot /service ./service/
+COPY --from=with-protos --chown=nonroot:nonroot /app/angzarr ./angzarr
+COPY --from=with-protos --chown=nonroot:nonroot /app/examples_proto ./examples_proto
+ENV PORT=50330 PYTHONPATH=/app/service/.venv/lib/python3.11/site-packages:/app/service:/app
+EXPOSE 50330
+WORKDIR /app/service
+CMD ["main.py"]
 

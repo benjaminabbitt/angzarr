@@ -1,4 +1,4 @@
-use process_manager_fulfillment::OrderFulfillmentProcess;
+use pmg_fulfillment::OrderFulfillmentProcess;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

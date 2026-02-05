@@ -3,15 +3,16 @@ members = [
     ".",
     "angzarr-client/rust",
     "examples/rust/common",
-    "examples/rust/order",
-    "examples/rust/inventory",
-    "examples/rust/fulfillment",
-    "examples/rust/saga-order-fulfillment",
-    "examples/rust/saga-order-inventory",
-    "examples/rust/saga-fulfillment-inventory",
-    "examples/rust/process-manager-fulfillment",
-    "examples/rust/projector-inventory",
+    "examples/rust/agg-order",
+    "examples/rust/agg-inventory",
+    "examples/rust/agg-fulfillment",
+    "examples/rust/sag-order-fulfillment",
+    "examples/rust/sag-order-inventory",
+    "examples/rust/sag-fulfillment-inventory",
+    "examples/rust/pmg-fulfillment",
+    "examples/rust/prj-inventory",
     "examples/rust/e2e",
+    "examples/rust/mock-fraud-service",
 ]
 resolver = "2"
 
@@ -34,12 +35,19 @@ chrono = "0.4"
 hex = "0.4"
 thiserror = "2"
 
+# HTTP client and serialization for external service calls
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Testing
 cucumber = "0.21"
+
+# HTTP server for mock services
+axum = { version = "0.7", features = ["json"] }
 
 # Storage (for projectors)
 sqlx = { version = "0.8", features = ["runtime-tokio"] }
@@ -121,6 +129,9 @@ sqlx = { version = "0.8", features = ["runtime-tokio"], optional = true }
 
 # Retry with backoff
 backon = "1"
+
+# HTTP client for external service calls
+reqwest = { version = "0.12", features = ["json"] }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }

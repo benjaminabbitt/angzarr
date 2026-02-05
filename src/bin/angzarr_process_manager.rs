@@ -96,20 +96,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?
         .into_inner();
 
-    let subscriptions = descriptor.inputs;
+    let subscriptions = descriptor.inputs.clone();
     info!(
         name = %descriptor.name,
         component_type = %descriptor.component_type,
         subscriptions = subscriptions.len(),
+        outputs = descriptor.outputs.len(),
         "Process manager descriptor"
     );
 
     for sub in &subscriptions {
         info!(
             domain = %sub.domain,
-            event_types = ?sub.event_types,
-            "Subscription"
+            types = ?sub.types,
+            "Input target"
         );
+    }
+
+    // Write descriptor to pod annotation for K8s-native topology discovery
+    if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
+        warn!(error = %e, "Failed to write descriptor annotation");
     }
 
     // Connect to all aggregate endpoints (business domains only)

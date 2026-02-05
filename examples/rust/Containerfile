@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
 # Rust example images - unified dev/release build
 #
-# Dev (fast):     podman build --target order-dev -t aggregate-order-rs -f examples/rust/Containerfile .
-# Release (slow): podman build --target order -t aggregate-order-rs -f examples/rust/Containerfile .
+# Dev (fast):     podman build --target agg-order-dev -t agg-order-rs -f examples/rust/Containerfile .
+# Release (slow): podman build --target agg-order -t agg-order-rs -f examples/rust/Containerfile .
 #
 # Dev uses native glibc target + debian runtime (no cross-compilation)
 # Release uses musl static target + scratch runtime (smallest images)
@@ -39,14 +39,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,id=examples-target,target=/app/target \
     cargo build --profile container-dev \
-    -p order --bin order-server \
-    -p inventory-svc --bin inventory-server \
-    -p fulfillment --bin fulfillment-server \
-    -p saga-order-fulfillment --bin saga-order-fulfillment-server \
-    -p saga-order-inventory --bin saga-order-inventory-server \
-    -p saga-fulfillment-inventory --bin saga-fulfillment-inventory-server \
-    -p process-manager-fulfillment --bin process-manager-fulfillment-server \
-    -p projector-inventory --bin projector-inventory-server && \
+    -p agg-order --bin agg-order-server \
+    -p agg-inventory --bin agg-inventory-server \
+    -p agg-fulfillment --bin agg-fulfillment-server \
+    -p sag-order-fulfillment --bin sag-order-fulfillment-server \
+    -p sag-order-inventory --bin sag-order-inventory-server \
+    -p sag-fulfillment-inventory --bin sag-fulfillment-inventory-server \
+    -p pmg-fulfillment --bin pmg-fulfillment-server \
+    -p prj-inventory --bin prj-inventory-server && \
     cp target/container-dev/*-server /tmp/
 
 # =============================================================================
@@ -89,14 +89,14 @@ RUN mkdir -p tests/integration && \
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo build --release --target x86_64-unknown-linux-musl \
-    -p order --bin order-server \
-    -p inventory-svc --bin inventory-server \
-    -p fulfillment --bin fulfillment-server \
-    -p saga-order-fulfillment --bin saga-order-fulfillment-server \
-    -p saga-order-inventory --bin saga-order-inventory-server \
-    -p saga-fulfillment-inventory --bin saga-fulfillment-inventory-server \
-    -p process-manager-fulfillment --bin process-manager-fulfillment-server \
-    -p projector-inventory --bin projector-inventory-server && \
+    -p agg-order --bin agg-order-server \
+    -p agg-inventory --bin agg-inventory-server \
+    -p agg-fulfillment --bin agg-fulfillment-server \
+    -p sag-order-fulfillment --bin sag-order-fulfillment-server \
+    -p sag-order-inventory --bin sag-order-inventory-server \
+    -p sag-fulfillment-inventory --bin sag-fulfillment-inventory-server \
+    -p pmg-fulfillment --bin pmg-fulfillment-server \
+    -p prj-inventory --bin prj-inventory-server && \
     cp target/x86_64-unknown-linux-musl/release/*-server /tmp/
 
 # =============================================================================
@@ -116,119 +116,119 @@ WORKDIR /app
 # =============================================================================
 # Dev images - Domain Aggregates
 # =============================================================================
-FROM runtime-dev-base AS order-dev
-COPY --from=builder-dev /tmp/order-server ./server
-ENV PORT=50083
-EXPOSE 50083
+FROM runtime-dev-base AS agg-order-dev
+COPY --from=builder-dev /tmp/agg-order-server ./server
+ENV PORT=50000
+EXPOSE 50000
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS inventory-dev
-COPY --from=builder-dev /tmp/inventory-server ./server
-ENV PORT=50073
-EXPOSE 50073
+FROM runtime-dev-base AS agg-inventory-dev
+COPY --from=builder-dev /tmp/agg-inventory-server ./server
+ENV PORT=50003
+EXPOSE 50003
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS fulfillment-dev
-COPY --from=builder-dev /tmp/fulfillment-server ./server
-ENV PORT=50103
-EXPOSE 50103
+FROM runtime-dev-base AS agg-fulfillment-dev
+COPY --from=builder-dev /tmp/agg-fulfillment-server ./server
+ENV PORT=50006
+EXPOSE 50006
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Dev images - Sagas
 # =============================================================================
-FROM runtime-dev-base AS saga-order-fulfillment-dev
-COPY --from=builder-dev /tmp/saga-order-fulfillment-server ./server
-ENV PORT=50123
-EXPOSE 50123
+FROM runtime-dev-base AS sag-order-fulfillment-dev
+COPY --from=builder-dev /tmp/sag-order-fulfillment-server ./server
+ENV PORT=50018
+EXPOSE 50018
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS saga-order-inventory-dev
-COPY --from=builder-dev /tmp/saga-order-inventory-server ./server
-ENV PORT=50153
-EXPOSE 50153
+FROM runtime-dev-base AS sag-order-inventory-dev
+COPY --from=builder-dev /tmp/sag-order-inventory-server ./server
+ENV PORT=50021
+EXPOSE 50021
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS saga-fulfillment-inventory-dev
-COPY --from=builder-dev /tmp/saga-fulfillment-inventory-server ./server
-ENV PORT=50127
-EXPOSE 50127
+FROM runtime-dev-base AS sag-fulfillment-inventory-dev
+COPY --from=builder-dev /tmp/sag-fulfillment-inventory-server ./server
+ENV PORT=50024
+EXPOSE 50024
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Dev images - Process Managers
 # =============================================================================
-FROM runtime-dev-base AS process-manager-fulfillment-dev
-COPY --from=builder-dev /tmp/process-manager-fulfillment-server ./server
-ENV PORT=50163
-EXPOSE 50163
+FROM runtime-dev-base AS pmg-fulfillment-dev
+COPY --from=builder-dev /tmp/pmg-fulfillment-server ./server
+ENV PORT=50039
+EXPOSE 50039
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Dev images - Projectors
 # =============================================================================
-FROM runtime-dev-base AS projector-inventory-dev
-COPY --from=builder-dev /tmp/projector-inventory-server ./server
-ENV PORT=50183
-EXPOSE 50183
+FROM runtime-dev-base AS prj-inventory-dev
+COPY --from=builder-dev /tmp/prj-inventory-server ./server
+ENV PORT=50033
+EXPOSE 50033
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Release images - Domain Aggregates
 # =============================================================================
-FROM runtime-release-base AS order
-COPY --from=builder-release /tmp/order-server ./server
-ENV PORT=50083
-EXPOSE 50083
+FROM runtime-release-base AS agg-order
+COPY --from=builder-release /tmp/agg-order-server ./server
+ENV PORT=50000
+EXPOSE 50000
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS inventory
-COPY --from=builder-release /tmp/inventory-server ./server
-ENV PORT=50073
-EXPOSE 50073
+FROM runtime-release-base AS agg-inventory
+COPY --from=builder-release /tmp/agg-inventory-server ./server
+ENV PORT=50003
+EXPOSE 50003
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS fulfillment
-COPY --from=builder-release /tmp/fulfillment-server ./server
-ENV PORT=50103
-EXPOSE 50103
+FROM runtime-release-base AS agg-fulfillment
+COPY --from=builder-release /tmp/agg-fulfillment-server ./server
+ENV PORT=50006
+EXPOSE 50006
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Release images - Sagas
 # =============================================================================
-FROM runtime-release-base AS saga-order-fulfillment
-COPY --from=builder-release /tmp/saga-order-fulfillment-server ./server
-ENV PORT=50123
-EXPOSE 50123
+FROM runtime-release-base AS sag-order-fulfillment
+COPY --from=builder-release /tmp/sag-order-fulfillment-server ./server
+ENV PORT=50018
+EXPOSE 50018
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS saga-order-inventory
-COPY --from=builder-release /tmp/saga-order-inventory-server ./server
-ENV PORT=50153
-EXPOSE 50153
+FROM runtime-release-base AS sag-order-inventory
+COPY --from=builder-release /tmp/sag-order-inventory-server ./server
+ENV PORT=50021
+EXPOSE 50021
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS saga-fulfillment-inventory
-COPY --from=builder-release /tmp/saga-fulfillment-inventory-server ./server
-ENV PORT=50127
-EXPOSE 50127
+FROM runtime-release-base AS sag-fulfillment-inventory
+COPY --from=builder-release /tmp/sag-fulfillment-inventory-server ./server
+ENV PORT=50024
+EXPOSE 50024
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Release images - Process Managers
 # =============================================================================
-FROM runtime-release-base AS process-manager-fulfillment
-COPY --from=builder-release /tmp/process-manager-fulfillment-server ./server
-ENV PORT=50163
-EXPOSE 50163
+FROM runtime-release-base AS pmg-fulfillment
+COPY --from=builder-release /tmp/pmg-fulfillment-server ./server
+ENV PORT=50039
+EXPOSE 50039
 ENTRYPOINT ["./server"]
 
 # =============================================================================
 # Release images - Projectors
 # =============================================================================
-FROM runtime-release-base AS projector-inventory
-COPY --from=builder-release /tmp/projector-inventory-server ./server
-ENV PORT=50183
-EXPOSE 50183
+FROM runtime-release-base AS prj-inventory
+COPY --from=builder-release /tmp/prj-inventory-server ./server
+ENV PORT=50033
+EXPOSE 50033
 ENTRYPOINT ["./server"]

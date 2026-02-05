@@ -241,7 +241,7 @@ impl SagaConfig {
 ///
 /// ```ignore
 /// use angzarr::standalone::ProcessManagerHandler;
-/// use angzarr::proto::{CommandBook, ComponentDescriptor, Cover, EventBook, Subscription};
+/// use angzarr::proto::{CommandBook, ComponentDescriptor, Cover, EventBook, Target};
 ///
 /// struct OrderFulfillmentPM;
 ///
@@ -251,9 +251,10 @@ impl SagaConfig {
 ///             name: "order-fulfillment".into(),
 ///             component_type: "process_manager".into(),
 ///             inputs: vec![
-///                 Subscription { domain: "order".into(), event_types: vec![] },
-///                 Subscription { domain: "inventory".into(), event_types: vec![] },
+///                 Target { domain: "order".into(), types: vec![] },
+///                 Target { domain: "inventory".into(), types: vec![] },
 ///             ],
+///             outputs: vec![],
 ///         }
 ///     }
 ///

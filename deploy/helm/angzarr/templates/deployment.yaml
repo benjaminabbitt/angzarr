@@ -144,11 +144,15 @@ spec:
           env:
             - name: ANGZARR_LOG
               value: {{ $.Values.logging.level }}
-            # Namespace for K8s service discovery
+            # Namespace and pod name for K8s service discovery and annotation writing
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             # Transport port — single gRPC server hosts both coordinator + query
             - name: ANGZARR__TRANSPORT__TCP__PORT
               value: "{{ $.Values.service.aggregatePort }}"

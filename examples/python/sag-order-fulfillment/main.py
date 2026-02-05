@@ -32,7 +32,7 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-SAGA_NAME = "fulfillment"
+SAGA_NAME = "sag-order-fulfillment"
 SOURCE_DOMAIN = "order"
 TARGET_DOMAIN = "fulfillment"
 
@@ -81,13 +81,17 @@ def execute(
         page.event.Unpack(event)
 
         cmd = fulfillment.CreateShipment(order_id=order_id)
+        cmd.items.extend(event.items)
         cmd_any = Any()
         cmd_any.Pack(cmd, type_url_prefix="type.examples/")
 
         cmd_book = types.CommandBook(
-            cover=types.Cover(domain=TARGET_DOMAIN, root=source.cover.root),
+            cover=types.Cover(
+                domain=TARGET_DOMAIN,
+                root=source.cover.root,
+                correlation_id=source.cover.correlation_id,
+            ),
             pages=[types.CommandPage(sequence=target_sequence, command=cmd_any)],
-            correlation_id=source.correlation_id,
         )
 
         commands.append(cmd_book)

@@ -104,7 +104,12 @@ if [ "$GENERATE_PYTHON" = true ]; then
     find "$PYTHON_OUT" -type d -exec touch {}/__init__.py \;
 
     # Fix imports in generated files (relative imports)
+    # Fix simple imports: import xxx_pb2 -> from . import xxx_pb2
     find "$PYTHON_OUT" -name "*_pb2*.py" -exec sed -i 's/^import \(.*\)_pb2/from . import \1_pb2/' {} \;
+    # Fix cross-package imports: from examples import xxx_pb2 -> from . import xxx_pb2
+    find "$PYTHON_OUT" -name "*_pb2*.py" -exec sed -i 's/^from examples import \(.*\)_pb2/from . import \1_pb2/' {} \;
+    # Fix cross-package imports in pyi files
+    find "$PYTHON_OUT" -name "*_pb2*.pyi" -exec sed -i 's/^from examples import \(.*\)_pb2/from . import \1_pb2/' {} \;
 
     echo "Python protos generated in $PYTHON_OUT"
     echo ""

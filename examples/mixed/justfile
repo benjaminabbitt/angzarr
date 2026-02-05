@@ -1,0 +1,22 @@
+# Mixed-language deployment justfile
+# Demonstrates running Rust, Go, and Python components together
+
+TOP := `git rev-parse --show-toplevel`
+
+# Deploy mixed-language examples to local k8s cluster
+deploy:
+    cd {{TOP}} && skaffold run -f examples/mixed/skaffold.yaml
+
+# Deploy with file watching for development
+dev:
+    cd {{TOP}} && skaffold dev -f examples/mixed/skaffold.yaml
+
+# Delete the deployment
+delete:
+    cd {{TOP}} && skaffold delete -f examples/mixed/skaffold.yaml
+
+# Show deployment status
+status:
+    kubectl get pods -n angzarr
+    @echo ""
+    kubectl get svc -n angzarr

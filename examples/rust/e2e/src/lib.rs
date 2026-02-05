@@ -6,6 +6,7 @@
 pub mod adapters;
 pub mod backend;
 pub mod coverage;
+pub mod mock_services;
 pub mod projectors;
 
 use std::collections::HashMap;

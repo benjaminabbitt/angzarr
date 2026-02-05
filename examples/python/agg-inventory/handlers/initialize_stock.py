@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import inventory_pb2 as inventory
 
 from handlers.state import InventoryState
 
@@ -22,7 +22,7 @@ def handle_initialize_stock(
     if state.exists():
         raise CommandRejectedError("Inventory already initialized")
 
-    cmd = domains.InitializeStock()
+    cmd = inventory.InitializeStock()
     command_any.Unpack(cmd)
 
     if not cmd.product_id:
@@ -32,7 +32,7 @@ def handle_initialize_stock(
     if cmd.low_stock_threshold < 0:
         raise CommandRejectedError("Low stock threshold cannot be negative")
 
-    event = domains.StockInitialized(
+    event = inventory.StockInitialized(
         product_id=cmd.product_id,
         quantity=cmd.quantity,
         low_stock_threshold=cmd.low_stock_threshold,

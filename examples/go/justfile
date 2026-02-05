@@ -60,6 +60,32 @@ helm-lint:
 # Container Images
 # ============================================================================
 
+# Build all Go service images (no cache) and push to local registry
+images-push:
+    #!/usr/bin/env bash
+    set -e
+    REGISTRY="localhost:5001"
+    TARGETS=(
+        "order:aggregate-order-go"
+        "inventory:aggregate-inventory-go"
+        "fulfillment:aggregate-fulfillment-go"
+        "saga-fulfillment:saga-order-fulfillment-go"
+        "saga-inventory-reservation:saga-order-inventory-go"
+        "sag-fulfillment-inventory:saga-fulfillment-inventory-go"
+        "projector-inventory:projector-inventory-go"
+        "process-manager-fulfillment:process-manager-fulfillment-go"
+    )
+    cd {{TOP}}
+    for entry in "${TARGETS[@]}"; do
+        target="${entry%%:*}"
+        image="${entry##*:}"
+        echo "=== Building $image ==="
+        podman build --no-cache -f examples/go/Containerfile --target "$target" -t "$REGISTRY/$image:latest" .
+        echo "=== Pushing $image ==="
+        podman push "$REGISTRY/$image:latest" --tls-verify=false
+    done
+    echo "All Go images built and pushed."
+
 # Build dev container
 container-build:
     cd {{TOP}} && podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .

@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	PMName   = "order-fulfillment"
-	PMDomain = "order-fulfillment"
+	PMName   = "pmg-fulfillment"
+	PMDomain = "pmg-fulfillment"
 
 	fulfillmentDomain = "fulfillment"
 

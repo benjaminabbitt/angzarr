@@ -42,10 +42,10 @@ type Descriptor struct {
 	Inputs        []SubscriptionDesc
 }
 
-// SubscriptionDesc describes what a component subscribes to.
+// SubscriptionDesc describes what a component subscribes to (maps to Target in proto).
 type SubscriptionDesc struct {
 	Domain     string
-	EventTypes []string
+	EventTypes []string // maps to Types in proto
 }
 
 // ============================================================================

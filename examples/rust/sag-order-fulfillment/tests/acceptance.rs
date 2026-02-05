@@ -11,7 +11,7 @@ use angzarr::proto::{
 };
 use common::proto::{CreateShipment, OrderCancelled, OrderCompleted, OrderCreated};
 use common::SagaLogic;
-use saga_order_fulfillment::OrderFulfillmentSaga;
+use sag_order_fulfillment::OrderFulfillmentSaga;
 
 #[derive(Debug, Default, World)]
 pub struct SagaWorld {

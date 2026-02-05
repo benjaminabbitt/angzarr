@@ -200,7 +200,7 @@ run-saga DOMAIN: build-angzarr build
     
     # Start saga logic in background
     # It will listen on $UDS_BASE_PATH/saga-$DOMAIN.sock
-    ./target/debug/saga-{{DOMAIN}}-server &
+    ./target/debug/sag-{{DOMAIN}}-server &
     SAGA_PID=$!
     
     # Start angzarr sidecar
@@ -224,7 +224,7 @@ run-projector NAME DOMAIN: build-angzarr build
     export DOMAIN={{DOMAIN}}
     
     # Start projector logic in background
-    ./target/debug/projector-{{NAME}}-server &
+    ./target/debug/prj-{{NAME}}-server &
     PROJ_PID=$!
     
     # Start angzarr sidecar
@@ -245,7 +245,7 @@ run-pm DOMAIN: build-angzarr build
     export DOMAIN={{DOMAIN}}
     
     # Start PM logic in background
-    ./target/debug/process-manager-{{DOMAIN}}-server &
+    ./target/debug/pmg-{{DOMAIN}}-server &
     PM_PID=$!
     
     # Start angzarr sidecar

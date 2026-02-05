@@ -253,19 +253,20 @@ message EventStreamFilter {
   string correlation_id = 1;
 }
 
-// Event subscription filter — declares which domain a component subscribes to.
-// event_types auto-derived from router registrations, never manually configured.
-message Subscription {
+// Domain target with message types — used for both inputs (events) and outputs (commands).
+// Types are auto-derived from router registrations, never manually configured.
+message Target {
   string domain = 1;
-  repeated string event_types = 2;
+  repeated string types = 2;
 }
 
 // Self-description of a runtime component (aggregate, saga, projector, process_manager).
-// Inputs are declared; outputs are discovered at runtime by the topology projector.
+// Topology graph is built entirely from descriptors - no runtime discovery.
 message ComponentDescriptor {
   string name = 1;
   string component_type = 2;
-  repeated Subscription inputs = 3;
+  repeated Target inputs = 3;   // Domains I subscribe to (event types I consume)
+  repeated Target outputs = 4;  // Domains I send commands to (command types I emit)
 }
 
 // Request for GetDescriptor RPC.

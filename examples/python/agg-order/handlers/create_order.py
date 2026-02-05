@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import order_pb2 as order
 
 from .state import OrderState
 
@@ -22,20 +22,25 @@ def handle_create_order(
     if state.exists():
         raise CommandRejectedError("Order already exists")
 
-    cmd = domains.CreateOrder()
+    cmd = order.CreateOrder()
     command_any.Unpack(cmd)
 
     if not cmd.customer_id:
         raise CommandRejectedError("Customer ID is required")
     if not cmd.items:
         raise CommandRejectedError("Order must have at least one item")
+    for item in cmd.items:
+        if item.quantity <= 0:
+            raise CommandRejectedError("Item quantity must be positive")
 
     subtotal = sum(item.quantity * item.unit_price_cents for item in cmd.items)
 
-    event = domains.OrderCreated(
+    event = order.OrderCreated(
         customer_id=cmd.customer_id,
         subtotal_cents=subtotal,
         created_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+        customer_root=cmd.customer_root,
+        cart_root=cmd.cart_root,
     )
     event.items.extend(cmd.items)
 

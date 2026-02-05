@@ -111,7 +111,28 @@ use angzarr::storage::SqliteTopologyStore;
 use tokio::sync::OnceCell;
 
 use crate::adapters::{AggregateLogicAdapter, SagaLogicAdapter};
+use crate::mock_services::MockFraudServer;
 use crate::projectors::create_projector_pool;
+
+/// Shared mock fraud server across all test scenarios.
+///
+/// Configured with standard test responses:
+/// - CUST-FRAUD -> declined
+/// - CUST-REVIEW -> review_required
+/// - Any other customer_id -> approved (default)
+static SHARED_FRAUD_SERVER: OnceCell<Arc<MockFraudServer>> = OnceCell::const_new();
+
+async fn shared_fraud_server() -> Arc<MockFraudServer> {
+    SHARED_FRAUD_SERVER
+        .get_or_init(|| async {
+            let mut responses = std::collections::HashMap::new();
+            responses.insert("CUST-FRAUD".to_string(), "declined".to_string());
+            responses.insert("CUST-REVIEW".to_string(), "review_required".to_string());
+            Arc::new(MockFraudServer::start_with_responses(responses).await)
+        })
+        .await
+        .clone()
+}
 
 /// Shared topology projector across all test scenarios.
 ///
@@ -146,24 +167,31 @@ struct StandaloneBackend {
 }
 
 async fn create_standalone_with_projectors() -> BackendWithProjectors {
-    use fulfillment::FulfillmentLogic;
-    use inventory_svc::InventoryLogic;
-    use order::OrderLogic;
-    use process_manager_fulfillment::OrderFulfillmentProcess;
-    use projector_inventory::InventoryProjector;
-    use saga_order_fulfillment::OrderFulfillmentSaga;
-    use saga_order_inventory::OrderInventorySaga;
-    use saga_fulfillment_inventory::FulfillmentInventorySaga;
+    use agg_fulfillment::FulfillmentLogic;
+    use agg_inventory::InventoryLogic;
+    use agg_order::OrderLogic;
+    use pmg_fulfillment::OrderFulfillmentProcess;
+    use prj_inventory::InventoryProjector;
+    use sag_order_fulfillment::OrderFulfillmentSaga;
+    use sag_order_inventory::OrderInventorySaga;
+    use sag_fulfillment_inventory::FulfillmentInventorySaga;
+
+    // Shared mock fraud server for external service integration tests
+    let fraud_server = shared_fraud_server().await;
+    let fraud_url = fraud_server.url();
 
     // Shared topology projector — accumulates across all scenarios
     let topology_projector = shared_topology_projector().await;
+
+    // Create OrderLogic with fraud service URL for external service integration
+    let order_logic = OrderLogic::with_fraud_service_url(Some(&fraud_url));
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()
         // Topology visualization
         .register_topology(topology_projector, ProjectorConfig::async_())
         // 3 aggregate domains
-        .register_aggregate("order", AggregateLogicAdapter::new(OrderLogic::new()))
+        .register_aggregate("order", AggregateLogicAdapter::new(order_logic))
         .register_aggregate(
             "fulfillment",
             AggregateLogicAdapter::new(FulfillmentLogic::new()),

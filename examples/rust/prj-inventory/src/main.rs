@@ -1,6 +1,6 @@
 //! Inventory Projector server binary.
 
-use projector_inventory::{InventoryProjector, PROJECTOR_NAME};
+use prj_inventory::{InventoryProjector, PROJECTOR_NAME};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

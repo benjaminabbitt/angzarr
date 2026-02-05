@@ -2,30 +2,28 @@
 # Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-go.yaml -n angzarr --create-namespace
 #
 # =============================================================================
-# Port Scheme - Go (501xx range, 10 ports per domain)
+# Port Scheme - Go (50100-50199, 3 ports per component)
 # =============================================================================
-# x0: sidecar gRPC (via service.aggregatePort)
-# x1: sidecar debug
-# x5: business gRPC
-# x6: business debug
+# Per-component: +0 gRPC, +1 debug, +2 visualization
 #
-# customer:           50100-50109  (business: 50105)
-# product:            50110-50119  (business: 50115)
-# inventory:          50120-50129  (business: 50125)
-# order:              50130-50139  (business: 50135)
-# cart:               50140-50149  (business: 50145)
-# fulfillment:        50150-50159  (business: 50155)
-# saga-loyalty-earn:  50160-50169  (business: 50165)
-# saga-fulfillment:   50170-50179  (business: 50175)
-# saga-cancellation:  50180-50189  (business: 50185)
+# agg-order:              50100-50102  (gRPC: 50100)
+# agg-inventory:          50103-50105  (gRPC: 50103)
+# agg-fulfillment:        50106-50108  (gRPC: 50106)
+# sag-order-fulfillment:  50118-50120  (gRPC: 50118)
+# sag-order-inventory:    50121-50123  (gRPC: 50121)
+# sag-fulfillment-inv:    50124-50126  (gRPC: 50124)
+# prj-inventory:          50133-50135  (gRPC: 50133)
+# pmg-fulfillment:        50139-50141  (gRPC: 50139)
 # =============================================================================
 
+# Allow non-bitnami images for local development
 global:
   security:
     allowInsecureImages: true
 
 replicaCount: 1
 
+# Angzarr sidecar images (using local registry)
 images:
   aggregate:
     repository: localhost:5001/angzarr-aggregate
@@ -39,6 +37,10 @@ images:
     repository: localhost:5001/angzarr-saga
     pullPolicy: IfNotPresent
     tag: "latest"
+  processManager:
+    repository: localhost:5001/angzarr-process-manager
+    pullPolicy: IfNotPresent
+    tag: "latest"
   stream:
     repository: localhost:5001/angzarr-stream
     pullPolicy: IfNotPresent
@@ -47,7 +49,16 @@ images:
     repository: localhost:5001/angzarr-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
+  log:
+    repository: localhost:5001/angzarr-log
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  topology:
+    repository: localhost:5001/angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"
 
+# Minimal resources for local dev
 resources:
   requests:
     memory: "64Mi"
@@ -64,24 +75,104 @@ applicationResources:
     memory: "128Mi"
     cpu: "100m"
 
+# Storage configuration
 storage:
   type: mongodb
-  existingSecret: "angzarr-db-mongodb-credentials"
   mongodb:
-    uri: ""
-    database: ""
+    uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
+    database: "angzarr"
+  postgres:
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
 
+# Messaging configuration
+messaging:
+  type: "amqp"
+  amqp:
+    enabled: true
+    url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
+
+# AMQP event bus
 amqp:
   enabled: true
-  existingSecret: "angzarr-mq-credentials"
-  url: ""
+  url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
 
-rabbitmq:
+# External secrets disabled for local dev
+externalSecrets:
   enabled: false
+
+# =============================================================================
+# Backing Services - Bitnami Helm Subcharts
+# =============================================================================
+rabbitmq:
+  enabled: true
+  fullnameOverride: "angzarr-mq-rabbitmq"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/rabbitmq
+    tag: "4.0"
+  auth:
+    username: "angzarr"
+    password: "angzarr-dev"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
 
 mongodb:
+  enabled: true
+  fullnameOverride: "angzarr-db-mongodb"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/mongodb
+    tag: "8.0"
+  auth:
+    rootUsername: "root"
+    rootPassword: "angzarr-root-dev"
+    usernames: ["angzarr"]
+    passwords: ["angzarr-dev"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+postgresql:
+  enabled: true
+  fullnameOverride: "angzarr-db-postgresql"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/postgresql
+    tag: "17"
+  auth:
+    postgresPassword: "angzarr-postgres-dev"
+    username: "angzarr"
+    password: "angzarr-dev"
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+kafka:
   enabled: false
 
+# Central infrastructure services
 infrastructure:
   stream:
     enabled: true
@@ -114,87 +205,107 @@ infrastructure:
         memory: "256Mi"
         cpu: "250m"
 
+  log:
+    enabled: true
+    replicas: 1
+    port: 50051
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Business applications - each gets angzarr as sidecar
 applications:
   business:
-    # E-commerce Domain Aggregates (Go: 501xx range)
-    - name: aggregate-customer-go
+    # E-commerce Domain Aggregates (Go: 50100-50199)
+    - name: agg-order-go
       image:
-        repository: localhost:5001/aggregate-customer-go
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "customer"
-      port: 50105        # customer business gRPC (50100+5)
-
-    - name: aggregate-product-go
-      image:
-        repository: localhost:5001/aggregate-product-go
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "product"
-      port: 50115        # product business gRPC (50110+5)
-
-    - name: aggregate-inventory-go
-      image:
-        repository: localhost:5001/aggregate-inventory-go
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "inventory"
-      port: 50125        # inventory business gRPC (50120+5)
-
-    - name: aggregate-order-go
-      image:
-        repository: localhost:5001/aggregate-order-go
+        repository: localhost:5001/agg-order-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
-      port: 50135        # order business gRPC (50130+5)
+      port: 50100        # order gRPC (50100-50102)
 
-    - name: aggregate-cart-go
+    - name: agg-inventory-go
       image:
-        repository: localhost:5001/aggregate-cart-go
+        repository: localhost:5001/agg-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "cart"
-      port: 50145        # cart business gRPC (50140+5)
+      domain: "inventory"
+      port: 50103        # inventory gRPC (50103-50105)
 
-    - name: aggregate-fulfillment-go
+    - name: agg-fulfillment-go
       image:
-        repository: localhost:5001/aggregate-fulfillment-go
+        repository: localhost:5001/agg-fulfillment-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
-      port: 50155        # fulfillment business gRPC (50150+5)
+      port: 50106        # fulfillment gRPC (50106-50108)
 
-  projectors: []
+  projectors:
+    # Inventory Projector - logs inventory stock changes
+    - name: prj-inventory-go
+      image:
+        repository: localhost:5001/prj-inventory-go
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50133        # prj-inventory gRPC (50133-50135)
+      topics:
+        - "inventory"
 
   sagas:
-    - name: saga-loyalty-earn-go
+    # Order-Fulfillment Saga - creates shipments when orders complete
+    - name: sag-order-fulfillment-go
       image:
-        repository: localhost:5001/saga-loyalty-earn-go
+        repository: localhost:5001/sag-order-fulfillment-go
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50165        # saga-loyalty-earn business gRPC (50160+5)
+      domain: "sag-order-fulfillment"
+      port: 50118        # sag-order-fulfillment gRPC (50118-50120)
       topics:
         - "order.*"
 
-    - name: saga-fulfillment-go
+    # Order-Inventory Saga - reserves stock when orders are created
+    - name: sag-order-inventory-go
       image:
-        repository: localhost:5001/saga-fulfillment-go
+        repository: localhost:5001/sag-order-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50175        # saga-fulfillment business gRPC (50170+5)
+      domain: "sag-order-inventory"
+      port: 50121        # sag-order-inventory gRPC (50121-50123)
       topics:
         - "order.*"
 
-    - name: saga-cancellation-go
+    # Fulfillment-Inventory Saga - commits inventory when shipments ship
+    - name: sag-fulfillment-inventory-go
       image:
-        repository: localhost:5001/saga-cancellation-go
+        repository: localhost:5001/sag-fulfillment-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50185        # saga-cancellation business gRPC (50180+5)
+      domain: "sag-fulfillment-inventory"
+      port: 50124        # sag-fulfillment-inventory gRPC (50124-50126)
+      topics:
+        - "fulfillment.*"
+
+  processManagers:
+    # Order Fulfillment PM - fan-in: payment + inventory + fulfillment -> Ship
+    - name: pmg-fulfillment-go
+      image:
+        repository: localhost:5001/pmg-fulfillment-go
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "pmg-fulfillment"
+      port: 50139        # pmg-fulfillment gRPC (50139-50141)
       topics:
         - "order.*"
+        - "inventory.*"
+        - "fulfillment.*"
 
+# Service configuration
 service:
   type: NodePort
   aggregatePort: 1310
@@ -203,10 +314,8 @@ service:
     enabled: true
     aggregate: 31310
 
-# Enable remote debugging (adds SYS_PTRACE capability)
-# Note: Go uses delve for debugging, not gdb
 debug:
-  enabled: true
+  enabled: false
 
 logging:
   level: info

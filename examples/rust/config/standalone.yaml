@@ -32,13 +32,13 @@ standalone:
   sagas:
     - domain: order-fulfillment
       listen_domain: order
-      command: ["../../target/debug/saga-order-fulfillment-server"]
+      command: ["../../target/debug/sag-order-fulfillment-server"]
     - domain: order-inventory
       listen_domain: order
-      command: ["../../target/debug/saga-order-inventory-server"]
+      command: ["../../target/debug/sag-order-inventory-server"]
     - domain: fulfillment-inventory
       listen_domain: fulfillment
-      command: ["../../target/debug/saga-fulfillment-inventory-server"]
+      command: ["../../target/debug/sag-fulfillment-inventory-server"]
     - domain: cancellation
       listen_domain: order
       command: ["../../target/debug/saga-cancellation-server"]

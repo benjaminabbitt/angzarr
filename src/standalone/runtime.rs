@@ -17,7 +17,7 @@ use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
 use crate::orchestration::saga::local::LocalSagaContextFactory;
-use crate::proto::{CommandBook, ComponentDescriptor, Subscription};
+use crate::proto::{CommandBook, ComponentDescriptor, Target};
 use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
@@ -287,7 +287,7 @@ impl Runtime {
                 fetcher.clone(),
                 executor.clone(),
             )
-            .with_subscriptions(subscriptions);
+            .with_targets(subscriptions);
             let sub = event_bus
                 .create_subscriber(&format!("pm-{name}"), None)
                 .await?;
@@ -426,9 +426,9 @@ impl Runtime {
                 desc.inputs = config
                     .domains
                     .iter()
-                    .map(|d| Subscription {
+                    .map(|d| Target {
                         domain: d.clone(),
-                        event_types: vec![],
+                        types: vec![],
                     })
                     .collect();
             }
@@ -444,9 +444,9 @@ impl Runtime {
                 desc.component_type = "saga".to_string();
             }
             if desc.inputs.is_empty() {
-                desc.inputs = vec![Subscription {
+                desc.inputs = vec![Target {
                     domain: config.input_domain.clone(),
-                    event_types: vec![],
+                    types: vec![],
                 }];
             }
             descriptors.push(desc);

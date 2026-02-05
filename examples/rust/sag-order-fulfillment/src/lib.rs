@@ -17,8 +17,8 @@ pub struct OrderFulfillmentSaga {
 impl OrderFulfillmentSaga {
     pub fn new() -> Self {
         Self {
-            router: EventRouter::new("order-fulfillment", "order")
-                .output(TARGET_DOMAIN)
+            router: EventRouter::new("sag-order-fulfillment", "order")
+                .sends(TARGET_DOMAIN, "CreateShipment")
                 .on("OrderCompleted", handle_order_completed),
         }
     }

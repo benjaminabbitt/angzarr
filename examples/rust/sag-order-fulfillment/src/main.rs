@@ -1,6 +1,6 @@
 //! Order-Fulfillment Saga gRPC server.
 
-use saga_order_fulfillment::OrderFulfillmentSaga;
+use sag_order_fulfillment::OrderFulfillmentSaga;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

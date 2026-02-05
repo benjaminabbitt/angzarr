@@ -2,30 +2,30 @@
 # Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-python.yaml -n angzarr --create-namespace
 #
 # =============================================================================
-# Port Scheme - Python (502xx range, 10 ports per domain)
+# Port Scheme - Python (50200-50299, 3 ports per component)
 # =============================================================================
-# x0: sidecar gRPC (via service.aggregatePort)
-# x1: sidecar debug
-# x5: business gRPC
-# x6: business debug
+# Per-component: +0 gRPC, +1 debug, +2 visualization
 #
-# customer:           50200-50209  (business: 50205)
-# product:            50210-50219  (business: 50215)
-# inventory:          50220-50229  (business: 50225)
-# order:              50230-50239  (business: 50235)
-# cart:               50240-50249  (business: 50245)
-# fulfillment:        50250-50259  (business: 50255)
-# saga-loyalty-earn:  50260-50269  (business: 50265)
-# saga-fulfillment:   50270-50279  (business: 50275)
-# saga-cancellation:  50280-50289  (business: 50285)
+# agg-order:              50200-50202  (gRPC: 50200)
+# agg-inventory:          50203-50205  (gRPC: 50203)
+# agg-fulfillment:        50206-50208  (gRPC: 50206)
+# sag-order-fulfillment:  50218-50220  (gRPC: 50218)
+# sag-order-inventory:    50221-50223  (gRPC: 50221)
+# sag-fulfillment-inv:    50224-50226  (gRPC: 50224)
+# prj-inventory:          50233-50235  (gRPC: 50233)
+# pmg-fulfillment:        50239-50241  (gRPC: 50239)
 # =============================================================================
 
+# Allow non-bitnami images for local development
 global:
   security:
     allowInsecureImages: true
 
 replicaCount: 1
 
+# Angzarr sidecar images (using local registry)
+# All images use sha256 tags - skaffold injects actual tags via setValueTemplates
+# pullPolicy: IfNotPresent works because new content = new sha256 tag = K8s pulls
 images:
   aggregate:
     repository: localhost:5001/angzarr-aggregate
@@ -39,6 +39,10 @@ images:
     repository: localhost:5001/angzarr-saga
     pullPolicy: IfNotPresent
     tag: "latest"
+  processManager:
+    repository: localhost:5001/angzarr-process-manager
+    pullPolicy: IfNotPresent
+    tag: "latest"
   stream:
     repository: localhost:5001/angzarr-stream
     pullPolicy: IfNotPresent
@@ -47,7 +51,16 @@ images:
     repository: localhost:5001/angzarr-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
+  log:
+    repository: localhost:5001/angzarr-log
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  topology:
+    repository: localhost:5001/angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"
 
+# Minimal resources for local dev
 resources:
   requests:
     memory: "64Mi"
@@ -58,30 +71,110 @@ resources:
 
 applicationResources:
   requests:
-    memory: "64Mi"
-    cpu: "50m"
+    memory: "32Mi"
+    cpu: "25m"
   limits:
-    memory: "256Mi"
-    cpu: "200m"
+    memory: "128Mi"
+    cpu: "100m"
 
+# Storage configuration
 storage:
   type: mongodb
-  existingSecret: "angzarr-db-mongodb-credentials"
   mongodb:
-    uri: ""
-    database: ""
+    uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
+    database: "angzarr"
+  postgres:
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
 
+# Messaging configuration
+messaging:
+  type: "amqp"
+  amqp:
+    enabled: true
+    url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
+
+# AMQP event bus
 amqp:
   enabled: true
-  existingSecret: "angzarr-mq-credentials"
-  url: ""
+  url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
 
-rabbitmq:
+# External secrets disabled for local dev
+externalSecrets:
   enabled: false
+
+# =============================================================================
+# Backing Services - Bitnami Helm Subcharts
+# =============================================================================
+rabbitmq:
+  enabled: true
+  fullnameOverride: "angzarr-mq-rabbitmq"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/rabbitmq
+    tag: "4.0"
+  auth:
+    username: "angzarr"
+    password: "angzarr-dev"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
 
 mongodb:
+  enabled: true
+  fullnameOverride: "angzarr-db-mongodb"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/mongodb
+    tag: "8.0"
+  auth:
+    rootUsername: "root"
+    rootPassword: "angzarr-root-dev"
+    usernames: ["angzarr"]
+    passwords: ["angzarr-dev"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+postgresql:
+  enabled: true
+  fullnameOverride: "angzarr-db-postgresql"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/postgresql
+    tag: "17"
+  auth:
+    postgresPassword: "angzarr-postgres-dev"
+    username: "angzarr"
+    password: "angzarr-dev"
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+kafka:
   enabled: false
 
+# Central infrastructure services
 infrastructure:
   stream:
     enabled: true
@@ -114,87 +207,107 @@ infrastructure:
         memory: "256Mi"
         cpu: "250m"
 
+  log:
+    enabled: true
+    replicas: 1
+    port: 50051
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Business applications - each gets angzarr as sidecar
 applications:
   business:
-    # E-commerce Domain Aggregates (Python: 502xx range)
-    - name: aggregate-customer-py
+    # E-commerce Domain Aggregates (Python: 50200-50299)
+    - name: agg-order-py
       image:
-        repository: localhost:5001/aggregate-customer-py
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "customer"
-      port: 50205        # customer business gRPC (50200+5)
-
-    - name: aggregate-product-py
-      image:
-        repository: localhost:5001/aggregate-product-py
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "product"
-      port: 50215        # product business gRPC (50210+5)
-
-    - name: aggregate-inventory-py
-      image:
-        repository: localhost:5001/aggregate-inventory-py
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "inventory"
-      port: 50225        # inventory business gRPC (50220+5)
-
-    - name: aggregate-order-py
-      image:
-        repository: localhost:5001/aggregate-order-py
+        repository: localhost:5001/agg-order-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
-      port: 50235        # order business gRPC (50230+5)
+      port: 50200        # order gRPC (50200-50202)
 
-    - name: aggregate-cart-py
+    - name: agg-inventory-py
       image:
-        repository: localhost:5001/aggregate-cart-py
+        repository: localhost:5001/agg-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "cart"
-      port: 50245        # cart business gRPC (50240+5)
+      domain: "inventory"
+      port: 50203        # inventory gRPC (50203-50205)
 
-    - name: aggregate-fulfillment-py
+    - name: agg-fulfillment-py
       image:
-        repository: localhost:5001/aggregate-fulfillment-py
+        repository: localhost:5001/agg-fulfillment-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
-      port: 50255        # fulfillment business gRPC (50250+5)
+      port: 50206        # fulfillment gRPC (50206-50208)
 
-  projectors: []
+  projectors:
+    # Inventory Projector - logs inventory stock changes
+    - name: prj-inventory-py
+      image:
+        repository: localhost:5001/prj-inventory-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50233        # prj-inventory gRPC (50233-50235)
+      topics:
+        - "inventory"
 
   sagas:
-    - name: saga-loyalty-earn-py
+    # Order-Fulfillment Saga - creates shipments when orders complete
+    - name: sag-order-fulfillment-py
       image:
-        repository: localhost:5001/saga-loyalty-earn-py
+        repository: localhost:5001/sag-order-fulfillment-py
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50265        # saga-loyalty-earn business gRPC (50260+5)
+      domain: "sag-order-fulfillment"
+      port: 50218        # sag-order-fulfillment gRPC (50218-50220)
       topics:
         - "order.*"
 
-    - name: saga-fulfillment-py
+    # Order-Inventory Saga - reserves stock when orders are created
+    - name: sag-order-inventory-py
       image:
-        repository: localhost:5001/saga-fulfillment-py
+        repository: localhost:5001/sag-order-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50275        # saga-fulfillment business gRPC (50270+5)
+      domain: "sag-order-inventory"
+      port: 50221        # sag-order-inventory gRPC (50221-50223)
       topics:
         - "order.*"
 
-    - name: saga-cancellation-py
+    # Fulfillment-Inventory Saga - commits inventory when shipments ship
+    - name: sag-fulfillment-inventory-py
       image:
-        repository: localhost:5001/saga-cancellation-py
+        repository: localhost:5001/sag-fulfillment-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
-      port: 50285        # saga-cancellation business gRPC (50280+5)
+      domain: "sag-fulfillment-inventory"
+      port: 50224        # sag-fulfillment-inventory gRPC (50224-50226)
+      topics:
+        - "fulfillment.*"
+
+  processManagers:
+    # Order Fulfillment PM - fan-in: payment + inventory + fulfillment -> Ship
+    - name: pmg-fulfillment-py
+      image:
+        repository: localhost:5001/pmg-fulfillment-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "pmg-fulfillment"
+      port: 50239        # pmg-fulfillment gRPC (50239-50241)
       topics:
         - "order.*"
+        - "inventory.*"
+        - "fulfillment.*"
 
+# Service configuration
 service:
   type: NodePort
   aggregatePort: 1310
@@ -203,10 +316,8 @@ service:
     enabled: true
     aggregate: 31310
 
-# Enable remote debugging (adds SYS_PTRACE capability)
-# Note: Python uses debugpy or pdb for debugging
 debug:
-  enabled: true
+  enabled: false
 
 logging:
   level: info

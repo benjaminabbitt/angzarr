@@ -1,12 +1,13 @@
 //! REST API for Grafana Node Graph API plugin.
 //!
 //! Serves topology data in the format expected by the `hamedkarbasi93-nodegraphapi-datasource`
-//! Grafana plugin. Endpoints:
-//! - `GET /api/health` — health check
-//! - `GET /api/graph/fields` — schema for nodes and edges
-//! - `GET /api/graph/data` — current topology graph
+//! Grafana plugin. Endpoints (both prefixes supported):
+//! - `GET /api/health` or `GET /nodegraphds/api/health` — health check
+//! - `GET /api/graph/fields` or `GET /nodegraphds/api/graph/fields` — schema for nodes and edges
+//! - `GET /api/graph/data` or `GET /nodegraphds/api/graph/data` — current topology graph
 
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -48,10 +49,15 @@ pub fn router(store: Arc<dyn TopologyStore>) -> Router {
         .allow_methods([Method::GET, Method::OPTIONS])
         .allow_headers(Any);
 
+    // The Node Graph API plugin expects endpoints at /nodegraphds/api/...
+    // We also support /api/... for direct access
     Router::new()
         .route("/api/health", get(health))
         .route("/api/graph/fields", get(graph_fields))
         .route("/api/graph/data", get(graph_data))
+        .route("/nodegraphds/api/health", get(health))
+        .route("/nodegraphds/api/graph/fields", get(graph_fields))
+        .route("/nodegraphds/api/graph/data", get(graph_data))
         .layer(cors)
         .with_state(store)
 }
@@ -108,20 +114,35 @@ async fn graph_data(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Compute incoming message counts for all nodes
+    let mut incoming_counts: HashMap<String, i64> = HashMap::new();
+    for edge in &edges {
+        *incoming_counts.entry(edge.target.clone()).or_insert(0) += edge.event_count;
+    }
+
     let graph_nodes: Vec<GraphNode> = nodes
         .into_iter()
         .map(|n| {
-            let color = domain_color(&n.domain);
+            // For sagas/PMs, use first output domain color; for aggregates, use own domain
+            let color_domain = if !n.outputs.is_empty() {
+                &n.outputs[0]
+            } else {
+                &n.domain
+            };
+            let color = domain_color(color_domain);
+
+            let processed_count = *incoming_counts.get(&n.id).unwrap_or(&0);
+
             GraphNode {
                 id: n.id.clone(),
                 title: n.id.clone(),
-                subtitle: n.domain.clone(),
-                main_stat: format!("{} events", n.event_count),
-                secondary_stat: n.component_type.clone(),
+                subtitle: n.component_type.clone(),
+                main_stat: format!("{} processed", processed_count),
+                secondary_stat: n.last_event_type.clone(),
                 color,
                 detail_component_type: n.component_type,
                 detail_domain: n.domain,
-                detail_event_count: n.event_count,
+                detail_event_count: processed_count,
                 detail_last_event_type: n.last_event_type,
                 detail_last_seen: n.last_seen,
             }
@@ -282,10 +303,27 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
 /// Summarize a JSON array of event types into a short display string.
 fn summarize_event_types(json_types: &str) -> String {
     let types: Vec<String> = serde_json::from_str(json_types).unwrap_or_default();
-    match types.len() {
-        0 => String::new(),
-        1 => types[0].clone(),
-        n => format!("{} (+{} more)", types[0], n - 1),
+
+    // Filter out wildcards and output indicators, keep actual event names
+    let filtered: Vec<&str> = types
+        .iter()
+        .filter(|t| *t != "*" && !t.starts_with('→'))
+        .map(String::as_str)
+        .collect();
+
+    match filtered.len() {
+        0 => {
+            // Only wildcards/outputs - show edge direction hint
+            if types.iter().any(|t| t.starts_with('→')) {
+                "commands".to_string()
+            } else if types.contains(&"*".to_string()) {
+                "events".to_string()
+            } else {
+                String::new()
+            }
+        }
+        1 => filtered[0].to_string(),
+        n => format!("{} (+{} more)", filtered[0], n - 1),
     }
 }
 

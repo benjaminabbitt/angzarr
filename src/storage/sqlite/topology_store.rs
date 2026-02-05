@@ -37,6 +37,7 @@ impl TopologyStore for SqliteTopologyStore {
                 title TEXT NOT NULL,
                 component_type TEXT NOT NULL,
                 domain TEXT NOT NULL,
+                outputs TEXT NOT NULL DEFAULT '[]',
                 event_count INTEGER NOT NULL DEFAULT 0,
                 last_event_type TEXT NOT NULL DEFAULT '',
                 last_seen TEXT NOT NULL,
@@ -45,6 +46,14 @@ impl TopologyStore for SqliteTopologyStore {
         )
         .execute(&self.pool)
         .await?;
+
+        // Migration: add outputs column if missing (for existing DBs)
+        sqlx::query(
+            "ALTER TABLE topology_nodes ADD COLUMN outputs TEXT NOT NULL DEFAULT '[]'",
+        )
+        .execute(&self.pool)
+        .await
+        .ok(); // Ignore error if column already exists
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS topology_edges (
@@ -153,8 +162,12 @@ impl TopologyStore for SqliteTopologyStore {
         node_id: &str,
         component_type: &str,
         domain: &str,
+        outputs: &[String],
         timestamp: &str,
     ) -> Result<()> {
+        let outputs_json =
+            serde_json::to_string(outputs).unwrap_or_else(|_| "[]".to_string());
+
         let query = Query::insert()
             .into_table(TopologyNodes::Table)
             .columns([
@@ -162,6 +175,7 @@ impl TopologyStore for SqliteTopologyStore {
                 TopologyNodes::Title,
                 TopologyNodes::ComponentType,
                 TopologyNodes::Domain,
+                TopologyNodes::Outputs,
                 TopologyNodes::EventCount,
                 TopologyNodes::LastEventType,
                 TopologyNodes::LastSeen,
@@ -172,6 +186,7 @@ impl TopologyStore for SqliteTopologyStore {
                 node_id.into(),
                 component_type.into(),
                 domain.into(),
+                outputs_json.into(),
                 0_i64.into(),
                 "registered".into(),
                 timestamp.into(),
@@ -179,7 +194,7 @@ impl TopologyStore for SqliteTopologyStore {
             ])
             .on_conflict(
                 OnConflict::column(TopologyNodes::Id)
-                    .update_columns([TopologyNodes::ComponentType])
+                    .update_columns([TopologyNodes::ComponentType, TopologyNodes::Outputs])
                     .to_owned(),
             )
             .to_string(SqliteQueryBuilder);
@@ -204,6 +219,7 @@ impl TopologyStore for SqliteTopologyStore {
                 TopologyNodes::Title,
                 TopologyNodes::ComponentType,
                 TopologyNodes::Domain,
+                TopologyNodes::Outputs,
                 TopologyNodes::EventCount,
                 TopologyNodes::LastEventType,
                 TopologyNodes::LastSeen,
@@ -214,6 +230,7 @@ impl TopologyStore for SqliteTopologyStore {
                 node_id.into(),
                 component_type.into(),
                 domain.into(),
+                "[]".into(), // Nodes created from events have no outputs
                 1_i64.into(),
                 event_type.into(),
                 timestamp.into(),
@@ -336,6 +353,7 @@ impl TopologyStore for SqliteTopologyStore {
                 TopologyNodes::Title,
                 TopologyNodes::ComponentType,
                 TopologyNodes::Domain,
+                TopologyNodes::Outputs,
                 TopologyNodes::EventCount,
                 TopologyNodes::LastEventType,
                 TopologyNodes::LastSeen,
@@ -349,15 +367,21 @@ impl TopologyStore for SqliteTopologyStore {
 
         let nodes = rows
             .iter()
-            .map(|r| NodeRecord {
-                id: r.get("id"),
-                title: r.get("title"),
-                component_type: r.get("component_type"),
-                domain: r.get("domain"),
-                event_count: r.get("event_count"),
-                last_event_type: r.get("last_event_type"),
-                last_seen: r.get("last_seen"),
-                created_at: r.get("created_at"),
+            .map(|r| {
+                let outputs_json: String = r.get("outputs");
+                let outputs: Vec<String> =
+                    serde_json::from_str(&outputs_json).unwrap_or_default();
+                NodeRecord {
+                    id: r.get("id"),
+                    title: r.get("title"),
+                    component_type: r.get("component_type"),
+                    domain: r.get("domain"),
+                    outputs,
+                    event_count: r.get("event_count"),
+                    last_event_type: r.get("last_event_type"),
+                    last_seen: r.get("last_seen"),
+                    created_at: r.get("created_at"),
+                }
             })
             .collect();
 
@@ -399,6 +423,28 @@ impl TopologyStore for SqliteTopologyStore {
             .collect();
 
         Ok(edges)
+    }
+
+    async fn delete_node(&self, node_id: &str) -> Result<()> {
+        // Delete edges where this node is source or target
+        let delete_edges = Query::delete()
+            .from_table(TopologyEdges::Table)
+            .and_where(
+                Expr::col(TopologyEdges::Source)
+                    .eq(node_id)
+                    .or(Expr::col(TopologyEdges::Target).eq(node_id)),
+            )
+            .to_string(SqliteQueryBuilder);
+        sqlx::query(&delete_edges).execute(&self.pool).await?;
+
+        // Delete the node
+        let delete_node = Query::delete()
+            .from_table(TopologyNodes::Table)
+            .and_where(Expr::col(TopologyNodes::Id).eq(node_id))
+            .to_string(SqliteQueryBuilder);
+        sqlx::query(&delete_node).execute(&self.pool).await?;
+
+        Ok(())
     }
 
     async fn prune_correlations(&self, older_than: &str) -> Result<u64> {

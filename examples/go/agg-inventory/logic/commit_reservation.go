@@ -3,7 +3,7 @@ package logic
 import (
 	"angzarr"
 	angzarrpb "angzarr/proto/angzarr"
-	"inventory/proto/examples"
+	"angzarr/proto/examples"
 
 	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,10 +27,12 @@ func HandleCommitReservation(cb *angzarrpb.CommandBook, data []byte, state *Inve
 		return nil, angzarr.NewFailedPrecondition(ErrMsgReservationNotFound)
 	}
 
+	newReserved := state.Reserved - qty
 	return angzarr.PackEvent(cb.Cover, &examples.ReservationCommitted{
 		OrderId:     cmd.OrderId,
 		Quantity:    qty,
 		NewOnHand:   state.OnHand - qty,
 		CommittedAt: timestamppb.Now(),
+		NewReserved: newReserved,
 	}, seq)
 }

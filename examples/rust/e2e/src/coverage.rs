@@ -319,7 +319,7 @@ mod integration {
 
         assert!(
             has_event(&inv_events, "ReservationCommitted"),
-            "saga-fulfillment-inventory did not trigger CommitReservation"
+            "sag-fulfillment-inventory did not trigger CommitReservation"
         );
     }
 }

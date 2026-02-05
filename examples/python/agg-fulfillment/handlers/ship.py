@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import fulfillment_pb2 as fulfillment
 
 from .state import FulfillmentState
 
@@ -24,7 +24,7 @@ def handle_ship(
     if not state.is_packing():
         raise CommandRejectedError("Shipment is not packed")
 
-    cmd = domains.Ship()
+    cmd = fulfillment.Ship()
     command_any.Unpack(cmd)
 
     if not cmd.carrier:
@@ -32,11 +32,13 @@ def handle_ship(
     if not cmd.tracking_number:
         raise CommandRejectedError("Tracking number is required")
 
-    event = domains.Shipped(
+    event = fulfillment.Shipped(
         carrier=cmd.carrier,
         tracking_number=cmd.tracking_number,
         shipped_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+        order_id=state.order_id,
     )
+    event.items.extend(state.items)
 
     event_any = Any()
     event_any.Pack(event, type_url_prefix="type.examples/")

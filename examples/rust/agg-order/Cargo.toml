@@ -1,5 +1,5 @@
 [package]
-name = "order"
+name = "agg-order"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "order-server"
+name = "agg-order-server"
 path = "src/main.rs"
 
 [dependencies]
@@ -21,6 +21,11 @@ tonic-health.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+thiserror.workspace = true
+
+# External service calls (fraud check, pricing, tax, etc.)
+reqwest.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 angzarr-client.workspace = true

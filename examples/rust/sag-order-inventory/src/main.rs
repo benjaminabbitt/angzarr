@@ -1,6 +1,6 @@
 //! Order-Inventory Saga gRPC server.
 
-use saga_order_inventory::OrderInventorySaga;
+use sag_order_inventory::OrderInventorySaga;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

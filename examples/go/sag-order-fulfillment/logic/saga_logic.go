@@ -6,13 +6,13 @@ import (
 
 	angzarrpb "angzarr/proto/angzarr"
 
-	"saga-fulfillment/proto/examples"
+	"angzarr/proto/examples"
 
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
-	SagaName     = "fulfillment"
+	SagaName     = "sag-order-fulfillment"
 	SourceDomain = "order"
 	TargetDomain = "fulfillment"
 )
@@ -33,7 +33,7 @@ func HandleOrderCompleted(event *anypb.Any, root *angzarrpb.UUID, correlationID 
 		return nil
 	}
 
-	cmd := &examples.CreateShipment{OrderId: orderID}
+	cmd := &examples.CreateShipment{OrderId: orderID, Items: evt.Items}
 	cmdAny, err := anypb.New(cmd)
 	if err != nil {
 		return nil
@@ -41,13 +41,13 @@ func HandleOrderCompleted(event *anypb.Any, root *angzarrpb.UUID, correlationID 
 
 	return []*angzarrpb.CommandBook{{
 		Cover: &angzarrpb.Cover{
-			Domain: TargetDomain,
-			Root:   root,
+			Domain:        TargetDomain,
+			Root:          root,
+			CorrelationId: correlationID,
 		},
 		Pages: []*angzarrpb.CommandPage{
 			{Command: cmdAny},
 		},
-		CorrelationId: correlationID,
 	}}
 }
 
@@ -114,7 +114,7 @@ func Execute(source *angzarrpb.EventBook, destinations []*angzarrpb.EventBook) [
 			continue
 		}
 
-		cmd := &examples.CreateShipment{OrderId: orderID}
+		cmd := &examples.CreateShipment{OrderId: orderID, Items: event.Items}
 		cmdAny, err := anypb.New(cmd)
 		if err != nil {
 			continue
@@ -122,13 +122,13 @@ func Execute(source *angzarrpb.EventBook, destinations []*angzarrpb.EventBook) [
 
 		commands = append(commands, &angzarrpb.CommandBook{
 			Cover: &angzarrpb.Cover{
-				Domain: TargetDomain,
-				Root:   source.Cover.Root,
+				Domain:        TargetDomain,
+				Root:          source.Cover.Root,
+				CorrelationId: source.Cover.CorrelationId,
 			},
 			Pages: []*angzarrpb.CommandPage{
 				{Sequence: targetSequence, Command: cmdAny},
 			},
-			CorrelationId: source.CorrelationId,
 		})
 	}
 

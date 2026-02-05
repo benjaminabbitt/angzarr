@@ -1,0 +1,331 @@
+# Mixed-language deployment for local development
+# Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-mixed.yaml -n angzarr --create-namespace
+#
+# =============================================================================
+# Port Scheme - Mixed (components use their native language ports)
+# =============================================================================
+# No port conflicts because each language has its own 100-port block:
+# - Rust:   50000-50099
+# - Go:     50100-50199
+# - Python: 50200-50299
+#
+# Default profile: Rust order, Go inventory, Python fulfillment
+# =============================================================================
+
+# Allow non-bitnami images for local development
+global:
+  security:
+    allowInsecureImages: true
+
+replicaCount: 1
+
+# Angzarr sidecar images (using local registry)
+images:
+  aggregate:
+    repository: localhost:5001/angzarr-aggregate
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  projector:
+    repository: localhost:5001/angzarr-projector
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  saga:
+    repository: localhost:5001/angzarr-saga
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  processManager:
+    repository: localhost:5001/angzarr-process-manager
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  stream:
+    repository: localhost:5001/angzarr-stream
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  gateway:
+    repository: localhost:5001/angzarr-gateway
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  log:
+    repository: localhost:5001/angzarr-log
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  topology:
+    repository: localhost:5001/angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+# Minimal resources for local dev
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "32Mi"
+    cpu: "25m"
+  limits:
+    memory: "128Mi"
+    cpu: "100m"
+
+# Storage configuration
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
+    database: "angzarr"
+  postgres:
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
+
+# Messaging configuration
+messaging:
+  type: "amqp"
+  amqp:
+    enabled: true
+    url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
+
+# AMQP event bus
+amqp:
+  enabled: true
+  url: "amqp://angzarr:angzarr-dev@angzarr-mq-rabbitmq:5672/%2F"
+
+# External secrets disabled for local dev
+externalSecrets:
+  enabled: false
+
+# =============================================================================
+# Backing Services - Bitnami Helm Subcharts
+# =============================================================================
+rabbitmq:
+  enabled: true
+  fullnameOverride: "angzarr-mq-rabbitmq"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/rabbitmq
+    tag: "4.0"
+  auth:
+    username: "angzarr"
+    password: "angzarr-dev"
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+mongodb:
+  enabled: true
+  fullnameOverride: "angzarr-db-mongodb"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/mongodb
+    tag: "8.0"
+  auth:
+    rootUsername: "root"
+    rootPassword: "angzarr-root-dev"
+    usernames: ["angzarr"]
+    passwords: ["angzarr-dev"]
+    databases: ["angzarr"]
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+postgresql:
+  enabled: true
+  fullnameOverride: "angzarr-db-postgresql"
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/postgresql
+    tag: "17"
+  auth:
+    postgresPassword: "angzarr-postgres-dev"
+    username: "angzarr"
+    password: "angzarr-dev"
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+kafka:
+  enabled: false
+
+# Central infrastructure services
+infrastructure:
+  stream:
+    enabled: true
+    replicas: 1
+    port: 1340
+    projectorPort: 1345
+    serviceType: NodePort
+    nodePort: 31340
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 9084
+    serviceType: NodePort
+    nodePort: 30084
+    streamService: "angzarr-stream:1340"
+    streamTimeoutSecs: 30
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
+  log:
+    enabled: true
+    replicas: 1
+    port: 50051
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# =============================================================================
+# Mixed-language business applications
+# Default: Rust order, Go inventory, Python fulfillment
+# =============================================================================
+applications:
+  business:
+    # Order aggregate - Rust (port 50000)
+    - name: agg-order-rs
+      image:
+        repository: localhost:5001/agg-order-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "order"
+      port: 50000
+
+    # Inventory aggregate - Go (port 50103)
+    - name: agg-inventory-go
+      image:
+        repository: localhost:5001/agg-inventory-go
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50103
+
+    # Fulfillment aggregate - Python (port 50206)
+    - name: agg-fulfillment-py
+      image:
+        repository: localhost:5001/agg-fulfillment-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "fulfillment"
+      port: 50206
+
+  projectors:
+    # Inventory Projector - Rust (port 50033)
+    - name: prj-inventory-rs
+      image:
+        repository: localhost:5001/prj-inventory-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50033
+      topics:
+        - "inventory"
+
+  sagas:
+    # Order-Fulfillment Saga - Rust (port 50018)
+    - name: sag-order-fulfillment-rs
+      image:
+        repository: localhost:5001/sag-order-fulfillment-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "sag-order-fulfillment"
+      port: 50018
+      topics:
+        - "order.*"
+
+    # Order-Inventory Saga - Go (port 50121)
+    - name: sag-order-inventory-go
+      image:
+        repository: localhost:5001/sag-order-inventory-go
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "sag-order-inventory"
+      port: 50121
+      topics:
+        - "order.*"
+
+    # Fulfillment-Inventory Saga - Python (port 50224)
+    - name: sag-fulfillment-inventory-py
+      image:
+        repository: localhost:5001/sag-fulfillment-inventory-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "sag-fulfillment-inventory"
+      port: 50224
+      topics:
+        - "fulfillment.*"
+
+  processManagers:
+    # Order Fulfillment PM - Rust (port 50039)
+    - name: pmg-fulfillment-rs
+      image:
+        repository: localhost:5001/pmg-fulfillment-rs
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "pmg-fulfillment"
+      port: 50039
+      topics:
+        - "order.*"
+        - "inventory.*"
+        - "fulfillment.*"
+
+# Service configuration
+service:
+  type: NodePort
+  aggregatePort: 1310
+  queryPort: 1315
+  nodePort:
+    enabled: true
+    aggregate: 31310
+
+debug:
+  enabled: false
+
+logging:
+  level: info
+
+autoscaling:
+  enabled: false
+
+reloader:
+  enabled: false
+
+serviceDiscovery:
+  headless: false

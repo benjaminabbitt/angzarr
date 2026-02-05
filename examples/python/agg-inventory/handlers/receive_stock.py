@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import inventory_pb2 as inventory
 
 from handlers.state import InventoryState
 
@@ -22,13 +22,13 @@ def handle_receive_stock(
     if not state.exists():
         raise CommandRejectedError("Inventory not initialized")
 
-    cmd = domains.ReceiveStock()
+    cmd = inventory.ReceiveStock()
     command_any.Unpack(cmd)
 
     if cmd.quantity <= 0:
         raise CommandRejectedError("Quantity must be positive")
 
-    event = domains.StockReceived(
+    event = inventory.StockReceived(
         quantity=cmd.quantity,
         new_on_hand=state.on_hand + cmd.quantity,
         reference=cmd.reference,

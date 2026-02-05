@@ -1,5 +1,5 @@
 [package]
-name = "saga-order-fulfillment"
+name = "sag-order-fulfillment"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "saga-order-fulfillment-server"
+name = "sag-order-fulfillment-server"
 path = "src/main.rs"
 
 [dependencies]

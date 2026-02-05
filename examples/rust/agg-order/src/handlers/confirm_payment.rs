@@ -34,6 +34,8 @@ pub fn handle_confirm_payment(
         customer_root: state.customer_root.clone(),
         cart_root: state.cart_root.clone(),
         items: state.items.clone(),
+        // Default to approved when no fraud service configured (router path)
+        fraud_check_result: "approved".to_string(),
     };
 
     Ok(build_event_response(

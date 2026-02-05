@@ -17,56 +17,63 @@ build:
     concurrency: 0
   artifacts:
     # Domain Aggregates
-    - image: localhost:5001/aggregate-order-rs
+    - image: localhost:5001/agg-order-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: order-dev
+        target: agg-order-dev
 
-    - image: localhost:5001/aggregate-inventory-rs
+    - image: localhost:5001/agg-inventory-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: inventory-dev
+        target: agg-inventory-dev
 
-    - image: localhost:5001/aggregate-fulfillment-rs
+    - image: localhost:5001/agg-fulfillment-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: fulfillment-dev
+        target: agg-fulfillment-dev
 
     # Sagas
-    - image: localhost:5001/saga-order-fulfillment-rs
+    - image: localhost:5001/sag-order-fulfillment-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-order-fulfillment-dev
+        target: sag-order-fulfillment-dev
 
-    - image: localhost:5001/saga-order-inventory-rs
+    - image: localhost:5001/sag-order-inventory-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-order-inventory-dev
+        target: sag-order-inventory-dev
 
-    - image: localhost:5001/saga-fulfillment-inventory-rs
+    - image: localhost:5001/sag-fulfillment-inventory-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: saga-fulfillment-inventory-dev
+        target: sag-fulfillment-inventory-dev
 
     # Process Managers
-    - image: localhost:5001/process-manager-fulfillment-rs
+    - image: localhost:5001/pmg-fulfillment-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: process-manager-fulfillment-dev
+        target: pmg-fulfillment-dev
 
     # Projectors
-    - image: localhost:5001/projector-inventory-rs
+    - image: localhost:5001/prj-inventory-rs
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: projector-inventory-dev
+        target: prj-inventory-dev
+
+    # Mock Services (external service integration demos)
+    - image: localhost:5001/mock-fraud-service
+      context: ../..
+      docker:
+        dockerfile: examples/rust/mock-fraud-service/Containerfile
+        target: runtime
 
 deploy:
   helm:
@@ -90,75 +97,78 @@ deploy:
           images.gateway.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_gateway}}"
           images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
           # Business aggregate images
-          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_order_rs}}"
-          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_order_rs}}"
-          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_inventory_rs}}"
-          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_inventory_rs}}"
-          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_fulfillment_rs}}"
-          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_fulfillment_rs}}"
+          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_order_rs}}"
+          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_order_rs}}"
+          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_inventory_rs}}"
+          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_inventory_rs}}"
+          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_fulfillment_rs}}"
+          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_fulfillment_rs}}"
           # Saga images
-          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_order_fulfillment_rs}}"
-          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_order_fulfillment_rs}}"
-          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_order_inventory_rs}}"
-          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_order_inventory_rs}}"
-          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_fulfillment_inventory_rs}}"
-          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_fulfillment_inventory_rs}}"
+          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_order_fulfillment_rs}}"
+          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_order_fulfillment_rs}}"
+          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_order_inventory_rs}}"
+          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_order_inventory_rs}}"
+          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_fulfillment_inventory_rs}}"
+          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_fulfillment_inventory_rs}}"
           # Process Manager images
-          applications.processManagers[0].image.repository: "{{.IMAGE_REPO_localhost_5001_process_manager_fulfillment_rs}}"
-          applications.processManagers[0].image.tag: "{{.IMAGE_TAG_localhost_5001_process_manager_fulfillment_rs}}"
+          applications.processManagers[0].image.repository: "{{.IMAGE_REPO_localhost_5001_pmg_fulfillment_rs}}"
+          applications.processManagers[0].image.tag: "{{.IMAGE_TAG_localhost_5001_pmg_fulfillment_rs}}"
           # Projector images
-          applications.projectors[0].image.repository: "{{.IMAGE_REPO_localhost_5001_projector_inventory_rs}}"
-          applications.projectors[0].image.tag: "{{.IMAGE_TAG_localhost_5001_projector_inventory_rs}}"
+          applications.projectors[0].image.repository: "{{.IMAGE_REPO_localhost_5001_prj_inventory_rs}}"
+          applications.projectors[0].image.tag: "{{.IMAGE_TAG_localhost_5001_prj_inventory_rs}}"
+          # Mock service images
+          mockServices.fraud.image.repository: "{{.IMAGE_REPO_localhost_5001_mock_fraud_service}}"
+          mockServices.fraud.image.tag: "{{.IMAGE_TAG_localhost_5001_mock_fraud_service}}"
 
 profiles:
   # Release profile - musl builds, minimal images
   - name: release
     build:
       artifacts:
-        - image: localhost:5001/aggregate-order-rs
+        - image: localhost:5001/agg-order-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: order
+            target: agg-order
 
-        - image: localhost:5001/aggregate-inventory-rs
+        - image: localhost:5001/agg-inventory-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: inventory
+            target: agg-inventory
 
-        - image: localhost:5001/aggregate-fulfillment-rs
+        - image: localhost:5001/agg-fulfillment-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: fulfillment
+            target: agg-fulfillment
 
-        - image: localhost:5001/saga-order-fulfillment-rs
+        - image: localhost:5001/sag-order-fulfillment-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: saga-order-fulfillment
+            target: sag-order-fulfillment
 
-        - image: localhost:5001/saga-order-inventory-rs
+        - image: localhost:5001/sag-order-inventory-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: saga-order-inventory
+            target: sag-order-inventory
 
-        - image: localhost:5001/saga-fulfillment-inventory-rs
+        - image: localhost:5001/sag-fulfillment-inventory-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: saga-fulfillment-inventory
+            target: sag-fulfillment-inventory
 
-        - image: localhost:5001/process-manager-fulfillment-rs
+        - image: localhost:5001/pmg-fulfillment-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: process-manager-fulfillment
+            target: pmg-fulfillment
 
-        - image: localhost:5001/projector-inventory-rs
+        - image: localhost:5001/prj-inventory-rs
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: projector-inventory
+            target: prj-inventory

@@ -105,6 +105,11 @@ pub struct OrderCompleted {
     /// order items for inventory saga routing
     #[prost(message, repeated, tag = "8")]
     pub items: ::prost::alloc::vec::Vec<LineItem>,
+    /// External service enrichment - demonstrates calling ANY external REST/gRPC service
+    /// (pricing, tax, address validation, payment gateways, analytics/ML, etc.)
+    /// Values: "approved", "review_required", "declined" - from fraud service
+    #[prost(string, tag = "9")]
+    pub fraud_check_result: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OrderCancelled {

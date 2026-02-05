@@ -32,6 +32,8 @@ pub struct NodeRecord {
     pub title: String,
     pub component_type: String,
     pub domain: String,
+    /// Output domains (command targets) from the component descriptor.
+    pub outputs: Vec<String>,
     pub event_count: i64,
     pub last_event_type: String,
     pub last_seen: String,
@@ -84,6 +86,7 @@ pub trait TopologyStore: Send + Sync + 'static {
         node_id: &str,
         component_type: &str,
         domain: &str,
+        outputs: &[String],
         timestamp: &str,
     ) -> Result<()>;
 
@@ -112,6 +115,12 @@ pub trait TopologyStore: Send + Sync + 'static {
 
     /// Retrieve all edges.
     async fn get_edges(&self) -> Result<Vec<EdgeRecord>>;
+
+    /// Delete a node and its associated edges.
+    ///
+    /// Used when a K8s pod is deleted to remove it from the topology graph.
+    /// Cascade deletes all edges where this node is source or target.
+    async fn delete_node(&self, node_id: &str) -> Result<()>;
 
     /// Delete correlations older than the given RFC3339 timestamp.
     ///

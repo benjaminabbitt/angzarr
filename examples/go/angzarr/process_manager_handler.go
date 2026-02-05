@@ -57,11 +57,11 @@ func (h *ProcessManagerHandler) WithHandle(fn PMHandleFunc) *ProcessManagerHandl
 // GetDescriptor returns the component descriptor.
 func (h *ProcessManagerHandler) GetDescriptor(_ context.Context, _ *angzarrpb.GetDescriptorRequest) (*angzarrpb.ComponentDescriptor, error) {
 	desc := h.Descriptor()
-	var inputs []*angzarrpb.Subscription
+	var inputs []*angzarrpb.Target
 	for _, input := range desc.Inputs {
-		inputs = append(inputs, &angzarrpb.Subscription{
-			Domain:     input.Domain,
-			EventTypes: input.EventTypes,
+		inputs = append(inputs, &angzarrpb.Target{
+			Domain: input.Domain,
+			Types:  input.EventTypes,
 		})
 	}
 	return &angzarrpb.ComponentDescriptor{

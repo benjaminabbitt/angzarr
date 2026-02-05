@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import fulfillment_pb2 as fulfillment
 
 from .state import FulfillmentState
 
@@ -24,13 +24,13 @@ def handle_mark_picked(
     if not state.is_pending():
         raise CommandRejectedError("Shipment is not pending")
 
-    cmd = domains.MarkPicked()
+    cmd = fulfillment.MarkPicked()
     command_any.Unpack(cmd)
 
     if not cmd.picker_id:
         raise CommandRejectedError("Picker ID is required")
 
-    event = domains.ItemsPicked(
+    event = fulfillment.ItemsPicked(
         picker_id=cmd.picker_id,
         picked_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
     )

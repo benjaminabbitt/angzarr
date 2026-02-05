@@ -98,58 +98,53 @@ pub struct PublishResult {
 // Subscription Matching
 // ============================================================================
 
-use crate::proto::Subscription;
+use crate::proto::Target;
 use crate::proto_ext::CoverExt;
 
-/// Check if an EventBook matches a subscription filter.
+/// Check if an EventBook matches a target filter.
 ///
-/// A subscription matches if:
-/// - The domain matches the subscription's domain
+/// A target matches if:
+/// - The domain matches the target's domain
 /// - AND either:
-///   - The subscription has no event_types (matches all events from domain)
-///   - OR at least one event in the book has a type_url ending with a subscribed event type
+///   - The target has no types (matches all events from domain)
+///   - OR at least one event in the book has a type_url ending with a target type
 ///
 /// # Example
 /// ```ignore
-/// let sub = Subscription {
+/// let target = Target {
 ///     domain: "order".to_string(),
-///     event_types: vec!["OrderCreated".to_string(), "OrderShipped".to_string()],
+///     types: vec!["OrderCreated".to_string(), "OrderShipped".to_string()],
 /// };
-/// if subscription_matches(&book, &sub) {
+/// if target_matches(&book, &target) {
 ///     // Process the event
 /// }
 /// ```
-pub fn subscription_matches(book: &EventBook, subscription: &Subscription) -> bool {
+pub fn target_matches(book: &EventBook, target: &Target) -> bool {
     let routing_key = book.routing_key();
 
-    // Routing key must match subscription domain (edition-prefixed)
-    if subscription.domain != routing_key {
+    // Routing key must match target domain (edition-prefixed)
+    if target.domain != routing_key {
         return false;
     }
 
-    // If no event_types specified, match all events from this domain
-    if subscription.event_types.is_empty() {
+    // If no types specified, match all events from this domain
+    if target.types.is_empty() {
         return true;
     }
 
-    // Check if any event matches any subscribed event type
+    // Check if any event matches any target type
     book.pages.iter().any(|page| {
         page.event.as_ref().is_some_and(|event| {
-            subscription
-                .event_types
-                .iter()
-                .any(|et| event.type_url.ends_with(et))
+            target.types.iter().any(|t| event.type_url.ends_with(t))
         })
     })
 }
 
-/// Check if an EventBook matches any of the given subscriptions.
+/// Check if an EventBook matches any of the given targets.
 ///
-/// Returns true if at least one subscription matches the event book.
-pub fn any_subscription_matches(book: &EventBook, subscriptions: &[Subscription]) -> bool {
-    subscriptions
-        .iter()
-        .any(|sub| subscription_matches(book, sub))
+/// Returns true if at least one target matches the event book.
+pub fn any_target_matches(book: &EventBook, targets: &[Target]) -> bool {
+    targets.iter().any(|t| target_matches(book, t))
 }
 
 /// Interface for event delivery to projectors/sagas.

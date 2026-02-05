@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import inventory_pb2 as inventory
 
 from handlers.state import InventoryState
 
@@ -22,7 +22,7 @@ def handle_reserve_stock(
     if not state.exists():
         raise CommandRejectedError("Inventory not initialized")
 
-    cmd = domains.ReserveStock()
+    cmd = inventory.ReserveStock()
     command_any.Unpack(cmd)
 
     if cmd.quantity <= 0:
@@ -40,11 +40,14 @@ def handle_reserve_stock(
 
     pages = []
 
-    reserved_event = domains.StockReserved(
+    new_reserved = state.reserved + cmd.quantity
+    reserved_event = inventory.StockReserved(
         quantity=cmd.quantity,
         order_id=cmd.order_id,
         new_available=new_available,
         reserved_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+        new_reserved=new_reserved,
+        new_on_hand=state.on_hand,
     )
     reserved_any = Any()
     reserved_any.Pack(reserved_event, type_url_prefix="type.examples/")
@@ -57,7 +60,7 @@ def handle_reserve_stock(
     )
 
     if new_available < state.low_stock_threshold and state.available() >= state.low_stock_threshold:
-        alert_event = domains.LowStockAlert(
+        alert_event = inventory.LowStockAlert(
             product_id=state.product_id,
             available=new_available,
             threshold=state.low_stock_threshold,

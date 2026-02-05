@@ -1,5 +1,5 @@
 [package]
-name = "saga-fulfillment-inventory"
+name = "sag-fulfillment-inventory"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,5 +13,5 @@ tonic = "0.12"
 uuid = { version = "1", features = ["v4", "v5"] }
 
 [[bin]]
-name = "saga-fulfillment-inventory-server"
+name = "sag-fulfillment-inventory-server"
 path = "src/main.rs"

@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{event_page::Sequence, Cover, EventPage, Uuid as ProtoUuid};
+use crate::proto::{event_page::Sequence, Cover, EventPage, Target, Uuid as ProtoUuid};
 use prost_types::Any;
 
 fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
@@ -37,89 +37,89 @@ fn test_messaging_config_default() {
 }
 
 #[test]
-fn test_subscription_matches_domain_only() {
+fn test_target_matches_domain_only() {
     let book = make_event_book("order", &["OrderCreated"]);
-    let sub = Subscription {
+    let target = Target {
         domain: "order".to_string(),
-        event_types: vec![],
+        types: vec![],
     };
-    assert!(subscription_matches(&book, &sub));
+    assert!(target_matches(&book, &target));
 }
 
 #[test]
-fn test_subscription_matches_wrong_domain() {
+fn test_target_matches_wrong_domain() {
     let book = make_event_book("order", &["OrderCreated"]);
-    let sub = Subscription {
+    let target = Target {
         domain: "inventory".to_string(),
-        event_types: vec![],
+        types: vec![],
     };
-    assert!(!subscription_matches(&book, &sub));
+    assert!(!target_matches(&book, &target));
 }
 
 #[test]
-fn test_subscription_matches_specific_event_type() {
+fn test_target_matches_specific_event_type() {
     let book = make_event_book("order", &["OrderCreated", "OrderShipped"]);
-    let sub = Subscription {
+    let target = Target {
         domain: "order".to_string(),
-        event_types: vec!["OrderCreated".to_string()],
+        types: vec!["OrderCreated".to_string()],
     };
-    assert!(subscription_matches(&book, &sub));
+    assert!(target_matches(&book, &target));
 }
 
 #[test]
-fn test_subscription_matches_event_type_not_present() {
+fn test_target_matches_event_type_not_present() {
     let book = make_event_book("order", &["OrderCreated"]);
-    let sub = Subscription {
+    let target = Target {
         domain: "order".to_string(),
-        event_types: vec!["OrderShipped".to_string()],
+        types: vec!["OrderShipped".to_string()],
     };
-    assert!(!subscription_matches(&book, &sub));
+    assert!(!target_matches(&book, &target));
 }
 
 #[test]
-fn test_any_subscription_matches_first() {
+fn test_any_target_matches_first() {
     let book = make_event_book("order", &["OrderCreated"]);
-    let subs = vec![
-        Subscription {
+    let targets = vec![
+        Target {
             domain: "order".to_string(),
-            event_types: vec!["OrderCreated".to_string()],
+            types: vec!["OrderCreated".to_string()],
         },
-        Subscription {
+        Target {
             domain: "inventory".to_string(),
-            event_types: vec![],
+            types: vec![],
         },
     ];
-    assert!(any_subscription_matches(&book, &subs));
+    assert!(any_target_matches(&book, &targets));
 }
 
 #[test]
-fn test_any_subscription_matches_second() {
+fn test_any_target_matches_second() {
     let book = make_event_book("inventory", &["StockReserved"]);
-    let subs = vec![
-        Subscription {
+    let targets = vec![
+        Target {
             domain: "order".to_string(),
-            event_types: vec![],
+            types: vec![],
         },
-        Subscription {
+        Target {
             domain: "inventory".to_string(),
-            event_types: vec![],
+            types: vec![],
         },
     ];
-    assert!(any_subscription_matches(&book, &subs));
+    assert!(any_target_matches(&book, &targets));
 }
 
 #[test]
-fn test_any_subscription_matches_none() {
+fn test_any_target_matches_none() {
     let book = make_event_book("customer", &["CustomerCreated"]);
-    let subs = vec![
-        Subscription {
+    let targets = vec![
+        Target {
             domain: "order".to_string(),
-            event_types: vec![],
+            types: vec![],
         },
-        Subscription {
+        Target {
             domain: "inventory".to_string(),
-            event_types: vec![],
+            types: vec![],
         },
     ];
-    assert!(!any_subscription_matches(&book, &subs));
+    assert!(!any_target_matches(&book, &targets));
 }

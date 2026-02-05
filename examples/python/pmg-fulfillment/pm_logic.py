@@ -27,8 +27,8 @@ from google.protobuf.any_pb2 import Any
 from angzarr import types_pb2 as types
 from proto import fulfillment_pb2 as fulfillment
 
-PM_NAME = "order-fulfillment"
-PM_DOMAIN = "order-fulfillment"
+PM_NAME = "pmg-fulfillment"
+PM_DOMAIN = "pmg-fulfillment"
 
 FULFILLMENT_DOMAIN = "fulfillment"
 

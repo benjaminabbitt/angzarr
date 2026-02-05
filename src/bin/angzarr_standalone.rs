@@ -720,6 +720,7 @@ fn build_descriptors(config: &angzarr::config::Config) -> Vec<angzarr::proto::Co
             name: svc.domain.clone(),
             component_type: "aggregate".to_string(),
             inputs: vec![],
+            outputs: vec![],
         });
     }
 
@@ -728,10 +729,11 @@ fn build_descriptors(config: &angzarr::config::Config) -> Vec<angzarr::proto::Co
         descriptors.push(angzarr::proto::ComponentDescriptor {
             name: svc.domain.clone(),
             component_type: "saga".to_string(),
-            inputs: vec![angzarr::proto::Subscription {
+            inputs: vec![angzarr::proto::Target {
                 domain: listen.clone(),
-                event_types: vec![],
+                types: vec![],
             }],
+            outputs: vec![], // Sagas should declare outputs in their business logic
         });
     }
 
@@ -740,10 +742,11 @@ fn build_descriptors(config: &angzarr::config::Config) -> Vec<angzarr::proto::Co
         descriptors.push(angzarr::proto::ComponentDescriptor {
             name: svc.name.clone().unwrap_or_else(|| svc.domain.clone()),
             component_type: "projector".to_string(),
-            inputs: vec![angzarr::proto::Subscription {
+            inputs: vec![angzarr::proto::Target {
                 domain: listen.clone(),
-                event_types: vec![],
+                types: vec![],
             }],
+            outputs: vec![], // Projectors don't send commands
         });
     }
 

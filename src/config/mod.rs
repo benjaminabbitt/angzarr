@@ -73,6 +73,8 @@ pub const COMMAND_ADDRESS_ENV_VAR: &str = "COMMAND_ADDRESS";
 pub const NAMESPACE_ENV_VAR: &str = "NAMESPACE";
 /// Alternative environment variable for Kubernetes namespace (downward API).
 pub const POD_NAMESPACE_ENV_VAR: &str = "POD_NAMESPACE";
+/// Environment variable for Kubernetes pod name (downward API).
+pub const POD_NAME_ENV_VAR: &str = "POD_NAME";
 /// Environment variable for EventQuery address.
 pub const EVENT_QUERY_ADDRESS_ENV_VAR: &str = "EVENT_QUERY_ADDRESS";
 

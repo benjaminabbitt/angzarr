@@ -25,8 +25,8 @@ pub struct FulfillmentInventorySaga {
 impl FulfillmentInventorySaga {
     pub fn new() -> Self {
         Self {
-            router: EventRouter::new("fulfillment-inventory", "fulfillment")
-                .output(TARGET_DOMAIN)
+            router: EventRouter::new("sag-fulfillment-inventory", "fulfillment")
+                .sends(TARGET_DOMAIN, "CommitReservation")
                 .on("Shipped", handle_shipped),
         }
     }

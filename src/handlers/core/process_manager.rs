@@ -20,7 +20,7 @@ use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::proto::process_manager_client::ProcessManagerClient;
-use crate::proto::{EventBook, Subscription};
+use crate::proto::{EventBook, Target};
 use crate::storage::EventStore;
 use crate::utils::retry::saga_backoff;
 
@@ -32,9 +32,9 @@ pub struct ProcessManagerEventHandler {
     context_factory: Arc<dyn PMContextFactory>,
     destination_fetcher: Arc<dyn DestinationFetcher>,
     command_executor: Arc<dyn CommandExecutor>,
-    /// Subscription filter — only handle events matching these subscriptions.
+    /// Target filter — only handle events matching these targets.
     /// Empty means handle all events (distributed mode uses bus-level filtering).
-    subscriptions: Vec<Subscription>,
+    targets: Vec<Target>,
     backoff: ExponentialBuilder,
 }
 
@@ -49,14 +49,14 @@ impl ProcessManagerEventHandler {
             context_factory,
             destination_fetcher,
             command_executor,
-            subscriptions: Vec::new(),
+            targets: Vec::new(),
             backoff: saga_backoff(),
         }
     }
 
-    /// Set subscription filter for handler-level event filtering.
-    pub fn with_subscriptions(mut self, subscriptions: Vec<Subscription>) -> Self {
-        self.subscriptions = subscriptions;
+    /// Set target filter for handler-level event filtering.
+    pub fn with_targets(mut self, targets: Vec<Target>) -> Self {
+        self.targets = targets;
         self
     }
 
@@ -89,7 +89,7 @@ impl ProcessManagerEventHandler {
             context_factory: factory,
             destination_fetcher,
             command_executor,
-            subscriptions: Vec::new(),
+            targets: Vec::new(),
             backoff: saga_backoff(),
         }
     }
@@ -98,8 +98,8 @@ impl ProcessManagerEventHandler {
 impl EventHandler for ProcessManagerEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
         // Check subscription filter (handler-level filtering for standalone mode)
-        if !self.subscriptions.is_empty()
-            && !crate::bus::any_subscription_matches(&book, &self.subscriptions)
+        if !self.targets.is_empty()
+            && !crate::bus::any_target_matches(&book, &self.targets)
         {
             return Box::pin(async { Ok(()) });
         }

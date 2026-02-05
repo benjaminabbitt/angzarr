@@ -1,18 +1,25 @@
 //! angzarr-topology: Topology visualization service
 //!
-//! Subscribes to all events on the message bus and builds a topology graph
-//! of runtime components. Serves the graph via REST for Grafana's Node Graph
-//! panel using the Node Graph API plugin.
+//! Discovers components and builds a topology graph for Grafana's Node Graph panel.
+//!
+//! ## Discovery Modes
+//!
+//! - **K8s mode** (default when POD_NAMESPACE set): Watches pod annotations
+//! - **Event bus mode** (fallback): Subscribes to _meta.topology events
 //!
 //! ## Architecture
 //! ```text
+//! K8s Mode:
+//! [K8s Pods] -> [TopologyK8sWatcher] -> [TopologyProjector]
+//!                        |                      |
+//!                        v                      v
+//!                 [REST API :9099]       [Storage Backend]
+//!
+//! Event Bus Mode (legacy):
 //! [Event Bus] -> [angzarr-topology] -> [TopologyProjector]
 //!                        |                      |
 //!                        v                      v
 //!                 [REST API :9099]       [Storage Backend]
-//!                        |
-//!                        v
-//!                 [Grafana Node Graph]
 //! ```
 //!
 //! ## Configuration
@@ -23,7 +30,8 @@
 //! - TOPOLOGY_MONGODB_URI: MongoDB connection URI (default: mongodb://localhost:27017)
 //! - TOPOLOGY_MONGODB_DATABASE: MongoDB database name (default: angzarr)
 //! - TOPOLOGY_REDIS_URI: Redis connection URI (default: redis://localhost:6379)
-//! - MESSAGING_TYPE: amqp, kafka, or channel
+//! - MESSAGING_TYPE: amqp, kafka, or channel (for event bus mode)
+//! - POD_NAMESPACE: Enables K8s mode when set
 
 use std::sync::Arc;
 
@@ -39,9 +47,11 @@ use angzarr::config::TOPOLOGY_POSTGRES_URI_ENV_VAR;
 use angzarr::config::TOPOLOGY_REDIS_URI_ENV_VAR;
 #[cfg(feature = "sqlite")]
 use angzarr::config::TOPOLOGY_SQLITE_PATH_ENV_VAR;
-use angzarr::config::{Config, TOPOLOGY_REST_PORT_ENV_VAR, TOPOLOGY_STORAGE_TYPE_ENV_VAR};
+use angzarr::config::{
+    Config, POD_NAMESPACE_ENV_VAR, TOPOLOGY_REST_PORT_ENV_VAR, TOPOLOGY_STORAGE_TYPE_ENV_VAR,
+};
 use angzarr::handlers::projectors::topology::store::TopologyStore;
-use angzarr::handlers::projectors::topology::TopologyProjector;
+use angzarr::handlers::projectors::topology::{TopologyK8sWatcher, TopologyProjector};
 use angzarr::proto::EventBook;
 use angzarr::utils::bootstrap::init_tracing;
 
@@ -157,41 +167,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let config_path = angzarr::utils::bootstrap::parse_config_path();
-    let config = Config::load(config_path.as_deref()).map_err(|e| {
-        error!("Failed to load configuration: {}", e);
-        e
-    })?;
+    let projector = Arc::new(TopologyProjector::new(Arc::clone(&store), rest_port));
 
-    let messaging = config
-        .messaging
-        .as_ref()
-        .ok_or("Topology service requires 'messaging' configuration")?;
+    // Detect K8s mode: use K8s watcher if POD_NAMESPACE is set
+    let k8s_mode = std::env::var(POD_NAMESPACE_ENV_VAR).is_ok();
 
-    info!(messaging_type = ?messaging.messaging_type, "connecting to event bus");
+    if k8s_mode {
+        info!("K8s mode: watching pods for descriptor annotations");
 
-    let subscriber = init_event_bus(
-        messaging,
-        EventBusMode::SubscriberAll {
-            queue: "topology".to_string(),
-        },
-    )
-    .await
-    .map_err(|e| -> Box<dyn std::error::Error> { e })?;
+        let watcher = TopologyK8sWatcher::from_env(Arc::clone(&projector), Arc::clone(&store))
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error> {
+                format!("Failed to create K8s watcher: {}", e).into()
+            })?;
 
-    let projector = Arc::new(TopologyProjector::new(store, rest_port));
+        // Run watcher in background
+        tokio::spawn(async move {
+            if let Err(e) = watcher.run().await {
+                error!(error = %e, "K8s pod watcher failed");
+            }
+        });
+    } else {
+        info!("Event bus mode: subscribing to _meta.topology events");
 
-    let handler = TopologyEventHandler { projector };
+        let config_path = angzarr::utils::bootstrap::parse_config_path();
+        let config = Config::load(config_path.as_deref()).map_err(|e| {
+            error!("Failed to load configuration: {}", e);
+            e
+        })?;
 
-    subscriber
-        .subscribe(Box::new(handler))
+        let messaging = config
+            .messaging
+            .as_ref()
+            .ok_or("Topology service requires 'messaging' configuration (or run in K8s with POD_NAMESPACE set)")?;
+
+        info!(messaging_type = ?messaging.messaging_type, "connecting to event bus");
+
+        let subscriber = init_event_bus(
+            messaging,
+            EventBusMode::SubscriberAll {
+                queue: "topology".to_string(),
+            },
+        )
         .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
-    subscriber
-        .start_consuming()
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        let handler = TopologyEventHandler {
+            projector: Arc::clone(&projector),
+        };
+
+        subscriber
+            .subscribe(Box::new(handler))
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+        subscriber
+            .start_consuming()
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    }
 
     info!("topology service running, press Ctrl+C to exit");
     tokio::signal::ctrl_c().await?;

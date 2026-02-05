@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import order_pb2 as order
 
 from .state import OrderState
 
@@ -26,16 +26,27 @@ def handle_cancel_order(
     if state.is_cancelled():
         raise CommandRejectedError("Order already cancelled")
 
-    cmd = domains.CancelOrder()
+    cmd = order.CancelOrder()
     command_any.Unpack(cmd)
 
     if not cmd.reason:
         raise CommandRejectedError("Cancellation reason is required")
 
-    event = domains.OrderCancelled(
+    event = order.OrderCancelled(
         reason=cmd.reason,
         cancelled_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
         loyalty_points_used=state.loyalty_points_used,
+        customer_root=state.customer_root,
+        cart_root=state.cart_root,
+    )
+    event.items.extend(
+        order.LineItem(
+            product_id=i.product_id,
+            name=i.name,
+            quantity=i.quantity,
+            unit_price_cents=i.unit_price_cents,
+        )
+        for i in state.items
     )
 
     event_any = Any()

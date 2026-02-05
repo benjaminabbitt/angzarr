@@ -6,9 +6,11 @@
 //! Both auto-derive `ComponentDescriptor` from their `.on()` registrations,
 //! eliminating manual event type declarations.
 
+use std::collections::HashMap;
+
 use angzarr::proto::{
     business_response, BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand,
-    EventBook, Subscription, Uuid as ProtoUuid,
+    EventBook, Target, Uuid as ProtoUuid,
 };
 use tonic::Status;
 
@@ -110,16 +112,22 @@ impl<S> CommandRouter<S> {
     /// Build a ComponentDescriptor from registered handlers.
     ///
     /// Returns a descriptor with auto-derived command type suffixes
-    /// as the subscription's event_types.
+    /// as the input types.
     pub fn descriptor(&self) -> ComponentDescriptor {
         ComponentDescriptor {
             name: self.domain.to_string(),
             component_type: "aggregate".to_string(),
-            inputs: vec![Subscription {
+            inputs: vec![Target {
                 domain: self.domain.to_string(),
-                event_types: self.handlers.iter().map(|(s, _)| (*s).to_string()).collect(),
+                types: self.handlers.iter().map(|(s, _)| (*s).to_string()).collect(),
             }],
+            outputs: vec![], // Aggregates don't send commands to other domains
         }
+    }
+
+    /// Get the domain name.
+    pub fn domain(&self) -> &'static str {
+        self.domain
     }
 }
 
@@ -141,9 +149,9 @@ pub type SagaEventHandler = fn(&prost_types::Any, Option<&ProtoUuid>, &str) -> V
 /// # Example
 ///
 /// ```ignore
-/// let router = EventRouter::new("fulfillment", "order")
-///     .output("fulfillment")
-///     .on("OrderCompleted", handle_order_completed);
+/// let router = EventRouter::new("order-inventory", "order")
+///     .on("OrderCreated", handle_order_created)
+///     .sends("inventory", "ReserveStock");
 ///
 /// // In SagaLogic::execute:
 /// router.dispatch(source)
@@ -154,35 +162,41 @@ pub type SagaEventHandler = fn(&prost_types::Any, Option<&ProtoUuid>, &str) -> V
 pub struct EventRouter {
     name: &'static str,
     input_domain: &'static str,
-    output_domains: Vec<&'static str>,
+    /// Maps output domain -> command types sent to that domain
+    outputs: HashMap<&'static str, Vec<&'static str>>,
     handlers: Vec<(&'static str, SagaEventHandler)>,
 }
 
 impl EventRouter {
     /// Create a new event router.
     ///
-    /// - `name`: The saga's name (e.g., "fulfillment").
+    /// - `name`: The saga's name (e.g., "order-inventory").
     /// - `input_domain`: The domain to subscribe to for events.
     pub fn new(name: &'static str, input_domain: &'static str) -> Self {
         Self {
             name,
             input_domain,
-            output_domains: Vec::new(),
+            outputs: HashMap::new(),
             handlers: Vec::new(),
         }
     }
 
-    /// Declare an output domain for this saga.
-    pub fn output(mut self, domain: &'static str) -> Self {
-        self.output_domains.push(domain);
+    /// Declare a command this saga sends to a target domain.
+    ///
+    /// Call multiple times to declare multiple commands to the same or different domains.
+    pub fn sends(mut self, domain: &'static str, command_type: &'static str) -> Self {
+        self.outputs
+            .entry(domain)
+            .or_insert_with(Vec::new)
+            .push(command_type);
         self
     }
 
     /// Register a handler for an event type_url suffix.
     ///
     /// The suffix is matched against the end of the event's type_url.
-    /// E.g., `.on("OrderCompleted", handle_order_completed)` matches any
-    /// type_url ending in "OrderCompleted".
+    /// E.g., `.on("OrderCreated", handle_order_created)` matches any
+    /// type_url ending in "OrderCreated".
     pub fn on(mut self, type_suffix: &'static str, handler: SagaEventHandler) -> Self {
         self.handlers.push((type_suffix, handler));
         self
@@ -210,15 +224,23 @@ impl EventRouter {
     /// Build a ComponentDescriptor from registered handlers.
     ///
     /// Returns a descriptor with auto-derived event type suffixes
-    /// as the subscription's event_types.
+    /// as input types, plus declared output command types.
     pub fn descriptor(&self) -> ComponentDescriptor {
         ComponentDescriptor {
             name: self.name.to_string(),
             component_type: "saga".to_string(),
-            inputs: vec![Subscription {
+            inputs: vec![Target {
                 domain: self.input_domain.to_string(),
-                event_types: self.handlers.iter().map(|(s, _)| (*s).to_string()).collect(),
+                types: self.handlers.iter().map(|(s, _)| (*s).to_string()).collect(),
             }],
+            outputs: self
+                .outputs
+                .iter()
+                .map(|(domain, commands)| Target {
+                    domain: (*domain).to_string(),
+                    types: commands.iter().map(|c| (*c).to_string()).collect(),
+                })
+                .collect(),
         }
     }
 
@@ -228,8 +250,8 @@ impl EventRouter {
     }
 
     /// Get the declared output domains.
-    pub fn output_domains(&self) -> &[&'static str] {
-        &self.output_domains
+    pub fn output_domains(&self) -> Vec<&'static str> {
+        self.outputs.keys().copied().collect()
     }
 }
 
@@ -345,7 +367,7 @@ mod tests {
         assert_eq!(desc.component_type, "aggregate");
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.inputs[0].domain, "order");
-        assert_eq!(desc.inputs[0].event_types, vec!["CreateOrder", "CancelOrder"]);
+        assert_eq!(desc.inputs[0].types, vec!["CreateOrder", "CancelOrder"]);
     }
 
     fn saga_handler(
@@ -359,7 +381,7 @@ mod tests {
     #[test]
     fn test_event_router_dispatches() {
         let router = EventRouter::new("test-saga", "order")
-            .output("fulfillment")
+            .sends("fulfillment", "Ship")
             .on("OrderCompleted", saga_handler);
 
         let book = EventBook {
@@ -410,15 +432,27 @@ mod tests {
 
     #[test]
     fn test_event_router_descriptor() {
-        let router = EventRouter::new("fulfillment", "order")
-            .output("fulfillment")
+        let router = EventRouter::new("order-fulfillment", "order")
+            .sends("fulfillment", "Ship")
             .on("OrderCompleted", saga_handler);
 
         let desc = router.descriptor();
-        assert_eq!(desc.name, "fulfillment");
+        assert_eq!(desc.name, "order-fulfillment");
         assert_eq!(desc.component_type, "saga");
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.inputs[0].domain, "order");
-        assert_eq!(desc.inputs[0].event_types, vec!["OrderCompleted"]);
+        assert_eq!(desc.inputs[0].types, vec!["OrderCompleted"]);
+        assert_eq!(desc.outputs.len(), 1);
+        assert_eq!(desc.outputs[0].domain, "fulfillment");
+        assert_eq!(desc.outputs[0].types, vec!["Ship"]);
+    }
+
+    #[test]
+    fn test_command_router_descriptor_has_empty_outputs() {
+        let router = CommandRouter::new("order", dummy_rebuild)
+            .on("CreateOrder", handler_a);
+
+        let desc = router.descriptor();
+        assert!(desc.outputs.is_empty());
     }
 }

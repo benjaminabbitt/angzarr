@@ -69,6 +69,9 @@ message OrderCompleted {
   bytes customer_root = 6;         // customer aggregate root UUID for saga routing
   bytes cart_root = 7;             // cart aggregate root UUID for inventory reservation commit
   repeated LineItem items = 8;     // order items for inventory saga routing
+  // External service enrichment - demonstrates calling ANY external REST/gRPC service
+  // (pricing, tax, address validation, payment gateways, analytics/ML, etc.)
+  string fraud_check_result = 9;   // "approved", "review_required", "declined" - from fraud service
 }
 
 message OrderCancelled {

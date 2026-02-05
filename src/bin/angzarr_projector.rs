@@ -33,8 +33,10 @@ use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::{Config, STREAM_OUTPUT_ENV_VAR, TARGET_COMMAND_JSON_ENV_VAR};
+use angzarr::proto::GetDescriptorRequest;
 use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
+use angzarr::proto::projector_client::ProjectorClient;
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::bootstrap::init_tracing;
@@ -111,11 +113,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to projector service with retry
     let projector_addr = address.clone();
-    let projector_client = (|| {
+    let channel = (|| {
         let addr = projector_addr.clone();
         async move {
-            let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
-            Ok::<_, String>(ProjectorCoordinatorClient::new(channel))
+            connect_to_address(&addr).await.map_err(|e| e.to_string())
         }
     })
     .retry(connection_backoff())
@@ -123,6 +124,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         warn!(service = "projector", error = %err, delay = ?dur, "Connection failed, retrying");
     })
     .await?;
+
+    // Create clients for both the Projector service (descriptor) and handling
+    let mut descriptor_client = ProjectorClient::new(channel.clone());
+    let projector_client = ProjectorCoordinatorClient::new(channel);
+
+    // Fetch descriptor from projector service for topology registration
+    let descriptor = match descriptor_client.get_descriptor(GetDescriptorRequest {}).await {
+        Ok(response) => response.into_inner(),
+        Err(e) => {
+            warn!(error = %e, "Failed to get descriptor from projector, using basic descriptor");
+            angzarr::proto::ComponentDescriptor {
+                name: projector_name.clone(),
+                component_type: "projector".to_string(),
+                inputs: vec![],
+                outputs: vec![],
+            }
+        }
+    };
+    info!(name = %descriptor.name, inputs = descriptor.inputs.len(), "Got projector descriptor");
+
+    // Write descriptor to pod annotation for K8s-native topology discovery
+    if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
+        warn!(error = %e, "Failed to write descriptor annotation");
+    }
 
     // Create publisher if streaming is enabled
     let publisher = if stream_output {

@@ -3,7 +3,7 @@ package logic
 import (
 	"angzarr"
 	angzarrpb "angzarr/proto/angzarr"
-	"order/proto/examples"
+	"angzarr/proto/examples"
 
 	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"

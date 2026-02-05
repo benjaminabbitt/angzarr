@@ -25,8 +25,8 @@ pub struct OrderInventorySaga {
 impl OrderInventorySaga {
     pub fn new() -> Self {
         Self {
-            router: EventRouter::new("order-inventory", "order")
-                .output(TARGET_DOMAIN)
+            router: EventRouter::new("sag-order-inventory", "order")
+                .sends(TARGET_DOMAIN, "ReserveStock")
                 .on("OrderCreated", handle_order_created),
         }
     }

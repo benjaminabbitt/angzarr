@@ -7,7 +7,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr import types_pb2 as types
 from errors import CommandRejectedError
-from proto import domains_pb2 as domains
+from proto import order_pb2 as order
 
 from .state import OrderState
 
@@ -24,7 +24,7 @@ def handle_confirm_payment(
     if not state.is_payment_submitted():
         raise CommandRejectedError("Payment not submitted")
 
-    cmd = domains.ConfirmPayment()
+    cmd = order.ConfirmPayment()
     command_any.Unpack(cmd)
 
     if not cmd.payment_reference:
@@ -33,12 +33,23 @@ def handle_confirm_payment(
     # 1 point per dollar
     loyalty_points_earned = state.total_after_discount() // 100
 
-    event = domains.OrderCompleted(
+    event = order.OrderCompleted(
         final_total_cents=state.total_after_discount(),
         payment_method=state.payment_method,
         payment_reference=cmd.payment_reference,
         loyalty_points_earned=loyalty_points_earned,
         completed_at=Timestamp(seconds=int(datetime.now(timezone.utc).timestamp())),
+        customer_root=state.customer_root,
+        cart_root=state.cart_root,
+    )
+    event.items.extend(
+        order.LineItem(
+            product_id=i.product_id,
+            name=i.name,
+            quantity=i.quantity,
+            unit_price_cents=i.unit_price_cents,
+        )
+        for i in state.items
     )
 
     event_any = Any()

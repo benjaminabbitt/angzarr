@@ -1,15 +1,22 @@
-//! Topology projector: builds a graph of runtime components from the event stream.
+//! Topology projector: builds a graph of runtime components from descriptors.
 //!
-//! Subscribes to all domains and discovers nodes (aggregates, sagas, process managers,
-//! projectors) and edges (command/event flows via correlation_id chains). Serves the
-//! graph via REST for Grafana's Node Graph panel.
+//! Graph STRUCTURE is declarative (from ComponentDescriptor inputs/outputs).
+//! Only METRICS (event counts, last seen) are dynamic from event observation.
 //!
-//! Pure event-stream observation — works identically in standalone and distributed modes.
+//! Serves the graph via REST for Grafana's Node Graph panel.
+//!
+//! # Discovery Modes
+//!
+//! - **K8s mode**: `TopologyK8sWatcher` watches pod annotations for descriptors
+//! - **Event bus mode**: Descriptors published to `_meta.topology` domain (legacy)
 
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub mod schema;
 pub mod store;
 pub mod rest;
+pub mod k8s_watcher;
+
+pub use k8s_watcher::TopologyK8sWatcher;
 
 #[cfg(test)]
 mod tests;
@@ -26,7 +33,7 @@ use crate::proto_ext::{META_TOPOLOGY_DOMAIN, DESCRIPTOR_TYPE_URL, PROJECTION_DOM
 
 use store::{TopologyError, TopologyStore};
 
-/// Topology projector that discovers runtime component graph from the event stream.
+/// Topology projector that builds component graph from descriptors.
 ///
 /// In standalone mode, register via `RuntimeBuilder::register_projector` (implements
 /// `ProjectorHandler` when sqlite feature is enabled). In distributed mode, the
@@ -39,9 +46,6 @@ pub struct TopologyProjector {
     rest_port: u16,
     initialized: AtomicBool,
     /// Authoritative component types from descriptor registration.
-    ///
-    /// Populated by `register_components()`. Used by `process_event()` to
-    /// pass correct types to `upsert_node` on first insert.
     type_cache: std::sync::RwLock<HashMap<String, String>>,
 }
 
@@ -85,16 +89,15 @@ impl TopologyProjector {
 
     /// Register components from their descriptors.
     ///
-    /// Called at startup by the runtime. Creates nodes with correct component_type
-    /// and "subscription" edges from input domains to each component.
-    /// Output edges are discovered at runtime via event observation.
+    /// Creates nodes and edges from descriptor inputs (subscriptions) and
+    /// outputs (command targets). This is the ONLY source of graph structure.
     pub async fn register_components(
         &self,
         descriptors: &[ComponentDescriptor],
     ) -> Result<(), TopologyError> {
         let now = chrono::Utc::now().to_rfc3339();
 
-        // Batch-update the type cache
+        // Update type cache
         {
             let mut cache = self.type_cache.write().expect("type_cache poisoned");
             for desc in descriptors {
@@ -104,34 +107,34 @@ impl TopologyProjector {
             }
         }
 
-        // Pass 1: register all nodes before creating edges.
-        // Edges have FK constraints on topology_nodes(id), so both source
-        // and target nodes must exist before any edge can be inserted.
+        // Pass 1: register all nodes before creating edges (FK constraints)
         let mut registered: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for desc in descriptors {
             if desc.name.is_empty() {
                 continue;
             }
+            // Extract output domain names for node registration
+            let output_domains: Vec<String> =
+                desc.outputs.iter().map(|o| o.domain.clone()).collect();
             self.store
-                .register_node(&desc.name, &desc.component_type, &desc.name, &now)
+                .register_node(&desc.name, &desc.component_type, &desc.name, &output_domains, &now)
                 .await?;
             registered.insert(&desc.name);
         }
 
-        // Include nodes already in the store (from earlier registrations or
-        // process_event calls) so edges to pre-existing domains succeed.
+        // Include nodes already in store
         let existing_nodes = self.store.get_nodes().await?;
         for node in &existing_nodes {
             registered.insert(&node.id);
         }
 
-        // Pass 2: create subscription edges. Skip edges whose source node
-        // doesn't exist yet — they'll be discovered at runtime via correlation.
+        // Pass 2: create edges from inputs (subscriptions) and outputs (commands)
         for desc in descriptors {
             if desc.name.is_empty() {
                 continue;
             }
 
+            // Input edges: source_domain -> this_component (subscription)
             for input in &desc.inputs {
                 if input.domain.is_empty() {
                     continue;
@@ -140,34 +143,68 @@ impl TopologyProjector {
                     debug!(
                         source = %input.domain,
                         target = %desc.name,
-                        "skipping subscription edge: source node not yet registered"
+                        "skipping input edge: source node not yet registered"
                     );
                     continue;
                 }
-                self.store
-                    .upsert_edge(&input.domain, &desc.name, "subscription", "", &now)
-                    .await?;
+                // Register each subscribed event type (or one placeholder if none specified)
+                if input.types.is_empty() {
+                    self.store
+                        .upsert_edge(&input.domain, &desc.name, "*", "", &now)
+                        .await?;
+                } else {
+                    for event_type in &input.types {
+                        self.store
+                            .upsert_edge(&input.domain, &desc.name, event_type, "", &now)
+                            .await?;
+                    }
+                }
+            }
+
+            // Output edges: this_component -> target_domain (command)
+            for output in &desc.outputs {
+                if output.domain.is_empty() {
+                    continue;
+                }
+                if !registered.contains(output.domain.as_str()) {
+                    debug!(
+                        source = %desc.name,
+                        target = %output.domain,
+                        "skipping output edge: target node not yet registered"
+                    );
+                    continue;
+                }
+                // Register each command type as an edge event_type (or placeholder if none)
+                if output.types.is_empty() {
+                    self.store
+                        .upsert_edge(&desc.name, &output.domain, &format!("→{}", output.domain), "", &now)
+                        .await?;
+                } else {
+                    for cmd_type in &output.types {
+                        self.store
+                            .upsert_edge(&desc.name, &output.domain, cmd_type, "", &now)
+                            .await?;
+                    }
+                }
             }
 
             info!(
                 name = %desc.name,
                 component_type = %desc.component_type,
                 inputs = desc.inputs.len(),
+                outputs = desc.outputs.len(),
                 "Registered component in topology"
             );
         }
         Ok(())
     }
 
-    /// Process an event book and update the topology graph.
+    /// Process an event book and update metrics (event counts, last seen).
     ///
-    /// This is the core logic shared by both standalone (`ProjectorHandler`) and
-    /// distributed (`EventHandler`) modes.
-    ///
-    /// Handles two event types:
-    /// - **Meta-events** (`_meta.topology` domain): descriptor registrations from
-    ///   services at startup. Decoded and forwarded to `register_components`.
-    /// - **Domain events**: normal event stream observation for node/edge discovery.
+    /// Does NOT create new edges — graph structure comes only from descriptors.
+    /// Only updates:
+    /// - Node event counts and last_event_type
+    /// - Edge event counts (for existing edges)
     pub async fn process_event(&self, events: &EventBook) -> Result<(), TopologyError> {
         let cover = match &events.cover {
             Some(c) => c,
@@ -213,7 +250,7 @@ impl TopologyProjector {
                 .map(|e| Self::short_event_type(&e.type_url))
                 .unwrap_or("unknown");
 
-            // Upsert node for this domain
+            // Update node metrics (event count, last event type)
             if let Err(e) = self
                 .store
                 .upsert_node(domain, &component_type, domain, event_type, &now)
@@ -223,61 +260,28 @@ impl TopologyProjector {
                 continue;
             }
 
-            // Track correlation for edge discovery
+            // Record correlation for edge metrics (but don't create new edges)
             if !correlation_id.is_empty() {
-                match self
+                if let Err(e) = self
                     .store
                     .record_correlation(correlation_id, domain, event_type, &now)
                     .await
                 {
-                    Ok(domains) => {
-                        // Create edges between all domain pairs sharing this correlation
-                        for other_domain in &domains {
-                            if other_domain == domain {
-                                continue;
-                            }
-
-                            // Causal direction: the other domain appeared earlier in
-                            // the correlation chain (already recorded), so it's the
-                            // source. The current domain just emitted an event in
-                            // response, so it's the target.
-                            //
-                            // Edge ID uses alphabetical order for stable dedup — the
-                            // same pair always produces the same ID regardless of
-                            // which event arrives first.
-                            let (source, target) =
-                                (other_domain.as_str(), domain.as_str());
-
-                            if let Err(e) = self
-                                .store
-                                .upsert_edge(source, target, event_type, correlation_id, &now)
-                                .await
-                            {
-                                debug!(
-                                    source = source,
-                                    target = target,
-                                    error = %e,
-                                    "failed to upsert topology edge"
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        debug!(
-                            correlation_id = correlation_id,
-                            error = %e,
-                            "failed to record correlation"
-                        );
-                    }
+                    debug!(
+                        correlation_id = correlation_id,
+                        error = %e,
+                        "failed to record correlation"
+                    );
                 }
+                // Note: We don't create edges from correlation anymore.
+                // Edges come only from descriptors.
             }
         }
 
         Ok(())
     }
 
-    /// Resolve the component type for a domain, preferring the authoritative
-    /// type from descriptor registration over the domain-name heuristic.
+    /// Resolve the component type for a domain.
     fn resolve_component_type(&self, domain: &str) -> String {
         if let Some(t) = self.type_cache.read().expect("type_cache poisoned").get(domain) {
             return t.clone();
@@ -286,9 +290,6 @@ impl TopologyProjector {
     }
 
     /// Infer the component type from a domain name.
-    ///
-    /// - `_projection.{name}.{domain}` -> "projector"
-    /// - Everything else -> "aggregate" (sagas/PMs are discovered as their own domains)
     fn infer_component_type(domain: &str) -> &'static str {
         if domain.strip_prefix(PROJECTION_DOMAIN_PREFIX).is_some_and(|rest| rest.starts_with('.')) {
             "projector"
@@ -298,15 +299,10 @@ impl TopologyProjector {
     }
 
     /// Extract the short event type name from a protobuf type_url.
-    ///
-    /// e.g. "type.googleapis.com/ecommerce.OrderPlaced" -> "OrderPlaced"
     fn short_event_type(type_url: &str) -> &str {
         type_url.rsplit('.').next().unwrap_or(type_url)
     }
 }
-
-// publish_descriptors lives in proto_ext (non-feature-gated) so that
-// distributed binaries can call it without enabling the topology feature.
 
 // ProjectorHandler impl for standalone mode (requires sqlite for standalone runtime)
 #[cfg(feature = "sqlite")]

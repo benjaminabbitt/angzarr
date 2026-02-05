@@ -51,11 +51,11 @@ func (h *SagaHandler) WithExecute(fn ExecuteFunc) *SagaHandler {
 // GetDescriptor returns the saga's component descriptor for service discovery.
 func (h *SagaHandler) GetDescriptor(_ context.Context, _ *angzarrpb.GetDescriptorRequest) (*angzarrpb.ComponentDescriptor, error) {
 	desc := h.router.Descriptor()
-	inputs := make([]*angzarrpb.Subscription, len(desc.Inputs))
+	inputs := make([]*angzarrpb.Target, len(desc.Inputs))
 	for i, inp := range desc.Inputs {
-		inputs[i] = &angzarrpb.Subscription{
-			Domain:     inp.Domain,
-			EventTypes: inp.EventTypes,
+		inputs[i] = &angzarrpb.Target{
+			Domain: inp.Domain,
+			Types:  inp.EventTypes,
 		}
 	}
 	return &angzarrpb.ComponentDescriptor{
