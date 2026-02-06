@@ -266,6 +266,8 @@ pub struct StandaloneConfig {
     pub aggregates: Vec<ServiceConfig>,
     /// Saga services (cross-aggregate workflows).
     pub sagas: Vec<ServiceConfig>,
+    /// Process manager services (stateful workflow coordinators).
+    pub process_managers: Vec<ServiceConfig>,
     /// Projector services (read model builders).
     pub projectors: Vec<ServiceConfig>,
     /// External services (REST APIs, GraphQL servers, etc.).
@@ -282,6 +284,8 @@ pub struct ResolvedStandaloneConfig {
     pub aggregates: Vec<ServiceConfig>,
     /// Resolved saga services.
     pub sagas: Vec<ServiceConfig>,
+    /// Resolved process manager services.
+    pub process_managers: Vec<ServiceConfig>,
     /// Resolved projector services.
     pub projectors: Vec<ServiceConfig>,
     /// External services (no resolution needed).
@@ -298,6 +302,7 @@ impl StandaloneConfig {
         Ok(ResolvedStandaloneConfig {
             aggregates: self.aggregates.clone(),
             sagas: self.sagas.clone(),
+            process_managers: self.process_managers.clone(),
             projectors: self.projectors.clone(),
             services: self.services.clone(),
             gateway: self.gateway.clone(),

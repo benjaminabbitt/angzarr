@@ -42,6 +42,10 @@
 //!     - domain: fulfillment
 //!       listen_domain: order
 //!       command: uv run --directory saga-fulfillment python server.py
+//!   process_managers:
+//!     - domain: game-orchestrator
+//!       listen_domain: game
+//!       command: uv run --directory game-orchestrator python server.py
 //!   projectors:
 //!     - domain: web
 //!       command: uv run --directory projector-web python server.py
@@ -75,15 +79,17 @@ use angzarr::config::{
 };
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
-use angzarr::handlers::core::{ProjectorEventHandler, SagaEventHandler};
+use angzarr::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
 use angzarr::orchestration::aggregate::GrpcBusinessLogic;
 use angzarr::orchestration::command::local::LocalCommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
+use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_client::AggregateClient;
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use angzarr::proto::process_manager_client::ProcessManagerClient;
 use angzarr::proto::saga_client::SagaClient;
 use angzarr::standalone::{
     CommandRouter, DomainStorage, GrpcProjectorHandler, ServerInfo, StandaloneEventQueryBridge,
@@ -462,6 +468,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sub.start_consuming().await?;
 
         info!(domain = %svc.domain, listen = %listen_domain, "Connected to saga");
+    }
+
+    // Spawn and connect process manager processes
+    // PMs need their own storage since they emit their own events
+    for svc in &config.standalone.process_managers {
+        // Initialize PM's storage if not already present
+        if !domain_stores.contains_key(&svc.domain) {
+            let storage_config = svc.storage.as_ref().unwrap_or(&config.storage);
+            let (event_store, snapshot_store) =
+                angzarr::storage::init_storage(storage_config).await?;
+
+            info!(
+                domain = %svc.domain,
+                storage_type = ?storage_config.storage_type,
+                "Initialized PM storage"
+            );
+
+            domain_stores.insert(
+                svc.domain.clone(),
+                DomainStorage {
+                    event_store,
+                    snapshot_store,
+                },
+            );
+        }
+
+        let path = svc
+            .address
+            .clone()
+            .unwrap_or_else(|| socket_path(base_path, "pm", &svc.domain));
+
+        spawn_client_process(
+            &format!("pm-{}", svc.domain),
+            &svc.command,
+            svc.working_dir.as_deref(),
+            &svc.env,
+            &path,
+            &mut children,
+        )
+        .await?;
+
+        let channel = connect_to_address(&path).await?;
+        let pm_client = Arc::new(Mutex::new(ProcessManagerClient::new(channel)));
+        let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
+
+        // Get PM's event store for persisting PM state events
+        let pm_storage = domain_stores.get(&svc.domain).expect("PM storage must exist");
+
+        let factory = Arc::new(GrpcPMContextFactory::new(
+            pm_client,
+            pm_storage.event_store.clone(),
+            event_bus.clone(),
+            svc.domain.clone(),
+            svc.domain.clone(),
+        ));
+
+        let handler = ProcessManagerEventHandler::from_factory(
+            factory,
+            fetcher.clone(),
+            executor.clone(),
+        );
+
+        let input_domain = listen_domain.clone();
+        let sub = channel_bus.with_config(ChannelConfig::subscriber(input_domain));
+        sub.subscribe(Box::new(handler)).await?;
+        sub.start_consuming().await?;
+
+        info!(domain = %svc.domain, listen = %listen_domain, "Connected to process manager");
     }
 
     // Propagate config path to external services
