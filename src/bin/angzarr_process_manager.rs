@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(messaging_type = ?messaging.messaging_type, "Using messaging backend");
 
     // Initialize storage for direct PM state persistence
-    let (event_store, _snapshot_store) = init_storage(&bootstrap.config.storage).await?;
+    let (event_store, snapshot_store) = init_storage(&bootstrap.config.storage).await?;
     info!("PM storage initialized for direct state persistence");
 
     // Initialize event bus (publisher) for PM state events
@@ -101,7 +101,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         name = %descriptor.name,
         component_type = %descriptor.component_type,
         subscriptions = subscriptions.len(),
-        outputs = descriptor.outputs.len(),
         "Process manager descriptor"
     );
 
@@ -129,6 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hybrid_fetcher = Arc::new(HybridDestinationFetcher::new(
         bootstrap.domain.clone(),
         event_store.clone(),
+        snapshot_store,
         remote_fetcher,
     ));
 

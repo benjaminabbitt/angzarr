@@ -3,6 +3,41 @@
 //! Supports:
 //! - TCP: Standard network transport (default)
 //! - UDS: Unix Domain Sockets for local IPC (embedded mode)
+//!
+//! # Message Size Limits
+//!
+//! gRPC has a default 4MB message size limit. Angzarr increases this to 10MB by
+//! default, configurable via [`GRPC_MESSAGE_SIZE_KB_ENV`] (`ANGZARR_GRPC_MESSAGE_SIZE_KB`).
+//!
+//! For aggregates with large event histories (thousands of events without
+//! snapshots), even 10MB may be exceeded.
+//!
+//! ## Best Practice: Enable Snapshotting
+//!
+//! **Snapshotting is the recommended solution** for message size issues. When
+//! snapshotting is enabled:
+//! - Only the snapshot + events since snapshot are transmitted
+//! - Message size stays bounded regardless of total event count
+//! - State reconstruction is faster (no replaying entire history)
+//!
+//! To enable snapshotting, define your aggregate state as a protobuf message
+//! and return it in `EventBook.snapshot_state`. Angzarr handles persistence
+//! and retrieval automatically.
+//!
+//! See the aggregate documentation for details on implementing snapshot state.
+//!
+//! ## Increasing the Limit
+//!
+//! If you must increase the limit (not recommended as primary solution):
+//!
+//! ```bash
+//! # Increase to 50MB (value in KB)
+//! export ANGZARR_GRPC_MESSAGE_SIZE_KB=51200
+//! ```
+//!
+//! This affects connections made via [`connect_to_address`] and
+//! [`connect_with_transport`]. Servers must also set limits on their services
+//! using the generated service's `max_decoding_message_size` method.
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -22,6 +57,24 @@ use tower::Layer;
 use tower::Service;
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
+
+/// Environment variable for configuring gRPC message size limit (in KB).
+pub const GRPC_MESSAGE_SIZE_KB_ENV: &str = "ANGZARR_GRPC_MESSAGE_SIZE_KB";
+
+/// Default gRPC message size (10 MB = 10240 KB).
+pub const DEFAULT_GRPC_MESSAGE_SIZE_KB: usize = 10 * 1024;
+
+/// Get the configured gRPC message size in bytes.
+///
+/// Reads from `ANGZARR_GRPC_MESSAGE_SIZE_KB` environment variable (in KB).
+/// Falls back to 10 MB (10240 KB) if not set or invalid.
+pub fn max_grpc_message_size() -> usize {
+    std::env::var(GRPC_MESSAGE_SIZE_KB_ENV)
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_GRPC_MESSAGE_SIZE_KB)
+        * 1024
+}
 
 /// Transport type discriminator.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -372,6 +425,8 @@ async fn connect_to_address_once(address: &str) -> Result<Channel, Box<dyn std::
             "Connecting to service"
         );
 
+        // Note: Message size limits are set on the generated client types,
+        // not on the channel. See max_grpc_message_size() for the configured limit.
         let channel = Endpoint::try_from("http://[::]:50051")?
             .connect_with_connector(service_fn(move |_: Uri| {
                 let path = socket_path.clone();
@@ -397,6 +452,8 @@ async fn connect_to_address_once(address: &str) -> Result<Channel, Box<dyn std::
             "Connecting to service"
         );
 
+        // Note: Message size limits are set on the generated client types,
+        // not on the channel. See max_grpc_message_size() for the configured limit.
         let channel = Channel::from_shared(uri)?.connect().await?;
         Ok(channel)
     }
@@ -481,6 +538,8 @@ async fn connect_with_transport_once(
                 transport = "tcp",
                 "Connecting to service"
             );
+            // Note: Message size limits are set on the generated client types,
+            // not on the channel. See max_grpc_message_size() for the configured limit.
             let channel = Channel::from_shared(uri)?.connect().await?;
             Ok(channel)
         }
@@ -499,6 +558,8 @@ async fn connect_with_transport_once(
 
             // UDS requires a dummy URI and custom connector
             // TokioIo wraps UnixStream to implement hyper's io traits
+            // Note: Message size limits are set on the generated client types,
+            // not on the channel. See max_grpc_message_size() for the configured limit.
             let channel = Endpoint::try_from("http://[::]:50051")?
                 .connect_with_connector(service_fn(move |_: Uri| {
                     let path = socket_path.clone();

@@ -47,12 +47,13 @@ use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEvent
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
-    aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
+    aggregate_client::AggregateClient,
+    aggregate_coordinator_server::AggregateCoordinatorServer,
     event_query_server::EventQueryServer,
 };
 use angzarr::services::{AggregateService, EventQueryService};
 use angzarr::storage::init_storage;
-use angzarr::transport::{grpc_trace_layer, serve_with_transport};
+use angzarr::transport::{grpc_trace_layer, max_grpc_message_size, serve_with_transport};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -142,7 +143,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         name: domain.clone(),
         component_type: "aggregate".to_string(),
         inputs: vec![],
-        outputs: vec![],
     };
     if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
         warn!(error = %e, "Failed to write descriptor annotation");
@@ -166,11 +166,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_service_status("", tonic_health::ServingStatus::Serving)
         .await;
 
+    let msg_size = max_grpc_message_size();
     let router = Server::builder()
         .layer(grpc_trace_layer())
         .add_service(health_service)
-        .add_service(AggregateCoordinatorServer::new(aggregate_service))
-        .add_service(EventQueryServer::new(event_query));
+        .add_service(
+            AggregateCoordinatorServer::new(aggregate_service)
+                .max_decoding_message_size(msg_size)
+                .max_encoding_message_size(msg_size),
+        )
+        .add_service(
+            EventQueryServer::new(event_query)
+                .max_decoding_message_size(msg_size)
+                .max_encoding_message_size(msg_size),
+        );
 
     serve_with_transport(router, &config.transport, "aggregate", Some(domain)).await?;
 

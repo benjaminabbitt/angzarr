@@ -257,6 +257,86 @@ fn default_health_timeout() -> u64 {
     30
 }
 
+/// Configuration for component registration/republishing.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct RegistrationConfig {
+    /// Republish strategy: "fixed" or "exponential".
+    #[serde(default = "default_registration_strategy")]
+    pub strategy: String,
+    /// Fixed interval in seconds (used when strategy = "fixed").
+    #[serde(default = "default_registration_interval")]
+    pub interval_secs: u64,
+    /// Initial delay in seconds for exponential backoff.
+    #[serde(default = "default_registration_initial")]
+    pub initial_secs: u64,
+    /// Maximum delay in seconds for exponential backoff.
+    #[serde(default = "default_registration_max")]
+    pub max_secs: u64,
+    /// Backoff multiplier for exponential strategy.
+    #[serde(default = "default_registration_multiplier")]
+    pub multiplier: f64,
+    /// Enable jitter for exponential backoff.
+    #[serde(default = "default_registration_jitter")]
+    pub jitter: bool,
+}
+
+fn default_registration_strategy() -> String {
+    "fixed".to_string()
+}
+
+fn default_registration_interval() -> u64 {
+    30
+}
+
+fn default_registration_initial() -> u64 {
+    1
+}
+
+fn default_registration_max() -> u64 {
+    60
+}
+
+fn default_registration_multiplier() -> f64 {
+    2.0
+}
+
+fn default_registration_jitter() -> bool {
+    true
+}
+
+impl Default for RegistrationConfig {
+    fn default() -> Self {
+        Self {
+            strategy: default_registration_strategy(),
+            interval_secs: default_registration_interval(),
+            initial_secs: default_registration_initial(),
+            max_secs: default_registration_max(),
+            multiplier: default_registration_multiplier(),
+            jitter: default_registration_jitter(),
+        }
+    }
+}
+
+impl RegistrationConfig {
+    /// Build a republish strategy from this config.
+    pub fn build_strategy(&self) -> Box<dyn crate::registration::RepublishStrategy> {
+        use crate::registration::{ExponentialBackoff, FixedInterval};
+        use std::time::Duration;
+
+        match self.strategy.as_str() {
+            "exponential" => Box::new(
+                ExponentialBackoff::new()
+                    .with_initial(Duration::from_secs(self.initial_secs))
+                    .with_max(Duration::from_secs(self.max_secs))
+                    .with_multiplier(self.multiplier)
+                    .with_jitter(self.jitter),
+            ),
+            _ => Box::new(FixedInterval::new(Duration::from_secs(self.interval_secs))),
+        }
+    }
+}
+
 /// Standalone mode configuration.
 /// Groups all settings for running angzarr locally with spawned processes.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -273,6 +353,9 @@ pub struct StandaloneConfig {
     /// External services (REST APIs, GraphQL servers, etc.).
     #[serde(default)]
     pub services: Vec<ExternalServiceConfig>,
+    /// Component registration/republishing configuration.
+    #[serde(default)]
+    pub registration: RegistrationConfig,
     /// Gateway configuration.
     pub gateway: GatewayConfig,
 }
@@ -290,6 +373,8 @@ pub struct ResolvedStandaloneConfig {
     pub projectors: Vec<ServiceConfig>,
     /// External services (no resolution needed).
     pub services: Vec<ExternalServiceConfig>,
+    /// Component registration/republishing configuration.
+    pub registration: RegistrationConfig,
     /// Gateway configuration.
     pub gateway: GatewayConfig,
 }
@@ -305,6 +390,7 @@ impl StandaloneConfig {
             process_managers: self.process_managers.clone(),
             projectors: self.projectors.clone(),
             services: self.services.clone(),
+            registration: self.registration.clone(),
             gateway: self.gateway.clone(),
         })
     }

@@ -322,7 +322,6 @@ impl SpeculativeExecutor {
             }),
             snapshot: None,
             pages,
-            snapshot_state: None,
         }
     }
 

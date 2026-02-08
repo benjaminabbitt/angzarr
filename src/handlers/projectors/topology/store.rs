@@ -32,8 +32,6 @@ pub struct NodeRecord {
     pub title: String,
     pub component_type: String,
     pub domain: String,
-    /// Output domains (command targets) from the component descriptor.
-    pub outputs: Vec<String>,
     pub event_count: i64,
     pub last_event_type: String,
     pub last_seen: String,
@@ -86,7 +84,6 @@ pub trait TopologyStore: Send + Sync + 'static {
         node_id: &str,
         component_type: &str,
         domain: &str,
-        outputs: &[String],
         timestamp: &str,
     ) -> Result<()>;
 

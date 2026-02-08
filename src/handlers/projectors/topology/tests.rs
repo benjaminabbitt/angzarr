@@ -91,21 +91,16 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn test_declarative_edges_from_outputs() {
+    async fn test_declarative_edges_from_inputs() {
         use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
 
-        // Edges come from descriptor outputs, not correlation
+        // Edges come from descriptor inputs, not correlation
         let descriptors = vec![
             ComponentDescriptor {
                 name: "orders".into(),
-                component_type: "aggregate".into(),
-                ..Default::default()
-            },
-            ComponentDescriptor {
-                name: "fulfillment".into(),
                 component_type: "aggregate".into(),
                 ..Default::default()
             },
@@ -116,17 +111,14 @@ mod sqlite_tests {
                     domain: "orders".into(),
                     types: vec![],
                 }],
-                outputs: vec![Target {
-                    domain: "fulfillment".into(),
-                    types: vec!["CreateShipment".into()],
-                }],
+                ..Default::default()
             },
         ];
         projector.register_components(&descriptors).await.expect("register failed");
 
         let edges = store.get_edges().await.expect("get_edges failed");
-        // Edges: orders -> order-fulfillment (subscription), order-fulfillment -> fulfillment (output)
-        assert_eq!(edges.len(), 2);
+        // Edges: orders -> order-fulfillment (subscription)
+        assert_eq!(edges.len(), 1);
     }
 
     #[tokio::test]
@@ -432,10 +424,7 @@ mod sqlite_tests {
                     domain: "order".into(),
                     types: vec![],
                 }],
-                outputs: vec![Target {
-                    domain: "fulfillment".into(),
-                    types: vec!["CreateShipment".into()],
-                }],
+                ..Default::default()
             },
             ComponentDescriptor {
                 name: "web".into(),
@@ -459,10 +448,7 @@ mod sqlite_tests {
                         types: vec![],
                     },
                 ],
-                outputs: vec![Target {
-                    domain: "fulfillment".into(),
-                    types: vec!["Ship".into()],
-                }],
+                ..Default::default()
             },
         ];
 
@@ -474,7 +460,7 @@ mod sqlite_tests {
             .map(|(i, d)| EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
                 event: Some(Any {
-                    type_url: crate::proto_ext::DESCRIPTOR_TYPE_URL.to_string(),
+                    type_url: crate::proto_ext::COMPONENT_REGISTERED_TYPE_URL.to_string(),
                     value: d.encode_to_vec(),
                 }),
                 created_at: None,
@@ -483,7 +469,7 @@ mod sqlite_tests {
 
         let meta_book = EventBook {
             cover: Some(Cover {
-                domain: crate::proto_ext::META_TOPOLOGY_DOMAIN.to_string(),
+                domain: crate::proto_ext::META_ANGZARR_DOMAIN.to_string(),
                 correlation_id: String::new(),
                 ..Default::default()
             }),
@@ -647,18 +633,10 @@ mod sqlite_tests {
                 ..Default::default()
             },
             ComponentDescriptor {
-                name: "fulfillment".into(),
-                component_type: "aggregate".into(),
-                ..Default::default()
-            },
-            ComponentDescriptor {
                 name: "order-fulfillment".into(),
                 component_type: "saga".into(),
                 inputs: vec![Target { domain: "orders".into(), types: vec![] }],
-                outputs: vec![Target {
-                    domain: "fulfillment".into(),
-                    types: vec!["CreateShipment".into()],
-                }],
+                ..Default::default()
             },
         ];
         projector.register_components(&descriptors).await.unwrap();
@@ -680,10 +658,10 @@ mod sqlite_tests {
 
         assert!(json["nodes"].is_array());
         assert!(json["edges"].is_array());
-        // 3 nodes: orders, fulfillment, order-fulfillment
-        assert_eq!(json["nodes"].as_array().unwrap().len(), 3);
-        // 2 edges: orders->order-fulfillment, order-fulfillment->fulfillment
-        assert_eq!(json["edges"].as_array().unwrap().len(), 2);
+        // 2 nodes: orders, order-fulfillment
+        assert_eq!(json["nodes"].as_array().unwrap().len(), 2);
+        // 1 edge: orders->order-fulfillment
+        assert_eq!(json["edges"].as_array().unwrap().len(), 1);
 
         let node = &json["nodes"][0];
         assert!(node["id"].is_string());

@@ -212,7 +212,6 @@ impl TopologyK8sWatcher {
                 descriptor_name = %descriptor.name,
                 component_type = %descriptor.component_type,
                 inputs = descriptor.inputs.len(),
-                outputs = descriptor.outputs.len(),
                 "Discovered new component from K8s annotation"
             );
         } else {
@@ -349,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_descriptor_json_parsing() {
-        let json = r#"{"name":"sag-order-fulfillment","component_type":"saga","inputs":[{"domain":"order","types":["OrderCompleted"]}],"outputs":[{"domain":"fulfillment","types":["CreateShipment"]}]}"#;
+        let json = r#"{"name":"sag-order-fulfillment","component_type":"saga","inputs":[{"domain":"order","types":["OrderCompleted"]}]}"#;
         let descriptor: ComponentDescriptor = serde_json::from_str(json).unwrap();
 
         assert_eq!(descriptor.name, "sag-order-fulfillment");
@@ -357,20 +356,16 @@ mod tests {
         assert_eq!(descriptor.inputs.len(), 1);
         assert_eq!(descriptor.inputs[0].domain, "order");
         assert_eq!(descriptor.inputs[0].types, vec!["OrderCompleted"]);
-        assert_eq!(descriptor.outputs.len(), 1);
-        assert_eq!(descriptor.outputs[0].domain, "fulfillment");
-        assert_eq!(descriptor.outputs[0].types, vec!["CreateShipment"]);
     }
 
     #[test]
     fn test_aggregate_descriptor_parsing() {
-        let json = r#"{"name":"order","component_type":"aggregate","inputs":[],"outputs":[]}"#;
+        let json = r#"{"name":"order","component_type":"aggregate","inputs":[]}"#;
         let descriptor: ComponentDescriptor = serde_json::from_str(json).unwrap();
 
         assert_eq!(descriptor.name, "order");
         assert_eq!(descriptor.component_type, "aggregate");
         assert!(descriptor.inputs.is_empty());
-        assert!(descriptor.outputs.is_empty());
     }
 
     fn make_test_pod(name: &str, component: &str, descriptor_json: Option<&str>) -> Pod {
@@ -401,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_pod_with_descriptor_annotation() {
-        let descriptor_json = r#"{"name":"order","component_type":"aggregate","inputs":[],"outputs":[]}"#;
+        let descriptor_json = r#"{"name":"order","component_type":"aggregate","inputs":[]}"#;
         let pod = make_test_pod("order-pod-abc123", "aggregate", Some(descriptor_json));
 
         // Verify pod structure
@@ -449,7 +444,7 @@ mod tests {
 
     #[test]
     fn test_extract_descriptor_from_pod() {
-        let descriptor_json = r#"{"name":"sag-order-fulfillment","component_type":"saga","inputs":[{"domain":"order","types":["OrderCompleted"]}],"outputs":[{"domain":"fulfillment","types":["CreateShipment"]}]}"#;
+        let descriptor_json = r#"{"name":"sag-order-fulfillment","component_type":"saga","inputs":[{"domain":"order","types":["OrderCompleted"]}]}"#;
         let pod = make_test_pod("saga-pod-xyz", "saga", Some(descriptor_json));
 
         // Simulate what handle_pod_apply does
@@ -460,6 +455,5 @@ mod tests {
         assert_eq!(descriptor.name, "sag-order-fulfillment");
         assert_eq!(descriptor.component_type, "saga");
         assert_eq!(descriptor.inputs[0].domain, "order");
-        assert_eq!(descriptor.outputs[0].domain, "fulfillment");
     }
 }

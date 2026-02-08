@@ -167,7 +167,6 @@ pub fn build_compensation_failed_event_book(
             }),
         }],
         snapshot: None,
-        snapshot_state: None,
     }
 }
 

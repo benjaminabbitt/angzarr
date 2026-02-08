@@ -1,7 +1,7 @@
 //! Common utilities for Angzarr example implementations.
 
 use angzarr::proto::{
-    event_page::Sequence, CommandBook, CommandPage, Cover, EventBook, EventPage,
+    event_page::Sequence, CommandBook, CommandPage, Cover, EventBook, EventPage, Snapshot,
     Uuid as ProtoUuid,
 };
 use prost::Message;
@@ -16,7 +16,11 @@ pub mod state;
 pub mod testing;
 pub mod validation;
 
-pub use router::{CommandRouter, EventRouter};
+pub use router::{
+    Aggregate, CommandHandler, Dispatcher, PmContext, PmEventHandler, PmHandlerResult,
+    ProjectionMode, ProjectorEventHandler, Router, SagaEventHandler,
+    AGGREGATE, PROCESS_MANAGER, PROJECTOR, SAGA,
+};
 pub use server::{
     init_tracing, run_aggregate_server, run_process_manager_server, run_projector_server,
     run_saga_server, AggregateLogic, AggregateWrapper, ProcessManagerLogic, ProcessManagerWrapper,
@@ -96,6 +100,7 @@ pub fn next_sequence(event_book: Option<&EventBook>) -> u32 {
 /// Build a single-event EventBook with snapshot state.
 ///
 /// Standard response for command handlers producing one event.
+/// The snapshot sequence is set to 0; the framework computes the actual sequence on persist.
 pub fn make_event_book(
     cover: Option<Cover>,
     sequence: u32,
@@ -106,7 +111,13 @@ pub fn make_event_book(
 ) -> EventBook {
     EventBook {
         cover,
-        snapshot: None,
+        snapshot: Some(Snapshot {
+            sequence: 0, // Framework computes from pages
+            state: Some(prost_types::Any {
+                type_url: state_type_url.to_string(),
+                value: state_value,
+            }),
+        }),
         pages: vec![EventPage {
             sequence: Some(Sequence::Num(sequence)),
             event: Some(prost_types::Any {
@@ -115,10 +126,6 @@ pub fn make_event_book(
             }),
             created_at: Some(now()),
         }],
-        snapshot_state: Some(prost_types::Any {
-            type_url: state_type_url.to_string(),
-            value: state_value,
-        }),
     }
 }
 

@@ -43,7 +43,6 @@ impl AggregateCoordinator for MockAggregateService {
                 created_at: None,
             }],
             snapshot: None,
-            snapshot_state: None,
         };
 
         Ok(Response::new(CommandResponse {
@@ -69,7 +68,6 @@ impl AggregateCoordinator for MockAggregateService {
                 created_at: None,
             }],
             snapshot: None,
-            snapshot_state: None,
         };
 
         Ok(Response::new(CommandResponse {

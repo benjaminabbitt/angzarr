@@ -5,7 +5,7 @@
 
 use angzarr::proto::{CommandBook, ComponentDescriptor, EventBook, Uuid as ProtoUuid};
 use common::proto::{OrderCreated, ReserveStock};
-use common::{build_command_book, decode_event, root_id_as_string, EventRouter, ProtoTypeName, SagaLogic};
+use common::{build_command_book, decode_event, root_id_as_string, Dispatcher, Router, SagaEventHandler, ProtoTypeName, SagaLogic, SAGA};
 
 const TARGET_DOMAIN: &str = "inventory";
 
@@ -19,15 +19,14 @@ fn product_root(product_id: &str) -> ProtoUuid {
 
 /// Order-Inventory Saga implementation.
 pub struct OrderInventorySaga {
-    router: EventRouter,
+    router: Router<SagaEventHandler>,
 }
 
 impl OrderInventorySaga {
     pub fn new() -> Self {
         Self {
-            router: EventRouter::new("sag-order-inventory", "order")
-                .sends(TARGET_DOMAIN, ReserveStock::TYPE_NAME)
-                .on(OrderCreated::TYPE_NAME, handle_order_created),
+            router: Router::new("sag-order-inventory", SAGA)
+                .with(Dispatcher::new("order").on(OrderCreated::TYPE_NAME, handle_order_created)),
         }
     }
 }
@@ -110,7 +109,6 @@ mod tests {
                 created_at: None,
             }],
             snapshot: None,
-            snapshot_state: None,
         }
     }
 

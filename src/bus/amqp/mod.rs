@@ -565,7 +565,6 @@ mod tests {
             }),
             pages: vec![],
             snapshot: None,
-            snapshot_state: None,
         };
 
         // "test-123" as bytes becomes "746573742d313233" in hex
@@ -623,7 +622,6 @@ mod integration_tests {
                 }),
             }],
             snapshot: None,
-            snapshot_state: None,
         }
     }
 

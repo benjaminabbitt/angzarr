@@ -17,9 +17,6 @@ pub enum TopologyNodes {
     ComponentType,
     #[iden = "domain"]
     Domain,
-    /// JSON array of output domain names (command targets from descriptor).
-    #[iden = "outputs"]
-    Outputs,
     #[iden = "event_count"]
     EventCount,
     #[iden = "last_event_type"]

@@ -22,81 +22,73 @@ pub const PROJECTION_TYPE_URL: &str = "angzarr.Projection";
 /// Wildcard domain for catch-all routing (matches any domain).
 pub const WILDCARD_DOMAIN: &str = "*";
 
-/// Domain for topology meta-events (component descriptor registration).
+/// The meta domain for angzarr infrastructure.
+pub const META_ANGZARR_DOMAIN: &str = "_angzarr";
+
+/// Type URL for RegisterComponent command.
+pub const REGISTER_COMPONENT_TYPE_URL: &str = "type.angzarr/angzarr.RegisterComponent";
+
+/// Type URL for ComponentRegistered event.
+pub const COMPONENT_REGISTERED_TYPE_URL: &str = "type.angzarr/angzarr.ComponentRegistered";
+
+/// Derive a deterministic UUID from a component name.
 ///
-/// Services publish their `ComponentDescriptor`s under this domain at startup
-/// so the topology projector can register non-aggregate components (sagas,
-/// projectors, process managers) that don't emit domain events directly.
-pub const META_TOPOLOGY_DOMAIN: &str = "_meta.topology";
-
-/// Type URL for `ComponentDescriptor` messages in topology meta-events.
-pub const DESCRIPTOR_TYPE_URL: &str = "type.angzarr/angzarr.ComponentDescriptor";
-
-/// Publish component descriptors to the event bus for topology discovery.
-///
-/// Each service calls this at startup so the `angzarr-topology` binary (or any
-/// in-process topology projector) can register non-aggregate components that
-/// don't emit domain events directly.
-pub async fn publish_descriptors(
-    event_bus: &dyn crate::bus::EventBus,
-    descriptors: &[crate::proto::ComponentDescriptor],
-) -> std::result::Result<(), crate::bus::BusError> {
-    use prost::Message;
-    use std::sync::Arc;
-
-    if descriptors.is_empty() {
-        return Ok(());
-    }
-
-    let pages: Vec<crate::proto::EventPage> = descriptors
-        .iter()
-        .enumerate()
-        .map(|(i, d)| crate::proto::EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
-            event: Some(prost_types::Any {
-                type_url: DESCRIPTOR_TYPE_URL.to_string(),
-                value: d.encode_to_vec(),
-            }),
-            created_at: None,
-        })
-        .collect();
-
-    let book = crate::proto::EventBook {
-        cover: Some(Cover {
-            domain: META_TOPOLOGY_DOMAIN.to_string(),
-            root: None,
-            correlation_id: String::new(),
-            edition: None,
-        }),
-        pages,
-        snapshot: None,
-        snapshot_state: None,
-    };
-
-    event_bus.publish(Arc::new(book)).await?;
-    tracing::info!(count = descriptors.len(), "Published component descriptors to event bus");
-    Ok(())
+/// Uses the angzarr namespace to ensure consistent root UUIDs across registrations.
+pub fn component_name_to_uuid(name: &str) -> uuid::Uuid {
+    use crate::orchestration::correlation::ANGZARR_UUID_NAMESPACE;
+    uuid::Uuid::new_v5(&ANGZARR_UUID_NAMESPACE, name.as_bytes())
 }
 
-/// Periodically re-publish component descriptors to the event bus.
+/// Build registration commands for component descriptors.
 ///
-/// Handles the startup race in distributed mode: if the topology binary's
-/// queue isn't bound when the initial descriptor is published, it's lost.
-/// Re-publishing every `interval` ensures the topology projector eventually
-/// receives all descriptors.
-pub fn spawn_descriptor_heartbeat(
-    event_bus: std::sync::Arc<dyn crate::bus::EventBus>,
-    descriptors: Vec<crate::proto::ComponentDescriptor>,
-    interval: std::time::Duration,
-) {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(interval).await;
-            if let Err(e) = publish_descriptors(event_bus.as_ref(), &descriptors).await {
-                tracing::debug!(error = %e, "Failed to re-publish component descriptors");
+/// Returns a list of CommandBooks, one per descriptor, targeting the _angzarr
+/// meta aggregate with root UUID derived from component name.
+pub fn build_registration_commands(
+    descriptors: &[crate::proto::ComponentDescriptor],
+    pod_id: &str,
+) -> Vec<crate::proto::CommandBook> {
+    use prost::Message;
+
+    descriptors
+        .iter()
+        .map(|descriptor| {
+            let root_uuid = component_name_to_uuid(&descriptor.name);
+            let cmd = crate::proto::RegisterComponent {
+                descriptor: Some(descriptor.clone()),
+                pod_id: pod_id.to_string(),
+            };
+
+            let mut buf = Vec::new();
+            cmd.encode(&mut buf).expect("encode RegisterComponent");
+
+            crate::proto::CommandBook {
+                cover: Some(Cover {
+                    domain: META_ANGZARR_DOMAIN.to_string(),
+                    root: Some(crate::proto::Uuid {
+                        value: root_uuid.as_bytes().to_vec(),
+                    }),
+                    correlation_id: format!("registration-{}", descriptor.name),
+                    edition: None,
+                }),
+                pages: vec![crate::proto::CommandPage {
+                    sequence: 0,
+                    command: Some(prost_types::Any {
+                        type_url: REGISTER_COMPONENT_TYPE_URL.to_string(),
+                        value: buf,
+                    }),
+                }],
+                saga_origin: None,
             }
-        }
-    });
+        })
+        .collect()
+}
+
+/// Get the current pod ID for component registration.
+///
+/// In K8s: uses POD_NAME environment variable.
+/// Locally: uses hostname or "standalone".
+pub fn get_pod_id() -> String {
+    std::env::var("POD_NAME").unwrap_or_else(|_| "standalone".to_string())
 }
 
 /// Extension trait for types with an optional Cover.
@@ -579,7 +571,6 @@ mod tests {
             cover: Some(make_cover("orders", "corr-123", Some(root))),
             pages: vec![],
             snapshot: None,
-            snapshot_state: None,
         };
 
         assert_eq!(book.domain(), "orders");
@@ -595,7 +586,6 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
-            snapshot_state: None,
         };
 
         assert_eq!(book.domain(), "unknown");

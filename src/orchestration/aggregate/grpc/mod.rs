@@ -12,10 +12,9 @@ use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
-use crate::proto::{EventBook, Projection, SyncEventBook};
-use crate::proto_ext::{correlated_request, CoverExt};
+use crate::proto::{EventBook, Projection, Snapshot, SyncEventBook};
+use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
-use crate::services::snapshot_handler::persist_snapshot_if_present;
 use crate::services::upcaster::Upcaster;
 use crate::storage::{EventStore, SnapshotStore, StorageError};
 use crate::utils::sequence_validator::sequence_mismatch_error_with_state;
@@ -173,36 +172,89 @@ impl AggregateContext for GrpcAggregateContext {
     #[tracing::instrument(name = "aggregate.persist", skip_all, fields(%domain, %root))]
     async fn persist_events(
         &self,
-        events: &EventBook,
+        prior: &EventBook,
+        received: &EventBook,
         domain: &str,
         edition: &str,
         root: Uuid,
         _correlation_id: &str,
     ) -> Result<EventBook, Status> {
-        // Persist events
-        self.event_book_repo
-            .put(edition, events)
-            .await
-            .map_err(|e| match e {
-                StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
-                    "Sequence conflict: expected {}, got {}",
-                    expected, actual
-                )),
-                _ => Status::internal(format!("Failed to persist events: {e}")),
-            })?;
+        // Compute new pages: those in received but not in prior
+        let prior_max_seq = prior.pages.iter().map(|p| p.sequence_num()).max();
+        let new_pages: Vec<_> = received
+            .pages
+            .iter()
+            .filter(|p| {
+                let seq = p.sequence_num();
+                prior_max_seq.map_or(true, |max| seq > max)
+            })
+            .cloned()
+            .collect();
 
-        // Persist snapshot if present and enabled
-        persist_snapshot_if_present(
-            &self.snapshot_store,
-            events,
-            domain,
-            edition,
-            root,
-            self.snapshot_write_enabled,
-        )
-        .await?;
+        // Check if snapshot changed (compare state bytes)
+        let snapshot_changed = match (&prior.snapshot, &received.snapshot) {
+            (None, Some(s)) => s.state.is_some(),
+            (Some(_), None) => false, // Client cleared snapshot, don't persist
+            (None, None) => false,
+            (Some(p), Some(r)) => {
+                let prior_state = p.state.as_ref().map(|s| &s.value);
+                let received_state = r.state.as_ref().map(|s| &s.value);
+                prior_state != received_state
+            }
+        };
 
-        Ok(events.clone())
+        if new_pages.is_empty() && !snapshot_changed {
+            // Nothing to persist
+            return Ok(received.clone());
+        }
+
+        // Persist new events if any
+        if !new_pages.is_empty() {
+            let events_to_persist = EventBook {
+                cover: received.cover.clone(),
+                pages: new_pages.clone(),
+                snapshot: None,
+            };
+            self.event_book_repo
+                .put(edition, &events_to_persist)
+                .await
+                .map_err(|e| match e {
+                    StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
+                        "Sequence conflict: expected {}, got {}",
+                        expected, actual
+                    )),
+                    _ => Status::internal(format!("Failed to persist events: {e}")),
+                })?;
+        }
+
+        // Persist snapshot if changed and enabled
+        if self.snapshot_write_enabled && snapshot_changed {
+            if let Some(ref snapshot) = received.snapshot {
+                if let Some(ref state) = snapshot.state {
+                    // Compute sequence from the last event
+                    let last_seq = new_pages
+                        .last()
+                        .map(|p| p.sequence_num())
+                        .or(prior_max_seq)
+                        .unwrap_or(0);
+                    let persisted_snapshot = Snapshot {
+                        sequence: last_seq,
+                        state: Some(state.clone()),
+                    };
+                    self.snapshot_store
+                        .put(domain, edition, root, persisted_snapshot)
+                        .await
+                        .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+                }
+            }
+        }
+
+        // Return with only new pages
+        Ok(EventBook {
+            cover: received.cover.clone(),
+            pages: new_pages,
+            snapshot: received.snapshot.clone(),
+        })
     }
 
     #[tracing::instrument(name = "aggregate.post_persist", skip_all)]

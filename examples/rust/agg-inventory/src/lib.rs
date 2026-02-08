@@ -6,7 +6,7 @@ use prost::Message;
 
 use angzarr::proto::{
     event_page::Sequence, BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand,
-    Cover, EventBook, EventPage,
+    Cover, EventBook, EventPage, Snapshot,
 };
 use common::proto::{
     CommitReservation, InitializeStock, InventoryState, LowStockAlert, ReceiveStock,
@@ -15,7 +15,7 @@ use common::proto::{
 };
 use common::{decode_command, make_event_book, now, ProtoTypeName};
 use common::{require_exists, require_non_negative, require_not_exists, require_positive};
-use common::{AggregateLogic, BusinessError, CommandRouter, Result, StateBuilder};
+use common::{Aggregate, AggregateLogic, BusinessError, Result, StateBuilder};
 
 pub mod errmsg {
     pub const ALREADY_INITIALIZED: &str = "Inventory already initialized";
@@ -124,7 +124,7 @@ fn build_event_response(
 
 /// Client logic for Inventory aggregate.
 pub struct InventoryLogic {
-    router: CommandRouter<InventoryState>,
+    aggregate: Aggregate<InventoryState>,
 }
 
 impl InventoryLogic {
@@ -132,7 +132,7 @@ impl InventoryLogic {
 
     pub fn new() -> Self {
         Self {
-            router: CommandRouter::new("inventory", rebuild_state)
+            aggregate: Aggregate::new("inventory", rebuild_state)
                 .on(InitializeStock::TYPE_NAME, handle_initialize_stock)
                 .on(ReceiveStock::TYPE_NAME, handle_receive_stock)
                 .on(ReserveStock::TYPE_NAME, handle_reserve_stock)
@@ -280,12 +280,14 @@ fn handle_reserve_stock(
 
     Ok(EventBook {
         cover: command_book.cover.clone(),
-        snapshot: None,
-        pages,
-        snapshot_state: Some(prost_types::Any {
-            type_url: InventoryState::type_url(),
-            value: new_state.encode_to_vec(),
+        snapshot: Some(Snapshot {
+            sequence: 0, // Framework computes from pages
+            state: Some(prost_types::Any {
+                type_url: InventoryState::type_url(),
+                value: new_state.encode_to_vec(),
+            }),
         }),
+        pages,
     })
 }
 
@@ -365,14 +367,14 @@ fn handle_commit_reservation(
 #[tonic::async_trait]
 impl AggregateLogic for InventoryLogic {
     fn descriptor(&self) -> ComponentDescriptor {
-        self.router.descriptor()
+        self.aggregate.descriptor()
     }
 
     async fn handle(
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        self.router.dispatch(cmd)
+        self.aggregate.dispatch(cmd)
     }
 }
 
@@ -444,7 +446,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            snapshot_state: None,
         };
 
         let cmd = ReserveStock {

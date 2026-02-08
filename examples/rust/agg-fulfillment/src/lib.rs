@@ -17,7 +17,7 @@ use common::proto::{
 };
 use common::{decode_command, make_event_book, now, ProtoTypeName};
 use common::{require_exists, require_not_exists, require_status, require_status_not};
-use common::{AggregateLogic, CommandRouter, Result, StateBuilder};
+use common::{Aggregate, AggregateLogic, Result, StateBuilder};
 
 pub mod errmsg {
     pub const SHIPMENT_EXISTS: &str = "Shipment already exists";
@@ -122,7 +122,7 @@ fn build_event_response(
 
 /// Client logic for Fulfillment aggregate.
 pub struct FulfillmentLogic {
-    router: CommandRouter<FulfillmentState>,
+    aggregate: Aggregate<FulfillmentState>,
 }
 
 impl FulfillmentLogic {
@@ -130,7 +130,7 @@ impl FulfillmentLogic {
 
     pub fn new() -> Self {
         Self {
-            router: CommandRouter::new("fulfillment", rebuild_state)
+            aggregate: Aggregate::new("fulfillment", rebuild_state)
                 .on(CreateShipment::TYPE_NAME, handle_create_shipment)
                 .on(MarkPicked::TYPE_NAME, handle_mark_picked)
                 .on(MarkPacked::TYPE_NAME, handle_mark_packed)
@@ -279,13 +279,13 @@ fn handle_record_delivery(
 #[tonic::async_trait]
 impl AggregateLogic for FulfillmentLogic {
     fn descriptor(&self) -> ComponentDescriptor {
-        self.router.descriptor()
+        self.aggregate.descriptor()
     }
 
     async fn handle(
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        self.router.dispatch(cmd)
+        self.aggregate.dispatch(cmd)
     }
 }

@@ -175,10 +175,12 @@ async fn test_list_registered_domains() {
 
     let router = runtime.router();
     let domains = router.domains();
-    assert_eq!(domains.len(), 3, "Should have 3 domains");
+    // 3 user domains + 1 auto-registered _angzarr meta domain
+    assert_eq!(domains.len(), 4, "Should have 4 domains (3 user + _angzarr)");
     assert!(domains.contains(&"orders"), "Should contain orders");
     assert!(domains.contains(&"products"), "Should contain products");
     assert!(domains.contains(&"customers"), "Should contain customers");
+    assert!(domains.contains(&"_angzarr"), "Should contain _angzarr meta domain");
 }
 
 /// Test list aggregate roots in domain.

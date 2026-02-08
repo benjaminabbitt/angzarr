@@ -40,7 +40,6 @@ impl InventoryProjector {
                     LowStockAlert::TYPE_NAME.to_string(),
                 ],
             }],
-            outputs: vec![],
         }
     }
 }

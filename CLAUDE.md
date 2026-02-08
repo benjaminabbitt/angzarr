@@ -114,21 +114,37 @@ When using proto generated code, use extension traits to add functionality to th
 Business logic is implemented in aggregates.  Accept commands, emit events.
 
 ### Sagas
-Orchestrate multiple aggregates.  Accept events from a single domain, emit commands in a different domain.  Single domains in and out.  There may be multiple sagas per aggregate, bridging to different domains.
+Domain translators. They translate the language of domain A to the language of domain B. Accept events from a single domain, emit commands to a different domain. Single domain in, single domain out. There may be multiple sagas per aggregate, bridging to different domains.
+
+Sagas should contain extremely limited logic—just enough to map fields and construct the target command. If you find yourself adding conditionals or business rules, that logic likely belongs in the source aggregate.
+
+**Sagas must be stateless.** Each event is processed independently with no memory of previous events. If you need to correlate events across multiple domains, use a Process Manager. If you need stateful decision-making, that logic belongs in an Aggregate. Statelessness enables:
+- Horizontal scaling (any instance can handle any event)
+- Simpler testing (no setup of prior state)
+- Fault tolerance (replay events without side effects from stale state)
 
 Name sagas `saga-{source}-{target}`. Examples:
 - `saga-order-fulfillment` (order events → fulfillment commands)
 - `saga-fulfillment-inventory` (fulfillment events → inventory commands)
 
 ### Projectors
-Accept events from a single domain, output to external systems, databases, event streams to external systems, files, etc.  May query other domain projections to enhance output.
+Accept events from a single domain, output to external systems, databases, event streams to external systems, files, etc.
 
 Name projectors `projector-{source}-{feature}`. Examples:
 - `projector-inventory-stock` (inventory events → stock level read model)
 - `projector-order-web` (order events → web API cache)
 
 ### Process Managers
-Accepts events across multiple domains, joins them together via the correlation ID. May emit commands to other domains.  Super sagas/aggregates.  These should generally be a state machine correlating events from multiple domains.  Are their own aggregate as well, with the domain being the correlation ID as root.
+Accepts events across multiple domains, joins them together via the correlation ID. May emit commands to other domains. Super sagas/aggregates. These should generally be a state machine correlating events from multiple domains.
+
+**PM as Aggregate:** Process managers are their own aggregate, with the correlation ID as aggregate root. The PM tracks the state of a specific cross-domain business process; the correlation ID identifies that process. Events without a correlation ID should not invoke PMs—the router guards against this.
+
+### Event Design
+Sagas and projectors operate only on the events they receive—no querying. If they lack information, enrich the event at the source aggregate.
+
+Aggregates may query projections (read models) when processing commands to gather information for decision-making and building events.
+
+Keep events lean. Use IDs to reference immutable objects rather than embedding full data—if the object won't change, the ID suffices.
 
 ## Component Descriptors
 
@@ -202,7 +218,13 @@ Topology serves a REST API for Grafana Node Graph panel:
 - **Commands**: Requests to perform actions. Named imperatively (CreateOrder, ReserveStock).
 - **Descriptor**: Self-description of a component's inputs, outputs, and type. Published to event bus for topology discovery.
 - **Target**: A domain + list of message types. Used for both subscriptions (inputs) and command destinations (outputs).
-- **Correlation ID**: Links related events across domains. Flows through sagas/PMs to trace business transactions. 
+- **Correlation ID**: Identifies a cross-domain business process. Not a domain entity ID (like `order_id` or `game_id`)—it's the identifier for the workflow/transaction that spans domains. Stable across all events in that process. Flows through sagas/PMs. For PMs, the correlation ID serves as the aggregate root.
+
+  **Propagation rules:**
+  - Client must provide correlation_id on the initial command if cross-domain tracking is needed
+  - Framework does NOT auto-generate correlation_id—if not provided, it stays empty
+  - Once set, angzarr propagates correlation_id through sagas, PMs, and resulting commands
+  - PMs require correlation_id—events without one are skipped (guarded at router level) 
 
 ## Crate Organization
 - Each saga is its own crate with focused, single-purpose translation logic

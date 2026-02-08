@@ -76,9 +76,16 @@ pub trait AggregateContext: Send + Sync {
     ) -> Result<EventBook, Status>;
 
     /// Persist new events to storage.
+    ///
+    /// Compares `prior` (sent to client logic) with `received` (returned by client logic)
+    /// to determine what to persist:
+    /// - If snapshots differ (by state comparison), persist the new snapshot
+    /// - If pages differ (new pages in received), persist the new pages
+    /// - If identical, no-op
     async fn persist_events(
         &self,
-        events: &EventBook,
+        prior: &EventBook,
+        received: &EventBook,
         domain: &str,
         edition: &str,
         root: Uuid,
@@ -320,7 +327,7 @@ async fn execute_mode(
 
     // Invoke client logic
     let contextual_command = ContextualCommand {
-        events: Some(prior_events),
+        events: Some(prior_events.clone()),
         command: Some(command_book),
     };
 
@@ -328,11 +335,11 @@ async fn execute_mode(
         tracing::error!(error = %e, "client logic invocation failed");
         e
     })?;
-    let new_events = extract_events_from_response(response, correlation_id.to_string())?;
+    let received_events = extract_events_from_response(response, correlation_id.to_string())?;
 
-    // Persist
+    // Persist (compares prior with received to detect new events/snapshot)
     let persisted = ctx
-        .persist_events(&new_events, &domain, &edition, root_uuid, &correlation_id)
+        .persist_events(&prior_events, &received_events, &domain, &edition, root_uuid, &correlation_id)
         .await?;
 
     // Post-persist: publish + sync projectors

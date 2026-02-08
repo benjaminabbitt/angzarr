@@ -160,7 +160,6 @@ impl AggregateContext for LocalAggregateContext {
                     }),
                     pages: events,
                     snapshot: snapshot_data,
-                    snapshot_state: None,
                 })
             }
             TemporalQuery::AsOfSequence(seq) => {
@@ -185,7 +184,6 @@ impl AggregateContext for LocalAggregateContext {
                     }),
                     pages: events,
                     snapshot: None,
-                    snapshot_state: None,
                 })
             }
             TemporalQuery::AsOfTimestamp(ts) => {
@@ -209,7 +207,6 @@ impl AggregateContext for LocalAggregateContext {
                     }),
                     pages: events,
                     snapshot: None,
-                    snapshot_state: None,
                 })
             }
         }
@@ -218,15 +215,41 @@ impl AggregateContext for LocalAggregateContext {
     #[tracing::instrument(name = "aggregate.persist", skip_all, fields(%domain, %root))]
     async fn persist_events(
         &self,
-        events: &EventBook,
+        prior: &EventBook,
+        received: &EventBook,
         domain: &str,
         edition: &str,
         root: Uuid,
         correlation_id: &str,
     ) -> Result<EventBook, Status> {
-        if events.pages.is_empty() {
-            // No events to persist (command was a no-op)
-            let cover = events.cover.clone().map(|mut c| {
+        // Compute new pages: those in received but not in prior
+        let prior_max_seq = prior.pages.iter().map(|p| extract_sequence(Some(p))).max();
+        let new_pages: Vec<_> = received
+            .pages
+            .iter()
+            .filter(|p| {
+                let seq = extract_sequence(Some(*p));
+                prior_max_seq.map_or(true, |max| seq > max)
+            })
+            .cloned()
+            .collect();
+
+        // Check if snapshot changed (compare state bytes)
+        let snapshot_changed = match (&prior.snapshot, &received.snapshot) {
+            (None, Some(s)) => s.state.is_some(),
+            (Some(_), None) => false, // Client cleared snapshot, don't persist
+            (None, None) => false,
+            (Some(p), Some(r)) => {
+                // Compare state bytes
+                let prior_state = p.state.as_ref().map(|s| &s.value);
+                let received_state = r.state.as_ref().map(|s| &s.value);
+                prior_state != received_state
+            }
+        };
+
+        if new_pages.is_empty() && !snapshot_changed {
+            // Nothing to persist (command was a no-op or returned identical state)
+            let cover = received.cover.clone().map(|mut c| {
                 if c.correlation_id.is_empty() {
                     c.correlation_id = correlation_id.to_string();
                 }
@@ -235,59 +258,66 @@ impl AggregateContext for LocalAggregateContext {
             return Ok(EventBook {
                 cover,
                 pages: vec![],
-                snapshot: None,
-                snapshot_state: None,
+                snapshot: received.snapshot.clone(),
             });
         }
 
-        // Validate sequence
-        let next_sequence = self
-            .storage
-            .event_store
-            .get_next_sequence(domain, edition, root)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get sequence: {e}")))?;
-        let first_event_seq = extract_sequence(events.pages.first());
+        // Persist new events if any
+        if !new_pages.is_empty() {
+            // Validate sequence
+            let next_sequence = self
+                .storage
+                .event_store
+                .get_next_sequence(domain, edition, root)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to get sequence: {e}")))?;
+            let first_event_seq = extract_sequence(new_pages.first());
 
-        if first_event_seq != next_sequence {
-            // Map SequenceConflict to Aborted so retry logic can detect it
-            return Err(Status::aborted(format!(
-                "Sequence conflict: expected {}, got {}",
-                next_sequence, first_event_seq
-            )));
+            if first_event_seq != next_sequence {
+                return Err(Status::aborted(format!(
+                    "Sequence conflict: expected {}, got {}",
+                    next_sequence, first_event_seq
+                )));
+            }
+
+            self.storage
+                .event_store
+                .add(domain, edition, root, new_pages.clone(), correlation_id)
+                .await
+                .map_err(|e| match e {
+                    StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
+                        "Sequence conflict: expected {}, got {}",
+                        expected, actual
+                    )),
+                    _ => Status::internal(format!("Failed to persist events: {e}")),
+                })?;
         }
 
-        // Persist events
-        self.storage
-            .event_store
-            .add(domain, edition, root, events.pages.clone(), correlation_id)
-            .await
-            .map_err(|e| match e {
-                StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
-                    "Sequence conflict: expected {}, got {}",
-                    expected, actual
-                )),
-                _ => Status::internal(format!("Failed to persist events: {e}")),
-            })?;
-
-        // Persist snapshot if present and enabled
-        if self.snapshot_write_enabled {
-            if let Some(ref snapshot_state) = events.snapshot_state {
-                let last_seq = extract_sequence(events.pages.last());
-                let snapshot = crate::proto::Snapshot {
-                    sequence: last_seq,
-                    state: Some(snapshot_state.clone()),
-                };
-                self.storage
-                    .snapshot_store
-                    .put(domain, edition, root, snapshot)
-                    .await
-                    .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+        // Persist snapshot if changed and enabled
+        if self.snapshot_write_enabled && snapshot_changed {
+            if let Some(ref snapshot) = received.snapshot {
+                if let Some(ref state) = snapshot.state {
+                    // Compute sequence from the last persisted event
+                    let last_seq = new_pages
+                        .last()
+                        .map(|p| extract_sequence(Some(p)))
+                        .or_else(|| prior_max_seq)
+                        .unwrap_or(0);
+                    let persisted_snapshot = crate::proto::Snapshot {
+                        sequence: last_seq,
+                        state: Some(state.clone()),
+                    };
+                    self.storage
+                        .snapshot_store
+                        .put(domain, edition, root, persisted_snapshot)
+                        .await
+                        .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+                }
             }
         }
 
-        // Return events with correlation ID and edition set on cover
-        let cover = events.cover.clone().map(|mut c| {
+        // Return new events with correlation ID and edition set on cover
+        let cover = received.cover.clone().map(|mut c| {
             if c.correlation_id.is_empty() {
                 c.correlation_id = correlation_id.to_string();
             }
@@ -296,9 +326,8 @@ impl AggregateContext for LocalAggregateContext {
         });
         Ok(EventBook {
             cover,
-            pages: events.pages.clone(),
-            snapshot: None,
-            snapshot_state: events.snapshot_state.clone(),
+            pages: new_pages,
+            snapshot: received.snapshot.clone(),
         })
     }
 
@@ -306,6 +335,12 @@ impl AggregateContext for LocalAggregateContext {
     async fn post_persist(&self, events: &EventBook) -> Result<Vec<Projection>, Status> {
         // Call sync projectors
         let projections = self.call_sync_projectors(events).await;
+
+        tracing::info!(
+            pages = events.pages.len(),
+            domain = %events.domain(),
+            "Aggregate publishing events to bus"
+        );
 
         // Publish events to bus — cover.domain stays bare, bus computes routing key
         #[cfg(feature = "otel")]

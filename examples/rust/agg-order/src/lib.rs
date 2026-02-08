@@ -35,7 +35,7 @@ use common::proto::{
     ApplyLoyaltyDiscount, CancelOrder, ConfirmPayment, CreateOrder, OrderCompleted, OrderState,
     SubmitPayment,
 };
-use common::{decode_command, extract_command, next_sequence, now, require_exists, require_status_not, AggregateLogic, CommandRouter, ProtoTypeName};
+use common::{decode_command, extract_command, next_sequence, now, require_exists, require_status_not, Aggregate, AggregateLogic, ProtoTypeName};
 use tracing::info;
 
 pub use fraud_client::{FraudCheckResult, FraudError, FraudServiceClient};
@@ -77,7 +77,7 @@ pub mod errmsg {
 /// service calls (fraud check, pricing, tax, etc.) should happen here, enriching
 /// the emitted events with data from external sources.
 pub struct OrderLogic {
-    router: CommandRouter<OrderState>,
+    aggregate: Aggregate<OrderState>,
     fraud_client: Option<Arc<FraudServiceClient>>,
 }
 
@@ -96,7 +96,7 @@ impl OrderLogic {
     ///           If None, fraud check always returns Approved.
     pub fn with_fraud_service_url(url: Option<&str>) -> Self {
         Self {
-            router: CommandRouter::new("order", rebuild_state)
+            aggregate: Aggregate::new("order", rebuild_state)
                 .on(CreateOrder::TYPE_NAME, handle_create_order)
                 .on(ApplyLoyaltyDiscount::TYPE_NAME, handle_apply_loyalty_discount)
                 .on(SubmitPayment::TYPE_NAME, handle_submit_payment)
@@ -208,7 +208,7 @@ impl Default for OrderLogic {
 #[tonic::async_trait]
 impl AggregateLogic for OrderLogic {
     fn descriptor(&self) -> ComponentDescriptor {
-        self.router.descriptor()
+        self.aggregate.descriptor()
     }
 
     async fn handle(
@@ -227,7 +227,7 @@ impl AggregateLogic for OrderLogic {
             return self.handle_confirm_payment_with_fraud(cmd).await;
         }
 
-        self.router.dispatch(cmd)
+        self.aggregate.dispatch(cmd)
     }
 }
 

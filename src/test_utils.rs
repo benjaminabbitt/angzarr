@@ -76,7 +76,6 @@ pub fn make_event_book(domain: &str, pages: Vec<EventPage>) -> EventBook {
         cover: Some(make_cover(domain)),
         pages,
         snapshot: None,
-        snapshot_state: None,
     }
 }
 
@@ -86,7 +85,6 @@ pub fn make_event_book_with_root(domain: &str, root: Uuid, pages: Vec<EventPage>
         cover: Some(make_cover_with_root(domain, root)),
         pages,
         snapshot: None,
-        snapshot_state: None,
     }
 }
 

@@ -50,7 +50,6 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
         }),
         pages,
         snapshot: None,
-        snapshot_state: None,
     }
 }
 

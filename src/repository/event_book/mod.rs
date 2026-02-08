@@ -85,7 +85,6 @@ impl EventBookRepository {
             }),
             snapshot,
             pages: events,
-            snapshot_state: None,
         })
     }
 
@@ -111,7 +110,6 @@ impl EventBookRepository {
             }),
             snapshot: None,
             pages: events,
-            snapshot_state: None,
         })
     }
 
@@ -142,7 +140,6 @@ impl EventBookRepository {
             }),
             snapshot: None,
             pages: events,
-            snapshot_state: None,
         })
     }
 
@@ -173,7 +170,6 @@ impl EventBookRepository {
             }),
             snapshot: None,
             pages: events,
-            snapshot_state: None,
         })
     }
 

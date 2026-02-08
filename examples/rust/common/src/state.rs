@@ -4,7 +4,7 @@
 //! - `rebuild_from_events`: Takes a closure for event application
 //! - `StateBuilder`: Declarative registration of named event handlers
 //!
-//! `StateBuilder` is the preferred approach as it mirrors `CommandRouter`'s
+//! `StateBuilder` is the preferred approach as it mirrors `Aggregate`'s
 //! pattern of registering handlers by type suffix.
 
 use angzarr::proto::EventBook;
@@ -62,7 +62,7 @@ impl<S: Message + Default> StateBuilder<S> {
     /// Register an event applier for a type_url suffix.
     ///
     /// The applier function is responsible for decoding the event.
-    /// This matches CommandRouter's pattern where handlers decode commands.
+    /// This matches Aggregate's pattern where handlers decode commands.
     pub fn on(mut self, type_suffix: &'static str, apply: StateApplier<S>) -> Self {
         self.appliers.push((type_suffix, apply));
         self
@@ -217,7 +217,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            snapshot_state: None,
         };
 
         let state: TestState = rebuild_from_events(Some(&book), apply_test_event);
@@ -254,7 +253,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            snapshot_state: None,
         };
 
         let state: TestState = rebuild_from_events(Some(&book), apply_test_event);
@@ -268,7 +266,6 @@ mod tests {
             cover: None,
             snapshot: None,
             pages: vec![],
-            snapshot_state: None,
         };
 
         let state: TestState = rebuild_from_events(Some(&book), apply_test_event);
@@ -332,7 +329,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            snapshot_state: None,
         };
 
         let state = builder.rebuild(Some(&book));
@@ -373,7 +369,6 @@ mod tests {
                     created_at: None,
                 },
             ],
-            snapshot_state: None,
         };
 
         let state = builder.rebuild(Some(&book));
@@ -414,7 +409,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            snapshot_state: None,
         };
 
         let state = builder.rebuild(Some(&book));
@@ -438,7 +432,6 @@ mod tests {
                 }),
                 created_at: None,
             }],
-            snapshot_state: None,
         };
 
         let state = builder.rebuild(Some(&book));

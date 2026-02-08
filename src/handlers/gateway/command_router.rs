@@ -5,12 +5,10 @@
 
 use std::sync::Arc;
 
-use prost::Message;
 use tonic::Status;
 use tracing::{debug, warn};
 
 use crate::discovery::{DiscoveryError, ServiceDiscovery};
-use crate::orchestration::correlation::ANGZARR_UUID_NAMESPACE;
 use crate::proto::{CommandBook, CommandResponse, DryRunRequest, SyncCommandBook};
 use crate::proto_ext::{correlated_request, CoverExt, WILDCARD_DOMAIN};
 
@@ -26,24 +24,13 @@ impl CommandRouter {
         Self { discovery }
     }
 
-    /// Generate or use existing correlation ID.
+    /// Extract existing correlation ID from command. Does not auto-generate.
+    ///
+    /// Correlation ID is client-provided for cross-domain workflows.
+    /// If not provided, returns empty string (PMs won't trigger).
     #[allow(clippy::result_large_err)]
     pub fn ensure_correlation_id(command_book: &mut CommandBook) -> Result<String, Status> {
-        let current_correlation_id = command_book.correlation_id().to_string();
-
-        if current_correlation_id.is_empty() {
-            let mut buf = Vec::new();
-            command_book
-                .encode(&mut buf)
-                .map_err(|e| Status::internal(format!("Failed to encode command: {e}")))?;
-            let generated = uuid::Uuid::new_v5(&ANGZARR_UUID_NAMESPACE, &buf).to_string();
-            if let Some(ref mut cover) = command_book.cover {
-                cover.correlation_id = generated.clone();
-            }
-            Ok(generated)
-        } else {
-            Ok(current_correlation_id)
-        }
+        Ok(command_book.correlation_id().to_string())
     }
 
     /// Forward command to aggregate coordinator based on domain.
@@ -221,17 +208,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ensure_correlation_id_generates_when_empty() {
+    async fn test_ensure_correlation_id_empty_stays_empty() {
         let mut command = make_test_command("orders");
         assert!(command.cover.as_ref().unwrap().correlation_id.is_empty());
 
         let correlation_id = CommandRouter::ensure_correlation_id(&mut command).unwrap();
 
-        assert!(!correlation_id.is_empty());
-        assert_eq!(
-            command.cover.as_ref().unwrap().correlation_id,
-            correlation_id
-        );
+        assert!(correlation_id.is_empty());
     }
 
     #[tokio::test]

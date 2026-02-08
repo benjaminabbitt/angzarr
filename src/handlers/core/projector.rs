@@ -132,6 +132,12 @@ impl EventHandler for ProjectorEventHandler {
             if !self.domains.iter().any(|d| d == &routing_key) {
                 return Box::pin(async { Ok(()) });
             }
+        } else {
+            // Exclude infrastructure domains (underscore prefix) by default
+            let domain = book.domain();
+            if domain.starts_with('_') {
+                return Box::pin(async { Ok(()) });
+            }
         }
 
         let correlation_id = book.correlation_id().to_string();
@@ -240,6 +246,5 @@ fn create_projection_event_book(projection: Projection, correlation_id: &str, so
             }),
             created_at: None,
         }],
-        snapshot_state: None,
     }
 }

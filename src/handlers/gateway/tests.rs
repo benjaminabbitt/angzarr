@@ -57,7 +57,6 @@ impl AggregateCoordinator for MockAggregateCoordinator {
                     created_at: None,
                 }],
                 snapshot: None,
-                snapshot_state: None,
             });
 
         Ok(Response::new(CommandResponse {
@@ -234,6 +233,21 @@ fn make_test_command(domain: &str) -> CommandBook {
     }
 }
 
+fn make_test_command_with_correlation(domain: &str, correlation_id: &str) -> CommandBook {
+    CommandBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
+            }),
+            correlation_id: correlation_id.to_string(),
+            edition: None,
+        }),
+        pages: vec![],
+        saga_origin: None,
+    }
+}
+
 // Implement Clone for mock services (needed for tonic server)
 impl Clone for MockAggregateCoordinator {
     fn clone(&self) -> Self {
@@ -271,7 +285,7 @@ async fn test_execute_returns_immediate_response() {
 }
 
 #[tokio::test]
-async fn test_execute_generates_correlation_id_if_empty() {
+async fn test_execute_works_without_correlation_id() {
     let (gateway, _mock_coord, _mock_stream, handles) = setup_test_gateway().await;
 
     let command = make_test_command("orders");
@@ -280,10 +294,8 @@ async fn test_execute_generates_correlation_id_if_empty() {
     let response = gateway.execute(Request::new(command)).await.unwrap();
     let cmd_response = response.into_inner();
 
-    // The response should have events with a generated correlation ID
+    // Command should succeed even without correlation_id
     assert!(cmd_response.events.is_some());
-    // correlation_id is set on the command, not necessarily returned in events
-    // but the command should have been processed
 
     for h in handles {
         h.abort();
@@ -301,18 +313,17 @@ async fn test_execute_stream_returns_events() {
                 cover: None,
                 pages: vec![],
                 snapshot: None,
-                snapshot_state: None,
             },
             EventBook {
                 cover: None,
                 pages: vec![],
                 snapshot: None,
-                snapshot_state: None,
             },
         ])
         .await;
 
-    let command = make_test_command("orders");
+    // Streaming requires correlation_id for event stream subscription
+    let command = make_test_command_with_correlation("orders", "test-stream-correlation");
     let response = gateway.execute_stream(Request::new(command)).await.unwrap();
     let mut stream = response.into_inner();
 
@@ -369,7 +380,8 @@ async fn test_client_disconnect_stops_streaming() {
         .await;
     mock_stream.set_delay(50).await;
 
-    let command = make_test_command("orders");
+    // Streaming requires correlation_id for event stream subscription
+    let command = make_test_command_with_correlation("orders", "test-disconnect-correlation");
     let response = gateway.execute_stream(Request::new(command)).await.unwrap();
     let mut stream = response.into_inner();
 
@@ -401,7 +413,8 @@ async fn test_client_disconnect_during_stream_wait() {
     mock_stream.set_events(vec![EventBook::default()]).await;
     mock_stream.set_delay(5000).await; // 5 second delay
 
-    let command = make_test_command("orders");
+    // Streaming requires correlation_id for event stream subscription
+    let command = make_test_command_with_correlation("orders", "test-wait-correlation");
     let response = gateway.execute_stream(Request::new(command)).await.unwrap();
     let mut stream = response.into_inner();
 

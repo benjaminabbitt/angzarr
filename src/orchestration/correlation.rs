@@ -1,7 +1,7 @@
-//! Shared correlation ID generation.
+//! Shared correlation ID extraction.
 //!
-//! Uses UUIDv5 with the angzarr.dev namespace to produce deterministic
-//! correlation IDs from command content when none is provided.
+//! Correlation IDs are client-provided for cross-domain workflows.
+//! If not provided, the ID remains empty and process managers won't trigger.
 
 #![allow(clippy::result_large_err)]
 
@@ -14,24 +14,16 @@ use crate::proto_ext::CoverExt;
 
 /// Angzarr UUID namespace derived from DNS-based UUIDv5.
 ///
-/// Used to generate deterministic correlation IDs from command content.
+/// Used for deterministic UUID generation (e.g., component name to root UUID).
 pub static ANGZARR_UUID_NAMESPACE: LazyLock<uuid::Uuid> =
     LazyLock::new(|| uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev"));
 
-/// Returns existing correlation ID from the command's cover, or generates
-/// a deterministic one from the serialized command content.
+/// Extract existing correlation ID from command. Does not auto-generate.
+///
+/// Correlation ID is client-provided for cross-domain workflows.
+/// If not provided, returns empty string (PMs won't trigger).
 pub fn ensure_correlation_id(command_book: &CommandBook) -> Result<String, Status> {
-    if command_book.has_correlation_id() {
-        return Ok(command_book.correlation_id().to_string());
-    }
-
-    use prost::Message;
-    let mut buf = Vec::new();
-    command_book.encode(&mut buf).map_err(|e| {
-        Status::internal(format!("Failed to encode command for correlation ID: {e}"))
-    })?;
-
-    Ok(uuid::Uuid::new_v5(&ANGZARR_UUID_NAMESPACE, &buf).to_string())
+    Ok(command_book.correlation_id().to_string())
 }
 
 #[cfg(test)]
@@ -73,22 +65,9 @@ mod tests {
     }
 
     #[test]
-    fn test_generates_valid_uuid() {
+    fn test_empty_correlation_id_stays_empty() {
         let command = make_command_book(false);
         let result = ensure_correlation_id(&command).unwrap();
-
-        assert!(!result.is_empty());
-        assert!(uuid::Uuid::parse_str(&result).is_ok());
-    }
-
-    #[test]
-    fn test_deterministic_generation() {
-        let command1 = make_command_book(false);
-        let command2 = command1.clone();
-
-        let result1 = ensure_correlation_id(&command1).unwrap();
-        let result2 = ensure_correlation_id(&command2).unwrap();
-
-        assert_eq!(result1, result2);
+        assert!(result.is_empty());
     }
 }

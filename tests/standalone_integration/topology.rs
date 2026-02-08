@@ -63,7 +63,6 @@ impl ProcessManagerHandler for NoopProcessManager {
                 domain: "orders".into(),
                 types: vec![],
             }],
-            outputs: vec![],
         }
     }
 

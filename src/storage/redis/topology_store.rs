@@ -116,14 +116,12 @@ impl TopologyStore for RedisTopologyStore {
         node_id: &str,
         component_type: &str,
         domain: &str,
-        outputs: &[String],
         timestamp: &str,
     ) -> Result<()> {
         let mut conn = self.conn.clone();
 
         let node_key = self.node_key(node_id);
         let nodes_index = self.nodes_index_key();
-        let outputs_json = serde_json::to_string(outputs).unwrap_or_else(|_| "[]".to_string());
 
         // Check if node exists
         let exists: bool = conn
@@ -132,13 +130,12 @@ impl TopologyStore for RedisTopologyStore {
             .map_err(|e| TopologyError::Database(e.to_string()))?;
 
         if exists {
-            // Update component_type and outputs (register always wins)
+            // Update component_type (register always wins)
             let _: () = conn
                 .hset_multiple(
                     &node_key,
                     &[
                         ("component_type", component_type),
-                        ("outputs", &outputs_json),
                     ],
                 )
                 .await
@@ -153,7 +150,6 @@ impl TopologyStore for RedisTopologyStore {
                         ("title", node_id),
                         ("component_type", component_type),
                         ("domain", domain),
-                        ("outputs", &outputs_json),
                         ("event_count", "0"),
                         ("last_event_type", "registered"),
                         ("last_seen", timestamp),
@@ -349,17 +345,11 @@ impl TopologyStore for RedisTopologyStore {
                 }
             }
 
-            let outputs: Vec<String> = map
-                .get("outputs")
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_default();
-
             nodes.push(NodeRecord {
                 id: map.get("id").cloned().unwrap_or_default(),
                 title: map.get("title").cloned().unwrap_or_default(),
                 component_type: map.get("component_type").cloned().unwrap_or_default(),
                 domain: map.get("domain").cloned().unwrap_or_default(),
-                outputs,
                 event_count: map
                     .get("event_count")
                     .and_then(|s| s.parse().ok())

@@ -123,13 +123,7 @@ async fn graph_data(
     let graph_nodes: Vec<GraphNode> = nodes
         .into_iter()
         .map(|n| {
-            // For sagas/PMs, use first output domain color; for aggregates, use own domain
-            let color_domain = if !n.outputs.is_empty() {
-                &n.outputs[0]
-            } else {
-                &n.domain
-            };
-            let color = domain_color(color_domain);
+            let color = domain_color(&n.domain);
 
             let processed_count = *incoming_counts.get(&n.id).unwrap_or(&0);
 

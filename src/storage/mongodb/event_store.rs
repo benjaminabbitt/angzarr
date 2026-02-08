@@ -544,7 +544,6 @@ impl EventStore for MongoEventStore {
                 }),
                 pages,
                 snapshot: None,
-                snapshot_state: None,
             })
             .collect();
 

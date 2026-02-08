@@ -81,7 +81,6 @@ impl AggregateHandler for EchoAggregate {
             cover,
             pages: event_pages,
             snapshot: None,
-            snapshot_state: None,
         })
     }
 }
@@ -142,7 +141,6 @@ impl AggregateHandler for MultiEventAggregate {
             cover,
             pages,
             snapshot: None,
-            snapshot_state: None,
         })
     }
 }
@@ -233,7 +231,6 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
             created_at: None,
         }],
         snapshot: None,
-        snapshot_state: None,
     }
 }
 

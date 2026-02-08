@@ -25,7 +25,6 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
             })
             .collect(),
         snapshot: None,
-        snapshot_state: None,
     }
 }
 

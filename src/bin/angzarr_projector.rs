@@ -138,7 +138,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 name: projector_name.clone(),
                 component_type: "projector".to_string(),
                 inputs: vec![],
-                outputs: vec![],
             }
         }
     };

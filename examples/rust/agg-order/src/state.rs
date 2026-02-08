@@ -145,7 +145,6 @@ mod tests {
             }),
             snapshot: None,
             pages,
-            snapshot_state: None,
         }
     }
 

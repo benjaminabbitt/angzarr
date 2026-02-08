@@ -388,7 +388,12 @@ impl RuntimeBuilder {
     ///
     /// Initializes storage, messaging, and transport based on configuration.
     /// Returns a Runtime that can be used to run the system.
-    pub async fn build(self) -> Result<Runtime, Box<dyn std::error::Error>> {
+    pub async fn build(mut self) -> Result<Runtime, Box<dyn std::error::Error>> {
+        // Auto-register the _angzarr meta aggregate for component registration
+        use super::meta_aggregate::{MetaAggregateHandler, META_DOMAIN};
+        self.aggregates
+            .insert(META_DOMAIN.to_string(), Arc::new(MetaAggregateHandler::new()));
+
         // Use custom event bus if provided, otherwise create a default channel bus.
         let event_bus: Arc<dyn EventBus> = self
             .custom_event_bus

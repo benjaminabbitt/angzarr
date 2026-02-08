@@ -25,11 +25,19 @@ pub fn compute_snapshot_sequence(event_book: &EventBook) -> u32 {
         .unwrap_or(0)
 }
 
-/// Persists a snapshot if the EventBook contains snapshot state and writing is enabled.
+/// Persists a snapshot if the EventBook contains new events and a snapshot with state.
+///
+/// Only persists when:
+/// - write_enabled is true
+/// - pages is non-empty (there are new events to snapshot)
+/// - snapshot.state is Some (client explicitly provided state to snapshot)
+///
+/// The snapshot's sequence is computed from the last event in pages, not from
+/// the snapshot.sequence field (which may be stale from loading).
 ///
 /// # Arguments
 /// * `snapshot_store` - The storage backend for snapshots
-/// * `event_book` - The EventBook potentially containing snapshot state
+/// * `event_book` - The EventBook potentially containing a snapshot to persist
 /// * `domain` - The domain name for the aggregate
 /// * `edition` - The edition identifier for multi-tenant partitioning
 /// * `root_uuid` - The aggregate root UUID
@@ -49,16 +57,24 @@ pub async fn persist_snapshot_if_present(
         return Ok(());
     }
 
-    if let Some(ref state) = event_book.snapshot_state {
-        let snapshot_sequence = compute_snapshot_sequence(event_book);
-        let snapshot = Snapshot {
-            sequence: snapshot_sequence,
-            state: Some(state.clone()),
-        };
-        snapshot_store
-            .put(domain, edition, root_uuid, snapshot)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+    // Only persist if there are new events AND snapshot state is provided
+    if event_book.pages.is_empty() {
+        return Ok(());
+    }
+
+    if let Some(ref snapshot) = event_book.snapshot {
+        if let Some(ref state) = snapshot.state {
+            // Compute sequence from the last event being persisted
+            let snapshot_sequence = compute_snapshot_sequence(event_book);
+            let persisted_snapshot = Snapshot {
+                sequence: snapshot_sequence,
+                state: Some(state.clone()),
+            };
+            snapshot_store
+                .put(domain, edition, root_uuid, persisted_snapshot)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+        }
     }
 
     Ok(())

@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
-    // Fetch descriptor from saga service - includes outputs declared by business logic
+    // Fetch descriptor from saga service
     let descriptor = match saga_client.get_descriptor(GetDescriptorRequest {}).await {
         Ok(resp) => resp.into_inner(),
         Err(e) => {
@@ -114,14 +114,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     domain: listen_domain,
                     types: vec![],
                 }],
-                outputs: vec![],
             }
         }
     };
     info!(
         name = %descriptor.name,
         inputs = descriptor.inputs.len(),
-        outputs = descriptor.outputs.len(),
         "Fetched saga descriptor"
     );
     // Write descriptor to pod annotation for K8s-native topology discovery

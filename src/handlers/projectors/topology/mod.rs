@@ -1,6 +1,6 @@
 //! Topology projector: builds a graph of runtime components from descriptors.
 //!
-//! Graph STRUCTURE is declarative (from ComponentDescriptor inputs/outputs).
+//! Graph STRUCTURE is declarative (from ComponentDescriptor inputs).
 //! Only METRICS (event counts, last seen) are dynamic from event observation.
 //!
 //! Serves the graph via REST for Grafana's Node Graph panel.
@@ -28,8 +28,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use prost::Message;
 use tracing::{debug, info, warn};
 
-use crate::proto::{ComponentDescriptor, EventBook};
-use crate::proto_ext::{META_TOPOLOGY_DOMAIN, DESCRIPTOR_TYPE_URL, PROJECTION_DOMAIN_PREFIX};
+use crate::proto::{ComponentDescriptor, ComponentRegistered, EventBook};
+use crate::proto_ext::{
+    COMPONENT_REGISTERED_TYPE_URL, META_ANGZARR_DOMAIN, PROJECTION_DOMAIN_PREFIX,
+};
 
 use store::{TopologyError, TopologyStore};
 
@@ -89,8 +91,8 @@ impl TopologyProjector {
 
     /// Register components from their descriptors.
     ///
-    /// Creates nodes and edges from descriptor inputs (subscriptions) and
-    /// outputs (command targets). This is the ONLY source of graph structure.
+    /// Creates nodes and edges from descriptor inputs (subscriptions).
+    /// This is the ONLY source of graph structure.
     pub async fn register_components(
         &self,
         descriptors: &[ComponentDescriptor],
@@ -113,11 +115,8 @@ impl TopologyProjector {
             if desc.name.is_empty() {
                 continue;
             }
-            // Extract output domain names for node registration
-            let output_domains: Vec<String> =
-                desc.outputs.iter().map(|o| o.domain.clone()).collect();
             self.store
-                .register_node(&desc.name, &desc.component_type, &desc.name, &output_domains, &now)
+                .register_node(&desc.name, &desc.component_type, &desc.name, &now)
                 .await?;
             registered.insert(&desc.name);
         }
@@ -128,7 +127,7 @@ impl TopologyProjector {
             registered.insert(&node.id);
         }
 
-        // Pass 2: create edges from inputs (subscriptions) and outputs (commands)
+        // Pass 2: create edges from inputs (subscriptions)
         for desc in descriptors {
             if desc.name.is_empty() {
                 continue;
@@ -161,38 +160,10 @@ impl TopologyProjector {
                 }
             }
 
-            // Output edges: this_component -> target_domain (command)
-            for output in &desc.outputs {
-                if output.domain.is_empty() {
-                    continue;
-                }
-                if !registered.contains(output.domain.as_str()) {
-                    debug!(
-                        source = %desc.name,
-                        target = %output.domain,
-                        "skipping output edge: target node not yet registered"
-                    );
-                    continue;
-                }
-                // Register each command type as an edge event_type (or placeholder if none)
-                if output.types.is_empty() {
-                    self.store
-                        .upsert_edge(&desc.name, &output.domain, &format!("→{}", output.domain), "", &now)
-                        .await?;
-                } else {
-                    for cmd_type in &output.types {
-                        self.store
-                            .upsert_edge(&desc.name, &output.domain, cmd_type, "", &now)
-                            .await?;
-                    }
-                }
-            }
-
             info!(
                 name = %desc.name,
                 component_type = %desc.component_type,
                 inputs = desc.inputs.len(),
-                outputs = desc.outputs.len(),
                 "Registered component in topology"
             );
         }
@@ -216,15 +187,17 @@ impl TopologyProjector {
             return Ok(());
         }
 
-        // Handle topology meta-events (descriptor registration from services)
-        if domain == META_TOPOLOGY_DOMAIN {
+        // Handle _angzarr domain (component registration events)
+        if domain == META_ANGZARR_DOMAIN {
             let descriptors: Vec<ComponentDescriptor> = events
                 .pages
                 .iter()
                 .filter_map(|page| {
                     page.event.as_ref().and_then(|e| {
-                        if e.type_url == DESCRIPTOR_TYPE_URL {
-                            ComponentDescriptor::decode(e.value.as_slice()).ok()
+                        if e.type_url == COMPONENT_REGISTERED_TYPE_URL {
+                            ComponentRegistered::decode(e.value.as_slice())
+                                .ok()
+                                .and_then(|r| r.descriptor)
                         } else {
                             None
                         }
@@ -233,7 +206,7 @@ impl TopologyProjector {
                 .collect();
 
             if !descriptors.is_empty() {
-                info!(count = descriptors.len(), "Received descriptor registration via bus");
+                info!(count = descriptors.len(), "Received component registration");
                 self.register_components(&descriptors).await?;
             }
             return Ok(());

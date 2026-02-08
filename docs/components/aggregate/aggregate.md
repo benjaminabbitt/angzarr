@@ -664,6 +664,32 @@ Use language-native state for:
 - Low-volume aggregates where replay cost is negligible
 - Internal/temporary aggregates that don't need inspection
 
+### gRPC Message Size Limits
+
+gRPC has a default 4MB message size limit. Angzarr increases this to **10MB** by default, configurable via `ANGZARR_GRPC_MESSAGE_SIZE_KB` environment variable (value in KB).
+
+**Without snapshots**, the entire event history is transmitted on every command. Long-running aggregates can exceed this limit:
+
+| Events | ~Size (100 bytes/event) | Status |
+|--------|-------------------------|--------|
+| 1,000 | 100 KB | OK |
+| 10,000 | 1 MB | OK |
+| 100,000 | 10 MB | At limit |
+| 1,000,000 | 100 MB | **Fails** |
+
+**With snapshots**, only the snapshot + events since are transmitted. If you snapshot every 50 events, message size stays bounded regardless of total event count.
+
+**Recommendation: Enable snapshotting for any aggregate that may accumulate more than a few hundred events.** The cost is defining your state in protobuf—a worthwhile trade for bounded message sizes and faster state reconstruction.
+
+To increase the limit (not recommended as a primary solution):
+
+```bash
+# Increase to 50MB (value in KB)
+export ANGZARR_GRPC_MESSAGE_SIZE_KB=51200
+```
+
+This must be set on both clients and servers. Prefer snapshotting over increasing limits.
+
 ---
 
 ## Example Implementations

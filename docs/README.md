@@ -31,6 +31,7 @@
 ## Concepts
 
 - [CQRS and Event Sourcing](cqrs-event-sourcing.md) — Background for those new to the pattern
+- [Correlation ID](patterns.md#correlation-id) — When to use (and not use) correlation IDs for cross-domain workflows
 
 ## Quick Reference
 
@@ -41,6 +42,9 @@
 | Aggregate Root | Identity of instance within domain (hash of business keys) | — | — |
 | Projector | Perform side effects (DB writes, streaming, caching) | Events | Projections / Side Effects |
 | Saga (Process Coordinator) | Coordinate workflows across domains | Events | Commands to other domains |
+| Correlation ID | Links events across domains in a workflow | Set on initial command | Propagated automatically |
+
+**Note:** Correlation ID is optional for most operations. Only required for Process Managers and event streaming. See [Correlation ID](patterns.md#correlation-id).
 
 ## gRPC Contracts
 

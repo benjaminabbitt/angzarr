@@ -14,7 +14,7 @@ use crate::bus::EventBus;
 use crate::proto_ext::EditionExt;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::process_manager_client::ProcessManagerClient;
-use crate::proto::{CommandResponse, Cover, Edition, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest};
+use crate::proto::{CommandResponse, Edition, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest};
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::storage::EventStore;
 
@@ -53,7 +53,7 @@ impl ProcessManagerContext for GrpcPMContext {
         &self,
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<super::PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
         let edition = trigger.edition().to_string();
         let request = ProcessManagerPrepareRequest {
@@ -74,7 +74,9 @@ impl ProcessManagerContext for GrpcPMContext {
                 cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
             }
         }
-        Ok(covers)
+        Ok(super::PmPrepareResponse {
+            destinations: covers,
+        })
     }
 
     async fn handle(
@@ -85,6 +87,14 @@ impl ProcessManagerContext for GrpcPMContext {
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let correlation_id = trigger.correlation_id();
         let edition = trigger.edition().to_string();
+
+        tracing::info!(
+            trigger_pages = trigger.pages.len(),
+            trigger_has_snapshot = trigger.snapshot.is_some(),
+            trigger_domain = %trigger.domain(),
+            "GrpcPMContext.handle sending trigger to PM"
+        );
+
         let request = ProcessManagerHandleRequest {
             trigger: Some(trigger.clone()),
             process_state: pm_state.cloned(),
@@ -156,7 +166,6 @@ impl ProcessManagerContext for GrpcPMContext {
                     cover: process_events.cover.clone(),
                     pages,
                     snapshot: None,
-                    snapshot_state: None,
                 };
                 if let Err(e) = self.event_bus.publish(Arc::new(full_book)).await {
                     error!(

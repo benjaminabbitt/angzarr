@@ -499,7 +499,6 @@ impl EventStore for RedisEventStore {
                     }),
                     pages,
                     snapshot: None,
-                    snapshot_state: None,
                 });
             }
         }

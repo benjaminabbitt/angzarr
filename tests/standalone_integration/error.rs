@@ -108,7 +108,6 @@ impl AggregateHandler for SelectiveFailAggregate {
                 created_at: None,
             }],
             snapshot: None,
-            snapshot_state: None,
         })
     }
 }

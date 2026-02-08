@@ -12,12 +12,12 @@ use tracing::error;
 
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
-use crate::proto::{CommandResponse, Cover, Edition, EventBook};
+use crate::proto::{CommandResponse, Edition, EventBook};
 use crate::proto_ext::{CoverExt, EditionExt};
 use crate::standalone::DomainStorage;
 use crate::standalone::ProcessManagerHandler;
 
-use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
+use super::{PMContextFactory, PmHandleResponse, PmPrepareResponse, ProcessManagerContext};
 
 /// Local PM context that calls in-process handler and persists to event store.
 pub struct LocalPMContext {
@@ -50,7 +50,7 @@ impl ProcessManagerContext for LocalPMContext {
         &self,
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = trigger.edition().to_string();
         let mut covers = self.handler.prepare(trigger, pm_state);
 
@@ -60,7 +60,9 @@ impl ProcessManagerContext for LocalPMContext {
                 cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
             }
         }
-        Ok(covers)
+        Ok(PmPrepareResponse {
+            destinations: covers,
+        })
     }
 
     async fn handle(
@@ -133,7 +135,6 @@ impl ProcessManagerContext for LocalPMContext {
                     cover: process_events.cover.clone(),
                     pages,
                     snapshot: None,
-                    snapshot_state: None,
                 };
                 if let Err(e) = self.event_bus.publish(Arc::new(full_book)).await {
                     error!(

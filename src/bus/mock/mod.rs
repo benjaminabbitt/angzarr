@@ -85,7 +85,6 @@ mod tests {
                 })
                 .collect(),
             snapshot: None,
-            snapshot_state: None,
         }
     }
 

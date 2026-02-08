@@ -261,7 +261,6 @@ mod tests {
             }),
             pages: vec![],
             snapshot: None,
-            snapshot_state: None,
         }
     }
 

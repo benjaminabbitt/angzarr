@@ -25,11 +25,13 @@ fn make_event_book_with_snapshot(pages: Vec<EventPage>, has_snapshot: bool) -> E
             edition: None,
         }),
         pages,
-        snapshot: None,
-        snapshot_state: if has_snapshot {
-            Some(Any {
-                type_url: "test.State".to_string(),
-                value: vec![1, 2, 3],
+        snapshot: if has_snapshot {
+            Some(Snapshot {
+                sequence: 0, // Framework computes from pages
+                state: Some(Any {
+                    type_url: "test.State".to_string(),
+                    value: vec![1, 2, 3],
+                }),
             })
         } else {
             None

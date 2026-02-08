@@ -15,7 +15,6 @@ fn make_event_book(domain: &str) -> Arc<EventBook> {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     })
 }
 

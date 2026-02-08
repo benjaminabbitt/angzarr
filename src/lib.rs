@@ -14,6 +14,7 @@ pub mod handlers;
 pub mod orchestration;
 pub mod process;
 pub mod proto_ext;
+pub mod registration;
 pub mod repository;
 pub mod services;
 #[cfg(feature = "sqlite")]

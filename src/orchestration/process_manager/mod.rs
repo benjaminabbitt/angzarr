@@ -20,6 +20,12 @@ use crate::proto::{CommandBook, Cover, EventBook};
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
 
+/// Response from a process manager's prepare phase.
+pub struct PmPrepareResponse {
+    /// Additional aggregates needed beyond trigger.
+    pub destinations: Vec<Cover>,
+}
+
 /// Response from a process manager's handle phase.
 pub struct PmHandleResponse {
     /// Commands to execute on aggregates.
@@ -41,7 +47,7 @@ pub trait ProcessManagerContext: Send + Sync {
         &self,
         trigger: &EventBook,
         pm_state: Option<&EventBook>,
-    ) -> Result<Vec<Cover>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Phase 2: PM produces commands + process events given trigger, PM state, and destinations.
     async fn handle(
@@ -78,13 +84,12 @@ pub trait PMContextFactory: Send + Sync {
 /// Full process manager orchestration with retry on sequence conflicts.
 ///
 /// Flow:
-/// 1. Fetch trigger state by correlation_id
-/// 2. Fetch PM state by correlation_id
-/// 3. Prepare: PM declares additional destinations
-/// 4. Fetch destination event books
-/// 5. Handle: PM produces commands + PM events
-/// 6. Persist PM events (retries on sequence conflict)
-/// 7. Execute commands with correlation_id propagation
+/// 1. Fetch PM state by correlation_id (PM root = correlation_id by design)
+/// 2. Prepare: PM declares additional destinations needed
+/// 3. Fetch destination event books
+/// 4. Handle: PM produces commands + PM events
+/// 5. Persist PM events (retries on sequence conflict)
+/// 6. Execute commands with correlation_id propagation
 #[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_domain, %correlation_id))]
 pub async fn orchestrate_pm(
     ctx: &dyn ProcessManagerContext,
@@ -111,20 +116,9 @@ pub async fn orchestrate_pm(
 
     let mut delays = backoff.build();
     let mut attempt = 0u32;
-    loop {
-        // Load trigger domain state by correlation_id
-        let trigger_state = fetcher
-            .fetch_by_correlation(trigger_domain, correlation_id)
-            .await
-            .unwrap_or_else(|| {
-                warn!(
-                    %trigger_domain,
-                    "Failed to fetch trigger state, using incoming event"
-                );
-                trigger.clone()
-            });
 
-        // Load PM state by correlation_id
+    loop {
+        // Load PM state by correlation_id (PM root = correlation_id by design)
         let pm_state = fetcher
             .fetch_by_correlation(pm_domain, correlation_id)
             .await;
@@ -134,10 +128,12 @@ pub async fn orchestrate_pm(
         }
 
         // Phase 1: Prepare — get additional destination covers
-        let destination_covers = ctx
-            .prepare(&trigger_state, pm_state.as_ref())
+        let prepare_response = ctx
+            .prepare(trigger, pm_state.as_ref())
             .await
             .map_err(|e| BusError::Publish(e.to_string()))?;
+
+        let destination_covers = prepare_response.destinations;
 
         debug!(
             destinations = destination_covers.len(),
@@ -149,8 +145,10 @@ pub async fn orchestrate_pm(
             super::shared::fetch_destinations(fetcher, &destination_covers, correlation_id).await;
 
         // Phase 2: Handle — produce commands + PM events
+        // Use original trigger (from bus) so PM sees the actual triggering event pages
+        // PM state provides workflow context; destinations provide aggregate state
         let response = ctx
-            .handle(&trigger_state, pm_state.as_ref(), &destinations)
+            .handle(trigger, pm_state.as_ref(), &destinations)
             .await
             .map_err(|e| BusError::Publish(e.to_string()))?;
 

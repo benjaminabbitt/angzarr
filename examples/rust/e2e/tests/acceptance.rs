@@ -3626,7 +3626,6 @@ async fn speculative_projector(world: &mut E2EWorld, projector_name: String, ord
         }),
         snapshot: None,
         pages: events,
-        snapshot_state: None,
     };
 
     let request = angzarr::proto::SpeculateProjectorRequest {
@@ -3673,7 +3672,6 @@ async fn speculative_projector_inventory(
         }),
         snapshot: None,
         pages: events,
-        snapshot_state: None,
     };
 
     let request = angzarr::proto::SpeculateProjectorRequest {
@@ -3783,7 +3781,6 @@ async fn speculative_saga(world: &mut E2EWorld, saga_name: String, order_alias: 
         }),
         snapshot: None,
         pages: events,
-        snapshot_state: None,
     };
 
     let request = angzarr::proto::SpeculateSagaRequest {
@@ -3830,7 +3827,6 @@ async fn speculative_saga_with_current_state(
         }),
         snapshot: None,
         pages: events,
-        snapshot_state: None,
     };
 
     // Note: domain_specs (Current state fetching) is handled internally
@@ -3926,7 +3922,6 @@ async fn speculative_pm(world: &mut E2EWorld, pm_name: String, order_alias: Stri
         }),
         snapshot: None,
         pages: events,
-        snapshot_state: None,
     };
 
     let request = angzarr::proto::SpeculatePmRequest {

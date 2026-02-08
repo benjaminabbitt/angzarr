@@ -271,7 +271,6 @@ impl CommandExecutor for RetryableWithStateExecutor {
                 }),
                 pages: vec![],
                 snapshot: None,
-                snapshot_state: None,
             };
             CommandOutcome::Retryable {
                 reason: "Sequence conflict".to_string(),

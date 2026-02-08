@@ -395,7 +395,6 @@ impl EventStore for PostgresEventStore {
                 }),
                 pages,
                 snapshot: None,
-                snapshot_state: None,
             })
             .collect();
 

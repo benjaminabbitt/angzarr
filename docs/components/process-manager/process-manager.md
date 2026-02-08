@@ -51,6 +51,19 @@ A **Process Manager** (also called a **Workflow Manager**) is a stateful coordin
 
 ---
 
+## Correlation ID Requirement
+
+**Process Managers require correlation_id on triggering events.** Events without correlation_id are silently skipped.
+
+This is intentional:
+- PM root = correlation_id (by design)
+- Without correlation_id, there's no aggregate to load/update
+- Single-domain operations don't need PM overhead
+
+If your PM isn't activating, check that the originating command has correlation_id set. See [Correlation ID](../../patterns.md#correlation-id) for full documentation on when and how to use it.
+
+---
+
 ## Architecture
 
 Process Manager is an aggregate with its own domain, events, and state:

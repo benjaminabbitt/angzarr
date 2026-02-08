@@ -422,6 +422,140 @@ def publish_order_created(order):
 
 ## Coordination Patterns
 
+### Correlation ID
+
+The **correlation_id** links related events across domains in a multi-step business workflow. It's an optional, client-provided identifier — the framework does NOT generate one if absent.
+
+#### When You Need correlation_id
+
+| Use Case | Required? | Reason |
+|----------|-----------|--------|
+| **Process Managers** | Yes | PM aggregates use correlation_id as root. Without it, PMs don't activate. |
+| **Event Streaming** | Yes | `ExecuteStream` subscribes to events by correlation_id. Empty = no subscription. |
+| **Cross-domain tracing** | Yes | Following a business transaction across order → fulfillment → shipping. |
+| **Single-domain commands** | No | A simple "create cart" command doesn't need correlation. |
+| **Independent aggregates** | No | Aggregates that don't participate in workflows don't need it. |
+
+#### When You Don't Need correlation_id
+
+**Most commands don't need correlation_id.** If you're not:
+- Using Process Managers
+- Using `ExecuteStream` (real-time event streaming)
+- Tracing a business process across multiple domains
+
+...then leave correlation_id empty. The framework will process your command normally.
+
+#### Framework Behavior
+
+```
+Client sends command:
+  ├─ With correlation_id → PMs activate, streaming works, events linked
+  └─ Without correlation_id → Command processed, PMs skip, no streaming
+```
+
+**Key points:**
+- Framework does NOT auto-generate correlation_id
+- Empty correlation_id is valid for single-domain operations
+- PMs check for empty correlation_id and skip processing (by design)
+- Streaming endpoints reject empty correlation_id (nothing to subscribe to)
+
+#### How correlation_id Propagates
+
+Once set on the initial command, angzarr propagates it automatically:
+
+```
+1. Client → Gateway: CreateOrder (correlation_id: "order-123")
+2. Gateway → Order Aggregate: CreateOrder
+3. Order Aggregate emits: OrderCreated (correlation_id: "order-123")
+4. Saga receives: OrderCreated
+5. Saga emits: CreateShipment (correlation_id: "order-123")  ← propagated
+6. Fulfillment Aggregate emits: ShipmentCreated (correlation_id: "order-123")
+7. PM receives: All events with correlation_id: "order-123"
+```
+
+You set it once; the framework carries it through.
+
+#### Choosing a correlation_id Value
+
+Use a meaningful business identifier:
+
+| Good | Why |
+|------|-----|
+| `order-{order_id}` | Traces an order through its lifecycle |
+| `checkout-{session_id}` | Groups all checkout-related events |
+| `reservation-{booking_ref}` | Links reservation workflow events |
+
+| Avoid | Why |
+|-------|-----|
+| Random UUID for every command | Creates meaningless correlation; use domain root instead |
+| Reusing IDs across unrelated workflows | Events get incorrectly grouped |
+| User ID as correlation | Too broad; one user has many workflows |
+
+#### Example: With and Without correlation_id
+
+**Without correlation_id** (simple command):
+
+```bash
+# Cart operations - no cross-domain workflow
+grpcurl -plaintext -d '{
+  "cover": {
+    "domain": "cart",
+    "root": {"value": "BASE64_CART_UUID"}
+  },
+  "pages": [...]
+}' localhost:9084 angzarr.CommandGateway/Execute
+```
+
+**With correlation_id** (workflow requiring PM):
+
+```bash
+# Order checkout - triggers fulfillment PM
+grpcurl -plaintext -d '{
+  "cover": {
+    "domain": "order",
+    "root": {"value": "BASE64_ORDER_UUID"},
+    "correlation_id": "checkout-abc123"
+  },
+  "pages": [...]
+}' localhost:9084 angzarr.CommandGateway/Execute
+```
+
+#### Anti-Patterns
+
+**Don't add correlation_id "just in case":**
+
+```python
+# WRONG - adding correlation_id to everything
+def create_cart(user_id: str) -> CommandBook:
+    return CommandBook(
+        cover=Cover(
+            domain="cart",
+            root=new_uuid(),
+            correlation_id=f"cart-{new_uuid()}"  # Unnecessary
+        ),
+        ...
+    )
+
+# RIGHT - only when needed for cross-domain workflows
+def checkout_cart(cart_id: str, order_id: str) -> CommandBook:
+    return CommandBook(
+        cover=Cover(
+            domain="order",
+            root=order_uuid,
+            correlation_id=f"checkout-{order_id}"  # Needed: PM will track this
+        ),
+        ...
+    )
+```
+
+**Don't confuse correlation_id with aggregate root:**
+- **Root**: Identity of the aggregate instance (e.g., order-123)
+- **Correlation ID**: Links events across domains in a workflow
+
+They can be related (e.g., correlation_id = "order-{order_id}") but serve different purposes.
+
+---
+
 ### Process Manager
 
 > **WARNING: You probably don't need this.** Before implementing a Process Manager, ask yourself:

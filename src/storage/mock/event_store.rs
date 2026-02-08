@@ -242,7 +242,6 @@ impl EventStore for MockEventStore {
                 }),
                 pages,
                 snapshot: None,
-                snapshot_state: None,
             });
         }
 

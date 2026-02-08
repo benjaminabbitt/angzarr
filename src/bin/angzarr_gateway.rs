@@ -55,7 +55,7 @@ use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::event_stream_client::EventStreamClient;
 use angzarr::proto::speculative_service_server::SpeculativeServiceServer;
-use angzarr::transport::{connect_to_address, grpc_trace_layer, serve_with_transport};
+use angzarr::transport::{connect_to_address, grpc_trace_layer, max_grpc_message_size, serve_with_transport};
 use angzarr::utils::bootstrap::{init_tracing, parse_static_endpoints};
 use angzarr::utils::retry::connection_backoff;
 
@@ -169,12 +169,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_service_status("", tonic_health::ServingStatus::Serving)
         .await;
 
+    let msg_size = max_grpc_message_size();
     let router = Server::builder()
         .layer(grpc_trace_layer())
         .add_service(health_service)
-        .add_service(CommandGatewayServer::new(gateway_service))
-        .add_service(EventQueryServer::new(event_query_proxy))
-        .add_service(SpeculativeServiceServer::new(speculative_service));
+        .add_service(
+            CommandGatewayServer::new(gateway_service)
+                .max_decoding_message_size(msg_size)
+                .max_encoding_message_size(msg_size),
+        )
+        .add_service(
+            EventQueryServer::new(event_query_proxy)
+                .max_decoding_message_size(msg_size)
+                .max_encoding_message_size(msg_size),
+        )
+        .add_service(
+            SpeculativeServiceServer::new(speculative_service)
+                .max_decoding_message_size(msg_size)
+                .max_encoding_message_size(msg_size),
+        );
 
     serve_with_transport(router, &config.transport, "gateway", None).await?;
 

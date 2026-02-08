@@ -472,17 +472,16 @@ impl Runtime {
     /// Use this for testing or when you need to interact with the runtime
     /// programmatically after starting.
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Publish descriptors to event bus for topology discovery.
-        // In standalone mode this reaches in-process topology projectors.
-        // In distributed mode each binary publishes its own descriptors.
-        if let Err(e) = crate::proto_ext::publish_descriptors(
-            self.event_bus.as_ref(),
-            &self.descriptors,
-        )
-        .await
-        {
-            warn!(error = %e, "Failed to publish component descriptors to event bus");
+        // Register components via _angzarr meta aggregate
+        let pod_id = crate::proto_ext::get_pod_id();
+        let commands = crate::proto_ext::build_registration_commands(&self.descriptors, &pod_id);
+
+        for cmd in commands {
+            if let Err(e) = self.router.execute_command(cmd).await {
+                warn!(error = %e, "Failed to register component");
+            }
         }
+        info!(count = self.descriptors.len(), "Components registered");
 
         info!("Runtime started");
         Ok(())

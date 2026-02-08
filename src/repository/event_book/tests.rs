@@ -107,7 +107,6 @@ async fn test_put_missing_cover_returns_error() {
         cover: None,
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = repo.put("test", &book).await;
@@ -130,7 +129,6 @@ async fn test_put_missing_root_returns_error() {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = repo.put("test", &book).await;
@@ -155,7 +153,6 @@ async fn test_put_invalid_uuid_returns_error() {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = repo.put("test", &book).await;

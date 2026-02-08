@@ -76,12 +76,10 @@ message Snapshot {
 
 message EventBook {
   Cover cover = 1;
-  Snapshot snapshot = 2;                    // Framework-populated when loading (has sequence)
+  Snapshot snapshot = 2;                    // Snapshot state; sequence computed by framework on persist
   repeated EventPage pages = 3;
   // Field 4 removed: correlation_id moved to Cover
-  // client logic sets this; framework computes sequence.
-  // State must be a protobuf Message for serialization into Any.
-  google.protobuf.Any snapshot_state = 5;
+  // Field 5 removed: snapshot_state unified into snapshot field
 }
 
 message SyncEventBook {
@@ -253,7 +251,7 @@ message EventStreamFilter {
   string correlation_id = 1;
 }
 
-// Domain target with message types — used for both inputs (events) and outputs (commands).
+// Domain subscription with event types.
 // Types are auto-derived from router registrations, never manually configured.
 message Target {
   string domain = 1;
@@ -261,13 +259,30 @@ message Target {
 }
 
 // Self-description of a runtime component (aggregate, saga, projector, process_manager).
-// Topology graph is built entirely from descriptors - no runtime discovery.
+// Topology edges derived from inputs: if A subscribes to domain X, edge X→A exists.
 message ComponentDescriptor {
   string name = 1;
   string component_type = 2;
   repeated Target inputs = 3;   // Domains I subscribe to (event types I consume)
-  repeated Target outputs = 4;  // Domains I send commands to (command types I emit)
 }
 
 // Request for GetDescriptor RPC.
 message GetDescriptorRequest {}
+
+// ============================================================================
+// Meta Domain (_angzarr) - Infrastructure commands/events
+// ============================================================================
+
+// Command to register a component in the topology registry.
+// Root UUID is derived from descriptor.name for idempotent registration.
+message RegisterComponent {
+  ComponentDescriptor descriptor = 1;
+  string pod_id = 2;  // K8s pod name or hostname for standalone
+}
+
+// Event emitted when a component registers or re-registers.
+message ComponentRegistered {
+  ComponentDescriptor descriptor = 1;
+  string pod_id = 2;
+  google.protobuf.Timestamp registered_at = 3;
+}

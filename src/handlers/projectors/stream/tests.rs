@@ -21,7 +21,6 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
             created_at: None,
         }],
         snapshot: None,
-        snapshot_state: None,
     }
 }
 

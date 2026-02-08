@@ -151,7 +151,6 @@ fn test_handle_business_response_with_events() {
                 }),
             }],
             snapshot: None,
-            snapshot_state: None,
         })),
     });
 
@@ -172,7 +171,6 @@ fn test_handle_business_response_empty_events_uses_fallback() {
             cover: None,
             pages: vec![], // Empty!
             snapshot: None,
-            snapshot_state: None,
         })),
     });
 

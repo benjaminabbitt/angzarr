@@ -134,10 +134,6 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
                     types: vec![ItemsPacked::TYPE_NAME.to_string()],
                 },
             ],
-            outputs: vec![Target {
-                domain: FULFILLMENT_DOMAIN.to_string(),
-                types: vec![Ship::TYPE_NAME.to_string()],
-            }],
         }
     }
 
@@ -272,7 +268,6 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
                 }),
                 pages: pm_events,
                 snapshot: None,
-                snapshot_state: None,
             })
         };
 
@@ -343,7 +338,6 @@ mod tests {
                 event: Some(event),
             }],
             snapshot: None,
-            snapshot_state: None,
         }
     }
 
@@ -498,7 +492,6 @@ mod tests {
                 },
             ],
             snapshot: None,
-            snapshot_state: None,
         };
 
         // Another event arrives - should be no-op
@@ -531,9 +524,6 @@ mod tests {
         assert_eq!(desc.inputs[0].domain, ORDER_DOMAIN);
         assert_eq!(desc.inputs[1].domain, INVENTORY_DOMAIN);
         assert_eq!(desc.inputs[2].domain, FULFILLMENT_DOMAIN);
-        assert_eq!(desc.outputs.len(), 1);
-        assert_eq!(desc.outputs[0].domain, FULFILLMENT_DOMAIN);
-        assert_eq!(desc.outputs[0].types, vec!["Ship"]);
     }
 
     /// Merge two PM state EventBooks (simulating persisted state accumulation).

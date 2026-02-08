@@ -36,25 +36,10 @@ fn test_generate_correlation_id_existing() {
 }
 
 #[test]
-fn test_generate_correlation_id_generated() {
+fn test_generate_correlation_id_empty_stays_empty() {
     let command = make_command_book(false);
     let result = generate_correlation_id(&command).unwrap();
-
-    // Should be a valid UUID
-    assert!(!result.is_empty());
-    assert!(uuid::Uuid::parse_str(&result).is_ok());
-}
-
-#[test]
-fn test_generate_correlation_id_deterministic() {
-    let command1 = make_command_book(false);
-    let command2 = command1.clone();
-
-    let result1 = generate_correlation_id(&command1).unwrap();
-    let result2 = generate_correlation_id(&command2).unwrap();
-
-    // Same command should generate same correlation ID
-    assert_eq!(result1, result2);
+    assert!(result.is_empty());
 }
 
 #[test]
@@ -68,7 +53,6 @@ fn test_extract_events_from_response_with_events() {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
     let response = BusinessResponse {
         result: Some(business_response::Result::Events(event_book)),
@@ -126,7 +110,6 @@ async fn test_publish_and_build_response_success() {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = publish_and_build_response(&event_bus, event_book).await;
@@ -151,7 +134,6 @@ async fn test_publish_and_build_response_bus_failure() {
         cover: None,
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = publish_and_build_response(&event_bus, event_book).await;

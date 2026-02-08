@@ -8,7 +8,6 @@ fn test_is_complete_empty_book() {
         cover: Some(make_cover("test")),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     assert!(is_complete(&book));
@@ -23,7 +22,6 @@ fn test_is_complete_with_snapshot() {
             sequence: 5,
             state: None,
         }),
-        snapshot_state: None,
     };
 
     assert!(is_complete(&book));
@@ -35,7 +33,6 @@ fn test_is_complete_starts_at_zero() {
         cover: Some(make_cover("test")),
         pages: vec![make_event_page(0), make_event_page(1), make_event_page(2)],
         snapshot: None,
-        snapshot_state: None,
     };
 
     assert!(is_complete(&book));
@@ -47,7 +44,6 @@ fn test_is_incomplete_missing_history() {
         cover: Some(make_cover("test")),
         pages: vec![make_event_page(5), make_event_page(6)], // Missing 0-4
         snapshot: None,
-        snapshot_state: None,
     };
 
     assert!(!is_complete(&book));
@@ -59,7 +55,6 @@ fn test_is_incomplete_starts_at_nonzero() {
         cover: Some(make_cover("test")),
         pages: vec![make_event_page(3)], // Missing 0-2
         snapshot: None,
-        snapshot_state: None,
     };
 
     assert!(!is_complete(&book));
@@ -79,7 +74,6 @@ fn test_extract_identity_success() {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let (domain, extracted_root) = extract_identity(&book).unwrap();
@@ -93,7 +87,6 @@ fn test_extract_identity_missing_cover() {
         cover: None,
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = extract_identity(&book);
@@ -111,7 +104,6 @@ fn test_extract_identity_missing_root() {
         }),
         pages: vec![],
         snapshot: None,
-        snapshot_state: None,
     };
 
     let result = extract_identity(&book);

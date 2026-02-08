@@ -117,6 +117,13 @@ impl EventHandler for ProcessManagerEventHandler {
         Box::pin(async move {
             let book_owned = (*book).clone();
 
+            tracing::info!(
+                pages = book_owned.pages.len(),
+                has_snapshot = book_owned.snapshot.is_some(),
+                domain = %book_owned.domain(),
+                "PM handler received book from bus"
+            );
+
             if correlation_id.is_empty() {
                 debug!("Event has no correlation_id, skipping process manager");
                 return Ok(());

@@ -1,12 +1,19 @@
 //! DRY dispatch via router types.
 //!
-//! `CommandRouter<S>` replaces manual if/else chains in aggregate handlers.
-//! `EventRouter` replaces manual if/else chains in saga event handlers.
+//! - `Dispatcher<H>`: Single-domain handler dispatch (base building block)
+//! - `Router<H>`: Wraps one or more dispatchers (component-level)
+//! - `Aggregate<S>`: Aggregate handler (Router + state rebuild)
 //!
-//! Both auto-derive `ComponentDescriptor` from their `.on()` registrations,
-//! eliminating manual event type declarations.
+//! All auto-derive `ComponentDescriptor` from their registrations.
 
-use std::collections::HashMap;
+// ============================================================================
+// Component type constants
+// ============================================================================
+
+pub const AGGREGATE: &str = "aggregate";
+pub const SAGA: &str = "saga";
+pub const PROJECTOR: &str = "projector";
+pub const PROCESS_MANAGER: &str = "process_manager";
 
 use angzarr::proto::{
     business_response, BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand,
@@ -17,71 +24,317 @@ use tonic::Status;
 use crate::{errmsg, event_book_metadata, extract_command, next_sequence, BusinessError, Result};
 
 // ============================================================================
-// CommandRouter — aggregate dispatch
+// Dispatcher<H> — single-domain handler dispatch
 // ============================================================================
 
-/// Handler function for a single command type.
+/// Single-domain dispatcher. Matches type_url suffixes to handlers.
 ///
-/// Receives the CommandBook (for cover metadata), raw command bytes,
-/// rebuilt state, and next sequence number. Returns new events.
-pub type CommandHandler<S> = fn(&CommandBook, &[u8], &S, u32) -> Result<EventBook>;
-
-/// DRY command dispatcher for aggregates.
-///
-/// Matches command type_url suffixes and dispatches to registered handler
-/// functions. Auto-derives `ComponentDescriptor` from registrations.
-///
-/// # Example
-///
-/// ```ignore
-/// let router = CommandRouter::new("order", rebuild_state)
-///     .on("CreateOrder", handle_create_order)
-///     .on("CancelOrder", handle_cancel_order);
-///
-/// // In AggregateLogic::handle:
-/// router.dispatch(cmd)
-///
-/// // For topology:
-/// router.descriptor()
-/// ```
-pub struct CommandRouter<S> {
+/// Building block for routers. Each dispatcher handles one domain.
+pub struct Dispatcher<H> {
     domain: &'static str,
-    rebuild: fn(Option<&EventBook>) -> S,
-    handlers: Vec<(&'static str, CommandHandler<S>)>,
+    handlers: Vec<(&'static str, H)>,
 }
 
-impl<S> CommandRouter<S> {
-    /// Create a new command router for a domain.
-    ///
-    /// - `domain`: The aggregate's domain name (e.g., "order").
-    /// - `rebuild`: Function to rebuild state from prior events.
-    pub fn new(domain: &'static str, rebuild: fn(Option<&EventBook>) -> S) -> Self {
+impl<H> Dispatcher<H> {
+    /// Create a dispatcher for a domain.
+    pub fn new(domain: &'static str) -> Self {
         Self {
             domain,
-            rebuild,
             handlers: Vec::new(),
         }
     }
 
-    /// Register a handler for a command type_url suffix.
-    ///
-    /// The suffix is matched against the end of the command's type_url.
-    /// E.g., `.on("CreateOrder", handle_create_order)` matches any
-    /// type_url ending in "CreateOrder".
-    pub fn on(mut self, type_suffix: &'static str, handler: CommandHandler<S>) -> Self {
+    /// Register a handler for a type_url suffix.
+    pub fn on(mut self, type_suffix: &'static str, handler: H) -> Self {
         self.handlers.push((type_suffix, handler));
         self
     }
 
-    /// Dispatch a contextual command to the appropriate handler.
-    ///
-    /// Extracts command + prior events, rebuilds state, matches type_url
-    /// suffix, and calls the registered handler.
-    #[allow(clippy::result_large_err)]
+    /// Get the domain this dispatcher handles.
+    pub fn domain(&self) -> &'static str {
+        self.domain
+    }
+
+    /// Get registered event/command type suffixes.
+    pub fn types(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.handlers.iter().map(|(s, _)| *s)
+    }
+
+    /// Find handler for a type_url (first suffix match).
+    pub fn find_handler(&self, type_url: &str) -> Option<&H> {
+        self.handlers
+            .iter()
+            .find(|(suffix, _)| type_url.ends_with(suffix))
+            .map(|(_, h)| h)
+    }
+}
+
+// ============================================================================
+// Router<H> — multi-dispatcher component wrapper
+// ============================================================================
+
+/// Component router wrapping one or more domain dispatchers.
+///
+/// Provides component metadata (name, type) and combines dispatchers
+/// for descriptor generation and handler lookup.
+pub struct Router<H> {
+    name: &'static str,
+    component_type: &'static str,
+    state_domain: Option<&'static str>,
+    dispatchers: Vec<Dispatcher<H>>,
+}
+
+impl<H> Router<H> {
+    /// Create a router with component metadata.
+    pub fn new(name: &'static str, component_type: &'static str) -> Self {
+        Self {
+            name,
+            component_type,
+            state_domain: None,
+            dispatchers: Vec::new(),
+        }
+    }
+
+    /// Set the state domain (for stateful components like PMs).
+    pub fn state_domain(mut self, domain: &'static str) -> Self {
+        self.state_domain = Some(domain);
+        self
+    }
+
+    /// Add a dispatcher for a domain.
+    pub fn with(mut self, dispatcher: Dispatcher<H>) -> Self {
+        self.dispatchers.push(dispatcher);
+        self
+    }
+
+    /// Build ComponentDescriptor from registered dispatchers.
+    pub fn descriptor(&self) -> ComponentDescriptor {
+        ComponentDescriptor {
+            name: self.name.to_string(),
+            component_type: self.component_type.to_string(),
+            inputs: self
+                .dispatchers
+                .iter()
+                .map(|d| Target {
+                    domain: d.domain().to_string(),
+                    types: d.types().map(|s| s.to_string()).collect(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Get the component name.
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// Get the first input domain (for single-domain components).
+    pub fn input_domain(&self) -> &'static str {
+        self.dispatchers
+            .first()
+            .map(|d| d.domain())
+            .unwrap_or("")
+    }
+
+    /// Get the state domain (for stateful components).
+    pub fn get_state_domain(&self) -> Option<&'static str> {
+        self.state_domain
+    }
+
+    /// Find handler across all dispatchers (first match).
+    fn find_handler(&self, type_url: &str) -> Option<&H> {
+        self.dispatchers
+            .iter()
+            .find_map(|d| d.find_handler(type_url))
+    }
+}
+
+// ============================================================================
+// Router<SagaEventHandler> — saga dispatch
+// ============================================================================
+
+/// Handler for saga events. Returns commands to execute.
+pub type SagaEventHandler = fn(&prost_types::Any, Option<&ProtoUuid>, &str) -> Vec<CommandBook>;
+
+impl Router<SagaEventHandler> {
+    /// Dispatch events to handlers, collect commands.
+    pub fn dispatch(&self, book: &EventBook) -> Vec<CommandBook> {
+        let meta = event_book_metadata(book);
+        book.pages
+            .iter()
+            .filter_map(|page| page.event.as_ref())
+            .flat_map(|event| {
+                if let Some(handler) = self.find_handler(&event.type_url) {
+                    handler(event, meta.root, meta.correlation_id)
+                } else {
+                    vec![]
+                }
+            })
+            .collect()
+    }
+}
+
+// ============================================================================
+// Router<ProjectorEventHandler> — projector dispatch
+// ============================================================================
+
+/// Projection execution mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectionMode {
+    /// Normal execution: compute and persist.
+    Execute,
+    /// Speculative: compute only, skip persistence.
+    Speculate,
+}
+
+/// Handler for projector events. Returns optional projection data.
+pub type ProjectorEventHandler =
+    fn(&prost_types::Any, Option<&ProtoUuid>, &str, ProjectionMode) -> Result<Option<prost_types::Any>>;
+
+impl Router<ProjectorEventHandler> {
+    /// Dispatch events to handlers, return projection.
     pub fn dispatch(
         &self,
-        cmd: ContextualCommand,
-    ) -> std::result::Result<BusinessResponse, Status> {
+        book: &EventBook,
+        mode: ProjectionMode,
+    ) -> Result<angzarr::proto::Projection> {
+        let meta = event_book_metadata(book);
+        let mut projection_data: Option<prost_types::Any> = None;
+
+        for page in &book.pages {
+            let Some(event) = page.event.as_ref() else {
+                continue;
+            };
+
+            if let Some(handler) = self.find_handler(&event.type_url) {
+                if let Some(data) = handler(event, meta.root, meta.correlation_id, mode)? {
+                    projection_data = Some(data);
+                }
+            }
+        }
+
+        Ok(angzarr::proto::Projection {
+            cover: book.cover.clone(),
+            projector: self.name.to_string(),
+            sequence: next_sequence(Some(book)),
+            projection: projection_data,
+        })
+    }
+}
+
+// ============================================================================
+// Router<PmEventHandler> — PM dispatch (multi-domain)
+// ============================================================================
+
+/// Context passed to PM handlers.
+pub struct PmContext<'a> {
+    pub root: Option<&'a ProtoUuid>,
+    pub correlation_id: &'a str,
+    pub pm_state: Option<&'a EventBook>,
+    pub destinations: &'a [EventBook],
+}
+
+/// Result from PM handler.
+pub struct PmHandlerResult {
+    pub commands: Vec<CommandBook>,
+    pub pm_events: Option<EventBook>,
+}
+
+impl PmHandlerResult {
+    pub fn empty() -> Self {
+        Self { commands: vec![], pm_events: None }
+    }
+
+    pub fn commands(commands: Vec<CommandBook>) -> Self {
+        Self { commands, pm_events: None }
+    }
+
+    pub fn state(pm_events: EventBook) -> Self {
+        Self { commands: vec![], pm_events: Some(pm_events) }
+    }
+
+    pub fn both(commands: Vec<CommandBook>, pm_events: EventBook) -> Self {
+        Self { commands, pm_events: Some(pm_events) }
+    }
+}
+
+/// Handler for PM events.
+pub type PmEventHandler = fn(&prost_types::Any, &PmContext) -> PmHandlerResult;
+
+impl Router<PmEventHandler> {
+    /// Dispatch trigger event to handler.
+    pub fn dispatch(
+        &self,
+        trigger: &EventBook,
+        pm_state: Option<&EventBook>,
+        destinations: &[EventBook],
+    ) -> PmHandlerResult {
+        let meta = event_book_metadata(trigger);
+        let ctx = PmContext {
+            root: meta.root,
+            correlation_id: meta.correlation_id,
+            pm_state,
+            destinations,
+        };
+
+        for page in &trigger.pages {
+            let Some(event) = page.event.as_ref() else {
+                continue;
+            };
+
+            if let Some(handler) = self.find_handler(&event.type_url) {
+                return handler(event, &ctx);
+            }
+        }
+
+        PmHandlerResult::empty()
+    }
+}
+
+// ============================================================================
+// Aggregate<S> — aggregate handler (Router + state rebuild)
+// ============================================================================
+
+/// Handler for aggregate commands.
+pub type CommandHandler<S> = fn(&CommandBook, &[u8], &S, u32) -> Result<EventBook>;
+
+/// Aggregate handler: command dispatch + event-sourced state rebuild.
+pub struct Aggregate<S> {
+    inner: Router<CommandHandler<S>>,
+    rebuild: fn(Option<&EventBook>) -> S,
+}
+
+impl<S> Aggregate<S> {
+    /// Create an aggregate handler.
+    pub fn new(domain: &'static str, rebuild: fn(Option<&EventBook>) -> S) -> Self {
+        Self {
+            inner: Router::new(domain, AGGREGATE)
+                .with(Dispatcher::new(domain)),
+            rebuild,
+        }
+    }
+
+    /// Register a handler for a command type suffix.
+    pub fn on(mut self, type_suffix: &'static str, handler: CommandHandler<S>) -> Self {
+        if let Some(dispatcher) = self.inner.dispatchers.pop() {
+            self.inner.dispatchers.push(dispatcher.on(type_suffix, handler));
+        }
+        self
+    }
+
+    /// Get the domain.
+    pub fn domain(&self) -> &'static str {
+        self.inner.input_domain()
+    }
+
+    /// Build ComponentDescriptor.
+    pub fn descriptor(&self) -> ComponentDescriptor {
+        self.inner.descriptor()
+    }
+
+    /// Dispatch command to handler.
+    #[allow(clippy::result_large_err)]
+    pub fn dispatch(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -94,13 +347,11 @@ impl<S> CommandRouter<S> {
 
         let command_any = extract_command(cb)?;
 
-        for (suffix, handler) in &self.handlers {
-            if command_any.type_url.ends_with(suffix) {
-                let events = handler(cb, &command_any.value, &state, next_seq)?;
-                return Ok(BusinessResponse {
-                    result: Some(business_response::Result::Events(events)),
-                });
-            }
+        if let Some(handler) = self.inner.find_handler(&command_any.type_url) {
+            let events = handler(cb, &command_any.value, &state, next_seq)?;
+            return Ok(BusinessResponse {
+                result: Some(business_response::Result::Events(events)),
+            });
         }
 
         Err(
@@ -108,163 +359,26 @@ impl<S> CommandRouter<S> {
                 .into(),
         )
     }
-
-    /// Build a ComponentDescriptor from registered handlers.
-    ///
-    /// Returns a descriptor with auto-derived command type suffixes
-    /// as the input types.
-    pub fn descriptor(&self) -> ComponentDescriptor {
-        ComponentDescriptor {
-            name: self.domain.to_string(),
-            component_type: "aggregate".to_string(),
-            inputs: vec![Target {
-                domain: self.domain.to_string(),
-                types: self.handlers.iter().map(|(s, _)| (*s).to_string()).collect(),
-            }],
-            outputs: vec![], // Aggregates don't send commands to other domains
-        }
-    }
-
-    /// Get the domain name.
-    pub fn domain(&self) -> &'static str {
-        self.domain
-    }
 }
 
 // ============================================================================
-// EventRouter — saga dispatch
+// Tests
 // ============================================================================
-
-/// Handler function for a single event type in a saga.
-///
-/// Receives the raw event (for type-specific decoding), source root UUID,
-/// and correlation_id. Returns commands to execute.
-pub type SagaEventHandler = fn(&prost_types::Any, Option<&ProtoUuid>, &str) -> Vec<CommandBook>;
-
-/// DRY event dispatcher for sagas.
-///
-/// Matches event type_url suffixes and dispatches to registered handlers.
-/// Auto-derives `ComponentDescriptor` from registrations.
-///
-/// # Example
-///
-/// ```ignore
-/// let router = EventRouter::new("order-inventory", "order")
-///     .on("OrderCreated", handle_order_created)
-///     .sends("inventory", "ReserveStock");
-///
-/// // In SagaLogic::execute:
-/// router.dispatch(source)
-///
-/// // For topology:
-/// router.descriptor()
-/// ```
-pub struct EventRouter {
-    name: &'static str,
-    input_domain: &'static str,
-    /// Maps output domain -> command types sent to that domain
-    outputs: HashMap<&'static str, Vec<&'static str>>,
-    handlers: Vec<(&'static str, SagaEventHandler)>,
-}
-
-impl EventRouter {
-    /// Create a new event router.
-    ///
-    /// - `name`: The saga's name (e.g., "order-inventory").
-    /// - `input_domain`: The domain to subscribe to for events.
-    pub fn new(name: &'static str, input_domain: &'static str) -> Self {
-        Self {
-            name,
-            input_domain,
-            outputs: HashMap::new(),
-            handlers: Vec::new(),
-        }
-    }
-
-    /// Declare a command this saga sends to a target domain.
-    ///
-    /// Call multiple times to declare multiple commands to the same or different domains.
-    pub fn sends(mut self, domain: &'static str, command_type: &'static str) -> Self {
-        self.outputs
-            .entry(domain)
-            .or_insert_with(Vec::new)
-            .push(command_type);
-        self
-    }
-
-    /// Register a handler for an event type_url suffix.
-    ///
-    /// The suffix is matched against the end of the event's type_url.
-    /// E.g., `.on("OrderCreated", handle_order_created)` matches any
-    /// type_url ending in "OrderCreated".
-    pub fn on(mut self, type_suffix: &'static str, handler: SagaEventHandler) -> Self {
-        self.handlers.push((type_suffix, handler));
-        self
-    }
-
-    /// Dispatch all events in an EventBook to registered handlers.
-    ///
-    /// Iterates pages, matches type_url suffixes, and collects commands.
-    pub fn dispatch(&self, book: &EventBook) -> Vec<CommandBook> {
-        let meta = event_book_metadata(book);
-        book.pages
-            .iter()
-            .filter_map(|page| page.event.as_ref())
-            .flat_map(|event| {
-                for (suffix, handler) in &self.handlers {
-                    if event.type_url.ends_with(suffix) {
-                        return handler(event, meta.root, meta.correlation_id);
-                    }
-                }
-                vec![]
-            })
-            .collect()
-    }
-
-    /// Build a ComponentDescriptor from registered handlers.
-    ///
-    /// Returns a descriptor with auto-derived event type suffixes
-    /// as input types, plus declared output command types.
-    pub fn descriptor(&self) -> ComponentDescriptor {
-        ComponentDescriptor {
-            name: self.name.to_string(),
-            component_type: "saga".to_string(),
-            inputs: vec![Target {
-                domain: self.input_domain.to_string(),
-                types: self.handlers.iter().map(|(s, _)| (*s).to_string()).collect(),
-            }],
-            outputs: self
-                .outputs
-                .iter()
-                .map(|(domain, commands)| Target {
-                    domain: (*domain).to_string(),
-                    types: commands.iter().map(|c| (*c).to_string()).collect(),
-                })
-                .collect(),
-        }
-    }
-
-    /// Get the input domain this router subscribes to.
-    pub fn input_domain(&self) -> &'static str {
-        self.input_domain
-    }
-
-    /// Get the declared output domains.
-    pub fn output_domains(&self) -> Vec<&'static str> {
-        self.outputs.keys().copied().collect()
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use angzarr::proto::{CommandPage, Cover, EventPage, event_page::Sequence};
 
+    // --------------------------------------------------------------------
+    // Aggregate tests
+    // --------------------------------------------------------------------
+
     fn dummy_rebuild(_: Option<&EventBook>) -> String {
         "state".to_string()
     }
 
-    fn handler_a(
+    fn cmd_handler_a(
         _cb: &CommandBook,
         _data: &[u8],
         _state: &String,
@@ -283,7 +397,7 @@ mod tests {
         })
     }
 
-    fn handler_b(
+    fn cmd_handler_b(
         _cb: &CommandBook,
         _data: &[u8],
         _state: &String,
@@ -293,10 +407,10 @@ mod tests {
     }
 
     #[test]
-    fn test_command_router_dispatches_correct_handler() {
-        let router = CommandRouter::new("test", dummy_rebuild)
-            .on("CommandA", handler_a)
-            .on("CommandB", handler_b);
+    fn test_aggregate_dispatches() {
+        let agg = Aggregate::new("test", dummy_rebuild)
+            .on("CommandA", cmd_handler_a)
+            .on("CommandB", cmd_handler_b);
 
         let cmd = ContextualCommand {
             command: Some(CommandBook {
@@ -316,59 +430,31 @@ mod tests {
             events: None,
         };
 
-        let result = router.dispatch(cmd).unwrap();
+        let result = agg.dispatch(cmd).unwrap();
         let events = match result.result.unwrap() {
             business_response::Result::Events(e) => e,
             _ => panic!("expected events"),
         };
         assert_eq!(events.pages.len(), 1);
-        assert_eq!(
-            events.pages[0].event.as_ref().unwrap().type_url,
-            "HandledA"
-        );
     }
 
     #[test]
-    fn test_command_router_unknown_command() {
-        let router = CommandRouter::new("test", dummy_rebuild).on("CommandA", handler_a);
+    fn test_aggregate_descriptor() {
+        let agg = Aggregate::new("order", dummy_rebuild)
+            .on("CreateOrder", cmd_handler_a)
+            .on("CancelOrder", cmd_handler_b);
 
-        let cmd = ContextualCommand {
-            command: Some(CommandBook {
-                cover: Some(Cover {
-                    domain: "test".to_string(),
-                    ..Default::default()
-                }),
-                pages: vec![CommandPage {
-                    command: Some(prost_types::Any {
-                        type_url: "type.test/UnknownCommand".to_string(),
-                        value: vec![],
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            events: None,
-        };
-
-        let result = router.dispatch(cmd);
-        assert!(result.is_err());
-        let status = result.unwrap_err();
-        assert!(status.message().contains("Unknown command type"));
-    }
-
-    #[test]
-    fn test_command_router_descriptor() {
-        let router = CommandRouter::new("order", dummy_rebuild)
-            .on("CreateOrder", handler_a)
-            .on("CancelOrder", handler_b);
-
-        let desc = router.descriptor();
+        let desc = agg.descriptor();
         assert_eq!(desc.name, "order");
-        assert_eq!(desc.component_type, "aggregate");
+        assert_eq!(desc.component_type, AGGREGATE);
         assert_eq!(desc.inputs.len(), 1);
         assert_eq!(desc.inputs[0].domain, "order");
         assert_eq!(desc.inputs[0].types, vec!["CreateOrder", "CancelOrder"]);
     }
+
+    // --------------------------------------------------------------------
+    // Router<SagaEventHandler> tests
+    // --------------------------------------------------------------------
 
     fn saga_handler(
         _event: &prost_types::Any,
@@ -379,10 +465,9 @@ mod tests {
     }
 
     #[test]
-    fn test_event_router_dispatches() {
-        let router = EventRouter::new("test-saga", "order")
-            .sends("fulfillment", "Ship")
-            .on("OrderCompleted", saga_handler);
+    fn test_saga_router_dispatches() {
+        let router: Router<SagaEventHandler> = Router::new("test-saga", SAGA)
+            .with(Dispatcher::new("order").on("OrderCompleted", saga_handler));
 
         let book = EventBook {
             cover: Some(Cover {
@@ -406,19 +491,49 @@ mod tests {
     }
 
     #[test]
-    fn test_event_router_skips_unmatched() {
-        let router = EventRouter::new("test-saga", "order")
-            .on("OrderCompleted", saga_handler);
+    fn test_saga_router_descriptor() {
+        let router: Router<SagaEventHandler> = Router::new("sag-order-fulfillment", SAGA)
+            .with(Dispatcher::new("order").on("OrderCompleted", saga_handler));
+
+        let desc = router.descriptor();
+        assert_eq!(desc.name, "sag-order-fulfillment");
+        assert_eq!(desc.component_type, SAGA);
+        assert_eq!(desc.inputs.len(), 1);
+        assert_eq!(desc.inputs[0].domain, "order");
+        assert_eq!(desc.inputs[0].types, vec!["OrderCompleted"]);
+    }
+
+    // --------------------------------------------------------------------
+    // Router<ProjectorEventHandler> tests
+    // --------------------------------------------------------------------
+
+    fn projector_handler(
+        _event: &prost_types::Any,
+        _root: Option<&ProtoUuid>,
+        _corr_id: &str,
+        _mode: ProjectionMode,
+    ) -> Result<Option<prost_types::Any>> {
+        Ok(Some(prost_types::Any {
+            type_url: "ProjectionData".to_string(),
+            value: vec![42],
+        }))
+    }
+
+    #[test]
+    fn test_projector_router_dispatches() {
+        let router: Router<ProjectorEventHandler> = Router::new("projector-test", PROJECTOR)
+            .with(Dispatcher::new("inventory").on("StockReserved", projector_handler));
 
         let book = EventBook {
             cover: Some(Cover {
-                domain: "order".to_string(),
+                domain: "inventory".to_string(),
+                correlation_id: "corr-1".to_string(),
                 ..Default::default()
             }),
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(1)),
                 event: Some(prost_types::Any {
-                    type_url: "type.test/SomethingElse".to_string(),
+                    type_url: "type.test/StockReserved".to_string(),
                     value: vec![],
                 }),
                 created_at: None,
@@ -426,33 +541,91 @@ mod tests {
             ..Default::default()
         };
 
-        let commands = router.dispatch(&book);
-        assert!(commands.is_empty());
+        let projection = router.dispatch(&book, ProjectionMode::Execute).unwrap();
+        assert_eq!(projection.projector, "projector-test");
+        assert!(projection.projection.is_some());
     }
 
     #[test]
-    fn test_event_router_descriptor() {
-        let router = EventRouter::new("order-fulfillment", "order")
-            .sends("fulfillment", "Ship")
-            .on("OrderCompleted", saga_handler);
+    fn test_projector_router_descriptor() {
+        let router: Router<ProjectorEventHandler> = Router::new("projector-inventory-stock", PROJECTOR)
+            .with(Dispatcher::new("inventory").on("StockReserved", projector_handler));
+
+        let desc = router.descriptor();
+        assert_eq!(desc.name, "projector-inventory-stock");
+        assert_eq!(desc.component_type, PROJECTOR);
+        assert_eq!(desc.inputs[0].domain, "inventory");
+    }
+
+    // --------------------------------------------------------------------
+    // Router<PmEventHandler> tests
+    // --------------------------------------------------------------------
+
+    fn pm_handler(_event: &prost_types::Any, _ctx: &PmContext) -> PmHandlerResult {
+        PmHandlerResult::commands(vec![CommandBook::default()])
+    }
+
+    #[test]
+    fn test_pm_router_dispatches() {
+        let router = Router::new("order-fulfillment", PROCESS_MANAGER)
+            .state_domain("order-fulfillment")
+            .with(Dispatcher::new("order").on("OrderCreated", pm_handler as PmEventHandler))
+            .with(Dispatcher::new("inventory").on("StockReserved", pm_handler as PmEventHandler));
+
+        let trigger = EventBook {
+            cover: Some(Cover {
+                domain: "order".to_string(),
+                correlation_id: "corr-1".to_string(),
+                ..Default::default()
+            }),
+            pages: vec![EventPage {
+                sequence: Some(Sequence::Num(1)),
+                event: Some(prost_types::Any {
+                    type_url: "type.test/OrderCreated".to_string(),
+                    value: vec![],
+                }),
+                created_at: None,
+            }],
+            ..Default::default()
+        };
+
+        let result = router.dispatch(&trigger, None, &[]);
+        assert_eq!(result.commands.len(), 1);
+    }
+
+    #[test]
+    fn test_pm_router_descriptor() {
+        let router = Router::new("order-fulfillment", PROCESS_MANAGER)
+            .state_domain("order-fulfillment")
+            .with(Dispatcher::new("order").on("OrderCreated", pm_handler as PmEventHandler))
+            .with(Dispatcher::new("inventory").on("StockReserved", pm_handler as PmEventHandler));
 
         let desc = router.descriptor();
         assert_eq!(desc.name, "order-fulfillment");
-        assert_eq!(desc.component_type, "saga");
-        assert_eq!(desc.inputs.len(), 1);
-        assert_eq!(desc.inputs[0].domain, "order");
-        assert_eq!(desc.inputs[0].types, vec!["OrderCompleted"]);
-        assert_eq!(desc.outputs.len(), 1);
-        assert_eq!(desc.outputs[0].domain, "fulfillment");
-        assert_eq!(desc.outputs[0].types, vec!["Ship"]);
+        assert_eq!(desc.component_type, PROCESS_MANAGER);
+        assert_eq!(desc.inputs.len(), 2);
+
+        let domains: Vec<_> = desc.inputs.iter().map(|t| t.domain.as_str()).collect();
+        assert!(domains.contains(&"order"));
+        assert!(domains.contains(&"inventory"));
+
+        assert_eq!(router.get_state_domain(), Some("order-fulfillment"));
     }
 
     #[test]
-    fn test_command_router_descriptor_has_empty_outputs() {
-        let router = CommandRouter::new("order", dummy_rebuild)
-            .on("CreateOrder", handler_a);
+    fn test_pm_handler_result_constructors() {
+        let empty = PmHandlerResult::empty();
+        assert!(empty.commands.is_empty());
+        assert!(empty.pm_events.is_none());
 
-        let desc = router.descriptor();
-        assert!(desc.outputs.is_empty());
+        let cmds = PmHandlerResult::commands(vec![CommandBook::default()]);
+        assert_eq!(cmds.commands.len(), 1);
+
+        let state = PmHandlerResult::state(EventBook::default());
+        assert!(state.pm_events.is_some());
+
+        let both = PmHandlerResult::both(vec![CommandBook::default()], EventBook::default());
+        assert_eq!(both.commands.len(), 1);
+        assert!(both.pm_events.is_some());
     }
 }

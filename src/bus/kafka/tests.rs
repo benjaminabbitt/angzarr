@@ -13,7 +13,6 @@ fn test_message_key_generation() {
         pages: vec![],
         snapshot: None,
         correlation_id: String::new(),
-        snapshot_state: None,
     };
 
     assert_eq!(
@@ -85,7 +84,6 @@ fn test_extract_domain() {
         pages: vec![],
         snapshot: None,
         correlation_id: String::new(),
-        snapshot_state: None,
     };
 
     assert_eq!(KafkaEventBus::extract_domain(&book), Some("orders"));
@@ -98,7 +96,6 @@ fn test_extract_domain_missing_cover() {
         pages: vec![],
         snapshot: None,
         correlation_id: String::new(),
-        snapshot_state: None,
     };
 
     assert_eq!(KafkaEventBus::extract_domain(&book), None);

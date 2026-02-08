@@ -517,7 +517,6 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
-            snapshot_state: None,
         };
         assert_eq!(max_page_sequence(&book), None);
     }
@@ -533,7 +532,6 @@ mod tests {
                 created_at: None,
             }],
             snapshot: None,
-            snapshot_state: None,
         };
         assert_eq!(max_page_sequence(&book), Some(5));
     }
@@ -561,7 +559,6 @@ mod tests {
                 },
             ],
             snapshot: None,
-            snapshot_state: None,
         };
         assert_eq!(max_page_sequence(&book), Some(7));
     }

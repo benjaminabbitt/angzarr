@@ -14,7 +14,7 @@ The pattern's appeal is clear: complete audit history, temporal queries, natural
 
 I was inspired to create a framework—not a library—for building CQRS/ES applications that handles much of the implementation complexity. The distinction matters: libraries are imported into your code, while frameworks provide the execution environment your code runs within.
 
-The advent of managed runtimes like Kubernetes, GCP Cloud Run, and AWS Lambda provided the path forward. These platforms enable control to be intercepted before and after user-provided client logic. Event histories (snapshots and events) can be loaded, client logic executes in isolation, and resulting events are captured, stored, and forwarded—all without the client logic needing to know how any of it works.
+The advent of managed runtimes like GCP Cloud Run and AWS Lambda—and tools like Kubernetes that enable building them—provided the path forward. These platforms enable control to be intercepted before and after user-provided client logic. Event histories (snapshots and events) can be loaded, client logic executes in isolation, and resulting events are captured, stored, and forwarded—all without the client logic needing to know how any of it works.
 
 The payoff: client logic becomes remarkably small. A command handler receives state and a command, validates business rules, and returns events. No database connections. No message bus configuration. No retry logic. No serialization code. Just pure domain logic. The infrastructure complexity doesn't disappear; it moves to the framework where it belongs.
 

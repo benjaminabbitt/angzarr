@@ -128,15 +128,10 @@ mod tests {
                 domain: "order".to_string(),
                 types: vec!["OrderCompleted".to_string()],
             }],
-            outputs: vec![crate::proto::Target {
-                domain: "fulfillment".to_string(),
-                types: vec!["CreateShipment".to_string()],
-            }],
         };
 
         let json = serde_json::to_string(&descriptor).unwrap();
         assert!(json.contains("saga-order-fulfillment"));
         assert!(json.contains("OrderCompleted"));
-        assert!(json.contains("CreateShipment"));
     }
 }
