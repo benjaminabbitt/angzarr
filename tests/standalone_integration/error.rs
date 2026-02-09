@@ -108,6 +108,7 @@ impl AggregateHandler for SelectiveFailAggregate {
                 created_at: None,
             }],
             snapshot: None,
+            ..Default::default()
         })
     }
 }
@@ -437,7 +438,11 @@ async fn test_projector_failure_does_not_rollback_events() {
 
     #[async_trait]
     impl ProjectorHandler for FailingProjector {
-        async fn handle(&self, _events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+        async fn handle(
+            &self,
+            _events: &EventBook,
+            _mode: ProjectionMode,
+        ) -> Result<Projection, Status> {
             Err(Status::internal("Projector failure"))
         }
     }
@@ -480,7 +485,11 @@ async fn test_sync_projector_failure_fails_command() {
 
     #[async_trait]
     impl ProjectorHandler for FailingSyncProjector {
-        async fn handle(&self, _events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+        async fn handle(
+            &self,
+            _events: &EventBook,
+            _mode: ProjectionMode,
+        ) -> Result<Projection, Status> {
             Err(Status::internal("Sync projector failure"))
         }
     }

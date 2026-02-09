@@ -208,7 +208,6 @@ mod tests {
                 correlation_id: String::new(),
                 edition: None,
             }),
-            snapshot: None,
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(0)),
                 event: Some(prost_types::Any {
@@ -217,6 +216,8 @@ mod tests {
                 }),
                 created_at: None,
             }],
+            snapshot: None,
+            ..Default::default()
         };
 
         let state: TestState = rebuild_from_events(Some(&book), apply_test_event);
@@ -238,13 +239,6 @@ mod tests {
                 correlation_id: String::new(),
                 edition: None,
             }),
-            snapshot: Some(Snapshot {
-                sequence: 5,
-                state: Some(prost_types::Any {
-                    type_url: "type.test/test.TestState".to_string(),
-                    value: snapshot_state.encode_to_vec(),
-                }),
-            }),
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(6)),
                 event: Some(prost_types::Any {
@@ -253,6 +247,14 @@ mod tests {
                 }),
                 created_at: None,
             }],
+            snapshot: Some(Snapshot {
+                sequence: 5,
+                state: Some(prost_types::Any {
+                    type_url: "type.test/test.TestState".to_string(),
+                    value: snapshot_state.encode_to_vec(),
+                }),
+            }),
+            ..Default::default()
         };
 
         let state: TestState = rebuild_from_events(Some(&book), apply_test_event);
@@ -264,8 +266,9 @@ mod tests {
     fn test_rebuild_empty_event_book() {
         let book = EventBook {
             cover: None,
-            snapshot: None,
             pages: vec![],
+            snapshot: None,
+            ..Default::default()
         };
 
         let state: TestState = rebuild_from_events(Some(&book), apply_test_event);
@@ -299,8 +302,8 @@ mod tests {
 
     #[test]
     fn test_state_builder_none_returns_default() {
-        let builder: StateBuilder<TestState> = StateBuilder::new()
-            .on("CountIncremented", apply_count_incremented);
+        let builder: StateBuilder<TestState> =
+            StateBuilder::new().on("CountIncremented", apply_count_incremented);
 
         let state = builder.rebuild(None);
         assert!(state.name.is_empty());
@@ -309,8 +312,8 @@ mod tests {
 
     #[test]
     fn test_state_builder_applies_events() {
-        let builder: StateBuilder<TestState> = StateBuilder::new()
-            .on("CountIncremented", apply_count_incremented);
+        let builder: StateBuilder<TestState> =
+            StateBuilder::new().on("CountIncremented", apply_count_incremented);
 
         let event = CountIncremented { new_count: 42 };
         let book = EventBook {
@@ -320,7 +323,6 @@ mod tests {
                 correlation_id: String::new(),
                 edition: None,
             }),
-            snapshot: None,
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(0)),
                 event: Some(prost_types::Any {
@@ -329,6 +331,8 @@ mod tests {
                 }),
                 created_at: None,
             }],
+            snapshot: None,
+            ..Default::default()
         };
 
         let state = builder.rebuild(Some(&book));
@@ -342,7 +346,9 @@ mod tests {
             .on("NameChanged", apply_name_changed);
 
         let event1 = CountIncremented { new_count: 10 };
-        let event2 = NameChanged { new_name: "updated".to_string() };
+        let event2 = NameChanged {
+            new_name: "updated".to_string(),
+        };
         let book = EventBook {
             cover: Some(Cover {
                 domain: "test".to_string(),
@@ -350,7 +356,6 @@ mod tests {
                 correlation_id: String::new(),
                 edition: None,
             }),
-            snapshot: None,
             pages: vec![
                 EventPage {
                     sequence: Some(Sequence::Num(0)),
@@ -369,6 +374,8 @@ mod tests {
                     created_at: None,
                 },
             ],
+            snapshot: None,
+            ..Default::default()
         };
 
         let state = builder.rebuild(Some(&book));
@@ -378,8 +385,8 @@ mod tests {
 
     #[test]
     fn test_state_builder_snapshot_plus_events() {
-        let builder: StateBuilder<TestState> = StateBuilder::new()
-            .on("CountIncremented", apply_count_incremented);
+        let builder: StateBuilder<TestState> =
+            StateBuilder::new().on("CountIncremented", apply_count_incremented);
 
         let snapshot_state = TestState {
             name: "from_snapshot".to_string(),
@@ -394,13 +401,6 @@ mod tests {
                 correlation_id: String::new(),
                 edition: None,
             }),
-            snapshot: Some(Snapshot {
-                sequence: 5,
-                state: Some(prost_types::Any {
-                    type_url: "type.test/test.TestState".to_string(),
-                    value: snapshot_state.encode_to_vec(),
-                }),
-            }),
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(6)),
                 event: Some(prost_types::Any {
@@ -409,6 +409,14 @@ mod tests {
                 }),
                 created_at: None,
             }],
+            snapshot: Some(Snapshot {
+                sequence: 5,
+                state: Some(prost_types::Any {
+                    type_url: "type.test/test.TestState".to_string(),
+                    value: snapshot_state.encode_to_vec(),
+                }),
+            }),
+            ..Default::default()
         };
 
         let state = builder.rebuild(Some(&book));
@@ -418,12 +426,11 @@ mod tests {
 
     #[test]
     fn test_state_builder_ignores_unknown_events() {
-        let builder: StateBuilder<TestState> = StateBuilder::new()
-            .on("CountIncremented", apply_count_incremented);
+        let builder: StateBuilder<TestState> =
+            StateBuilder::new().on("CountIncremented", apply_count_incremented);
 
         let book = EventBook {
             cover: None,
-            snapshot: None,
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(0)),
                 event: Some(prost_types::Any {
@@ -432,6 +439,8 @@ mod tests {
                 }),
                 created_at: None,
             }],
+            snapshot: None,
+            ..Default::default()
         };
 
         let state = builder.rebuild(Some(&book));

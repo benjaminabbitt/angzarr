@@ -59,7 +59,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let transport_type = env::var(TRANSPORT_TYPE_ENV_VAR).unwrap_or_else(|_| "tcp".to_string());
 
     if transport_type == "uds" {
-        let base_path = env::var(UDS_BASE_PATH_ENV_VAR).unwrap_or_else(|_| "/tmp/angzarr".to_string());
+        let base_path =
+            env::var(UDS_BASE_PATH_ENV_VAR).unwrap_or_else(|_| "/tmp/angzarr".to_string());
         let socket_path = PathBuf::from(format!("{}/projector-event.sock", base_path));
 
         if socket_path.exists() {

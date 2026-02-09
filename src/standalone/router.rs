@@ -123,8 +123,8 @@ impl CommandRouter {
         &self,
         events: &crate::proto::EventBook,
     ) -> Vec<crate::proto::Projection> {
-        use crate::proto_ext::CoverExt;
         use super::traits::ProjectionMode;
+        use crate::proto_ext::CoverExt;
 
         // Skip infrastructure domains (underscore prefix) - matches async projector behavior
         let domain = events.domain();

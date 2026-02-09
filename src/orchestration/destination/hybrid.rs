@@ -92,7 +92,11 @@ impl DestinationFetcher for HybridDestinationFetcher {
             );
 
             // First find the aggregate by correlation_id
-            let books = match self.local_event_store.get_by_correlation(correlation_id).await {
+            let books = match self
+                .local_event_store
+                .get_by_correlation(correlation_id)
+                .await
+            {
                 Ok(books) => books,
                 Err(e) => {
                     warn!(
@@ -107,13 +111,21 @@ impl DestinationFetcher for HybridDestinationFetcher {
 
             // Find the first book matching this domain
             let book = books.into_iter().find(|b| {
-                b.cover.as_ref().is_some_and(|c| c.domain == self.local_domain)
+                b.cover
+                    .as_ref()
+                    .is_some_and(|c| c.domain == self.local_domain)
             })?;
 
             // Re-fetch using EventBookRepository to get snapshot-optimized version
             let cover = book.cover.as_ref()?;
-            let edition = cover.edition.as_ref().map(|e| e.name.as_str()).unwrap_or("main");
-            let root_uuid = cover.root.as_ref()
+            let edition = cover
+                .edition
+                .as_ref()
+                .map(|e| e.name.as_str())
+                .unwrap_or("main");
+            let root_uuid = cover
+                .root
+                .as_ref()
                 .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())?;
 
             let repo = EventBookRepository::new(
@@ -140,7 +152,9 @@ impl DestinationFetcher for HybridDestinationFetcher {
                 }
             }
         } else {
-            self.remote.fetch_by_correlation(domain, correlation_id).await
+            self.remote
+                .fetch_by_correlation(domain, correlation_id)
+                .await
         }
     }
 }

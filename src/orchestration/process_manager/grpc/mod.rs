@@ -11,10 +11,12 @@ use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::bus::EventBus;
-use crate::proto_ext::EditionExt;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::process_manager_client::ProcessManagerClient;
-use crate::proto::{CommandResponse, Edition, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest};
+use crate::proto::{
+    CommandResponse, Edition, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest,
+};
+use crate::proto_ext::EditionExt;
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::storage::EventStore;
 
@@ -71,7 +73,10 @@ impl ProcessManagerContext for GrpcPMContext {
         let mut covers = response.destinations;
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                cover.edition = Some(Edition {
+                    name: edition.clone(),
+                    divergences: vec![],
+                });
             }
         }
         Ok(super::PmPrepareResponse {
@@ -114,7 +119,10 @@ impl ProcessManagerContext for GrpcPMContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                        c.edition = Some(Edition {
+                            name: edition.clone(),
+                            divergences: vec![],
+                        });
                     }
                 }
                 cmd
@@ -166,6 +174,7 @@ impl ProcessManagerContext for GrpcPMContext {
                     cover: process_events.cover.clone(),
                     pages,
                     snapshot: None,
+                    ..Default::default()
                 };
                 if let Err(e) = self.event_bus.publish(Arc::new(full_book)).await {
                     error!(

@@ -391,8 +391,10 @@ impl RuntimeBuilder {
     pub async fn build(mut self) -> Result<Runtime, Box<dyn std::error::Error>> {
         // Auto-register the _angzarr meta aggregate for component registration
         use super::meta_aggregate::{MetaAggregateHandler, META_DOMAIN};
-        self.aggregates
-            .insert(META_DOMAIN.to_string(), Arc::new(MetaAggregateHandler::new()));
+        self.aggregates.insert(
+            META_DOMAIN.to_string(),
+            Arc::new(MetaAggregateHandler::new()),
+        );
 
         // Use custom event bus if provided, otherwise create a default channel bus.
         let event_bus: Arc<dyn EventBus> = self

@@ -40,10 +40,8 @@ impl DestinationFetcher for LocalDestinationFetcher {
         let store = self.domain_stores.get(domain)?;
 
         // Use EventBookRepository to properly load snapshot + subsequent events
-        let repo = EventBookRepository::new(
-            store.event_store.clone(),
-            store.snapshot_store.clone(),
-        );
+        let repo =
+            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
 
         match repo.get(domain, edition, root_uuid).await {
             Ok(mut book) => {
@@ -82,20 +80,24 @@ impl DestinationFetcher for LocalDestinationFetcher {
         };
 
         // Find the first book matching this domain
-        let book = books.into_iter().find(|b| {
-            b.cover.as_ref().is_some_and(|c| c.domain == domain)
-        })?;
+        let book = books
+            .into_iter()
+            .find(|b| b.cover.as_ref().is_some_and(|c| c.domain == domain))?;
 
         // Re-fetch using EventBookRepository to get snapshot-optimized version
         let cover = book.cover.as_ref()?;
-        let edition = cover.edition.as_ref().map(|e| e.name.as_str()).unwrap_or("main");
-        let root_uuid = cover.root.as_ref()
+        let edition = cover
+            .edition
+            .as_ref()
+            .map(|e| e.name.as_str())
+            .unwrap_or("main");
+        let root_uuid = cover
+            .root
+            .as_ref()
             .and_then(|r| uuid::Uuid::from_slice(&r.value).ok())?;
 
-        let repo = EventBookRepository::new(
-            store.event_store.clone(),
-            store.snapshot_store.clone(),
-        );
+        let repo =
+            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
 
         match repo.get(domain, edition, root_uuid).await {
             Ok(mut fetched_book) => {

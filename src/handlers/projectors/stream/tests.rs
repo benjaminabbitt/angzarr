@@ -21,6 +21,7 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
             created_at: None,
         }],
         snapshot: None,
+        ..Default::default()
     }
 }
 
@@ -197,15 +198,13 @@ async fn test_multiple_subscribers_same_correlation() {
     handler.handle(book).await.unwrap();
 
     // Both subscribers should receive the event
-    let received1 =
-        tokio::time::timeout(tokio::time::Duration::from_millis(100), stream1.next())
-            .await
-            .expect("Subscriber 1 should receive event");
+    let received1 = tokio::time::timeout(tokio::time::Duration::from_millis(100), stream1.next())
+        .await
+        .expect("Subscriber 1 should receive event");
 
-    let received2 =
-        tokio::time::timeout(tokio::time::Duration::from_millis(100), stream2.next())
-            .await
-            .expect("Subscriber 2 should receive event");
+    let received2 = tokio::time::timeout(tokio::time::Duration::from_millis(100), stream2.next())
+        .await
+        .expect("Subscriber 2 should receive event");
 
     assert!(received1.is_some());
     assert!(received2.is_some());

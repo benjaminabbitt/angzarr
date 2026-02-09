@@ -425,30 +425,28 @@ impl EventBus for AmqpEventBus {
                 )
                 .await
             {
-                Ok(confirm) => {
-                    match confirm.await {
-                        Ok(_) => {
-                            debug!(
-                                exchange = %self.config.exchange,
-                                routing_key = %routing_key,
-                                "Published event book"
-                            );
-                            return Ok(PublishResult::default());
-                        }
-                        Err(e) => {
-                            error!(
-                                attempt = attempt + 1,
-                                max_retries = MAX_RETRIES,
-                                error = %e,
-                                "Publish confirmation failed, retrying..."
-                            );
-                            last_error = Some(BusError::Publish(format!(
-                                "Publish confirmation failed: {}",
-                                e
-                            )));
-                        }
+                Ok(confirm) => match confirm.await {
+                    Ok(_) => {
+                        debug!(
+                            exchange = %self.config.exchange,
+                            routing_key = %routing_key,
+                            "Published event book"
+                        );
+                        return Ok(PublishResult::default());
                     }
-                }
+                    Err(e) => {
+                        error!(
+                            attempt = attempt + 1,
+                            max_retries = MAX_RETRIES,
+                            error = %e,
+                            "Publish confirmation failed, retrying..."
+                        );
+                        last_error = Some(BusError::Publish(format!(
+                            "Publish confirmation failed: {}",
+                            e
+                        )));
+                    }
+                },
                 Err(e) => {
                     error!(
                         attempt = attempt + 1,
@@ -509,10 +507,13 @@ fn amqp_inject_trace_context() -> FieldTable {
     let mut headers = std::collections::BTreeMap::new();
 
     opentelemetry::global::get_text_map_propagator(|propagator| {
-        struct MapInjector<'a>(&'a mut std::collections::BTreeMap<lapin::types::ShortString, AMQPValue>);
+        struct MapInjector<'a>(
+            &'a mut std::collections::BTreeMap<lapin::types::ShortString, AMQPValue>,
+        );
         impl opentelemetry::propagation::Injector for MapInjector<'_> {
             fn set(&mut self, key: &str, value: String) {
-                self.0.insert(key.into(), AMQPValue::LongString(value.into()));
+                self.0
+                    .insert(key.into(), AMQPValue::LongString(value.into()));
             }
         }
         propagator.inject_context(&cx, &mut MapInjector(&mut headers));
@@ -565,6 +566,7 @@ mod tests {
             }),
             pages: vec![],
             snapshot: None,
+            ..Default::default()
         };
 
         // "test-123" as bytes becomes "746573742d313233" in hex
@@ -622,6 +624,7 @@ mod integration_tests {
                 }),
             }],
             snapshot: None,
+            ..Default::default()
         }
     }
 
@@ -632,7 +635,10 @@ mod integration_tests {
     }
 
     impl EventHandler for CountingHandler {
-        fn handle(&self, book: Arc<EventBook>) -> futures::future::BoxFuture<'static, std::result::Result<(), BusError>> {
+        fn handle(
+            &self,
+            book: Arc<EventBook>,
+        ) -> futures::future::BoxFuture<'static, std::result::Result<(), BusError>> {
             let count = self.count.clone();
             let tx = self.tx.clone();
             let book_clone = (*book).clone();

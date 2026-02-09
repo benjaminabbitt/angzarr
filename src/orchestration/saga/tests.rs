@@ -217,7 +217,16 @@ async fn test_execute_exhausts_retries() {
         .with_max_delay(Duration::from_millis(10))
         .with_max_times(3);
     let commands = vec![CommandBook::default()];
-    execute_with_retry(&ctx, &executor, None, commands, "test-saga", "corr-1", backoff).await;
+    execute_with_retry(
+        &ctx,
+        &executor,
+        None,
+        commands,
+        "test-saga",
+        "corr-1",
+        backoff,
+    )
+    .await;
 
     // Initial attempt + 3 retries = 4 executions
     assert_eq!(executor.execute_count.load(Ordering::SeqCst), 4);
@@ -271,6 +280,7 @@ impl CommandExecutor for RetryableWithStateExecutor {
                 }),
                 pages: vec![],
                 snapshot: None,
+                ..Default::default()
             };
             CommandOutcome::Retryable {
                 reason: "Sequence conflict".to_string(),

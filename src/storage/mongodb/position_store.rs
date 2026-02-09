@@ -42,7 +42,13 @@ impl MongoPositionStore {
 
 #[async_trait]
 impl PositionStore for MongoPositionStore {
-    async fn get(&self, handler: &str, domain: &str, edition: &str, root: &[u8]) -> Result<Option<u32>> {
+    async fn get(
+        &self,
+        handler: &str,
+        domain: &str,
+        edition: &str,
+        root: &[u8],
+    ) -> Result<Option<u32>> {
         let root_binary = Binary {
             subtype: mongodb::bson::spec::BinarySubtype::Generic,
             bytes: root.to_vec(),
@@ -66,7 +72,14 @@ impl PositionStore for MongoPositionStore {
         }
     }
 
-    async fn put(&self, handler: &str, domain: &str, edition: &str, root: &[u8], sequence: u32) -> Result<()> {
+    async fn put(
+        &self,
+        handler: &str,
+        domain: &str,
+        edition: &str,
+        root: &[u8],
+        sequence: u32,
+    ) -> Result<()> {
         let root_binary = Binary {
             subtype: mongodb::bson::spec::BinarySubtype::Generic,
             bytes: root.to_vec(),

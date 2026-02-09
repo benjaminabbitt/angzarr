@@ -5,7 +5,10 @@
 
 use angzarr::proto::{CommandBook, ComponentDescriptor, EventBook, Uuid as ProtoUuid};
 use common::proto::{CreateShipment, OrderCompleted};
-use common::{build_command_book, decode_event, root_id_as_string, Dispatcher, Router, SagaEventHandler, ProtoTypeName, SagaLogic, SAGA};
+use common::{
+    build_command_book, decode_event, root_id_as_string, Dispatcher, ProtoTypeName, Router,
+    SagaEventHandler, SagaLogic, SAGA,
+};
 
 const TARGET_DOMAIN: &str = "fulfillment";
 
@@ -17,8 +20,9 @@ pub struct OrderFulfillmentSaga {
 impl OrderFulfillmentSaga {
     pub fn new() -> Self {
         Self {
-            router: Router::new("sag-order-fulfillment", SAGA)
-                .with(Dispatcher::new("order").on(OrderCompleted::TYPE_NAME, handle_order_completed)),
+            router: Router::new("sag-order-fulfillment", SAGA).with(
+                Dispatcher::new("order").on(OrderCompleted::TYPE_NAME, handle_order_completed),
+            ),
         }
     }
 }
@@ -59,11 +63,7 @@ impl SagaLogic for OrderFulfillmentSaga {
         self.router.descriptor()
     }
 
-    fn execute(
-        &self,
-        source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Vec<CommandBook> {
+    fn execute(&self, source: &EventBook, _destinations: &[EventBook]) -> Vec<CommandBook> {
         self.router.dispatch(source)
     }
 }

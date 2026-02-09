@@ -201,8 +201,12 @@ async fn when_initialize_stock(world: &mut ContainerWorld, product_id: String, q
         quantity,
         low_stock_threshold: 10,
     };
-    let command_book =
-        world.make_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = world.make_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let client = world.get_gateway_client().await;
     match client.execute(command_book).await {
@@ -414,7 +418,9 @@ async fn then_event_at_sequence(
 // Gateway Streaming Steps
 // =============================================================================
 
-#[when(expr = "I send an InitializeStock command via gateway with product_id {string} and quantity {int}")]
+#[when(
+    expr = "I send an InitializeStock command via gateway with product_id {string} and quantity {int}"
+)]
 async fn when_initialize_stock_via_gateway(
     world: &mut ContainerWorld,
     product_id: String,
@@ -427,8 +433,12 @@ async fn when_initialize_stock_via_gateway(
         quantity,
         low_stock_threshold: 10,
     };
-    let command_book =
-        world.make_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = world.make_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     // Store correlation ID for later verification
     let correlation_id = command_book
@@ -458,7 +468,9 @@ async fn when_initialize_stock_via_gateway(
     }
 }
 
-#[given(expr = "I send an InitializeStock command via gateway with product_id {string} and quantity {int}")]
+#[given(
+    expr = "I send an InitializeStock command via gateway with product_id {string} and quantity {int}"
+)]
 async fn given_initialize_stock_via_gateway(
     world: &mut ContainerWorld,
     product_id: String,
@@ -495,8 +507,12 @@ async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
         quantity: 1,
         low_stock_threshold: 1,
     };
-    let mut command_book =
-        world.make_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let mut command_book = world.make_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
     if let Some(ref mut cover) = command_book.cover {
         cover.correlation_id = "non-matching-correlation-id".to_string();
     }

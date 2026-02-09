@@ -1060,8 +1060,9 @@ async fn test_saga_cascade_with_external_event_bus() {
 
     // Simulate an external transport (IPC/AMQP) — a separate bus that
     // does NOT deliver to the in-process channel bus.
-    let external_bus: Arc<dyn EventBus> =
-        Arc::new(angzarr::bus::ChannelEventBus::new(angzarr::bus::ChannelConfig::publisher()));
+    let external_bus: Arc<dyn EventBus> = Arc::new(angzarr::bus::ChannelEventBus::new(
+        angzarr::bus::ChannelConfig::publisher(),
+    ));
 
     let mut runtime = RuntimeBuilder::new()
         .with_sqlite_memory()

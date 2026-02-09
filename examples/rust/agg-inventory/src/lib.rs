@@ -224,7 +224,9 @@ fn handle_reserve_stock(
     if cmd.quantity > avail {
         return Err(BusinessError::Rejected(format!(
             "{}: have {}, need {}",
-            errmsg::INSUFFICIENT_STOCK, avail, cmd.quantity
+            errmsg::INSUFFICIENT_STOCK,
+            avail,
+            cmd.quantity
         )));
     }
 
@@ -288,6 +290,7 @@ fn handle_reserve_stock(
             }),
         }),
         pages,
+        ..Default::default()
     })
 }
 
@@ -446,6 +449,7 @@ mod tests {
                 }),
                 created_at: None,
             }],
+            ..Default::default()
         };
 
         let cmd = ReserveStock {

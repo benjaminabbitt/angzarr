@@ -24,11 +24,8 @@ async fn test_put_and_get_roundtrip() {
     let repo = EventBookRepository::new(event_store, snapshot_store);
 
     let root = Uuid::new_v4();
-    let book = make_event_book_with_root(
-        "orders",
-        root,
-        vec![make_event_page(0), make_event_page(1)],
-    );
+    let book =
+        make_event_book_with_root("orders", root, vec![make_event_page(0), make_event_page(1)]);
 
     repo.put("test", &book).await.unwrap();
 
@@ -46,7 +43,13 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
 
     // Add events 0-4
     event_store
-        .add("orders", "test", root, (0..5).map(make_event_page).collect(), "")
+        .add(
+            "orders",
+            "test",
+            root,
+            (0..5).map(make_event_page).collect(),
+            "",
+        )
         .await
         .unwrap();
 
@@ -91,7 +94,10 @@ async fn test_get_from_to_returns_range() {
         .await
         .unwrap();
 
-    let book = repo.get_from_to("orders", "test", root, 3, 7).await.unwrap();
+    let book = repo
+        .get_from_to("orders", "test", root, 3, 7)
+        .await
+        .unwrap();
 
     assert_eq!(book.pages.len(), 4); // Events 3, 4, 5, 6
     assert!(book.snapshot.is_none()); // Range query doesn't include snapshot
@@ -107,6 +113,7 @@ async fn test_put_missing_cover_returns_error() {
         cover: None,
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = repo.put("test", &book).await;
@@ -129,6 +136,7 @@ async fn test_put_missing_root_returns_error() {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = repo.put("test", &book).await;
@@ -153,6 +161,7 @@ async fn test_put_invalid_uuid_returns_error() {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = repo.put("test", &book).await;
@@ -191,14 +200,19 @@ async fn test_put_propagates_store_error() {
 async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
     let event_store = Arc::new(MockEventStore::new());
     let snapshot_store = Arc::new(MockSnapshotStore::new());
-    let repo =
-        EventBookRepository::with_config(event_store.clone(), snapshot_store.clone(), false);
+    let repo = EventBookRepository::with_config(event_store.clone(), snapshot_store.clone(), false);
 
     let root = Uuid::new_v4();
 
     // Add events 0-4
     event_store
-        .add("orders", "test", root, (0..5).map(make_event_page).collect(), "")
+        .add(
+            "orders",
+            "test",
+            root,
+            (0..5).map(make_event_page).collect(),
+            "",
+        )
         .await
         .unwrap();
 
@@ -227,14 +241,19 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
 async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
     let event_store = Arc::new(MockEventStore::new());
     let snapshot_store = Arc::new(MockSnapshotStore::new());
-    let repo =
-        EventBookRepository::with_config(event_store.clone(), snapshot_store.clone(), true);
+    let repo = EventBookRepository::with_config(event_store.clone(), snapshot_store.clone(), true);
 
     let root = Uuid::new_v4();
 
     // Add events 0-4
     event_store
-        .add("orders", "test", root, (0..5).map(make_event_page).collect(), "")
+        .add(
+            "orders",
+            "test",
+            root,
+            (0..5).map(make_event_page).collect(),
+            "",
+        )
         .await
         .unwrap();
 
@@ -273,7 +292,13 @@ async fn test_with_config_defaults_match_new_constructor() {
     let root = Uuid::new_v4();
 
     event_store
-        .add("orders", "test", root, (0..3).map(make_event_page).collect(), "")
+        .add(
+            "orders",
+            "test",
+            root,
+            (0..3).map(make_event_page).collect(),
+            "",
+        )
         .await
         .unwrap();
 
@@ -470,11 +495,8 @@ mod mock_integration {
     async fn test_get_with_snapshot_read_disabled_ignores_snapshot() {
         let event_store = Arc::new(MockEventStore::new());
         let snapshot_store = Arc::new(MockSnapshotStore::new());
-        let repo = EventBookRepository::with_config(
-            event_store.clone(),
-            snapshot_store.clone(),
-            false,
-        );
+        let repo =
+            EventBookRepository::with_config(event_store.clone(), snapshot_store.clone(), false);
 
         let domain = "test_domain";
         let root = Uuid::new_v4();

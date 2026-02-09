@@ -85,6 +85,7 @@ mod tests {
                 })
                 .collect(),
             snapshot: None,
+            ..Default::default()
         }
     }
 

@@ -30,7 +30,11 @@ struct NoopProjector;
 
 #[async_trait]
 impl ProjectorHandler for NoopProjector {
-    async fn handle(&self, _events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+    async fn handle(
+        &self,
+        _events: &EventBook,
+        _mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
         Ok(Projection::default())
     }
 }
@@ -129,14 +133,20 @@ async fn test_topology_contains_all_component_types() {
     let nodes = store.get_nodes().await.expect("get_nodes failed");
 
     let find_type = |name: &str| -> Option<String> {
-        nodes.iter().find(|n| n.id == name).map(|n| n.component_type.clone())
+        nodes
+            .iter()
+            .find(|n| n.id == name)
+            .map(|n| n.component_type.clone())
     };
 
     assert_eq!(
         find_type("orders"),
         Some("aggregate".into()),
         "orders should be registered as aggregate. Nodes: {:?}",
-        nodes.iter().map(|n| (&n.id, &n.component_type)).collect::<Vec<_>>()
+        nodes
+            .iter()
+            .map(|n| (&n.id, &n.component_type))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         find_type("inventory"),
@@ -147,31 +157,45 @@ async fn test_topology_contains_all_component_types() {
         find_type("web"),
         Some("projector".into()),
         "web should be registered as projector. Nodes: {:?}",
-        nodes.iter().map(|n| (&n.id, &n.component_type)).collect::<Vec<_>>()
+        nodes
+            .iter()
+            .map(|n| (&n.id, &n.component_type))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         find_type("fulfillment-saga"),
         Some("saga".into()),
         "fulfillment-saga should be registered as saga. Nodes: {:?}",
-        nodes.iter().map(|n| (&n.id, &n.component_type)).collect::<Vec<_>>()
+        nodes
+            .iter()
+            .map(|n| (&n.id, &n.component_type))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         find_type("test-pm"),
         Some("process_manager".into()),
         "test-pm should be registered as process_manager. Nodes: {:?}",
-        nodes.iter().map(|n| (&n.id, &n.component_type)).collect::<Vec<_>>()
+        nodes
+            .iter()
+            .map(|n| (&n.id, &n.component_type))
+            .collect::<Vec<_>>()
     );
 
     // Verify subscription edges exist
     let edges = store.get_edges().await.expect("get_edges failed");
     let has_edge = |source: &str, target: &str| {
-        edges.iter().any(|e| e.source == source && e.target == target)
+        edges
+            .iter()
+            .any(|e| e.source == source && e.target == target)
     };
 
     assert!(
         has_edge("orders", "fulfillment-saga"),
         "Should have subscription edge orders -> fulfillment-saga. Edges: {:?}",
-        edges.iter().map(|e| (&e.source, &e.target)).collect::<Vec<_>>()
+        edges
+            .iter()
+            .map(|e| (&e.source, &e.target))
+            .collect::<Vec<_>>()
     );
     assert!(
         has_edge("orders", "web"),

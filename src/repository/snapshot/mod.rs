@@ -46,7 +46,13 @@ impl SnapshotRepository {
     ///
     /// Replaces any existing snapshot for this root.
     /// If writes are disabled, this is a no-op.
-    pub async fn put(&self, domain: &str, edition: &str, root: Uuid, snapshot: Snapshot) -> Result<()> {
+    pub async fn put(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        snapshot: Snapshot,
+    ) -> Result<()> {
         if self.write_enabled {
             self.store.put(domain, edition, root, snapshot).await
         } else {

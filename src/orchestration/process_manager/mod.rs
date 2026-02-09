@@ -168,27 +168,25 @@ pub async fn orchestrate_pm(
                             "PM events persisted successfully"
                         );
                     }
-                    CommandOutcome::Retryable { reason, .. } => {
-                        match delays.next() {
-                            Some(delay) => {
-                                warn!(
-                                    attempt,
-                                    error = %reason,
-                                    "Sequence conflict persisting PM events, retrying"
-                                );
-                                tokio::time::sleep(delay).await;
-                                attempt += 1;
-                                continue;
-                            }
-                            None => {
-                                error!(
-                                    error = %reason,
-                                    "Failed to persist PM events (retries exhausted)"
-                                );
-                                return Err(BusError::Publish(reason));
-                            }
+                    CommandOutcome::Retryable { reason, .. } => match delays.next() {
+                        Some(delay) => {
+                            warn!(
+                                attempt,
+                                error = %reason,
+                                "Sequence conflict persisting PM events, retrying"
+                            );
+                            tokio::time::sleep(delay).await;
+                            attempt += 1;
+                            continue;
                         }
-                    }
+                        None => {
+                            error!(
+                                error = %reason,
+                                "Failed to persist PM events (retries exhausted)"
+                            );
+                            return Err(BusError::Publish(reason));
+                        }
+                    },
                     CommandOutcome::Rejected(reason) => {
                         error!(
                             error = %reason,
@@ -210,10 +208,13 @@ pub async fn orchestrate_pm(
     #[cfg(feature = "otel")]
     {
         use crate::utils::metrics::{self, PM_DURATION};
-        PM_DURATION.record(start.elapsed().as_secs_f64(), &[
-            metrics::component_attr("process_manager"),
-            metrics::name_attr(pm_domain),
-        ]);
+        PM_DURATION.record(
+            start.elapsed().as_secs_f64(),
+            &[
+                metrics::component_attr("process_manager"),
+                metrics::name_attr(pm_domain),
+            ],
+        );
     }
 
     Ok(())

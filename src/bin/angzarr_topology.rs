@@ -39,8 +39,6 @@ use futures::future::BoxFuture;
 use tracing::{error, info};
 
 use angzarr::bus::{init_event_bus, BusError, EventBusMode, EventHandler};
-#[cfg(feature = "mongodb")]
-use angzarr::config::{TOPOLOGY_MONGODB_DATABASE_ENV_VAR, TOPOLOGY_MONGODB_URI_ENV_VAR};
 #[cfg(feature = "postgres")]
 use angzarr::config::TOPOLOGY_POSTGRES_URI_ENV_VAR;
 #[cfg(feature = "redis")]
@@ -50,6 +48,8 @@ use angzarr::config::TOPOLOGY_SQLITE_PATH_ENV_VAR;
 use angzarr::config::{
     Config, POD_NAMESPACE_ENV_VAR, TOPOLOGY_REST_PORT_ENV_VAR, TOPOLOGY_STORAGE_TYPE_ENV_VAR,
 };
+#[cfg(feature = "mongodb")]
+use angzarr::config::{TOPOLOGY_MONGODB_DATABASE_ENV_VAR, TOPOLOGY_MONGODB_URI_ENV_VAR};
 use angzarr::handlers::projectors::topology::store::TopologyStore;
 use angzarr::handlers::projectors::topology::{TopologyK8sWatcher, TopologyProjector};
 use angzarr::proto::EventBook;

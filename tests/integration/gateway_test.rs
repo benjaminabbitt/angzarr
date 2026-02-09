@@ -40,8 +40,12 @@ async fn test_execute_command_creates_event() {
         quantity: 100,
         low_stock_threshold: 10,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = client.execute(command_book).await;
     assert!(
@@ -80,8 +84,12 @@ async fn test_execute_command_returns_projections() {
         quantity: 50,
         low_stock_threshold: 5,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = client.execute(command_book).await;
     assert!(
@@ -120,8 +128,12 @@ async fn test_query_events_after_command() {
         quantity: 100,
         low_stock_threshold: 10,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok(), "Command execution failed");
@@ -167,8 +179,12 @@ async fn test_multiple_commands_sequence_events() {
         quantity: 75,
         low_stock_threshold: 8,
     };
-    let command_book1 =
-        build_command_book("inventory", inventory_id, command1, "examples.InitializeStock");
+    let command_book1 = build_command_book(
+        "inventory",
+        inventory_id,
+        command1,
+        "examples.InitializeStock",
+    );
 
     let response1 = gateway_client.execute(command_book1).await;
     assert!(response1.is_ok(), "First command failed");

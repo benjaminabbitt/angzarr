@@ -32,7 +32,9 @@ use std::time::Duration;
 use backon::Retryable;
 use tracing::{info, warn};
 
-use angzarr::bus::{AmqpConfig, AmqpEventBus, EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus};
+use angzarr::bus::{
+    AmqpConfig, AmqpEventBus, EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus,
+};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
@@ -119,7 +121,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to all aggregate endpoints (business domains only)
     let endpoints_str = std::env::var(STATIC_ENDPOINTS_ENV_VAR).map_err(|_| {
-        format!("Process manager requires {} for multi-domain routing", STATIC_ENDPOINTS_ENV_VAR)
+        format!(
+            "Process manager requires {} for multi-domain routing",
+            STATIC_ENDPOINTS_ENV_VAR
+        )
     })?;
 
     let (command_executor, remote_fetcher) = connect_endpoints(&endpoints_str).await?;

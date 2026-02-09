@@ -48,7 +48,11 @@ pub async fn test_put_update<S: PositionStore>(store: &S) {
     store.put(handler, domain, "test", root, 10).await.unwrap();
     store.put(handler, domain, "test", root, 25).await.unwrap();
 
-    let result = store.get(handler, domain, "test", root).await.unwrap().unwrap();
+    let result = store
+        .get(handler, domain, "test", root)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(result, 25, "should return updated sequence");
 }
 
@@ -59,7 +63,11 @@ pub async fn test_put_zero_sequence<S: PositionStore>(store: &S) {
 
     store.put(handler, domain, "test", root, 0).await.unwrap();
 
-    let result = store.get(handler, domain, "test", root).await.unwrap().unwrap();
+    let result = store
+        .get(handler, domain, "test", root)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(result, 0, "should store sequence 0");
 }
 
@@ -71,11 +79,25 @@ pub async fn test_handler_isolation<S: PositionStore>(store: &S) {
     let domain = "test_domain";
     let root = b"root_iso_handler";
 
-    store.put("handler_a", domain, "test", root, 10).await.unwrap();
-    store.put("handler_b", domain, "test", root, 20).await.unwrap();
+    store
+        .put("handler_a", domain, "test", root, 10)
+        .await
+        .unwrap();
+    store
+        .put("handler_b", domain, "test", root, 20)
+        .await
+        .unwrap();
 
-    let a = store.get("handler_a", domain, "test", root).await.unwrap().unwrap();
-    let b = store.get("handler_b", domain, "test", root).await.unwrap().unwrap();
+    let a = store
+        .get("handler_a", domain, "test", root)
+        .await
+        .unwrap()
+        .unwrap();
+    let b = store
+        .get("handler_b", domain, "test", root)
+        .await
+        .unwrap()
+        .unwrap();
 
     assert_eq!(a, 10, "handler_a should be 10");
     assert_eq!(b, 20, "handler_b should be 20");
@@ -85,11 +107,25 @@ pub async fn test_domain_isolation<S: PositionStore>(store: &S) {
     let handler = "test_pos_dom_iso";
     let root = b"root_iso_domain";
 
-    store.put(handler, "domain_x", "test", root, 5).await.unwrap();
-    store.put(handler, "domain_y", "test", root, 15).await.unwrap();
+    store
+        .put(handler, "domain_x", "test", root, 5)
+        .await
+        .unwrap();
+    store
+        .put(handler, "domain_y", "test", root, 15)
+        .await
+        .unwrap();
 
-    let x = store.get(handler, "domain_x", "test", root).await.unwrap().unwrap();
-    let y = store.get(handler, "domain_y", "test", root).await.unwrap().unwrap();
+    let x = store
+        .get(handler, "domain_x", "test", root)
+        .await
+        .unwrap()
+        .unwrap();
+    let y = store
+        .get(handler, "domain_y", "test", root)
+        .await
+        .unwrap()
+        .unwrap();
 
     assert_eq!(x, 5, "domain_x should be 5");
     assert_eq!(y, 15, "domain_y should be 15");
@@ -99,8 +135,14 @@ pub async fn test_root_isolation<S: PositionStore>(store: &S) {
     let handler = "test_pos_root_iso";
     let domain = "test_domain";
 
-    store.put(handler, domain, "test", b"root_a", 100).await.unwrap();
-    store.put(handler, domain, "test", b"root_b", 200).await.unwrap();
+    store
+        .put(handler, domain, "test", b"root_a", 100)
+        .await
+        .unwrap();
+    store
+        .put(handler, domain, "test", b"root_b", 200)
+        .await
+        .unwrap();
 
     let a = store
         .get(handler, domain, "test", b"root_a")
@@ -131,7 +173,11 @@ pub async fn test_multiple_handlers_same_root<S: PositionStore>(store: &S) {
 
     for i in 0..5u32 {
         let handler = format!("test_handler_{}", i);
-        let result = store.get(&handler, domain, "test", root).await.unwrap().unwrap();
+        let result = store
+            .get(&handler, domain, "test", root)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(result, i * 10, "handler_{} should be {}", i, i * 10);
     }
 }

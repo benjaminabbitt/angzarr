@@ -33,11 +33,11 @@ use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::{Config, STREAM_OUTPUT_ENV_VAR, TARGET_COMMAND_JSON_ENV_VAR};
-use angzarr::proto::GetDescriptorRequest;
 use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::projector_client::ProjectorClient;
 use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use angzarr::proto::GetDescriptorRequest;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::bootstrap::init_tracing;
 use angzarr::utils::retry::connection_backoff;
@@ -70,7 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get command: prefer env var (for standalone mode), fall back to config
     let command = match std::env::var(TARGET_COMMAND_JSON_ENV_VAR) {
         Ok(json) => serde_json::from_str::<Vec<String>>(&json).unwrap_or_else(|_| {
-            warn!("Failed to parse {}, falling back to config", TARGET_COMMAND_JSON_ENV_VAR);
+            warn!(
+                "Failed to parse {}, falling back to config",
+                TARGET_COMMAND_JSON_ENV_VAR
+            );
             target.command.clone()
         }),
         Err(_) => target.command.clone(),
@@ -115,9 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let projector_addr = address.clone();
     let channel = (|| {
         let addr = projector_addr.clone();
-        async move {
-            connect_to_address(&addr).await.map_err(|e| e.to_string())
-        }
+        async move { connect_to_address(&addr).await.map_err(|e| e.to_string()) }
     })
     .retry(connection_backoff())
     .notify(|err: &String, dur: Duration| {
@@ -130,7 +131,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let projector_client = ProjectorCoordinatorClient::new(channel);
 
     // Fetch descriptor from projector service for topology registration
-    let descriptor = match descriptor_client.get_descriptor(GetDescriptorRequest {}).await {
+    let descriptor = match descriptor_client
+        .get_descriptor(GetDescriptorRequest {})
+        .await
+    {
         Ok(response) => response.into_inner(),
         Err(e) => {
             warn!(error = %e, "Failed to get descriptor from projector, using basic descriptor");

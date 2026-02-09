@@ -81,8 +81,14 @@ mod sqlite_tests {
         let book1 = make_event_book("orders", "", &["OrderPlaced"]);
         let book2 = make_event_book("orders", "", &["OrderConfirmed"]);
 
-        projector.process_event(&book1).await.expect("process_event failed");
-        projector.process_event(&book2).await.expect("process_event failed");
+        projector
+            .process_event(&book1)
+            .await
+            .expect("process_event failed");
+        projector
+            .process_event(&book2)
+            .await
+            .expect("process_event failed");
 
         let nodes = store.get_nodes().await.expect("get_nodes failed");
         assert_eq!(nodes.len(), 1);
@@ -114,7 +120,10 @@ mod sqlite_tests {
                 ..Default::default()
             },
         ];
-        projector.register_components(&descriptors).await.expect("register failed");
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register failed");
 
         let edges = store.get_edges().await.expect("get_edges failed");
         // Edges: orders -> order-fulfillment (subscription)
@@ -141,18 +150,30 @@ mod sqlite_tests {
                 ..Default::default()
             },
         ];
-        projector.register_components(&descriptors).await.expect("register failed");
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register failed");
 
         // Correlated events between two aggregates — NO edge created (declarative only)
         let book1 = make_event_book("orders", "corr-1", &["OrderPlaced"]);
         let book2 = make_event_book("fulfillment", "corr-1", &["ShipmentCreated"]);
 
-        projector.process_event(&book1).await.expect("process_event failed");
-        projector.process_event(&book2).await.expect("process_event failed");
+        projector
+            .process_event(&book1)
+            .await
+            .expect("process_event failed");
+        projector
+            .process_event(&book2)
+            .await
+            .expect("process_event failed");
 
         // No edges — edges come only from descriptors now
         let edges = store.get_edges().await.expect("get_edges failed");
-        assert!(edges.is_empty(), "Aggregates should not have direct edges without saga intermediary");
+        assert!(
+            edges.is_empty(),
+            "Aggregates should not have direct edges without saga intermediary"
+        );
     }
 
     #[tokio::test]
@@ -171,11 +192,17 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: "fulfillment-saga".into(),
                 component_type: "saga".into(),
-                inputs: vec![Target { domain: "orders".into(), types: vec![] }],
+                inputs: vec![Target {
+                    domain: "orders".into(),
+                    types: vec![],
+                }],
                 ..Default::default()
             },
         ];
-        projector.register_components(&descriptors).await.expect("register failed");
+        projector
+            .register_components(&descriptors)
+            .await
+            .expect("register failed");
 
         // Edges come from descriptors: orders -> fulfillment-saga (subscription)
         let edges = store.get_edges().await.expect("get_edges failed");
@@ -193,8 +220,14 @@ mod sqlite_tests {
         let book1 = make_event_book("orders", "", &["OrderPlaced"]);
         let book2 = make_event_book("fulfillment", "", &["ShipmentCreated"]);
 
-        projector.process_event(&book1).await.expect("process_event failed");
-        projector.process_event(&book2).await.expect("process_event failed");
+        projector
+            .process_event(&book1)
+            .await
+            .expect("process_event failed");
+        projector
+            .process_event(&book2)
+            .await
+            .expect("process_event failed");
 
         let edges = store.get_edges().await.expect("get_edges failed");
         assert!(edges.is_empty());
@@ -223,7 +256,10 @@ mod sqlite_tests {
         let projector = TopologyProjector::new(store.clone(), 0);
 
         let book = make_event_book("_projection.web.order", "", &["OrderView"]);
-        projector.process_event(&book).await.expect("process_event failed");
+        projector
+            .process_event(&book)
+            .await
+            .expect("process_event failed");
 
         let nodes = store.get_nodes().await.expect("get_nodes failed");
         assert_eq!(nodes.len(), 1);
@@ -236,7 +272,10 @@ mod sqlite_tests {
         let projector = TopologyProjector::new(store.clone(), 0);
 
         let book = make_event_book("orders", "old-corr", &["OrderPlaced"]);
-        projector.process_event(&book).await.expect("process_event failed");
+        projector
+            .process_event(&book)
+            .await
+            .expect("process_event failed");
 
         let pruned = store
             .prune_correlations("2099-01-01T00:00:00Z")
@@ -327,7 +366,9 @@ mod sqlite_tests {
         assert_eq!(edges.len(), 3);
 
         let has_edge = |source: &str, target: &str| {
-            edges.iter().any(|e| e.source == source && e.target == target)
+            edges
+                .iter()
+                .any(|e| e.source == source && e.target == target)
         };
         assert!(has_edge("orders", "fulfillment-saga"));
         assert!(has_edge("orders", "accounting"));
@@ -453,17 +494,24 @@ mod sqlite_tests {
         ];
 
         // Simulate publish_descriptors: encode to EventBook
+        use crate::proto::ComponentRegistered;
         use prost::Message;
         let pages: Vec<EventPage> = descriptors
             .iter()
             .enumerate()
-            .map(|(i, d)| EventPage {
-                sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
-                event: Some(Any {
-                    type_url: crate::proto_ext::COMPONENT_REGISTERED_TYPE_URL.to_string(),
-                    value: d.encode_to_vec(),
-                }),
-                created_at: None,
+            .map(|(i, d)| {
+                let registered = ComponentRegistered {
+                    descriptor: Some(d.clone()),
+                    ..Default::default()
+                };
+                EventPage {
+                    sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
+                    event: Some(Any {
+                        type_url: crate::proto_ext::COMPONENT_REGISTERED_TYPE_URL.to_string(),
+                        value: registered.encode_to_vec(),
+                    }),
+                    created_at: None,
+                }
             })
             .collect();
 
@@ -486,16 +534,28 @@ mod sqlite_tests {
         let nodes = store.get_nodes().await.expect("get_nodes failed");
         assert_eq!(nodes.len(), 5);
 
-        let saga_node = nodes.iter().find(|n| n.id == "fulfillment-saga").expect("saga node missing");
+        let saga_node = nodes
+            .iter()
+            .find(|n| n.id == "fulfillment-saga")
+            .expect("saga node missing");
         assert_eq!(saga_node.component_type, "saga");
 
-        let projector_node = nodes.iter().find(|n| n.id == "web").expect("projector node missing");
+        let projector_node = nodes
+            .iter()
+            .find(|n| n.id == "web")
+            .expect("projector node missing");
         assert_eq!(projector_node.component_type, "projector");
 
-        let pm_node = nodes.iter().find(|n| n.id == "order-fulfillment").expect("PM node missing");
+        let pm_node = nodes
+            .iter()
+            .find(|n| n.id == "order-fulfillment")
+            .expect("PM node missing");
         assert_eq!(pm_node.component_type, "process_manager");
 
-        let agg_node = nodes.iter().find(|n| n.id == "order").expect("aggregate node missing");
+        let agg_node = nodes
+            .iter()
+            .find(|n| n.id == "order")
+            .expect("aggregate node missing");
         assert_eq!(agg_node.component_type, "aggregate");
 
         // Now process domain events — verify registered types are NOT overwritten
@@ -506,12 +566,18 @@ mod sqlite_tests {
             .expect("process_event failed for domain event");
 
         let nodes = store.get_nodes().await.expect("get_nodes failed");
-        let agg_node = nodes.iter().find(|n| n.id == "order").expect("aggregate node missing after event");
+        let agg_node = nodes
+            .iter()
+            .find(|n| n.id == "order")
+            .expect("aggregate node missing after event");
         assert_eq!(agg_node.component_type, "aggregate");
         assert_eq!(agg_node.event_count, 1); // 0 from register + 1 from event
 
         // Saga/projector/PM types still preserved
-        let saga_node = nodes.iter().find(|n| n.id == "fulfillment-saga").expect("saga node missing after event");
+        let saga_node = nodes
+            .iter()
+            .find(|n| n.id == "fulfillment-saga")
+            .expect("saga node missing after event");
         assert_eq!(saga_node.component_type, "saga");
     }
 
@@ -528,16 +594,32 @@ mod sqlite_tests {
         let book3 = make_event_book("web", "", &["ViewUpdated"]);
         let book4 = make_event_book("order-fulfillment", "", &["ProcessStarted"]);
 
-        projector.process_event(&book1).await.expect("process_event failed");
-        projector.process_event(&book2).await.expect("process_event failed");
-        projector.process_event(&book3).await.expect("process_event failed");
-        projector.process_event(&book4).await.expect("process_event failed");
+        projector
+            .process_event(&book1)
+            .await
+            .expect("process_event failed");
+        projector
+            .process_event(&book2)
+            .await
+            .expect("process_event failed");
+        projector
+            .process_event(&book3)
+            .await
+            .expect("process_event failed");
+        projector
+            .process_event(&book4)
+            .await
+            .expect("process_event failed");
 
         // Verify all nodes initially have type "aggregate"
         let nodes = store.get_nodes().await.expect("get_nodes failed");
         assert_eq!(nodes.len(), 4);
         for node in &nodes {
-            assert_eq!(node.component_type, "aggregate", "node {} should be aggregate before registration", node.id);
+            assert_eq!(
+                node.component_type, "aggregate",
+                "node {} should be aggregate before registration",
+                node.id
+            );
         }
 
         // Descriptors arrive AFTER — register_node must overwrite component_type
@@ -583,7 +665,12 @@ mod sqlite_tests {
 
         let nodes = store.get_nodes().await.expect("get_nodes failed");
 
-        let find = |id: &str| nodes.iter().find(|n| n.id == id).expect(&format!("node {} missing", id));
+        let find = |id: &str| {
+            nodes
+                .iter()
+                .find(|n| n.id == id)
+                .expect(&format!("node {} missing", id))
+        };
 
         assert_eq!(find("order").component_type, "aggregate");
         assert_eq!(find("fulfillment-saga").component_type, "saga");
@@ -617,10 +704,10 @@ mod sqlite_tests {
     #[cfg(feature = "topology")]
     #[tokio::test]
     async fn test_rest_graph_data_format() {
+        use crate::proto::{ComponentDescriptor, Target};
         use axum::body::Body;
         use http::Request;
         use tower::ServiceExt;
-        use crate::proto::{ComponentDescriptor, Target};
 
         let store = test_store().await;
         let projector = TopologyProjector::new(store.clone(), 0);
@@ -635,7 +722,10 @@ mod sqlite_tests {
             ComponentDescriptor {
                 name: "order-fulfillment".into(),
                 component_type: "saga".into(),
-                inputs: vec![Target { domain: "orders".into(), types: vec![] }],
+                inputs: vec![Target {
+                    domain: "orders".into(),
+                    types: vec![],
+                }],
                 ..Default::default()
             },
         ];

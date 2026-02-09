@@ -42,6 +42,7 @@ pub fn extract_events_from_response(
                 cover: None,
                 pages: vec![],
                 snapshot: None,
+                ..Default::default()
             }
         }
     };

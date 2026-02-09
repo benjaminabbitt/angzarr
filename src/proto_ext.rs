@@ -3,7 +3,10 @@
 //! Provides convenient accessor methods for common patterns like extracting
 //! domain, correlation_id, and root_id from Cover-bearing types.
 
-use crate::proto::{CommandBook, CommandPage, Cover, Edition, EventBook, EventPage, Query, Uuid as ProtoUuid};
+use crate::proto::{
+    CommandBook, CommandPage, Cover, Edition, EventBook, EventPage, Query, Snapshot,
+    Uuid as ProtoUuid,
+};
 
 /// gRPC metadata key for correlation ID propagation.
 pub const CORRELATION_ID_HEADER: &str = "x-correlation-id";
@@ -101,7 +104,9 @@ pub trait CoverExt {
 
     /// Get the domain from the cover, or [`UNKNOWN_DOMAIN`] if missing.
     fn domain(&self) -> &str {
-        self.cover().map(|c| c.domain.as_str()).unwrap_or(UNKNOWN_DOMAIN)
+        self.cover()
+            .map(|c| c.domain.as_str())
+            .unwrap_or(UNKNOWN_DOMAIN)
     }
 
     /// Get the correlation_id from the cover, or empty string if missing.
@@ -267,7 +272,10 @@ impl Edition {
     }
 
     /// Create an Edition with explicit divergence points.
-    pub fn explicit(name: impl Into<String>, divergences: Vec<crate::proto::DomainDivergence>) -> Self {
+    pub fn explicit(
+        name: impl Into<String>,
+        divergences: Vec<crate::proto::DomainDivergence>,
+    ) -> Self {
         Self {
             name: name.into(),
             divergences,
@@ -449,14 +457,25 @@ pub trait EventBookExt: CoverExt {
     fn first_page(&self) -> Option<&EventPage>;
 }
 
+/// Compute next sequence number from pages and optional snapshot.
+///
+/// Returns (last page sequence + 1) OR (snapshot sequence + 1) if no pages, OR 0 if neither.
+pub fn calculate_next_sequence(pages: &[EventPage], snapshot: Option<&Snapshot>) -> u32 {
+    if let Some(last_page) = pages.last() {
+        last_page.sequence_num() + 1
+    } else {
+        snapshot.map(|s| s.sequence + 1).unwrap_or(0)
+    }
+}
+
+/// Calculate and set the next_sequence field on an EventBook.
+pub fn calculate_set_next_seq(book: &mut EventBook) {
+    book.next_sequence = calculate_next_sequence(&book.pages, book.snapshot.as_ref());
+}
+
 impl EventBookExt for EventBook {
     fn next_sequence(&self) -> u32 {
-        self.pages
-            .iter()
-            .map(|p| p.sequence_num())
-            .max()
-            .map(|n| n + 1)
-            .unwrap_or(0)
+        calculate_next_sequence(&self.pages, self.snapshot.as_ref())
     }
 
     fn is_empty(&self) -> bool {
@@ -571,6 +590,7 @@ mod tests {
             cover: Some(make_cover("orders", "corr-123", Some(root))),
             pages: vec![],
             snapshot: None,
+            ..Default::default()
         };
 
         assert_eq!(book.domain(), "orders");
@@ -586,6 +606,7 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
+            ..Default::default()
         };
 
         assert_eq!(book.domain(), "unknown");
@@ -626,10 +647,19 @@ mod tests {
 
     #[test]
     fn test_edition_explicit_divergence() {
-        let edition = Edition::explicit("v2", vec![
-            crate::proto::DomainDivergence { domain: "order".to_string(), sequence: 50 },
-            crate::proto::DomainDivergence { domain: "inventory".to_string(), sequence: 75 },
-        ]);
+        let edition = Edition::explicit(
+            "v2",
+            vec![
+                crate::proto::DomainDivergence {
+                    domain: "order".to_string(),
+                    sequence: 50,
+                },
+                crate::proto::DomainDivergence {
+                    domain: "inventory".to_string(),
+                    sequence: 75,
+                },
+            ],
+        );
         assert_eq!(edition.divergence_for("order"), Some(50));
         assert_eq!(edition.divergence_for("inventory"), Some(75));
         assert_eq!(edition.divergence_for("other"), None);

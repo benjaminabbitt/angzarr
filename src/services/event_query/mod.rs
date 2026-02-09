@@ -5,11 +5,11 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{error, info};
 
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{
     event_query_server::EventQuery as EventQueryTrait, query::Selection,
     temporal_query::PointInTime, AggregateRoot, EventBook, Query, Uuid as ProtoUuid,
 };
-use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
 use crate::storage::EventStore;
@@ -215,7 +215,10 @@ impl EventQueryTrait for EventQueryService {
         let event_book_repo = self.event_book_repo.clone();
 
         tokio::spawn(async move {
-            match event_book_repo.get(&domain, DEFAULT_EDITION, root_uuid).await {
+            match event_book_repo
+                .get(&domain, DEFAULT_EDITION, root_uuid)
+                .await
+            {
                 Ok(book) => {
                     let _ = tx.send(Ok(book)).await;
                 }
@@ -294,7 +297,9 @@ impl EventQueryTrait for EventQueryService {
                                     match crate::storage::helpers::timestamp_to_rfc3339(ts) {
                                         Ok(rfc3339) => {
                                             event_book_repo
-                                                .get_temporal_by_time(&domain, edition, root, &rfc3339)
+                                                .get_temporal_by_time(
+                                                    &domain, edition, root, &rfc3339,
+                                                )
                                                 .await
                                         }
                                         Err(e) => {

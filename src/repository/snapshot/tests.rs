@@ -30,7 +30,9 @@ async fn test_put_and_get_roundtrip() {
     let root = Uuid::new_v4();
     let snapshot = test_snapshot(5);
 
-    repo.put("orders", "test", root, snapshot.clone()).await.unwrap();
+    repo.put("orders", "test", root, snapshot.clone())
+        .await
+        .unwrap();
 
     let retrieved = repo.get("orders", "test", root).await.unwrap();
     assert!(retrieved.is_some());
@@ -44,8 +46,12 @@ async fn test_put_replaces_existing() {
 
     let root = Uuid::new_v4();
 
-    repo.put("orders", "test", root, test_snapshot(3)).await.unwrap();
-    repo.put("orders", "test", root, test_snapshot(7)).await.unwrap();
+    repo.put("orders", "test", root, test_snapshot(3))
+        .await
+        .unwrap();
+    repo.put("orders", "test", root, test_snapshot(7))
+        .await
+        .unwrap();
 
     let retrieved = repo.get("orders", "test", root).await.unwrap();
     assert_eq!(retrieved.unwrap().sequence, 7);
@@ -58,7 +64,9 @@ async fn test_delete_removes_snapshot() {
 
     let root = Uuid::new_v4();
 
-    repo.put("orders", "test", root, test_snapshot(5)).await.unwrap();
+    repo.put("orders", "test", root, test_snapshot(5))
+        .await
+        .unwrap();
     repo.delete("orders", "test", root).await.unwrap();
 
     let retrieved = repo.get("orders", "test", root).await.unwrap();
@@ -82,7 +90,9 @@ async fn test_domain_isolation() {
 
     let root = Uuid::new_v4();
 
-    repo.put("orders", "test", root, test_snapshot(5)).await.unwrap();
+    repo.put("orders", "test", root, test_snapshot(5))
+        .await
+        .unwrap();
 
     let other_domain = repo.get("customers", "test", root).await.unwrap();
     assert!(other_domain.is_none());
@@ -96,7 +106,9 @@ async fn test_root_isolation() {
     let root1 = Uuid::new_v4();
     let root2 = Uuid::new_v4();
 
-    repo.put("orders", "test", root1, test_snapshot(5)).await.unwrap();
+    repo.put("orders", "test", root1, test_snapshot(5))
+        .await
+        .unwrap();
 
     let other_root = repo.get("orders", "test", root2).await.unwrap();
     assert!(other_root.is_none());
@@ -110,7 +122,9 @@ async fn test_with_config_write_disabled_skips_put() {
     let root = Uuid::new_v4();
 
     // Put should be a no-op
-    repo.put("orders", "test", root, test_snapshot(5)).await.unwrap();
+    repo.put("orders", "test", root, test_snapshot(5))
+        .await
+        .unwrap();
 
     // Get should return None since put was skipped
     let retrieved = repo.get("orders", "test", root).await.unwrap();
@@ -124,7 +138,9 @@ async fn test_with_config_write_enabled_writes() {
 
     let root = Uuid::new_v4();
 
-    repo.put("orders", "test", root, test_snapshot(5)).await.unwrap();
+    repo.put("orders", "test", root, test_snapshot(5))
+        .await
+        .unwrap();
 
     let retrieved = repo.get("orders", "test", root).await.unwrap();
     assert!(retrieved.is_some());

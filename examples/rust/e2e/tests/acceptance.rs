@@ -10,14 +10,11 @@ use cucumber::{gherkin::Step, given, then, when, World as _};
 use prost::Message;
 use uuid::Uuid;
 
-use e2e::{
-    assert_command_failed, examples_proto, extract_event_type, proto, E2EWorld,
-};
+use e2e::{assert_command_failed, examples_proto, extract_event_type, proto, E2EWorld};
 
 // ============================================================================
 // Setup Steps (Given)
 // ============================================================================
-
 
 #[given(expr = "inventory for {string} has {int} units")]
 async fn inventory_exists(world: &mut E2EWorld, product_alias: String, units: i32) {
@@ -1644,9 +1641,9 @@ async fn pm_state_shows(world: &mut E2EWorld, step: &Step, correlation_alias: St
             if let Some(event) = &page.event {
                 let event_type = extract_event_type(event);
                 if event_type.contains("PrerequisiteCompleted") {
-                    if let Ok(decoded) = pmg_fulfillment::PrerequisiteCompleted::decode(
-                        event.value.as_slice(),
-                    ) {
+                    if let Ok(decoded) =
+                        pmg_fulfillment::PrerequisiteCompleted::decode(event.value.as_slice())
+                    {
                         completed.insert(decoded.prerequisite.clone());
                     }
                 }
@@ -1704,9 +1701,9 @@ async fn pm_state_only_payment(world: &mut E2EWorld, correlation_alias: String) 
         if let Some(event) = &page.event {
             let event_type = extract_event_type(event);
             if event_type.contains("PrerequisiteCompleted") {
-                if let Ok(decoded) = pmg_fulfillment::PrerequisiteCompleted::decode(
-                    event.value.as_slice(),
-                ) {
+                if let Ok(decoded) =
+                    pmg_fulfillment::PrerequisiteCompleted::decode(event.value.as_slice())
+                {
                     completed.push(decoded.prerequisite.clone());
                 }
             }
@@ -3305,11 +3302,7 @@ async fn order_with_correlation_is_completed(
 }
 
 #[when(regex = r#"^the order "([^"]+)" is cancelled with correlation "([^"]+)"$"#)]
-async fn os_cancel_order(
-    world: &mut E2EWorld,
-    order_alias: String,
-    correlation_alias: String,
-) {
+async fn os_cancel_order(world: &mut E2EWorld, order_alias: String, correlation_alias: String) {
     let cancel_cmd = examples_proto::CancelOrder {
         reason: "test cancellation".to_string(),
     };
@@ -3439,9 +3432,7 @@ async fn order_has_total_events(world: &mut E2EWorld, count: usize) {
     );
 }
 
-#[when(
-    regex = r#"^I dry-run cancel order "([^"]+)" at sequence (\d+) with reason "([^"]+)"$"#
-)]
+#[when(regex = r#"^I dry-run cancel order "([^"]+)" at sequence (\d+) with reason "([^"]+)"$"#)]
 async fn dry_run_cancel_order_at_sequence(
     world: &mut E2EWorld,
     order_alias: String,
@@ -3501,7 +3492,9 @@ async fn order_still_has_n_events(world: &mut E2EWorld, order_alias: String, cou
 /// event in the pages. Used by speculative saga tests to simulate "what if this
 /// order completed?" without actually confirming payment through the event bus
 /// (which would trigger the real saga and create side effects).
-fn build_synthetic_order_completed(events: &[angzarr::proto::EventPage]) -> angzarr::proto::EventPage {
+fn build_synthetic_order_completed(
+    events: &[angzarr::proto::EventPage],
+) -> angzarr::proto::EventPage {
     let mut customer_root = vec![];
     let mut cart_root = vec![];
     let mut items = vec![];
@@ -3545,7 +3538,9 @@ fn build_synthetic_order_completed(events: &[angzarr::proto::EventPage]) -> angz
     };
 
     angzarr::proto::EventPage {
-        sequence: Some(angzarr::proto::event_page::Sequence::Num(events.len() as u32)),
+        sequence: Some(angzarr::proto::event_page::Sequence::Num(
+            events.len() as u32
+        )),
         created_at: None,
         event: Some(prost_types::Any {
             type_url: "type.examples/examples.OrderCompleted".to_string(),
@@ -3603,14 +3598,12 @@ async fn speculative_projector(world: &mut E2EWorld, projector_name: String, ord
         projection_before.is_some().to_string(),
     );
     if let Some(ref p) = projection_before {
-        world.context.insert(
-            "web_db_status_before".to_string(),
-            p.status.clone(),
-        );
-        world.context.insert(
-            "web_db_total_before".to_string(),
-            p.total_cents.to_string(),
-        );
+        world
+            .context
+            .insert("web_db_status_before".to_string(), p.status.clone());
+        world
+            .context
+            .insert("web_db_total_before".to_string(), p.total_cents.to_string());
     }
 
     let events = world.query_events("order", root).await;
@@ -3624,8 +3617,9 @@ async fn speculative_projector(world: &mut E2EWorld, projector_name: String, ord
             correlation_id: String::new(),
             edition: None,
         }),
-        snapshot: None,
         pages: events,
+        snapshot: None,
+        ..Default::default()
     };
 
     let request = angzarr::proto::SpeculateProjectorRequest {
@@ -3645,7 +3639,9 @@ async fn speculative_projector(world: &mut E2EWorld, projector_name: String, ord
     }
 }
 
-#[when(regex = r#"^I speculatively run the "([^"]+)" projector against inventory "([^"]+)" events$"#)]
+#[when(
+    regex = r#"^I speculatively run the "([^"]+)" projector against inventory "([^"]+)" events$"#
+)]
 async fn speculative_projector_inventory(
     world: &mut E2EWorld,
     projector_name: String,
@@ -3670,8 +3666,9 @@ async fn speculative_projector_inventory(
             correlation_id: String::new(),
             edition: None,
         }),
-        snapshot: None,
         pages: events,
+        snapshot: None,
+        ..Default::default()
     };
 
     let request = angzarr::proto::SpeculateProjectorRequest {
@@ -3721,14 +3718,23 @@ async fn speculative_did_not_modify_web_projector(world: &mut E2EWorld, order_al
     if had_entry_before {
         // Entry existed before speculative run — verify it wasn't modified
         let after = projection_after.expect("Entry disappeared after speculative execution");
-        let status_before = world.context.get("web_db_status_before").cloned().unwrap_or_default();
-        let total_before = world.context.get("web_db_total_before").cloned().unwrap_or_default();
+        let status_before = world
+            .context
+            .get("web_db_status_before")
+            .cloned()
+            .unwrap_or_default();
+        let total_before = world
+            .context
+            .get("web_db_total_before")
+            .cloned()
+            .unwrap_or_default();
         assert_eq!(
             after.status, status_before,
             "Speculative execution modified web projector status"
         );
         assert_eq!(
-            after.total_cents.to_string(), total_before,
+            after.total_cents.to_string(),
+            total_before,
             "Speculative execution modified web projector total_cents"
         );
     } else {
@@ -3751,15 +3757,17 @@ async fn speculative_did_not_modify_inventory_projector(
     // by checking the event count remains unchanged (handled by the framework).
     // This assertion verifies the speculative execution completed successfully.
     assert!(
-        world.context.get("speculative_success").map(|s| s == "true").unwrap_or(false),
+        world
+            .context
+            .get("speculative_success")
+            .map(|s| s == "true")
+            .unwrap_or(false),
         "Speculative execution of inventory projector for {} did not succeed",
         inventory_alias
     );
 }
 
-#[when(
-    regex = r#"^I speculatively run the "([^"]+)" against order "([^"]+)" completion events$"#
-)]
+#[when(regex = r#"^I speculatively run the "([^"]+)" against order "([^"]+)" completion events$"#)]
 async fn speculative_saga(world: &mut E2EWorld, saga_name: String, order_alias: String) {
     let root = world.root(&order_alias);
     let mut events = world.query_events("order", root).await;
@@ -3779,8 +3787,9 @@ async fn speculative_saga(world: &mut E2EWorld, saga_name: String, order_alias: 
             correlation_id: format!("spec-saga-{}", order_alias),
             edition: None,
         }),
-        snapshot: None,
         pages: events,
+        snapshot: None,
+        ..Default::default()
     };
 
     let request = angzarr::proto::SpeculateSagaRequest {
@@ -3825,8 +3834,9 @@ async fn speculative_saga_with_current_state(
             correlation_id: format!("spec-saga-{}", order_alias),
             edition: None,
         }),
-        snapshot: None,
         pages: events,
+        snapshot: None,
+        ..Default::default()
     };
 
     // Note: domain_specs (Current state fetching) is handled internally
@@ -3920,8 +3930,9 @@ async fn speculative_pm(world: &mut E2EWorld, pm_name: String, order_alias: Stri
             correlation_id: String::new(),
             edition: None,
         }),
-        snapshot: None,
         pages: events,
+        snapshot: None,
+        ..Default::default()
     };
 
     let request = angzarr::proto::SpeculatePmRequest {
@@ -4002,7 +4013,6 @@ async fn order_event_count_unchanged(world: &mut E2EWorld, order_alias: String) 
     }
 }
 
-
 // ============================================================================
 // Checkout Saga & Inventory Reservation Steps
 // ============================================================================
@@ -4047,11 +4057,7 @@ async fn inventory_event_for_product(
 // ============================================================================
 
 #[then(regex = r#"^the saga-created order for correlation "([^"]+)" is stored as "([^"]+)"$"#)]
-async fn store_saga_order(
-    world: &mut E2EWorld,
-    correlation_alias: String,
-    order_alias: String,
-) {
+async fn store_saga_order(world: &mut E2EWorld, correlation_alias: String, order_alias: String) {
     let correlation_id = world.correlation(&correlation_alias);
     let deadline = Instant::now() + Duration::from_secs(5);
 
@@ -4079,11 +4085,7 @@ async fn store_saga_order(
 }
 
 #[then(regex = r#"^the saga-created shipment for correlation "([^"]+)" is stored as "([^"]+)"$"#)]
-async fn store_saga_shipment(
-    world: &mut E2EWorld,
-    correlation_alias: String,
-    ship_alias: String,
-) {
+async fn store_saga_shipment(world: &mut E2EWorld, correlation_alias: String, ship_alias: String) {
     let correlation_id = world.correlation(&correlation_alias);
     let deadline = Instant::now() + Duration::from_secs(5);
 
@@ -4114,7 +4116,9 @@ async fn store_saga_shipment(
 // Correlation-Explicit Command Variants
 // ============================================================================
 
-#[when(regex = r#"^I submit payment of (\d+) cents via "([^"]+)" for order "([^"]+)" with correlation "([^"]+)"$"#)]
+#[when(
+    regex = r#"^I submit payment of (\d+) cents via "([^"]+)" for order "([^"]+)" with correlation "([^"]+)"$"#
+)]
 async fn submit_payment_with_correlation(
     world: &mut E2EWorld,
     amount_cents: i32,
@@ -4136,7 +4140,9 @@ async fn submit_payment_with_correlation(
     world.execute(cmd_book).await;
 }
 
-#[when(regex = r#"^I confirm payment for order "([^"]+)" with reference "([^"]+)" and correlation "([^"]+)"$"#)]
+#[when(
+    regex = r#"^I confirm payment for order "([^"]+)" with reference "([^"]+)" and correlation "([^"]+)"$"#
+)]
 async fn confirm_payment_with_ref_and_correlation(
     world: &mut E2EWorld,
     order_alias: String,
@@ -4190,7 +4196,9 @@ async fn mark_packed_with_correlation(
     world.execute(cmd_book).await;
 }
 
-#[when(regex = r#"^I record delivery for "([^"]+)" with signature "([^"]+)" and correlation "([^"]+)"$"#)]
+#[when(
+    regex = r#"^I record delivery for "([^"]+)" with signature "([^"]+)" and correlation "([^"]+)"$"#
+)]
 async fn record_delivery_with_correlation(
     world: &mut E2EWorld,
     shipment_alias: String,
@@ -4236,7 +4244,10 @@ async fn no_event_for_correlation(
 fn parse_item_string(item: &str) -> examples_proto::LineItem {
     let parts: Vec<&str> = item.split(':').collect();
     if parts.len() != 3 {
-        panic!("Invalid item format '{}'. Expected 'Product:qty:price_cents'", item);
+        panic!(
+            "Invalid item format '{}'. Expected 'Product:qty:price_cents'",
+            item
+        );
     }
     examples_proto::LineItem {
         product_id: parts[0].to_string(),
@@ -4346,17 +4357,17 @@ async fn order_completed_has_fraud_check_result(world: &mut E2EWorld, expected_r
 // ============================================================================
 
 #[when(regex = r#"^I create edition "([^"]+)" diverging at sequence (\d+)$"#)]
-async fn create_edition_at_sequence(
-    world: &mut E2EWorld,
-    edition_name: String,
-    _diverge_seq: u32,
-) {
+async fn create_edition_at_sequence(world: &mut E2EWorld, edition_name: String, _diverge_seq: u32) {
     // Editions are created implicitly when commands target them.
     // Store the edition name in context for later steps.
-    world.context.insert(format!("edition:{}", edition_name), edition_name);
+    world
+        .context
+        .insert(format!("edition:{}", edition_name), edition_name);
 }
 
-#[when(regex = r#"^I apply loyalty discount of (\d+) points worth (\d+) cents to order "([^"]+)" in edition "([^"]+)"$"#)]
+#[when(
+    regex = r#"^I apply loyalty discount of (\d+) points worth (\d+) cents to order "([^"]+)" in edition "([^"]+)"$"#
+)]
 async fn apply_loyalty_in_edition(
     world: &mut E2EWorld,
     points: i32,
@@ -4382,7 +4393,9 @@ async fn apply_loyalty_in_edition(
     world.execute(cmd_book).await;
 }
 
-#[when(regex = r#"^I confirm payment for order "([^"]+)" in edition "([^"]+)" with reference "([^"]+)"$"#)]
+#[when(
+    regex = r#"^I confirm payment for order "([^"]+)" in edition "([^"]+)" with reference "([^"]+)"$"#
+)]
 async fn confirm_payment_in_edition(
     world: &mut E2EWorld,
     order_alias: String,
@@ -4405,13 +4418,24 @@ async fn confirm_payment_in_edition(
 }
 
 #[then(regex = r#"^in the main timeline order "([^"]+)" has (\d+) events?$"#)]
-async fn main_timeline_event_count(world: &mut E2EWorld, order_alias: String, expected_count: usize) {
+async fn main_timeline_event_count(
+    world: &mut E2EWorld,
+    order_alias: String,
+    expected_count: usize,
+) {
     let root = world.root(&order_alias);
-    let events = world.backend().query_events("order", root).await.unwrap_or_default();
+    let events = world
+        .backend()
+        .query_events("order", root)
+        .await
+        .unwrap_or_default();
     assert_eq!(
-        events.len(), expected_count,
+        events.len(),
+        expected_count,
         "Expected {} events in main timeline for '{}', got {}",
-        expected_count, order_alias, events.len()
+        expected_count,
+        order_alias,
+        events.len()
     );
 }
 
@@ -4423,21 +4447,30 @@ async fn edition_event_count(
     expected_count: usize,
 ) {
     let root = world.root(&order_alias);
-    let events = world.backend()
+    let events = world
+        .backend()
         .query_events_in_edition("order", &edition_name, root)
         .await
         .unwrap_or_default();
     assert_eq!(
-        events.len(), expected_count,
+        events.len(),
+        expected_count,
         "Expected {} events in edition '{}' for '{}', got {}",
-        expected_count, edition_name, order_alias, events.len()
+        expected_count,
+        edition_name,
+        order_alias,
+        events.len()
     );
 }
 
 #[then(regex = r#"^the main timeline has no OrderCompleted event for "([^"]+)"$"#)]
 async fn main_timeline_no_completed(world: &mut E2EWorld, order_alias: String) {
     let root = world.root(&order_alias);
-    let events = world.backend().query_events("order", root).await.unwrap_or_default();
+    let events = world
+        .backend()
+        .query_events("order", root)
+        .await
+        .unwrap_or_default();
     let has_completed = events.iter().any(|page| {
         page.event
             .as_ref()
@@ -4454,16 +4487,21 @@ async fn main_timeline_no_completed(world: &mut E2EWorld, order_alias: String) {
 #[then(regex = r#"^in edition "([^"]+)" the OrderCompleted event contains:$"#)]
 async fn edition_completed_contains(world: &mut E2EWorld, step: &Step, edition_name: String) {
     // Find the last order alias used
-    let order_alias = world.roots.keys().next()
+    let order_alias = world
+        .roots
+        .keys()
+        .next()
         .expect("No order alias found")
         .clone();
     let root = world.root(&order_alias);
-    let events = world.backend()
+    let events = world
+        .backend()
         .query_events_in_edition("order", &edition_name, root)
         .await
         .expect("Failed to query edition events");
 
-    let completed_page = events.iter()
+    let completed_page = events
+        .iter()
         .find(|page| {
             page.event
                 .as_ref()
@@ -4499,7 +4537,9 @@ async fn shipment_exists_for_order_within_seconds(world: &mut E2EWorld, timeout_
     use std::time::{Duration, Instant};
 
     // Find the order root
-    let order_alias = world.roots.keys()
+    let order_alias = world
+        .roots
+        .keys()
         .find(|k| k.starts_with("ORD"))
         .expect("No order alias found")
         .clone();
@@ -4522,9 +4562,9 @@ async fn shipment_exists_for_order_within_seconds(world: &mut E2EWorld, timeout_
             vec![]
         };
 
-        let found_shipment = results.iter().any(|(_, event_type, _)| {
-            event_type.contains("ShipmentCreated")
-        });
+        let found_shipment = results
+            .iter()
+            .any(|(_, event_type, _)| event_type.contains("ShipmentCreated"));
 
         if found_shipment {
             return;
@@ -4554,13 +4594,16 @@ async fn shipment_contains_order_items(world: &mut E2EWorld) {
 #[then(regex = r#"^in edition "([^"]+)" an OrderCompleted event is emitted$"#)]
 async fn edition_order_completed_emitted(world: &mut E2EWorld, edition_name: String) {
     // Find the order alias
-    let order_alias = world.roots.keys()
+    let order_alias = world
+        .roots
+        .keys()
         .find(|k| k.starts_with("ORD"))
         .expect("No order alias found")
         .clone();
     let root = world.root(&order_alias);
 
-    let events = world.backend()
+    let events = world
+        .backend()
         .query_events_in_edition("order", &edition_name, root)
         .await
         .expect("Failed to query edition events");

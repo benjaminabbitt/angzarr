@@ -208,12 +208,15 @@ impl StandaloneQueryClient {
     ) -> Result<crate::proto::EditionEventsDeleted, Status> {
         // Protect main timeline
         if edition.is_empty() || edition == DEFAULT_EDITION {
-            return Err(Status::invalid_argument("Cannot delete main timeline events"));
+            return Err(Status::invalid_argument(
+                "Cannot delete main timeline events",
+            ));
         }
 
-        let store = self.domain_stores.get(domain).ok_or_else(|| {
-            Status::not_found(format!("Unknown domain: {domain}"))
-        })?;
+        let store = self
+            .domain_stores
+            .get(domain)
+            .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
 
         let deleted_count = store
             .event_store
@@ -264,11 +267,7 @@ impl SpeculativeClient {
     ///
     /// Returns the `Projection` computed by the handler without persisting
     /// to any read model.
-    pub async fn projector(
-        &self,
-        name: &str,
-        events: &EventBook,
-    ) -> Result<Projection, Status> {
+    pub async fn projector(&self, name: &str, events: &EventBook) -> Result<Projection, Status> {
         self.executor.speculate_projector(name, events).await
     }
 
@@ -330,7 +329,10 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
             .map_err(ClientError::from)
     }
 
-    async fn projector(&self, request: SpeculateProjectorRequest) -> client_traits::Result<Projection> {
+    async fn projector(
+        &self,
+        request: SpeculateProjectorRequest,
+    ) -> client_traits::Result<Projection> {
         let events = request.events.ok_or_else(|| {
             ClientError::InvalidArgument("SpeculateProjectorRequest missing events".to_string())
         })?;
@@ -501,7 +503,10 @@ impl CommandBuilder {
                     value: self.root.as_bytes().to_vec(),
                 }),
                 correlation_id: self.correlation_id.unwrap_or_default(),
-                edition: self.edition.map(|name| Edition { name, divergences: vec![] }),
+                edition: self.edition.map(|name| Edition {
+                    name,
+                    divergences: vec![],
+                }),
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),

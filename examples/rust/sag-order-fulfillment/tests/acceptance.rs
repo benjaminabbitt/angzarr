@@ -134,6 +134,7 @@ async fn process_saga(world: &mut SagaWorld) {
             event: Some(event.clone()),
         }],
         snapshot: None,
+        ..Default::default()
     };
 
     world.generated_commands = saga.execute(&event_book, &[]);

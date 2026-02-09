@@ -16,10 +16,11 @@ pub mod state;
 pub mod testing;
 pub mod validation;
 
+pub use proto_name::{ProtoTypeName, TYPE_URL_PREFIX};
 pub use router::{
     Aggregate, CommandHandler, Dispatcher, PmContext, PmEventHandler, PmHandlerResult,
-    ProjectionMode, ProjectorEventHandler, Router, SagaEventHandler,
-    AGGREGATE, PROCESS_MANAGER, PROJECTOR, SAGA,
+    ProjectionMode, ProjectorEventHandler, Router, SagaEventHandler, AGGREGATE, PROCESS_MANAGER,
+    PROJECTOR, SAGA,
 };
 pub use server::{
     init_tracing, run_aggregate_server, run_process_manager_server, run_projector_server,
@@ -31,7 +32,6 @@ pub use validation::{
     require_exists, require_non_negative, require_not_empty, require_not_exists, require_positive,
     require_status, require_status_not,
 };
-pub use proto_name::{ProtoTypeName, TYPE_URL_PREFIX};
 
 // ============================================================================
 // Error Types for client logic
@@ -126,6 +126,7 @@ pub fn make_event_book(
             }),
             created_at: Some(now()),
         }],
+        ..Default::default()
     }
 }
 
@@ -225,7 +226,6 @@ pub fn root_id_as_string(root: Option<&ProtoUuid>) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-
 // ============================================================================
 // Common Error Messages
 // ============================================================================
@@ -235,4 +235,3 @@ pub mod errmsg {
     pub const UNKNOWN_COMMAND: &str = "Unknown command type";
     pub const NO_COMMAND_PAGES: &str = "CommandBook has no pages";
 }
-

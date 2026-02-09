@@ -47,7 +47,9 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
-use angzarr::config::{Config, STATIC_ENDPOINTS_ENV_VAR, STREAM_ADDRESS_ENV_VAR, STREAM_TIMEOUT_ENV_VAR};
+use angzarr::config::{
+    Config, STATIC_ENDPOINTS_ENV_VAR, STREAM_ADDRESS_ENV_VAR, STREAM_TIMEOUT_ENV_VAR,
+};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::handlers::gateway::{EventQueryProxy, GatewayService};
 use angzarr::handlers::speculative::SpeculativeHandler;
@@ -55,7 +57,9 @@ use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::event_stream_client::EventStreamClient;
 use angzarr::proto::speculative_service_server::SpeculativeServiceServer;
-use angzarr::transport::{connect_to_address, grpc_trace_layer, max_grpc_message_size, serve_with_transport};
+use angzarr::transport::{
+    connect_to_address, grpc_trace_layer, max_grpc_message_size, serve_with_transport,
+};
 use angzarr::utils::bootstrap::{init_tracing, parse_static_endpoints};
 use angzarr::utils::retry::connection_backoff;
 

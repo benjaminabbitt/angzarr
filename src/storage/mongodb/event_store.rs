@@ -12,8 +12,8 @@ use prost::Message;
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::storage::{EventStore, Result, StorageError};
 use crate::proto::EventPage;
+use crate::storage::{EventStore, Result, StorageError};
 
 use super::EVENTS_COLLECTION;
 
@@ -46,7 +46,9 @@ impl MongoEventStore {
         self.events.create_index(index).await?;
 
         // Index for listing roots by domain
-        let domain_index = IndexModel::builder().keys(doc! { "edition": 1, "domain": 1 }).build();
+        let domain_index = IndexModel::builder()
+            .keys(doc! { "edition": 1, "domain": 1 })
+            .build();
 
         self.events.create_index(domain_index).await?;
 
@@ -191,11 +193,16 @@ impl MongoEventStore {
         from: u32,
     ) -> Result<Vec<EventPage>> {
         // Get divergence point without fetching all edition events
-        let divergence = match self.get_edition_min_sequence(domain, edition, root_str).await? {
+        let divergence = match self
+            .get_edition_min_sequence(domain, edition, root_str)
+            .await?
+        {
             Some(d) => d,
             None => {
                 // No edition events - return main timeline only
-                return self.query_edition_events(domain, DEFAULT_EDITION, root_str, from).await;
+                return self
+                    .query_edition_events(domain, DEFAULT_EDITION, root_str, from)
+                    .await;
             }
         };
 
@@ -207,13 +214,17 @@ impl MongoEventStore {
 
         // Main timeline events: only if from < divergence
         if from < divergence {
-            let main_events = self.query_main_events_range(domain, root_str, from, divergence).await?;
+            let main_events = self
+                .query_main_events_range(domain, root_str, from, divergence)
+                .await?;
             result.extend(main_events);
         }
 
         // Edition events: from max(from, divergence) onwards
         let edition_from = from.max(divergence);
-        let edition_events = self.query_edition_events(domain, edition, root_str, edition_from).await?;
+        let edition_events = self
+            .query_edition_events(domain, edition, root_str, edition_from)
+            .await?;
         result.extend(edition_events);
 
         Ok(result)
@@ -258,8 +269,11 @@ impl EventStore for MongoEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-            let sequence =
-                crate::storage::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let sequence = crate::storage::helpers::resolve_sequence(
+                &event,
+                base_sequence,
+                &mut auto_sequence,
+            )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
 
             let doc = doc! {
@@ -298,7 +312,13 @@ impl EventStore for MongoEventStore {
         self.get_from(domain, edition, root, 0).await
     }
 
-    async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
+    async fn get_from(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         let root_str = root.to_string();
 
         // Main timeline: simple query
@@ -311,7 +331,9 @@ impl EventStore for MongoEventStore {
                 database = %self.database.name(),
                 "MongoDB get_from query starting (main timeline)"
             );
-            return self.query_edition_events(domain, DEFAULT_EDITION, &root_str, from).await;
+            return self
+                .query_edition_events(domain, DEFAULT_EDITION, &root_str, from)
+                .await;
         }
 
         // Named edition: composite read (main timeline up to divergence + edition events)
@@ -454,7 +476,11 @@ impl EventStore for MongoEventStore {
                 .limit(1)
                 .build();
 
-            let mut cursor = self.events.find(edition_filter).with_options(options).await?;
+            let mut cursor = self
+                .events
+                .find(edition_filter)
+                .with_options(options)
+                .await?;
 
             if cursor.advance().await? {
                 let doc = cursor.deserialize_current()?;
@@ -515,12 +541,12 @@ impl EventStore for MongoEventStore {
             let domain = doc.get_str("domain").unwrap_or_default().to_string();
             let edition = doc.get_str("edition").unwrap_or_default().to_string();
             let root_str = doc.get_str("root").unwrap_or_default();
-            let event_data = doc
-                .get_binary_generic("event_data")
-                .map_err(|_| StorageError::NotFound {
-                    domain: domain.clone(),
-                    root: Uuid::nil(),
-                })?;
+            let event_data =
+                doc.get_binary_generic("event_data")
+                    .map_err(|_| StorageError::NotFound {
+                        domain: domain.clone(),
+                        root: Uuid::nil(),
+                    })?;
 
             let root = Uuid::parse_str(root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
@@ -540,10 +566,14 @@ impl EventStore for MongoEventStore {
                         value: root.as_bytes().to_vec(),
                     }),
                     correlation_id: correlation_id.to_string(),
-                    edition: Some(Edition { name: edition, divergences: vec![] }),
+                    edition: Some(Edition {
+                        name: edition,
+                        divergences: vec![],
+                    }),
                 }),
                 pages,
                 snapshot: None,
+                ..Default::default()
             })
             .collect();
 

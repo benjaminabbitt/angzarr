@@ -261,6 +261,7 @@ mod tests {
             }),
             pages: vec![],
             snapshot: None,
+            ..Default::default()
         }
     }
 

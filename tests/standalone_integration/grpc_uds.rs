@@ -43,6 +43,7 @@ impl AggregateCoordinator for MockAggregateService {
                 created_at: None,
             }],
             snapshot: None,
+            ..Default::default()
         };
 
         Ok(Response::new(CommandResponse {
@@ -68,6 +69,7 @@ impl AggregateCoordinator for MockAggregateService {
                 created_at: None,
             }],
             snapshot: None,
+            ..Default::default()
         };
 
         Ok(Response::new(CommandResponse {
@@ -157,7 +159,12 @@ async fn test_multiple_concurrent_uds_requests() {
                 .expect("Failed to connect");
             let mut client = AggregateCoordinatorClient::new(channel);
 
-            let command = create_test_command("orders", Uuid::new_v4(), format!("request-{}", i).as_bytes(), 0);
+            let command = create_test_command(
+                "orders",
+                Uuid::new_v4(),
+                format!("request-{}", i).as_bytes(),
+                0,
+            );
             client.handle(command).await.expect("RPC failed")
         });
         handles.push(handle);
@@ -196,8 +203,7 @@ async fn test_uds_socket_cleanup_on_server_restart() {
     }
 
     // Socket file may still exist - prepare_uds_socket should clean it up
-    let _guard =
-        prepare_uds_socket(&socket_path).expect("Should be able to prepare socket again");
+    let _guard = prepare_uds_socket(&socket_path).expect("Should be able to prepare socket again");
     let uds = UnixListener::bind(&socket_path).expect("Should be able to bind again");
     let uds_stream = UnixListenerStream::new(uds);
 

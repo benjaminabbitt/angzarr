@@ -57,6 +57,7 @@ impl AggregateCoordinator for MockAggregateCoordinator {
                     created_at: None,
                 }],
                 snapshot: None,
+                ..Default::default()
             });
 
         Ok(Response::new(CommandResponse {
@@ -313,11 +314,13 @@ async fn test_execute_stream_returns_events() {
                 cover: None,
                 pages: vec![],
                 snapshot: None,
+                ..Default::default()
             },
             EventBook {
                 cover: None,
                 pages: vec![],
                 snapshot: None,
+                ..Default::default()
             },
         ])
         .await;

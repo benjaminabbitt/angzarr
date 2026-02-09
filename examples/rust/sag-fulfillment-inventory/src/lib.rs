@@ -5,7 +5,10 @@
 
 use angzarr::proto::{CommandBook, ComponentDescriptor, EventBook, Uuid as ProtoUuid};
 use common::proto::{CommitReservation, Shipped};
-use common::{build_command_book, decode_event, Dispatcher, Router, SagaEventHandler, ProtoTypeName, SagaLogic, SAGA};
+use common::{
+    build_command_book, decode_event, Dispatcher, ProtoTypeName, Router, SagaEventHandler,
+    SagaLogic, SAGA,
+};
 
 const TARGET_DOMAIN: &str = "inventory";
 
@@ -70,11 +73,7 @@ impl SagaLogic for FulfillmentInventorySaga {
         self.router.descriptor()
     }
 
-    fn execute(
-        &self,
-        source: &EventBook,
-        _destinations: &[EventBook],
-    ) -> Vec<CommandBook> {
+    fn execute(&self, source: &EventBook, _destinations: &[EventBook]) -> Vec<CommandBook> {
         self.router.dispatch(source)
     }
 }
@@ -106,6 +105,7 @@ mod tests {
                 created_at: None,
             }],
             snapshot: None,
+            ..Default::default()
         }
     }
 

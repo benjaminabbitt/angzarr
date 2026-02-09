@@ -101,9 +101,7 @@ async fn graph_fields() -> Json<GraphFieldsResponse> {
     })
 }
 
-async fn graph_data(
-    State(store): State<AppState>,
-) -> Result<Json<GraphDataResponse>, StatusCode> {
+async fn graph_data(State(store): State<AppState>) -> Result<Json<GraphDataResponse>, StatusCode> {
     let nodes = store.get_nodes().await.map_err(|e| {
         error!(error = %e, "failed to get topology nodes");
         StatusCode::INTERNAL_SERVER_ERROR

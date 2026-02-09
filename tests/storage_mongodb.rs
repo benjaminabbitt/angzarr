@@ -20,7 +20,12 @@ fn mongodb_database() -> String {
 
 /// Clean up test data from a specific collection only.
 /// Each test cleans only its own collection to avoid interference when running in parallel.
-async fn cleanup_collection(client: &mongodb::Client, db_name: &str, collection: &str, field: &str) {
+async fn cleanup_collection(
+    client: &mongodb::Client,
+    db_name: &str,
+    collection: &str,
+    field: &str,
+) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(collection);
     let _ = coll

@@ -111,10 +111,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
             }),
         },
     ];
-    store
-        .add("orders", "test", root, events, "")
-        .await
-        .unwrap();
+    store.add("orders", "test", root, events, "").await.unwrap();
 
     // Query as-of Jan 2 — should return events 0 and 1
     let result = store
@@ -158,10 +155,7 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
         }),
         created_at: None,
     }];
-    store
-        .add("orders", "test", root, events, "")
-        .await
-        .unwrap();
+    store.add("orders", "test", root, events, "").await.unwrap();
 
     let result = store
         .get_until_timestamp("orders", "test", root, "2024-01-02T00:00:00Z")

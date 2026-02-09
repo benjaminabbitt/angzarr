@@ -48,7 +48,10 @@ impl SagaRetryContext for LocalSagaContext {
         // Stamp source edition onto outgoing covers
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                cover.edition = Some(Edition {
+                    name: edition.clone(),
+                    divergences: vec![],
+                });
             }
         }
         Ok(covers)
@@ -72,7 +75,10 @@ impl SagaRetryContext for LocalSagaContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                        c.edition = Some(Edition {
+                            name: edition.clone(),
+                            divergences: vec![],
+                        });
                     }
                 }
                 cmd
@@ -102,10 +108,7 @@ pub struct LocalSagaContextFactory {
 impl LocalSagaContextFactory {
     /// Create a new factory with the saga handler and name.
     pub fn new(saga_handler: Arc<dyn SagaHandler>, name: String) -> Self {
-        Self {
-            saga_handler,
-            name,
-        }
+        Self { saga_handler, name }
     }
 }
 

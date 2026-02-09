@@ -459,10 +459,13 @@ impl EventBus for IpcEventBus {
 
 /// Extract the highest sequence number from an EventBook's pages.
 fn max_page_sequence(book: &EventBook) -> Option<u32> {
-    book.pages.iter().filter_map(|p| match p.sequence {
-        Some(event_page::Sequence::Num(n)) => Some(n),
-        _ => None,
-    }).max()
+    book.pages
+        .iter()
+        .filter_map(|p| match p.sequence {
+            Some(event_page::Sequence::Num(n)) => Some(n),
+            _ => None,
+        })
+        .max()
 }
 
 #[cfg(test)]
@@ -517,6 +520,7 @@ mod tests {
             cover: None,
             pages: vec![],
             snapshot: None,
+            ..Default::default()
         };
         assert_eq!(max_page_sequence(&book), None);
     }
@@ -532,6 +536,7 @@ mod tests {
                 created_at: None,
             }],
             snapshot: None,
+            ..Default::default()
         };
         assert_eq!(max_page_sequence(&book), Some(5));
     }
@@ -559,6 +564,7 @@ mod tests {
                 },
             ],
             snapshot: None,
+            ..Default::default()
         };
         assert_eq!(max_page_sequence(&book), Some(7));
     }

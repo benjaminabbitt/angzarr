@@ -36,6 +36,7 @@ fn make_event_book_with_snapshot(pages: Vec<EventPage>, has_snapshot: bool) -> E
         } else {
             None
         },
+        ..Default::default()
     }
 }
 
@@ -68,7 +69,8 @@ async fn test_persist_snapshot_if_present_disabled() {
     let root = Uuid::new_v4();
 
     let result =
-        persist_snapshot_if_present(&snapshot_store, &event_book, "test", "test", root, false).await;
+        persist_snapshot_if_present(&snapshot_store, &event_book, "test", "test", root, false)
+            .await;
 
     assert!(result.is_ok());
     // No snapshot should be stored when disabled
@@ -79,8 +81,7 @@ async fn test_persist_snapshot_if_present_disabled() {
 #[tokio::test]
 async fn test_persist_snapshot_if_present_no_state() {
     let mock_store = Arc::new(MockSnapshotStore::new());
-    let snapshot_store: Arc<dyn SnapshotStore> =
-        Arc::clone(&mock_store) as Arc<dyn SnapshotStore>;
+    let snapshot_store: Arc<dyn SnapshotStore> = Arc::clone(&mock_store) as Arc<dyn SnapshotStore>;
     let event_book = make_event_book_with_snapshot(vec![make_event_page(0)], false);
     let root = Uuid::new_v4();
 
@@ -96,8 +97,7 @@ async fn test_persist_snapshot_if_present_no_state() {
 #[tokio::test]
 async fn test_persist_snapshot_if_present_success() {
     let mock_store = Arc::new(MockSnapshotStore::new());
-    let snapshot_store: Arc<dyn SnapshotStore> =
-        Arc::clone(&mock_store) as Arc<dyn SnapshotStore>;
+    let snapshot_store: Arc<dyn SnapshotStore> = Arc::clone(&mock_store) as Arc<dyn SnapshotStore>;
     let event_book = make_event_book_with_snapshot(vec![make_event_page(0)], true);
     let root = Uuid::new_v4();
 

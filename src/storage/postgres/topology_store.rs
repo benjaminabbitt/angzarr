@@ -7,9 +7,7 @@ use sqlx::{PgPool, Row};
 use crate::handlers::projectors::topology::schema::{
     TopologyCorrelations, TopologyEdges, TopologyNodes,
 };
-use crate::handlers::projectors::topology::store::{
-    EdgeRecord, NodeRecord, Result, TopologyStore,
-};
+use crate::handlers::projectors::topology::store::{EdgeRecord, NodeRecord, Result, TopologyStore};
 
 /// PostgreSQL-backed topology store.
 pub struct PostgresTopologyStore {
@@ -122,7 +120,10 @@ impl TopologyStore for PostgresTopologyStore {
                     TopologyCorrelations::CorrelationId,
                     TopologyCorrelations::Domain,
                 ])
-                .update_columns([TopologyCorrelations::EventType, TopologyCorrelations::SeenAt])
+                .update_columns([
+                    TopologyCorrelations::EventType,
+                    TopologyCorrelations::SeenAt,
+                ])
                 .to_owned(),
             )
             .to_string(PostgresQueryBuilder);
@@ -318,17 +319,15 @@ impl TopologyStore for PostgresTopologyStore {
 
         let nodes = rows
             .iter()
-            .map(|r| {
-                NodeRecord {
-                    id: r.get("id"),
-                    title: r.get("title"),
-                    component_type: r.get("component_type"),
-                    domain: r.get("domain"),
-                    event_count: r.get("event_count"),
-                    last_event_type: r.get("last_event_type"),
-                    last_seen: r.get("last_seen"),
-                    created_at: r.get("created_at"),
-                }
+            .map(|r| NodeRecord {
+                id: r.get("id"),
+                title: r.get("title"),
+                component_type: r.get("component_type"),
+                domain: r.get("domain"),
+                event_count: r.get("event_count"),
+                last_event_type: r.get("last_event_type"),
+                last_seen: r.get("last_seen"),
+                created_at: r.get("created_at"),
             })
             .collect();
 
@@ -357,8 +356,9 @@ impl TopologyStore for PostgresTopologyStore {
             .iter()
             .map(|r| {
                 // PostgreSQL stores event_types as JSONB; extract as string for EdgeRecord
-                let event_types: serde_json::Value =
-                    r.try_get("event_types").unwrap_or(serde_json::Value::Array(vec![]));
+                let event_types: serde_json::Value = r
+                    .try_get("event_types")
+                    .unwrap_or(serde_json::Value::Array(vec![]));
                 EdgeRecord {
                     id: r.get("id"),
                     source: r.get("source"),

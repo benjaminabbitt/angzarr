@@ -73,8 +73,8 @@ use serde::Deserialize;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::config::OUTBOX_ENABLED_ENV_VAR;
 use super::{BusError, EventBus, EventHandler, PublishResult, Result};
+use crate::config::OUTBOX_ENABLED_ENV_VAR;
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
 

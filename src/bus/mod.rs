@@ -134,9 +134,9 @@ pub fn target_matches(book: &EventBook, target: &Target) -> bool {
 
     // Check if any event matches any target type
     book.pages.iter().any(|page| {
-        page.event.as_ref().is_some_and(|event| {
-            target.types.iter().any(|t| event.type_url.ends_with(t))
-        })
+        page.event
+            .as_ref()
+            .is_some_and(|event| target.types.iter().any(|t| event.type_url.ends_with(t)))
     })
 }
 

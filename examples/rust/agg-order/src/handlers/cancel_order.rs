@@ -16,8 +16,16 @@ pub fn handle_cancel_order(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)?;
-    require_status_not(&state.status, OrderStatus::Completed.as_str(), errmsg::ORDER_COMPLETED)?;
-    require_status_not(&state.status, OrderStatus::Cancelled.as_str(), errmsg::ORDER_CANCELLED)?;
+    require_status_not(
+        &state.status,
+        OrderStatus::Completed.as_str(),
+        errmsg::ORDER_COMPLETED,
+    )?;
+    require_status_not(
+        &state.status,
+        OrderStatus::Cancelled.as_str(),
+        errmsg::ORDER_CANCELLED,
+    )?;
 
     let cmd: CancelOrder = decode_command(command_data)?;
 

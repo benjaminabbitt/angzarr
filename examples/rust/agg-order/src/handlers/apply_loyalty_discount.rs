@@ -2,7 +2,10 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{ApplyLoyaltyDiscount, LoyaltyDiscountApplied, OrderState};
-use common::{decode_command, now, require_exists, require_positive, require_status, BusinessError, ProtoTypeName, Result};
+use common::{
+    decode_command, now, require_exists, require_positive, require_status, BusinessError,
+    ProtoTypeName, Result,
+};
 
 use crate::errmsg;
 use crate::state::build_event_response;
@@ -16,7 +19,11 @@ pub fn handle_apply_loyalty_discount(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)?;
-    require_status(&state.status, OrderStatus::Pending.as_str(), errmsg::ORDER_NOT_PENDING)?;
+    require_status(
+        &state.status,
+        OrderStatus::Pending.as_str(),
+        errmsg::ORDER_NOT_PENDING,
+    )?;
     if state.loyalty_points_used > 0 {
         return Err(BusinessError::Rejected(
             errmsg::LOYALTY_ALREADY_APPLIED.to_string(),

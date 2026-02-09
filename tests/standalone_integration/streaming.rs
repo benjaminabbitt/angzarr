@@ -9,7 +9,11 @@ struct StreamingProjector;
 
 #[async_trait]
 impl ProjectorHandler for StreamingProjector {
-    async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+    async fn handle(
+        &self,
+        events: &EventBook,
+        _mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
         Ok(Projection {
             projector: "streaming".to_string(),
             cover: events.cover.clone(),
@@ -48,8 +52,12 @@ async fn test_events_published_to_bus_for_streaming() {
 
     // Execute multiple commands
     for i in 0..3 {
-        let cmd =
-            create_test_command("orders", Uuid::new_v4(), format!("stream-{}", i).as_bytes(), 0);
+        let cmd = create_test_command(
+            "orders",
+            Uuid::new_v4(),
+            format!("stream-{}", i).as_bytes(),
+            0,
+        );
         client.execute(cmd).await.expect("Command failed");
     }
 
@@ -133,7 +141,10 @@ async fn test_multiple_subscribers_receive_streamed_events() {
 
     // Create two subscribers
     let state_a = RecordingHandlerState::new();
-    let subscriber_a = event_bus.create_subscriber("test-sub-a", None).await.unwrap();
+    let subscriber_a = event_bus
+        .create_subscriber("test-sub-a", None)
+        .await
+        .unwrap();
     subscriber_a
         .subscribe(Box::new(RecordingHandler::new(state_a.clone())))
         .await
@@ -141,7 +152,10 @@ async fn test_multiple_subscribers_receive_streamed_events() {
     subscriber_a.start_consuming().await.unwrap();
 
     let state_b = RecordingHandlerState::new();
-    let subscriber_b = event_bus.create_subscriber("test-sub-b", None).await.unwrap();
+    let subscriber_b = event_bus
+        .create_subscriber("test-sub-b", None)
+        .await
+        .unwrap();
     subscriber_b
         .subscribe(Box::new(RecordingHandler::new(state_b.clone())))
         .await

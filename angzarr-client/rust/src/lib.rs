@@ -74,6 +74,6 @@ pub use convert::{
 
 // Re-export extension traits from main crate
 pub use angzarr::{
-    CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt,
-    ProtoUuidExt, UuidExt,
+    CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt, ProtoUuidExt,
+    UuidExt,
 };

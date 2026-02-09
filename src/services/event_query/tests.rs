@@ -62,7 +62,10 @@ async fn test_get_event_book_with_data() {
         }),
         created_at: None,
     }];
-    event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add("orders", DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     let query = Query {
         cover: Some(crate::proto::Cover {
@@ -142,7 +145,10 @@ async fn test_get_event_book_with_range() {
             }),
             created_at: None,
         }];
-        event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
+        event_store
+            .add("orders", DEFAULT_EDITION, root, events, "")
+            .await
+            .unwrap();
     }
 
     // Query for range [2, 4] - inclusive bounds, should return events 2, 3, 4
@@ -209,7 +215,10 @@ async fn test_get_events_with_data() {
         }),
         created_at: None,
     }];
-    event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add("orders", DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     let query = Query {
         cover: Some(crate::proto::Cover {
@@ -296,8 +305,14 @@ async fn test_get_aggregate_roots_with_data() {
     let root2 = uuid::Uuid::new_v4();
 
     // Add some events
-    event_store.add("orders", DEFAULT_EDITION, root1, vec![], "").await.unwrap();
-    event_store.add("orders", DEFAULT_EDITION, root2, vec![], "").await.unwrap();
+    event_store
+        .add("orders", DEFAULT_EDITION, root1, vec![], "")
+        .await
+        .unwrap();
+    event_store
+        .add("orders", DEFAULT_EDITION, root2, vec![], "")
+        .await
+        .unwrap();
 
     let response = service.get_aggregate_roots(Request::new(())).await;
 
@@ -316,7 +331,13 @@ async fn test_get_aggregate_roots_multiple_domains() {
         .await
         .unwrap();
     event_store
-        .add("inventory", DEFAULT_EDITION, uuid::Uuid::new_v4(), vec![], "")
+        .add(
+            "inventory",
+            DEFAULT_EDITION,
+            uuid::Uuid::new_v4(),
+            vec![],
+            "",
+        )
         .await
         .unwrap();
 
@@ -470,7 +491,10 @@ async fn test_get_event_book_temporal_by_time() {
             }),
         },
     ];
-    event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add("orders", DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     // Query as-of Jan 2
     let query = Query {
@@ -512,7 +536,10 @@ async fn test_get_event_book_temporal_by_sequence() {
             }),
             created_at: None,
         }];
-        event_store.add("orders", DEFAULT_EDITION, root, events, "").await.unwrap();
+        event_store
+            .add("orders", DEFAULT_EDITION, root, events, "")
+            .await
+            .unwrap();
     }
 
     // Query as-of sequence 2 — should return events 0, 1, 2
@@ -577,7 +604,10 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
         }),
         created_at: None,
     }];
-    event_store.add("customer", DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add("customer", DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     // Store a snapshot at sequence 0 (as the aggregate coordinator would)
     let snapshot = crate::proto::Snapshot {
@@ -587,7 +617,10 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
             value: vec![1, 2, 3],
         }),
     };
-    snapshot_store.put("customer", DEFAULT_EDITION, root, snapshot).await.unwrap();
+    snapshot_store
+        .put("customer", DEFAULT_EDITION, root, snapshot)
+        .await
+        .unwrap();
 
     // Query should return the event despite snapshot existing at same sequence
     let query = Query {
@@ -606,6 +639,13 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
 
     assert!(response.is_ok());
     let book = response.unwrap().into_inner();
-    assert_eq!(book.pages.len(), 1, "EventQuery must return all events regardless of snapshots");
-    assert!(book.snapshot.is_none(), "EventQuery should not include snapshots");
+    assert_eq!(
+        book.pages.len(),
+        1,
+        "EventQuery must return all events regardless of snapshots"
+    );
+    assert!(
+        book.snapshot.is_none(),
+        "EventQuery should not include snapshots"
+    );
 }

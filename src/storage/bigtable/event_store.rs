@@ -26,7 +26,13 @@ impl EventStore for BigtableEventStore {
         todo!("BigtableEventStore::get")
     }
 
-    async fn get_from(&self, _domain: &str, _edition: &str, _root: Uuid, _from: u32) -> Result<Vec<EventPage>> {
+    async fn get_from(
+        &self,
+        _domain: &str,
+        _edition: &str,
+        _root: Uuid,
+        _from: u32,
+    ) -> Result<Vec<EventPage>> {
         todo!("BigtableEventStore::get_from")
     }
 

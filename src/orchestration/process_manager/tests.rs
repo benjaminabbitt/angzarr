@@ -16,7 +16,9 @@ impl ProcessManagerContext for EmptyPm {
         _trigger: &EventBook,
         _pm_state: Option<&EventBook>,
     ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(PmPrepareResponse { destinations: vec![] })
+        Ok(PmPrepareResponse {
+            destinations: vec![],
+        })
     }
     async fn handle(
         &self,
@@ -51,7 +53,9 @@ impl ProcessManagerContext for PmWithEvents {
         _trigger: &EventBook,
         _pm_state: Option<&EventBook>,
     ) -> Result<PmPrepareResponse, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(PmPrepareResponse { destinations: vec![] })
+        Ok(PmPrepareResponse {
+            destinations: vec![],
+        })
     }
     async fn handle(
         &self,
@@ -66,6 +70,7 @@ impl ProcessManagerContext for PmWithEvents {
                 cover: None,
                 pages: vec![EventPage::default()],
                 snapshot: None,
+                ..Default::default()
             }),
         })
     }
@@ -131,6 +136,7 @@ fn trigger_event() -> EventBook {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     }
 }
 

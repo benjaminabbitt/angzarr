@@ -71,11 +71,7 @@ impl GrpcProjectorHandler {
 
 #[async_trait]
 impl ProjectorHandler for GrpcProjectorHandler {
-    async fn handle(
-        &self,
-        events: &EventBook,
-        mode: ProjectionMode,
-    ) -> Result<Projection, Status> {
+    async fn handle(&self, events: &EventBook, mode: ProjectionMode) -> Result<Projection, Status> {
         if mode == ProjectionMode::Speculate {
             return Ok(Projection::default());
         }

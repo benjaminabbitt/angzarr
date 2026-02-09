@@ -18,8 +18,8 @@ pub use angzarr::proto::{
     Projection, SagaResponse, Uuid as ProtoUuid,
 };
 pub use angzarr::standalone::{
-    AggregateHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder, SagaConfig,
-    SagaHandler,
+    AggregateHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder,
+    SagaConfig, SagaHandler,
 };
 
 pub use std::os::unix::fs::FileTypeExt;
@@ -81,6 +81,7 @@ impl AggregateHandler for EchoAggregate {
             cover,
             pages: event_pages,
             snapshot: None,
+            ..Default::default()
         })
     }
 }
@@ -141,6 +142,7 @@ impl AggregateHandler for MultiEventAggregate {
             cover,
             pages,
             snapshot: None,
+            ..Default::default()
         })
     }
 }
@@ -231,6 +233,7 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
             created_at: None,
         }],
         snapshot: None,
+        ..Default::default()
     }
 }
 

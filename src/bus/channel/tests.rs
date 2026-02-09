@@ -17,6 +17,7 @@ fn make_event_book(domain: &str, root: Uuid) -> EventBook {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     }
 }
 

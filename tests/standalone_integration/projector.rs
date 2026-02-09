@@ -26,7 +26,11 @@ impl RecordingProjector {
 
 #[async_trait]
 impl ProjectorHandler for RecordingProjector {
-    async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+    async fn handle(
+        &self,
+        events: &EventBook,
+        _mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
         self.received.write().await.push(events.clone());
 
         let mut projection = Projection::default();
@@ -57,7 +61,11 @@ impl OutputProjector {
 
 #[async_trait]
 impl ProjectorHandler for OutputProjector {
-    async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+    async fn handle(
+        &self,
+        events: &EventBook,
+        _mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
         self.triggered.store(true, Ordering::SeqCst);
 
         Ok(Projection {
@@ -343,7 +351,11 @@ impl ChainableProjector {
 
 #[async_trait]
 impl ProjectorHandler for ChainableProjector {
-    async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+    async fn handle(
+        &self,
+        events: &EventBook,
+        _mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
         if let Some(cover) = &events.cover {
             if let Some(proto_uuid) = &cover.root {
                 let root = Uuid::from_slice(&proto_uuid.value).unwrap_or_default();

@@ -53,6 +53,7 @@ fn test_extract_events_from_response_with_events() {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
     let response = BusinessResponse {
         result: Some(business_response::Result::Events(event_book)),
@@ -110,6 +111,7 @@ async fn test_publish_and_build_response_success() {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = publish_and_build_response(&event_bus, event_book).await;
@@ -134,6 +136,7 @@ async fn test_publish_and_build_response_bus_failure() {
         cover: None,
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = publish_and_build_response(&event_bus, event_book).await;

@@ -96,7 +96,13 @@ impl EventStore for MockEventStore {
             .unwrap_or_default())
     }
 
-    async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
+    async fn get_from(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         let events = self.get(domain, edition, root).await?;
         Ok(events
             .into_iter()
@@ -238,10 +244,14 @@ impl EventStore for MockEventStore {
                         value: root.as_bytes().to_vec(),
                     }),
                     correlation_id: correlation_id.to_string(),
-                    edition: Some(Edition { name: edition.clone(), divergences: vec![] }),
+                    edition: Some(Edition {
+                        name: edition.clone(),
+                        divergences: vec![],
+                    }),
                 }),
                 pages,
                 snapshot: None,
+                ..Default::default()
             });
         }
 

@@ -130,10 +130,7 @@ impl<H> Router<H> {
 
     /// Get the first input domain (for single-domain components).
     pub fn input_domain(&self) -> &'static str {
-        self.dispatchers
-            .first()
-            .map(|d| d.domain())
-            .unwrap_or("")
+        self.dispatchers.first().map(|d| d.domain()).unwrap_or("")
     }
 
     /// Get the state domain (for stateful components).
@@ -188,8 +185,12 @@ pub enum ProjectionMode {
 }
 
 /// Handler for projector events. Returns optional projection data.
-pub type ProjectorEventHandler =
-    fn(&prost_types::Any, Option<&ProtoUuid>, &str, ProjectionMode) -> Result<Option<prost_types::Any>>;
+pub type ProjectorEventHandler = fn(
+    &prost_types::Any,
+    Option<&ProtoUuid>,
+    &str,
+    ProjectionMode,
+) -> Result<Option<prost_types::Any>>;
 
 impl Router<ProjectorEventHandler> {
     /// Dispatch events to handlers, return projection.
@@ -242,19 +243,31 @@ pub struct PmHandlerResult {
 
 impl PmHandlerResult {
     pub fn empty() -> Self {
-        Self { commands: vec![], pm_events: None }
+        Self {
+            commands: vec![],
+            pm_events: None,
+        }
     }
 
     pub fn commands(commands: Vec<CommandBook>) -> Self {
-        Self { commands, pm_events: None }
+        Self {
+            commands,
+            pm_events: None,
+        }
     }
 
     pub fn state(pm_events: EventBook) -> Self {
-        Self { commands: vec![], pm_events: Some(pm_events) }
+        Self {
+            commands: vec![],
+            pm_events: Some(pm_events),
+        }
     }
 
     pub fn both(commands: Vec<CommandBook>, pm_events: EventBook) -> Self {
-        Self { commands, pm_events: Some(pm_events) }
+        Self {
+            commands,
+            pm_events: Some(pm_events),
+        }
     }
 }
 
@@ -308,8 +321,7 @@ impl<S> Aggregate<S> {
     /// Create an aggregate handler.
     pub fn new(domain: &'static str, rebuild: fn(Option<&EventBook>) -> S) -> Self {
         Self {
-            inner: Router::new(domain, AGGREGATE)
-                .with(Dispatcher::new(domain)),
+            inner: Router::new(domain, AGGREGATE).with(Dispatcher::new(domain)),
             rebuild,
         }
     }
@@ -317,7 +329,9 @@ impl<S> Aggregate<S> {
     /// Register a handler for a command type suffix.
     pub fn on(mut self, type_suffix: &'static str, handler: CommandHandler<S>) -> Self {
         if let Some(dispatcher) = self.inner.dispatchers.pop() {
-            self.inner.dispatchers.push(dispatcher.on(type_suffix, handler));
+            self.inner
+                .dispatchers
+                .push(dispatcher.on(type_suffix, handler));
         }
         self
     }
@@ -334,7 +348,10 @@ impl<S> Aggregate<S> {
 
     /// Dispatch command to handler.
     #[allow(clippy::result_large_err)]
-    pub fn dispatch(&self, cmd: ContextualCommand) -> std::result::Result<BusinessResponse, Status> {
+    pub fn dispatch(
+        &self,
+        cmd: ContextualCommand,
+    ) -> std::result::Result<BusinessResponse, Status> {
         let command_book = cmd.command.as_ref();
         let prior_events = cmd.events.as_ref();
 
@@ -354,10 +371,12 @@ impl<S> Aggregate<S> {
             });
         }
 
-        Err(
-            BusinessError::Rejected(format!("{}: {}", errmsg::UNKNOWN_COMMAND, command_any.type_url))
-                .into(),
-        )
+        Err(BusinessError::Rejected(format!(
+            "{}: {}",
+            errmsg::UNKNOWN_COMMAND,
+            command_any.type_url
+        ))
+        .into())
     }
 }
 
@@ -368,7 +387,7 @@ impl<S> Aggregate<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use angzarr::proto::{CommandPage, Cover, EventPage, event_page::Sequence};
+    use angzarr::proto::{event_page::Sequence, CommandPage, Cover, EventPage};
 
     // --------------------------------------------------------------------
     // Aggregate tests
@@ -548,8 +567,9 @@ mod tests {
 
     #[test]
     fn test_projector_router_descriptor() {
-        let router: Router<ProjectorEventHandler> = Router::new("projector-inventory-stock", PROJECTOR)
-            .with(Dispatcher::new("inventory").on("StockReserved", projector_handler));
+        let router: Router<ProjectorEventHandler> =
+            Router::new("projector-inventory-stock", PROJECTOR)
+                .with(Dispatcher::new("inventory").on("StockReserved", projector_handler));
 
         let desc = router.descriptor();
         assert_eq!(desc.name, "projector-inventory-stock");

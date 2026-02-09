@@ -23,12 +23,12 @@ pub use position_store::PositionStore;
 pub use snapshot_store::SnapshotStore;
 
 // Implementation modules
-pub mod helpers;
-pub mod mock;
 #[cfg(feature = "bigtable")]
 pub mod bigtable;
 #[cfg(feature = "dynamo")]
 pub mod dynamo;
+pub mod helpers;
+pub mod mock;
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
 #[cfg(feature = "postgres")]
@@ -41,27 +41,27 @@ pub mod schema;
 pub mod sqlite;
 
 // Re-exports
-pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
 #[cfg(feature = "bigtable")]
 pub use bigtable::{BigtableEventStore, BigtablePositionStore, BigtableSnapshotStore};
 #[cfg(feature = "dynamo")]
 pub use dynamo::{DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
-#[cfg(feature = "mongodb")]
-pub use mongodb::{MongoEventStore, MongoPositionStore, MongoSnapshotStore};
+pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
 #[cfg(all(feature = "mongodb", feature = "topology"))]
 pub use mongodb::MongoTopologyStore;
-#[cfg(feature = "postgres")]
-pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
+#[cfg(feature = "mongodb")]
+pub use mongodb::{MongoEventStore, MongoPositionStore, MongoSnapshotStore};
 #[cfg(all(feature = "postgres", feature = "topology"))]
 pub use postgres::PostgresTopologyStore;
-#[cfg(feature = "redis")]
-pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
+#[cfg(feature = "postgres")]
+pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
 #[cfg(all(feature = "redis", feature = "topology"))]
 pub use redis::RedisTopologyStore;
-#[cfg(feature = "sqlite")]
-pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
+#[cfg(feature = "redis")]
+pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
 #[cfg(all(feature = "sqlite", feature = "topology"))]
 pub use sqlite::SqliteTopologyStore;
+#[cfg(feature = "sqlite")]
+pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
 
 // ============================================================================
 // Error Types

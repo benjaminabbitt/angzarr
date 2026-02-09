@@ -7,8 +7,8 @@ use mongodb::{Client, Collection, IndexModel};
 use prost::Message;
 use uuid::Uuid;
 
-use crate::storage::{Result, SnapshotStore, StorageError};
 use crate::proto::Snapshot;
+use crate::storage::{Result, SnapshotStore, StorageError};
 
 use super::SNAPSHOTS_COLLECTION;
 

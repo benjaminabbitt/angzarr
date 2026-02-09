@@ -1,5 +1,6 @@
 use super::*;
-use crate::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+use crate::proto::{event_page, CommandPage, Cover, Uuid as ProtoUuid};
+use crate::proto_ext::EventBookExt;
 use prost_types::Any;
 
 fn make_command_book(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
@@ -50,6 +51,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
         }),
         pages,
         snapshot: None,
+        ..Default::default()
     }
 }
 
@@ -115,23 +117,23 @@ fn test_extract_command_sequence_empty_pages() {
 }
 
 #[test]
-fn test_compute_next_sequence_from_events() {
+fn test_next_sequence_from_events() {
     let root = Uuid::new_v4();
     let events = make_event_book("orders", root, Some(4));
 
-    assert_eq!(compute_next_sequence(&events), 5);
+    assert_eq!(events.next_sequence(), 5);
 }
 
 #[test]
-fn test_compute_next_sequence_empty_events() {
+fn test_next_sequence_empty_events() {
     let root = Uuid::new_v4();
     let events = make_event_book("orders", root, None);
 
-    assert_eq!(compute_next_sequence(&events), 0);
+    assert_eq!(events.next_sequence(), 0);
 }
 
 #[test]
-fn test_compute_next_sequence_from_snapshot() {
+fn test_next_sequence_from_snapshot() {
     use crate::proto::Snapshot;
 
     let root = Uuid::new_v4();
@@ -141,5 +143,5 @@ fn test_compute_next_sequence_from_snapshot() {
         state: None,
     });
 
-    assert_eq!(compute_next_sequence(&events), 11);
+    assert_eq!(events.next_sequence(), 11);
 }

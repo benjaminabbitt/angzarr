@@ -102,8 +102,7 @@ async fn test_publisher_writes_to_subscriber_pipes() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Create publisher with subscriber info
-    let publisher_config =
-        IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
+    let publisher_config = IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
     let publisher = IpcEventBus::new(publisher_config);
 
     // Publish event
@@ -152,8 +151,7 @@ async fn test_domain_filtering() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Create publisher
-    let publisher_config =
-        IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
+    let publisher_config = IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
     let publisher = IpcEventBus::new(publisher_config);
 
     // Publish event to "orders" domain (should be received)
@@ -212,8 +210,7 @@ async fn test_wildcard_subscriber_receives_all() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Create publisher
-    let publisher_config =
-        IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
+    let publisher_config = IpcConfig::publisher_with_subscribers(base_path.clone(), vec![sub_info]);
     let publisher = IpcEventBus::new(publisher_config);
 
     // Publish to multiple domains

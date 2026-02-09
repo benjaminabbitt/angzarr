@@ -180,9 +180,9 @@ async fn create_standalone_with_projectors() -> BackendWithProjectors {
     use agg_order::OrderLogic;
     use pmg_fulfillment::OrderFulfillmentProcess;
     use prj_inventory::InventoryProjector;
+    use sag_fulfillment_inventory::FulfillmentInventorySaga;
     use sag_order_fulfillment::OrderFulfillmentSaga;
     use sag_order_inventory::OrderInventorySaga;
-    use sag_fulfillment_inventory::FulfillmentInventorySaga;
 
     // Shared mock fraud server for external service integration tests
     let fraud_server = shared_fraud_server().await;
@@ -268,7 +268,10 @@ impl Backend for StandaloneBackend {
             .domain_stores
             .get(domain)
             .ok_or_else(|| format!("No storage for domain: {}", domain))?;
-        let pages = storage.event_store.get(domain, DEFAULT_EDITION, root).await?;
+        let pages = storage
+            .event_store
+            .get(domain, DEFAULT_EDITION, root)
+            .await?;
         Ok(pages)
     }
 
@@ -384,12 +387,16 @@ async fn create_gateway_backend() -> (GatewayBackend, angzarr_client::Speculativ
     let backend = GatewayBackend {
         client,
         #[cfg(feature = "gateway-cleanup")]
-        mongodb_uri: std::env::var("ANGZARR_MONGODB_URI")
-            .unwrap_or_else(|_| "mongodb://angzarr:angzarr-dev@localhost:27017/angzarr?authSource=angzarr".into()),
+        mongodb_uri: std::env::var("ANGZARR_MONGODB_URI").unwrap_or_else(|_| {
+            "mongodb://angzarr:angzarr-dev@localhost:27017/angzarr?authSource=angzarr".into()
+        }),
     };
 
     // Clean up before tests run
-    backend.cleanup().await.expect("Failed to cleanup before tests");
+    backend
+        .cleanup()
+        .await
+        .expect("Failed to cleanup before tests");
 
     (backend, speculative)
 }

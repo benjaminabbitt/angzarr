@@ -281,11 +281,7 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
     /// Phase 1: Declare additional destinations needed beyond trigger + PM state.
     ///
     /// Returns destinations to fetch. Most PMs return empty (only need PM state).
-    fn prepare(
-        &self,
-        trigger: &EventBook,
-        process_state: Option<&EventBook>,
-    ) -> Vec<Cover>;
+    fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover>;
 
     /// Phase 2: Produce commands + PM events given trigger, PM state, and destinations.
     ///

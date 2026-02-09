@@ -79,7 +79,9 @@ use angzarr::config::{
 };
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
-use angzarr::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
+use angzarr::handlers::core::{
+    ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler,
+};
 use angzarr::orchestration::aggregate::GrpcBusinessLogic;
 use angzarr::orchestration::command::local::LocalCommandExecutor;
 use angzarr::orchestration::command::CommandExecutor;
@@ -89,8 +91,8 @@ use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_client::AggregateClient;
 use angzarr::proto::command_gateway_server::CommandGatewayServer;
 use angzarr::proto::event_query_server::EventQueryServer;
-use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use angzarr::proto::process_manager_client::ProcessManagerClient;
+use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
 use angzarr::proto::saga_client::SagaClient;
 use angzarr::standalone::{
     AggregateHandlerAdapter, CommandRouter, DomainStorage, GrpcProjectorHandler,
@@ -313,8 +315,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut domain_stores: HashMap<String, DomainStorage> = HashMap::new();
     for svc in &config.standalone.aggregates {
         let storage_config = svc.storage.as_ref().unwrap_or(&config.storage);
-        let (event_store, snapshot_store) =
-            angzarr::storage::init_storage(storage_config).await?;
+        let (event_store, snapshot_store) = angzarr::storage::init_storage(storage_config).await?;
 
         info!(
             domain = %svc.domain,
@@ -333,8 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize storage for _angzarr meta domain
     {
-        let (event_store, snapshot_store) =
-            angzarr::storage::init_storage(&config.storage).await?;
+        let (event_store, snapshot_store) = angzarr::storage::init_storage(&config.storage).await?;
         domain_stores.insert(
             META_DOMAIN.to_string(),
             DomainStorage {
@@ -380,7 +380,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Register built-in _angzarr meta aggregate (in-process, no external process)
     client_logic.insert(
         META_DOMAIN.to_string(),
-        Arc::new(AggregateHandlerAdapter::new(Arc::new(MetaAggregateHandler::new()))),
+        Arc::new(AggregateHandlerAdapter::new(Arc::new(
+            MetaAggregateHandler::new(),
+        ))),
     );
 
     for svc in &config.standalone.aggregates {
@@ -401,10 +403,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let channel = connect_to_address(&path).await?;
         let client = AggregateClient::new(channel);
-        client_logic.insert(
-            svc.domain.clone(),
-            Arc::new(GrpcBusinessLogic::new(client)),
-        );
+        client_logic.insert(svc.domain.clone(), Arc::new(GrpcBusinessLogic::new(client)));
 
         info!(domain = %svc.domain, "Connected to aggregate client logic");
     }
@@ -469,10 +468,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Spawn and connect saga processes
-    let compensation_config: SagaCompensationConfig = config
-        .saga_compensation
-        .clone()
-        .unwrap_or_default();
+    let compensation_config: SagaCompensationConfig =
+        config.saga_compensation.clone().unwrap_or_default();
 
     for svc in &config.standalone.sagas {
         let path = svc
@@ -502,11 +499,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             svc.domain.clone(),
         ));
 
-        let handler = SagaEventHandler::from_factory(
-            factory,
-            executor.clone(),
-            Some(fetcher.clone()),
-        );
+        let handler =
+            SagaEventHandler::from_factory(factory, executor.clone(), Some(fetcher.clone()));
 
         let input_domain = listen_domain.clone();
         let sub = channel_bus.with_config(ChannelConfig::subscriber(input_domain));
@@ -560,7 +554,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pm_client = Arc::new(Mutex::new(pm_client));
 
         // Get PM's event store for persisting PM state events
-        let pm_storage = domain_stores.get(&svc.domain).expect("PM storage must exist");
+        let pm_storage = domain_stores
+            .get(&svc.domain)
+            .expect("PM storage must exist");
 
         let factory = Arc::new(GrpcPMContextFactory::new(
             pm_client,
@@ -571,12 +567,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
 
         // Use with_targets for handler-level filtering (PM receives all events, filters internally)
-        let handler = ProcessManagerEventHandler::from_factory(
-            factory,
-            fetcher.clone(),
-            executor.clone(),
-        )
-        .with_targets(subscriptions);
+        let handler =
+            ProcessManagerEventHandler::from_factory(factory, fetcher.clone(), executor.clone())
+                .with_targets(subscriptions);
 
         // Subscribe to ALL events - PM does handler-level filtering via with_targets
         let sub = channel_bus.with_config(ChannelConfig::subscriber_all());
@@ -593,14 +586,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for svc in &config.standalone.services {
         let mut svc_with_env = svc.clone();
         if let Some(ref path) = config_path {
-            svc_with_env.env.insert(CONFIG_ENV_VAR.to_string(), path.clone());
+            svc_with_env
+                .env
+                .insert(CONFIG_ENV_VAR.to_string(), path.clone());
         }
         let child = spawn_external_service(&svc_with_env.name, &svc_with_env).await?;
         children.push(child);
 
         if !matches!(svc_with_env.health_check, HealthCheckConfig::None) {
-            wait_for_service_health(&svc_with_env.name, &svc_with_env.health_check, svc_with_env.health_timeout_secs)
-                .await?;
+            wait_for_service_health(
+                &svc_with_env.name,
+                &svc_with_env.health_check,
+                svc_with_env.health_timeout_secs,
+            )
+            .await?;
         }
     }
 
@@ -653,7 +652,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    info!(count = descriptors.len(), "Components registered via _angzarr");
+    info!(
+        count = descriptors.len(),
+        "Components registered via _angzarr"
+    );
 
     // Spawn heartbeat for re-registration (handles topology startup race)
     let hb_executor = executor.clone();

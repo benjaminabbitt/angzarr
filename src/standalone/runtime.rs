@@ -82,18 +82,15 @@ impl Runtime {
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         event_bus: Arc<dyn EventBus>,
-        #[cfg(feature = "topology")]
-        topology_projector: Option<Arc<crate::handlers::projectors::topology::TopologyProjector>>,
+        #[cfg(feature = "topology")] topology_projector: Option<
+            Arc<crate::handlers::projectors::topology::TopologyProjector>,
+        >,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Collect descriptors from all registered handlers before they're consumed.
         // Fills in name/component_type from registration keys and config when the
         // handler returns a default descriptor (pre-router migration).
-        let descriptors = Self::collect_descriptors(
-            &aggregates,
-            &projectors,
-            &sagas,
-            &process_managers,
-        );
+        let descriptors =
+            Self::collect_descriptors(&aggregates, &projectors, &sagas, &process_managers);
 
         // Register component descriptors with topology projector for correct
         // node types (saga, projector, PM) in the topology graph.
@@ -102,10 +99,16 @@ impl Runtime {
             topology.init().await.map_err(|e| {
                 Box::<dyn std::error::Error>::from(format!("topology init failed: {e}"))
             })?;
-            topology.register_components(&descriptors).await.map_err(|e| {
-                Box::<dyn std::error::Error>::from(format!("topology registration failed: {e}"))
-            })?;
-            info!(components = descriptors.len(), "Topology components registered");
+            topology
+                .register_components(&descriptors)
+                .await
+                .map_err(|e| {
+                    Box::<dyn std::error::Error>::from(format!("topology registration failed: {e}"))
+                })?;
+            info!(
+                components = descriptors.len(),
+                "Topology components registered"
+            );
         }
 
         // Initialize per-domain storage
@@ -249,10 +252,7 @@ impl Runtime {
 
         // Sagas — domain-filtered subscribers
         for (name, (handler, config)) in sagas {
-            let factory = Arc::new(LocalSagaContextFactory::new(
-                handler,
-                name.clone(),
-            ));
+            let factory = Arc::new(LocalSagaContextFactory::new(handler, name.clone()));
             let validator = build_output_domain_validator(&name, &config.output_domains);
             let handler = SagaEventHandler::from_factory_with_validator(
                 factory,
@@ -596,7 +596,6 @@ impl Runtime {
 
         Ok(())
     }
-
 }
 
 /// Build output domain validator for a saga.

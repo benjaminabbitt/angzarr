@@ -34,6 +34,10 @@ futures.workspace = true
 uuid.workspace = true
 tokio-stream.workspace = true
 
+[features]
+gateway = []
+
 [[test]]
 name = "acceptance"
 harness = false
+required-features = ["gateway"]

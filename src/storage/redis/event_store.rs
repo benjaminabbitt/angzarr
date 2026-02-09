@@ -11,8 +11,8 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::storage::{EventStore, Result, StorageError};
 use crate::proto::EventPage;
+use crate::storage::{EventStore, Result, StorageError};
 
 /// Redis event store.
 ///
@@ -137,9 +137,7 @@ impl RedisEventStore {
         let mut conn = self.conn.clone();
 
         // Get the first element (minimum score) from the sorted set
-        let result: Vec<(Vec<u8>, f64)> = conn
-            .zrange_withscores(&events_key, 0, 0)
-            .await?;
+        let result: Vec<(Vec<u8>, f64)> = conn.zrange_withscores(&events_key, 0, 0).await?;
 
         match result.first() {
             Some((_, score)) => Ok(Some(*score as u32)),
@@ -192,7 +190,9 @@ impl RedisEventStore {
             Some(d) => d,
             None => {
                 // No edition events - return main timeline only
-                return self.query_edition_events(domain, DEFAULT_EDITION, root, from).await;
+                return self
+                    .query_edition_events(domain, DEFAULT_EDITION, root, from)
+                    .await;
             }
         };
 
@@ -204,13 +204,17 @@ impl RedisEventStore {
 
         // Main timeline events: only if from < divergence
         if from < divergence {
-            let main_events = self.query_main_events_range(domain, root, from, divergence).await?;
+            let main_events = self
+                .query_main_events_range(domain, root, from, divergence)
+                .await?;
             result.extend(main_events);
         }
 
         // Edition events: from max(from, divergence) onwards
         let edition_from = from.max(divergence);
-        let edition_events = self.query_edition_events(domain, edition, root, edition_from).await?;
+        let edition_events = self
+            .query_edition_events(domain, edition, root, edition_from)
+            .await?;
         result.extend(edition_events);
 
         Ok(result)
@@ -311,10 +315,18 @@ impl EventStore for RedisEventStore {
         events
     }
 
-    async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
+    async fn get_from(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         // Main timeline: simple query
         if Self::is_main_timeline(edition) {
-            return self.query_edition_events(domain, DEFAULT_EDITION, root, from).await;
+            return self
+                .query_edition_events(domain, DEFAULT_EDITION, root, from)
+                .await;
         }
 
         // Named edition: composite read (main timeline up to divergence + edition events)
@@ -471,9 +483,8 @@ impl EventStore for RedisEventStore {
             let events_key = self.events_key(&domain, &edition, root);
 
             // Fetch all events for this root (we need to filter by sequence)
-            let bytes_list: Vec<(Vec<u8>, f64)> = conn
-                .zrange_withscores(&events_key, 0, -1)
-                .await?;
+            let bytes_list: Vec<(Vec<u8>, f64)> =
+                conn.zrange_withscores(&events_key, 0, -1).await?;
 
             let mut pages = Vec::new();
             for (bytes, score) in bytes_list {
@@ -495,7 +506,10 @@ impl EventStore for RedisEventStore {
                             value: root.as_bytes().to_vec(),
                         }),
                         correlation_id: correlation_id.to_string(),
-                        edition: Some(Edition { name: edition, divergences: vec![] }),
+                        edition: Some(Edition {
+                            name: edition,
+                            divergences: vec![],
+                        }),
                     }),
                     pages,
                     snapshot: None,

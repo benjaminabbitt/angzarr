@@ -113,7 +113,9 @@ fn process_event(event: &prost_types::Any) {
             new_reserved = e.new_reserved,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<ReservationReleased>(event, ReservationReleased::TYPE_NAME) {
+    } else if let Some(e) =
+        decode_event::<ReservationReleased>(event, ReservationReleased::TYPE_NAME)
+    {
         info!(
             event = ReservationReleased::TYPE_NAME,
             order_id = %e.order_id,
@@ -121,7 +123,9 @@ fn process_event(event: &prost_types::Any) {
             new_available = e.new_available,
             "inventory_projected"
         );
-    } else if let Some(e) = decode_event::<ReservationCommitted>(event, ReservationCommitted::TYPE_NAME) {
+    } else if let Some(e) =
+        decode_event::<ReservationCommitted>(event, ReservationCommitted::TYPE_NAME)
+    {
         info!(
             event = ReservationCommitted::TYPE_NAME,
             order_id = %e.order_id,

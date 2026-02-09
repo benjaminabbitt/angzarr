@@ -43,7 +43,9 @@ use tokio::sync::RwLock;
 use tonic::transport::Channel;
 use tracing::{debug, error, info, warn};
 
-use crate::config::{DISCOVERY_STATIC, EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR};
+use crate::config::{
+    DISCOVERY_STATIC, EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR,
+};
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::event_query_client::EventQueryClient;
 use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;

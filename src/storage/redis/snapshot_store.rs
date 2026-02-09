@@ -6,8 +6,8 @@ use redis::{aio::ConnectionManager, AsyncCommands, Client};
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::storage::{Result, SnapshotStore};
 use crate::proto::Snapshot;
+use crate::storage::{Result, SnapshotStore};
 
 /// Redis snapshot store.
 ///
@@ -38,7 +38,10 @@ impl RedisSnapshotStore {
 
     /// Build the snapshot key for a root.
     fn snapshot_key(&self, domain: &str, edition: &str, root: Uuid) -> String {
-        format!("{}:{}:{}:{}:snapshot", self.key_prefix, domain, edition, root)
+        format!(
+            "{}:{}:{}:{}:snapshot",
+            self.key_prefix, domain, edition, root
+        )
     }
 }
 

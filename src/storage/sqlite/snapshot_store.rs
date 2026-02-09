@@ -6,9 +6,9 @@ use sea_query::{Expr, OnConflict, Query, SqliteQueryBuilder};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::proto::Snapshot;
 use crate::storage::schema::Snapshots;
 use crate::storage::{Result, SnapshotStore};
-use crate::proto::Snapshot;
 
 /// SQLite implementation of SnapshotStore.
 pub struct SqliteSnapshotStore {

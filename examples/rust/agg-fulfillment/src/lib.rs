@@ -179,7 +179,11 @@ fn handle_mark_picked(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status(&state.status, FulfillmentStatus::Pending.as_str(), errmsg::NOT_PENDING)?;
+    require_status(
+        &state.status,
+        FulfillmentStatus::Pending.as_str(),
+        errmsg::NOT_PENDING,
+    )?;
 
     let cmd: MarkPicked = decode_command(command_data)?;
 
@@ -204,7 +208,11 @@ fn handle_mark_packed(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status(&state.status, FulfillmentStatus::Picking.as_str(), errmsg::NOT_PICKED)?;
+    require_status(
+        &state.status,
+        FulfillmentStatus::Picking.as_str(),
+        errmsg::NOT_PICKED,
+    )?;
 
     let cmd: MarkPacked = decode_command(command_data)?;
 
@@ -229,7 +237,11 @@ fn handle_ship(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status(&state.status, FulfillmentStatus::Packing.as_str(), errmsg::NOT_PACKED)?;
+    require_status(
+        &state.status,
+        FulfillmentStatus::Packing.as_str(),
+        errmsg::NOT_PACKED,
+    )?;
 
     let cmd: Ship = decode_command(command_data)?;
 
@@ -257,8 +269,16 @@ fn handle_record_delivery(
     next_seq: u32,
 ) -> Result<EventBook> {
     require_exists(&state.order_id, errmsg::SHIPMENT_NOT_FOUND)?;
-    require_status_not(&state.status, FulfillmentStatus::Delivered.as_str(), errmsg::ALREADY_DELIVERED)?;
-    require_status(&state.status, FulfillmentStatus::Shipped.as_str(), errmsg::NOT_SHIPPED)?;
+    require_status_not(
+        &state.status,
+        FulfillmentStatus::Delivered.as_str(),
+        errmsg::ALREADY_DELIVERED,
+    )?;
+    require_status(
+        &state.status,
+        FulfillmentStatus::Shipped.as_str(),
+        errmsg::NOT_SHIPPED,
+    )?;
 
     let cmd: RecordDelivery = decode_command(command_data)?;
 

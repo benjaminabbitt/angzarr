@@ -9,7 +9,9 @@ use crate::handlers::projectors::topology::store::{
     EdgeRecord, NodeRecord, Result, TopologyError, TopologyStore,
 };
 
-use super::{TOPOLOGY_CORRELATIONS_COLLECTION, TOPOLOGY_EDGES_COLLECTION, TOPOLOGY_NODES_COLLECTION};
+use super::{
+    TOPOLOGY_CORRELATIONS_COLLECTION, TOPOLOGY_EDGES_COLLECTION, TOPOLOGY_NODES_COLLECTION,
+};
 
 /// MongoDB-backed topology store.
 pub struct MongoTopologyStore {
@@ -58,17 +60,13 @@ impl TopologyStore for MongoTopologyStore {
             .map_err(|e| TopologyError::Database(e.to_string()))?;
 
         // Edges: indexes on source and target for FK-like queries
-        let edge_source_index = IndexModel::builder()
-            .keys(doc! { "source": 1 })
-            .build();
+        let edge_source_index = IndexModel::builder().keys(doc! { "source": 1 }).build();
         self.edges
             .create_index(edge_source_index)
             .await
             .map_err(|e| TopologyError::Database(e.to_string()))?;
 
-        let edge_target_index = IndexModel::builder()
-            .keys(doc! { "target": 1 })
-            .build();
+        let edge_target_index = IndexModel::builder().keys(doc! { "target": 1 }).build();
         self.edges
             .create_index(edge_target_index)
             .await
@@ -85,9 +83,7 @@ impl TopologyStore for MongoTopologyStore {
             .map_err(|e| TopologyError::Database(e.to_string()))?;
 
         // Correlations: index on seen_at for pruning
-        let corr_seen_index = IndexModel::builder()
-            .keys(doc! { "seen_at": 1 })
-            .build();
+        let corr_seen_index = IndexModel::builder().keys(doc! { "seen_at": 1 }).build();
         self.correlations
             .create_index(corr_seen_index)
             .await
@@ -281,10 +277,16 @@ impl TopologyStore for MongoTopologyStore {
             nodes.push(NodeRecord {
                 id: doc.get_str("id").unwrap_or_default().to_string(),
                 title: doc.get_str("title").unwrap_or_default().to_string(),
-                component_type: doc.get_str("component_type").unwrap_or_default().to_string(),
+                component_type: doc
+                    .get_str("component_type")
+                    .unwrap_or_default()
+                    .to_string(),
                 domain: doc.get_str("domain").unwrap_or_default().to_string(),
                 event_count: doc.get_i64("event_count").unwrap_or(0),
-                last_event_type: doc.get_str("last_event_type").unwrap_or_default().to_string(),
+                last_event_type: doc
+                    .get_str("last_event_type")
+                    .unwrap_or_default()
+                    .to_string(),
                 last_seen: doc.get_str("last_seen").unwrap_or_default().to_string(),
                 created_at: doc.get_str("created_at").unwrap_or_default().to_string(),
             });

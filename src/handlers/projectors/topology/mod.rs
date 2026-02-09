@@ -10,11 +10,11 @@
 //! - **K8s mode**: `TopologyK8sWatcher` watches pod annotations for descriptors
 //! - **Event bus mode**: Descriptors published to `_meta.topology` domain (legacy)
 
+pub mod k8s_watcher;
+pub mod rest;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub mod schema;
 pub mod store;
-pub mod rest;
-pub mod k8s_watcher;
 
 pub use k8s_watcher::TopologyK8sWatcher;
 
@@ -22,8 +22,8 @@ pub use k8s_watcher::TopologyK8sWatcher;
 mod tests;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use prost::Message;
 use tracing::{debug, info, warn};
@@ -256,7 +256,12 @@ impl TopologyProjector {
 
     /// Resolve the component type for a domain.
     fn resolve_component_type(&self, domain: &str) -> String {
-        if let Some(t) = self.type_cache.read().expect("type_cache poisoned").get(domain) {
+        if let Some(t) = self
+            .type_cache
+            .read()
+            .expect("type_cache poisoned")
+            .get(domain)
+        {
             return t.clone();
         }
         Self::infer_component_type(domain).to_string()
@@ -264,7 +269,10 @@ impl TopologyProjector {
 
     /// Infer the component type from a domain name.
     fn infer_component_type(domain: &str) -> &'static str {
-        if domain.strip_prefix(PROJECTION_DOMAIN_PREFIX).is_some_and(|rest| rest.starts_with('.')) {
+        if domain
+            .strip_prefix(PROJECTION_DOMAIN_PREFIX)
+            .is_some_and(|rest| rest.starts_with('.'))
+        {
             "projector"
         } else {
             "aggregate"

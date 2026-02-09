@@ -35,7 +35,10 @@ use common::proto::{
     ApplyLoyaltyDiscount, CancelOrder, ConfirmPayment, CreateOrder, OrderCompleted, OrderState,
     SubmitPayment,
 };
-use common::{decode_command, extract_command, next_sequence, now, require_exists, require_status_not, Aggregate, AggregateLogic, ProtoTypeName};
+use common::{
+    decode_command, extract_command, next_sequence, now, require_exists, require_status_not,
+    Aggregate, AggregateLogic, ProtoTypeName,
+};
 use tracing::info;
 
 pub use fraud_client::{FraudCheckResult, FraudError, FraudServiceClient};
@@ -98,7 +101,10 @@ impl OrderLogic {
         Self {
             aggregate: Aggregate::new("order", rebuild_state)
                 .on(CreateOrder::TYPE_NAME, handle_create_order)
-                .on(ApplyLoyaltyDiscount::TYPE_NAME, handle_apply_loyalty_discount)
+                .on(
+                    ApplyLoyaltyDiscount::TYPE_NAME,
+                    handle_apply_loyalty_discount,
+                )
                 .on(SubmitPayment::TYPE_NAME, handle_submit_payment)
                 // ConfirmPayment is handled specially in dispatch to call fraud service
                 .on(CancelOrder::TYPE_NAME, handle_cancel_order),
@@ -120,9 +126,10 @@ impl OrderLogic {
         &self,
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
-        let command_book = cmd.command.as_ref().ok_or_else(|| {
-            tonic::Status::invalid_argument("missing command")
-        })?;
+        let command_book = cmd
+            .command
+            .as_ref()
+            .ok_or_else(|| tonic::Status::invalid_argument("missing command"))?;
         let prior_events = cmd.events.as_ref();
 
         // Rebuild state from prior events
@@ -132,12 +139,24 @@ impl OrderLogic {
         // Validate preconditions
         require_exists(&state.customer_id, errmsg::ORDER_NOT_FOUND)
             .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
-        require_status_not(&state.status, OrderStatus::Pending.as_str(), errmsg::PAYMENT_NOT_SUBMITTED)
-            .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
-        require_status_not(&state.status, OrderStatus::Completed.as_str(), errmsg::ORDER_COMPLETED)
-            .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
-        require_status_not(&state.status, OrderStatus::Cancelled.as_str(), errmsg::ORDER_CANCELLED)
-            .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
+        require_status_not(
+            &state.status,
+            OrderStatus::Pending.as_str(),
+            errmsg::PAYMENT_NOT_SUBMITTED,
+        )
+        .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
+        require_status_not(
+            &state.status,
+            OrderStatus::Completed.as_str(),
+            errmsg::ORDER_COMPLETED,
+        )
+        .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
+        require_status_not(
+            &state.status,
+            OrderStatus::Cancelled.as_str(),
+            errmsg::ORDER_CANCELLED,
+        )
+        .map_err(|e| tonic::Status::failed_precondition(e.to_string()))?;
 
         // Call external fraud service if configured
         let fraud_result = if let Some(ref client) = self.fraud_client {
@@ -161,7 +180,9 @@ impl OrderLogic {
 
         // Decline if fraud check failed
         if fraud_result == FraudCheckResult::Declined {
-            return Err(tonic::Status::failed_precondition(errmsg::FRAUD_CHECK_DECLINED));
+            return Err(tonic::Status::failed_precondition(
+                errmsg::FRAUD_CHECK_DECLINED,
+            ));
         }
 
         // Extract command data
@@ -216,7 +237,9 @@ impl AggregateLogic for OrderLogic {
         cmd: ContextualCommand,
     ) -> std::result::Result<BusinessResponse, tonic::Status> {
         // Extract command type from the first page
-        let command_type = cmd.command.as_ref()
+        let command_type = cmd
+            .command
+            .as_ref()
             .and_then(|c| c.pages.first())
             .and_then(|p| p.command.as_ref())
             .map(|c| c.type_url.as_str())

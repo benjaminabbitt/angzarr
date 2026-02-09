@@ -160,16 +160,22 @@ impl AggregateCoordinator for AggregateService {
         {
             use crate::utils::metrics::{self, COMMAND_DURATION, COMMAND_TOTAL};
             let outcome = if result.is_ok() { "success" } else { "error" };
-            COMMAND_DURATION.record(start.elapsed().as_secs_f64(), &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&domain),
-                metrics::outcome_attr(outcome),
-            ]);
-            COMMAND_TOTAL.add(1, &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&domain),
-                metrics::outcome_attr(outcome),
-            ]);
+            COMMAND_DURATION.record(
+                start.elapsed().as_secs_f64(),
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&domain),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
+            COMMAND_TOTAL.add(
+                1,
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&domain),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
         }
 
         Ok(Response::new(result?))
@@ -209,16 +215,22 @@ impl AggregateCoordinator for AggregateService {
         {
             use crate::utils::metrics::{self, COMMAND_DURATION, COMMAND_TOTAL};
             let outcome = if result.is_ok() { "success" } else { "error" };
-            COMMAND_DURATION.record(start.elapsed().as_secs_f64(), &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&domain),
-                metrics::outcome_attr(outcome),
-            ]);
-            COMMAND_TOTAL.add(1, &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&domain),
-                metrics::outcome_attr(outcome),
-            ]);
+            COMMAND_DURATION.record(
+                start.elapsed().as_secs_f64(),
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&domain),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
+            COMMAND_TOTAL.add(
+                1,
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&domain),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
         }
 
         Ok(Response::new(result?))

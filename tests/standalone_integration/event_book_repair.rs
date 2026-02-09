@@ -56,7 +56,10 @@ async fn test_repairer_fetches_missing_history() {
     let events: Vec<EventPage> = (0..5)
         .map(|i| test_event(i, &format!("Event{}", i)))
         .collect();
-    event_store.add(domain, DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add(domain, DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     // Start EventQuery server
     let addr = start_event_query_server(event_store, snapshot_store).await;
@@ -78,6 +81,7 @@ async fn test_repairer_fetches_missing_history() {
         }),
         pages: vec![test_event(4, "Event4")],
         snapshot: None,
+        ..Default::default()
     };
 
     // Verify it's incomplete
@@ -121,6 +125,7 @@ async fn test_repairer_passes_through_complete_book() {
         }),
         pages: vec![test_event(0, "Created"), test_event(1, "Updated")],
         snapshot: None,
+        ..Default::default()
     };
 
     // Verify it's already complete
@@ -158,6 +163,7 @@ async fn test_repairer_handles_empty_aggregate() {
         }),
         pages: vec![test_event(5, "LateEvent")], // Missing 0-4
         snapshot: None,
+        ..Default::default()
     };
 
     // Repair - should return empty book since aggregate doesn't exist
@@ -186,7 +192,10 @@ async fn test_discovery_resolves_event_query_via_env_var() {
     let events: Vec<EventPage> = (0..3)
         .map(|i| test_event(i, &format!("Event{}", i)))
         .collect();
-    event_store.add(domain, DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add(domain, DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     // Start EventQuery server
     let addr = start_event_query_server(event_store, snapshot_store).await;
@@ -215,6 +224,7 @@ async fn test_discovery_resolves_event_query_via_env_var() {
         }),
         pages: vec![test_event(2, "Event2")],
         snapshot: None,
+        ..Default::default()
     };
 
     // Repair via the client we got from discovery
@@ -247,7 +257,10 @@ async fn test_discovery_resolves_registered_aggregate() {
     let events: Vec<EventPage> = (0..2)
         .map(|i| test_event(i, &format!("ProductEvent{}", i)))
         .collect();
-    event_store.add(domain, DEFAULT_EDITION, root, events, "").await.unwrap();
+    event_store
+        .add(domain, DEFAULT_EDITION, root, events, "")
+        .await
+        .unwrap();
 
     // Start EventQuery server
     let addr = start_event_query_server(event_store, snapshot_store).await;
@@ -276,6 +289,7 @@ async fn test_discovery_resolves_registered_aggregate() {
         }),
         pages: vec![test_event(1, "ProductEvent1")],
         snapshot: None,
+        ..Default::default()
     };
 
     // Repair via the client we got from discovery

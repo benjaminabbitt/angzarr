@@ -71,9 +71,10 @@ impl AggregateHandler for MetaAggregateHandler {
             .pages
             .iter()
             .map(|page| {
-                let any = page.command.as_ref().ok_or_else(|| {
-                    Status::invalid_argument("missing command in page")
-                })?;
+                let any = page
+                    .command
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("missing command in page"))?;
 
                 let cmd = RegisterComponent::decode(&any.value[..])
                     .map_err(|e| Status::invalid_argument(format!("decode error: {e}")))?;
@@ -88,9 +89,9 @@ impl AggregateHandler for MetaAggregateHandler {
                 };
 
                 let mut buf = Vec::new();
-                event.encode(&mut buf).map_err(|e| {
-                    Status::internal(format!("encode error: {e}"))
-                })?;
+                event
+                    .encode(&mut buf)
+                    .map_err(|e| Status::internal(format!("encode error: {e}")))?;
 
                 Ok(EventPage {
                     sequence: Some(crate::proto::event_page::Sequence::Force(true)),

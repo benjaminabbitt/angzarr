@@ -214,15 +214,15 @@ impl AggregateContext for GrpcAggregateContext {
                 cover: received.cover.clone(),
                 pages: new_pages.clone(),
                 snapshot: None,
+                ..Default::default()
             };
             self.event_book_repo
                 .put(edition, &events_to_persist)
                 .await
                 .map_err(|e| match e {
-                    StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
-                        "Sequence conflict: expected {}, got {}",
-                        expected, actual
-                    )),
+                    StorageError::SequenceConflict { expected, actual } => Status::aborted(
+                        format!("Sequence conflict: expected {}, got {}", expected, actual),
+                    ),
                     _ => Status::internal(format!("Failed to persist events: {e}")),
                 })?;
         }
@@ -244,7 +244,9 @@ impl AggregateContext for GrpcAggregateContext {
                     self.snapshot_store
                         .put(domain, edition, root, persisted_snapshot)
                         .await
-                        .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+                        .map_err(|e| {
+                            Status::internal(format!("Failed to persist snapshot: {e}"))
+                        })?;
                 }
             }
         }
@@ -254,6 +256,7 @@ impl AggregateContext for GrpcAggregateContext {
             cover: received.cover.clone(),
             pages: new_pages,
             snapshot: received.snapshot.clone(),
+            ..Default::default()
         })
     }
 
@@ -280,17 +283,27 @@ impl AggregateContext for GrpcAggregateContext {
         #[cfg(feature = "otel")]
         {
             use crate::utils::metrics::{self, BUS_PUBLISH_DURATION, BUS_PUBLISH_TOTAL};
-            let outcome = if publish_result.is_ok() { "success" } else { "error" };
-            BUS_PUBLISH_DURATION.record(publish_start.elapsed().as_secs_f64(), &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&routing_key),
-                metrics::outcome_attr(outcome),
-            ]);
-            BUS_PUBLISH_TOTAL.add(1, &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&routing_key),
-                metrics::outcome_attr(outcome),
-            ]);
+            let outcome = if publish_result.is_ok() {
+                "success"
+            } else {
+                "error"
+            };
+            BUS_PUBLISH_DURATION.record(
+                publish_start.elapsed().as_secs_f64(),
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&routing_key),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
+            BUS_PUBLISH_TOTAL.add(
+                1,
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&routing_key),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
         }
 
         if let Err(e) = publish_result {

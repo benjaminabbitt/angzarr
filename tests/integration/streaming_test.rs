@@ -38,8 +38,12 @@ async fn test_execute_stream_returns_events() {
         quantity: 100,
         low_stock_threshold: 10,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let correlation_id = command_book
         .cover
@@ -101,8 +105,12 @@ async fn test_stream_includes_expected_event_types() {
         quantity: 50,
         low_stock_threshold: 5,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = client.execute_stream(command_book).await;
     assert!(response.is_ok());
@@ -145,8 +153,12 @@ async fn test_execute_returns_immediate_response() {
         quantity: 75,
         low_stock_threshold: 8,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = client.execute(command_book).await;
     assert!(response.is_ok());

@@ -24,8 +24,8 @@ use crate::proto::{
     AggregateRoot, CommandBook, CommandResponse, EventBook, Query, SyncCommandBook,
     Uuid as ProtoUuid,
 };
-use crate::repository::EventBookRepository;
 use crate::proto_ext::CoverExt;
+use crate::repository::EventBookRepository;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 
@@ -121,9 +121,15 @@ impl StandaloneEventQueryBridge {
     }
 
     #[allow(clippy::result_large_err)]
-    async fn get_repo(&self, domain: &str, _edition: Option<&str>) -> Result<EventBookRepository, Status> {
+    async fn get_repo(
+        &self,
+        domain: &str,
+        _edition: Option<&str>,
+    ) -> Result<EventBookRepository, Status> {
         // Edition handling is done by the event store via composite reads
-        let store = self.stores.get(domain)
+        let store = self
+            .stores
+            .get(domain)
             .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
 
         // Disable snapshot reading — event queries return full event history,
@@ -159,16 +165,35 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
             Some(crate::proto::query::Selection::Range(ref range)) => {
                 let lower = range.lower;
                 let upper = range.upper.map(|u| u.saturating_add(1)).unwrap_or(u32::MAX);
-                repo.get_from_to(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid, lower, upper).await
+                repo.get_from_to(
+                    domain,
+                    edition.unwrap_or(DEFAULT_EDITION),
+                    root_uuid,
+                    lower,
+                    upper,
+                )
+                .await
             }
             Some(crate::proto::query::Selection::Temporal(ref tq)) => match tq.point_in_time {
                 Some(crate::proto::temporal_query::PointInTime::AsOfTime(ref ts)) => {
                     let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(ts)
                         .map_err(|e| Status::invalid_argument(e.to_string()))?;
-                    repo.get_temporal_by_time(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid, &rfc3339).await
+                    repo.get_temporal_by_time(
+                        domain,
+                        edition.unwrap_or(DEFAULT_EDITION),
+                        root_uuid,
+                        &rfc3339,
+                    )
+                    .await
                 }
                 Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
-                    repo.get_temporal_by_sequence(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid, seq).await
+                    repo.get_temporal_by_sequence(
+                        domain,
+                        edition.unwrap_or(DEFAULT_EDITION),
+                        root_uuid,
+                        seq,
+                    )
+                    .await
                 }
                 None => {
                     return Err(Status::invalid_argument(
@@ -176,7 +201,10 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
                     ))
                 }
             },
-            _ => repo.get(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid).await,
+            _ => {
+                repo.get(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid)
+                    .await
+            }
         }
         .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -207,7 +235,14 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
 
         tokio::spawn(async move {
-            match repo.get(&domain, edition.as_deref().unwrap_or(DEFAULT_EDITION), root_uuid).await {
+            match repo
+                .get(
+                    &domain,
+                    edition.as_deref().unwrap_or(DEFAULT_EDITION),
+                    root_uuid,
+                )
+                .await
+            {
                 Ok(book) => {
                     let _ = tx.send(Ok(book)).await;
                 }
@@ -244,7 +279,11 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
             // List roots from main timeline
             // TODO: Support listing roots from named editions via events table query
             for (domain, storage) in &stores {
-                match storage.event_store.list_roots(domain, DEFAULT_EDITION).await {
+                match storage
+                    .event_store
+                    .list_roots(domain, DEFAULT_EDITION)
+                    .await
+                {
                     Ok(roots) => {
                         for root in roots {
                             let aggregate = AggregateRoot {

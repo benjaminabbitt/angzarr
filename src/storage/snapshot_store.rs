@@ -39,13 +39,7 @@ pub trait SnapshotStore: Send + Sync {
     /// Store a snapshot for an aggregate.
     ///
     /// This replaces any existing snapshot for this root.
-    async fn put(
-        &self,
-        domain: &str,
-        edition: &str,
-        root: Uuid,
-        snapshot: Snapshot,
-    ) -> Result<()>;
+    async fn put(&self, domain: &str, edition: &str, root: Uuid, snapshot: Snapshot) -> Result<()>;
 
     /// Delete the snapshot for an aggregate.
     async fn delete(&self, domain: &str, edition: &str, root: Uuid) -> Result<()>;

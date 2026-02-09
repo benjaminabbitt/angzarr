@@ -68,8 +68,12 @@ async fn test_query_with_bounds() {
         quantity: 100,
         low_stock_threshold: 10,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -120,8 +124,12 @@ async fn test_query_returns_correct_domain() {
         quantity: 50,
         low_stock_threshold: 5,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -141,7 +149,10 @@ async fn test_query_returns_correct_domain() {
 
     let root = cover.root.expect("Cover should have root");
     let root_uuid = Uuid::from_slice(&root.value).expect("Invalid UUID in root");
-    assert_eq!(root_uuid, inventory_id, "Root UUID should match inventory ID");
+    assert_eq!(
+        root_uuid, inventory_id,
+        "Root UUID should match inventory ID"
+    );
 }
 
 #[tokio::test]
@@ -160,8 +171,12 @@ async fn test_query_events_preserve_order() {
         quantity: 75,
         low_stock_threshold: 8,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());
@@ -199,8 +214,12 @@ async fn test_query_event_payloads() {
         quantity,
         low_stock_threshold: threshold,
     };
-    let command_book =
-        build_command_book("inventory", inventory_id, command, "examples.InitializeStock");
+    let command_book = build_command_book(
+        "inventory",
+        inventory_id,
+        command,
+        "examples.InitializeStock",
+    );
 
     let response = gateway_client.execute(command_book).await;
     assert!(response.is_ok());

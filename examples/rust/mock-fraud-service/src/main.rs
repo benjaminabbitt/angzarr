@@ -15,12 +15,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::post,
-    Json, Router,
-};
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{info, Level};
@@ -95,10 +90,7 @@ async fn check_fraud(
         "fraud check processed"
     );
 
-    (
-        StatusCode::OK,
-        Json(FraudCheckResponse { result }),
-    )
+    (StatusCode::OK, Json(FraudCheckResponse { result }))
 }
 
 /// Health check endpoint.
@@ -159,13 +151,17 @@ mod tests {
             .method("POST")
             .uri("/check")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"customer_id":"CUST-BAD","amount_cents":1000,"payment_method":"card"}"#))
+            .body(Body::from(
+                r#"{"customer_id":"CUST-BAD","amount_cents":1000,"payment_method":"card"}"#,
+            ))
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(response.into_body(), 1000).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), 1000)
+            .await
+            .unwrap();
         let resp: FraudCheckResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(resp.result, "declined");
     }
@@ -181,13 +177,17 @@ mod tests {
             .method("POST")
             .uri("/check")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"customer_id":"CUST-OK","amount_cents":500,"payment_method":"cash"}"#))
+            .body(Body::from(
+                r#"{"customer_id":"CUST-OK","amount_cents":500,"payment_method":"cash"}"#,
+            ))
             .unwrap();
 
         let response = app.oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(response.into_body(), 1000).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), 1000)
+            .await
+            .unwrap();
         let resp: FraudCheckResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(resp.result, "approved");
     }

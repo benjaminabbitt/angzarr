@@ -31,6 +31,6 @@ pub mod proto {
 }
 
 pub use proto_ext::{
-    CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt,
-    ProtoUuidExt, UuidExt,
+    CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt, ProtoUuidExt,
+    UuidExt,
 };

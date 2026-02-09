@@ -7,9 +7,7 @@ use sqlx::{Row, SqlitePool};
 use crate::handlers::projectors::topology::schema::{
     TopologyCorrelations, TopologyEdges, TopologyNodes,
 };
-use crate::handlers::projectors::topology::store::{
-    EdgeRecord, NodeRecord, Result, TopologyStore,
-};
+use crate::handlers::projectors::topology::store::{EdgeRecord, NodeRecord, Result, TopologyStore};
 
 /// SQLite-backed topology store.
 pub struct SqliteTopologyStore {
@@ -128,7 +126,10 @@ impl TopologyStore for SqliteTopologyStore {
                     TopologyCorrelations::CorrelationId,
                     TopologyCorrelations::Domain,
                 ])
-                .update_columns([TopologyCorrelations::EventType, TopologyCorrelations::SeenAt])
+                .update_columns([
+                    TopologyCorrelations::EventType,
+                    TopologyCorrelations::SeenAt,
+                ])
                 .to_owned(),
             )
             .to_string(SqliteQueryBuilder);
@@ -285,10 +286,7 @@ impl TopologyStore for SqliteTopologyStore {
                         TopologyEdges::EventCount,
                         Expr::col(TopologyEdges::EventCount).add(1),
                     )
-                    .update_columns([
-                        TopologyEdges::LastCorrelationId,
-                        TopologyEdges::LastSeen,
-                    ])
+                    .update_columns([TopologyEdges::LastCorrelationId, TopologyEdges::LastSeen])
                     .to_owned(),
             )
             .to_string(SqliteQueryBuilder);
@@ -349,17 +347,15 @@ impl TopologyStore for SqliteTopologyStore {
 
         let nodes = rows
             .iter()
-            .map(|r| {
-                NodeRecord {
-                    id: r.get("id"),
-                    title: r.get("title"),
-                    component_type: r.get("component_type"),
-                    domain: r.get("domain"),
-                    event_count: r.get("event_count"),
-                    last_event_type: r.get("last_event_type"),
-                    last_seen: r.get("last_seen"),
-                    created_at: r.get("created_at"),
-                }
+            .map(|r| NodeRecord {
+                id: r.get("id"),
+                title: r.get("title"),
+                component_type: r.get("component_type"),
+                domain: r.get("domain"),
+                event_count: r.get("event_count"),
+                last_event_type: r.get("last_event_type"),
+                last_seen: r.get("last_seen"),
+                created_at: r.get("created_at"),
             })
             .collect();
 

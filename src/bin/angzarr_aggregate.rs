@@ -47,8 +47,7 @@ use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEvent
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
-    aggregate_client::AggregateClient,
-    aggregate_coordinator_server::AggregateCoordinatorServer,
+    aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
     event_query_server::EventQueryServer,
 };
 use angzarr::services::{AggregateService, EventQueryService};

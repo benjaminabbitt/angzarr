@@ -66,12 +66,8 @@ pub async fn write_descriptor_annotation(
         "Writing descriptor annotation"
     );
 
-    pods.patch(
-        pod_name,
-        &PatchParams::default(),
-        &Patch::Merge(&patch),
-    )
-    .await?;
+    pods.patch(pod_name, &PatchParams::default(), &Patch::Merge(&patch))
+        .await?;
 
     info!(
         pod = %pod_name,
@@ -91,7 +87,9 @@ pub async fn write_descriptor_annotation(
 ///
 /// # Arguments
 /// * `descriptor` - Component descriptor to write
-pub async fn write_descriptor_if_k8s(descriptor: &ComponentDescriptor) -> Result<(), AnnotationError> {
+pub async fn write_descriptor_if_k8s(
+    descriptor: &ComponentDescriptor,
+) -> Result<(), AnnotationError> {
     let pod_name = match std::env::var(crate::config::POD_NAME_ENV_VAR) {
         Ok(name) => name,
         Err(_) => {

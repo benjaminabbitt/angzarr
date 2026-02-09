@@ -57,7 +57,10 @@ impl ProcessManagerContext for LocalPMContext {
         // Stamp trigger edition onto outgoing covers
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                cover.edition = Some(Edition {
+                    name: edition.clone(),
+                    divergences: vec![],
+                });
             }
         }
         Ok(PmPrepareResponse {
@@ -80,7 +83,10 @@ impl ProcessManagerContext for LocalPMContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                        c.edition = Some(Edition {
+                            name: edition.clone(),
+                            divergences: vec![],
+                        });
                     }
                 }
                 cmd
@@ -135,6 +141,7 @@ impl ProcessManagerContext for LocalPMContext {
                     cover: process_events.cover.clone(),
                     pages,
                     snapshot: None,
+                    ..Default::default()
                 };
                 if let Err(e) = self.event_bus.publish(Arc::new(full_book)).await {
                     error!(

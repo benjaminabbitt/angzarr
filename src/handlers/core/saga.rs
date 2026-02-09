@@ -19,11 +19,11 @@ use futures::future::BoxFuture;
 use tracing::{error, Instrument};
 
 use crate::bus::{BusError, EventHandler};
-use crate::proto_ext::CoverExt;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::saga::{orchestrate_saga, OutputDomainValidator, SagaContextFactory};
 use crate::proto::EventBook;
+use crate::proto_ext::CoverExt;
 use crate::utils::retry::saga_backoff;
 
 /// Event handler that orchestrates saga execution via a context factory.
@@ -86,30 +86,33 @@ impl EventHandler for SagaEventHandler {
         let validator = self.output_domain_validator.clone();
         let backoff = self.backoff;
 
-        Box::pin(async move {
-            let ctx = factory.create(book);
+        Box::pin(
+            async move {
+                let ctx = factory.create(book);
 
-            let validator_ref: Option<&OutputDomainValidator> = validator.as_deref();
-            let fetcher_ref: Option<&dyn DestinationFetcher> = fetcher.as_deref();
+                let validator_ref: Option<&OutputDomainValidator> = validator.as_deref();
+                let fetcher_ref: Option<&dyn DestinationFetcher> = fetcher.as_deref();
 
-            if let Err(e) = orchestrate_saga(
-                ctx.as_ref(),
-                executor.as_ref(),
-                fetcher_ref,
-                &saga_name,
-                &correlation_id,
-                validator_ref,
-                backoff,
-            )
-            .await
-            {
-                error!(
-                    error = %e,
-                    "Saga orchestration failed"
-                );
+                if let Err(e) = orchestrate_saga(
+                    ctx.as_ref(),
+                    executor.as_ref(),
+                    fetcher_ref,
+                    &saga_name,
+                    &correlation_id,
+                    validator_ref,
+                    backoff,
+                )
+                .await
+                {
+                    error!(
+                        error = %e,
+                        "Saga orchestration failed"
+                    );
+                }
+
+                Ok(())
             }
-
-            Ok(())
-        }.instrument(span))
+            .instrument(span),
+        )
     }
 }

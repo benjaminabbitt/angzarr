@@ -2,7 +2,10 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{CreateOrder, OrderCreated, OrderState};
-use common::{decode_command, now, require_not_empty, require_not_exists, require_positive, ProtoTypeName, Result};
+use common::{
+    decode_command, now, require_not_empty, require_not_exists, require_positive, ProtoTypeName,
+    Result,
+};
 
 use crate::errmsg;
 use crate::state::build_event_response;

@@ -190,6 +190,7 @@ impl TimeoutScheduler {
             }),
             pages: vec![event_page],
             snapshot: None,
+            next_sequence: 0,
         };
 
         debug!(

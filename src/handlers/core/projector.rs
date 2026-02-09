@@ -143,61 +143,72 @@ impl EventHandler for ProjectorEventHandler {
         let correlation_id = book.correlation_id().to_string();
         let domain = book.domain().to_string();
         let projector_name = self.name.clone();
-        let span = tracing::info_span!("projector.handle", %projector_name, %correlation_id, %domain);
+        let span =
+            tracing::info_span!("projector.handle", %projector_name, %correlation_id, %domain);
 
         let handler = self.handler.clone();
         let publisher = self.publisher.clone();
 
-        Box::pin(async move {
-            #[cfg(feature = "otel")]
-            let start = std::time::Instant::now();
+        Box::pin(
+            async move {
+                #[cfg(feature = "otel")]
+                let start = std::time::Instant::now();
 
-            let book_owned = (*book).clone();
+                let book_owned = (*book).clone();
 
-            let result: Result<(), BusError> = async {
-                let projection = handler
-                    .handle(&book_owned, ProjectionMode::Execute)
-                    .await
-                    .map_err(BusError::Grpc)?;
+                let result: Result<(), BusError> = async {
+                    let projection = handler
+                        .handle(&book_owned, ProjectionMode::Execute)
+                        .await
+                        .map_err(BusError::Grpc)?;
 
-                // If we have a publisher and the projection has content, publish it back
-                if let Some(ref publisher) = publisher {
-                    if projection.projection.is_some() || !projection.projector.is_empty() {
-                        debug!(
-                            projector = %projection.projector,
-                            sequence = projection.sequence,
-                            "Publishing projection output"
-                        );
+                    // If we have a publisher and the projection has content, publish it back
+                    if let Some(ref publisher) = publisher {
+                        if projection.projection.is_some() || !projection.projector.is_empty() {
+                            debug!(
+                                projector = %projection.projector,
+                                sequence = projection.sequence,
+                                "Publishing projection output"
+                            );
 
-                        let source_edition = book.cover.as_ref().and_then(|c| c.edition.clone());
-                        let projection_event_book =
-                            create_projection_event_book(projection, &correlation_id, source_edition);
+                            let source_edition =
+                                book.cover.as_ref().and_then(|c| c.edition.clone());
+                            let projection_event_book = create_projection_event_book(
+                                projection,
+                                &correlation_id,
+                                source_edition,
+                            );
 
-                        info!(
-                            domain = %projection_event_book.domain(),
-                            "Publishing projection for streaming"
-                        );
+                            info!(
+                                domain = %projection_event_book.domain(),
+                                "Publishing projection for streaming"
+                            );
 
-                        publisher.publish(Arc::new(projection_event_book)).await?;
+                            publisher.publish(Arc::new(projection_event_book)).await?;
+                        }
                     }
+
+                    Ok(())
+                }
+                .await;
+
+                #[cfg(feature = "otel")]
+                {
+                    use crate::utils::metrics::{self, PROJECTOR_DURATION};
+                    PROJECTOR_DURATION.record(
+                        start.elapsed().as_secs_f64(),
+                        &[
+                            metrics::component_attr("projector"),
+                            metrics::name_attr(&projector_name),
+                            metrics::domain_attr(&domain),
+                        ],
+                    );
                 }
 
-                Ok(())
+                result
             }
-            .await;
-
-            #[cfg(feature = "otel")]
-            {
-                use crate::utils::metrics::{self, PROJECTOR_DURATION};
-                PROJECTOR_DURATION.record(start.elapsed().as_secs_f64(), &[
-                    metrics::component_attr("projector"),
-                    metrics::name_attr(&projector_name),
-                    metrics::domain_attr(&domain),
-                ]);
-            }
-
-            result
-        }.instrument(span))
+            .instrument(span),
+        )
     }
 }
 
@@ -207,7 +218,11 @@ impl EventHandler for ProjectorEventHandler {
 /// can distinguish projection results from domain events. The projection
 /// is serialized as the event payload - clients deserialize the Projection
 /// proto from the event.
-fn create_projection_event_book(projection: Projection, correlation_id: &str, source_edition: Option<crate::proto::Edition>) -> EventBook {
+fn create_projection_event_book(
+    projection: Projection,
+    correlation_id: &str,
+    source_edition: Option<crate::proto::Edition>,
+) -> EventBook {
     let projector_name = projection.projector.clone();
 
     // Create a cover with special projection domain
@@ -246,5 +261,6 @@ fn create_projection_event_book(projection: Projection, correlation_id: &str, so
             }),
             created_at: None,
         }],
+        ..Default::default()
     }
 }

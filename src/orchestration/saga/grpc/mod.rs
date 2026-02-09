@@ -11,11 +11,13 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::bus::EventBus;
-use crate::proto_ext::EditionExt;
 use crate::config::SagaCompensationConfig;
 use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
 use crate::proto::saga_client::SagaClient;
-use crate::proto::{CommandBook, Cover, Edition, EventBook, SagaExecuteRequest, SagaPrepareRequest};
+use crate::proto::{
+    CommandBook, Cover, Edition, EventBook, SagaExecuteRequest, SagaPrepareRequest,
+};
+use crate::proto_ext::EditionExt;
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::saga_compensation::{build_revoke_command_book, CompensationContext};
 
@@ -75,7 +77,10 @@ impl SagaRetryContext for GrpcSagaContext {
         let mut covers = response.into_inner().destinations;
         for cover in &mut covers {
             if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                cover.edition = Some(Edition {
+                    name: edition.clone(),
+                    divergences: vec![],
+                });
             }
         }
         Ok(covers)
@@ -105,7 +110,10 @@ impl SagaRetryContext for GrpcSagaContext {
             .map(|mut cmd| {
                 if let Some(ref mut c) = cmd.cover {
                     if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition { name: edition.clone(), divergences: vec![] });
+                        c.edition = Some(Edition {
+                            name: edition.clone(),
+                            divergences: vec![],
+                        });
                     }
                 }
                 cmd

@@ -54,11 +54,8 @@ fn test_subscriber_config() {
 
 #[test]
 fn test_sasl_config() {
-    let config = KafkaEventBusConfig::publisher("localhost:9092").with_sasl(
-        "user",
-        "pass",
-        "SCRAM-SHA-256",
-    );
+    let config =
+        KafkaEventBusConfig::publisher("localhost:9092").with_sasl("user", "pass", "SCRAM-SHA-256");
     assert_eq!(config.sasl_username, Some("user".to_string()));
     assert_eq!(config.sasl_password, Some("pass".to_string()));
     assert_eq!(config.sasl_mechanism, Some("SCRAM-SHA-256".to_string()));

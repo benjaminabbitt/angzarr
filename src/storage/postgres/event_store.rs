@@ -11,9 +11,9 @@ use sqlx::{Acquire, PgPool, Row};
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
+use crate::proto::EventPage;
 use crate::storage::schema::Events;
 use crate::storage::{EventStore, Result};
-use crate::proto::EventPage;
 
 /// PostgreSQL implementation of EventStore.
 pub struct PostgresEventStore {
@@ -36,13 +36,18 @@ impl PostgresEventStore {
     /// Calls `get_edition_events_from(domain, edition, root, from, explicit_divergence)`
     /// which handles implicit divergence (from first edition event) and main timeline
     /// merging.
-    async fn composite_read(&self, domain: &str, edition: &str, root: &str, from: u32) -> Result<Vec<EventPage>> {
+    async fn composite_read(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: &str,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         // Use stored procedure for composite read
         // The procedure handles: main timeline query if edition is 'angzarr',
         // or composite query (main + edition) with implicit divergence
-        let query = format!(
-            "SELECT event_data FROM get_edition_events_from($1, $2, $3::uuid, $4, NULL)"
-        );
+        let query =
+            format!("SELECT event_data FROM get_edition_events_from($1, $2, $3::uuid, $4, NULL)");
 
         let rows = sqlx::query(&query)
             .bind(domain)
@@ -63,7 +68,12 @@ impl PostgresEventStore {
     }
 
     /// Simple query for main timeline events (no composite logic needed).
-    async fn query_main_timeline(&self, domain: &str, root: &str, from: u32) -> Result<Vec<EventPage>> {
+    async fn query_main_timeline(
+        &self,
+        domain: &str,
+        root: &str,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         let query = Query::select()
             .column(Events::EventData)
             .from(Events::Table)
@@ -132,8 +142,11 @@ impl EventStore for PostgresEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-            let sequence =
-                crate::storage::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let sequence = crate::storage::helpers::resolve_sequence(
+                &event,
+                base_sequence,
+                &mut auto_sequence,
+            )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
 
             let query = Query::insert()
@@ -171,7 +184,13 @@ impl EventStore for PostgresEventStore {
         self.get_from(domain, edition, root, 0).await
     }
 
-    async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
+    async fn get_from(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         let root_str = root.to_string();
 
         // Main timeline: simple query
@@ -378,7 +397,10 @@ impl EventStore for PostgresEventStore {
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map.entry((domain, edition, root)).or_default().push(event);
+            books_map
+                .entry((domain, edition, root))
+                .or_default()
+                .push(event);
         }
 
         // Convert to EventBooks

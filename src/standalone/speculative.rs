@@ -19,12 +19,12 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::proto::{CommandBook, Cover, Edition, EventBook, EventPage, Projection, Uuid as ProtoUuid};
+use crate::proto::{
+    CommandBook, Cover, Edition, EventBook, EventPage, Projection, Uuid as ProtoUuid,
+};
 
 use super::router::DomainStorage;
-use super::traits::{
-    ProcessManagerHandler, ProjectionMode, ProjectorHandler, SagaHandler,
-};
+use super::traits::{ProcessManagerHandler, ProjectionMode, ProjectorHandler, SagaHandler};
 
 // ============================================================================
 // Types
@@ -119,9 +119,10 @@ impl SpeculativeExecutor {
         source: &EventBook,
         domain_specs: &HashMap<String, DomainStateSpec>,
     ) -> Result<Vec<CommandBook>, Status> {
-        let handler = self.sagas.get(name).ok_or_else(|| {
-            Status::not_found(format!("No saga registered with name: {name}"))
-        })?;
+        let handler = self
+            .sagas
+            .get(name)
+            .ok_or_else(|| Status::not_found(format!("No saga registered with name: {name}")))?;
 
         // Phase 1: prepare — declare destination covers
         let covers = handler.prepare(source).await?;
@@ -163,11 +164,7 @@ impl SpeculativeExecutor {
                 );
             }
             let resolved = self
-                .resolve_state(
-                    pm_domain,
-                    root,
-                    &spec.unwrap_or(DomainStateSpec::Current),
-                )
+                .resolve_state(pm_domain, root, &spec.unwrap_or(DomainStateSpec::Current))
                 .await?;
             if resolved.pages.is_empty() {
                 None
@@ -207,8 +204,7 @@ impl SpeculativeExecutor {
         let destinations = self.resolve_destinations(&covers, domain_specs).await?;
 
         // Phase 3: handle — produce commands + PM events
-        let (commands, process_events) =
-            handler.handle(trigger, pm_state.as_ref(), &destinations);
+        let (commands, process_events) = handler.handle(trigger, pm_state.as_ref(), &destinations);
 
         Ok(PmSpeculativeResult {
             commands,
@@ -228,9 +224,7 @@ impl SpeculativeExecutor {
         spec: &DomainStateSpec,
     ) -> Result<EventBook, Status> {
         let storage = self.domain_stores.get(domain).ok_or_else(|| {
-            Status::not_found(format!(
-                "No storage configured for domain: {domain}"
-            ))
+            Status::not_found(format!("No storage configured for domain: {domain}"))
         })?;
 
         match spec {
@@ -318,10 +312,14 @@ impl SpeculativeExecutor {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(Edition { name: DEFAULT_EDITION.to_string(), divergences: vec![] }),
+                edition: Some(Edition {
+                    name: DEFAULT_EDITION.to_string(),
+                    divergences: vec![],
+                }),
             }),
             snapshot: None,
             pages,
+            ..Default::default()
         }
     }
 
@@ -357,10 +355,7 @@ mod tests {
     fn test_root_from_event_book_valid() {
         let root = Uuid::new_v4();
         let book = SpeculativeExecutor::build_event_book("order", root, vec![]);
-        assert_eq!(
-            SpeculativeExecutor::root_from_event_book(&book),
-            Some(root)
-        );
+        assert_eq!(SpeculativeExecutor::root_from_event_book(&book), Some(root));
     }
 
     #[test]

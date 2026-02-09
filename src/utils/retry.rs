@@ -89,7 +89,10 @@ pub trait RetryableOperation: Send + Sync {
 ///
 /// The operation is retried until it succeeds, fails with a fatal error,
 /// or the backoff policy gives up.
-pub async fn run_with_retry<Op>(mut operation: Op, backoff: ExponentialBuilder) -> Result<Op::Success, Op::Failure>
+pub async fn run_with_retry<Op>(
+    mut operation: Op,
+    backoff: ExponentialBuilder,
+) -> Result<Op::Success, Op::Failure>
 where
     Op: RetryableOperation,
 {
@@ -138,7 +141,6 @@ where
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

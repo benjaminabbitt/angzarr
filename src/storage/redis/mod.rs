@@ -52,7 +52,10 @@ mod tests {
             .expect("Failed to add events");
 
         // Retrieve events
-        let retrieved = store.get(domain, "angzarr", root).await.expect("Failed to get events");
+        let retrieved = store
+            .get(domain, "angzarr", root)
+            .await
+            .expect("Failed to get events");
         assert_eq!(retrieved.len(), 2);
 
         // Check next sequence

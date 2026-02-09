@@ -11,12 +11,12 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::SagaCompensationConfig;
-use crate::proto_ext::CoverExt;
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage,
     RevocationResponse, RevokeEventCommand, SagaCommandOrigin, SagaCompensationFailed,
     Uuid as ProtoUuid,
 };
+use crate::proto_ext::CoverExt;
 
 /// Result type for compensation operations.
 pub type Result<T> = std::result::Result<T, CompensationError>;
@@ -167,6 +167,7 @@ pub fn build_compensation_failed_event_book(
             }),
         }],
         snapshot: None,
+        ..Default::default()
     }
 }
 

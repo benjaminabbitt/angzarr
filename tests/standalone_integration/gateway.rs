@@ -7,7 +7,11 @@ struct GatewayTestProjector;
 
 #[async_trait]
 impl ProjectorHandler for GatewayTestProjector {
-    async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
+    async fn handle(
+        &self,
+        events: &EventBook,
+        _mode: ProjectionMode,
+    ) -> Result<Projection, Status> {
         Ok(Projection {
             projector: "receipt".to_string(),
             cover: events.cover.clone(),
@@ -99,7 +103,8 @@ async fn test_query_events_with_bounds() {
 
     // Execute multiple commands
     for i in 0..5 {
-        let command = create_test_command("orders", root, format!("cmd-{}", i).as_bytes(), i as u32);
+        let command =
+            create_test_command("orders", root, format!("cmd-{}", i).as_bytes(), i as u32);
         client.execute(command).await.expect("Command failed");
     }
 
@@ -176,11 +181,18 @@ async fn test_list_registered_domains() {
     let router = runtime.router();
     let domains = router.domains();
     // 3 user domains + 1 auto-registered _angzarr meta domain
-    assert_eq!(domains.len(), 4, "Should have 4 domains (3 user + _angzarr)");
+    assert_eq!(
+        domains.len(),
+        4,
+        "Should have 4 domains (3 user + _angzarr)"
+    );
     assert!(domains.contains(&"orders"), "Should contain orders");
     assert!(domains.contains(&"products"), "Should contain products");
     assert!(domains.contains(&"customers"), "Should contain customers");
-    assert!(domains.contains(&"_angzarr"), "Should contain _angzarr meta domain");
+    assert!(
+        domains.contains(&"_angzarr"),
+        "Should contain _angzarr meta domain"
+    );
 }
 
 /// Test list aggregate roots in domain.

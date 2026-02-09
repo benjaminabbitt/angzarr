@@ -66,8 +66,8 @@ pub fn init_tracing() {
 
         opentelemetry::global::set_tracer_provider(tracer_provider.clone());
 
-        let otel_trace_layer = tracing_opentelemetry::layer()
-            .with_tracer(tracer_provider.tracer("angzarr"));
+        let otel_trace_layer =
+            tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("angzarr"));
 
         // OTLP log exporter — provider stored in LOG_PROVIDER static to keep
         // the batch exporter alive for the process lifetime.
@@ -141,15 +141,14 @@ pub fn init_tracing() {
 /// Uses `OTEL_SERVICE_NAME_ENV_VAR` and `OTEL_RESOURCE_ATTRIBUTES` per OTel spec.
 #[cfg(feature = "otel")]
 fn otel_resource() -> opentelemetry_sdk::Resource {
+    use crate::config::OTEL_SERVICE_NAME_ENV_VAR;
     use opentelemetry::KeyValue;
     use opentelemetry_sdk::Resource;
-    use crate::config::OTEL_SERVICE_NAME_ENV_VAR;
 
-    let service_name = std::env::var(OTEL_SERVICE_NAME_ENV_VAR).unwrap_or_else(|_| "angzarr".to_string());
+    let service_name =
+        std::env::var(OTEL_SERVICE_NAME_ENV_VAR).unwrap_or_else(|_| "angzarr".to_string());
 
-    Resource::new(vec![
-        KeyValue::new("service.name", service_name),
-    ])
+    Resource::new(vec![KeyValue::new("service.name", service_name)])
 }
 
 /// Graceful shutdown of OpenTelemetry providers.

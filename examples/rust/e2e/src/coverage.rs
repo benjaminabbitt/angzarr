@@ -197,7 +197,10 @@ mod integration {
             .await
             .expect("query failed");
 
-        assert!(has_event(&events, "ShipmentCreated"), "ShipmentCreated missing");
+        assert!(
+            has_event(&events, "ShipmentCreated"),
+            "ShipmentCreated missing"
+        );
         assert!(has_event(&events, "ItemsPicked"), "ItemsPicked missing");
         assert!(has_event(&events, "ItemsPacked"), "ItemsPacked missing");
         assert!(has_event(&events, "Shipped"), "Shipped missing");

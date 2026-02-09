@@ -21,7 +21,13 @@ impl SqlitePositionStore {
 
 #[async_trait]
 impl PositionStore for SqlitePositionStore {
-    async fn get(&self, handler: &str, domain: &str, edition: &str, root: &[u8]) -> Result<Option<u32>> {
+    async fn get(
+        &self,
+        handler: &str,
+        domain: &str,
+        edition: &str,
+        root: &[u8],
+    ) -> Result<Option<u32>> {
         let query = Query::select()
             .column(Positions::Sequence)
             .from(Positions::Table)
@@ -42,7 +48,14 @@ impl PositionStore for SqlitePositionStore {
         }
     }
 
-    async fn put(&self, handler: &str, domain: &str, edition: &str, root: &[u8], sequence: u32) -> Result<()> {
+    async fn put(
+        &self,
+        handler: &str,
+        domain: &str,
+        edition: &str,
+        root: &[u8],
+        sequence: u32,
+    ) -> Result<()> {
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         let query = Query::insert()
@@ -64,9 +77,14 @@ impl PositionStore for SqlitePositionStore {
                 updated_at.into(),
             ])
             .on_conflict(
-                OnConflict::columns([Positions::Handler, Positions::Edition, Positions::Domain, Positions::Root])
-                    .update_columns([Positions::Sequence, Positions::UpdatedAt])
-                    .to_owned(),
+                OnConflict::columns([
+                    Positions::Handler,
+                    Positions::Edition,
+                    Positions::Domain,
+                    Positions::Root,
+                ])
+                .update_columns([Positions::Sequence, Positions::UpdatedAt])
+                .to_owned(),
             )
             .to_string(SqliteQueryBuilder);
 

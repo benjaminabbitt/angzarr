@@ -7,6 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
+use crate::proto_ext::calculate_set_next_seq;
 use crate::storage::{EventStore, Result, SnapshotStore, StorageError};
 
 /// Extract domain, root UUID, and correlation_id from an EventBook.
@@ -74,18 +75,24 @@ impl EventBookRepository {
             .get_from(domain, edition, root, from_sequence)
             .await?;
 
-        Ok(EventBook {
+        let mut book = EventBook {
             cover: Some(Cover {
                 domain: domain.to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
+                edition: Some(Edition {
+                    name: edition.to_string(),
+                    divergences: vec![],
+                }),
             }),
             snapshot,
             pages: events,
-        })
+            ..Default::default()
+        };
+        calculate_set_next_seq(&mut book);
+        Ok(book)
     }
 
     /// Load an EventBook with events in a specific range.
@@ -97,20 +104,29 @@ impl EventBookRepository {
         from: u32,
         to: u32,
     ) -> Result<EventBook> {
-        let events = self.event_store.get_from_to(domain, edition, root, from, to).await?;
+        let events = self
+            .event_store
+            .get_from_to(domain, edition, root, from, to)
+            .await?;
 
-        Ok(EventBook {
+        let mut book = EventBook {
             cover: Some(Cover {
                 domain: domain.to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
+                edition: Some(Edition {
+                    name: edition.to_string(),
+                    divergences: vec![],
+                }),
             }),
             snapshot: None,
             pages: events,
-        })
+            ..Default::default()
+        };
+        calculate_set_next_seq(&mut book);
+        Ok(book)
     }
 
     /// Load an EventBook as-of a timestamp (no snapshots).
@@ -129,18 +145,24 @@ impl EventBookRepository {
             .get_until_timestamp(domain, edition, root, until)
             .await?;
 
-        Ok(EventBook {
+        let mut book = EventBook {
             cover: Some(Cover {
                 domain: domain.to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
+                edition: Some(Edition {
+                    name: edition.to_string(),
+                    divergences: vec![],
+                }),
             }),
             snapshot: None,
             pages: events,
-        })
+            ..Default::default()
+        };
+        calculate_set_next_seq(&mut book);
+        Ok(book)
     }
 
     /// Load an EventBook as-of a sequence number (no snapshots).
@@ -159,18 +181,24 @@ impl EventBookRepository {
             .get_from_to(domain, edition, root, 0, sequence.saturating_add(1))
             .await?;
 
-        Ok(EventBook {
+        let mut book = EventBook {
             cover: Some(Cover {
                 domain: domain.to_string(),
                 root: Some(ProtoUuid {
                     value: root.as_bytes().to_vec(),
                 }),
                 correlation_id: String::new(),
-                edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
+                edition: Some(Edition {
+                    name: edition.to_string(),
+                    divergences: vec![],
+                }),
             }),
             snapshot: None,
             pages: events,
-        })
+            ..Default::default()
+        };
+        calculate_set_next_seq(&mut book);
+        Ok(book)
     }
 
     /// Persist an EventBook.
@@ -179,7 +207,13 @@ impl EventBookRepository {
     pub async fn put(&self, edition: &str, book: &EventBook) -> Result<()> {
         let (domain, root_uuid, correlation_id) = extract_cover(book)?;
         self.event_store
-            .add(domain, edition, root_uuid, book.pages.clone(), correlation_id)
+            .add(
+                domain,
+                edition,
+                root_uuid,
+                book.pages.clone(),
+                correlation_id,
+            )
             .await
     }
 }

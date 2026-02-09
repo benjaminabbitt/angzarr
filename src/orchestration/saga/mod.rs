@@ -255,10 +255,7 @@ pub async fn orchestrate_saga(
         }
     }
 
-    debug!(
-        commands = commands.len(),
-        "Saga produced commands"
-    );
+    debug!(commands = commands.len(), "Saga produced commands");
 
     // Phase 4: Validate output domains
     if let Some(validator) = output_domain_validator {
@@ -287,10 +284,13 @@ pub async fn orchestrate_saga(
     #[cfg(feature = "otel")]
     {
         use crate::utils::metrics::{self, SAGA_DURATION};
-        SAGA_DURATION.record(start.elapsed().as_secs_f64(), &[
-            metrics::component_attr("saga"),
-            metrics::name_attr(saga_name),
-        ]);
+        SAGA_DURATION.record(
+            start.elapsed().as_secs_f64(),
+            &[
+                metrics::component_attr("saga"),
+                metrics::name_attr(saga_name),
+            ],
+        );
     }
 
     Ok(())

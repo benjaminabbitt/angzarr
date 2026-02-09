@@ -6,9 +6,9 @@ use sea_query::{Expr, OnConflict, PostgresQueryBuilder, Query};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::proto::Snapshot;
 use crate::storage::schema::Snapshots;
 use crate::storage::{Result, SnapshotStore};
-use crate::proto::Snapshot;
 
 /// PostgreSQL implementation of SnapshotStore.
 pub struct PostgresSnapshotStore {

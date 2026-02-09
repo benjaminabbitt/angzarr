@@ -119,9 +119,8 @@ impl Checkpoint {
         }
 
         let contents = tokio::fs::read_to_string(&self.config.file_path).await?;
-        let data: CheckpointData = serde_json::from_str(&contents).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let data: CheckpointData = serde_json::from_str(&contents)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
         info!(
             path = %self.config.file_path.display(),
@@ -200,9 +199,8 @@ impl Checkpoint {
         }
 
         let data = self.data.read().await.clone();
-        let json = serde_json::to_string_pretty(&data).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let json = serde_json::to_string_pretty(&data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
         // Write atomically via temp file
         let temp_path = self.config.file_path.with_extension("json.tmp");

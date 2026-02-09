@@ -42,8 +42,8 @@ use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
-use angzarr::config::{COMMAND_ADDRESS_ENV_VAR, STATIC_ENDPOINTS_ENV_VAR};
 use angzarr::config::SagaCompensationConfig;
+use angzarr::config::{COMMAND_ADDRESS_ENV_VAR, STATIC_ENDPOINTS_ENV_VAR};
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::command::grpc::SingleClientExecutor;
 use angzarr::orchestration::command::CommandExecutor;
@@ -166,8 +166,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
         SagaEventHandler::from_factory(factory, executor, None)
     } else {
-        error!("Neither {} nor {} set - saga cannot execute commands", STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR);
-        return Err(format!("Saga sidecar requires {} or {}", STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR).into());
+        error!(
+            "Neither {} nor {} set - saga cannot execute commands",
+            STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR
+        );
+        return Err(format!(
+            "Saga sidecar requires {} or {}",
+            STATIC_ENDPOINTS_ENV_VAR, COMMAND_ADDRESS_ENV_VAR
+        )
+        .into());
     };
 
     let queue_name = format!("saga-{}", bootstrap.domain);

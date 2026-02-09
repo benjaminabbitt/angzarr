@@ -63,7 +63,11 @@ impl EventBus for DeterministicLossyBus {
         self.inner.start_consuming().await
     }
 
-    async fn create_subscriber(&self, name: &str, domain_filter: Option<&str>) -> BusResult<Arc<dyn EventBus>> {
+    async fn create_subscriber(
+        &self,
+        name: &str,
+        domain_filter: Option<&str>,
+    ) -> BusResult<Arc<dyn EventBus>> {
         self.inner.create_subscriber(name, domain_filter).await
     }
 }
@@ -98,8 +102,12 @@ async fn test_runtime_with_passthrough_bus() {
 
     // Execute commands
     for i in 0..10 {
-        let cmd =
-            create_test_command("orders", Uuid::new_v4(), format!("lossy-{}", i).as_bytes(), 0);
+        let cmd = create_test_command(
+            "orders",
+            Uuid::new_v4(),
+            format!("lossy-{}", i).as_bytes(),
+            0,
+        );
         client.execute(cmd).await.expect("Command failed");
     }
 
@@ -146,8 +154,12 @@ async fn test_runtime_with_deterministic_drops() {
 
     // Execute 10 commands
     for i in 0..10 {
-        let cmd =
-            create_test_command("orders", Uuid::new_v4(), format!("lossy-{}", i).as_bytes(), 0);
+        let cmd = create_test_command(
+            "orders",
+            Uuid::new_v4(),
+            format!("lossy-{}", i).as_bytes(),
+            0,
+        );
         client.execute(cmd).await.expect("Command failed");
     }
 
@@ -187,7 +199,12 @@ async fn test_lossy_bus_commands_still_succeed() {
     let client = runtime.command_client();
 
     for i in 0..5 {
-        let cmd = create_test_command("orders", Uuid::new_v4(), format!("drop-all-{}", i).as_bytes(), 0);
+        let cmd = create_test_command(
+            "orders",
+            Uuid::new_v4(),
+            format!("drop-all-{}", i).as_bytes(),
+            0,
+        );
         let result = client.execute(cmd).await;
         assert!(
             result.is_ok(),

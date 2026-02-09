@@ -28,6 +28,10 @@ cucumber.workspace = true
 futures.workspace = true
 tokio-stream.workspace = true
 
+[features]
+gateway = []
+
 [[test]]
 name = "acceptance"
 harness = false
+required-features = ["gateway"]

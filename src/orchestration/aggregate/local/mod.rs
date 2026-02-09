@@ -12,12 +12,43 @@ use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
-use crate::proto::{event_page, Cover, Edition, EventBook, Projection, SyncEventBook, Uuid as ProtoUuid};
-use crate::proto_ext::CoverExt;
+use crate::proto::{
+    event_page, Cover, Edition, EventBook, EventPage, Projection, Snapshot, SyncEventBook,
+    Uuid as ProtoUuid,
+};
+use crate::proto_ext::{calculate_set_next_seq, CoverExt};
 use crate::standalone::DomainStorage;
 use crate::storage::StorageError;
 
 use super::{AggregateContext, TemporalQuery};
+
+/// Build an EventBook with proper next_sequence set.
+fn build_event_book(
+    domain: &str,
+    edition: &str,
+    root: Uuid,
+    pages: Vec<EventPage>,
+    snapshot: Option<Snapshot>,
+) -> EventBook {
+    let mut book = EventBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(ProtoUuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: String::new(),
+            edition: Some(Edition {
+                name: edition.to_string(),
+                divergences: vec![],
+            }),
+        }),
+        pages,
+        snapshot,
+        ..Default::default()
+    };
+    calculate_set_next_seq(&mut book);
+    book
+}
 
 /// Extract sequence number from an EventPage.
 fn extract_sequence(page: Option<&crate::proto::EventPage>) -> u32 {
@@ -55,10 +86,7 @@ impl LocalAggregateContext {
     }
 
     /// Create without service discovery (no sync projectors).
-    pub fn without_discovery(
-        storage: DomainStorage,
-        event_bus: Arc<dyn EventBus>,
-    ) -> Self {
+    pub fn without_discovery(storage: DomainStorage, event_bus: Arc<dyn EventBus>) -> Self {
         Self {
             storage,
             discovery: None,
@@ -149,18 +177,7 @@ impl AggregateContext for LocalAggregateContext {
                     (events, None)
                 };
 
-                Ok(EventBook {
-                    cover: Some(Cover {
-                        domain: domain.to_string(),
-                        root: Some(ProtoUuid {
-                            value: root.as_bytes().to_vec(),
-                        }),
-                        correlation_id: String::new(),
-                        edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
-                    }),
-                    pages: events,
-                    snapshot: snapshot_data,
-                })
+                Ok(build_event_book(domain, edition, root, events, snapshot_data))
             }
             TemporalQuery::AsOfSequence(seq) => {
                 // Get events from 0 to sequence (inclusive)
@@ -173,18 +190,7 @@ impl AggregateContext for LocalAggregateContext {
                         Status::internal(format!("Failed to load temporal events: {e}"))
                     })?;
 
-                Ok(EventBook {
-                    cover: Some(Cover {
-                        domain: domain.to_string(),
-                        root: Some(ProtoUuid {
-                            value: root.as_bytes().to_vec(),
-                        }),
-                        correlation_id: String::new(),
-                        edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
-                    }),
-                    pages: events,
-                    snapshot: None,
-                })
+                Ok(build_event_book(domain, edition, root, events, None))
             }
             TemporalQuery::AsOfTimestamp(ts) => {
                 let events = self
@@ -196,18 +202,7 @@ impl AggregateContext for LocalAggregateContext {
                         Status::internal(format!("Failed to load temporal events: {e}"))
                     })?;
 
-                Ok(EventBook {
-                    cover: Some(Cover {
-                        domain: domain.to_string(),
-                        root: Some(ProtoUuid {
-                            value: root.as_bytes().to_vec(),
-                        }),
-                        correlation_id: String::new(),
-                        edition: Some(Edition { name: edition.to_string(), divergences: vec![] }),
-                    }),
-                    pages: events,
-                    snapshot: None,
-                })
+                Ok(build_event_book(domain, edition, root, events, None))
             }
         }
     }
@@ -259,6 +254,7 @@ impl AggregateContext for LocalAggregateContext {
                 cover,
                 pages: vec![],
                 snapshot: received.snapshot.clone(),
+                ..Default::default()
             });
         }
 
@@ -285,10 +281,9 @@ impl AggregateContext for LocalAggregateContext {
                 .add(domain, edition, root, new_pages.clone(), correlation_id)
                 .await
                 .map_err(|e| match e {
-                    StorageError::SequenceConflict { expected, actual } => Status::aborted(format!(
-                        "Sequence conflict: expected {}, got {}",
-                        expected, actual
-                    )),
+                    StorageError::SequenceConflict { expected, actual } => Status::aborted(
+                        format!("Sequence conflict: expected {}, got {}", expected, actual),
+                    ),
                     _ => Status::internal(format!("Failed to persist events: {e}")),
                 })?;
         }
@@ -311,7 +306,9 @@ impl AggregateContext for LocalAggregateContext {
                         .snapshot_store
                         .put(domain, edition, root, persisted_snapshot)
                         .await
-                        .map_err(|e| Status::internal(format!("Failed to persist snapshot: {e}")))?;
+                        .map_err(|e| {
+                            Status::internal(format!("Failed to persist snapshot: {e}"))
+                        })?;
                 }
             }
         }
@@ -321,13 +318,17 @@ impl AggregateContext for LocalAggregateContext {
             if c.correlation_id.is_empty() {
                 c.correlation_id = correlation_id.to_string();
             }
-            c.edition = Some(Edition { name: edition.to_string(), divergences: vec![] });
+            c.edition = Some(Edition {
+                name: edition.to_string(),
+                divergences: vec![],
+            });
             c
         });
         Ok(EventBook {
             cover,
             pages: new_pages,
             snapshot: received.snapshot.clone(),
+            ..Default::default()
         })
     }
 
@@ -356,17 +357,27 @@ impl AggregateContext for LocalAggregateContext {
         #[cfg(feature = "otel")]
         {
             use crate::utils::metrics::{self, BUS_PUBLISH_DURATION, BUS_PUBLISH_TOTAL};
-            let outcome = if publish_result.is_ok() { "success" } else { "error" };
-            BUS_PUBLISH_DURATION.record(publish_start.elapsed().as_secs_f64(), &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&routing_key),
-                metrics::outcome_attr(outcome),
-            ]);
-            BUS_PUBLISH_TOTAL.add(1, &[
-                metrics::component_attr("aggregate"),
-                metrics::domain_attr(&routing_key),
-                metrics::outcome_attr(outcome),
-            ]);
+            let outcome = if publish_result.is_ok() {
+                "success"
+            } else {
+                "error"
+            };
+            BUS_PUBLISH_DURATION.record(
+                publish_start.elapsed().as_secs_f64(),
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&routing_key),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
+            BUS_PUBLISH_TOTAL.add(
+                1,
+                &[
+                    metrics::component_attr("aggregate"),
+                    metrics::domain_attr(&routing_key),
+                    metrics::outcome_attr(outcome),
+                ],
+            );
         }
 
         if let Err(e) = publish_result {

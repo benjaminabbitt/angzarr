@@ -23,10 +23,10 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::proto::{
-    aggregate_client::AggregateClient, event_page, BusinessResponse, CommandBook, CommandResponse,
+    aggregate_client::AggregateClient, BusinessResponse, CommandBook, CommandResponse,
     ContextualCommand, EventBook, Projection,
 };
-use crate::proto_ext::CoverExt;
+use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventBookExt};
 use crate::utils::response_builder::extract_events_from_response;
 use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -175,19 +175,6 @@ pub fn extract_command_sequence(command: &CommandBook) -> u32 {
     command.pages.first().map(|p| p.sequence).unwrap_or(0)
 }
 
-/// Compute next expected sequence from an EventBook.
-pub fn compute_next_sequence(events: &EventBook) -> u32 {
-    events
-        .pages
-        .last()
-        .and_then(|p| match &p.sequence {
-            Some(event_page::Sequence::Num(n)) => Some(n + 1),
-            _ => None,
-        })
-        .or_else(|| events.snapshot.as_ref().map(|s| s.sequence + 1))
-        .unwrap_or(0)
-}
-
 /// Default edition name for the canonical (main) timeline.
 pub const DEFAULT_EDITION: &str = "angzarr";
 
@@ -252,7 +239,14 @@ impl<'a> RetryableOperation for AggregateOperation<'a> {
     }
 
     async fn try_execute(&mut self) -> RetryOutcome<Self::Success, Self::Failure> {
-        match execute_mode(self.ctx, self.business, self.command_book.clone(), self.validate_sequence).await {
+        match execute_mode(
+            self.ctx,
+            self.business,
+            self.command_book.clone(),
+            self.validate_sequence,
+        )
+        .await
+        {
             Ok(response) => RetryOutcome::Success(response),
             Err(status) => {
                 if is_retryable_status(&status) {
@@ -282,7 +276,11 @@ pub async fn execute_command_with_retry(
     run_with_retry(operation, backoff).await
 }
 
-#[tracing::instrument(name = "aggregate.execute", skip_all, fields(domain, edition, root_uuid))]
+#[tracing::instrument(
+    name = "aggregate.execute",
+    skip_all,
+    fields(domain, edition, root_uuid)
+)]
 async fn execute_mode(
     ctx: &dyn AggregateContext,
     business: &dyn ClientLogic,
@@ -291,8 +289,7 @@ async fn execute_mode(
 ) -> Result<CommandResponse, Status> {
     let (domain, root_uuid) = parse_command_cover(&command_book)?;
     let edition = extract_edition(&command_book);
-    let correlation_id =
-        crate::orchestration::correlation::ensure_correlation_id(&command_book)?;
+    let correlation_id = crate::orchestration::correlation::ensure_correlation_id(&command_book)?;
 
     let span = tracing::Span::current();
     span.record("domain", domain.as_str());
@@ -317,7 +314,7 @@ async fn execute_mode(
     // Validate command sequence against loaded events
     if validate_sequence {
         let expected = extract_command_sequence(&command_book);
-        let actual = compute_next_sequence(&prior_events);
+        let actual = prior_events.next_sequence();
         if expected != actual {
             return Err(Status::aborted(format!(
                 "Sequence mismatch: command expects {expected}, aggregate at {actual}"
@@ -338,9 +335,19 @@ async fn execute_mode(
     let received_events = extract_events_from_response(response, correlation_id.to_string())?;
 
     // Persist (compares prior with received to detect new events/snapshot)
-    let persisted = ctx
-        .persist_events(&prior_events, &received_events, &domain, &edition, root_uuid, &correlation_id)
+    let mut persisted = ctx
+        .persist_events(
+            &prior_events,
+            &received_events,
+            &domain,
+            &edition,
+            root_uuid,
+            &correlation_id,
+        )
         .await?;
+
+    // Set next_sequence on persisted EventBook for callers
+    calculate_set_next_seq(&mut persisted);
 
     // Post-persist: publish + sync projectors
     let projections = ctx.post_persist(&persisted).await?;

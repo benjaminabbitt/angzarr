@@ -143,8 +143,9 @@ mod tests {
                 correlation_id: String::new(),
                 edition: None,
             }),
-            snapshot: None,
             pages,
+            snapshot: None,
+            ..Default::default()
         }
     }
 

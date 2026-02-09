@@ -8,6 +8,7 @@ fn test_is_complete_empty_book() {
         cover: Some(make_cover("test")),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     assert!(is_complete(&book));
@@ -22,6 +23,7 @@ fn test_is_complete_with_snapshot() {
             sequence: 5,
             state: None,
         }),
+        ..Default::default()
     };
 
     assert!(is_complete(&book));
@@ -33,6 +35,7 @@ fn test_is_complete_starts_at_zero() {
         cover: Some(make_cover("test")),
         pages: vec![make_event_page(0), make_event_page(1), make_event_page(2)],
         snapshot: None,
+        ..Default::default()
     };
 
     assert!(is_complete(&book));
@@ -44,6 +47,7 @@ fn test_is_incomplete_missing_history() {
         cover: Some(make_cover("test")),
         pages: vec![make_event_page(5), make_event_page(6)], // Missing 0-4
         snapshot: None,
+        ..Default::default()
     };
 
     assert!(!is_complete(&book));
@@ -55,6 +59,7 @@ fn test_is_incomplete_starts_at_nonzero() {
         cover: Some(make_cover("test")),
         pages: vec![make_event_page(3)], // Missing 0-2
         snapshot: None,
+        ..Default::default()
     };
 
     assert!(!is_complete(&book));
@@ -74,6 +79,7 @@ fn test_extract_identity_success() {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let (domain, extracted_root) = extract_identity(&book).unwrap();
@@ -87,6 +93,7 @@ fn test_extract_identity_missing_cover() {
         cover: None,
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = extract_identity(&book);
@@ -104,6 +111,7 @@ fn test_extract_identity_missing_root() {
         }),
         pages: vec![],
         snapshot: None,
+        ..Default::default()
     };
 
     let result = extract_identity(&book);
@@ -197,7 +205,8 @@ mod grpc_integration {
 
         let mut repairer = EventBookRepairer::connect(&addr.to_string()).await.unwrap();
 
-        let incomplete_book = make_event_book_with_root(domain, root, vec![test_event(4, "Completed")]);
+        let incomplete_book =
+            make_event_book_with_root(domain, root, vec![test_event(4, "Completed")]);
         assert!(!is_complete(&incomplete_book));
 
         let repaired = repairer.repair(incomplete_book).await.unwrap();
@@ -240,7 +249,10 @@ mod grpc_integration {
         let events: Vec<EventPage> = (0..10)
             .map(|i| test_event(i, &format!("Event{}", i)))
             .collect();
-        event_store.add(domain, DEFAULT_EDITION, root, events, "").await.unwrap();
+        event_store
+            .add(domain, DEFAULT_EDITION, root, events, "")
+            .await
+            .unwrap();
 
         use crate::storage::SnapshotStore;
         snapshot_store
@@ -259,8 +271,7 @@ mod grpc_integration {
             .await
             .unwrap();
 
-        let addr =
-            start_event_query_server_with_options(event_store, snapshot_store, true).await;
+        let addr = start_event_query_server_with_options(event_store, snapshot_store, true).await;
 
         let mut repairer = EventBookRepairer::connect(&addr.to_string()).await.unwrap();
 
@@ -290,7 +301,8 @@ mod grpc_integration {
         let mut repairer = EventBookRepairer::connect(&addr.to_string()).await.unwrap();
 
         let root = Uuid::new_v4();
-        let incomplete_book = make_event_book_with_root("orders", root, vec![test_event(5, "Event5")]);
+        let incomplete_book =
+            make_event_book_with_root("orders", root, vec![test_event(5, "Event5")]);
 
         let repaired = repairer.repair(incomplete_book).await.unwrap();
 

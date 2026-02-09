@@ -11,9 +11,9 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
+use crate::proto::EventPage;
 use crate::storage::schema::Events;
 use crate::storage::{EventStore, Result};
-use crate::proto::EventPage;
 
 /// SQLite implementation of EventStore.
 pub struct SqliteEventStore {
@@ -129,19 +129,27 @@ impl SqliteEventStore {
         from: u32,
     ) -> Result<Vec<EventPage>> {
         // Query edition events first to determine divergence point
-        let edition_events = self.query_edition_events(domain, edition, root_str, 0).await?;
+        let edition_events = self
+            .query_edition_events(domain, edition, root_str, 0)
+            .await?;
 
         if edition_events.is_empty() {
             // No edition events - return main timeline only
-            return self.query_edition_events(domain, DEFAULT_EDITION, root_str, from).await;
+            return self
+                .query_edition_events(domain, DEFAULT_EDITION, root_str, from)
+                .await;
         }
 
         // Get implicit divergence point from first edition event
-        let divergence = self.get_edition_min_sequence(domain, edition, root_str).await?
+        let divergence = self
+            .get_edition_min_sequence(domain, edition, root_str)
+            .await?
             .unwrap_or(0);
 
         // Query main timeline events up to divergence point
-        let main_events = self.query_main_events_until(domain, root_str, divergence).await?;
+        let main_events = self
+            .query_main_events_until(domain, root_str, divergence)
+            .await?;
 
         // Merge: main events (filtered by from) + edition events (filtered by from)
         let mut result = Vec::new();
@@ -198,8 +206,11 @@ impl SqliteEventStore {
 
         for event in events {
             let event_data = event.encode_to_vec();
-            let sequence =
-                crate::storage::helpers::resolve_sequence(&event, base_sequence, &mut auto_sequence)?;
+            let sequence = crate::storage::helpers::resolve_sequence(
+                &event,
+                base_sequence,
+                &mut auto_sequence,
+            )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
 
             let query = Query::insert()
@@ -250,11 +261,17 @@ impl EventStore for SqliteEventStore {
         // BEGIN IMMEDIATE acquires the write lock upfront, preventing deadlocks
         // when concurrent DEFERRED transactions race to upgrade from shared to exclusive.
         let mut conn = self.pool.acquire().await?;
-        sqlx::query("BEGIN IMMEDIATE")
-            .execute(&mut *conn)
-            .await?;
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
 
-        let result = Self::insert_events(&mut conn, domain, edition, &root_str, events, correlation_id).await;
+        let result = Self::insert_events(
+            &mut conn,
+            domain,
+            edition,
+            &root_str,
+            events,
+            correlation_id,
+        )
+        .await;
 
         match result {
             Ok(()) => {
@@ -272,12 +289,20 @@ impl EventStore for SqliteEventStore {
         self.get_from(domain, edition, root, 0).await
     }
 
-    async fn get_from(&self, domain: &str, edition: &str, root: Uuid, from: u32) -> Result<Vec<EventPage>> {
+    async fn get_from(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        from: u32,
+    ) -> Result<Vec<EventPage>> {
         let root_str = root.to_string();
 
         // Main timeline: simple query
         if Self::is_main_timeline(edition) {
-            return self.query_edition_events(domain, DEFAULT_EDITION, &root_str, from).await;
+            return self
+                .query_edition_events(domain, DEFAULT_EDITION, &root_str, from)
+                .await;
         }
 
         // Named edition: composite read (main timeline up to divergence + edition events)
@@ -477,7 +502,10 @@ impl EventStore for SqliteEventStore {
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
 
-            books_map.entry((domain, edition, root)).or_default().push(event);
+            books_map
+                .entry((domain, edition, root))
+                .or_default()
+                .push(event);
         }
 
         let books = books_map
@@ -489,10 +517,14 @@ impl EventStore for SqliteEventStore {
                         value: root.as_bytes().to_vec(),
                     }),
                     correlation_id: correlation_id.to_string(),
-                    edition: Some(Edition { name: edition, divergences: vec![] }),
+                    edition: Some(Edition {
+                        name: edition,
+                        divergences: vec![],
+                    }),
                 }),
                 pages,
                 snapshot: None,
+                ..Default::default()
             })
             .collect();
 

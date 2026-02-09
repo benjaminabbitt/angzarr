@@ -80,6 +80,7 @@ message EventBook {
   repeated EventPage pages = 3;
   // Field 4 removed: correlation_id moved to Cover
   // Field 5 removed: snapshot_state unified into snapshot field
+  uint32 next_sequence = 6;                 // Computed on load, never stored: (last page seq OR snapshot seq if no pages) + 1
 }
 
 message SyncEventBook {

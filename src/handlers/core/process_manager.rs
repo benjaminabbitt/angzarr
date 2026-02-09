@@ -14,13 +14,13 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, Instrument};
 
 use crate::bus::{BusError, EventBus, EventHandler};
-use crate::proto_ext::CoverExt;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::proto::process_manager_client::ProcessManagerClient;
 use crate::proto::{EventBook, Target};
+use crate::proto_ext::CoverExt;
 use crate::storage::EventStore;
 use crate::utils::retry::saga_backoff;
 
@@ -98,9 +98,7 @@ impl ProcessManagerEventHandler {
 impl EventHandler for ProcessManagerEventHandler {
     fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
         // Check subscription filter (handler-level filtering for standalone mode)
-        if !self.targets.is_empty()
-            && !crate::bus::any_target_matches(&book, &self.targets)
-        {
+        if !self.targets.is_empty() && !crate::bus::any_target_matches(&book, &self.targets) {
             return Box::pin(async { Ok(()) });
         }
 
@@ -114,42 +112,45 @@ impl EventHandler for ProcessManagerEventHandler {
         let command_executor = self.command_executor.clone();
         let backoff = self.backoff;
 
-        Box::pin(async move {
-            let book_owned = (*book).clone();
+        Box::pin(
+            async move {
+                let book_owned = (*book).clone();
 
-            tracing::info!(
-                pages = book_owned.pages.len(),
-                has_snapshot = book_owned.snapshot.is_some(),
-                domain = %book_owned.domain(),
-                "PM handler received book from bus"
-            );
-
-            if correlation_id.is_empty() {
-                debug!("Event has no correlation_id, skipping process manager");
-                return Ok(());
-            }
-
-            let ctx = factory.create();
-
-            if let Err(e) = orchestrate_pm(
-                ctx.as_ref(),
-                destination_fetcher.as_ref(),
-                command_executor.as_ref(),
-                &book_owned,
-                &pm_domain,
-                &correlation_id,
-                backoff,
-            )
-            .await
-            {
-                error!(
-                    error = %e,
-                    "Process manager orchestration failed"
+                tracing::info!(
+                    pages = book_owned.pages.len(),
+                    has_snapshot = book_owned.snapshot.is_some(),
+                    domain = %book_owned.domain(),
+                    "PM handler received book from bus"
                 );
-                return Err(e);
-            }
 
-            Ok(())
-        }.instrument(span))
+                if correlation_id.is_empty() {
+                    debug!("Event has no correlation_id, skipping process manager");
+                    return Ok(());
+                }
+
+                let ctx = factory.create();
+
+                if let Err(e) = orchestrate_pm(
+                    ctx.as_ref(),
+                    destination_fetcher.as_ref(),
+                    command_executor.as_ref(),
+                    &book_owned,
+                    &pm_domain,
+                    &correlation_id,
+                    backoff,
+                )
+                .await
+                {
+                    error!(
+                        error = %e,
+                        "Process manager orchestration failed"
+                    );
+                    return Err(e);
+                }
+
+                Ok(())
+            }
+            .instrument(span),
+        )
     }
 }

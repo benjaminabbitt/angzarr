@@ -268,6 +268,7 @@ impl ProcessManagerLogic for OrderFulfillmentProcess {
                 }),
                 pages: pm_events,
                 snapshot: None,
+                ..Default::default()
             })
         };
 
@@ -338,6 +339,7 @@ mod tests {
                 event: Some(event),
             }],
             snapshot: None,
+            ..Default::default()
         }
     }
 
@@ -492,6 +494,7 @@ mod tests {
                 },
             ],
             snapshot: None,
+            ..Default::default()
         };
 
         // Another event arrives - should be no-op

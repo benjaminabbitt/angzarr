@@ -2,7 +2,9 @@
 
 use angzarr::proto::{CommandBook, EventBook};
 use common::proto::{OrderState, PaymentSubmitted, SubmitPayment};
-use common::{decode_command, now, require_exists, require_status_not, BusinessError, ProtoTypeName, Result};
+use common::{
+    decode_command, now, require_exists, require_status_not, BusinessError, ProtoTypeName, Result,
+};
 
 use crate::errmsg;
 use crate::state::{build_event_response, calculate_total};
@@ -26,7 +28,11 @@ pub fn handle_submit_payment(
         OrderStatus::Completed.as_str(),
         errmsg::PAYMENT_ALREADY_SUBMITTED,
     )?;
-    require_status_not(&state.status, OrderStatus::Cancelled.as_str(), errmsg::ORDER_CANCELLED)?;
+    require_status_not(
+        &state.status,
+        OrderStatus::Cancelled.as_str(),
+        errmsg::ORDER_CANCELLED,
+    )?;
 
     let cmd: SubmitPayment = decode_command(command_data)?;
 

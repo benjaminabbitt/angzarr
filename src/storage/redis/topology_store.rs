@@ -61,7 +61,10 @@ impl RedisTopologyStore {
 
     /// Build the key for a correlation set.
     fn correlation_key(&self, correlation_id: &str) -> String {
-        format!("{}:topology:correlation:{}", self.key_prefix, correlation_id)
+        format!(
+            "{}:topology:correlation:{}",
+            self.key_prefix, correlation_id
+        )
     }
 
     /// Build the key for the correlations index (for pruning).
@@ -132,12 +135,7 @@ impl TopologyStore for RedisTopologyStore {
         if exists {
             // Update component_type (register always wins)
             let _: () = conn
-                .hset_multiple(
-                    &node_key,
-                    &[
-                        ("component_type", component_type),
-                    ],
-                )
+                .hset_multiple(&node_key, &[("component_type", component_type)])
                 .await
                 .map_err(|e| TopologyError::Database(e.to_string()))?;
         } else {

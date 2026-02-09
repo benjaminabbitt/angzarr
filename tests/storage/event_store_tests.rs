@@ -41,7 +41,10 @@ pub async fn test_add_single_event<S: EventStore>(store: &S) {
         .await
         .expect("add should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert_eq!(events.len(), 1, "should have 1 event");
 }
 
@@ -54,7 +57,10 @@ pub async fn test_add_multiple_events<S: EventStore>(store: &S) {
         .await
         .expect("add should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert_eq!(events.len(), 5, "should have 5 events");
 }
 
@@ -67,7 +73,10 @@ pub async fn test_add_empty_events<S: EventStore>(store: &S) {
         .await
         .expect("empty add should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert!(events.is_empty(), "should have no events");
 }
 
@@ -87,7 +96,10 @@ pub async fn test_add_sequential_batches<S: EventStore>(store: &S) {
         .await
         .expect("second batch should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert_eq!(events.len(), 5, "should have 5 events total");
 
     // Verify sequence continuity
@@ -145,7 +157,10 @@ pub async fn test_get_all_events<S: EventStore>(store: &S) {
         .await
         .expect("add should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert_eq!(events.len(), 10, "should return all events");
 
     // Verify order
@@ -160,7 +175,10 @@ pub async fn test_get_empty_aggregate<S: EventStore>(store: &S) {
     let domain = "test_get_empty";
     let root = Uuid::new_v4();
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert!(events.is_empty(), "non-existent aggregate should be empty");
 }
 
@@ -182,7 +200,10 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
         .await
         .expect("add should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert_eq!(events.len(), 1);
 
     let event = &events[0];
@@ -500,19 +521,28 @@ pub async fn test_get_next_sequence_increments<S: EventStore>(store: &S) {
     let domain = "test_seq_inc";
     let root = Uuid::new_v4();
 
-    assert_eq!(store.get_next_sequence(domain, "test", root).await.unwrap(), 0);
+    assert_eq!(
+        store.get_next_sequence(domain, "test", root).await.unwrap(),
+        0
+    );
 
     store
         .add(domain, "test", root, vec![make_event(0, "E0")], "")
         .await
         .unwrap();
-    assert_eq!(store.get_next_sequence(domain, "test", root).await.unwrap(), 1);
+    assert_eq!(
+        store.get_next_sequence(domain, "test", root).await.unwrap(),
+        1
+    );
 
     store
         .add(domain, "test", root, make_events(1, 3), "")
         .await
         .unwrap();
-    assert_eq!(store.get_next_sequence(domain, "test", root).await.unwrap(), 4);
+    assert_eq!(
+        store.get_next_sequence(domain, "test", root).await.unwrap(),
+        4
+    );
 }
 
 // =============================================================================
@@ -539,8 +569,20 @@ pub async fn test_aggregate_isolation<S: EventStore>(store: &S) {
     assert_eq!(events1.len(), 3);
     assert_eq!(events2.len(), 5);
 
-    assert_eq!(store.get_next_sequence(domain, "test", root1).await.unwrap(), 3);
-    assert_eq!(store.get_next_sequence(domain, "test", root2).await.unwrap(), 5);
+    assert_eq!(
+        store
+            .get_next_sequence(domain, "test", root1)
+            .await
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        store
+            .get_next_sequence(domain, "test", root2)
+            .await
+            .unwrap(),
+        5
+    );
 }
 
 pub async fn test_large_batch<S: EventStore>(store: &S) {
@@ -552,7 +594,10 @@ pub async fn test_large_batch<S: EventStore>(store: &S) {
         .await
         .expect("large batch should succeed");
 
-    let events = store.get(domain, "test", root).await.expect("get should succeed");
+    let events = store
+        .get(domain, "test", root)
+        .await
+        .expect("get should succeed");
     assert_eq!(events.len(), 100);
 
     for (i, event) in events.iter().enumerate() {

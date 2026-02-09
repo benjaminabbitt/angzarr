@@ -24,12 +24,20 @@ pub trait DestinationFetcher: Send + Sync {
 
     /// Fetch state by root UUID within a specific domain.
     /// Used by PM orchestration to find PM state by root instead of correlation_id.
-    async fn fetch_by_root(&self, domain: &str, root: &ProtoUuid, edition: &str) -> Option<EventBook> {
+    async fn fetch_by_root(
+        &self,
+        domain: &str,
+        root: &ProtoUuid,
+        edition: &str,
+    ) -> Option<EventBook> {
         // Default implementation: construct a Cover and use fetch()
         let cover = Cover {
             domain: domain.to_string(),
             root: Some(root.clone()),
-            edition: Some(crate::proto::Edition { name: edition.to_string(), divergences: vec![] }),
+            edition: Some(crate::proto::Edition {
+                name: edition.to_string(),
+                divergences: vec![],
+            }),
             correlation_id: String::new(),
         };
         self.fetch(&cover).await

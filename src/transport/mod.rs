@@ -503,7 +503,8 @@ pub async fn connect_with_transport(
             tokio::time::sleep(delay).await;
         }
 
-        let result = connect_with_transport_once(config, service_name, qualifier, tcp_address).await;
+        let result =
+            connect_with_transport_once(config, service_name, qualifier, tcp_address).await;
         match result {
             Ok(channel) => return Ok(channel),
             Err(e) => {
