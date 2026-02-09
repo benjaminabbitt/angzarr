@@ -7,13 +7,9 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto::{EventBook, EventPage};
+use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::{EventStore, Result, StorageError};
-
-/// Check if edition is the main timeline.
-fn is_main_timeline(edition: &str) -> bool {
-    edition.is_empty() || edition == DEFAULT_EDITION
-}
 
 /// Stored event with correlation tracking.
 struct StoredEvent {
@@ -235,27 +231,7 @@ impl EventStore for MockEventStore {
             }
         }
 
-        let mut books = Vec::with_capacity(books_map.len());
-        for ((domain, edition, root), pages) in books_map {
-            books.push(EventBook {
-                cover: Some(Cover {
-                    domain,
-                    root: Some(ProtoUuid {
-                        value: root.as_bytes().to_vec(),
-                    }),
-                    correlation_id: correlation_id.to_string(),
-                    edition: Some(Edition {
-                        name: edition.clone(),
-                        divergences: vec![],
-                    }),
-                }),
-                pages,
-                snapshot: None,
-                ..Default::default()
-            });
-        }
-
-        Ok(books)
+        Ok(assemble_event_books(books_map, correlation_id))
     }
 
     async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {

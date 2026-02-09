@@ -1,12 +1,67 @@
 //! Shared storage helper functions.
 //!
-//! Common logic for event sequence handling and timestamp parsing
-//! used across storage backend implementations.
+//! Common logic for event sequence handling, timestamp parsing,
+//! and EventBook assembly used across storage backend implementations.
 
+use std::collections::HashMap;
+
+use uuid::Uuid;
+
+use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::event_page::Sequence;
-use crate::proto::EventPage;
+use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 
 use super::{Result, StorageError};
+
+/// Check if edition represents the main timeline.
+///
+/// The main timeline is identified by either an empty string or the
+/// default edition name ("angzarr").
+pub fn is_main_timeline(edition: &str) -> bool {
+    edition.is_empty() || edition == DEFAULT_EDITION
+}
+
+/// Resolve target edition for fallback queries.
+///
+/// When a named edition has no events, queries fall back to the main timeline.
+/// Returns the edition to use for that fallback.
+pub fn fallback_edition(edition: &str) -> &str {
+    if is_main_timeline(edition) {
+        edition
+    } else {
+        DEFAULT_EDITION
+    }
+}
+
+/// Assemble EventBooks from grouped events.
+///
+/// Takes a HashMap of (domain, edition, root) -> Vec<EventPage> and
+/// converts it to Vec<EventBook>. Used by get_by_correlation implementations
+/// across all storage backends.
+pub fn assemble_event_books(
+    books_map: HashMap<(String, String, Uuid), Vec<EventPage>>,
+    correlation_id: &str,
+) -> Vec<EventBook> {
+    books_map
+        .into_iter()
+        .map(|((domain, edition, root), pages)| EventBook {
+            cover: Some(Cover {
+                domain,
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: correlation_id.to_string(),
+                edition: Some(Edition {
+                    name: edition,
+                    divergences: vec![],
+                }),
+            }),
+            pages,
+            snapshot: None,
+            ..Default::default()
+        })
+        .collect()
+}
 
 /// Resolve the sequence number for an event.
 ///

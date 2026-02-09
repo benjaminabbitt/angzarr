@@ -44,7 +44,7 @@ use tracing::info;
 pub use fraud_client::{FraudCheckResult, FraudError, FraudServiceClient};
 
 // Re-export state functions for tests and external use
-pub use state::{calculate_total, rebuild_state};
+pub use state::{calculate_total, rebuild_state, state_builder};
 
 // Re-export handlers for tests and external use
 pub use handlers::{
@@ -206,7 +206,7 @@ impl OrderLogic {
             fraud_check_result: fraud_result.to_string(),
         };
 
-        let events = state::build_event_response(
+        let events = state::state_builder().build_response(
             &state,
             command_book.cover.clone(),
             next_seq,

@@ -7,8 +7,10 @@
 //! `StateBuilder` is the preferred approach as it mirrors `Aggregate`'s
 //! pattern of registering handlers by type suffix.
 
-use angzarr::proto::EventBook;
+use angzarr::proto::{Cover, EventBook};
 use prost::Message;
+
+use crate::{make_event_book, ProtoTypeName};
 
 // ============================================================================
 // StateBuilder: Declarative event handler registration
@@ -116,6 +118,40 @@ impl<S: Message + Default> StateBuilder<S> {
 impl<S: Message + Default> Default for StateBuilder<S> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<S: Message + Default + Clone + ProtoTypeName> StateBuilder<S> {
+    /// Apply an event and build an EventBook response with updated snapshot.
+    ///
+    /// This consolidates the common pattern found in aggregate handlers:
+    /// 1. Encode the event to bytes
+    /// 2. Clone the state and apply the event
+    /// 3. Build an EventBook with the event and updated snapshot
+    pub fn build_response(
+        &self,
+        state: &S,
+        cover: Option<Cover>,
+        next_seq: u32,
+        event_type_url: &str,
+        event: impl Message,
+    ) -> EventBook {
+        let event_bytes = event.encode_to_vec();
+        let any = prost_types::Any {
+            type_url: event_type_url.to_string(),
+            value: event_bytes.clone(),
+        };
+        let mut new_state = state.clone();
+        self.apply(&mut new_state, &any);
+
+        make_event_book(
+            cover,
+            next_seq,
+            event_type_url,
+            event_bytes,
+            &S::type_url(),
+            new_state.encode_to_vec(),
+        )
     }
 }
 

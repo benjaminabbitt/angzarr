@@ -6,14 +6,14 @@ use prost::Message;
 
 use angzarr::proto::{
     event_page::Sequence, BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand,
-    Cover, EventBook, EventPage, Snapshot,
+    EventBook, EventPage, Snapshot,
 };
 use common::proto::{
     CommitReservation, InitializeStock, InventoryState, LowStockAlert, ReceiveStock,
     ReleaseReservation, ReservationCommitted, ReservationReleased, ReserveStock, StockInitialized,
     StockReceived, StockReserved,
 };
-use common::{decode_command, make_event_book, now, ProtoTypeName};
+use common::{decode_command, now, ProtoTypeName};
 use common::{require_exists, require_non_negative, require_not_exists, require_positive};
 use common::{Aggregate, AggregateLogic, BusinessError, Result, StateBuilder};
 
@@ -96,32 +96,6 @@ pub fn apply_event(state: &mut InventoryState, event: &prost_types::Any) {
     state_builder().apply(state, event);
 }
 
-/// Apply an event and build an EventBook response with updated snapshot.
-fn build_event_response(
-    state: &InventoryState,
-    cover: Option<Cover>,
-    next_seq: u32,
-    event_type_url: &str,
-    event: impl Message,
-) -> EventBook {
-    let event_bytes = event.encode_to_vec();
-    let any = prost_types::Any {
-        type_url: event_type_url.to_string(),
-        value: event_bytes.clone(),
-    };
-    let mut new_state = state.clone();
-    apply_event(&mut new_state, &any);
-
-    make_event_book(
-        cover,
-        next_seq,
-        event_type_url,
-        event_bytes,
-        &InventoryState::type_url(),
-        new_state.encode_to_vec(),
-    )
-}
-
 /// Client logic for Inventory aggregate.
 pub struct InventoryLogic {
     aggregate: Aggregate<InventoryState>,
@@ -171,7 +145,7 @@ fn handle_initialize_stock(
         initialized_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -201,7 +175,7 @@ fn handle_receive_stock(
         received_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -322,7 +296,7 @@ fn handle_release_reservation(
         new_on_hand: state.on_hand,
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -358,7 +332,7 @@ fn handle_commit_reservation(
         new_reserved,
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,

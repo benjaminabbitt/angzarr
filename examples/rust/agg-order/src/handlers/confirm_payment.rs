@@ -5,7 +5,7 @@ use common::proto::{ConfirmPayment, OrderCompleted, OrderState};
 use common::{decode_command, now, require_exists, require_status_not, Result};
 
 use crate::errmsg;
-use crate::state::{build_event_response, calculate_total};
+use crate::state::{calculate_total, state_builder};
 
 /// Handle the ConfirmPayment command.
 pub fn handle_confirm_payment(
@@ -38,7 +38,7 @@ pub fn handle_confirm_payment(
         fraud_check_result: "approved".to_string(),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,

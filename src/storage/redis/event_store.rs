@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
+use crate::storage::helpers::is_main_timeline;
 use crate::storage::{EventStore, Result, StorageError};
 
 /// Redis event store.
@@ -98,11 +99,6 @@ impl RedisEventStore {
             Some(crate::proto::event_page::Sequence::Force(_)) => 0,
             None => 0,
         }
-    }
-
-    /// Check if edition is the main timeline.
-    fn is_main_timeline(edition: &str) -> bool {
-        edition.is_empty() || edition == DEFAULT_EDITION
     }
 
     /// Query events for a specific edition (internal helper).
@@ -323,7 +319,7 @@ impl EventStore for RedisEventStore {
         from: u32,
     ) -> Result<Vec<EventPage>> {
         // Main timeline: simple query
-        if Self::is_main_timeline(edition) {
+        if is_main_timeline(edition) {
             return self
                 .query_edition_events(domain, DEFAULT_EDITION, root, from)
                 .await;
@@ -410,7 +406,7 @@ impl EventStore for RedisEventStore {
 
         // For non-default editions with implicit divergence, we need composite logic:
         // If the edition has no events yet, use the main timeline's max sequence
-        if !Self::is_main_timeline(edition) {
+        if !is_main_timeline(edition) {
             let edition_key = self.events_key(domain, edition, root);
             let max_seq: Option<f64> = conn
                 .zrevrange_withscores::<_, Vec<(Vec<u8>, f64)>>(&edition_key, 0, 0)
@@ -427,7 +423,7 @@ impl EventStore for RedisEventStore {
         }
 
         // Query the target edition (or main timeline for fallback)
-        let target_edition = if Self::is_main_timeline(edition) {
+        let target_edition = if is_main_timeline(edition) {
             edition
         } else {
             DEFAULT_EDITION

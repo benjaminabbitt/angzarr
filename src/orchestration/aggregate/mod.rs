@@ -176,7 +176,9 @@ pub fn extract_command_sequence(command: &CommandBook) -> u32 {
 }
 
 /// Default edition name for the canonical (main) timeline.
-pub const DEFAULT_EDITION: &str = "angzarr";
+///
+/// Re-exported from proto_ext::constants for backwards compatibility.
+pub use crate::proto_ext::constants::DEFAULT_EDITION;
 
 /// Extract edition name from a CommandBook's Cover.
 ///

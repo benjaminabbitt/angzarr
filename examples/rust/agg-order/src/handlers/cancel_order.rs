@@ -5,7 +5,7 @@ use common::proto::{CancelOrder, OrderCancelled, OrderState};
 use common::{decode_command, now, require_exists, require_status_not, ProtoTypeName, Result};
 
 use crate::errmsg;
-use crate::state::build_event_response;
+use crate::state::state_builder;
 use crate::status::OrderStatus;
 
 /// Handle the CancelOrder command.
@@ -38,7 +38,7 @@ pub fn handle_cancel_order(
         cart_root: state.cart_root.clone(),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,

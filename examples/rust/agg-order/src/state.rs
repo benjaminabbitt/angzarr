@@ -4,10 +4,10 @@ use common::proto::{
     LoyaltyDiscountApplied, OrderCancelled, OrderCompleted, OrderCreated, OrderState,
     PaymentSubmitted,
 };
-use common::{make_event_book, ProtoTypeName, StateBuilder};
+use common::{ProtoTypeName, StateBuilder};
 use prost::Message;
 
-use angzarr::proto::{Cover, EventBook};
+use angzarr::proto::EventBook;
 
 use crate::status::OrderStatus;
 
@@ -60,7 +60,7 @@ fn apply_order_cancelled(state: &mut OrderState, _event: &prost_types::Any) {
 /// Create the StateBuilder with all registered event handlers.
 ///
 /// Single source of truth for event type → applier mapping.
-fn state_builder() -> StateBuilder<OrderState> {
+pub fn state_builder() -> StateBuilder<OrderState> {
     StateBuilder::new()
         .on(OrderCreated::TYPE_NAME, apply_order_created)
         .on(LoyaltyDiscountApplied::TYPE_NAME, apply_loyalty_discount)
@@ -74,46 +74,9 @@ pub fn rebuild_state(event_book: Option<&EventBook>) -> OrderState {
     state_builder().rebuild(event_book)
 }
 
-/// Apply a single event to the order state.
-///
-/// Used by build_event_response to apply the event to state.
-pub fn apply_event(state: &mut OrderState, event: &prost_types::Any) {
-    state_builder().apply(state, event);
-}
-
 /// Calculate the final total for an order (subtotal minus discounts).
 pub fn calculate_total(state: &OrderState) -> i32 {
     state.subtotal_cents - state.discount_cents
-}
-
-/// Apply an event and build an EventBook response with updated snapshot.
-///
-/// Ensures state derivation goes through `apply_event` — single source of truth
-/// for state transitions. Handlers create the event (with computed facts),
-/// then delegate state derivation here.
-pub fn build_event_response(
-    state: &OrderState,
-    cover: Option<Cover>,
-    next_seq: u32,
-    event_type_url: &str,
-    event: impl Message,
-) -> EventBook {
-    let event_bytes = event.encode_to_vec();
-    let any = prost_types::Any {
-        type_url: event_type_url.to_string(),
-        value: event_bytes.clone(),
-    };
-    let mut new_state = state.clone();
-    apply_event(&mut new_state, &any);
-
-    make_event_book(
-        cover,
-        next_seq,
-        event_type_url,
-        event_bytes,
-        &OrderState::type_url(),
-        new_state.encode_to_vec(),
-    )
 }
 
 #[cfg(test)]

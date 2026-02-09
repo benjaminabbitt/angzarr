@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::EventPage;
+use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
 use crate::storage::{EventStore, Result};
 
@@ -24,11 +25,6 @@ impl SqliteEventStore {
     /// Create a new SQLite event store.
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
-    }
-
-    /// Check if edition is the main timeline.
-    fn is_main_timeline(edition: &str) -> bool {
-        edition.is_empty() || edition == DEFAULT_EDITION
     }
 
     /// Query events for a specific edition (internal helper).
@@ -299,7 +295,7 @@ impl EventStore for SqliteEventStore {
         let root_str = root.to_string();
 
         // Main timeline: simple query
-        if Self::is_main_timeline(edition) {
+        if is_main_timeline(edition) {
             return self
                 .query_edition_events(domain, DEFAULT_EDITION, &root_str, from)
                 .await;
@@ -413,7 +409,7 @@ impl EventStore for SqliteEventStore {
 
         // For non-default editions with implicit divergence, we need composite logic:
         // If the edition has no events yet, use the main timeline's max sequence
-        if !Self::is_main_timeline(edition) {
+        if !is_main_timeline(edition) {
             let edition_query = Query::select()
                 .expr(Expr::col(Events::Sequence).max())
                 .from(Events::Table)
@@ -438,7 +434,7 @@ impl EventStore for SqliteEventStore {
         }
 
         // Query the target edition (or main timeline for fallback)
-        let target_edition = if Self::is_main_timeline(edition) {
+        let target_edition = if is_main_timeline(edition) {
             edition
         } else {
             DEFAULT_EDITION
@@ -467,7 +463,6 @@ impl EventStore for SqliteEventStore {
         &self,
         correlation_id: &str,
     ) -> Result<Vec<crate::proto::EventBook>> {
-        use crate::proto::{Cover, Edition, EventBook, Uuid as ProtoUuid};
         use std::collections::HashMap;
 
         if correlation_id.is_empty() {
@@ -508,27 +503,7 @@ impl EventStore for SqliteEventStore {
                 .push(event);
         }
 
-        let books = books_map
-            .into_iter()
-            .map(|((domain, edition, root), pages)| EventBook {
-                cover: Some(Cover {
-                    domain,
-                    root: Some(ProtoUuid {
-                        value: root.as_bytes().to_vec(),
-                    }),
-                    correlation_id: correlation_id.to_string(),
-                    edition: Some(Edition {
-                        name: edition,
-                        divergences: vec![],
-                    }),
-                }),
-                pages,
-                snapshot: None,
-                ..Default::default()
-            })
-            .collect();
-
-        Ok(books)
+        Ok(assemble_event_books(books_map, correlation_id))
     }
 
     async fn delete_edition_events(&self, domain: &str, edition: &str) -> Result<u32> {

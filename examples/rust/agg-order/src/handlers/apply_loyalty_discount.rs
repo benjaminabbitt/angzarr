@@ -8,7 +8,7 @@ use common::{
 };
 
 use crate::errmsg;
-use crate::state::build_event_response;
+use crate::state::state_builder;
 use crate::status::OrderStatus;
 
 /// Handle the ApplyLoyaltyDiscount command.
@@ -46,7 +46,7 @@ pub fn handle_apply_loyalty_discount(
         applied_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,

@@ -7,7 +7,7 @@ use common::{
 };
 
 use crate::errmsg;
-use crate::state::{build_event_response, calculate_total};
+use crate::state::{calculate_total, state_builder};
 use crate::status::OrderStatus;
 
 /// Handle the SubmitPayment command.
@@ -52,7 +52,7 @@ pub fn handle_submit_payment(
         submitted_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,

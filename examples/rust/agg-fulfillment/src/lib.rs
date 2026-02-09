@@ -9,13 +9,13 @@ pub use status::FulfillmentStatus;
 use prost::Message;
 
 use angzarr::proto::{
-    BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook,
+    BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, EventBook,
 };
 use common::proto::{
     CreateShipment, Delivered, FulfillmentState, ItemsPacked, ItemsPicked, MarkPacked, MarkPicked,
     RecordDelivery, Ship, ShipmentCreated, Shipped,
 };
-use common::{decode_command, make_event_book, now, ProtoTypeName};
+use common::{decode_command, now, ProtoTypeName};
 use common::{require_exists, require_not_exists, require_status, require_status_not};
 use common::{Aggregate, AggregateLogic, Result, StateBuilder};
 
@@ -94,32 +94,6 @@ pub fn apply_event(state: &mut FulfillmentState, event: &prost_types::Any) {
     state_builder().apply(state, event);
 }
 
-/// Apply an event and build an EventBook response with updated snapshot.
-fn build_event_response(
-    state: &FulfillmentState,
-    cover: Option<Cover>,
-    next_seq: u32,
-    event_type_url: &str,
-    event: impl Message,
-) -> EventBook {
-    let event_bytes = event.encode_to_vec();
-    let any = prost_types::Any {
-        type_url: event_type_url.to_string(),
-        value: event_bytes.clone(),
-    };
-    let mut new_state = state.clone();
-    apply_event(&mut new_state, &any);
-
-    make_event_book(
-        cover,
-        next_seq,
-        event_type_url,
-        event_bytes,
-        &FulfillmentState::type_url(),
-        new_state.encode_to_vec(),
-    )
-}
-
 /// Client logic for Fulfillment aggregate.
 pub struct FulfillmentLogic {
     aggregate: Aggregate<FulfillmentState>,
@@ -163,7 +137,7 @@ fn handle_create_shipment(
         items: cmd.items,
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -192,7 +166,7 @@ fn handle_mark_picked(
         picked_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -221,7 +195,7 @@ fn handle_mark_packed(
         packed_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -253,7 +227,7 @@ fn handle_ship(
         order_id: state.order_id.clone(),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,
@@ -287,7 +261,7 @@ fn handle_record_delivery(
         delivered_at: Some(now()),
     };
 
-    Ok(build_event_response(
+    Ok(state_builder().build_response(
         state,
         command_book.cover.clone(),
         next_seq,

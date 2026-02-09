@@ -81,32 +81,12 @@ impl SagaLogic for FulfillmentInventorySaga {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use angzarr::proto::{event_page::Sequence, Cover, EventPage};
     use common::proto::LineItem;
+    use common::testing::make_test_event_book;
     use prost::Message;
 
     fn make_event_book(event_type: &str, event_data: Vec<u8>) -> EventBook {
-        let root = uuid::Uuid::new_v4();
-        EventBook {
-            cover: Some(Cover {
-                domain: "fulfillment".to_string(),
-                root: Some(ProtoUuid {
-                    value: root.as_bytes().to_vec(),
-                }),
-                correlation_id: "test-correlation".to_string(),
-                edition: None,
-            }),
-            pages: vec![EventPage {
-                sequence: Some(Sequence::Num(0)),
-                event: Some(prost_types::Any {
-                    type_url: format!("type.examples/examples.{}", event_type),
-                    value: event_data,
-                }),
-                created_at: None,
-            }],
-            snapshot: None,
-            ..Default::default()
-        }
+        make_test_event_book("fulfillment", event_type, event_data, "test-correlation")
     }
 
     #[test]
