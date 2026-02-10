@@ -1,0 +1,19 @@
+apiVersion: v2
+name: angzarr-mq-kafka
+description: Kafka message bus for Angzarr
+type: application
+version: 0.1.0
+appVersion: "3.7"
+keywords:
+  - kafka
+  - message-queue
+  - streaming
+  - angzarr
+  - event-sourcing
+maintainers:
+  - name: Benjamin Abbitt
+
+dependencies:
+  - name: kafka
+    version: "~31.0"
+    repository: "https://charts.bitnami.com/bitnami"

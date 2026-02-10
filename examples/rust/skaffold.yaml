@@ -86,10 +86,56 @@ build:
 deploy:
   helm:
     releases:
+      # Infrastructure charts - deployed first
+      - name: angzarr-db
+        chartPath: ../../deploy/helm/angzarr-db-mongodb
+        namespace: angzarr
+        createNamespace: true
+        setValues:
+          mongodb.auth.rootPassword: angzarr-root-dev
+          mongodb.auth.passwords[0]: angzarr-dev
+          mongodb.image.registry: public.ecr.aws
+          mongodb.image.repository: bitnami/mongodb
+          mongodb.image.tag: "8.0"
+          mongodb.persistence.size: 2Gi
+          mongodb.resources.requests.memory: 128Mi
+          mongodb.resources.requests.cpu: 100m
+          mongodb.resources.limits.memory: 512Mi
+          mongodb.resources.limits.cpu: 500m
+
+      - name: angzarr-db-pg
+        chartPath: ../../deploy/helm/angzarr-db-postgres
+        namespace: angzarr
+        setValues:
+          postgresql.auth.postgresPassword: angzarr-postgres-dev
+          postgresql.auth.password: angzarr-dev
+          postgresql.image.registry: public.ecr.aws
+          postgresql.image.repository: bitnami/postgresql
+          postgresql.image.tag: "17"
+          postgresql.primary.persistence.size: 2Gi
+          postgresql.primary.resources.requests.memory: 128Mi
+          postgresql.primary.resources.requests.cpu: 100m
+          postgresql.primary.resources.limits.memory: 512Mi
+          postgresql.primary.resources.limits.cpu: 500m
+
+      - name: angzarr-mq
+        chartPath: ../../deploy/helm/angzarr-mq-rabbitmq
+        namespace: angzarr
+        setValues:
+          rabbitmq.auth.password: angzarr-dev
+          rabbitmq.image.registry: public.ecr.aws
+          rabbitmq.image.repository: bitnami/rabbitmq
+          rabbitmq.image.tag: "4.0"
+          rabbitmq.persistence.size: 1Gi
+          rabbitmq.resources.requests.memory: 128Mi
+          rabbitmq.resources.requests.cpu: 100m
+          rabbitmq.resources.limits.memory: 512Mi
+          rabbitmq.resources.limits.cpu: 500m
+
+      # Main application chart
       - name: angzarr
         chartPath: ../../deploy/helm/angzarr
         namespace: angzarr
-        createNamespace: true
         valuesFiles:
           - ../../deploy/helm/angzarr/values-rust.yaml
         setValueTemplates:

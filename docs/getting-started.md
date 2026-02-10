@@ -407,6 +407,8 @@ See [Observability](observability.md) for full setup including Grafana dashboard
 
 ## Next Steps
 
+- [Infrastructure](infrastructure.md) — Modular database and message bus charts
+- [Service Mesh](service-mesh.md) — Istio and Linkerd integration
 - [Command Handlers (Aggregates)](components/aggregate/aggregate.md) — Processing commands and emitting events
 - [Projectors](components/projector/projectors.md) — Building read models
 - [Sagas](components/saga/sagas.md) — Orchestrating workflows across aggregates

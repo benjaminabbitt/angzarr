@@ -1,0 +1,48 @@
+# RabbitMQ configuration for Angzarr
+# Wraps Bitnami RabbitMQ chart with angzarr defaults
+
+# Namespace where angzarr is deployed
+angzarrNamespace: angzarr
+
+# RabbitMQ subchart configuration
+rabbitmq:
+  # Authentication
+  auth:
+    # Required: set via --set or values file, never commit credentials
+    username: "angzarr"
+    password: ""  # Set via --set rabbitmq.auth.password=<password>
+    erlangCookie: ""  # Set via --set rabbitmq.auth.erlangCookie=<cookie>
+
+  # Persistence
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+
+  # Resources
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Plugins
+  plugins: "rabbitmq_management rabbitmq_peer_discovery_k8s"
+
+  # Community plugins (optional)
+  communityPlugins: ""
+
+  # Metrics (optional)
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+
+# Connection info for angzarr applications
+# These are informational - actual connection uses service DNS
+connection:
+  # Service name pattern: {{ .Release.Name }}-rabbitmq
+  port: 5672
+  managementPort: 15672

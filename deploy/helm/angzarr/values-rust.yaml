@@ -86,7 +86,7 @@ storage:
     uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
     database: "angzarr"
   postgres:
-    uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-pg-postgresql:5432/angzarr"
 
 # Messaging configuration
 messaging:
@@ -105,77 +105,22 @@ externalSecrets:
   enabled: false
 
 # =============================================================================
-# Backing Services - Bitnami Helm Subcharts
-# Local dev credentials (not for production!)
+# Infrastructure Dependencies
+# Deploy separately using modular charts before deploying this chart.
+# See examples/rust/skaffold.yaml for automated deployment.
+#
+# Required:
+#   helm install angzarr-db ./deploy/helm/angzarr-db-mongodb -n angzarr \
+#     --set mongodb.auth.rootPassword=angzarr-root-dev \
+#     --set mongodb.auth.passwords[0]=angzarr-dev
+#
+#   helm install angzarr-mq ./deploy/helm/angzarr-mq-rabbitmq -n angzarr \
+#     --set rabbitmq.auth.password=angzarr-dev
+#
+# Optional (for projector read models):
+#   helm install angzarr-db-pg ./deploy/helm/angzarr-db-postgres -n angzarr \
+#     --set postgresql.auth.password=angzarr-dev
 # =============================================================================
-rabbitmq:
-  enabled: true
-  fullnameOverride: "angzarr-mq-rabbitmq"
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/rabbitmq
-    tag: "4.0"
-  auth:
-    username: "angzarr"
-    password: "angzarr-dev"
-  persistence:
-    size: 1Gi
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-
-mongodb:
-  enabled: true
-  fullnameOverride: "angzarr-db-mongodb"
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/mongodb
-    tag: "8.0"
-  auth:
-    rootUsername: "root"
-    rootPassword: "angzarr-root-dev"
-    usernames: ["angzarr"]
-    passwords: ["angzarr-dev"]
-    databases: ["angzarr"]
-  persistence:
-    size: 2Gi
-  # Recreate strategy avoids mongod.lock conflicts during rolling updates
-  updateStrategy:
-    type: Recreate
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-
-postgresql:
-  enabled: true
-  fullnameOverride: "angzarr-db-postgresql"
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/postgresql
-    tag: "17"
-  auth:
-    postgresPassword: "angzarr-postgres-dev"
-    username: "angzarr"
-    password: "angzarr-dev"
-    database: "angzarr"
-  primary:
-    persistence:
-      size: 2Gi
-    resources:
-      requests:
-        memory: "128Mi"
-        cpu: "100m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
 
 # =============================================================================
 # Mock Services for Testing
@@ -198,9 +143,6 @@ mockServices:
       limits:
         memory: "128Mi"
         cpu: "100m"
-
-kafka:
-  enabled: false  # Disabled for local dev - AMQP via RabbitMQ is primary
 
 # Central infrastructure services
 infrastructure:

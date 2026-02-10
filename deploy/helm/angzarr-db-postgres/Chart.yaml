@@ -1,0 +1,19 @@
+apiVersion: v2
+name: angzarr-db-postgres
+description: PostgreSQL storage backend for Angzarr
+type: application
+version: 0.1.0
+appVersion: "16"
+keywords:
+  - postgresql
+  - postgres
+  - database
+  - angzarr
+  - event-sourcing
+maintainers:
+  - name: Benjamin Abbitt
+
+dependencies:
+  - name: postgresql
+    version: "~16.0"
+    repository: "https://charts.bitnami.com/bitnami"

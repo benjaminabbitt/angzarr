@@ -1,0 +1,19 @@
+apiVersion: v2
+name: angzarr-mq-rabbitmq
+description: RabbitMQ message bus for Angzarr
+type: application
+version: 0.1.0
+appVersion: "3.13"
+keywords:
+  - rabbitmq
+  - amqp
+  - message-queue
+  - angzarr
+  - event-sourcing
+maintainers:
+  - name: Benjamin Abbitt
+
+dependencies:
+  - name: rabbitmq
+    version: "~15.0"
+    repository: "https://charts.bitnami.com/bitnami"

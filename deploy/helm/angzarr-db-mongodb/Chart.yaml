@@ -1,0 +1,18 @@
+apiVersion: v2
+name: angzarr-db-mongodb
+description: MongoDB storage backend for Angzarr
+type: application
+version: 0.1.0
+appVersion: "7.0"
+keywords:
+  - mongodb
+  - database
+  - angzarr
+  - event-sourcing
+maintainers:
+  - name: Benjamin Abbitt
+
+dependencies:
+  - name: mongodb
+    version: "~16.0"
+    repository: "https://charts.bitnami.com/bitnami"
