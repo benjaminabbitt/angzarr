@@ -9,19 +9,20 @@
 
 ### Getting Started
 
-- [Getting Started](getting-started.md) — Prerequisites, installation, first domain, CLI reference
-- [TOOLING.md](../TOOLING.md) — Development tools setup (just, bacon, mold, sccache, Kind)
+- [Getting Started](getting-started.md) — Prerequisites, installation, deployment, CLI reference
+- [TOOLING.md](../TOOLING.md) — Development tools setup (just, bacon, Skaffold, Kind)
 
 ### Implementation Guides
 
 - [Command Handlers (Aggregates)](components/aggregate/aggregate.md) — Processing commands and emitting events
 - [Projectors](components/projector/projectors.md) — Building read models and performing side effects
 - [Sagas (Process Coordinators)](components/saga/sagas.md) — Orchestrating workflows across aggregates
+- [Process Managers](components/process-manager/process-manager.md) — Stateful multi-domain coordination
 
 ### Reference
 
 - [Patterns](patterns.md) — Outbox, upcasting, process manager, temporal query
-- [Port Conventions](port-conventions.md) — Standardized five-port-per-pod scheme
+- [Port Conventions](port-conventions.md) — Infrastructure and business logic port scheme
 - [Observability](PITCH.md#observability) — OpenTelemetry, tracing, metrics (baked into the sidecar)
 
 ## Sponsors & Partners

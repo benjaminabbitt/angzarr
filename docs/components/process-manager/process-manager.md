@@ -277,6 +277,43 @@ message ProcessTimeout {
 
 ---
 
+## Sequence Handling
+
+**Process Managers MUST set correct sequence numbers on commands.** Like sagas, PMs must engage with destination state to produce valid commands.
+
+### Setting Sequences on Commands
+
+Use `destination.next_sequence()` from the destinations passed to your `Handle` method:
+
+```rust
+fn handle(&self, trigger: &EventBook, pm_state: Option<&EventBook>, destinations: &[EventBook]) -> PmHandleResponse {
+    let inventory = find_destination(destinations, "inventory", &product_id);
+    let next_seq = inventory.next_sequence();
+
+    PmHandleResponse {
+        commands: vec![CommandBook {
+            pages: vec![CommandPage {
+                sequence: next_seq,  // MUST set from destination
+                command: Some(cmd),
+            }],
+            ..
+        }],
+        process_events: Some(pm_events),
+    }
+}
+```
+
+### Why Not Auto-Stamp?
+
+The framework intentionally does NOT stamp sequences on your behalf. This forces you to:
+1. Actually look at destination state
+2. Make decisions based on current aggregate state
+3. Produce commands that reflect that state
+
+If sequences were auto-stamped, you could ignore destinations entirely—defeating the purpose of fetching them.
+
+---
+
 ## Retry on Sequence Conflict
 
 The ProcessManagerEventHandler implements retry logic:

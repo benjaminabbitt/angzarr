@@ -123,6 +123,12 @@ Sagas should contain extremely limited logic—just enough to map fields and con
 - Simpler testing (no setup of prior state)
 - Fault tolerance (replay events without side effects from stale state)
 
+**Sagas must set sequences from destination state.** The framework fetches destination EventBooks before calling your saga's execute method. Your saga MUST:
+1. Use destination state to make business decisions
+2. Set `command.pages[0].sequence = destination.next_sequence()`
+
+The framework intentionally does NOT auto-stamp sequences. This forces saga authors to engage with destination state before producing commands. Commands with wrong sequences are rejected.
+
 Name sagas `saga-{source}-{target}`. Examples:
 - `saga-order-fulfillment` (order events → fulfillment commands)
 - `saga-fulfillment-inventory` (fulfillment events → inventory commands)
@@ -138,6 +144,8 @@ Name projectors `projector-{source}-{feature}`. Examples:
 Accepts events across multiple domains, joins them together via the correlation ID. May emit commands to other domains. Super sagas/aggregates. These should generally be a state machine correlating events from multiple domains.
 
 **PM as Aggregate:** Process managers are their own aggregate, with the correlation ID as aggregate root. The PM tracks the state of a specific cross-domain business process; the correlation ID identifies that process. Events without a correlation ID should not invoke PMs—the router guards against this.
+
+**PMs must set sequences from destination state.** Same as sagas—use `destination.next_sequence()` when building commands. The framework validates sequences for optimistic concurrency.
 
 ### Event Design
 Sagas and projectors operate only on the events they receive—no querying. If they lack information, enrich the event at the source aggregate.

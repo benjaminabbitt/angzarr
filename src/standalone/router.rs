@@ -107,13 +107,14 @@ impl CommandRouter {
 
     /// Execute a command from a saga or process manager.
     ///
-    /// Skips command sequence validation since sagas/PMs don't track
-    /// target aggregate sequences.
+    /// Validates command sequence against aggregate state for optimistic
+    /// concurrency control. Sagas/PMs must stamp correct sequences on commands
+    /// based on fetched destination state.
     pub async fn execute_command(
         &self,
         command_book: CommandBook,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
-        self.execute_inner(command_book, false)
+        self.execute_inner(command_book, true)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }

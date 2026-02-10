@@ -33,22 +33,21 @@ just build
 
 # Commands can have submodules
 just examples build
-just examples helm-lint
-just proto generate
+just tofu apply-auto local
 ```
 
 ### Key Commands
 
 | Command | Description |
 |---------|-------------|
-| `just build` | Build the framework |
+| `just build` | Build the framework (includes proto generation) |
 | `just test` | Run unit tests |
 | `just lint` | Run clippy |
 | `just fmt` | Format code |
 | `just check` | Fast compile check |
-| `just proto generate` | Generate protobuf bindings |
-| `just examples build` | Build all examples |
-| `just deploy` | Deploy to Kind cluster |
+| `just proto rust` | Generate Rust protobuf bindings |
+| `just deploy` | Full deployment to Kind cluster |
+| `just dev` | Watch mode with auto-redeploy |
 
 View any `justfile` in the repository to see what commands do—they're self-documenting with comments.
 
@@ -197,48 +196,44 @@ sccache --show-stats
 | sccache | Near-instant rebuilds on cache hits |
 | Both | First build same speed, subsequent builds dramatically faster |
 
-## Proto Generation: buf + protoc
+## Proto Generation
 
-Protobuf bindings are generated for Rust, Go, and Python.
-
-### Prerequisites
-
-```bash
-# Install buf (protobuf tooling)
-# See: https://buf.build/docs/installation
-
-# Install language-specific plugins
-# Rust: prost-build (handled by build.rs)
-# Go: protoc-gen-go, protoc-gen-go-grpc
-# Python: grpcio-tools
-```
+Protobuf bindings are generated for Rust, Go, and Python using a containerized build.
 
 ### Usage
 
 ```bash
-# Generate all language bindings
-just proto generate
-
-# Generate specific language
+# Generate bindings for a specific language
 just proto rust
 just proto go
 just proto python
 
+# Generate all language bindings
+just proto-all
+
 # Clean generated files
-just proto clean
+just proto-clean
+```
+
+### How It Works
+
+Proto generation runs in a container (`angzarr-proto:latest`) that contains all necessary protoc plugins. The container is built automatically on first use:
+
+```bash
+just proto-container  # Build the proto container
 ```
 
 ### File Locations
 
 | Language | Generated Files |
 |----------|-----------------|
-| Rust | `src/proto/` (via build.rs) |
-| Go | `examples/go/generated/` |
-| Python | `examples/python/proto/` |
+| Rust | `generated/rust/` → copied to `examples/rust/common/src/proto/` |
+| Go | `generated/go/` |
+| Python | `generated/python/` |
 
-## Kubernetes: Kind + Helm
+## Kubernetes Development: Skaffold + Kind
 
-Local Kubernetes development uses Kind (Kubernetes in Docker) with Podman.
+Local Kubernetes development uses Skaffold with Kind (Kubernetes in Docker) and Podman.
 
 ### Prerequisites
 
@@ -249,6 +244,9 @@ Local Kubernetes development uses Kind (Kubernetes in Docker) with Podman.
 # Kind
 # See: https://kind.sigs.k8s.io/docs/user/quick-start/
 
+# Skaffold
+# See: https://skaffold.dev/docs/install/
+
 # Helm
 # See: https://helm.sh/docs/intro/install/
 
@@ -256,34 +254,87 @@ Local Kubernetes development uses Kind (Kubernetes in Docker) with Podman.
 # See: https://kubernetes.io/docs/tasks/tools/
 ```
 
-### Usage
+### One-Time Setup
 
 ```bash
-# Create Kind cluster
-just kind-create
-
-# Deploy everything (build images, load, deploy)
-just deploy
-
-# Iterate (rebuild and redeploy)
-just redeploy
-
-# Tear down
-just undeploy
-just kind-delete
+# Configure Podman and Skaffold for the local registry
+just skaffold-init
 ```
 
-### Exposed Ports
+This configures:
+- Podman to trust the local registry (insecure for localhost:5001)
+- Skaffold default repository to point to the local registry
 
-| Port | Service |
-|------|---------|
-| 50051 | Aggregate (gRPC) |
-| 50052 | Event query (gRPC) |
-| 50053 | Gateway (gRPC streaming) |
-| 50054 | Event stream (gRPC subscription) |
-| 5672 | RabbitMQ AMQP |
-| 15672 | RabbitMQ Management UI |
-| 6379 | Redis |
+### Cluster Lifecycle
+
+```bash
+# Create Kind cluster with local registry
+just cluster-create
+
+# Check cluster status
+just cluster-status
+
+# Delete cluster (keeps registry)
+just cluster-delete
+
+# Delete cluster AND registry
+just cluster-delete-all
+```
+
+### Deployment Commands
+
+```bash
+# Full deployment: cluster + infra + build + deploy
+just deploy
+
+# Watch mode: auto-rebuild and redeploy on changes
+just dev
+
+# Fresh deploy: regenerate protos, bust caches
+just fresh-deploy
+
+# Nuclear option: tear down everything, rebuild from scratch
+just nuke-deploy
+```
+
+### How Skaffold Works
+
+Skaffold handles the full development loop:
+
+1. **Build**: Builds container images using Podman/Buildah
+2. **Tag**: Uses content-addressable tags (git SHA) to avoid cache issues
+3. **Push**: Pushes to the local registry (localhost:5001)
+4. **Deploy**: Applies Helm charts to the Kind cluster
+
+The `just dev` command runs Skaffold in watch mode—file changes trigger automatic rebuilds and redeployments.
+
+### Port Forwarding
+
+```bash
+# Forward gateway to localhost:9084
+just port-forward-gateway
+
+# Forward topology API to localhost:9099
+just port-forward-topology
+
+# Forward Grafana to localhost:3000
+just port-forward-grafana
+
+# Kill all port-forwards
+just port-forward-cleanup
+```
+
+### Infrastructure (OpenTofu)
+
+Backing services are deployed via OpenTofu modules:
+
+```bash
+# Deploy PostgreSQL and RabbitMQ
+just infra
+
+# Destroy backing services
+just infra-destroy
+```
 
 ## Package Manager: Helm
 
@@ -306,33 +357,18 @@ sudo apt-get install helm
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
 
-### Installing Angzarr
-
-```bash
-# Install from OCI registry
-helm install angzarr oci://ghcr.io/benjaminabbitt/charts/angzarr --version 0.1.0
-
-# With custom values
-helm install angzarr oci://ghcr.io/benjaminabbitt/charts/angzarr \
-  --version 0.1.0 \
-  --namespace angzarr \
-  --create-namespace \
-  -f values.yaml
-```
-
 ### Chart Structure
 
 ```
 deploy/helm/
 ├── angzarr/              # Main Angzarr chart
 │   ├── Chart.yaml
-│   ├── values.yaml
+│   ├── values.yaml       # Default values
+│   ├── values-rust.yaml  # Rust example values
+│   ├── values-go.yaml    # Go example values
+│   ├── values-python.yaml
 │   └── templates/
-└── examples/             # Example application charts
-    ├── cart/
-    ├── customer/
-    ├── order/
-    └── ...
+└── observability/        # Grafana, Prometheus, etc.
 ```
 
 ### Common Commands
@@ -341,58 +377,52 @@ deploy/helm/
 # Lint charts before deploying
 just examples helm-lint
 
-# Install/upgrade a release
-helm upgrade --install angzarr ./deploy/helm/angzarr -n angzarr --create-namespace
-
 # List releases
 helm list -n angzarr
 
 # Check release status
 helm status angzarr -n angzarr
 
-# Rollback to previous release
-helm rollback angzarr -n angzarr
-
-# Uninstall
-helm uninstall angzarr -n angzarr
-
 # Template locally (debug without deploying)
 helm template angzarr ./deploy/helm/angzarr
 ```
 
-### Values Customization
+## Dev Container
 
-Override defaults in `values.yaml`:
+The project includes a VS Code dev container with all tools pre-installed.
 
-```yaml
-# values.yaml
-replicaCount: 3
+### Features
 
-storage:
-  type: postgres
-  postgres:
-    host: my-postgres.example.com
+- Rust toolchain with rust-analyzer
+- Docker-in-Docker for Kind
+- kubectl and Helm
+- sccache pre-configured
+- VS Code extensions pre-installed
 
-messaging:
-  type: kafka
-  kafka:
-    brokers: kafka-1:9092,kafka-2:9092
-```
+### Usage
 
-Apply with:
-```bash
-helm upgrade --install angzarr ./deploy/helm/angzarr -f values.yaml
-```
+1. Install VS Code "Dev Containers" extension
+2. Open the project folder
+3. Click "Reopen in Container" when prompted
+
+Or from command palette: "Dev Containers: Reopen in Container"
+
+### Customization
+
+The dev container configuration is in `.devcontainer/`:
+- `devcontainer.json` - Container settings and extensions
+- `Dockerfile` - Base image and tool installation
+- `post-create.sh` - Post-creation setup script
 
 ## IDE Integration
 
 ### VS Code
 
-Recommended extensions:
+Recommended extensions (pre-installed in dev container):
 - `rust-analyzer` - Rust language support
 - `Even Better TOML` - TOML syntax highlighting
-- `vscode-proto3` - Protobuf syntax highlighting
 - `crates` - Cargo.toml dependency management
+- `vscode-lldb` - Debugger
 
 ### JetBrains (RustRover/CLion)
 
@@ -429,15 +459,39 @@ Press `Esc` to clear and `Enter` to re-run the current job.
 
 ### Proto generation fails
 
-Ensure buf is installed and in your PATH:
+The proto container builds automatically. If it fails:
 ```bash
-buf --version
+just proto-container  # Rebuild the container
+```
+
+### Skaffold build fails
+
+Ensure registry is configured:
+```bash
+just skaffold-init
 ```
 
 ### Kind cluster issues
 
-Common issues include cgroup delegation errors, port conflicts, and stale cluster state. Try `just kind-delete && just kind-create` to reset.
+Common fixes:
+```bash
+# Reset cluster
+just cluster-delete-all && just cluster-create
 
-### Skaffold
+# Check cluster status
+just cluster-status
 
-We would prefer to use [Skaffold](https://skaffold.dev/) for local Kubernetes development, as it provides file watching and automatic rebuilds. However, Skaffold's Kind integration uses `kind load docker-image` which doesn't work with Podman—it expects images in the Docker daemon. Until Skaffold adds native Podman+Kind support (using `kind load image-archive`), we use a custom `just deploy` workflow that handles the `podman save` → `kind load image-archive` process.
+# Check pods
+kubectl get pods -A
+```
+
+### Image not updating after rebuild
+
+Skaffold uses content-addressable tags (git SHA), so this shouldn't happen. If it does:
+```bash
+# Force rebuild without cache
+just fresh-deploy
+
+# Or nuclear option
+just nuke-deploy
+```

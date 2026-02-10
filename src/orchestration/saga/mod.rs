@@ -11,7 +11,7 @@ pub mod grpc;
 #[cfg(feature = "sqlite")]
 pub mod local;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -83,7 +83,10 @@ struct SagaOperation<'a> {
     fetcher: Option<&'a dyn DestinationFetcher>,
     correlation_id: &'a str,
     commands: Vec<CommandBook>,
-    cached_states: HashMap<String, EventBook>,
+    /// Domains that had sequence conflicts - need fresh fetch on retry.
+    failed_domains: HashSet<String>,
+    /// Cached destination state from successful fetches, keyed by cache_key (domain:root).
+    cached_destinations: HashMap<String, EventBook>,
 }
 
 #[async_trait]
@@ -96,8 +99,7 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
     }
 
     async fn try_execute(&mut self) -> RetryOutcome<Self::Success, Self::Failure> {
-        let mut needs_retry = false;
-        self.cached_states.clear();
+        self.failed_domains.clear();
 
         for command in &self.commands {
             let mut command = command.clone();
@@ -107,21 +109,15 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
                 }
             }
 
-            let domain = command.domain();
+            let domain = command.domain().to_string();
 
             match self.executor.execute(command.clone()).await {
                 CommandOutcome::Success(_) => {
                     debug!(%domain, "Saga command executed successfully");
                 }
-                CommandOutcome::Retryable {
-                    reason,
-                    current_state,
-                } => {
-                    warn!(%domain, error = %reason, "Sequence conflict, will retry");
-                    needs_retry = true;
-                    if let Some(state) = current_state {
-                        self.cached_states.insert(state.cache_key(), state);
-                    }
+                CommandOutcome::Retryable { reason, .. } => {
+                    warn!(%domain, error = %reason, "Sequence conflict, will retry with fresh state");
+                    self.failed_domains.insert(domain);
                 }
                 CommandOutcome::Rejected(reason) => {
                     error!(%domain, error = %reason, "Saga command rejected (non-retryable)");
@@ -130,7 +126,7 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
             }
         }
 
-        if needs_retry {
+        if !self.failed_domains.is_empty() {
             RetryOutcome::Retryable("Sequence conflict".to_string())
         } else {
             RetryOutcome::Success(())
@@ -145,19 +141,37 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
             .await
             .map_err(|e| e.to_string())?;
 
-        // Fetch state for destinations
+        // Fetch state for destinations:
+        // - Failed domains: always fetch fresh (had sequence conflict)
+        // - Other domains: use cached if available
         let mut destinations = Vec::with_capacity(covers.len());
         for cover in &covers {
-            if let Some(cached) = self.cached_states.remove(&cover.cache_key()) {
-                destinations.push(cached);
+            let domain = &cover.domain;
+            let cache_key = cover.cache_key();
+
+            if self.failed_domains.contains(domain) {
+                // Domain had sequence conflict - must fetch fresh
+                if let Some(f) = self.fetcher {
+                    if let Some(dest) = f.fetch(cover).await {
+                        // Update cache with fresh state
+                        self.cached_destinations.insert(cache_key, dest.clone());
+                        destinations.push(dest);
+                    }
+                }
+            } else if let Some(cached) = self.cached_destinations.get(&cache_key) {
+                // Domain didn't fail - use cached state
+                destinations.push(cached.clone());
             } else if let Some(f) = self.fetcher {
+                // No cache hit - fetch and cache
                 if let Some(dest) = f.fetch(cover).await {
+                    self.cached_destinations.insert(cache_key, dest.clone());
                     destinations.push(dest);
                 }
             }
         }
 
-        // Re-execute saga with fresh state
+        // Re-execute saga with fresh/cached state
+        // Saga handler must set correct sequences on commands from destination.next_sequence()
         self.commands = self
             .context
             .re_execute_saga(destinations)
@@ -175,6 +189,7 @@ async fn execute_with_retry(
     executor: &dyn CommandExecutor,
     fetcher: Option<&dyn DestinationFetcher>,
     initial_commands: Vec<CommandBook>,
+    initial_destinations: Vec<EventBook>,
     saga_name: &str,
     correlation_id: &str,
     backoff: ExponentialBuilder,
@@ -189,7 +204,11 @@ async fn execute_with_retry(
         fetcher,
         correlation_id,
         commands: initial_commands,
-        cached_states: HashMap::new(),
+        failed_domains: HashSet::new(),
+        cached_destinations: initial_destinations
+            .into_iter()
+            .map(|d| (d.cache_key(), d))
+            .collect(),
     };
 
     if let Err(e) = run_with_retry(operation, backoff).await {
@@ -236,14 +255,13 @@ pub async fn orchestrate_saga(
     };
 
     // Phase 3: Execute saga with source + destinations
+    // Saga handler must set correct sequences on commands from destination.next_sequence()
     let mut commands = ctx
-        .re_execute_saga(destinations)
+        .re_execute_saga(destinations.clone())
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
 
-    // Stamp saga_origin on all commands so the aggregate can:
-    // (a) skip sequence validation (sagas don't track target sequences)
-    // (b) initiate compensation flow on rejection
+    // Stamp saga_origin for compensation flow on rejection
     let source_cover = ctx.source_cover().cloned();
     for cmd in &mut commands {
         if cmd.saga_origin.is_none() {
@@ -275,6 +293,7 @@ pub async fn orchestrate_saga(
         executor,
         fetcher,
         commands,
+        destinations,
         saga_name,
         correlation_id,
         backoff,

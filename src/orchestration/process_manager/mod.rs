@@ -199,6 +199,7 @@ pub async fn orchestrate_pm(
         }
 
         // Execute commands produced by process manager
+        // PM handler must set correct sequences on commands from destination.next_sequence()
         super::shared::execute_commands(executor, response.commands, correlation_id).await;
 
         // Success — exit retry loop

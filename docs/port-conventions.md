@@ -1,8 +1,26 @@
 # Port Conventions
 
-Angzarr uses a standardized ten-port-per-pod scheme for consistent service addressing across all deployments.
+Angzarr uses consistent port numbering across all deployment modes.
 
-## Port Offset Scheme
+## Infrastructure Ports
+
+Core framework services use fixed ports:
+
+| Service | Port | NodePort | Description |
+|---------|------|----------|-------------|
+| Gateway gRPC | 9084 | 30084 | Command gateway (the "angzarr port") |
+| Gateway Monitoring | 9085 | - | Gateway metrics/health |
+| Stream gRPC | 1340 | 31340 | Event streaming |
+| Aggregate Coordinator | 1310 | 31310 | Internal aggregate coordination |
+| Topology REST API | 9099 | - | Topology visualization |
+
+The gateway (9084) is the single entry point for all client commands.
+
+---
+
+## Business Logic Port Scheme
+
+Business logic services use a ten-port-per-pod scheme for consistent addressing.
 
 Each pod uses a base port (e.g., 50050, 50060, 50070) with offsets 0-9:
 

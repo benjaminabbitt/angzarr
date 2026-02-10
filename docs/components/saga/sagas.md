@@ -401,6 +401,66 @@ inventory = await self.inventory_projector.get_by_sku(sku="WIDGET-001")
 
 ---
 
+## Sequence Handling (Critical)
+
+**Sagas MUST set correct sequence numbers on commands.** The framework validates sequences for optimistic concurrency control.
+
+### Why This Matters
+
+Destinations are fetched so sagas can:
+1. **See current aggregate state** to make informed decisions
+2. **Get the correct sequence** for command targeting
+
+If the framework stamped sequences *after* your code runs, you could ignore destination state entirely and still have "working" commands. This defeats the purpose of fetching destinations.
+
+By requiring you to set sequences, we force you to actually engage with destination state before emitting commands.
+
+### How to Set Sequences
+
+Use `destination.next_sequence()` (Rust) or equivalent in your saga handler:
+
+```rust
+async fn execute(&self, source: &EventBook, destinations: &[EventBook]) -> Result<SagaResponse, Status> {
+    let dest = find_destination(destinations, "inventory", &product_id);
+    let next_seq = dest.next_sequence();  // MUST use this
+
+    // Use destination state for business decisions
+    let stock_level = compute_stock(dest);
+    if stock_level < required_quantity {
+        return Ok(SagaResponse::empty());  // Can't fulfill
+    }
+
+    Ok(SagaResponse {
+        commands: vec![CommandBook {
+            cover: Some(Cover { domain: "inventory".into(), root: product_id, .. }),
+            pages: vec![CommandPage {
+                sequence: next_seq,  // MUST set correctly
+                command: Some(reserve_stock_cmd),
+            }],
+            ..
+        }],
+    })
+}
+```
+
+### What Happens If You Don't
+
+Commands with incorrect sequences are rejected with "sequence mismatch" errors:
+- Command expects sequence 0, aggregate at sequence 5 → rejected
+- Command expects sequence 3, aggregate at sequence 5 (concurrent write) → rejected, saga retries with fresh state
+
+### Retry Behavior
+
+On sequence conflict:
+1. Framework re-fetches fresh destination state
+2. Calls your `execute()` again with updated destinations
+3. You return new commands with correct sequences from fresh state
+4. Retry with exponential backoff
+
+This handles concurrent modifications automatically, but only works if your saga actually uses the destination state it receives.
+
+---
+
 ## Command Properties
 
 Commands emitted by sagas have special properties:
