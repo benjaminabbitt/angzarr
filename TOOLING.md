@@ -233,13 +233,18 @@ just proto-container  # Build the proto container
 
 ## Kubernetes Development: Skaffold + Kind
 
-Local Kubernetes development uses Skaffold with Kind (Kubernetes in Docker) and Podman.
+Local Kubernetes development uses Skaffold with Kind (Kubernetes in Docker).
 
 ### Prerequisites
 
+**Container Runtime**: Either [Podman](https://podman.io/) or [Docker](https://www.docker.com/) works — they're fully compatible. All commands work identically with either runtime.
+
+Podman is recommended (daemonless, rootless, no licensing concerns), but Docker works equally well if you already have it installed.
+
 ```bash
-# Podman (Docker-compatible, no licensing issues)
-# See: https://podman.io/getting-started/installation
+# Container runtime (choose one)
+# Podman: https://podman.io/getting-started/installation
+# Docker: https://docs.docker.com/get-docker/
 
 # Kind
 # See: https://kind.sigs.k8s.io/docs/user/quick-start/
@@ -257,12 +262,12 @@ Local Kubernetes development uses Skaffold with Kind (Kubernetes in Docker) and 
 ### One-Time Setup
 
 ```bash
-# Configure Podman and Skaffold for the local registry
+# Configure container runtime and Skaffold for the local registry
 just skaffold-init
 ```
 
 This configures:
-- Podman to trust the local registry (insecure for localhost:5001)
+- Container runtime to trust the local registry (insecure for localhost:5001)
 - Skaffold default repository to point to the local registry
 
 ### Cluster Lifecycle
@@ -301,7 +306,7 @@ just nuke-deploy
 
 Skaffold handles the full development loop:
 
-1. **Build**: Builds container images using Podman/Buildah
+1. **Build**: Builds container images using your container runtime (Podman or Docker)
 2. **Tag**: Uses content-addressable tags (git SHA) to avoid cache issues
 3. **Push**: Pushes to the local registry (localhost:5001)
 4. **Deploy**: Applies Helm charts to the Kind cluster

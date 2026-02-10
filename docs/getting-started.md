@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Rust 1.70+
-- [Podman](https://podman.io/) - container runtime (Docker-compatible)
+- Container runtime: [Podman](https://podman.io/) or [Docker](https://www.docker.com/)
 - [Kind](https://kind.sigs.k8s.io/) - local Kubernetes clusters
 - [Skaffold](https://skaffold.dev/) - Kubernetes development workflow
 - [just](https://github.com/casey/just) - command runner
@@ -12,6 +12,34 @@
 - [mold](https://github.com/rui314/mold) - fast linker (recommended)
 - [sccache](https://github.com/mozilla/sccache) - compilation cache (recommended)
 - grpcurl (optional, for debugging)
+
+### Container Runtime: Podman or Docker
+
+Angzarr works with either **Podman** or **Docker** — they're fully compatible. All `docker` commands work identically with `podman`.
+
+**Podman** is recommended because:
+- Daemonless architecture (no background service required)
+- Rootless by default (better security)
+- No licensing concerns for commercial use
+
+If you have Docker installed, everything works as-is. If you prefer Podman:
+
+```bash
+# Debian/Ubuntu
+sudo apt install podman
+
+# Fedora
+sudo dnf install podman
+
+# macOS
+brew install podman
+podman machine init && podman machine start
+
+# Optional: alias docker to podman for muscle memory
+alias docker=podman
+```
+
+Both Kind and Skaffold detect and use whichever runtime is available.
 
 See [TOOLING.md](../TOOLING.md) for detailed setup instructions.
 
@@ -59,7 +87,7 @@ The project includes a complete dev container configuration:
 
 The dev container includes:
 - Rust toolchain with rust-analyzer
-- Docker-in-Docker for Kind/Podman
+- Container runtime (Docker-in-Docker) for Kind
 - kubectl and Helm
 - sccache pre-configured
 - All VS Code extensions pre-installed
