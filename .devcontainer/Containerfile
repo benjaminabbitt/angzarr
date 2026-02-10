@@ -21,7 +21,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash 
 # Install grpcurl (from GitHub releases, not apt)
 RUN GRPCURL_VERSION=1.9.1 \
     && curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_x86_64.tar.gz" \
-    | tar -xzf - -C /usr/local/bin grpcurl
+    | tar --no-same-owner -xzf - -C /usr/local/bin grpcurl
 
 # Install kind for local k8s
 RUN curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64 \

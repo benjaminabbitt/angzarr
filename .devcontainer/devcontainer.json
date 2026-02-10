@@ -1,7 +1,7 @@
 {
   "name": "Angzarr Development",
   "build": {
-    "dockerfile": "Dockerfile",
+    "dockerfile": "Containerfile",
     "context": ".."
   },
   "features": {
