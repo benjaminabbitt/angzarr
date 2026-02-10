@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::bus::{EventBus, MessagingConfig};
 use crate::config::ResourceLimits;
@@ -23,7 +23,6 @@ use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
 
-use super::builder::GatewayConfig;
 use super::client::CommandClient;
 use super::grpc_handlers::AggregateHandlerAdapter;
 use super::router::{CommandRouter, DomainStorage, SyncProjectorEntry};
@@ -42,7 +41,6 @@ use super::traits::{
 /// - Aggregate handlers (client logic)
 /// - Projector handlers (read models)
 /// - Saga handlers (cross-aggregate workflows)
-/// - Optional gateway (for external clients)
 pub struct Runtime {
     /// Per-domain storage.
     domain_stores: HashMap<String, DomainStorage>,
@@ -58,9 +56,8 @@ pub struct Runtime {
     tasks: Vec<JoinHandle<()>>,
     /// gRPC servers for cleanup on shutdown.
     servers: Vec<ServerInfo>,
-    /// Gateway configuration.
-    gateway_config: GatewayConfig,
     /// Resource limits for message processing.
+    #[allow(dead_code)]
     limits: ResourceLimits,
 }
 
@@ -79,7 +76,6 @@ impl Runtime {
         domain_storage_configs: HashMap<String, StorageConfig>,
         _messaging_config: MessagingConfig,
         _transport_config: TransportConfig,
-        gateway_config: GatewayConfig,
         aggregates: HashMap<String, Arc<dyn AggregateHandler>>,
         projectors: HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
@@ -316,7 +312,6 @@ impl Runtime {
             descriptors,
             tasks: Vec::new(),
             servers,
-            gateway_config,
             limits,
         })
     }
@@ -495,22 +490,7 @@ impl Runtime {
     /// Run the runtime until Ctrl+C.
     ///
     /// This starts all background tasks and waits for shutdown signal.
-    pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Start gateway if configured
-        match &self.gateway_config {
-            GatewayConfig::None => {
-                info!("No gateway configured, running in standalone-only mode");
-            }
-            GatewayConfig::Tcp(port) => {
-                info!(port = %port, "Starting TCP gateway");
-                self.start_gateway().await?;
-            }
-            GatewayConfig::Uds(path) => {
-                info!(path = %path.display(), "Starting UDS gateway");
-                self.start_gateway().await?;
-            }
-        }
-
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Runtime running, press Ctrl+C to exit");
 
         // Wait for shutdown signal
@@ -526,78 +506,6 @@ impl Runtime {
         // Shutdown gRPC servers
         for server in self.servers {
             server.shutdown();
-        }
-
-        Ok(())
-    }
-
-    /// Start the gateway server.
-    ///
-    /// Serves `CommandGateway` and `EventQuery` directly using the standalone
-    /// router and domain stores. No bridge server or service discovery.
-    async fn start_gateway(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        use super::server::{StandaloneEventQueryBridge, StandaloneGatewayService};
-        use crate::proto::command_gateway_server::CommandGatewayServer;
-        use crate::proto::event_query_server::EventQueryServer;
-
-        let gateway =
-            StandaloneGatewayService::with_limits(self.router.clone(), self.limits.clone());
-        let event_query = StandaloneEventQueryBridge::new(self.domain_stores.clone());
-
-        let router = tonic::transport::Server::builder()
-            .layer(crate::transport::grpc_trace_layer())
-            .add_service(CommandGatewayServer::new(gateway))
-            .add_service(EventQueryServer::new(event_query));
-
-        match &self.gateway_config {
-            GatewayConfig::None => {}
-            GatewayConfig::Tcp(port) => {
-                let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
-                let listener = tokio::net::TcpListener::bind(addr).await?;
-                let local_addr = listener.local_addr()?;
-
-                info!(addr = %local_addr, "Gateway listening on TCP");
-
-                let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-                let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-
-                tokio::spawn(async move {
-                    let server = router.serve_with_incoming_shutdown(incoming, async {
-                        let _ = shutdown_rx.await;
-                    });
-                    if let Err(e) = server.await {
-                        error!(error = %e, "Gateway server error");
-                    }
-                });
-
-                self.servers.push(super::server::ServerInfo::from_parts(
-                    local_addr,
-                    shutdown_tx,
-                ));
-            }
-            GatewayConfig::Uds(path) => {
-                let _guard = crate::transport::prepare_uds_socket(path)?;
-                let uds = tokio::net::UnixListener::bind(path)?;
-                let stream = tokio_stream::wrappers::UnixListenerStream::new(uds);
-
-                info!(path = %path.display(), "Gateway listening on UDS");
-
-                let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-
-                tokio::spawn(async move {
-                    let server = router.serve_with_incoming_shutdown(stream, async {
-                        let _ = shutdown_rx.await;
-                    });
-                    if let Err(e) = server.await {
-                        error!(error = %e, "Gateway server error");
-                    }
-                });
-
-                self.servers.push(super::server::ServerInfo::from_parts(
-                    "0.0.0.0:0".parse().unwrap(),
-                    shutdown_tx,
-                ));
-            }
         }
 
         Ok(())

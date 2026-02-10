@@ -1,21 +1,21 @@
 //! Ergonomic Rust client for Angzarr gRPC services.
 //!
 //! This crate provides typed clients with fluent builder APIs for interacting
-//! with Angzarr gateway and query services.
+//! with Angzarr aggregate coordinator and query services.
 //!
 //! # Quick Start
 //!
 //! ```rust,ignore
-//! use angzarr_client::{Client, CommandBuilderExt, QueryBuilderExt};
+//! use angzarr_client::{DomainClient, CommandBuilderExt, QueryBuilderExt};
 //! use uuid::Uuid;
 //!
 //! async fn example() -> angzarr_client::Result<()> {
-//!     // Connect to the server
-//!     let client = Client::connect("http://localhost:50051").await?;
+//!     // Connect to a domain's coordinator
+//!     let client = DomainClient::connect("http://localhost:1310").await?;
 //!
 //!     // Execute a command
 //!     let cart_id = Uuid::new_v4();
-//!     let response = client.gateway
+//!     let response = client.aggregate
 //!         .command("cart", cart_id)
 //!         .with_command("type.googleapis.com/examples.CreateCart", &create_cart)
 //!         .execute()
@@ -39,10 +39,10 @@
 //! use angzarr_client::traits::{GatewayClient, QueryClient};
 //! use async_trait::async_trait;
 //!
-//! struct MockGateway;
+//! struct MockAggregate;
 //!
 //! #[async_trait]
-//! impl GatewayClient for MockGateway {
+//! impl GatewayClient for MockAggregate {
 //!     async fn execute(&self, _cmd: angzarr::proto::CommandBook)
 //!         -> angzarr_client::Result<angzarr::proto::CommandResponse>
 //!     {
@@ -59,7 +59,7 @@ pub mod error;
 pub mod traits;
 
 // Re-export main types at crate root
-pub use client::{Client, GatewayClient, QueryClient, SpeculativeClient};
+pub use client::{AggregateClient, Client, DomainClient, QueryClient, SpeculativeClient};
 pub use error::{ClientError, Result};
 
 // Re-export builder extension traits for fluent API

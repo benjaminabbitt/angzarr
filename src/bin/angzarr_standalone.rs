@@ -19,7 +19,11 @@
 //!     ├── SagaEventHandler            ──gRPC/UDS──→ saga-*.sock
 //!     ├── EventBus (tokio broadcast channels)
 //!     ├── Storage (direct access)
-//!     └── Gateway (:50051 TCP for external clients)
+//!     │
+//!     │  Per-domain coordinators (TCP for external clients):
+//!     ├── order coordinator     (:50035) → AggregateCoordinator + EventQuery
+//!     ├── inventory coordinator (:50025) → AggregateCoordinator + EventQuery
+//!     └── fulfillment coordinator (:50055) → AggregateCoordinator + EventQuery
 //! ```
 //!
 //! ## Configuration
@@ -35,8 +39,10 @@
 //! standalone:
 //!   aggregates:
 //!     - domain: customer
+//!       port: 50015  # Optional: exposes coordinator on this port
 //!       command: uv run --directory customer python server.py
 //!     - domain: order
+//!       port: 50035  # Optional: exposes coordinator on this port
 //!       command: uv run --directory order python server.py
 //!   sagas:
 //!     - domain: fulfillment
@@ -57,9 +63,6 @@
 //!         type: http
 //!         endpoint: http://localhost:8080/health
 //!       health_timeout_secs: 30
-//!   gateway:
-//!     enabled: true
-//!     port: 50051
 //! ```
 
 use std::collections::HashMap;
@@ -74,8 +77,8 @@ use tracing::{error, info, warn};
 use angzarr::bus::{ChannelConfig, ChannelEventBus, EventBus};
 use angzarr::config::SagaCompensationConfig;
 use angzarr::config::{
-    Config, ExternalServiceConfig, HealthCheckConfig, ResourceLimits, CONFIG_ENV_PREFIX,
-    CONFIG_ENV_VAR, TRANSPORT_TYPE_ENV_VAR,
+    Config, ExternalServiceConfig, HealthCheckConfig, CONFIG_ENV_PREFIX, CONFIG_ENV_VAR,
+    TRANSPORT_TYPE_ENV_VAR,
 };
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
@@ -89,14 +92,14 @@ use angzarr::orchestration::destination::local::LocalDestinationFetcher;
 use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_client::AggregateClient;
-use angzarr::proto::command_gateway_server::CommandGatewayServer;
+use angzarr::proto::aggregate_coordinator_server::AggregateCoordinatorServer;
 use angzarr::proto::event_query_server::EventQueryServer;
 use angzarr::proto::process_manager_client::ProcessManagerClient;
-use angzarr::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use angzarr::proto::projector_client::ProjectorClient;
 use angzarr::proto::saga_client::SagaClient;
 use angzarr::standalone::{
     AggregateHandlerAdapter, CommandRouter, DomainStorage, GrpcProjectorHandler,
-    MetaAggregateHandler, ServerInfo, StandaloneEventQueryBridge, StandaloneGatewayService,
+    MetaAggregateHandler, ServerInfo, SingleDomainEventQuery, StandaloneAggregateService,
     META_DOMAIN,
 };
 use angzarr::transport::{connect_to_address, grpc_trace_layer};
@@ -447,7 +450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let client = ProjectorCoordinatorClient::new(channel);
+        let client = ProjectorClient::new(channel);
         let handler: Arc<dyn angzarr::standalone::ProjectorHandler> =
             Arc::new(GrpcProjectorHandler::new(client));
 
@@ -603,37 +606,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Start gateway if enabled
+    // Start per-domain aggregate coordinator servers
     let mut servers: Vec<ServerInfo> = Vec::new();
-    if config.standalone.gateway.enabled {
-        let port = config.standalone.gateway.port.unwrap_or(50051);
-        let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
+    for svc in &config.standalone.aggregates {
+        if let Some(port) = svc.port {
+            let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
-        let gateway = StandaloneGatewayService::with_limits(router.clone(), config.limits.clone());
-        let event_query = StandaloneEventQueryBridge::new(domain_stores.clone());
+            let storage = domain_stores.get(&svc.domain).ok_or_else(|| {
+                format!(
+                    "No storage for domain '{}' when starting coordinator",
+                    svc.domain
+                )
+            })?;
 
-        let grpc_router = tonic::transport::Server::builder()
-            .layer(grpc_trace_layer())
-            .add_service(CommandGatewayServer::new(gateway))
-            .add_service(EventQueryServer::new(event_query));
+            let aggregate_svc = StandaloneAggregateService::with_limits(
+                svc.domain.clone(),
+                router.clone(),
+                config.limits.clone(),
+            );
+            let event_query = SingleDomainEventQuery::new(svc.domain.clone(), storage.clone());
 
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        let local_addr = listener.local_addr()?;
+            let grpc_router = tonic::transport::Server::builder()
+                .layer(grpc_trace_layer())
+                .add_service(AggregateCoordinatorServer::new(aggregate_svc))
+                .add_service(EventQueryServer::new(event_query));
 
-        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            let local_addr = listener.local_addr()?;
 
-        tokio::spawn(async move {
-            let server = grpc_router.serve_with_incoming_shutdown(incoming, async {
-                let _ = shutdown_rx.await;
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+
+            let domain = svc.domain.clone();
+            tokio::spawn(async move {
+                let server = grpc_router.serve_with_incoming_shutdown(incoming, async {
+                    let _ = shutdown_rx.await;
+                });
+                if let Err(e) = server.await {
+                    error!(domain = %domain, error = %e, "Coordinator server error");
+                }
             });
-            if let Err(e) = server.await {
-                error!(error = %e, "Gateway server error");
-            }
-        });
 
-        servers.push(ServerInfo::from_parts(local_addr, shutdown_tx));
-        info!(addr = %local_addr, "Gateway listening");
+            servers.push(ServerInfo::from_parts(local_addr, shutdown_tx));
+            info!(domain = %svc.domain, addr = %local_addr, "Coordinator listening");
+        }
     }
 
     // Register components via _angzarr meta aggregate (command-based registration)
@@ -682,7 +698,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         projectors = config.standalone.projectors.len(),
         process_managers = config.standalone.process_managers.len(),
         services = config.standalone.services.len(),
-        gateway = config.standalone.gateway.enabled,
+        coordinators = servers.len(),
         "All components started"
     );
 
@@ -691,7 +707,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Shutting down...");
 
-    // Shutdown gateway
+    // Shutdown coordinators
     for server in servers {
         server.shutdown();
     }

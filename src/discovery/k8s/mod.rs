@@ -1,8 +1,8 @@
 //! K8s label-based service discovery and descriptor annotations.
 //!
-//! Discovers aggregate and projector coordinator services by watching
-//! K8s Service resources with appropriate labels. Service mesh handles L7
-//! gRPC load balancing—we just connect to Service DNS names.
+//! Discovers aggregate and projector services by watching K8s Service
+//! resources with appropriate labels. Service mesh handles L7 gRPC load
+//! balancing—we just connect to Service DNS names.
 //!
 //! # Label Scheme
 //!

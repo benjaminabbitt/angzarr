@@ -19,30 +19,6 @@ use super::traits::{
     ProjectorHandler, SagaConfig, SagaHandler,
 };
 
-/// Configuration for optional gateway exposure.
-#[derive(Debug, Clone, Default)]
-pub enum GatewayConfig {
-    /// No gateway (in-process only).
-    #[default]
-    None,
-    /// TCP gateway on specified port.
-    Tcp(u16),
-    /// UDS gateway at specified path.
-    Uds(PathBuf),
-}
-
-impl GatewayConfig {
-    /// Create a TCP gateway configuration.
-    pub fn tcp(port: u16) -> Self {
-        Self::Tcp(port)
-    }
-
-    /// Create a UDS gateway configuration.
-    pub fn uds(path: impl Into<PathBuf>) -> Self {
-        Self::Uds(path.into())
-    }
-}
-
 /// Builder for creating a standalone runtime.
 ///
 /// # Example
@@ -66,8 +42,6 @@ pub struct RuntimeBuilder {
     messaging: MessagingConfig,
     /// Transport configuration.
     transport: TransportConfig,
-    /// Gateway configuration.
-    gateway: GatewayConfig,
     /// Registered aggregate handlers by domain.
     aggregates: HashMap<String, Arc<dyn AggregateHandler>>,
     /// Registered projector handlers by name.
@@ -98,7 +72,6 @@ impl RuntimeBuilder {
     /// - Storage: SQLite in-memory
     /// - Messaging: Channel (in-memory pub/sub)
     /// - Transport: UDS at /tmp/angzarr/
-    /// - Gateway: None (in-process only)
     pub fn new() -> Self {
         Self {
             storage: StorageConfig {
@@ -116,7 +89,6 @@ impl RuntimeBuilder {
                 uds: UdsConfig::default(),
                 ..Default::default()
             },
-            gateway: GatewayConfig::None,
             aggregates: HashMap::new(),
             projectors: HashMap::new(),
             sagas: HashMap::new(),
@@ -232,28 +204,6 @@ impl RuntimeBuilder {
     /// Use custom transport configuration.
     pub fn with_transport(mut self, config: TransportConfig) -> Self {
         self.transport = config;
-        self
-    }
-
-    // ========================================================================
-    // Gateway Configuration
-    // ========================================================================
-
-    /// Expose gateway for external clients via TCP.
-    pub fn with_gateway_tcp(mut self, port: u16) -> Self {
-        self.gateway = GatewayConfig::Tcp(port);
-        self
-    }
-
-    /// Expose gateway for external clients via UDS.
-    pub fn with_gateway_uds(mut self, path: impl Into<PathBuf>) -> Self {
-        self.gateway = GatewayConfig::Uds(path.into());
-        self
-    }
-
-    /// Use custom gateway configuration.
-    pub fn with_gateway(mut self, config: GatewayConfig) -> Self {
-        self.gateway = config;
         self
     }
 
@@ -435,7 +385,6 @@ impl RuntimeBuilder {
             self.domain_storage,
             self.messaging,
             self.transport,
-            self.gateway,
             self.aggregates,
             self.projectors,
             self.sagas,
@@ -530,25 +479,5 @@ mod tests {
 
         assert_eq!(builder.messaging.messaging_type, MessagingType::Amqp);
         assert_eq!(builder.messaging.amqp.url, "amqp://localhost:5672");
-    }
-
-    #[test]
-    fn test_builder_gateway_tcp() {
-        let builder = RuntimeBuilder::new().with_gateway_tcp(50051);
-
-        match builder.gateway {
-            GatewayConfig::Tcp(port) => assert_eq!(port, 50051),
-            _ => panic!("Expected TCP gateway"),
-        }
-    }
-
-    #[test]
-    fn test_builder_gateway_uds() {
-        let builder = RuntimeBuilder::new().with_gateway_uds("/tmp/gateway.sock");
-
-        match builder.gateway {
-            GatewayConfig::Uds(path) => assert_eq!(path, PathBuf::from("/tmp/gateway.sock")),
-            _ => panic!("Expected UDS gateway"),
-        }
     }
 }

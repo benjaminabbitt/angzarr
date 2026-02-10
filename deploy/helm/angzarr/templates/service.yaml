@@ -223,36 +223,6 @@ spec:
     angzarr.io/service: topology
 {{- end }}
 
-{{- /* Command Proxy service */}}
-{{- if .Values.infrastructure.gateway.enabled }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "angzarr.fullname" . }}-gateway
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "angzarr.labels" . | nindent 4 }}
-    app.kubernetes.io/component: infrastructure
-    angzarr.io/service: gateway
-  annotations:
-    angzarr.io/dns-name: "{{ include "angzarr.fullname" . }}-gateway.{{ .Release.Namespace }}.svc.cluster.local"
-spec:
-  type: {{ .Values.infrastructure.gateway.serviceType | default "ClusterIP" }}
-  ports:
-    - port: {{ .Values.infrastructure.gateway.port }}
-      targetPort: grpc
-      protocol: TCP
-      name: grpc
-      {{- if and (eq (.Values.infrastructure.gateway.serviceType | default "ClusterIP") "NodePort") .Values.infrastructure.gateway.nodePort }}
-      nodePort: {{ .Values.infrastructure.gateway.nodePort }}
-      {{- end }}
-  selector:
-    {{- include "angzarr.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: infrastructure
-    angzarr.io/service: gateway
-{{- end }}
-
 {{- /* NodePort service for local development aggregate access */}}
 {{- if .Values.service.nodePort.enabled }}
 ---

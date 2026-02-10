@@ -853,7 +853,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
-        {{- if .Values.amqp.enabled }}
+        {{- if .Values.messaging.amqp.enabled }}
         # Wait for RabbitMQ (deployed by Terraform)
         - name: wait-for-rabbitmq
           image: busybox:1.36
@@ -866,7 +866,7 @@ spec:
               echo "RabbitMQ is ready"
         {{- end }}
       containers:
-        # Stream projector - receives events from sidecar, exposes EventStream for gateway
+        # Stream projector - receives events from sidecar, exposes EventStream for subscribers
         - name: stream
           securityContext:
             {{- include "angzarr.containerSecurityContext" . | nindent 12 }}
@@ -902,17 +902,17 @@ spec:
             - name: ANGZARR__TARGET__DOMAIN
               value: "stream"
             # Subscribe to ALL events (stream forwards by correlation ID)
-            {{- if .Values.amqp.enabled }}
+            {{- if .Values.messaging.amqp.enabled }}
             - name: ANGZARR__MESSAGING__TYPE
               value: "amqp"
             - name: ANGZARR__MESSAGING__AMQP__URL
-              {{- if .Values.amqp.existingSecret }}
+              {{- if .Values.messaging.amqp.existingSecret }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.amqp.existingSecret }}
-                  key: uri
+                  name: {{ .Values.messaging.amqp.existingSecret }}
+                  key: {{ .Values.messaging.amqp.secretKey }}
               {{- else }}
-              value: {{ .Values.amqp.url }}
+              value: {{ .Values.messaging.amqp.url }}
               {{- end }}
             # Subscribe to all domains
             - name: ANGZARR__MESSAGING__AMQP__DOMAIN
@@ -921,90 +921,6 @@ spec:
             {{- include "angzarr.otel-env" (dict "root" . "service" "projector" "domain" "stream") | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-{{- end }}
-
-{{- /* Command Proxy service */}}
-{{- if .Values.infrastructure.gateway.enabled }}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "angzarr.fullname" . }}-gateway
-  labels:
-    {{- include "angzarr.labels" . | nindent 4 }}
-    app.kubernetes.io/component: infrastructure
-    angzarr.io/service: gateway
-  {{- if .Values.reloader.enabled }}
-  annotations:
-    reloader.stakater.com/auto: "true"
-  {{- end }}
-spec:
-  replicas: {{ .Values.infrastructure.gateway.replicas }}
-  selector:
-    matchLabels:
-      {{- include "angzarr.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: infrastructure
-      angzarr.io/service: gateway
-  template:
-    metadata:
-      labels:
-        {{- include "angzarr.labels" . | nindent 8 }}
-        app.kubernetes.io/component: infrastructure
-        angzarr.io/service: gateway
-    spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "angzarr.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      containers:
-        - name: gateway
-          securityContext:
-            {{- include "angzarr.containerSecurityContext" . | nindent 12 }}
-          image: "{{ .Values.images.gateway.repository }}:{{ .Values.images.gateway.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.images.gateway.pullPolicy }}
-          ports:
-            - name: grpc
-              containerPort: {{ .Values.infrastructure.gateway.port }}
-              protocol: TCP
-            {{- if .Values.ports.coordinatorDebug.enabled }}
-            - name: coord-debug
-              containerPort: {{ add .Values.infrastructure.gateway.port 2 }}
-              protocol: TCP
-            {{- end }}
-          env:
-            - name: ANGZARR_LOG
-              value: {{ .Values.logging.level }}
-            # Transport port — single gRPC server hosts both command gateway + event query
-            - name: ANGZARR__TRANSPORT__TCP__PORT
-              value: "{{ .Values.infrastructure.gateway.port }}"
-            # Namespace for K8s service discovery (from downward API)
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            {{- if .Values.infrastructure.gateway.entities }}
-            # Domain-based routing: domain=address pairs (overrides K8s discovery)
-            - name: COMMAND_HANDLERS
-              value: {{ range $domain, $addr := .Values.infrastructure.gateway.entities }}{{ $domain }}={{ $addr }},{{ end }}
-            {{- else if .Values.infrastructure.gateway.entityService }}
-            # Single command service (legacy, overrides K8s discovery)
-            - name: COMMAND_ADDRESS
-              value: {{ .Values.infrastructure.gateway.entityService | quote }}
-            {{- end }}
-            - name: STREAM_ADDRESS
-              value: {{ .Values.infrastructure.gateway.streamService | default (printf "%s-stream:%d" (include "angzarr.fullname" .) (.Values.infrastructure.stream.port | int)) | quote }}
-            - name: STREAM_TIMEOUT_SECS
-              value: "{{ .Values.infrastructure.gateway.streamTimeoutSecs }}"
-            {{- include "angzarr.otel-env" (dict "root" . "service" "gateway") | nindent 12 }}
-          resources:
-            {{- toYaml .Values.infrastructure.gateway.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

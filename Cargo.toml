@@ -222,16 +222,12 @@ name = "angzarr-process-manager"
 path = "src/bin/angzarr_process_manager.rs"
 
 [[bin]]
-name = "angzarr-gateway"
-path = "src/bin/angzarr_gateway.rs"
+name = "angzarr-log"
+path = "src/bin/angzarr_log.rs"
 
 [[bin]]
 name = "angzarr-stream"
 path = "src/bin/angzarr_stream.rs"
-
-[[bin]]
-name = "angzarr-log"
-path = "src/bin/angzarr_log.rs"
 
 [[bin]]
 name = "angzarr-standalone"

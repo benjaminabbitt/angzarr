@@ -50,18 +50,6 @@ build:
         dockerfile: Containerfile
         target: angzarr-process-manager-dev
 
-    - image: localhost:5001/angzarr-stream
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: angzarr-stream-dev
-
-    - image: localhost:5001/angzarr-gateway
-      context: .
-      docker:
-        dockerfile: Containerfile
-        target: angzarr-gateway-dev
-
     - image: localhost:5001/angzarr-log
       context: .
       docker:
@@ -73,6 +61,12 @@ build:
       docker:
         dockerfile: Containerfile
         target: angzarr-topology-dev
+
+    - image: localhost:5001/angzarr-stream
+      context: .
+      docker:
+        dockerfile: Containerfile
+        target: angzarr-stream-dev
 
 profiles:
   # Release profile - slow musl builds, minimal images
@@ -103,18 +97,6 @@ profiles:
             dockerfile: Containerfile
             target: angzarr-process-manager
 
-        - image: localhost:5001/angzarr-stream
-          context: .
-          docker:
-            dockerfile: Containerfile
-            target: angzarr-stream
-
-        - image: localhost:5001/angzarr-gateway
-          context: .
-          docker:
-            dockerfile: Containerfile
-            target: angzarr-gateway
-
         - image: localhost:5001/angzarr-log
           context: .
           docker:
@@ -126,3 +108,9 @@ profiles:
           docker:
             dockerfile: Containerfile
             target: angzarr-topology
+
+        - image: localhost:5001/angzarr-stream
+          context: .
+          docker:
+            dockerfile: Containerfile
+            target: angzarr-stream

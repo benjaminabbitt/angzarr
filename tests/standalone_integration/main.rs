@@ -19,3 +19,4 @@ mod snapshot;
 mod streaming;
 #[cfg(feature = "topology")]
 mod topology;
+mod upcaster;

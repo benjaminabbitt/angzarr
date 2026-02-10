@@ -44,11 +44,9 @@ Each example directory should be largely self sufficient and know how to build a
 Angzarr uses consistent port numbering across all deployment modes.
 
 ### Infrastructure Ports
-- **Gateway gRPC**: 9084 (the "angzarr port" - NodePort: 30084)
-- **Gateway Monitoring**: 9085 (angzarr + 1)
-- **Stream gRPC**: 1340 (NodePort: 31340)
-- **Aggregate Coordinator**: 1310 (NodePort: 31310)
-- **Topology REST API**: 9099
+- **Aggregate Coordinator**: 1310 (NodePort: 31310) - per-domain command handling
+- **Stream gRPC**: 1340 (NodePort: 31340) - event streaming
+- **Topology REST API**: 9099 - topology visualization
 
 ### Business Logic Ports by Language
 Each language gets a 100-port block for business logic:
@@ -59,14 +57,18 @@ Each language gets a 100-port block for business logic:
 ### K8s Testing
 For acceptance tests against a deployed cluster:
 ```bash
-# Set up port forward for gateway (one-time, leave running)
-kubectl port-forward svc/angzarr-gateway 9084:9084 -n angzarr &
+# Set up port forwards for each domain's aggregate coordinator
+kubectl port-forward svc/angzarr-order 1310:1310 -n angzarr &
+kubectl port-forward svc/angzarr-inventory 1310:1310 -n angzarr &
 
-# Run acceptance tests against gateway
-ANGZARR_TEST_MODE=gateway ANGZARR_ENDPOINT=http://localhost:9084 cargo test --package e2e --test acceptance
+# Run acceptance tests against deployed cluster
+ANGZARR_TEST_MODE=direct \
+  ANGZARR_ORDER_ENDPOINT=http://localhost:1310 \
+  ANGZARR_INVENTORY_ENDPOINT=http://localhost:1311 \
+  cargo test --package e2e --test acceptance
 ```
 
-The gateway is the single entry point for all client commands. No need to port-forward individual aggregates.
+Clients connect directly to per-domain aggregate coordinators via K8s DNS (e.g., `angzarr-order.angzarr.svc.cluster.local:1310`).
 
 ## Testing
 
@@ -104,7 +106,7 @@ Test **business behavior** through the full stack. Written in Gherkin, describin
 - Same Gherkin feature files validate all language implementations (Rust, Python, Go)
 - Two execution modes via `Backend` trait abstraction:
   - **Standalone** (default): in-process `RuntimeBuilder` with SQLite
-  - **Gateway** (`ANGZARR_TEST_MODE=gateway`): remote gRPC against deployed system
+  - **Direct** (`ANGZARR_TEST_MODE=direct`): remote gRPC against deployed per-domain aggregate coordinators
 
 ## Proto
 When using proto generated code, use extension traits to add functionality to the generated code.  Do not use free functions or explicit wrappers.

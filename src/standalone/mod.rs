@@ -31,7 +31,7 @@ mod server;
 mod speculative;
 mod traits;
 
-pub use builder::{GatewayConfig, RuntimeBuilder};
+pub use builder::RuntimeBuilder;
 pub use client::{CommandBuilder, CommandClient, SpeculativeClient, StandaloneQueryClient};
 pub use grpc_handlers::{AggregateHandlerAdapter, GrpcProjectorHandler};
 pub use meta_aggregate::MetaAggregateHandler;
@@ -42,7 +42,7 @@ pub use crate::proto_ext::{
 };
 pub use router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 pub use runtime::Runtime;
-pub use server::{ServerInfo, StandaloneEventQueryBridge, StandaloneGatewayService};
+pub use server::{ServerInfo, SingleDomainEventQuery, StandaloneAggregateService};
 pub use speculative::{DomainStateSpec, PmSpeculativeResult, SpeculativeExecutor};
 pub use traits::{
     AggregateHandler, ProcessManagerConfig, ProcessManagerHandler, ProjectionMode, ProjectorConfig,

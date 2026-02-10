@@ -40,12 +40,12 @@ pub trait ServiceDiscovery: Send + Sync {
         domain: &str,
     ) -> Result<EventQueryClient<Channel>, DiscoveryError>;
 
-    /// Get all projector coordinator clients.
+    /// Get all projector clients.
     async fn get_all_projectors(
         &self,
     ) -> Result<Vec<ProjectorCoordinatorClient<Channel>>, DiscoveryError>;
 
-    /// Get projector coordinator client by name.
+    /// Get projector client by name.
     async fn get_projector_by_name(
         &self,
         name: &str,

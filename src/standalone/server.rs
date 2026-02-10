@@ -1,28 +1,25 @@
 //! gRPC services for standalone mode.
 //!
-//! Direct implementations of `CommandGateway` and `EventQuery` that wrap the
+//! Per-domain implementations of `AggregateCoordinator` and `EventQuery` that wrap the
 //! standalone `CommandRouter` and domain stores. No intermediate bridge servers
 //! or service discovery needed.
 //!
 //! Edition handling is implicit: the router extracts edition from the command's
 //! Cover and passes it to the event store, which handles composite reads.
 
-use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 use tracing::error;
 
 use crate::config::ResourceLimits;
-use crate::proto::command_gateway_server::CommandGateway;
+use crate::proto::aggregate_coordinator_server::AggregateCoordinator;
 use crate::proto::event_query_server::EventQuery as EventQueryTrait;
 use crate::proto::{
-    AggregateRoot, CommandBook, CommandResponse, EventBook, Query, SyncCommandBook,
+    AggregateRoot, CommandBook, CommandResponse, DryRunRequest, EventBook, Query, SyncCommandBook,
     Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;
@@ -33,43 +30,63 @@ use crate::orchestration::aggregate::DEFAULT_EDITION;
 
 use super::router::{CommandRouter, DomainStorage};
 
-/// Standalone `CommandGateway` implementation.
+/// Per-domain `AggregateCoordinator` implementation for standalone mode.
 ///
-/// Routes commands directly to the standalone `CommandRouter` without
-/// service discovery or intermediate gRPC bridges. Edition is extracted
-/// from the command's Cover and used for edition-aware storage operations.
-pub struct StandaloneGatewayService {
+/// Routes commands to the standalone `CommandRouter` after validating they
+/// belong to this service's domain. Matches the distributed mode pattern
+/// where each domain has its own coordinator endpoint.
+pub struct StandaloneAggregateService {
+    domain: String,
     router: Arc<CommandRouter>,
     limits: ResourceLimits,
 }
 
-impl StandaloneGatewayService {
-    /// Create a new standalone gateway wrapping the given router.
-    pub fn new(router: Arc<CommandRouter>) -> Self {
-        Self::with_limits(router, ResourceLimits::default())
+impl StandaloneAggregateService {
+    /// Create a new per-domain aggregate service.
+    pub fn new(domain: impl Into<String>, router: Arc<CommandRouter>) -> Self {
+        Self::with_limits(domain, router, ResourceLimits::default())
     }
 
-    /// Create a new standalone gateway with custom resource limits.
-    pub fn with_limits(router: Arc<CommandRouter>, limits: ResourceLimits) -> Self {
-        Self { router, limits }
+    /// Create a new per-domain aggregate service with custom resource limits.
+    pub fn with_limits(
+        domain: impl Into<String>,
+        router: Arc<CommandRouter>,
+        limits: ResourceLimits,
+    ) -> Self {
+        Self {
+            domain: domain.into(),
+            router,
+            limits,
+        }
+    }
+
+    /// Validate that the command is for this service's domain.
+    fn validate_domain(&self, command: &CommandBook) -> Result<(), Status> {
+        let cmd_domain = command.domain();
+        if cmd_domain != self.domain {
+            return Err(Status::invalid_argument(format!(
+                "Command domain '{}' does not match service domain '{}'",
+                cmd_domain, self.domain
+            )));
+        }
+        Ok(())
     }
 }
 
 #[tonic::async_trait]
-impl CommandGateway for StandaloneGatewayService {
-    async fn execute(
+impl AggregateCoordinator for StandaloneAggregateService {
+    async fn handle(
         &self,
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let command = request.into_inner();
-        // Validate command book against resource limits
+        self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
-        // Edition is extracted from Cover by the pipeline and used for storage
         let response = self.router.execute(command).await?;
         Ok(Response::new(response))
     }
 
-    async fn execute_sync(
+    async fn handle_sync(
         &self,
         request: Request<SyncCommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
@@ -77,92 +94,98 @@ impl CommandGateway for StandaloneGatewayService {
         let command = sync_cmd
             .command
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
-        // Validate command book against resource limits
+        self.validate_domain(&command)?;
         validation::validate_command_book(&command, &self.limits)?;
-        // Edition is extracted from Cover by the pipeline and used for storage
+        // Standalone mode doesn't differentiate sync modes - all execution is synchronous
         let response = self.router.execute(command).await?;
         Ok(Response::new(response))
     }
 
-    type ExecuteStreamStream =
-        Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
-
-    async fn execute_stream(
+    async fn dry_run_handle(
         &self,
-        _request: Request<CommandBook>,
-    ) -> Result<Response<Self::ExecuteStreamStream>, Status> {
-        Err(Status::unimplemented(
-            "Event streaming not available in standalone mode",
-        ))
+        request: Request<DryRunRequest>,
+    ) -> Result<Response<CommandResponse>, Status> {
+        let dry_run = request.into_inner();
+        let command = dry_run
+            .command
+            .ok_or_else(|| Status::invalid_argument("DryRunRequest must have a command"))?;
+        self.validate_domain(&command)?;
+
+        let (as_of_sequence, as_of_timestamp) = match dry_run.point_in_time {
+            Some(temporal) => match temporal.point_in_time {
+                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
+                    (Some(seq), None)
+                }
+                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
+                    let ts_str = format!("{}.{}", ts.seconds, ts.nanos);
+                    (None, Some(ts_str))
+                }
+                None => (None, None),
+            },
+            None => (None, None),
+        };
+
+        let response = self
+            .router
+            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
+            .await?;
+        Ok(Response::new(response))
     }
 }
 
-/// Info about a running gRPC server.
-pub struct ServerInfo {
-    /// The address the server is listening on.
-    pub addr: SocketAddr,
-    /// Shutdown signal sender.
-    shutdown_tx: oneshot::Sender<()>,
-}
-
-impl ServerInfo {
-    /// Create a ServerInfo from address and shutdown sender.
-    pub fn from_parts(addr: SocketAddr, shutdown_tx: oneshot::Sender<()>) -> Self {
-        Self { addr, shutdown_tx }
-    }
-
-    /// Signal the server to shut down.
-    pub fn shutdown(self) {
-        let _ = self.shutdown_tx.send(());
-    }
-}
-
-/// Standalone `EventQuery` implementation.
+/// Per-domain `EventQuery` implementation for standalone mode.
 ///
-/// Routes queries by domain to the appropriate event store directly,
-/// without service discovery. Edition-aware queries are handled by the
-/// event store which does composite reads.
-pub struct StandaloneEventQueryBridge {
-    stores: HashMap<String, DomainStorage>,
+/// Routes queries directly to the domain's event store. Validates that queries
+/// are for this service's domain.
+pub struct SingleDomainEventQuery {
+    domain: String,
+    storage: DomainStorage,
 }
 
-impl StandaloneEventQueryBridge {
-    /// Create a new event query bridge wrapping the given domain stores.
-    pub fn new(stores: HashMap<String, DomainStorage>) -> Self {
-        Self { stores }
+impl SingleDomainEventQuery {
+    /// Create a new per-domain event query service.
+    pub fn new(domain: impl Into<String>, storage: DomainStorage) -> Self {
+        Self {
+            domain: domain.into(),
+            storage,
+        }
     }
 
-    #[allow(clippy::result_large_err)]
-    async fn get_repo(
-        &self,
-        domain: &str,
-        _edition: Option<&str>,
-    ) -> Result<EventBookRepository, Status> {
-        // Edition handling is done by the event store via composite reads
-        let store = self
-            .stores
-            .get(domain)
-            .ok_or_else(|| Status::not_found(format!("Unknown domain: {domain}")))?;
+    /// Validate that the query is for this service's domain.
+    fn validate_domain(&self, query: &Query) -> Result<(), Status> {
+        let query_domain = query
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+        if query_domain != self.domain {
+            return Err(Status::invalid_argument(format!(
+                "Query domain '{}' does not match service domain '{}'",
+                query_domain, self.domain
+            )));
+        }
+        Ok(())
+    }
 
-        // Disable snapshot reading — event queries return full event history,
-        // not snapshot-optimized views for aggregate state reconstruction.
-        Ok(EventBookRepository::with_config(
-            store.event_store.clone(),
-            store.snapshot_store.clone(),
+    fn get_repo(&self) -> EventBookRepository {
+        EventBookRepository::with_config(
+            self.storage.event_store.clone(),
+            self.storage.snapshot_store.clone(),
             false,
-        ))
+        )
     }
 }
 
 #[tonic::async_trait]
-impl EventQueryTrait for StandaloneEventQueryBridge {
+impl EventQueryTrait for SingleDomainEventQuery {
     async fn get_event_book(&self, request: Request<Query>) -> Result<Response<EventBook>, Status> {
         let query = request.into_inner();
+        self.validate_domain(&query)?;
+
         let cover = query
             .cover
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
-        let domain = &cover.domain;
         let edition = cover.edition_opt();
         let root = cover
             .root
@@ -171,14 +194,14 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 
-        let repo = self.get_repo(domain, edition).await?;
+        let repo = self.get_repo();
 
         let book = match query.selection {
             Some(crate::proto::query::Selection::Range(ref range)) => {
                 let lower = range.lower;
                 let upper = range.upper.map(|u| u.saturating_add(1)).unwrap_or(u32::MAX);
                 repo.get_from_to(
-                    domain,
+                    &self.domain,
                     edition.unwrap_or(DEFAULT_EDITION),
                     root_uuid,
                     lower,
@@ -191,7 +214,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
                     let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(ts)
                         .map_err(|e| Status::invalid_argument(e.to_string()))?;
                     repo.get_temporal_by_time(
-                        domain,
+                        &self.domain,
                         edition.unwrap_or(DEFAULT_EDITION),
                         root_uuid,
                         &rfc3339,
@@ -200,7 +223,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
                 }
                 Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
                     repo.get_temporal_by_sequence(
-                        domain,
+                        &self.domain,
                         edition.unwrap_or(DEFAULT_EDITION),
                         root_uuid,
                         seq,
@@ -214,7 +237,7 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
                 }
             },
             _ => {
-                repo.get(domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid)
+                repo.get(&self.domain, edition.unwrap_or(DEFAULT_EDITION), root_uuid)
                     .await
             }
         }
@@ -230,11 +253,12 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         request: Request<Query>,
     ) -> Result<Response<Self::GetEventsStream>, Status> {
         let query = request.into_inner();
+        self.validate_domain(&query)?;
+
         let cover = query
             .cover
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("Query must have a cover"))?;
-        let domain = cover.domain.clone();
         let edition = cover.edition_opt().map(String::from);
         let root = cover
             .root
@@ -243,7 +267,8 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         let root_uuid = uuid::Uuid::from_slice(&root.value)
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {e}")))?;
 
-        let repo = self.get_repo(&domain, edition.as_deref()).await?;
+        let repo = self.get_repo();
+        let domain = self.domain.clone();
         let (tx, rx) = tokio::sync::mpsc::channel(32);
 
         tokio::spawn(async move {
@@ -285,37 +310,54 @@ impl EventQueryTrait for StandaloneEventQueryBridge {
         _request: Request<()>,
     ) -> Result<Response<Self::GetAggregateRootsStream>, Status> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
-        let stores = self.stores.clone();
+        let domain = self.domain.clone();
+        let storage = self.storage.clone();
 
         tokio::spawn(async move {
-            // List roots from main timeline
-            // TODO: Support listing roots from named editions via events table query
-            for (domain, storage) in &stores {
-                match storage
-                    .event_store
-                    .list_roots(domain, DEFAULT_EDITION)
-                    .await
-                {
-                    Ok(roots) => {
-                        for root in roots {
-                            let aggregate = AggregateRoot {
-                                domain: domain.clone(),
-                                root: Some(ProtoUuid {
-                                    value: root.as_bytes().to_vec(),
-                                }),
-                            };
-                            if tx.send(Ok(aggregate)).await.is_err() {
-                                return;
-                            }
+            match storage
+                .event_store
+                .list_roots(&domain, DEFAULT_EDITION)
+                .await
+            {
+                Ok(roots) => {
+                    for root in roots {
+                        let aggregate = AggregateRoot {
+                            domain: domain.clone(),
+                            root: Some(ProtoUuid {
+                                value: root.as_bytes().to_vec(),
+                            }),
+                        };
+                        if tx.send(Ok(aggregate)).await.is_err() {
+                            return;
                         }
                     }
-                    Err(e) => {
-                        error!(domain = %domain, error = %e, "Failed to list roots");
-                    }
+                }
+                Err(e) => {
+                    error!(domain = %domain, error = %e, "Failed to list roots");
                 }
             }
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))
+    }
+}
+
+/// Info about a running gRPC server.
+pub struct ServerInfo {
+    /// The address the server is listening on.
+    pub addr: SocketAddr,
+    /// Shutdown signal sender.
+    shutdown_tx: oneshot::Sender<()>,
+}
+
+impl ServerInfo {
+    /// Create a ServerInfo from address and shutdown sender.
+    pub fn from_parts(addr: SocketAddr, shutdown_tx: oneshot::Sender<()>) -> Self {
+        Self { addr, shutdown_tx }
+    }
+
+    /// Signal the server to shut down.
+    pub fn shutdown(self) {
+        let _ = self.shutdown_tx.send(());
     }
 }

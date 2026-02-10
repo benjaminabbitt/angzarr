@@ -157,7 +157,7 @@ just nuke-deploy
 
 | Service | Port | NodePort | Description |
 |---------|------|----------|-------------|
-| Gateway gRPC | 9084 | 30084 | Command gateway (the "angzarr port") |
+| Aggregate Coordinator | 1310 | 31310 | Command handling per domain |
 | Stream gRPC | 1340 | 31340 | Event streaming |
 | Topology REST | 9099 | - | Topology visualization API |
 
@@ -167,9 +167,9 @@ Each language gets a port block for business logic:
 
 | Language | Range | Example Assignments |
 |----------|-------|---------------------|
-| Rust | 50050-50199 | order: 50035, inventory: 50025 |
+| Rust | 50050-50199 | order: 50080, inventory: 50070 |
 | Go | 50200-50349 | order: 50203, inventory: 50204 |
-| Python | 50400-50549 | order: 50303, inventory: 50304 |
+| Python | 50400-50549 | order: 50403, inventory: 50404 |
 
 See [port-conventions.md](port-conventions.md) for the full port scheme.
 
@@ -222,7 +222,7 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 
 | Command | Description |
 |---------|-------------|
-| `just port-forward-gateway` | Forward gateway to localhost:9084 |
+| `just port-forward-aggregate NAME` | Forward aggregate service to localhost |
 | `just port-forward-topology` | Forward topology API to localhost:9099 |
 | `just port-forward-grafana` | Forward Grafana to localhost:3000 |
 | `just port-forward-cleanup` | Kill all angzarr port-forwards |
@@ -278,14 +278,14 @@ ANGZARR_LOG=trace just dev
 Use [grpcurl](https://github.com/fullstorydev/grpcurl) to interact with services:
 
 ```bash
-# Port forward first
-just port-forward-gateway
+# Port forward an aggregate service first (e.g., order)
+kubectl port-forward svc/angzarr-order 1310:1310 -n angzarr &
 
 # List available services
-grpcurl -plaintext localhost:9084 list
+grpcurl -plaintext localhost:1310 list
 
 # Describe a service
-grpcurl -plaintext localhost:9084 describe angzarr.CommandGateway
+grpcurl -plaintext localhost:1310 describe angzarr.AggregateCoordinator
 ```
 
 ### Kubernetes Debugging
@@ -298,7 +298,7 @@ kubectl logs -n angzarr -l app.kubernetes.io/part-of=angzarr -f
 kubectl get pods -n angzarr
 
 # Describe pod for events/errors
-kubectl describe pod -n angzarr -l app.kubernetes.io/name=angzarr-gateway
+kubectl describe pod -n angzarr -l app.kubernetes.io/component=aggregate
 ```
 
 ### Common Issues
@@ -333,9 +333,82 @@ Socket files are created under `/tmp/angzarr/` by default.
 
 ---
 
+## Configuration Reference
+
+### Storage Backends
+
+| Backend | Feature Flag | Use Case |
+|---------|--------------|----------|
+| **SQLite** | `sqlite` | Standalone dev, testing, single-node deployments |
+| **PostgreSQL** | `postgres` | Production, distributed deployments |
+| **MongoDB** | `mongodb` | Document-oriented workloads |
+| **Redis** | `redis` | High-throughput, can use cloud-managed (Memorystore, ElastiCache) |
+
+```yaml
+# config.yaml
+storage:
+  type: postgres  # sqlite, postgres, mongodb, redis
+  postgres:
+    url: "postgres://user:pass@localhost:5432/angzarr"
+  sqlite:
+    path: "/var/lib/angzarr/events.db"  # or ":memory:"
+  mongodb:
+    uri: "mongodb://localhost:27017"
+    database: "angzarr"
+  redis:
+    url: "redis://localhost:6379"
+```
+
+### Messaging Backends
+
+| Backend | Feature Flag | Use Case |
+|---------|--------------|----------|
+| **AMQP** | `amqp` | Production (RabbitMQ), durable messaging |
+| **Kafka** | `kafka` | High-throughput, event replay, multiple consumers |
+| **Channel** | `channel` | In-process, standalone mode |
+| **IPC** | `ipc` | Unix domain sockets, local multi-process |
+
+```yaml
+# config.yaml
+messaging:
+  type: amqp  # amqp, kafka, channel, ipc
+  amqp:
+    url: "amqp://guest:guest@localhost:5672"
+    exchange: "angzarr.events"
+  kafka:
+    brokers: ["localhost:9092"]
+    topic_prefix: "angzarr"
+```
+
+See [Patterns: Outbox](patterns.md#outbox-pattern) for reliability options with each backend.
+
+### Observability
+
+Angzarr provides full observability via OpenTelemetry (traces, metrics, logs). Enable with the `otel` feature flag.
+
+Quick start:
+```bash
+# Build with OTel support
+cargo build --features otel
+
+# Point to collector
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_SERVICE_NAME=angzarr-gateway
+```
+
+Key metrics:
+- `angzarr.command.duration` / `.total` - Command pipeline
+- `angzarr.bus.publish.duration` / `.total` - Event bus
+- `angzarr.saga.duration` / `.retry.total` - Saga orchestration
+
+See [Observability](observability.md) for full setup including Grafana dashboards, alerting, and Kubernetes deployment.
+
+---
+
 ## Next Steps
 
 - [Command Handlers (Aggregates)](components/aggregate/aggregate.md) — Processing commands and emitting events
 - [Projectors](components/projector/projectors.md) — Building read models
 - [Sagas](components/saga/sagas.md) — Orchestrating workflows across aggregates
 - [Process Managers](components/process-manager/process-manager.md) — Stateful multi-domain coordination
+- [Observability](observability.md) — OpenTelemetry, Grafana dashboards, alerting

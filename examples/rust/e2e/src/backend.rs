@@ -13,7 +13,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use angzarr::client_traits::SpeculativeClient as SpeculativeClientTrait;
 use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 use angzarr::proto::{CommandBook, CommandResponse, EventPage};
 use angzarr::standalone::DomainStorage;
@@ -91,16 +90,21 @@ pub struct BackendWithProjectors {
 }
 
 /// Create the appropriate backend based on `ANGZARR_TEST_MODE` env var.
+///
+/// Modes:
+/// - `standalone` (default): In-process runtime with SQLite memory storage
+/// - `direct` or `k8s`: Per-domain gRPC connections to aggregate coordinators
 pub async fn create_backend() -> BackendWithProjectors {
     let mode = std::env::var("ANGZARR_TEST_MODE").unwrap_or_else(|_| "standalone".into());
     match mode.as_str() {
-        "gateway" => {
-            let (backend, speculative) = create_gateway_backend().await;
+        "direct" | "k8s" => {
+            let backend = create_direct_backend().await;
             BackendWithProjectors {
                 backend: Arc::new(backend),
                 web_db: None,
                 accounting_db: None,
-                speculative: Some(Arc::new(speculative)),
+                // Speculative execution goes through aggregate's dry_run_handle
+                speculative: None,
             }
         }
         _ => create_standalone_with_projectors().await,
@@ -363,29 +367,63 @@ impl Backend for StandaloneBackend {
 }
 
 // ============================================================================
-// Gateway Backend
+// Direct Backend (per-domain connections)
 // ============================================================================
 
 use angzarr::proto::{temporal_query::PointInTime, DryRunRequest, TemporalQuery};
-use angzarr_client::traits::GatewayClient as GatewayClientTrait;
-use angzarr_client::{parse_timestamp, Client, QueryBuilderExt};
+use angzarr_client::{parse_timestamp, DomainClient, QueryBuilderExt};
 
-/// Remote gRPC gateway backend using angzarr-client.
-struct GatewayBackend {
-    client: Client,
+/// Per-domain gRPC backend connecting directly to aggregate coordinators.
+///
+/// Each domain has its own endpoint. Commands are routed to the appropriate
+/// domain based on the command's cover.domain field.
+struct DirectBackend {
+    /// Domain name -> DomainClient mapping
+    clients: HashMap<String, DomainClient>,
     #[cfg(feature = "gateway-cleanup")]
     mongodb_uri: String,
 }
 
-async fn create_gateway_backend() -> (GatewayBackend, angzarr_client::SpeculativeClient) {
-    let client = Client::from_env("ANGZARR_ENDPOINT", "http://localhost:50051")
-        .await
-        .expect("Failed to connect to gateway");
+impl DirectBackend {
+    fn get_client(&self, domain: &str) -> BackendResult<&DomainClient> {
+        self.clients
+            .get(domain)
+            .ok_or_else(|| format!("No client configured for domain: {}", domain).into())
+    }
+}
 
-    let speculative = client.speculative.clone();
+async fn create_direct_backend() -> DirectBackend {
+    // Domain endpoints from environment variables
+    // Format: ANGZARR_{DOMAIN}_ENDPOINT (e.g., ANGZARR_ORDER_ENDPOINT)
+    const DOMAINS: &[(&str, &str, &str)] = &[
+        ("order", "ANGZARR_ORDER_ENDPOINT", "http://localhost:50035"),
+        (
+            "inventory",
+            "ANGZARR_INVENTORY_ENDPOINT",
+            "http://localhost:50025",
+        ),
+        (
+            "fulfillment",
+            "ANGZARR_FULFILLMENT_ENDPOINT",
+            "http://localhost:50055",
+        ),
+    ];
 
-    let backend = GatewayBackend {
-        client,
+    let mut clients = HashMap::new();
+
+    for (domain, env_var, default) in DOMAINS {
+        match DomainClient::from_env(env_var, default).await {
+            Ok(client) => {
+                clients.insert(domain.to_string(), client);
+            }
+            Err(e) => {
+                tracing::warn!(domain, error = %e, "Failed to connect to domain coordinator");
+            }
+        }
+    }
+
+    let backend = DirectBackend {
+        clients,
         #[cfg(feature = "gateway-cleanup")]
         mongodb_uri: std::env::var("ANGZARR_MONGODB_URI").unwrap_or_else(|_| {
             "mongodb://angzarr:angzarr-dev@localhost:27017/angzarr?authSource=angzarr".into()
@@ -398,13 +436,21 @@ async fn create_gateway_backend() -> (GatewayBackend, angzarr_client::Speculativ
         .await
         .expect("Failed to cleanup before tests");
 
-    (backend, speculative)
+    backend
 }
 
 #[async_trait]
-impl Backend for GatewayBackend {
+impl Backend for DirectBackend {
     async fn execute(&self, command: CommandBook) -> BackendResult<CommandResponse> {
-        let response = self.client.gateway.execute(command).await?;
+        // Extract domain from command cover
+        let domain = command
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .ok_or("Command has no cover with domain")?;
+
+        let client = self.get_client(domain)?;
+        let response = client.aggregate.handle(command).await?;
         Ok(response)
     }
 
@@ -498,8 +544,8 @@ impl Backend for GatewayBackend {
     }
 
     async fn query_events(&self, domain: &str, root: Uuid) -> BackendResult<Vec<EventPage>> {
-        let event_book = self
-            .client
+        let client = self.get_client(domain)?;
+        let event_book = client
             .query
             .query(domain, root)
             .range(0)
@@ -514,8 +560,8 @@ impl Backend for GatewayBackend {
         edition: &str,
         root: Uuid,
     ) -> BackendResult<Vec<EventPage>> {
-        let event_book = self
-            .client
+        let client = self.get_client(domain)?;
+        let event_book = client
             .query
             .query(domain, root)
             .edition(edition)
@@ -532,9 +578,9 @@ impl Backend for GatewayBackend {
         as_of_sequence: Option<u32>,
         as_of_timestamp: Option<&str>,
     ) -> BackendResult<Vec<EventPage>> {
+        let client = self.get_client(domain)?;
         if let Some(seq) = as_of_sequence {
-            let event_book = self
-                .client
+            let event_book = client
                 .query
                 .query(domain, root)
                 .as_of_sequence(seq)
@@ -542,8 +588,7 @@ impl Backend for GatewayBackend {
                 .await?;
             Ok(event_book.pages)
         } else if let Some(ts) = as_of_timestamp {
-            let event_book = self
-                .client
+            let event_book = client
                 .query
                 .query(domain, root)
                 .as_of_time(ts)?
@@ -561,6 +606,15 @@ impl Backend for GatewayBackend {
         as_of_sequence: Option<u32>,
         as_of_timestamp: Option<&str>,
     ) -> BackendResult<CommandResponse> {
+        // Extract domain from command cover
+        let domain = command
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .ok_or("Command has no cover with domain")?;
+
+        let client = self.get_client(domain)?;
+
         let point_in_time = if let Some(seq) = as_of_sequence {
             Some(TemporalQuery {
                 point_in_time: Some(PointInTime::AsOfSequence(seq)),
@@ -580,7 +634,7 @@ impl Backend for GatewayBackend {
             point_in_time,
         };
 
-        let response = self.client.speculative.dry_run(request).await?;
+        let response = client.aggregate.dry_run_handle(request).await?;
         Ok(response)
     }
 
@@ -588,15 +642,12 @@ impl Backend for GatewayBackend {
         &self,
         correlation_id: &str,
     ) -> BackendResult<Vec<(String, String, Uuid)>> {
-        const DOMAINS: &[&str] = &["order", "fulfillment", "inventory"];
-
         let mut results = Vec::new();
 
-        for domain in DOMAINS {
-            let books = self
-                .client
+        for (domain, client) in &self.clients {
+            let books = client
                 .query
-                .query_domain(*domain)
+                .query_domain(domain)
                 .by_correlation_id(correlation_id)
                 .get_events()
                 .await;

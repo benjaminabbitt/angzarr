@@ -8,16 +8,18 @@ This guide documents common patterns used in CQRS and Event Sourcing architectur
 
 | Category | Patterns |
 |----------|----------|
-| [Delivery & Consistency](#delivery--consistency-patterns) | Outbox, Inbox, Idempotent Consumer |
-| [Schema Evolution](#schema-evolution-patterns) | Upcasting, Weak Schema, Double Publish |
-| [Coordination](#coordination-patterns) | Process Manager, Saga |
-| [Query](#query-patterns) | Temporal Query, Snapshot Query |
+| [Delivery & Consistency](#delivery--consistency-patterns) | Outbox, Idempotent Consumer |
+| [Schema Evolution](#schema-evolution-patterns) | Upcasting |
+| [Coordination](#coordination-patterns) | Correlation ID, Sync Mode, Process Manager, Saga |
+| [Query](#query-patterns) | Temporal Query |
 
 ---
 
 ## Delivery & Consistency Patterns
 
 ### Outbox Pattern
+
+> **WARNING: You probably don't need this.** Modern managed messaging services (Kafka, SQS, Pub/Sub, Kinesis) already guarantee delivery. The outbox pattern adds latency, complexity, and operational overhead. Only consider it if your messaging layer genuinely lacks durability—which is rare with cloud providers. See [When to Use](#when-to-use-and-when-not-to) before implementing.
 
 The **Outbox Pattern** ensures atomicity between database writes and event publishing. Instead of publishing events directly (which can fail independently of the database transaction), events are written to an "outbox" table within the same transaction, then published asynchronously by a separate process.
 
@@ -102,24 +104,32 @@ async def publish_outbox_events():
 
 #### When to Use (and When Not To)
 
-**The outbox pattern is often superfluous.** Many messaging systems already provide durability:
+> **You probably don't need the outbox pattern.** Modern managed messaging services provide strong durability guarantees. Adding an outbox on top of these services means paying twice for the same guarantee—once in your database, once in the broker. Before enabling outbox, confirm your messaging layer actually lacks durability.
 
 | Messaging Layer | Built-in Durability | Outbox Needed? |
 |-----------------|---------------------|----------------|
-| **Kafka** | Yes (replicated log) | Rarely |
-| **RabbitMQ** | Optional (persistent queues) | Maybe |
-| **In-memory** | No | Yes, if delivery matters |
+| **Kafka** | Yes (replicated log, configurable acks) | No |
+| **AWS SQS** | Yes (redundant storage across AZs) | No |
+| **AWS SNS** | Yes (with SQS subscription) | No |
+| **AWS Kinesis** | Yes (replicated across AZs, 24h-365d retention) | No |
+| **GCP Pub/Sub** | Yes (synchronous replication, 7d retention) | No |
+| **Azure Service Bus** | Yes (geo-redundant storage) | No |
+| **RabbitMQ** | Optional (persistent queues + publisher confirms) | Maybe—only if not using persistence |
+| **Redis Streams** | Optional (depends on AOF/RDB config) | Maybe—if AOF disabled |
+| **NATS JetStream** | Yes (replicated streams) | No |
+| **In-memory/Channel** | No | Yes, if delivery matters |
 
-**Use outbox when:**
-- Network to broker is unreliable
-- Broker lacks durability guarantees
-- Compliance requires local audit trail
-- You need exactly-once semantics
+**The only scenarios where outbox makes sense:**
+- Using an in-memory or non-durable message transport
+- Regulatory/compliance requires a local audit trail before transmission
+- Network between app and broker is genuinely unreliable (rare with cloud providers)
 
 **Skip outbox when:**
-- Using Kafka or durable brokers (you're paying twice for the same guarantee)
-- Best-effort delivery acceptable
-- Latency is critical
+- Using any managed cloud messaging service (SQS, Pub/Sub, Kinesis, etc.)
+- Using Kafka with `acks=all`
+- Using RabbitMQ with persistent queues and publisher confirms
+- Best-effort delivery is acceptable
+- Latency is critical (outbox adds 1-5ms per publish)
 
 #### Cost & Complexity
 
@@ -131,6 +141,32 @@ async def publish_outbox_events():
 
 If your messaging layer already guarantees delivery, outbox adds cost without benefit.
 
+#### Disabling the Outbox
+
+The outbox is **disabled by default**. If you've enabled it and want to turn it off:
+
+**Via configuration:**
+```yaml
+messaging:
+  outbox:
+    enabled: false
+```
+
+**Via environment variable:**
+```bash
+ANGZARR_OUTBOX_ENABLED=false
+```
+
+**In Rust (RuntimeBuilder):**
+```rust
+// Simply don't call .with_outbox() — it's opt-in
+let runtime = RuntimeBuilder::new()
+    .with_event_bus(bus)  // No outbox wrapper
+    .build();
+```
+
+When disabled, events are published directly to the message bus without the intermediate outbox table. This is the recommended configuration for Kafka, SQS, Pub/Sub, and other durable messaging systems.
+
 #### Alternatives
 
 | Approach | Description | Trade-off |
@@ -141,61 +177,9 @@ If your messaging layer already guarantees delivery, outbox adds cost without be
 
 ---
 
-### Inbox Pattern
-
-The **Inbox Pattern** ensures idempotent message processing. Incoming message IDs are stored, and duplicates are detected and ignored.
-
-#### The Problem
-
-With at-least-once delivery, consumers may receive the same message multiple times:
-- Publisher retries after timeout (but message was delivered)
-- Message broker redelivers after consumer crash
-- Network partition causes duplicate delivery
-
-#### The Solution
-
-```sql
-CREATE TABLE message_inbox (
-    message_id      UUID PRIMARY KEY,
-    processed_at    TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-
-```python
-async def handle_message(message):
-    # Check if already processed
-    exists = await db.query("""
-        SELECT 1 FROM message_inbox WHERE message_id = $1
-    """, message.id)
-
-    if exists:
-        log.info(f"Duplicate message {message.id}, skipping")
-        return
-
-    async with db.transaction():
-        # Process the message
-        await process_client_logic(message)
-
-        # Record as processed (same transaction)
-        await db.execute("""
-            INSERT INTO message_inbox (message_id) VALUES ($1)
-        """, message.id)
-```
-
-#### Inbox Cleanup
-
-Old entries can be pruned after a retention period:
-
-```sql
-DELETE FROM message_inbox
-WHERE processed_at < NOW() - INTERVAL '7 days';
-```
-
----
-
 ### Idempotent Consumer
 
-Beyond the inbox pattern, consumers should be **naturally idempotent** where possible:
+Consumers should be **naturally idempotent** where possible:
 
 | Operation | Idempotent? | Fix |
 |-----------|-------------|-----|
@@ -373,53 +357,6 @@ This design allows:
 
 ---
 
-### Weak Schema
-
-**Weak Schema** uses tolerant readers that map available fields and provide defaults for missing ones. No explicit versioning required.
-
-```python
-def deserialize_order_created(data: dict) -> OrderCreated:
-    return OrderCreated(
-        order_id=data["order_id"],
-        customer_id=data.get("customer_id") or data.get("customerId"),  # Handle rename
-        currency=data.get("currency", "USD"),  # Default for new field
-        items=data.get("items", []),
-    )
-```
-
-**Best for:** JSON/document stores, rapid iteration, forward compatibility.
-
-**Avoid when:** Strict contracts required, breaking changes frequent.
-
----
-
-### Double Publish
-
-During migration, publish **both old and new versions** of events:
-
-```python
-def publish_order_created(order):
-    # Old consumers still work
-    publish(OrderCreatedV1(
-        customerId=order.customer_id,
-        total=order.total,
-    ))
-
-    # New consumers use new version
-    publish(OrderCreatedV2(
-        customer_id=order.customer_id,
-        total_cents=order.total_cents,
-        currency=order.currency,
-    ))
-```
-
-**Migration steps:**
-1. Deploy producer with double publish
-2. Migrate consumers to V2
-3. Remove V1 publishing
-
----
-
 ## Coordination Patterns
 
 ### Correlation ID
@@ -449,8 +386,8 @@ The **correlation_id** links related events across domains in a multi-step busin
 
 ```
 Client sends command:
-  ├─ With correlation_id → PMs activate, streaming works, events linked
-  └─ Without correlation_id → Command processed, PMs skip, no streaming
+  ├─ With correlation_id → PMs activate, events linked across domains
+  └─ Without correlation_id → Command processed, PMs skip
 ```
 
 **Key points:**
@@ -464,13 +401,12 @@ Client sends command:
 Once set on the initial command, angzarr propagates it automatically:
 
 ```
-1. Client → Gateway: CreateOrder (correlation_id: "order-123")
-2. Gateway → Order Aggregate: CreateOrder
-3. Order Aggregate emits: OrderCreated (correlation_id: "order-123")
-4. Saga receives: OrderCreated
-5. Saga emits: CreateShipment (correlation_id: "order-123")  ← propagated
-6. Fulfillment Aggregate emits: ShipmentCreated (correlation_id: "order-123")
-7. PM receives: All events with correlation_id: "order-123"
+1. Client → Order Aggregate: CreateOrder (correlation_id: "order-123")
+2. Order Aggregate emits: OrderCreated (correlation_id: "order-123")
+3. Saga receives: OrderCreated
+4. Saga emits: CreateShipment (correlation_id: "order-123")  ← propagated
+5. Fulfillment Aggregate emits: ShipmentCreated (correlation_id: "order-123")
+6. PM receives: All events with correlation_id: "order-123"
 ```
 
 You set it once; the framework carries it through.
@@ -497,19 +433,21 @@ Use a meaningful business identifier:
 
 ```bash
 # Cart operations - no cross-domain workflow
+# Connect directly to the cart aggregate coordinator
 grpcurl -plaintext -d '{
   "cover": {
     "domain": "cart",
     "root": {"value": "BASE64_CART_UUID"}
   },
   "pages": [...]
-}' localhost:9084 angzarr.CommandGateway/Execute
+}' localhost:1310 angzarr.AggregateCoordinator/Handle
 ```
 
 **With correlation_id** (workflow requiring PM):
 
 ```bash
 # Order checkout - triggers fulfillment PM
+# Connect directly to the order aggregate coordinator
 grpcurl -plaintext -d '{
   "cover": {
     "domain": "order",
@@ -517,7 +455,7 @@ grpcurl -plaintext -d '{
     "correlation_id": "checkout-abc123"
   },
   "pages": [...]
-}' localhost:9084 angzarr.CommandGateway/Execute
+}' localhost:1310 angzarr.AggregateCoordinator/Handle
 ```
 
 #### Anti-Patterns
@@ -553,6 +491,104 @@ def checkout_cart(cart_id: str, order_id: str) -> CommandBook:
 - **Correlation ID**: Links events across domains in a workflow
 
 They can be related (e.g., correlation_id = "order-{order_id}") but serve different purposes.
+
+---
+
+### Sync Mode
+
+Commands can be executed asynchronously (default) or synchronously with different levels of coordination. Use `SyncCommandBook` with a `SyncMode` to control this behavior.
+
+#### Sync Modes
+
+```protobuf
+enum SyncMode {
+  SYNC_MODE_NONE = 0;     // Async: fire and forget (default)
+  SYNC_MODE_SIMPLE = 1;   // Wait for sync projectors only
+  SYNC_MODE_CASCADE = 2;  // Full sync: projectors + saga cascade
+}
+```
+
+| Mode | Behavior | Latency | Use Case |
+|------|----------|---------|----------|
+| `NONE` | Publish events to bus, return immediately | Lowest | Most commands; eventual consistency acceptable |
+| `SIMPLE` | Wait for registered sync projectors | Medium | Read-after-write consistency for projections |
+| `CASCADE` | Wait for projectors + downstream saga effects | Highest | Full workflow must complete before response |
+
+#### EventBook Repair: Getting Context from the Bus
+
+When projectors receive events via the bus, they may get **incomplete EventBooks**—just the new events from the current command, not the full aggregate history.
+
+**The problem:**
+```
+Aggregate has events: [0, 1, 2, 3, 4]
+Command produces: [5, 6]
+Projector receives via bus: [5, 6] ← Missing context!
+```
+
+**The solution:** `EventBookRepairer` automatically detects incomplete EventBooks and fetches the full history from the EventQuery service before forwarding to projectors.
+
+An EventBook is **complete** if:
+- It has a snapshot, OR
+- Its first event has sequence 0
+
+```rust
+// In ProjectorCoordinatorService
+let event_book = self.repairer.repair(event_book).await?;
+// Now projector has events [0, 1, 2, 3, 4, 5, 6]
+```
+
+#### When to Use Each Mode
+
+**SYNC_MODE_NONE (default):**
+```rust
+// Fire and forget - client doesn't wait for projectors
+gateway.execute(command_book).await?;
+```
+- Command processed, events published to bus
+- Projectors run asynchronously in background
+- Lowest latency, eventual consistency
+
+**SYNC_MODE_SIMPLE:**
+```rust
+// Wait for sync projectors to complete
+let sync_command = SyncCommandBook {
+    command: Some(command_book),
+    sync_mode: SyncMode::Simple.into(),
+};
+let response = aggregate.handle_sync(sync_command).await?;
+// response.projections contains sync projector results
+```
+- Command processed, events persisted
+- Sync projectors called and awaited
+- Response includes projection results
+- Use when client needs read-after-write consistency
+
+**SYNC_MODE_CASCADE:**
+```rust
+// Wait for full saga cascade to complete
+let sync_command = SyncCommandBook {
+    command: Some(command_book),
+    sync_mode: SyncMode::Cascade.into(),
+};
+let response = aggregate.handle_sync(sync_command).await?;
+```
+- Command processed, events persisted
+- Sync projectors called
+- Downstream saga effects awaited
+- **Expensive:** Use sparingly, only when the entire workflow must complete synchronously
+
+#### Performance Considerations
+
+| Mode | DB Writes | Network Calls | Typical Latency |
+|------|-----------|---------------|-----------------|
+| `NONE` | 1 (events) | 1 (bus publish) | 5-20ms |
+| `SIMPLE` | 1 (events) | 1 + N (projectors) | 20-100ms |
+| `CASCADE` | 1 + M (saga targets) | 1 + N + M | 100ms-seconds |
+
+**Guidelines:**
+- Default to `NONE` unless you have a specific consistency requirement
+- Use `SIMPLE` for APIs that read back data immediately after write
+- Avoid `CASCADE` in hot paths; consider background processing instead
 
 ---
 

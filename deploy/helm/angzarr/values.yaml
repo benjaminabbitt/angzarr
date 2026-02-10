@@ -17,20 +17,16 @@ images:
     repository: angzarr-saga
     pullPolicy: IfNotPresent
     tag: "latest"
-  stream:
-    repository: angzarr-stream
-    pullPolicy: IfNotPresent
-    tag: "latest"
-  gateway:
-    repository: angzarr-gateway
-    pullPolicy: IfNotPresent
-    tag: "latest"
   log:
     repository: angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
   topology:
     repository: angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  stream:
+    repository: angzarr-stream
     pullPolicy: IfNotPresent
     tag: "latest"
 
@@ -124,39 +120,6 @@ serviceDiscovery:
 
 # Infrastructure services (standalone, not sidecars)
 infrastructure:
-  # Event stream service - broadcasts events to registered subscribers
-  stream:
-    enabled: false
-    replicas: 1
-    port: 1340            # Stream gRPC
-    projectorPort: 1345   # Stream's internal projector port
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
-  # Gateway service - routes commands to entities and streams back events
-  gateway:
-    enabled: false
-    replicas: 1
-    port: 9084            # Gateway gRPC (angzarr port)
-    # Address of command service to forward to
-    entityService: ""
-    # Address of stream service
-    streamService: ""
-    # Timeout for event stream (seconds)
-    streamTimeoutSecs: 30
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
   # Log service - prints events to stdout for debugging
   log:
     enabled: false
@@ -187,6 +150,20 @@ infrastructure:
       requests:
         cpu: 50m
         memory: 64Mi
+
+  # Event stream service - broadcasts events to registered subscribers
+  stream:
+    enabled: false
+    replicas: 1
+    port: 1340            # Stream gRPC
+    projectorPort: 1345   # Stream's internal projector port
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
 
 ingress:
   enabled: false

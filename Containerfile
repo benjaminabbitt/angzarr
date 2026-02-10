@@ -32,7 +32,7 @@ COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager stream gateway log topology; do \
+    for bin in aggregate projector saga process_manager log topology stream; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > angzarr-client/rust/src/lib.rs && \
@@ -43,7 +43,7 @@ RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
              standalone_integration; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
-    for f in gateway_test streaming_test query_test; do \
+    for f in query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
     mkdir -p migrations && touch migrations/.keep
@@ -54,10 +54,9 @@ RUN cargo build --profile container-dev --features otel,topology,sqlite \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
-    --bin angzarr-stream \
-    --bin angzarr-gateway \
     --bin angzarr-log \
-    --bin angzarr-topology || true
+    --bin angzarr-topology \
+    --bin angzarr-stream || true
 
 # =============================================================================
 # Dev builder - source build (invalidates when src/ changes)
@@ -76,10 +75,9 @@ RUN cargo build --profile container-dev --features otel,topology,sqlite \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
-    --bin angzarr-stream \
-    --bin angzarr-gateway \
     --bin angzarr-log \
-    --bin angzarr-topology && \
+    --bin angzarr-topology \
+    --bin angzarr-stream && \
     cp target/container-dev/angzarr-* /tmp/
 
 # Generate protobuf FileDescriptorSet for runtime event decoding
@@ -132,7 +130,7 @@ COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager stream gateway log topology; do \
+    for bin in aggregate projector saga process_manager log topology stream; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > angzarr-client/rust/src/lib.rs && \
@@ -143,7 +141,7 @@ RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
              standalone_integration; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
-    for f in gateway_test streaming_test query_test; do \
+    for f in query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
     mkdir -p migrations && touch migrations/.keep
@@ -159,10 +157,9 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
-    --bin angzarr-stream \
-    --bin angzarr-gateway \
     --bin angzarr-log \
-    --bin angzarr-topology || true
+    --bin angzarr-topology \
+    --bin angzarr-stream || true
 
 # =============================================================================
 # Release builder - source build (invalidates when src/ changes)
@@ -188,10 +185,9 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     --bin angzarr-projector \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
-    --bin angzarr-stream \
-    --bin angzarr-gateway \
     --bin angzarr-log \
-    --bin angzarr-topology && \
+    --bin angzarr-topology \
+    --bin angzarr-stream && \
     cp target/$TARGET/production/angzarr-* /tmp/
 
 # Generate protobuf FileDescriptorSet for runtime event decoding
@@ -241,16 +237,6 @@ COPY --from=builder-dev /tmp/angzarr-process-manager ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS angzarr-stream-dev
-COPY --from=builder-dev /tmp/angzarr-stream ./server
-EXPOSE 1315
-ENTRYPOINT ["./server"]
-
-FROM runtime-dev-base AS angzarr-gateway-dev
-COPY --from=builder-dev /tmp/angzarr-gateway ./server
-EXPOSE 1316
-ENTRYPOINT ["./server"]
-
 FROM runtime-dev-base AS angzarr-log-dev
 COPY --from=builder-dev /tmp/angzarr-log ./server
 COPY --from=builder-dev /tmp/descriptors.pb ./descriptors.pb
@@ -261,6 +247,11 @@ ENTRYPOINT ["./server"]
 FROM runtime-dev-base AS angzarr-topology-dev
 COPY --from=builder-dev /tmp/angzarr-topology ./server
 EXPOSE 9099
+ENTRYPOINT ["./server"]
+
+FROM runtime-dev-base AS angzarr-stream-dev
+COPY --from=builder-dev /tmp/angzarr-stream ./server
+EXPOSE 50051
 ENTRYPOINT ["./server"]
 
 # =============================================================================
@@ -285,16 +276,6 @@ COPY --from=builder-release /tmp/angzarr-process-manager ./server
 EXPOSE 1313 1314
 ENTRYPOINT ["./server"]
 
-FROM runtime-release-base AS angzarr-stream
-COPY --from=builder-release /tmp/angzarr-stream ./server
-EXPOSE 1315
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS angzarr-gateway
-COPY --from=builder-release /tmp/angzarr-gateway ./server
-EXPOSE 1316
-ENTRYPOINT ["./server"]
-
 FROM runtime-release-base AS angzarr-log
 COPY --from=builder-release /tmp/angzarr-log ./server
 COPY --from=builder-release /tmp/descriptors.pb ./descriptors.pb
@@ -305,4 +286,9 @@ ENTRYPOINT ["./server"]
 FROM runtime-release-base AS angzarr-topology
 COPY --from=builder-release /tmp/angzarr-topology ./server
 EXPOSE 9099
+ENTRYPOINT ["./server"]
+
+FROM runtime-release-base AS angzarr-stream
+COPY --from=builder-release /tmp/angzarr-stream ./server
+EXPOSE 50051
 ENTRYPOINT ["./server"]

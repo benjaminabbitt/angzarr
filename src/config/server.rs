@@ -49,12 +49,18 @@ pub struct ServiceConfig {
     #[serde(default)]
     pub name: Option<String>,
 
-    /// Explicit gRPC address override.
+    /// Explicit gRPC address override for client logic process.
     /// If not set, derived from transport config:
     /// - UDS: `{base_path}/{service_type}-{domain}.sock`
     /// - TCP: Must be explicit
     #[serde(default)]
     pub address: Option<String>,
+
+    /// Port for the domain's coordinator server (aggregates only).
+    /// When set, starts a per-domain gRPC server exposing AggregateCoordinator
+    /// and EventQuery services for this domain.
+    #[serde(default)]
+    pub port: Option<u16>,
 
     /// Working directory for the spawned process.
     #[serde(default)]

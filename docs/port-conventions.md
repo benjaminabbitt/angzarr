@@ -8,13 +8,11 @@ Core framework services use fixed ports:
 
 | Service | Port | NodePort | Description |
 |---------|------|----------|-------------|
-| Gateway gRPC | 9084 | 30084 | Command gateway (the "angzarr port") |
-| Gateway Monitoring | 9085 | - | Gateway metrics/health |
+| Aggregate Coordinator | 1310 | 31310 | Per-domain command handling |
 | Stream gRPC | 1340 | 31340 | Event streaming |
-| Aggregate Coordinator | 1310 | 31310 | Internal aggregate coordination |
 | Topology REST API | 9099 | - | Topology visualization |
 
-The gateway (9084) is the single entry point for all client commands.
+Clients connect directly to per-domain aggregate coordinators via K8s DNS (e.g., `angzarr-order.angzarr.svc.cluster.local:1310`).
 
 ---
 
@@ -78,7 +76,7 @@ Each language example uses a distinct range to allow concurrent local developmen
 
 1. **Coordinator (offset 0)**: The primary gRPC endpoint that external clients and the message bus connect to. Always exposed.
 
-2. **REST Proxy (offset 1)**: Optional HTTP/REST gateway for clients that cannot use gRPC directly. Proxies to the coordinator.
+2. **REST Proxy (offset 1)**: Optional HTTP/REST proxy for clients that cannot use gRPC directly. Proxies to the coordinator.
 
 3. **Coordinator Debug (offset 2)**: Health checks, metrics, and debugging endpoints for the sidecar. Exposed only in development or for monitoring.
 

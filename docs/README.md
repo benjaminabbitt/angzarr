@@ -22,7 +22,7 @@
 
 - [Patterns](patterns.md) — Outbox, upcasting, process manager, temporal query
 - [Port Conventions](port-conventions.md) — Infrastructure and business logic port scheme
-- [Observability](PITCH.md#observability) — OpenTelemetry, tracing, metrics (baked into the sidecar)
+- [Observability](observability.md) — OpenTelemetry setup, metrics, traces, Grafana dashboards
 
 ## Sponsors & Partners
 

@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tonic::Status;
 
-use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
-use crate::proto::{ComponentDescriptor, EventBook, Projection, SyncEventBook, SyncMode};
+use crate::proto::projector_client::ProjectorClient;
+use crate::proto::{ComponentDescriptor, EventBook, Projection};
 use crate::proto_ext::{correlated_request, CoverExt};
 
 /// Execution mode for projectors.
@@ -53,16 +53,17 @@ pub trait ProjectorHandler: Send + Sync + 'static {
     async fn handle(&self, events: &EventBook, mode: ProjectionMode) -> Result<Projection, Status>;
 }
 
-/// gRPC projector handler that forwards to a remote `ProjectorCoordinator`.
+/// gRPC projector handler that forwards to a remote `Projector` service.
 ///
+/// Client logic implements the simple `Projector` service (not `ProjectorCoordinator`).
 /// Skips calls in `Speculate` mode since remote side effects can't be controlled.
 pub struct GrpcProjectorHandler {
-    client: Arc<Mutex<ProjectorCoordinatorClient<tonic::transport::Channel>>>,
+    client: Arc<Mutex<ProjectorClient<tonic::transport::Channel>>>,
 }
 
 impl GrpcProjectorHandler {
     /// Wrap a gRPC projector client as a `ProjectorHandler`.
-    pub fn new(client: ProjectorCoordinatorClient<tonic::transport::Channel>) -> Self {
+    pub fn new(client: ProjectorClient<tonic::transport::Channel>) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
         }
@@ -76,15 +77,11 @@ impl ProjectorHandler for GrpcProjectorHandler {
             return Ok(Projection::default());
         }
         let correlation_id = events.correlation_id();
-        let sync_book = SyncEventBook {
-            events: Some(events.clone()),
-            sync_mode: SyncMode::Simple.into(),
-        };
         Ok(self
             .client
             .lock()
             .await
-            .handle_sync(correlated_request(sync_book, correlation_id))
+            .handle(correlated_request(events.clone(), correlation_id))
             .await?
             .into_inner())
     }

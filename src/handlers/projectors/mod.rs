@@ -13,4 +13,4 @@ pub mod topology;
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub use event::{connect_pool, EventService, EventServiceHandle};
 pub use log::{LogService, LogServiceHandle};
-pub use stream::{StreamEventHandler, StreamService};
+pub use stream::StreamService;

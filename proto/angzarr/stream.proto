@@ -12,15 +12,3 @@ service EventStream {
   // Returns INVALID_ARGUMENT if correlation_id is empty
   rpc Subscribe (EventStreamFilter) returns (stream EventBook);
 }
-
-// Gateway service - send command and receive resulting events
-service CommandGateway {
-  // Async processing - fire and forget
-  rpc Execute (CommandBook) returns (CommandResponse);
-
-  // Sync processing - waits for projectors/sagas based on sync_mode
-  rpc ExecuteSync (SyncCommandBook) returns (CommandResponse);
-
-  // Stream events until client disconnects
-  rpc ExecuteStream (CommandBook) returns (stream EventBook);
-}
