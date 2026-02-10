@@ -265,7 +265,7 @@ message Query {
 **Query with `lower_bound=0` and `upper_bound=0` (or omit both) to get a complete picture of an aggregate's current state.** This is the preferred approach for sagas because:
 
 1. **Snapshot optimization**: If a snapshot exists, it's returned along with only the events after the snapshot sequence
-2. **No sequence tracking needed**: Saga doesn't need to know the current sequence number
+2. **Provides next_sequence**: The returned EventBook includes the sequence number needed for stamping commands
 3. **Always consistent**: Returns the complete state as of query time
 
 The response contains:
