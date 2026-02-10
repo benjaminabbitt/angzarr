@@ -8,13 +8,13 @@ aggregates:
   # List of domains to route to
   domains:
     - name: order
-      service: angzarr-order
+      service: angzarr-agg-order-rs
       port: 1310
     - name: inventory
-      service: angzarr-inventory
+      service: angzarr-agg-inventory-rs
       port: 1310
     - name: fulfillment
-      service: angzarr-fulfillment
+      service: angzarr-agg-fulfillment-rs
       port: 1310
 
 # EventStream service
