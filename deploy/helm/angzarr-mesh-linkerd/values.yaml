@@ -1,0 +1,49 @@
+# Linkerd mesh configuration for Angzarr
+
+# Namespace where angzarr is deployed
+angzarrNamespace: angzarr
+
+# Aggregate coordinator services
+aggregates:
+  # List of domains to route to
+  domains:
+    - name: order
+      service: angzarr-order
+      port: 1310
+    - name: inventory
+      service: angzarr-inventory
+      port: 1310
+    - name: fulfillment
+      service: angzarr-fulfillment
+      port: 1310
+
+# EventStream service
+stream:
+  enabled: true
+  service: angzarr-stream
+  port: 1340
+
+# Server authorization
+authorization:
+  # Require mTLS for all traffic
+  mtls: true
+  # Allow unauthenticated traffic (for ingress)
+  allowUnauthenticated: true
+
+# Service profile settings
+serviceProfile:
+  # Retry budget (percentage of requests that can be retries)
+  retryBudget:
+    retryRatio: 0.2
+    minRetriesPerSecond: 10
+    ttl: 10s
+  # Request timeout
+  timeout: 30s
+
+# HTTPRoute configuration (Gateway API)
+httpRoute:
+  # Parent gateway reference
+  parentRefs:
+    - name: linkerd-gateway
+      namespace: linkerd
+      sectionName: grpc
