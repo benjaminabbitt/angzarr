@@ -74,8 +74,8 @@ use tracing::{error, info, warn};
 use angzarr::bus::{ChannelConfig, ChannelEventBus, EventBus};
 use angzarr::config::SagaCompensationConfig;
 use angzarr::config::{
-    Config, ExternalServiceConfig, HealthCheckConfig, CONFIG_ENV_PREFIX, CONFIG_ENV_VAR,
-    TRANSPORT_TYPE_ENV_VAR,
+    Config, ExternalServiceConfig, HealthCheckConfig, ResourceLimits, CONFIG_ENV_PREFIX,
+    CONFIG_ENV_VAR, TRANSPORT_TYPE_ENV_VAR,
 };
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
@@ -609,7 +609,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let port = config.standalone.gateway.port.unwrap_or(50051);
         let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
-        let gateway = StandaloneGatewayService::new(router.clone());
+        let gateway = StandaloneGatewayService::with_limits(router.clone(), config.limits.clone());
         let event_query = StandaloneEventQueryBridge::new(domain_stores.clone());
 
         let grpc_router = tonic::transport::Server::builder()

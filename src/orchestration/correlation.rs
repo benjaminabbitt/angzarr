@@ -11,6 +11,7 @@ use tonic::Status;
 
 use crate::proto::CommandBook;
 use crate::proto_ext::CoverExt;
+use crate::validation;
 
 /// Angzarr UUID namespace derived from DNS-based UUIDv5.
 ///
@@ -18,12 +19,18 @@ use crate::proto_ext::CoverExt;
 pub static ANGZARR_UUID_NAMESPACE: LazyLock<uuid::Uuid> =
     LazyLock::new(|| uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, b"angzarr.dev"));
 
-/// Extract existing correlation ID from command. Does not auto-generate.
+/// Extract and validate correlation ID from command.
 ///
-/// Correlation ID is client-provided for cross-domain workflows.
-/// If not provided, returns empty string (PMs won't trigger).
-pub fn ensure_correlation_id(command_book: &CommandBook) -> Result<String, Status> {
-    Ok(command_book.correlation_id().to_string())
+/// Correlation IDs are client-provided for cross-domain workflows.
+/// Returns empty string if not provided—this is intentional:
+/// - Process managers require correlation_id and will skip events without one
+/// - This enables opt-in cross-domain tracking without polluting single-domain flows
+///
+/// Validates format if non-empty.
+pub fn extract_correlation_id(command_book: &CommandBook) -> Result<String, Status> {
+    let id = command_book.correlation_id().to_string();
+    validation::validate_correlation_id(&id)?;
+    Ok(id)
 }
 
 #[cfg(test)]
@@ -58,16 +65,16 @@ mod tests {
     }
 
     #[test]
-    fn test_existing_correlation_id_preserved() {
+    fn test_extract_preserves_existing_id() {
         let command = make_command_book(true);
-        let result = ensure_correlation_id(&command).unwrap();
+        let result = extract_correlation_id(&command).unwrap();
         assert_eq!(result, "test-correlation-id");
     }
 
     #[test]
-    fn test_empty_correlation_id_stays_empty() {
+    fn test_extract_returns_empty_when_not_provided() {
         let command = make_command_book(false);
-        let result = ensure_correlation_id(&command).unwrap();
+        let result = extract_correlation_id(&command).unwrap();
         assert!(result.is_empty());
     }
 }

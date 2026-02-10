@@ -18,6 +18,7 @@ use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 use tracing::error;
 
+use crate::config::ResourceLimits;
 use crate::proto::command_gateway_server::CommandGateway;
 use crate::proto::event_query_server::EventQuery as EventQueryTrait;
 use crate::proto::{
@@ -26,6 +27,7 @@ use crate::proto::{
 };
 use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
+use crate::validation;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 
@@ -38,12 +40,18 @@ use super::router::{CommandRouter, DomainStorage};
 /// from the command's Cover and used for edition-aware storage operations.
 pub struct StandaloneGatewayService {
     router: Arc<CommandRouter>,
+    limits: ResourceLimits,
 }
 
 impl StandaloneGatewayService {
     /// Create a new standalone gateway wrapping the given router.
     pub fn new(router: Arc<CommandRouter>) -> Self {
-        Self { router }
+        Self::with_limits(router, ResourceLimits::default())
+    }
+
+    /// Create a new standalone gateway with custom resource limits.
+    pub fn with_limits(router: Arc<CommandRouter>, limits: ResourceLimits) -> Self {
+        Self { router, limits }
     }
 }
 
@@ -54,6 +62,8 @@ impl CommandGateway for StandaloneGatewayService {
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let command = request.into_inner();
+        // Validate command book against resource limits
+        validation::validate_command_book(&command, &self.limits)?;
         // Edition is extracted from Cover by the pipeline and used for storage
         let response = self.router.execute(command).await?;
         Ok(Response::new(response))
@@ -67,6 +77,8 @@ impl CommandGateway for StandaloneGatewayService {
         let command = sync_cmd
             .command
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
+        // Validate command book against resource limits
+        validation::validate_command_book(&command, &self.limits)?;
         // Edition is extracted from Cover by the pipeline and used for storage
         let response = self.router.execute(command).await?;
         Ok(Response::new(response))

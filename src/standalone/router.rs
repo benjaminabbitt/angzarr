@@ -102,7 +102,7 @@ impl CommandRouter {
     /// Validates the command's sequence against the aggregate's current sequence
     /// (optimistic concurrency check) before running client logic.
     pub async fn execute(&self, command_book: CommandBook) -> Result<CommandResponse, Status> {
-        self.execute_inner(command_book, true).await
+        self.execute_inner(command_book).await
     }
 
     /// Execute a command from a saga or process manager.
@@ -114,7 +114,7 @@ impl CommandRouter {
         &self,
         command_book: CommandBook,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
-        self.execute_inner(command_book, true)
+        self.execute_inner(command_book)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
@@ -149,12 +149,8 @@ impl CommandRouter {
         projections
     }
 
-    /// Core command execution with optional sequence validation.
-    async fn execute_inner(
-        &self,
-        command_book: CommandBook,
-        validate_sequence: bool,
-    ) -> Result<CommandResponse, Status> {
+    /// Core command execution with sequence validation.
+    async fn execute_inner(&self, command_book: CommandBook) -> Result<CommandResponse, Status> {
         let (domain, root_uuid) = parse_command_cover(&command_book)?;
 
         debug!(
@@ -183,14 +179,8 @@ impl CommandRouter {
             )),
         };
 
-        let mut response = execute_command_with_retry(
-            &*ctx,
-            &**business,
-            command_book,
-            validate_sequence,
-            saga_backoff(),
-        )
-        .await?;
+        let mut response =
+            execute_command_with_retry(&*ctx, &**business, command_book, saga_backoff()).await?;
 
         // Call in-process sync projectors (standalone mode)
         if !self.sync_projectors.is_empty() {

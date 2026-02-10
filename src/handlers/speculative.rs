@@ -9,7 +9,8 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, warn};
 
 use crate::discovery::ServiceDiscovery;
-use crate::handlers::gateway::CommandRouter;
+use crate::handlers::gateway::{errmsg, CommandRouter};
+use crate::orchestration::correlation::extract_correlation_id;
 use crate::proto::speculative_service_server::SpeculativeService;
 use crate::proto::{
     CommandResponse, DryRunRequest, ProcessManagerHandleResponse, Projection, SagaResponse,
@@ -45,10 +46,10 @@ impl SpeculativeService for SpeculativeHandler {
         &self,
         request: Request<DryRunRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        let mut dry_run_request = request.into_inner();
+        let dry_run_request = request.into_inner();
 
-        let correlation_id = match dry_run_request.command.as_mut() {
-            Some(cmd) => CommandRouter::ensure_correlation_id(cmd)?,
+        let correlation_id = match dry_run_request.command.as_ref() {
+            Some(cmd) => extract_correlation_id(cmd)?,
             None => {
                 return Err(Status::invalid_argument(
                     "DryRunRequest must have a command",
@@ -88,8 +89,10 @@ impl SpeculativeService for SpeculativeHandler {
             .get_projector_by_name(projector_name)
             .await
             .map_err(|e| {
+                // Log full error internally
                 warn!(projector = %projector_name, error = %e, "Projector not found");
-                Status::not_found(format!("Projector '{}' not found: {}", projector_name, e))
+                // Return sanitized message to client
+                Status::not_found(errmsg::PROJECTOR_NOT_FOUND)
             })?;
 
         // Call speculative handler

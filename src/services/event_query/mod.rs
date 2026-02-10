@@ -14,6 +14,7 @@ use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
 use crate::storage::EventStore;
 use crate::storage::SnapshotStore;
+use crate::validation;
 
 /// Event query service.
 ///
@@ -64,8 +65,9 @@ impl EventQueryTrait for EventQueryService {
         let query = request.into_inner();
         let cover = query.cover.as_ref();
 
-        // Extract correlation_id from cover
+        // Extract and validate correlation_id from cover
         let correlation_id = cover.map(|c| c.correlation_id.as_str()).unwrap_or("");
+        validation::validate_correlation_id(correlation_id)?;
 
         // Correlation ID query: returns first matching EventBook across all domains
         // Useful for sagas that need to find related events without knowing the root ID
@@ -92,6 +94,7 @@ impl EventQueryTrait for EventQueryService {
             Status::invalid_argument("Query must have a cover with domain/root or correlation_id")
         })?;
         let domain = cover.domain.clone();
+        validation::validate_domain(&domain)?;
         let root = cover.root.as_ref().ok_or_else(|| {
             Status::invalid_argument("Query must have a root UUID or correlation_id")
         })?;
@@ -100,6 +103,7 @@ impl EventQueryTrait for EventQueryService {
             .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))?;
 
         let edition = cover.edition();
+        validation::validate_edition(edition)?;
 
         info!(
             domain = %domain,
@@ -175,8 +179,9 @@ impl EventQueryTrait for EventQueryService {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
         let cover = query.cover.as_ref();
 
-        // Extract correlation_id from cover
+        // Extract and validate correlation_id from cover
         let correlation_id = cover.map(|c| c.correlation_id.clone()).unwrap_or_default();
+        validation::validate_correlation_id(&correlation_id)?;
 
         // Correlation ID query: streams ALL matching EventBooks across all domains
         if !correlation_id.is_empty() {
@@ -205,6 +210,7 @@ impl EventQueryTrait for EventQueryService {
             Status::invalid_argument("Query must have a cover with domain/root or correlation_id")
         })?;
         let domain = cover.domain.clone();
+        validation::validate_domain(&domain)?;
         let root = cover.root.as_ref().ok_or_else(|| {
             Status::invalid_argument("Query must have a root UUID or correlation_id")
         })?;

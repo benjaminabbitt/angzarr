@@ -177,7 +177,13 @@ impl AggregateContext for LocalAggregateContext {
                     (events, None)
                 };
 
-                Ok(build_event_book(domain, edition, root, events, snapshot_data))
+                Ok(build_event_book(
+                    domain,
+                    edition,
+                    root,
+                    events,
+                    snapshot_data,
+                ))
             }
             TemporalQuery::AsOfSequence(seq) => {
                 // Get events from 0 to sequence (inclusive)

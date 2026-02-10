@@ -18,7 +18,10 @@ pub fn component_name_to_uuid(name: &str) -> uuid::Uuid {
 ///
 /// Returns a list of CommandBooks, one per descriptor, targeting the _angzarr
 /// meta aggregate with root UUID derived from component name.
-pub fn build_registration_commands(descriptors: &[ComponentDescriptor], pod_id: &str) -> Vec<CommandBook> {
+pub fn build_registration_commands(
+    descriptors: &[ComponentDescriptor],
+    pod_id: &str,
+) -> Vec<CommandBook> {
     use prost::Message;
 
     descriptors

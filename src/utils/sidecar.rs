@@ -53,7 +53,9 @@ pub async fn bootstrap_sidecar(
         .ok_or_else(|| format!("{} sidecar requires 'target' configuration", service_type))?;
 
     let domain = target.domain.clone();
-    let address = target.resolve_address(&config.transport, service_type);
+    let address = target
+        .resolve_address(&config.transport, service_type)
+        .map_err(|e| format!("Failed to resolve address: {}", e))?;
 
     info!("Target {}: {} (domain: {})", service_type, address, domain);
 

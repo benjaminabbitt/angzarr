@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, MessagingType};
+use crate::config::ResourceLimits;
 #[cfg(feature = "topology")]
 use crate::handlers::projectors::topology::TopologyProjector;
 use crate::storage::{SqliteConfig, StorageConfig, StorageType};
@@ -80,6 +81,8 @@ pub struct RuntimeBuilder {
     /// Optional topology projector for automatic descriptor registration.
     #[cfg(feature = "topology")]
     topology_projector: Option<Arc<TopologyProjector>>,
+    /// Resource limits for message processing.
+    limits: ResourceLimits,
 }
 
 impl Default for RuntimeBuilder {
@@ -121,6 +124,7 @@ impl RuntimeBuilder {
             custom_event_bus: None,
             #[cfg(feature = "topology")]
             topology_projector: None,
+            limits: ResourceLimits::default(),
         }
     }
 
@@ -250,6 +254,19 @@ impl RuntimeBuilder {
     /// Use custom gateway configuration.
     pub fn with_gateway(mut self, config: GatewayConfig) -> Self {
         self.gateway = config;
+        self
+    }
+
+    // ========================================================================
+    // Resource Limits
+    // ========================================================================
+
+    /// Configure resource limits for message processing.
+    ///
+    /// Defaults to 256 KB max payload (SQS/SNS compatible).
+    /// Use `ResourceLimits::for_ipc()` for local deployments.
+    pub fn with_limits(mut self, limits: ResourceLimits) -> Self {
+        self.limits = limits;
         self
     }
 
@@ -389,6 +406,18 @@ impl RuntimeBuilder {
     /// Initializes storage, messaging, and transport based on configuration.
     /// Returns a Runtime that can be used to run the system.
     pub async fn build(mut self) -> Result<Runtime, Box<dyn std::error::Error>> {
+        use tracing::warn;
+
+        // Check for problematic snapshot configuration
+        if !self.storage.snapshots_enable.write {
+            warn!(
+                max_pages = self.limits.max_pages_per_book,
+                "Snapshot writes disabled - events will accumulate without compaction. \
+                 Commands may fail when aggregate event count exceeds max_pages_per_book ({}).",
+                self.limits.max_pages_per_book
+            );
+        }
+
         // Auto-register the _angzarr meta aggregate for component registration
         use super::meta_aggregate::{MetaAggregateHandler, META_DOMAIN};
         self.aggregates.insert(
@@ -412,6 +441,7 @@ impl RuntimeBuilder {
             self.sagas,
             self.process_managers,
             event_bus,
+            self.limits,
             #[cfg(feature = "topology")]
             self.topology_projector,
         )

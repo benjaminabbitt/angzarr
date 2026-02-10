@@ -11,7 +11,19 @@
         ]
       }
     ],
-    "TaskCompleted": [
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scm hook inject-context",
+            "timeout": 5,
+            "_scm": "23d85fc30428a539"
+          }
+        ]
+      }
+    ],
+    "Stop": [
       {
         "hooks": [
           {

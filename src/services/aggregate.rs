@@ -141,20 +141,10 @@ impl AggregateCoordinator for AggregateService {
         #[cfg(feature = "otel")]
         let start = std::time::Instant::now();
 
-        // Saga-originated commands skip sequence validation — sagas don't
-        // track target aggregate sequences (matching standalone behavior).
-        let validate_sequence = command_book.saga_origin.is_none();
-
         let ctx = self.create_async_context();
 
-        let result = execute_command_with_retry(
-            &ctx,
-            &*self.business,
-            command_book,
-            validate_sequence,
-            saga_backoff(),
-        )
-        .await;
+        let result =
+            execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
 
         #[cfg(feature = "otel")]
         {
@@ -199,17 +189,10 @@ impl AggregateCoordinator for AggregateService {
         #[cfg(feature = "otel")]
         let start = std::time::Instant::now();
 
-        let validate_sequence = command_book.saga_origin.is_none();
         let ctx = self.create_sync_context(sync_mode);
 
-        let result = execute_command_with_retry(
-            &ctx,
-            &*self.business,
-            command_book,
-            validate_sequence,
-            saga_backoff(),
-        )
-        .await;
+        let result =
+            execute_command_with_retry(&ctx, &*self.business, command_book, saga_backoff()).await;
 
         #[cfg(feature = "otel")]
         {

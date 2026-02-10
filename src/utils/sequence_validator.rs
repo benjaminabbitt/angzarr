@@ -40,11 +40,14 @@ pub fn validate_sequence(expected_sequence: u32, actual_sequence: u32) -> Sequen
 
 /// Creates a Status error for a sequence mismatch.
 ///
-/// Uses `Aborted` because sequence mismatches are retryable optimistic
-/// concurrency errors — the caller should re-fetch state and retry.
-/// `FailedPrecondition` is reserved for non-retryable client logic errors.
+/// Uses `FailedPrecondition` because sequence mismatches are client errors —
+/// the client sent a command with stale sequence information. The client
+/// must fetch fresh state before retrying. This is NOT automatically retryable.
+///
+/// `Aborted` is reserved for storage-level conflicts (concurrent write races)
+/// which ARE retryable since the client had correct information at validation time.
 pub fn sequence_mismatch_error(expected: u32, actual: u32) -> Status {
-    Status::aborted(format!(
+    Status::failed_precondition(format!(
         "Sequence mismatch: command expects {}, aggregate at {}",
         expected, actual
     ))
@@ -53,7 +56,9 @@ pub fn sequence_mismatch_error(expected: u32, actual: u32) -> Status {
 /// Creates a Status error for sequence mismatch with EventBook attached as details.
 ///
 /// The EventBook is serialized and attached to the status details,
-/// allowing the caller to extract current state for retry without an extra fetch.
+/// allowing the caller to extract current state for a manual retry.
+///
+/// Uses `FailedPrecondition` — this is a client error, not automatically retryable.
 pub fn sequence_mismatch_error_with_state(
     expected: u32,
     actual: u32,
@@ -67,7 +72,7 @@ pub fn sequence_mismatch_error_with_state(
     // Serialize EventBook to binary for status details
     let details = current_state.encode_to_vec();
 
-    Status::with_details(tonic::Code::Aborted, message, details.into())
+    Status::with_details(tonic::Code::FailedPrecondition, message, details.into())
 }
 
 /// Extract EventBook from status details if present.
@@ -145,7 +150,7 @@ mod tests {
     #[test]
     fn test_sequence_mismatch_error_format() {
         let status = sequence_mismatch_error(0, 5);
-        assert_eq!(status.code(), tonic::Code::Aborted);
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
         assert!(status.message().contains("Sequence mismatch"));
         assert!(status.message().contains("0"));
         assert!(status.message().contains("5"));

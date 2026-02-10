@@ -3,7 +3,6 @@
 ## Architects & Decision Makers
 
 - [PITCH.md](PITCH.md) — Full architectural pitch (standalone document for sharing)
-- [COMPARISON.md](COMPARISON.md) — Detailed comparison vs Axon, AWS, GCP, Kafka
 
 ## Developers
 

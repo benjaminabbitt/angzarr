@@ -13,7 +13,9 @@ use crate::bus::EventBus;
 use crate::bus::PublishResult;
 use crate::proto::{business_response, BusinessResponse, CommandResponse, EventBook};
 
-pub use crate::orchestration::correlation::ensure_correlation_id as generate_correlation_id;
+/// Re-export for backwards compatibility. Prefer `extract_correlation_id` directly.
+#[deprecated(since = "0.1.0", note = "Use extract_correlation_id directly")]
+pub use crate::orchestration::correlation::extract_correlation_id as generate_correlation_id;
 
 /// Extracts events from a BusinessResponse, handling revocation and empty responses.
 ///

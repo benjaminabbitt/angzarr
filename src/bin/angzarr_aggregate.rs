@@ -77,7 +77,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let domain = &target.domain;
 
     // Resolve address: use explicit if set, otherwise derive from transport
-    let address = target.resolve_address(&config.transport, "business");
+    let address = target
+        .resolve_address(&config.transport, "business")
+        .map_err(|e| format!("Failed to resolve address: {}", e))?;
 
     info!("Target client logic: {} (domain: {})", address, domain);
 

@@ -4,6 +4,7 @@
 //! based on domain routing, and optionally streams back resulting events.
 
 mod command_router;
+pub mod errmsg;
 mod query_proxy;
 mod stream_handler;
 
@@ -20,6 +21,7 @@ use tonic::{Request, Response, Status};
 use tracing::debug;
 
 use crate::discovery::ServiceDiscovery;
+use crate::orchestration::correlation::extract_correlation_id;
 use crate::proto::command_gateway_server::CommandGateway;
 use crate::proto::event_stream_client::EventStreamClient;
 use crate::proto::{CommandBook, CommandResponse, EventBook, SyncCommandBook};
@@ -57,8 +59,8 @@ impl CommandGateway for GatewayService {
         &self,
         request: Request<CommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
-        let mut command_book = request.into_inner();
-        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
+        let command_book = request.into_inner();
+        let correlation_id = extract_correlation_id(&command_book)?;
 
         debug!("Executing command (unary)");
 
@@ -76,10 +78,10 @@ impl CommandGateway for GatewayService {
         request: Request<SyncCommandBook>,
     ) -> Result<Response<CommandResponse>, Status> {
         let sync_request = request.into_inner();
-        let mut command_book = sync_request
+        let command_book = sync_request
             .command
             .ok_or_else(|| Status::invalid_argument("SyncCommandBook must have a command"))?;
-        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
+        let correlation_id = extract_correlation_id(&command_book)?;
 
         debug!("Executing command (sync)");
 
@@ -105,8 +107,8 @@ impl CommandGateway for GatewayService {
             Status::unimplemented("Event streaming not available (embedded mode)")
         })?;
 
-        let mut command_book = request.into_inner();
-        let correlation_id = CommandRouter::ensure_correlation_id(&mut command_book)?;
+        let command_book = request.into_inner();
+        let correlation_id = extract_correlation_id(&command_book)?;
 
         debug!("Executing command (stream)");
 

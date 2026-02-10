@@ -38,16 +38,21 @@ pub fn connection_backoff() -> ExponentialBuilder {
         .with_jitter()
 }
 
-/// Determines if a gRPC error is retryable (sequence conflict only).
+/// Determines if a gRPC error is retryable.
 ///
 /// Retryable codes:
-/// - `Aborted`: Sequence conflict (concurrent write during persist)
+/// - `Aborted`: Storage-level sequence conflict (concurrent write race during persist).
+/// - `FailedPrecondition`: Sequence mismatch (client sent stale data). Client must
+///   fetch fresh state before retry — cached state is invalid.
 ///
 /// Non-retryable:
-/// - `FailedPrecondition`: client logic errors (rejected commands).
-///   These map from `BusinessError::Rejected` and will never succeed on retry.
+/// - All other codes: Business rejections, network errors, server errors, etc.
+///
+/// Note: Both Aborted and FailedPrecondition are retryable, but retry handlers
+/// should always fetch fresh state (not use cached) since the client's view
+/// of the aggregate may be stale.
 pub fn is_retryable_status(status: &Status) -> bool {
-    matches!(status.code(), Code::Aborted)
+    matches!(status.code(), Code::Aborted | Code::FailedPrecondition)
 }
 
 /// The outcome of a single attempt of a retryable operation.
@@ -148,10 +153,17 @@ mod tests {
 
     #[test]
     fn test_is_retryable_status() {
-        assert!(is_retryable_status(&Status::aborted("Sequence conflict")));
-        assert!(!is_retryable_status(&Status::failed_precondition(
-            "Business error"
+        // Storage-level conflicts (concurrent write race) are retryable
+        assert!(is_retryable_status(&Status::aborted(
+            "Storage sequence conflict"
         )));
+
+        // Sequence mismatch (stale client) is retryable - client fetches fresh state
+        assert!(is_retryable_status(&Status::failed_precondition(
+            "Sequence mismatch: command expects 0, aggregate at 5"
+        )));
+
+        // Other errors are NOT retryable
         assert!(!is_retryable_status(&Status::invalid_argument(
             "Invalid command"
         )));

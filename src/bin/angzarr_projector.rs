@@ -63,7 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let projector_name = &target.domain;
 
     // Resolve address: use explicit if set, otherwise derive from transport
-    let address = target.resolve_address(&config.transport, "projector");
+    let address = target
+        .resolve_address(&config.transport, "projector")
+        .map_err(|e| format!("Failed to resolve address: {}", e))?;
 
     info!("Target projector: {} (name: {})", address, projector_name);
 

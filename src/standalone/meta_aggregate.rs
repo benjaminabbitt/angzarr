@@ -16,6 +16,7 @@ use crate::proto::{
 };
 use crate::proto_ext::{COMPONENT_REGISTERED_TYPE_URL, META_ANGZARR_DOMAIN};
 use crate::standalone::AggregateHandler;
+use crate::validation;
 
 // Re-export for convenience
 pub use crate::proto_ext::META_ANGZARR_DOMAIN as META_DOMAIN;
@@ -78,6 +79,14 @@ impl AggregateHandler for MetaAggregateHandler {
 
                 let cmd = RegisterComponent::decode(&any.value[..])
                     .map_err(|e| Status::invalid_argument(format!("decode error: {e}")))?;
+
+                // Validate component descriptor
+                if let Some(ref descriptor) = cmd.descriptor {
+                    validation::validate_component_name(&descriptor.name)?;
+                    for input in &descriptor.inputs {
+                        validation::validate_domain(&input.domain)?;
+                    }
+                }
 
                 let event = ComponentRegistered {
                     descriptor: cmd.descriptor,

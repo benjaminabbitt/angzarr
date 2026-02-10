@@ -17,6 +17,9 @@ pub struct ServerConfig {
     /// Port for event query gRPC service.
     pub event_query_port: u16,
     /// Host to bind to.
+    ///
+    /// Default is `127.0.0.1` (localhost only) for security.
+    /// Set to `0.0.0.0` explicitly to bind to all interfaces.
     pub host: String,
 }
 
@@ -25,7 +28,8 @@ impl Default for ServerConfig {
         Self {
             aggregate_port: 1313,
             event_query_port: 1314,
-            host: "0.0.0.0".to_string(),
+            // Default to localhost for security - external access requires explicit config
+            host: "127.0.0.1".to_string(),
         }
     }
 }
@@ -79,11 +83,18 @@ impl ServiceConfig {
     /// Resolve the address for this service.
     ///
     /// Uses explicit address if set, otherwise derives from transport config.
-    pub fn resolve_address(&self, transport: &TransportConfig, service_type: &str) -> String {
+    ///
+    /// # Errors
+    /// Returns error if TCP transport is used without an explicit address.
+    pub fn resolve_address(
+        &self,
+        transport: &TransportConfig,
+        service_type: &str,
+    ) -> Result<String, ConfigError> {
         use crate::transport::TransportType;
 
         if let Some(ref addr) = self.address {
-            return addr.clone();
+            return Ok(addr.clone());
         }
 
         match transport.transport_type {
@@ -92,15 +103,16 @@ impl ServiceConfig {
                     Some(name) => format!("{}-{}-{}", service_type, name, self.domain),
                     None => format!("{}-{}", service_type, self.domain),
                 };
-                format!("{}/{}.sock", transport.uds.base_path.display(), socket_name)
+                Ok(format!(
+                    "{}/{}.sock",
+                    transport.uds.base_path.display(),
+                    socket_name
+                ))
             }
-            TransportType::Tcp => {
-                // TCP requires explicit address
-                panic!(
-                    "TCP transport requires explicit address for service '{}'",
-                    self.domain
-                )
-            }
+            TransportType::Tcp => Err(ConfigError::Parse(
+                self.domain.clone(),
+                "TCP transport requires explicit address".to_string(),
+            )),
         }
     }
 }
@@ -405,7 +417,8 @@ mod tests {
         let server = ServerConfig::default();
         assert_eq!(server.aggregate_port, 1313);
         assert_eq!(server.event_query_port, 1314);
-        assert_eq!(server.host, "0.0.0.0");
+        // Default to localhost for security
+        assert_eq!(server.host, "127.0.0.1");
     }
 
     #[test]

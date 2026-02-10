@@ -12,6 +12,8 @@ use tokio_stream::StreamExt;
 use tonic::Status;
 use tracing::{debug, error, info};
 
+use super::errmsg;
+
 use crate::proto::event_stream_client::EventStreamClient;
 use crate::proto::{CommandResponse, EventBook, EventStreamFilter};
 use crate::proto_ext::correlated_request;
@@ -55,8 +57,10 @@ impl StreamHandler {
             .await
             .map(|r| r.into_inner())
             .map_err(|e| {
+                // Log full error internally
                 error!(error = %e, "Failed to subscribe to event stream");
-                Status::unavailable(format!("Event stream unavailable: {e}"))
+                // Return sanitized message to client
+                Status::unavailable(errmsg::STREAM_UNAVAILABLE)
             })
     }
 

@@ -4,12 +4,14 @@
 //! that can be loaded from YAML files or environment variables.
 
 mod client;
+mod limits;
 mod server;
 
 pub use client::{
     ProcessManagerConfig, SagaCompensationConfig, ServiceEndpoint, TimeoutConfig,
     DEFAULT_SAGA_FALLBACK_DOMAIN,
 };
+pub use limits::ResourceLimits;
 pub use server::{
     ConfigError, ExternalServiceConfig, GatewayConfig, HealthCheckConfig, ResolvedStandaloneConfig,
     ServerConfig, ServiceConfig, ServiceConfigRef, StandaloneConfig, TargetConfig,
@@ -124,6 +126,8 @@ pub struct Config {
     pub standalone: StandaloneConfig,
     /// Upcaster configuration for event version transformation.
     pub upcaster: UpcasterConfig,
+    /// Resource limits for message processing and queries.
+    pub limits: ResourceLimits,
 }
 
 impl Config {
@@ -202,6 +206,7 @@ mod tests {
     #[test]
     fn test_config_for_test() {
         let config = Config::for_test();
-        assert_eq!(config.server.host, "0.0.0.0");
+        // Default to localhost for security
+        assert_eq!(config.server.host, "127.0.0.1");
     }
 }

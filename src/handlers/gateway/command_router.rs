@@ -3,6 +3,8 @@
 //! Handles forwarding commands to aggregate services based on domain routing,
 //! using K8s label-based service discovery.
 
+#![allow(clippy::result_large_err)]
+
 use std::sync::Arc;
 
 use tonic::Status;
@@ -10,7 +12,8 @@ use tracing::{debug, warn};
 
 use crate::discovery::{DiscoveryError, ServiceDiscovery};
 use crate::proto::{CommandBook, CommandResponse, DryRunRequest, SyncCommandBook};
-use crate::proto_ext::{correlated_request, CoverExt, WILDCARD_DOMAIN};
+use crate::proto_ext::{correlated_request, WILDCARD_DOMAIN};
+use crate::validation;
 
 /// Command router for forwarding commands to aggregate services.
 #[derive(Clone)]
@@ -24,13 +27,15 @@ impl CommandRouter {
         Self { discovery }
     }
 
-    /// Extract existing correlation ID from command. Does not auto-generate.
-    ///
-    /// Correlation ID is client-provided for cross-domain workflows.
-    /// If not provided, returns empty string (PMs won't trigger).
-    #[allow(clippy::result_large_err)]
-    pub fn ensure_correlation_id(command_book: &mut CommandBook) -> Result<String, Status> {
-        Ok(command_book.correlation_id().to_string())
+    /// Extract and validate domain from command cover.
+    fn extract_domain(command_book: &CommandBook) -> Result<String, Status> {
+        let domain = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
+        validation::validate_domain(&domain)?;
+        Ok(domain)
     }
 
     /// Forward command to aggregate coordinator based on domain.
@@ -39,11 +44,7 @@ impl CommandRouter {
         command_book: CommandBook,
         correlation_id: &str,
     ) -> Result<CommandResponse, Status> {
-        let domain = command_book
-            .cover
-            .as_ref()
-            .map(|c| c.domain.clone())
-            .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
+        let domain = Self::extract_domain(&command_book)?;
 
         debug!(
             %domain,
@@ -82,6 +83,7 @@ impl CommandRouter {
             .and_then(|c| c.cover.as_ref())
             .map(|c| c.domain.clone())
             .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
+        validation::validate_domain(&domain)?;
 
         debug!(
             %domain,
@@ -115,11 +117,7 @@ impl CommandRouter {
         sync_mode: i32,
         correlation_id: &str,
     ) -> Result<CommandResponse, Status> {
-        let domain = command_book
-            .cover
-            .as_ref()
-            .map(|c| c.domain.clone())
-            .unwrap_or_else(|| WILDCARD_DOMAIN.to_string());
+        let domain = Self::extract_domain(&command_book)?;
 
         debug!(
             %domain,
@@ -154,82 +152,43 @@ impl CommandRouter {
 }
 
 /// Map discovery errors to gRPC status.
+///
+/// Error messages are sanitized to avoid leaking infrastructure details.
+/// Full details are logged internally at DEBUG level.
 pub fn map_discovery_error(e: DiscoveryError) -> Status {
+    use super::errmsg;
+
     match e {
         DiscoveryError::DomainNotFound(d) => {
-            warn!(domain = %d, "No service registered for domain");
-            Status::not_found(format!("No service registered for domain: {}", d))
+            // Log full details internally
+            debug!(domain = %d, "No service registered for domain");
+            // Return sanitized message to client
+            Status::not_found(errmsg::DOMAIN_NOT_FOUND)
         }
         DiscoveryError::NoServicesFound(c) => {
-            warn!(component = %c, "No services found for component");
-            Status::not_found(format!("No services found for component: {}", c))
+            debug!(component = %c, "No services found for component");
+            Status::not_found(errmsg::COMPONENT_NOT_FOUND)
         }
         DiscoveryError::ConnectionFailed {
             service,
             address,
             message,
         } => {
-            warn!(
+            // Log full details (including address) internally
+            debug!(
                 service = %service,
                 address = %address,
                 error = %message,
                 "Service connection failed"
             );
-            Status::unavailable(format!(
-                "Service {} at {} unavailable: {}",
-                service, address, message
-            ))
+            // Return sanitized message without infrastructure details
+            Status::unavailable(errmsg::SERVICE_UNAVAILABLE)
         }
         DiscoveryError::KubeError(e) => {
-            warn!(error = %e, "Kubernetes API error");
-            Status::internal(format!("Kubernetes API error: {}", e))
+            // Log K8s error details internally
+            debug!(error = %e, "Kubernetes API error");
+            // Return generic message to avoid exposing infrastructure
+            Status::internal(errmsg::INTERNAL_ERROR)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::proto::Cover;
-
-    fn make_test_command(domain: &str) -> CommandBook {
-        CommandBook {
-            cover: Some(Cover {
-                domain: domain.to_string(),
-                root: Some(crate::proto::Uuid {
-                    value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-                }),
-                correlation_id: String::new(),
-                edition: None,
-            }),
-            pages: vec![],
-            saga_origin: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_ensure_correlation_id_empty_stays_empty() {
-        let mut command = make_test_command("orders");
-        assert!(command.cover.as_ref().unwrap().correlation_id.is_empty());
-
-        let correlation_id = CommandRouter::ensure_correlation_id(&mut command).unwrap();
-
-        assert!(correlation_id.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_ensure_correlation_id_preserves_existing() {
-        let mut command = make_test_command("orders");
-        if let Some(ref mut cover) = command.cover {
-            cover.correlation_id = "my-custom-id".to_string();
-        }
-
-        let correlation_id = CommandRouter::ensure_correlation_id(&mut command).unwrap();
-
-        assert_eq!(correlation_id, "my-custom-id");
-        assert_eq!(
-            command.cover.as_ref().unwrap().correlation_id,
-            "my-custom-id"
-        );
     }
 }

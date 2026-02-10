@@ -115,6 +115,9 @@ impl Default for TransportConfig {
 #[serde(default)]
 pub struct TcpConfig {
     /// Host to bind to.
+    ///
+    /// Default is `127.0.0.1` (localhost only) for security.
+    /// Set to `0.0.0.0` explicitly to bind to all interfaces.
     pub host: String,
     /// Port to bind to.
     pub port: u16,
@@ -123,7 +126,8 @@ pub struct TcpConfig {
 impl Default for TcpConfig {
     fn default() -> Self {
         Self {
-            host: "0.0.0.0".to_string(),
+            // Default to localhost for security - external access requires explicit config
+            host: "127.0.0.1".to_string(),
             port: 50051,
         }
     }
@@ -141,13 +145,37 @@ impl TcpConfig {
 #[serde(default)]
 pub struct UdsConfig {
     /// Base path for socket files.
+    ///
+    /// Default uses `$XDG_RUNTIME_DIR/angzarr` if set, otherwise `/tmp/angzarr-{uid}`.
+    /// The per-user directory prevents socket file conflicts and improves security.
     pub base_path: PathBuf,
 }
 
 impl Default for UdsConfig {
     fn default() -> Self {
         Self {
-            base_path: PathBuf::from("/tmp/angzarr"),
+            base_path: default_uds_path(),
+        }
+    }
+}
+
+/// Get the default UDS socket base path.
+///
+/// Prefers `$XDG_RUNTIME_DIR/angzarr` (typically `/run/user/{uid}/angzarr`).
+/// Falls back to `/tmp/angzarr-{uid}` for per-user isolation.
+fn default_uds_path() -> PathBuf {
+    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        PathBuf::from(runtime_dir).join("angzarr")
+    } else {
+        // Fallback with user ID for isolation
+        #[cfg(unix)]
+        {
+            let uid = nix::unistd::getuid();
+            PathBuf::from(format!("/tmp/angzarr-{}", uid))
+        }
+        #[cfg(not(unix))]
+        {
+            PathBuf::from("/tmp/angzarr")
         }
     }
 }
@@ -205,13 +233,20 @@ impl Drop for UdsCleanupGuard {
 
 /// Prepare a UDS socket path for binding.
 ///
-/// - Creates parent directories if needed
+/// - Creates parent directories if needed (mode 0700 for security)
 /// - Removes stale socket file if exists
 /// - Returns a cleanup guard that removes the socket on drop
 pub fn prepare_uds_socket(path: &Path) -> std::io::Result<UdsCleanupGuard> {
-    // Create parent directories
+    // Create parent directories with restrictive permissions
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
+        // Set directory permissions to owner-only (0700)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o700);
+            std::fs::set_permissions(parent, perms)?;
+        }
     }
 
     // Remove stale socket file
@@ -685,7 +720,8 @@ mod tests {
     fn test_transport_config_default() {
         let config = TransportConfig::default();
         assert_eq!(config.transport_type, TransportType::Tcp);
-        assert_eq!(config.tcp.host, "0.0.0.0");
+        // Default to localhost for security
+        assert_eq!(config.tcp.host, "127.0.0.1");
         assert_eq!(config.tcp.port, 50051);
     }
 

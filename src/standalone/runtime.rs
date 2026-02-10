@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 use crate::bus::{EventBus, MessagingConfig};
+use crate::config::ResourceLimits;
 use crate::discovery::k8s::K8sServiceDiscovery;
 use crate::discovery::ServiceDiscovery;
 use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
@@ -59,6 +60,8 @@ pub struct Runtime {
     servers: Vec<ServerInfo>,
     /// Gateway configuration.
     gateway_config: GatewayConfig,
+    /// Resource limits for message processing.
+    limits: ResourceLimits,
 }
 
 /// Entry for a registered projector.
@@ -82,6 +85,7 @@ impl Runtime {
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         event_bus: Arc<dyn EventBus>,
+        limits: ResourceLimits,
         #[cfg(feature = "topology")] topology_projector: Option<
             Arc<crate::handlers::projectors::topology::TopologyProjector>,
         >,
@@ -313,6 +317,7 @@ impl Runtime {
             tasks: Vec::new(),
             servers,
             gateway_config,
+            limits,
         })
     }
 
@@ -535,7 +540,8 @@ impl Runtime {
         use crate::proto::command_gateway_server::CommandGatewayServer;
         use crate::proto::event_query_server::EventQueryServer;
 
-        let gateway = StandaloneGatewayService::new(self.router.clone());
+        let gateway =
+            StandaloneGatewayService::with_limits(self.router.clone(), self.limits.clone());
         let event_query = StandaloneEventQueryBridge::new(self.domain_stores.clone());
 
         let router = tonic::transport::Server::builder()

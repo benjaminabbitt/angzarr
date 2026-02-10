@@ -22,6 +22,7 @@ pub mod standalone;
 pub mod storage;
 pub mod transport;
 pub mod utils;
+pub mod validation;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

@@ -98,9 +98,7 @@ pub fn make_multi_event_book(domain: &str, events: Vec<(&str, Vec<u8>)>) -> Even
     EventBook {
         cover: Some(Cover {
             domain: domain.to_string(),
-            root: Some(ProtoUuid {
-                value: vec![1; 16],
-            }),
+            root: Some(ProtoUuid { value: vec![1; 16] }),
             correlation_id: String::new(),
             edition: None,
         }),

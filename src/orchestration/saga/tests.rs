@@ -138,6 +138,7 @@ async fn test_execute_success_no_retry() {
         &executor,
         None,
         commands,
+        vec![],
         "test-saga",
         "corr-1",
         fast_backoff(),
@@ -153,6 +154,7 @@ async fn test_execute_empty_commands_noop() {
         &ctx,
         &executor,
         None,
+        vec![],
         vec![],
         "test-saga",
         "corr-1",
@@ -174,6 +176,7 @@ async fn test_execute_retries_then_succeeds() {
         &executor,
         None,
         commands,
+        vec![],
         "test-saga",
         "corr-1",
         fast_backoff(),
@@ -196,6 +199,7 @@ async fn test_execute_non_retryable_calls_rejection_handler() {
         &executor,
         None,
         commands,
+        vec![],
         "test-saga",
         "corr-1",
         fast_backoff(),
@@ -222,6 +226,7 @@ async fn test_execute_exhausts_retries() {
         &executor,
         None,
         commands,
+        vec![],
         "test-saga",
         "corr-1",
         backoff,
@@ -358,16 +363,16 @@ async fn test_execute_uses_cached_state_from_conflict() {
         &executor,
         Some(&fetcher),
         commands,
+        vec![],
         "test-saga",
         "corr-1",
         fast_backoff(),
     )
     .await;
 
-    // Since the conflict included state and prepare_destinations returns a cover
-    // with the same domain (but different root), we expect a fetch to occur
-    // for any destination not in the cache.
-    // The key insight: we're testing that the caching mechanism works
-    // without errors, and state is properly used during retry.
-    assert!(fetcher.fetch_count.load(Ordering::SeqCst) <= 1);
+    // With the new behavior: failed domains get fresh fetch, others use cache.
+    // The test command has no domain set, so it uses default empty string.
+    // On retry, the prepare_destinations returns a cover, which triggers a fetch
+    // since there's no cached destination for that domain.
+    assert!(fetcher.fetch_count.load(Ordering::SeqCst) >= 1);
 }

@@ -45,10 +45,7 @@ pub enum TemporalQuery {
 #[derive(Debug, Clone)]
 pub enum PipelineMode {
     /// Normal execution: validate → invoke → persist → post-persist.
-    Execute {
-        /// Whether to validate command sequence against aggregate sequence.
-        validate_sequence: bool,
-    },
+    Execute,
     /// Dry-run: load temporal state → invoke → return (no persist/publish).
     DryRun {
         as_of_sequence: Option<u32>,
@@ -152,6 +149,8 @@ impl ClientLogic for GrpcBusinessLogic {
 }
 
 /// Parse domain and root UUID from a CommandBook cover.
+///
+/// Validates domain format before returning.
 pub fn parse_command_cover(command: &CommandBook) -> Result<(String, Uuid), Status> {
     let cover = command
         .cover
@@ -159,6 +158,8 @@ pub fn parse_command_cover(command: &CommandBook) -> Result<(String, Uuid), Stat
         .ok_or_else(|| Status::invalid_argument("CommandBook must have a cover"))?;
 
     let domain = cover.domain.clone();
+    crate::validation::validate_domain(&domain)?;
+
     let root = cover
         .root
         .as_ref()
@@ -180,12 +181,14 @@ pub fn extract_command_sequence(command: &CommandBook) -> u32 {
 /// Re-exported from proto_ext::constants for backwards compatibility.
 pub use crate::proto_ext::constants::DEFAULT_EDITION;
 
-/// Extract edition name from a CommandBook's Cover.
+/// Extract and validate edition name from a CommandBook's Cover.
 ///
 /// Returns the edition name from `Cover.edition`, defaulting to [`DEFAULT_EDITION`]
-/// when absent or empty.
-fn extract_edition(command_book: &CommandBook) -> String {
-    command_book.edition().to_string()
+/// when absent or empty. Validates edition format.
+fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
+    let edition = command_book.edition().to_string();
+    crate::validation::validate_edition(&edition)?;
+    Ok(edition)
 }
 
 /// Execute the aggregate command pipeline.
@@ -202,9 +205,7 @@ pub async fn execute_command_pipeline(
     mode: PipelineMode,
 ) -> Result<CommandResponse, Status> {
     match mode {
-        PipelineMode::Execute { validate_sequence } => {
-            execute_mode(ctx, business, command_book, validate_sequence).await
-        }
+        PipelineMode::Execute => execute_mode(ctx, business, command_book).await,
         PipelineMode::DryRun {
             as_of_sequence,
             as_of_timestamp,
@@ -228,7 +229,6 @@ struct AggregateOperation<'a> {
     ctx: &'a dyn AggregateContext,
     business: &'a dyn ClientLogic,
     command_book: CommandBook,
-    validate_sequence: bool,
 }
 
 #[async_trait]
@@ -241,14 +241,7 @@ impl<'a> RetryableOperation for AggregateOperation<'a> {
     }
 
     async fn try_execute(&mut self) -> RetryOutcome<Self::Success, Self::Failure> {
-        match execute_mode(
-            self.ctx,
-            self.business,
-            self.command_book.clone(),
-            self.validate_sequence,
-        )
-        .await
-        {
+        match execute_mode(self.ctx, self.business, self.command_book.clone()).await {
             Ok(response) => RetryOutcome::Success(response),
             Err(status) => {
                 if is_retryable_status(&status) {
@@ -266,14 +259,12 @@ pub async fn execute_command_with_retry(
     ctx: &dyn AggregateContext,
     business: &dyn ClientLogic,
     command_book: CommandBook,
-    validate_sequence: bool,
     backoff: ExponentialBuilder,
 ) -> Result<CommandResponse, Status> {
     let operation = AggregateOperation {
         ctx,
         business,
         command_book,
-        validate_sequence,
     };
     run_with_retry(operation, backoff).await
 }
@@ -287,11 +278,10 @@ async fn execute_mode(
     ctx: &dyn AggregateContext,
     business: &dyn ClientLogic,
     command_book: CommandBook,
-    validate_sequence: bool,
 ) -> Result<CommandResponse, Status> {
     let (domain, root_uuid) = parse_command_cover(&command_book)?;
-    let edition = extract_edition(&command_book);
-    let correlation_id = crate::orchestration::correlation::ensure_correlation_id(&command_book)?;
+    let edition = extract_edition(&command_book)?;
+    let correlation_id = crate::orchestration::correlation::extract_correlation_id(&command_book)?;
 
     let span = tracing::Span::current();
     span.record("domain", domain.as_str());
@@ -299,11 +289,9 @@ async fn execute_mode(
     span.record("root_uuid", tracing::field::display(&root_uuid));
 
     // Pre-validate sequence (gRPC fast-path, no-op for local)
-    if validate_sequence {
-        let expected = extract_command_sequence(&command_book);
-        ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
-            .await?;
-    }
+    let expected = extract_command_sequence(&command_book);
+    ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
+        .await?;
 
     // Load prior events
     let prior_events = ctx
@@ -314,14 +302,11 @@ async fn execute_mode(
     let prior_events = ctx.transform_events(&domain, prior_events).await?;
 
     // Validate command sequence against loaded events
-    if validate_sequence {
-        let expected = extract_command_sequence(&command_book);
-        let actual = prior_events.next_sequence();
-        if expected != actual {
-            return Err(Status::aborted(format!(
-                "Sequence mismatch: command expects {expected}, aggregate at {actual}"
-            )));
-        }
+    let actual = prior_events.next_sequence();
+    if expected != actual {
+        return Err(Status::aborted(format!(
+            "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+        )));
     }
 
     // Invoke client logic
@@ -368,7 +353,7 @@ async fn dry_run_mode(
     temporal: TemporalQuery,
 ) -> Result<CommandResponse, Status> {
     let (domain, root_uuid) = parse_command_cover(&command_book)?;
-    let edition = extract_edition(&command_book);
+    let edition = extract_edition(&command_book)?;
 
     let span = tracing::Span::current();
     span.record("domain", domain.as_str());
