@@ -2,9 +2,9 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from angzarr import aggregate_pb2 as angzarr_dot_aggregate__pb2
-from angzarr import process_manager_pb2 as angzarr_dot_process__manager__pb2
-from angzarr import types_pb2 as angzarr_dot_types__pb2
+from angzarr_client.proto.angzarr import aggregate_pb2 as angzarr_dot_aggregate__pb2
+from angzarr_client.proto.angzarr import process_manager_pb2 as angzarr_dot_process__manager__pb2
+from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
 class AggregateServiceStub(object):

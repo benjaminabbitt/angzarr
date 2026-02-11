@@ -22,7 +22,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from angzarr import types_pb2 as angzarr_dot_types__pb2
+from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61ngzarr/upcaster.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\"S\n\rUpcastRequest\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12*\n\x06\x65vents\x18\x02 \x03(\x0b\x32\x12.angzarr.EventPageR\x06\x65vents\"<\n\x0eUpcastResponse\x12*\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x12.angzarr.EventPageR\x06\x65vents2L\n\x0fUpcasterService\x12\x39\n\x06Upcast\x12\x16.angzarr.UpcastRequest\x1a\x17.angzarr.UpcastResponseB\x82\x01\n\x0b\x63om.angzarrB\rUpcasterProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')

@@ -1,0 +1,19 @@
+# Client library build and publish commands
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+mod rust "rust/justfile"
+mod python "python/justfile"
+mod go "go/justfile"
+
+default:
+    @just --list
+
+# Verify all clients build
+build-all:
+    just client rust build
+    just client python build
+    just client go build
+    @echo "All clients built successfully"

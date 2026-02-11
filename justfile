@@ -5,6 +5,7 @@ set shell := ["bash", "-c"]
 TOP := `git rev-parse --show-toplevel`
 export RUSTC_WRAPPER := `command -v sccache || true`
 
+mod client "client/justfile"
 mod examples "examples/justfile"
 mod tofu "deploy/tofu/justfile"
 
@@ -32,6 +33,9 @@ buf-gen-go:
 # Generate Python client protos from buf
 buf-gen-python:
     cd "{{TOP}}/proto" && buf generate --template buf.gen.python.yaml
+    # Fix imports: protoc generates `from angzarr import` but package is angzarr_client.proto.angzarr
+    find "{{TOP}}/client/python/angzarr_client/proto" -name "*.py" -exec \
+        sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \;
 
 # === Proto Generation (Legacy Podman) ===
 

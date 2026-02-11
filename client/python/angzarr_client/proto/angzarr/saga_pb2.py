@@ -22,7 +22,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from angzarr import types_pb2 as angzarr_dot_types__pb2
+from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61ngzarr/saga.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto2\xe0\x01\n\x0bSagaService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12\x44\n\x07Prepare\x12\x1b.angzarr.SagaPrepareRequest\x1a\x1c.angzarr.SagaPrepareResponse\x12=\n\x07\x45xecute\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponse2b\n\x16SagaCoordinatorService\x12H\n\x12\x45xecuteSpeculative\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponseB~\n\x0b\x63om.angzarrB\tSagaProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')

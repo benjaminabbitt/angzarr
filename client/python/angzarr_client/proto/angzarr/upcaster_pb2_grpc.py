@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from angzarr import upcaster_pb2 as angzarr_dot_upcaster__pb2
+from angzarr_client.proto.angzarr import upcaster_pb2 as angzarr_dot_upcaster__pb2
 
 
 class UpcasterServiceStub(object):

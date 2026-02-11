@@ -1,0 +1,45 @@
+# Python client library commands
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+# Run unit tests
+test:
+    cd "{{TOP}}/client/python" && uv run --extra dev pytest tests/
+
+# Run tests with coverage report
+coverage:
+    cd "{{TOP}}/client/python" && uv run --extra dev pytest tests/ --cov=angzarr_client --cov-report=term-missing --cov-report=html
+
+# Run mutation testing
+mutate:
+    cd "{{TOP}}/client/python" && uv run --extra dev mutmut run
+
+# Show mutation testing results
+mutate-results:
+    cd "{{TOP}}/client/python" && uv run --extra dev mutmut results
+
+# Show HTML mutation report
+mutate-html:
+    cd "{{TOP}}/client/python" && uv run --extra dev mutmut html
+    @echo "HTML report generated at htmlcov/index.html"
+
+# Build Python package
+build:
+    cd "{{TOP}}/client/python" && uv run --with build python -m build
+
+# Publish to TestPyPI (for testing)
+publish-test: build
+    cd "{{TOP}}/client/python" && uv run --with twine twine upload --repository testpypi dist/*
+
+# Publish to PyPI
+publish: build
+    cd "{{TOP}}/client/python" && uv run --with twine twine upload dist/*
+
+# Clean build artifacts
+clean:
+    rm -rf "{{TOP}}/client/python/dist" "{{TOP}}/client/python/build" "{{TOP}}/client/python/*.egg-info" "{{TOP}}/client/python/htmlcov" "{{TOP}}/client/python/.mutmut-cache"
