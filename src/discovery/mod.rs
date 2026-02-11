@@ -1,14 +1,20 @@
 //! Service discovery for angzarr.
 //!
-//! Uses K8s label-based discovery with service mesh for L7 gRPC load balancing.
-//! Services are discovered by watching K8s Service resources with labels:
-//! - `app.kubernetes.io/component`: aggregate, projector, or saga
-//! - `angzarr.io/domain`: target domain
-//! - `angzarr.io/source-domain`: source domain (sagas only)
+//! Provides pluggable service discovery with multiple backends:
+//!
+//! - **K8s**: Label-based discovery with service mesh for L7 gRPC load balancing.
+//!   Services are discovered by watching K8s Service resources with labels:
+//!   - `app.kubernetes.io/component`: aggregate, projector, or saga
+//!   - `angzarr.io/domain`: target domain
+//!
+//! - **Static**: Environment variable or manual registration for Cloud Run,
+//!   standalone mode, and testing.
 
 pub mod k8s;
+mod static_discovery;
 
 pub use k8s::{DiscoveredService, DiscoveryError, K8sServiceDiscovery};
+pub use static_discovery::StaticServiceDiscovery;
 
 use tonic::transport::Channel;
 

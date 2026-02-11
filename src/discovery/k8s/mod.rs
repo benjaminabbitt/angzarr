@@ -41,15 +41,14 @@ use kube::{
 };
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
-use crate::config::{
-    DISCOVERY_STATIC, EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR,
-};
+use crate::config::{NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR};
 use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
 use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
-use crate::proto_ext::WILDCARD_DOMAIN;
+
+use super::static_discovery::StaticServiceDiscovery;
 
 /// Label for component type.
 const COMPONENT_LABEL: &str = "app.kubernetes.io/component";
@@ -113,68 +112,19 @@ impl DiscoveredService {
     }
 }
 
-/// Get or create a cached gRPC client connection.
-///
-/// Checks the cache first, creates a new connection if not found,
-/// and caches the result for future use.
-///
-/// Supports both TCP (http://host:port) and UDS (/path/to/socket.sock) addresses.
-async fn get_or_create_client<C, F>(
-    cache: &RwLock<HashMap<String, C>>,
-    service: &DiscoveredService,
-    client_type: &str,
-    connect_fn: F,
-) -> Result<C, DiscoveryError>
-where
-    C: Clone,
-    F: FnOnce(Channel) -> C,
-{
-    let url = service.grpc_url();
-
-    // Check cache
-    {
-        let clients = cache.read().await;
-        if let Some(client) = clients.get(&url) {
-            debug!(service = %service.name, client_type = %client_type, "Using cached client");
-            return Ok(client.clone());
-        }
-    }
-
-    // Create new connection - handle both TCP and UDS
-    info!(service = %service.name, url = %url, client_type = %client_type, "Creating client");
-    let channel = crate::transport::connect_to_address(&url)
-        .await
-        .map_err(|e| DiscoveryError::ConnectionFailed {
-            service: service.name.clone(),
-            address: url.clone(),
-            message: e.to_string(),
-        })?;
-
-    let client = connect_fn(channel);
-
-    // Cache
-    cache.write().await.insert(url, client.clone());
-
-    Ok(client)
-}
-
-/// Create an empty RwLock-wrapped HashMap.
-fn empty_cache<K, V>() -> Arc<RwLock<HashMap<K, V>>> {
-    Arc::new(RwLock::new(HashMap::new()))
-}
-
 /// K8s label-based service discovery.
 ///
 /// Mesh handles L7 load balancing—we just connect to Service names.
+/// Delegates storage and client caching to `StaticServiceDiscovery`.
 pub struct K8sServiceDiscovery {
     client: Option<Client>,
     namespace: String,
+    /// Aggregates cache for K8s watcher updates.
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
+    /// Projectors cache for K8s watcher updates.
     projectors: Arc<RwLock<HashMap<String, DiscoveredService>>>,
-    // Connection caches
-    aggregate_clients: Arc<RwLock<HashMap<String, AggregateCoordinatorServiceClient<Channel>>>>,
-    event_query_clients: Arc<RwLock<HashMap<String, EventQueryServiceClient<Channel>>>>,
-    projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorServiceClient<Channel>>>>,
+    /// Inner static discovery for storage and client caching.
+    inner: StaticServiceDiscovery,
 }
 
 impl K8sServiceDiscovery {
@@ -187,28 +137,24 @@ impl K8sServiceDiscovery {
 
         Ok(Self {
             client: Some(client),
-            namespace,
-            aggregates: empty_cache(),
-            projectors: empty_cache(),
-            aggregate_clients: empty_cache(),
-            event_query_clients: empty_cache(),
-            projector_clients: empty_cache(),
+            namespace: namespace.clone(),
+            aggregates: Arc::new(RwLock::new(HashMap::new())),
+            projectors: Arc::new(RwLock::new(HashMap::new())),
+            inner: StaticServiceDiscovery::new(&namespace),
         })
     }
 
     /// Create a static instance without K8s client.
     ///
-    /// Use `register_aggregate` to add services manually.
-    /// Useful for embedded mode and testing.
+    /// **Deprecated**: Use `StaticServiceDiscovery::new()` directly instead.
+    /// This method exists for backwards compatibility.
     pub fn new_static() -> Self {
         Self {
             client: None,
-            namespace: DISCOVERY_STATIC.to_string(),
-            aggregates: empty_cache(),
-            projectors: empty_cache(),
-            aggregate_clients: empty_cache(),
-            event_query_clients: empty_cache(),
-            projector_clients: empty_cache(),
+            namespace: "static".to_string(),
+            aggregates: Arc::new(RwLock::new(HashMap::new())),
+            projectors: Arc::new(RwLock::new(HashMap::new())),
+            inner: StaticServiceDiscovery::new("static"),
         }
     }
 
@@ -341,209 +287,145 @@ impl K8sServiceDiscovery {
         })
     }
 
-    async fn get_or_create_aggregate_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.aggregate_clients,
-            service,
-            "aggregate",
-            AggregateCoordinatorServiceClient::new,
-        )
-        .await
-    }
-
-    async fn get_or_create_event_query_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<EventQueryServiceClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.event_query_clients,
-            service,
-            "event_query",
-            EventQueryServiceClient::new,
-        )
-        .await
-    }
-
-    async fn get_or_create_projector_client(
-        &self,
-        service: &DiscoveredService,
-    ) -> Result<ProjectorCoordinatorServiceClient<Channel>, DiscoveryError> {
-        get_or_create_client(
-            &self.projector_clients,
-            service,
-            "projector",
-            ProjectorCoordinatorServiceClient::new,
-        )
-        .await
+    /// Register a discovered service with inner for client caching.
+    async fn sync_to_inner(&self, component: &str, service: &DiscoveredService) {
+        if let Some(domain) = &service.domain {
+            if component == COMPONENT_AGGREGATE {
+                self.inner
+                    .register_aggregate(domain, &service.service_address, service.port)
+                    .await;
+            } else if component == COMPONENT_PROJECTOR {
+                self.inner
+                    .register_projector(
+                        &service.name,
+                        domain,
+                        &service.service_address,
+                        service.port,
+                    )
+                    .await;
+            }
+        }
     }
 }
 
+use super::ServiceDiscovery;
+
 #[async_trait::async_trait]
-impl super::ServiceDiscovery for K8sServiceDiscovery {
+impl ServiceDiscovery for K8sServiceDiscovery {
     async fn register_aggregate(&self, domain: &str, address: &str, port: u16) {
+        // Store in local cache for K8s compatibility
         let service = DiscoveredService {
             name: format!("{}-aggregate", domain),
             service_address: address.to_string(),
             port,
             domain: Some(domain.to_string()),
         };
-        info!(
-            domain = %domain,
-            address = %address,
-            port = port,
-            "Registered static aggregate"
-        );
         self.aggregates
             .write()
             .await
             .insert(service.name.clone(), service);
+
+        // Delegate to inner for client caching
+        self.inner.register_aggregate(domain, address, port).await;
     }
 
     async fn register_projector(&self, name: &str, domain: &str, address: &str, port: u16) {
+        // Store in local cache for K8s compatibility
         let service = DiscoveredService {
             name: name.to_string(),
             service_address: address.to_string(),
             port,
             domain: Some(domain.to_string()),
         };
-        info!(
-            name = %name,
-            domain = %domain,
-            address = %address,
-            port = port,
-            "Registered static projector"
-        );
         self.projectors
             .write()
             .await
             .insert(service.name.clone(), service);
+
+        // Delegate to inner for client caching
+        self.inner
+            .register_projector(name, domain, address, port)
+            .await;
     }
 
     async fn get_aggregate(
         &self,
         domain: &str,
     ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
+        // Sync any unsynced services from local cache to inner
         let aggregates = self.aggregates.read().await;
-
-        // Find service matching domain, or wildcard
-        let service = aggregates
-            .values()
-            .find(|s| s.domain.as_deref() == Some(domain))
-            .or_else(|| {
-                aggregates
-                    .values()
-                    .find(|s| s.domain.as_deref() == Some(WILDCARD_DOMAIN))
-            })
-            .ok_or_else(|| DiscoveryError::DomainNotFound(domain.to_string()))?
-            .clone();
-
+        for service in aggregates.values() {
+            if let Some(d) = &service.domain {
+                // This is idempotent - inner will skip if already registered
+                self.inner
+                    .register_aggregate(d, &service.service_address, service.port)
+                    .await;
+            }
+        }
         drop(aggregates);
 
-        self.get_or_create_aggregate_client(&service).await
+        // Delegate to inner
+        self.inner.get_aggregate(domain).await
     }
 
     async fn get_event_query(
         &self,
         domain: &str,
     ) -> Result<EventQueryServiceClient<Channel>, DiscoveryError> {
+        // Sync any unsynced services from local cache to inner
         let aggregates = self.aggregates.read().await;
-
-        // Find service matching domain, or wildcard
-        let service = aggregates
-            .values()
-            .find(|s| s.domain.as_deref() == Some(domain))
-            .or_else(|| {
-                aggregates
-                    .values()
-                    .find(|s| s.domain.as_deref() == Some(WILDCARD_DOMAIN))
-            })
-            .cloned();
-
+        for service in aggregates.values() {
+            if let Some(d) = &service.domain {
+                self.inner
+                    .register_aggregate(d, &service.service_address, service.port)
+                    .await;
+            }
+        }
         drop(aggregates);
 
-        if let Some(service) = service {
-            return self.get_or_create_event_query_client(&service).await;
-        }
-
-        // Fallback to EVENT_QUERY_ADDRESS_ENV_VAR env var
-        if let Ok(addr) = std::env::var(EVENT_QUERY_ADDRESS_ENV_VAR) {
-            // Parse address - may be "host:port" or "http://host:port"
-            let (host, port) = if addr.starts_with("http://") || addr.starts_with("https://") {
-                // Already a URL, extract host:port
-                let without_scheme = addr
-                    .trim_start_matches("http://")
-                    .trim_start_matches("https://");
-                if let Some((h, p)) = without_scheme.rsplit_once(':') {
-                    (h.to_string(), p.parse().unwrap_or(80))
-                } else {
-                    (without_scheme.to_string(), 80)
-                }
-            } else if let Some((h, p)) = addr.rsplit_once(':') {
-                // host:port format
-                (h.to_string(), p.parse().unwrap_or(80))
-            } else {
-                // Just host, default port
-                (addr, 80)
-            };
-
-            let service = DiscoveredService {
-                name: format!("{}-event-query-fallback", domain),
-                service_address: host,
-                port,
-                domain: Some(domain.to_string()),
-            };
-            return self.get_or_create_event_query_client(&service).await;
-        }
-
-        Err(DiscoveryError::DomainNotFound(domain.to_string()))
+        // Delegate to inner
+        self.inner.get_event_query(domain).await
     }
 
     async fn get_all_projectors(
         &self,
     ) -> Result<Vec<ProjectorCoordinatorServiceClient<Channel>>, DiscoveryError> {
+        // Sync any unsynced services from local cache to inner
         let projectors = self.projectors.read().await;
-
-        if projectors.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let services: Vec<_> = projectors.values().cloned().collect();
-        drop(projectors);
-
-        let mut clients = Vec::with_capacity(services.len());
-        for service in services {
-            match self.get_or_create_projector_client(&service).await {
-                Ok(client) => clients.push(client),
-                Err(e) => {
-                    warn!(service = %service.name, error = %e, "Failed to get projector client")
-                }
+        for service in projectors.values() {
+            if let Some(d) = &service.domain {
+                self.inner
+                    .register_projector(&service.name, d, &service.service_address, service.port)
+                    .await;
             }
         }
+        drop(projectors);
 
-        Ok(clients)
+        // Delegate to inner
+        self.inner.get_all_projectors().await
     }
 
     async fn get_projector_by_name(
         &self,
         name: &str,
     ) -> Result<ProjectorCoordinatorServiceClient<Channel>, DiscoveryError> {
+        // Sync any unsynced services from local cache to inner
         let projectors = self.projectors.read().await;
-
-        let service = projectors
-            .values()
-            .find(|s| s.name == name || s.domain.as_deref() == Some(name))
-            .ok_or_else(|| DiscoveryError::NoServicesFound(format!("projector:{}", name)))?
-            .clone();
-
+        for service in projectors.values() {
+            if let Some(d) = &service.domain {
+                self.inner
+                    .register_projector(&service.name, d, &service.service_address, service.port)
+                    .await;
+            }
+        }
         drop(projectors);
 
-        self.get_or_create_projector_client(&service).await
+        // Delegate to inner
+        self.inner.get_projector_by_name(name).await
     }
 
     async fn aggregate_domains(&self) -> Vec<String> {
+        // Use local cache - it has the authoritative list from K8s
         self.aggregates
             .read()
             .await
@@ -563,7 +445,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
     async fn initial_sync(&self) -> Result<(), DiscoveryError> {
         let client = match &self.client {
             Some(c) => c.clone(),
-            None => return Ok(()), // Test mode - no K8s sync
+            None => return Ok(()), // Static mode - no K8s sync
         };
 
         info!("Performing initial service sync");
@@ -582,7 +464,9 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
                 self.aggregates
                     .write()
                     .await
-                    .insert(discovered.name.clone(), discovered);
+                    .insert(discovered.name.clone(), discovered.clone());
+                // Also register with inner
+                self.sync_to_inner(COMPONENT_AGGREGATE, &discovered).await;
             }
         }
 
@@ -598,7 +482,9 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
                 self.projectors
                     .write()
                     .await
-                    .insert(discovered.name.clone(), discovered);
+                    .insert(discovered.name.clone(), discovered.clone());
+                // Also register with inner
+                self.sync_to_inner(COMPONENT_PROJECTOR, &discovered).await;
             }
         }
 
@@ -616,7 +502,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
 
     fn start_watching(&self) {
         if self.client.is_none() {
-            return; // Test mode - no K8s watching
+            return; // Static mode - no K8s watching
         }
         self.start_watching_component(COMPONENT_AGGREGATE, self.aggregates.clone());
         self.start_watching_component(COMPONENT_PROJECTOR, self.projectors.clone());
