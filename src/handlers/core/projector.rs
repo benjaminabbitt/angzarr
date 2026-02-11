@@ -20,7 +20,7 @@ use tracing::{debug, info, Instrument};
 
 use crate::bus::{BusError, EventBus, EventHandler};
 use crate::orchestration::projector::{GrpcProjectorHandler, ProjectionMode, ProjectorHandler};
-use crate::proto::projector_client::ProjectorClient;
+use crate::proto::projector_service_client::ProjectorServiceClient;
 use crate::proto::{EventBook, Projection};
 use crate::proto_ext::{CoverExt, PROJECTION_DOMAIN_PREFIX, PROJECTION_TYPE_URL};
 
@@ -88,7 +88,7 @@ impl ProjectorEventHandler {
     }
 
     /// Create from a gRPC projector client without streaming output.
-    pub fn new(client: ProjectorClient<tonic::transport::Channel>, name: String) -> Self {
+    pub fn new(client: ProjectorServiceClient<tonic::transport::Channel>, name: String) -> Self {
         let handler: Arc<dyn ProjectorHandler> = Arc::new(GrpcProjectorHandler::new(client));
         Self {
             handler,
@@ -101,7 +101,7 @@ impl ProjectorEventHandler {
 
     /// Create from a gRPC projector client with streaming output.
     pub fn with_publisher(
-        client: ProjectorClient<tonic::transport::Channel>,
+        client: ProjectorServiceClient<tonic::transport::Channel>,
         publisher: Arc<dyn EventBus>,
         name: String,
     ) -> Self {

@@ -47,8 +47,9 @@ use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEvent
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
-    aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinatorServer,
-    event_query_server::EventQueryServer,
+    aggregate_coordinator_service_server::AggregateCoordinatorServiceServer,
+    aggregate_service_client::AggregateServiceClient,
+    event_query_service_server::EventQueryServiceServer,
 };
 use angzarr::services::{AggregateService, EventQueryService};
 use angzarr::storage::init_storage;
@@ -87,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use angzarr::transport::connect_to_address;
     let channel = connect_to_address(&address).await?;
 
-    let client_logic_client = AggregateClient::new(channel);
+    let client_logic_client = AggregateServiceClient::new(channel);
 
     let event_bus: Arc<dyn EventBus> = match &config.messaging {
         Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {
@@ -172,12 +173,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(grpc_trace_layer())
         .add_service(health_service)
         .add_service(
-            AggregateCoordinatorServer::new(aggregate_service)
+            AggregateCoordinatorServiceServer::new(aggregate_service)
                 .max_decoding_message_size(msg_size)
                 .max_encoding_message_size(msg_size),
         )
         .add_service(
-            EventQueryServer::new(event_query)
+            EventQueryServiceServer::new(event_query)
                 .max_decoding_message_size(msg_size)
                 .max_encoding_message_size(msg_size),
         );

@@ -23,8 +23,8 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::proto::{
-    aggregate_client::AggregateClient, BusinessResponse, CommandBook, CommandResponse,
-    ContextualCommand, EventBook, Projection,
+    aggregate_service_client::AggregateServiceClient, BusinessResponse, CommandBook,
+    CommandResponse, ContextualCommand, EventBook, Projection,
 };
 use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventBookExt};
 use crate::utils::response_builder::extract_events_from_response;
@@ -129,12 +129,12 @@ pub trait ClientLogic: Send + Sync {
 ///
 /// Wraps a tonic `AggregateClient` channel (TCP, UDS, or duplex).
 pub struct GrpcBusinessLogic {
-    client: Mutex<AggregateClient<tonic::transport::Channel>>,
+    client: Mutex<AggregateServiceClient<tonic::transport::Channel>>,
 }
 
 impl GrpcBusinessLogic {
     /// Wrap a gRPC aggregate client as a `ClientLogic` implementation.
-    pub fn new(client: AggregateClient<tonic::transport::Channel>) -> Self {
+    pub fn new(client: AggregateServiceClient<tonic::transport::Channel>) -> Self {
         Self {
             client: Mutex::new(client),
         }

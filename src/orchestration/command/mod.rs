@@ -2,7 +2,7 @@
 //!
 //! `CommandExecutor` sends commands to aggregates and classifies the outcome.
 //! - `local/`: calls in-process `CommandRouter::execute_command()`
-//! - `grpc/`: calls remote `AggregateCoordinatorClient` via gRPC
+//! - `grpc/`: calls remote `AggregateCoordinatorServiceClient` via gRPC
 
 pub mod grpc;
 #[cfg(feature = "sqlite")]

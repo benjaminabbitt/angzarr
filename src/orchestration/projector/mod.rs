@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tonic::Status;
 
-use crate::proto::projector_client::ProjectorClient;
+use crate::proto::projector_service_client::ProjectorServiceClient;
 use crate::proto::{ComponentDescriptor, EventBook, Projection};
 use crate::proto_ext::{correlated_request, CoverExt};
 
@@ -58,12 +58,12 @@ pub trait ProjectorHandler: Send + Sync + 'static {
 /// Client logic implements the simple `Projector` service (not `ProjectorCoordinator`).
 /// Skips calls in `Speculate` mode since remote side effects can't be controlled.
 pub struct GrpcProjectorHandler {
-    client: Arc<Mutex<ProjectorClient<tonic::transport::Channel>>>,
+    client: Arc<Mutex<ProjectorServiceClient<tonic::transport::Channel>>>,
 }
 
 impl GrpcProjectorHandler {
     /// Wrap a gRPC projector client as a `ProjectorHandler`.
-    pub fn new(client: ProjectorClient<tonic::transport::Channel>) -> Self {
+    pub fn new(client: ProjectorServiceClient<tonic::transport::Channel>) -> Self {
         Self {
             client: Arc::new(Mutex::new(client)),
         }

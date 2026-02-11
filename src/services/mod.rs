@@ -16,7 +16,7 @@ pub use crate::utils::saga_compensation::{
 pub use aggregate::AggregateService;
 pub use event_book_repair::{EventBookRepairer, RepairError};
 pub use event_query::EventQueryService;
-pub use projector_coord::ProjectorCoordinatorService;
+pub use projector_coord::ProjectorCoord;
 pub use timeout_scheduler::{
     StaleProcess, StaleProcessQuery, TimeoutScheduler, TimeoutSchedulerConfig,
 };

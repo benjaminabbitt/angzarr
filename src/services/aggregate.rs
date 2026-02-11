@@ -13,8 +13,9 @@ use crate::orchestration::aggregate::{
     PipelineMode,
 };
 use crate::proto::{
-    aggregate_client::AggregateClient, aggregate_coordinator_server::AggregateCoordinator,
-    CommandBook, CommandResponse, DryRunRequest, SyncCommandBook,
+    aggregate_coordinator_service_server::AggregateCoordinatorService,
+    aggregate_service_client::AggregateServiceClient, CommandBook, CommandResponse, DryRunRequest,
+    SyncCommandBook,
 };
 #[cfg(feature = "otel")]
 use crate::proto_ext::CoverExt;
@@ -48,7 +49,7 @@ impl AggregateService {
     pub fn new(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
-        business_client: AggregateClient<Channel>,
+        business_client: AggregateServiceClient<Channel>,
         event_bus: Arc<dyn EventBus>,
         discovery: Arc<dyn ServiceDiscovery>,
     ) -> Self {
@@ -68,7 +69,7 @@ impl AggregateService {
     pub fn with_config(
         event_store: Arc<dyn EventStore>,
         snapshot_store: Arc<dyn SnapshotStore>,
-        business_client: AggregateClient<Channel>,
+        business_client: AggregateServiceClient<Channel>,
         event_bus: Arc<dyn EventBus>,
         discovery: Arc<dyn ServiceDiscovery>,
         snapshot_read_enabled: bool,
@@ -127,7 +128,7 @@ impl AggregateService {
 }
 
 #[tonic::async_trait]
-impl AggregateCoordinator for AggregateService {
+impl AggregateCoordinatorService for AggregateService {
     /// Handle command asynchronously - publishes to bus, doesn't wait for projectors.
     #[tracing::instrument(name = "aggregate.handle", skip_all)]
     async fn handle(

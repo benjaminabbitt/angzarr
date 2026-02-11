@@ -25,7 +25,7 @@ use tonic::Status;
 use tracing::{debug, info};
 
 use crate::config::{UPCASTER_ADDRESS_ENV_VAR, UPCASTER_ENABLED_ENV_VAR};
-use crate::proto::{upcaster_client::UpcasterClient, EventPage, UpcastRequest};
+use crate::proto::{upcaster_service_client::UpcasterServiceClient, EventPage, UpcastRequest};
 use crate::proto_ext::correlated_request;
 
 // ============================================================================
@@ -83,7 +83,7 @@ impl UpcasterConfig {
 /// Handles connection to the upcaster service and provides a simple interface
 /// for transforming events.
 pub struct Upcaster {
-    client: Option<Arc<Mutex<UpcasterClient<Channel>>>>,
+    client: Option<Arc<Mutex<UpcasterServiceClient<Channel>>>>,
     #[allow(dead_code)] // Reserved for reconnection logic
     config: UpcasterConfig,
 }
@@ -111,7 +111,7 @@ impl Upcaster {
             .connect()
             .await?;
 
-        let client = UpcasterClient::new(channel);
+        let client = UpcasterServiceClient::new(channel);
         info!(address = %address, "Upcaster client connected");
 
         Ok(Self {
@@ -215,7 +215,9 @@ mod tests {
 mod grpc_tests {
     use super::*;
     use crate::proto::event_page::Sequence;
-    use crate::proto::upcaster_server::{Upcaster as UpcasterService, UpcasterServer};
+    use crate::proto::upcaster_service_server::{
+        Upcaster as UpcasterService, UpcasterServiceServer,
+    };
     use crate::proto::{UpcastRequest, UpcastResponse};
     use std::net::SocketAddr;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -291,7 +293,7 @@ mod grpc_tests {
 
         tokio::spawn(async move {
             Server::builder()
-                .add_service(UpcasterServer::new(service))
+                .add_service(UpcasterServiceServer::new(service))
                 .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                 .await
                 .unwrap();

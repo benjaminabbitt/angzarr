@@ -1,0 +1,39 @@
+[package]
+name = "angzarr-client"
+version = "0.1.0"
+edition = "2021"
+description = "Ergonomic Rust client for Angzarr CQRS/ES framework"
+license = "AGPL-3.0-only"
+repository = "https://github.com/benjaminabbitt/angzarr"
+documentation = "https://docs.rs/angzarr-client"
+keywords = ["cqrs", "event-sourcing", "grpc", "client"]
+categories = ["network-programming", "asynchronous"]
+
+[dependencies]
+# gRPC
+tonic = { version = "0.12", features = ["tls"] }
+prost = "0.13"
+prost-types = "0.13"
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+async-trait = "0.1"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "v5"] }
+chrono = "0.4"
+hex = "0.4"
+thiserror = "2"
+
+# Serialization (for descriptor types)
+serde = { version = "1", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[features]
+default = []
+tls = []

@@ -1,7 +1,7 @@
 //! Tests for EventBook repair via EventQuery gRPC service.
 
 use crate::common::*;
-use angzarr::proto::event_query_server::EventQueryServer;
+use angzarr::proto::event_query_service_server::EventQueryServiceServer;
 use angzarr::services::event_book_repair::repair_if_needed;
 use angzarr::services::{EventBookRepairer, EventQueryService};
 use angzarr::storage::mock::{MockEventStore, MockSnapshotStore};
@@ -22,7 +22,7 @@ async fn start_event_query_server(
 
     tokio::spawn(async move {
         Server::builder()
-            .add_service(EventQueryServer::new(service))
+            .add_service(EventQueryServiceServer::new(service))
             .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
             .await
             .unwrap();

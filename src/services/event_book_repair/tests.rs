@@ -121,7 +121,7 @@ fn test_extract_identity_missing_root() {
 mod grpc_integration {
     use super::*;
     use crate::orchestration::aggregate::DEFAULT_EDITION;
-    use crate::proto::event_query_server::EventQueryServer;
+    use crate::proto::event_query_service_server::EventQueryServiceServer;
     use crate::proto::Snapshot;
     use crate::services::EventQueryService;
     use crate::storage::mock::{MockEventStore, MockSnapshotStore};
@@ -167,7 +167,7 @@ mod grpc_integration {
 
         tokio::spawn(async move {
             Server::builder()
-                .add_service(EventQueryServer::new(service))
+                .add_service(EventQueryServiceServer::new(service))
                 .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                 .await
                 .unwrap();

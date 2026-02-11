@@ -12,9 +12,9 @@ pub use k8s::{DiscoveredService, DiscoveryError, K8sServiceDiscovery};
 
 use tonic::transport::Channel;
 
-use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use crate::proto::event_query_client::EventQueryClient;
-use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::event_query_service_client::EventQueryServiceClient;
+use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
 
 /// Trait for service discovery.
 ///
@@ -32,24 +32,24 @@ pub trait ServiceDiscovery: Send + Sync {
     async fn get_aggregate(
         &self,
         domain: &str,
-    ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError>;
+    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError>;
 
     /// Get event query client by domain.
     async fn get_event_query(
         &self,
         domain: &str,
-    ) -> Result<EventQueryClient<Channel>, DiscoveryError>;
+    ) -> Result<EventQueryServiceClient<Channel>, DiscoveryError>;
 
     /// Get all projector clients.
     async fn get_all_projectors(
         &self,
-    ) -> Result<Vec<ProjectorCoordinatorClient<Channel>>, DiscoveryError>;
+    ) -> Result<Vec<ProjectorCoordinatorServiceClient<Channel>>, DiscoveryError>;
 
     /// Get projector client by name.
     async fn get_projector_by_name(
         &self,
         name: &str,
-    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError>;
+    ) -> Result<ProjectorCoordinatorServiceClient<Channel>, DiscoveryError>;
 
     /// Get all aggregate domains.
     async fn aggregate_domains(&self) -> Vec<String>;

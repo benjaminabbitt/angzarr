@@ -2,8 +2,8 @@
 
 use crate::common::*;
 use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use angzarr::proto::aggregate_coordinator_server::{
-    AggregateCoordinator, AggregateCoordinatorServer,
+use angzarr::proto::aggregate_coordinator_service_server::{
+    AggregateCoordinator, AggregateCoordinatorServiceServer,
 };
 use angzarr::proto::{CommandResponse, SyncCommandBook};
 use angzarr::transport::{connect_to_address, prepare_uds_socket};
@@ -26,7 +26,7 @@ impl MockAggregateService {
 }
 
 #[tonic::async_trait]
-impl AggregateCoordinator for MockAggregateService {
+impl AggregateCoordinatorService for MockAggregateService {
     async fn handle(
         &self,
         request: Request<CommandBook>,
@@ -99,7 +99,7 @@ async fn test_grpc_server_and_client_over_uds() {
     let uds_stream = UnixListenerStream::new(uds);
 
     let service = MockAggregateService::new();
-    let server = Server::builder().add_service(AggregateCoordinatorServer::new(service));
+    let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
 
     // Run server in background
     let server_task = tokio::spawn(async move {
@@ -141,7 +141,7 @@ async fn test_multiple_concurrent_uds_requests() {
     let uds_stream = UnixListenerStream::new(uds);
 
     let service = MockAggregateService::new();
-    let server = Server::builder().add_service(AggregateCoordinatorServer::new(service));
+    let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
 
     let server_task = tokio::spawn(async move {
         server.serve_with_incoming(uds_stream).await.unwrap();
@@ -192,7 +192,7 @@ async fn test_uds_socket_cleanup_on_server_restart() {
         let uds_stream = UnixListenerStream::new(uds);
 
         let service = MockAggregateService::new();
-        let server = Server::builder().add_service(AggregateCoordinatorServer::new(service));
+        let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
 
         let server_task = tokio::spawn(async move {
             server.serve_with_incoming(uds_stream).await.unwrap();
@@ -208,7 +208,7 @@ async fn test_uds_socket_cleanup_on_server_restart() {
     let uds_stream = UnixListenerStream::new(uds);
 
     let service = MockAggregateService::new();
-    let server = Server::builder().add_service(AggregateCoordinatorServer::new(service));
+    let server = Server::builder().add_service(AggregateCoordinatorServiceServer::new(service));
 
     let server_task = tokio::spawn(async move {
         server.serve_with_incoming(uds_stream).await.unwrap();

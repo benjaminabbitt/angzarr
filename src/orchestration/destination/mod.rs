@@ -2,7 +2,7 @@
 //!
 //! `DestinationFetcher` loads EventBook state for saga/PM destinations.
 //! - `local/`: reads from in-process `DomainStorage` maps
-//! - `grpc/`: wraps `EventQueryClient` for remote fetching
+//! - `grpc/`: wraps `EventQueryServiceClient` for remote fetching
 
 pub mod grpc;
 pub mod hybrid;

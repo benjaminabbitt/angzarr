@@ -48,8 +48,8 @@ use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::command::grpc::SingleClientExecutor;
 use angzarr::orchestration::command::CommandExecutor;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
-use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use angzarr::proto::saga_client::SagaClient;
+use angzarr::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use angzarr::proto::saga_service_client::SagaServiceClient;
 use angzarr::proto::GetDescriptorRequest;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::retry::connection_backoff;
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let addr = saga_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
-            Ok::<_, String>(SagaClient::new(channel))
+            Ok::<_, String>(SagaServiceClient::new(channel))
         }
     })
     .retry(connection_backoff())
@@ -145,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let addr = cmd_addr.clone();
             async move {
                 let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
-                Ok::<_, String>(AggregateCoordinatorClient::new(channel))
+                Ok::<_, String>(AggregateCoordinatorServiceClient::new(channel))
             }
         })
         .retry(connection_backoff())

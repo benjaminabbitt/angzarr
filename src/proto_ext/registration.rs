@@ -5,7 +5,7 @@
 use crate::orchestration::correlation::ANGZARR_UUID_NAMESPACE;
 use crate::proto::{CommandBook, CommandPage, ComponentDescriptor, Cover, RegisterComponent, Uuid};
 
-use super::constants::{META_ANGZARR_DOMAIN, REGISTER_COMPONENT_TYPE_URL};
+use angzarr_client::proto_ext::constants::{META_ANGZARR_DOMAIN, REGISTER_COMPONENT_TYPE_URL};
 
 /// Derive a deterministic UUID from a component name.
 ///

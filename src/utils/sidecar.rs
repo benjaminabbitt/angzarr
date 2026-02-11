@@ -16,8 +16,8 @@ use crate::orchestration::command::grpc::GrpcCommandExecutor;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::grpc::GrpcDestinationFetcher;
 use crate::orchestration::destination::DestinationFetcher;
-use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use crate::proto::event_query_client::EventQueryClient;
+use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::transport::connect_to_address;
 use crate::utils::bootstrap::{init_tracing, parse_static_endpoints};
 use crate::utils::retry::connection_backoff;
@@ -85,7 +85,7 @@ pub async fn connect_endpoints(
             let a = addr.clone();
             async move {
                 let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
-                Ok::<_, String>(AggregateCoordinatorClient::new(channel))
+                Ok::<_, String>(AggregateCoordinatorServiceClient::new(channel))
             }
         })
         .retry(connection_backoff())
@@ -101,7 +101,7 @@ pub async fn connect_endpoints(
             let a = addr.clone();
             async move {
                 let channel = connect_to_address(&a).await.map_err(|e| e.to_string())?;
-                Ok::<_, String>(EventQueryClient::new(channel))
+                Ok::<_, String>(EventQueryServiceClient::new(channel))
             }
         })
         .retry(connection_backoff())

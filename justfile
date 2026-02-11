@@ -11,7 +11,29 @@ mod tofu "deploy/tofu/justfile"
 default:
     @just --list
 
-# === Proto Generation ===
+# === Buf Schema Registry ===
+
+# Build and validate protos with buf
+buf-build:
+    cd "{{TOP}}/proto" && buf build
+
+# Lint protos with buf
+buf-lint:
+    cd "{{TOP}}/proto" && buf lint
+
+# Push protos to Buf Schema Registry (requires: buf registry login)
+buf-push:
+    cd "{{TOP}}/proto" && buf push
+
+# Generate Go client protos from buf
+buf-gen-go:
+    cd "{{TOP}}/proto" && buf generate --template buf.gen.go.yaml
+
+# Generate Python client protos from buf
+buf-gen-python:
+    cd "{{TOP}}/proto" && buf generate --template buf.gen.python.yaml
+
+# === Proto Generation (Legacy Podman) ===
 
 # Build the proto generation container
 proto-container:

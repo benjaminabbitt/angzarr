@@ -91,12 +91,12 @@ use angzarr::orchestration::command::CommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
 use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
-use angzarr::proto::aggregate_client::AggregateClient;
-use angzarr::proto::aggregate_coordinator_server::AggregateCoordinatorServer;
-use angzarr::proto::event_query_server::EventQueryServer;
-use angzarr::proto::process_manager_client::ProcessManagerClient;
-use angzarr::proto::projector_client::ProjectorClient;
-use angzarr::proto::saga_client::SagaClient;
+use angzarr::proto::aggregate_coordinator_service_server::AggregateCoordinatorServiceServer;
+use angzarr::proto::aggregate_service_client::AggregateServiceClient;
+use angzarr::proto::event_query_service_server::EventQueryServiceServer;
+use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
+use angzarr::proto::projector_service_client::ProjectorServiceClient;
+use angzarr::proto::saga_service_client::SagaServiceClient;
 use angzarr::standalone::{
     AggregateHandlerAdapter, CommandRouter, DomainStorage, GrpcProjectorHandler,
     MetaAggregateHandler, ServerInfo, SingleDomainEventQuery, StandaloneAggregateService,
@@ -405,7 +405,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let client = AggregateClient::new(channel);
+        let client = AggregateServiceClient::new(channel);
         client_logic.insert(svc.domain.clone(), Arc::new(GrpcBusinessLogic::new(client)));
 
         info!(domain = %svc.domain, "Connected to aggregate client logic");
@@ -450,7 +450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let client = ProjectorClient::new(channel);
+        let client = ProjectorServiceClient::new(channel);
         let handler: Arc<dyn angzarr::standalone::ProjectorHandler> =
             Arc::new(GrpcProjectorHandler::new(client));
 
@@ -491,7 +491,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let saga_client = Arc::new(Mutex::new(SagaClient::new(channel)));
+        let saga_client = Arc::new(Mutex::new(SagaServiceClient::new(channel)));
         let listen_domain = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
 
         let factory = Arc::new(GrpcSagaContextFactory::new(
@@ -532,7 +532,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let mut pm_client = ProcessManagerClient::new(channel);
+        let mut pm_client = ProcessManagerServiceClient::new(channel);
 
         // Get PM descriptor to determine which domains/event types it subscribes to
         let descriptor = pm_client
@@ -628,8 +628,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let grpc_router = tonic::transport::Server::builder()
                 .layer(grpc_trace_layer())
-                .add_service(AggregateCoordinatorServer::new(aggregate_svc))
-                .add_service(EventQueryServer::new(event_query));
+                .add_service(AggregateCoordinatorServiceServer::new(aggregate_svc))
+                .add_service(EventQueryServiceServer::new(event_query));
 
             let listener = tokio::net::TcpListener::bind(addr).await?;
             let local_addr = listener.local_addr()?;

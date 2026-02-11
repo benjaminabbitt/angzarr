@@ -1,0 +1,162 @@
+name: Client Libraries Release
+
+on:
+  push:
+    tags:
+      - 'client-rust/v*.*.*'
+      - 'client-python/v*.*.*'
+      - 'client/go/v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  # Determine which client(s) to release based on the tag
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.check.outputs.rust }}
+      python: ${{ steps.check.outputs.python }}
+      go: ${{ steps.check.outputs.go }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Detect release type
+        id: check
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Tag: $TAG"
+
+          if [[ "$TAG" == client-rust/v* ]]; then
+            echo "rust=true" >> $GITHUB_OUTPUT
+            echo "version=${TAG#client-rust/v}" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == client-python/v* ]]; then
+            echo "python=true" >> $GITHUB_OUTPUT
+            echo "version=${TAG#client-python/v}" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == client/go/v* ]]; then
+            echo "go=true" >> $GITHUB_OUTPUT
+            echo "version=${TAG#client/go/v}" >> $GITHUB_OUTPUT
+          fi
+
+  # Publish Rust client to crates.io
+  rust:
+    needs: detect
+    if: needs.detect.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "27.x"
+
+      - name: Verify version matches
+        working-directory: client/rust
+        run: |
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          TAG_VERSION=${{ needs.detect.outputs.version }}
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: Cargo.toml version ($CARGO_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build
+        working-directory: client/rust
+        run: cargo build --release
+
+      - name: Publish to crates.io
+        working-directory: client/rust
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # Publish Python client to PyPI
+  python:
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Verify version matches
+        working-directory: client/python
+        run: |
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          TAG_VERSION=${{ needs.detect.outputs.version }}
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: pyproject.toml version ($PYPROJECT_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build package
+        working-directory: client/python
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: client/python/dist/
+
+  # Go releases via tags - Go modules auto-discover from tags
+  go:
+    needs: detect
+    if: needs.detect.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Verify module builds
+        working-directory: client/go
+        run: go build ./...
+
+      - name: Create release notes
+        run: |
+          VERSION=${{ needs.detect.outputs.version }}
+          cat << EOF > release-notes.md
+          ## Go Client v${VERSION}
+
+          ### Installation
+
+          \`\`\`bash
+          go get github.com/benjaminabbitt/angzarr/client/go@v${VERSION}
+          \`\`\`
+
+          ### Usage
+
+          \`\`\`go
+          import angzarr "github.com/benjaminabbitt/angzarr/client/go"
+
+          client, err := angzarr.NewClient("localhost:1310")
+          if err != nil {
+              log.Fatal(err)
+          }
+          defer client.Close()
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -14,8 +14,8 @@ use tracing::{error, info, warn};
 use crate::config::ServiceEndpoint;
 use crate::grpc::connect_channel;
 use crate::proto::{
-    projector_client::ProjectorClient, projector_coordinator_server::ProjectorCoordinator,
-    EventBook, Projection, SyncEventBook,
+    projector_coordinator_service_server::ProjectorCoordinatorService,
+    projector_service_client::ProjectorServiceClient, EventBook, Projection, SyncEventBook,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::services::event_book_repair::EventBookRepairer;
@@ -23,7 +23,7 @@ use crate::services::event_book_repair::EventBookRepairer;
 /// Connected projector client.
 struct ProjectorConnection {
     config: ServiceEndpoint,
-    client: ProjectorClient<Channel>,
+    client: ProjectorServiceClient<Channel>,
 }
 
 /// Projector coordinator service.
@@ -31,12 +31,12 @@ struct ProjectorConnection {
 /// Distributes events to all registered projectors. Before forwarding,
 /// checks if EventBooks are complete and fetches missing history from
 /// the EventQuery service if needed.
-pub struct ProjectorCoordinatorService {
+pub struct ProjectorCoord {
     projectors: Arc<RwLock<Vec<ProjectorConnection>>>,
     repairer: Arc<Mutex<EventBookRepairer>>,
 }
 
-impl ProjectorCoordinatorService {
+impl ProjectorCoord {
     /// Create a new projector coordinator.
     pub fn new(repairer: EventBookRepairer) -> Self {
         Self {
@@ -62,7 +62,7 @@ impl ProjectorCoordinatorService {
     /// Register a projector endpoint.
     pub async fn add_projector(&self, config: ServiceEndpoint) -> Result<(), String> {
         let channel = connect_channel(&config.address).await?;
-        let client = ProjectorClient::new(channel);
+        let client = ProjectorServiceClient::new(channel);
 
         info!(
             projector = %config.name,
@@ -80,7 +80,7 @@ impl ProjectorCoordinatorService {
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for ProjectorCoordinatorService {
+impl ProjectorCoordinatorService for ProjectorCoord {
     /// Handle events synchronously, returning a projection.
     async fn handle_sync(
         &self,
@@ -243,7 +243,7 @@ impl ProjectorCoordinator for ProjectorCoordinatorService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::event_query_server::EventQueryServer;
+    use crate::proto::event_query_service_server::EventQueryServiceServer;
     use crate::proto::{Cover, Uuid as ProtoUuid};
     use crate::services::EventQueryService;
     use crate::storage::mock::{MockEventStore, MockSnapshotStore};
@@ -276,7 +276,7 @@ mod tests {
 
         tokio::spawn(async move {
             Server::builder()
-                .add_service(EventQueryServer::new(service))
+                .add_service(EventQueryServiceServer::new(service))
                 .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                 .await
                 .unwrap();
@@ -289,9 +289,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_sync_with_no_projectors_returns_empty_projection() {
         let addr = start_event_query_server().await;
-        let coordinator = ProjectorCoordinatorService::connect(&addr.to_string())
-            .await
-            .unwrap();
+        let coordinator = ProjectorCoord::connect(&addr.to_string()).await.unwrap();
 
         let event_book = make_event_book();
         let sync_request = SyncEventBook {
@@ -310,9 +308,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_with_no_projectors_succeeds() {
         let addr = start_event_query_server().await;
-        let coordinator = ProjectorCoordinatorService::connect(&addr.to_string())
-            .await
-            .unwrap();
+        let coordinator = ProjectorCoord::connect(&addr.to_string()).await.unwrap();
 
         let event_book = make_event_book();
 
@@ -324,9 +320,7 @@ mod tests {
     #[tokio::test]
     async fn test_add_projector_invalid_address() {
         let addr = start_event_query_server().await;
-        let coordinator = ProjectorCoordinatorService::connect(&addr.to_string())
-            .await
-            .unwrap();
+        let coordinator = ProjectorCoord::connect(&addr.to_string()).await.unwrap();
 
         let config = ServiceEndpoint {
             name: "test".to_string(),

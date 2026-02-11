@@ -35,7 +35,7 @@ use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::{Config, STREAM_OUTPUT_ENV_VAR, TARGET_COMMAND_JSON_ENV_VAR};
 use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
-use angzarr::proto::projector_client::ProjectorClient;
+use angzarr::proto::projector_service_client::ProjectorServiceClient;
 use angzarr::proto::GetDescriptorRequest;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::bootstrap::init_tracing;
@@ -128,8 +128,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     // Create client for the Projector service (GetDescriptor and Handle)
-    let mut descriptor_client = ProjectorClient::new(channel.clone());
-    let projector_client = ProjectorClient::new(channel);
+    let mut descriptor_client = ProjectorServiceClient::new(channel.clone());
+    let projector_client = ProjectorServiceClient::new(channel);
 
     // Fetch descriptor from projector service for topology registration
     let descriptor = match descriptor_client

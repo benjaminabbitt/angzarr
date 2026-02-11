@@ -16,8 +16,8 @@ use tonic::{Request, Response, Status};
 use tracing::error;
 
 use crate::config::ResourceLimits;
-use crate::proto::aggregate_coordinator_server::AggregateCoordinator;
-use crate::proto::event_query_server::EventQuery as EventQueryTrait;
+use crate::proto::aggregate_coordinator_service_server::AggregateCoordinatorService;
+use crate::proto::event_query_service_server::EventQueryService as EventQueryTrait;
 use crate::proto::{
     AggregateRoot, CommandBook, CommandResponse, DryRunRequest, EventBook, Query, SyncCommandBook,
     Uuid as ProtoUuid,
@@ -74,7 +74,7 @@ impl StandaloneAggregateService {
 }
 
 #[tonic::async_trait]
-impl AggregateCoordinator for StandaloneAggregateService {
+impl AggregateCoordinatorService for StandaloneAggregateService {
     async fn handle(
         &self,
         request: Request<CommandBook>,

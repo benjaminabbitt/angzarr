@@ -10,7 +10,7 @@ use prost_reflect::{DescriptorPool, DynamicMessage};
 use tonic::{Request, Response, Status};
 use tracing::info;
 
-use crate::proto::projector_coordinator_server::ProjectorCoordinator;
+use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
 use crate::proto::{EventBook, Projection, SyncEventBook};
 
 // ANSI color codes for terminal output
@@ -157,7 +157,7 @@ impl Default for LogService {
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for LogService {
+impl ProjectorCoordinatorService for LogService {
     async fn handle_sync(
         &self,
         request: Request<SyncEventBook>,
@@ -196,22 +196,22 @@ impl std::ops::Deref for LogServiceHandle {
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for LogServiceHandle {
+impl ProjectorCoordinatorService for LogServiceHandle {
     async fn handle_sync(
         &self,
         request: Request<SyncEventBook>,
     ) -> Result<Response<Projection>, Status> {
-        ProjectorCoordinator::handle_sync(&*self.0, request).await
+        ProjectorCoordinatorService::handle_sync(&*self.0, request).await
     }
 
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
-        ProjectorCoordinator::handle(&*self.0, request).await
+        ProjectorCoordinatorService::handle(&*self.0, request).await
     }
 
     async fn handle_speculative(
         &self,
         request: Request<EventBook>,
     ) -> Result<Response<Projection>, Status> {
-        ProjectorCoordinator::handle_speculative(&*self.0, request).await
+        ProjectorCoordinatorService::handle_speculative(&*self.0, request).await
     }
 }

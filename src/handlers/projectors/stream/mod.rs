@@ -11,7 +11,7 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, info, warn};
 
 use crate::bus::{BusError, EventHandler};
-use crate::proto::event_stream_server::EventStream;
+use crate::proto::event_stream_service_server::EventStreamService;
 use crate::proto::{EventBook, EventStreamFilter};
 
 type SubscriberSender = mpsc::Sender<Result<EventBook, Status>>;
@@ -119,7 +119,7 @@ impl Default for StreamService {
 }
 
 #[tonic::async_trait]
-impl EventStream for StreamService {
+impl EventStreamService for StreamService {
     type SubscribeStream = Pin<Box<dyn Stream<Item = Result<EventBook, Status>> + Send + 'static>>;
 
     async fn subscribe(

@@ -21,12 +21,12 @@ use tonic::{Request, Response, Status};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use angzarr::proto::aggregate_server::{Aggregate, AggregateServer};
-use angzarr::proto::process_manager_server::{
-    ProcessManager as ProcessManagerService, ProcessManagerServer,
+use angzarr::proto::aggregate_service_server::{AggregateService, AggregateServiceServer};
+use angzarr::proto::process_manager_service_server::{
+    ProcessManagerService, ProcessManagerServiceServer,
 };
-use angzarr::proto::projector_server::{Projector as ProjectorService, ProjectorServer};
-use angzarr::proto::saga_server::{Saga as SagaService, SagaServer};
+use angzarr::proto::projector_service_server::{ProjectorService, ProjectorServiceServer};
+use angzarr::proto::saga_service_server::{SagaService, SagaServiceServer};
 use angzarr::proto::{
     BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook,
     GetDescriptorRequest, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
@@ -101,7 +101,7 @@ impl<T> AggregateWrapper<T> {
 }
 
 #[tonic::async_trait]
-impl<T: AggregateLogic + 'static> Aggregate for AggregateWrapper<T> {
+impl<T: AggregateLogic + 'static> AggregateService for AggregateWrapper<T> {
     async fn get_descriptor(
         &self,
         _request: Request<GetDescriptorRequest>,
@@ -137,7 +137,7 @@ pub async fn run_aggregate_server<T: AggregateLogic + 'static>(
 
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<AggregateServer<AggregateWrapper<T>>>()
+        .set_serving::<AggregateServiceServer<AggregateWrapper<T>>>()
         .await;
 
     match transport {
@@ -145,7 +145,7 @@ pub async fn run_aggregate_server<T: AggregateLogic + 'static>(
             info!(domain = domain, port = %addr.port(), transport = "tcp", "server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(AggregateServer::new(service))
+                .add_service(AggregateServiceServer::new(service))
                 .serve(addr)
                 .await?;
         }
@@ -159,7 +159,7 @@ pub async fn run_aggregate_server<T: AggregateLogic + 'static>(
             info!(domain = domain, path = %socket_path.display(), transport = "uds", "server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(AggregateServer::new(service))
+                .add_service(AggregateServiceServer::new(service))
                 .serve_with_incoming(uds_stream)
                 .await?;
         }
@@ -260,7 +260,7 @@ pub async fn run_saga_server<T: SagaLogic + 'static>(
 
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<SagaServer<SagaWrapper<T>>>()
+        .set_serving::<SagaServiceServer<SagaWrapper<T>>>()
         .await;
 
     match transport {
@@ -268,7 +268,7 @@ pub async fn run_saga_server<T: SagaLogic + 'static>(
             info!(saga = saga_name, port = %addr.port(), transport = "tcp", "saga_server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(SagaServer::new(service))
+                .add_service(SagaServiceServer::new(service))
                 .serve(addr)
                 .await?;
         }
@@ -281,7 +281,7 @@ pub async fn run_saga_server<T: SagaLogic + 'static>(
             info!(saga = saga_name, path = %socket_path.display(), transport = "uds", "saga_server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(SagaServer::new(service))
+                .add_service(SagaServiceServer::new(service))
                 .serve_with_incoming(uds_stream)
                 .await?;
         }
@@ -384,7 +384,7 @@ pub async fn run_process_manager_server<T: ProcessManagerLogic + 'static>(
 
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<ProcessManagerServer<ProcessManagerWrapper<T>>>()
+        .set_serving::<ProcessManagerServiceServer<ProcessManagerWrapper<T>>>()
         .await;
 
     match transport {
@@ -392,7 +392,7 @@ pub async fn run_process_manager_server<T: ProcessManagerLogic + 'static>(
             info!(process_manager = pm_name, port = %addr.port(), transport = "tcp", "process_manager_server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(ProcessManagerServer::new(service))
+                .add_service(ProcessManagerServiceServer::new(service))
                 .serve(addr)
                 .await?;
         }
@@ -405,7 +405,7 @@ pub async fn run_process_manager_server<T: ProcessManagerLogic + 'static>(
             info!(process_manager = pm_name, path = %socket_path.display(), transport = "uds", "process_manager_server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(ProcessManagerServer::new(service))
+                .add_service(ProcessManagerServiceServer::new(service))
                 .serve_with_incoming(uds_stream)
                 .await?;
         }
@@ -479,7 +479,7 @@ pub async fn run_projector_server<T: ProjectorLogic + 'static>(
 
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<ProjectorServer<ProjectorWrapper<T>>>()
+        .set_serving::<ProjectorServiceServer<ProjectorWrapper<T>>>()
         .await;
 
     match transport {
@@ -487,7 +487,7 @@ pub async fn run_projector_server<T: ProjectorLogic + 'static>(
             info!(projector = projector_name, domain = domain, port = %addr.port(), transport = "tcp", "projector_server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(ProjectorServer::new(service))
+                .add_service(ProjectorServiceServer::new(service))
                 .serve(addr)
                 .await?;
         }
@@ -500,7 +500,7 @@ pub async fn run_projector_server<T: ProjectorLogic + 'static>(
             info!(projector = projector_name, domain = domain, path = %socket_path.display(), transport = "uds", "projector_server_started");
             Server::builder()
                 .add_service(health_service)
-                .add_service(ProjectorServer::new(service))
+                .add_service(ProjectorServiceServer::new(service))
                 .serve_with_incoming(uds_stream)
                 .await?;
         }

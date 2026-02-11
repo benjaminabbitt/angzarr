@@ -32,9 +32,9 @@ use tracing::{error, info};
 
 use angzarr::config::Config;
 use angzarr::handlers::projectors::stream::StreamService;
-use angzarr::proto::event_stream_server::EventStreamServer;
-use angzarr::proto::projector_coordinator_server::{
-    ProjectorCoordinator, ProjectorCoordinatorServer,
+use angzarr::proto::event_stream_service_server::EventStreamServiceServer;
+use angzarr::proto::projector_coordinator_service_server::{
+    ProjectorCoordinatorService, ProjectorCoordinatorServiceServer,
 };
 use angzarr::proto::{EventBook, Projection, SyncEventBook};
 use angzarr::transport::{grpc_trace_layer, serve_with_transport};
@@ -53,7 +53,9 @@ impl StreamProjectorService {
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for StreamProjectorService {
+impl angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorService
+    for StreamProjectorService
+{
     /// Handle sync event book from projector sidecar.
     async fn handle_sync(
         &self,
@@ -98,9 +100,9 @@ impl std::ops::Deref for StreamServiceWrapper {
 }
 
 #[tonic::async_trait]
-impl angzarr::proto::event_stream_server::EventStream for StreamServiceWrapper {
+impl angzarr::proto::event_stream_service_server::EventStreamService for StreamServiceWrapper {
     type SubscribeStream =
-        <StreamService as angzarr::proto::event_stream_server::EventStream>::SubscribeStream;
+        <StreamService as angzarr::proto::event_stream_service_server::EventStreamService>::SubscribeStream;
 
     async fn subscribe(
         &self,
@@ -132,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Health reporter
     let (mut health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<ProjectorCoordinatorServer<StreamProjectorService>>()
+        .set_serving::<ProjectorCoordinatorServiceServer<StreamProjectorService>>()
         .await;
 
     info!("angzarr-stream started");
@@ -140,8 +142,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = Server::builder()
         .layer(grpc_trace_layer())
         .add_service(health_service)
-        .add_service(ProjectorCoordinatorServer::new(projector_service))
-        .add_service(EventStreamServer::new(event_stream_service));
+        .add_service(ProjectorCoordinatorServiceServer::new(projector_service))
+        .add_service(EventStreamServiceServer::new(event_stream_service));
 
     serve_with_transport(router, &config.transport, "stream", None).await?;
 

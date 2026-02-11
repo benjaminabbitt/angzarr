@@ -38,7 +38,7 @@ use angzarr::bus::{
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
-use angzarr::proto::process_manager_client::ProcessManagerClient;
+use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
 use angzarr::proto::GetDescriptorRequest;
 use angzarr::storage::init_storage;
 use angzarr::transport::connect_to_address;
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let addr = pm_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
-            Ok::<_, String>(ProcessManagerClient::new(channel))
+            Ok::<_, String>(ProcessManagerServiceClient::new(channel))
         }
     })
     .retry(connection_backoff())

@@ -12,8 +12,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
-use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use crate::proto::saga_client::SagaClient;
+use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::saga_service_client::SagaServiceClient;
 use crate::proto::{
     CommandBook, Cover, Edition, EventBook, SagaExecuteRequest, SagaPrepareRequest,
 };
@@ -25,25 +25,26 @@ use super::{SagaContextFactory, SagaRetryContext};
 
 /// gRPC saga context.
 ///
-/// Saga prepare/execute calls go to a remote `SagaClient` via gRPC.
-/// Compensation for rejected commands uses a separate `AggregateCoordinatorClient`.
+/// Saga prepare/execute calls go to a remote `SagaServiceClient` via gRPC.
+/// Compensation for rejected commands uses a separate `AggregateCoordinatorServiceClient`.
 /// Command execution and destination fetching are handled externally by the caller.
 pub struct GrpcSagaContext {
-    saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
+    saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
-    compensation_handler: Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
+    compensation_handler:
+        Option<Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>>,
     source: EventBook,
 }
 
 impl GrpcSagaContext {
     /// Create a new gRPC saga context for one saga invocation.
     pub fn new(
-        saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
+        saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
         publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
         compensation_handler: Option<
-            Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>,
+            Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
         >,
         source: EventBook,
     ) -> Self {
@@ -152,7 +153,7 @@ impl SagaRetryContext for GrpcSagaContext {
 async fn handle_command_rejection(
     rejected_command: &CommandBook,
     rejection_error: &tonic::Status,
-    handler: &mut AggregateCoordinatorClient<tonic::transport::Channel>,
+    handler: &mut AggregateCoordinatorServiceClient<tonic::transport::Channel>,
     publisher: &Arc<dyn EventBus>,
     config: &SagaCompensationConfig,
 ) {
@@ -254,21 +255,22 @@ async fn handle_command_rejection(
 /// Each call to `create()` produces a context for one saga invocation.
 /// Command execution and destination fetching are handled by the event handler.
 pub struct GrpcSagaContextFactory {
-    saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
+    saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
     publisher: Arc<dyn EventBus>,
     compensation_config: SagaCompensationConfig,
-    compensation_handler: Option<Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>,
+    compensation_handler:
+        Option<Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>>,
     name: String,
 }
 
 impl GrpcSagaContextFactory {
     /// Create a new factory with saga client and compensation configuration.
     pub fn new(
-        saga_client: Arc<Mutex<SagaClient<tonic::transport::Channel>>>,
+        saga_client: Arc<Mutex<SagaServiceClient<tonic::transport::Channel>>>,
         publisher: Arc<dyn EventBus>,
         compensation_config: SagaCompensationConfig,
         compensation_handler: Option<
-            Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>,
+            Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
         >,
         name: String,
     ) -> Self {

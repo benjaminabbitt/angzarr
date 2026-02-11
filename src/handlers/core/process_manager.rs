@@ -18,7 +18,7 @@ use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
-use crate::proto::process_manager_client::ProcessManagerClient;
+use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
 use crate::proto::{EventBook, Target};
 use crate::proto_ext::CoverExt;
 use crate::storage::EventStore;
@@ -71,7 +71,7 @@ impl ProcessManagerEventHandler {
     /// PM state events are persisted directly to the event store and published
     /// to the event bus, bypassing the command pipeline.
     pub fn new(
-        client: ProcessManagerClient<tonic::transport::Channel>,
+        client: ProcessManagerServiceClient<tonic::transport::Channel>,
         process_domain: String,
         destination_fetcher: Arc<dyn DestinationFetcher>,
         command_executor: Arc<dyn CommandExecutor>,

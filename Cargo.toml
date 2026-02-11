@@ -1,7 +1,7 @@
 [workspace]
 members = [
     ".",
-    "angzarr-client/rust",
+    "client/rust",
     "examples/rust/common",
     "examples/rust/agg-order",
     "examples/rust/agg-inventory",
@@ -60,7 +60,7 @@ sea-query-binder-sqlite = { package = "sea-query-binder", version = "0.7", featu
 
 # Local crates
 angzarr = { path = "." }
-angzarr-client = { path = "angzarr-client/rust" }
+angzarr-client = { path = "client/rust" }
 common = { path = "examples/rust/common" }
 
 [package]
@@ -69,7 +69,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Benjamin Abbitt"]
 description = "Schema-first CQRS/ES framework for polyglot client logic"
-license-file = "LICENSE"
+license = "AGPL-3.0-only"
 
 [features]
 # Default features - common production setup
@@ -106,6 +106,9 @@ standalone = ["sqlite", "channel", "topology"]
 full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "bigtable", "dynamo", "lossy", "otel", "topology"]
 
 [dependencies]
+# Client library (proto types, extension traits, client implementations)
+angzarr-client = { path = "client/rust" }
+
 # gRPC
 tonic = "0.12"
 tonic-health = "0.12"

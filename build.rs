@@ -8,9 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/process_manager.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/query.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/stream.proto");
-    println!("cargo:rerun-if-changed=proto/angzarr/edition.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/upcaster.proto");
-    println!("cargo:rerun-if-changed=proto/angzarr/speculative.proto");
     println!("cargo:rerun-if-changed=proto/examples/inventory.proto");
     println!("cargo:rerun-if-changed=proto/examples/order.proto");
     println!("cargo:rerun-if-changed=proto/examples/fulfillment.proto");
@@ -41,9 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/process_manager.proto",
                 "proto/angzarr/query.proto",
                 "proto/angzarr/stream.proto",
-                "proto/angzarr/edition.proto",
                 "proto/angzarr/upcaster.proto",
-                "proto/angzarr/speculative.proto",
                 "proto/examples/inventory.proto",
                 "proto/examples/order.proto",
                 "proto/examples/fulfillment.proto",

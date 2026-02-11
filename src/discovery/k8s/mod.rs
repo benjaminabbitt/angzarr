@@ -46,9 +46,9 @@ use tracing::{debug, error, info, warn};
 use crate::config::{
     DISCOVERY_STATIC, EVENT_QUERY_ADDRESS_ENV_VAR, NAMESPACE_ENV_VAR, POD_NAMESPACE_ENV_VAR,
 };
-use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
-use crate::proto::event_query_client::EventQueryClient;
-use crate::proto::projector_coordinator_client::ProjectorCoordinatorClient;
+use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
+use crate::proto::event_query_service_client::EventQueryServiceClient;
+use crate::proto::projector_coordinator_service_client::ProjectorCoordinatorServiceClient;
 use crate::proto_ext::WILDCARD_DOMAIN;
 
 /// Label for component type.
@@ -172,9 +172,9 @@ pub struct K8sServiceDiscovery {
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     projectors: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     // Connection caches
-    aggregate_clients: Arc<RwLock<HashMap<String, AggregateCoordinatorClient<Channel>>>>,
-    event_query_clients: Arc<RwLock<HashMap<String, EventQueryClient<Channel>>>>,
-    projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorClient<Channel>>>>,
+    aggregate_clients: Arc<RwLock<HashMap<String, AggregateCoordinatorServiceClient<Channel>>>>,
+    event_query_clients: Arc<RwLock<HashMap<String, EventQueryServiceClient<Channel>>>>,
+    projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorServiceClient<Channel>>>>,
 }
 
 impl K8sServiceDiscovery {
@@ -344,12 +344,12 @@ impl K8sServiceDiscovery {
     async fn get_or_create_aggregate_client(
         &self,
         service: &DiscoveredService,
-    ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError> {
+    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
         get_or_create_client(
             &self.aggregate_clients,
             service,
             "aggregate",
-            AggregateCoordinatorClient::new,
+            AggregateCoordinatorServiceClient::new,
         )
         .await
     }
@@ -357,12 +357,12 @@ impl K8sServiceDiscovery {
     async fn get_or_create_event_query_client(
         &self,
         service: &DiscoveredService,
-    ) -> Result<EventQueryClient<Channel>, DiscoveryError> {
+    ) -> Result<EventQueryServiceClient<Channel>, DiscoveryError> {
         get_or_create_client(
             &self.event_query_clients,
             service,
             "event_query",
-            EventQueryClient::new,
+            EventQueryServiceClient::new,
         )
         .await
     }
@@ -370,12 +370,12 @@ impl K8sServiceDiscovery {
     async fn get_or_create_projector_client(
         &self,
         service: &DiscoveredService,
-    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError> {
+    ) -> Result<ProjectorCoordinatorServiceClient<Channel>, DiscoveryError> {
         get_or_create_client(
             &self.projector_clients,
             service,
             "projector",
-            ProjectorCoordinatorClient::new,
+            ProjectorCoordinatorServiceClient::new,
         )
         .await
     }
@@ -425,7 +425,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
     async fn get_aggregate(
         &self,
         domain: &str,
-    ) -> Result<AggregateCoordinatorClient<Channel>, DiscoveryError> {
+    ) -> Result<AggregateCoordinatorServiceClient<Channel>, DiscoveryError> {
         let aggregates = self.aggregates.read().await;
 
         // Find service matching domain, or wildcard
@@ -448,7 +448,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
     async fn get_event_query(
         &self,
         domain: &str,
-    ) -> Result<EventQueryClient<Channel>, DiscoveryError> {
+    ) -> Result<EventQueryServiceClient<Channel>, DiscoveryError> {
         let aggregates = self.aggregates.read().await;
 
         // Find service matching domain, or wildcard
@@ -503,7 +503,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
 
     async fn get_all_projectors(
         &self,
-    ) -> Result<Vec<ProjectorCoordinatorClient<Channel>>, DiscoveryError> {
+    ) -> Result<Vec<ProjectorCoordinatorServiceClient<Channel>>, DiscoveryError> {
         let projectors = self.projectors.read().await;
 
         if projectors.is_empty() {
@@ -529,7 +529,7 @@ impl super::ServiceDiscovery for K8sServiceDiscovery {
     async fn get_projector_by_name(
         &self,
         name: &str,
-    ) -> Result<ProjectorCoordinatorClient<Channel>, DiscoveryError> {
+    ) -> Result<ProjectorCoordinatorServiceClient<Channel>, DiscoveryError> {
         let projectors = self.projectors.read().await;
 
         let service = projectors

@@ -1,6 +1,6 @@
 //! gRPC utilities for correlation ID and trace context propagation.
 
-use super::constants::CORRELATION_ID_HEADER;
+use angzarr_client::proto_ext::constants::CORRELATION_ID_HEADER;
 
 /// Create a tonic Request with `x-correlation-id` gRPC metadata.
 ///

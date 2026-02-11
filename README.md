@@ -258,4 +258,4 @@ For full setup including Kubernetes, standalone mode, and your first domain, see
 
 ## License
 
-SSPL (Server Side Public License)
+AGPL-3.0 (GNU Affero General Public License v3)

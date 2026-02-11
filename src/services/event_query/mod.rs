@@ -7,7 +7,7 @@ use tracing::{error, info};
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
 use crate::proto::{
-    event_query_server::EventQuery as EventQueryTrait, query::Selection,
+    event_query_service_server::EventQueryService as EventQueryTrait, query::Selection,
     temporal_query::PointInTime, AggregateRoot, EventBook, Query, Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;

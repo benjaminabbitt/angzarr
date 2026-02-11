@@ -10,7 +10,7 @@ use sea_query::{ColumnDef, Index, OnConflict, Query, Table};
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
-use crate::proto::projector_coordinator_server::ProjectorCoordinator;
+use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
 use crate::proto::{EventBook, Projection, SyncEventBook};
 
 // Database backend selection via features
@@ -373,7 +373,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for EventService {
+impl ProjectorCoordinatorService for EventService {
     async fn handle_sync(
         &self,
         request: Request<SyncEventBook>,
@@ -413,23 +413,23 @@ impl std::ops::Deref for EventServiceHandle {
 }
 
 #[tonic::async_trait]
-impl ProjectorCoordinator for EventServiceHandle {
+impl ProjectorCoordinatorService for EventServiceHandle {
     async fn handle_sync(
         &self,
         request: Request<SyncEventBook>,
     ) -> Result<Response<Projection>, Status> {
-        ProjectorCoordinator::handle_sync(&*self.0, request).await
+        ProjectorCoordinatorService::handle_sync(&*self.0, request).await
     }
 
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
-        ProjectorCoordinator::handle(&*self.0, request).await
+        ProjectorCoordinatorService::handle(&*self.0, request).await
     }
 
     async fn handle_speculative(
         &self,
         request: Request<EventBook>,
     ) -> Result<Response<Projection>, Status> {
-        ProjectorCoordinator::handle_speculative(&*self.0, request).await
+        ProjectorCoordinatorService::handle_speculative(&*self.0, request).await
     }
 }
 

@@ -1,6 +1,6 @@
 //! gRPC command executor.
 //!
-//! Executes commands via remote `AggregateCoordinatorClient` per domain.
+//! Executes commands via remote `AggregateCoordinatorServiceClient` per domain.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
+use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
 use crate::proto::CommandBook;
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::utils::retry::is_retryable_status;
@@ -17,17 +17,18 @@ use crate::utils::sequence_validator::extract_event_book_from_status;
 use super::CommandExecutor;
 use super::CommandOutcome;
 
-/// Executes commands via gRPC `AggregateCoordinatorClient` per domain.
+/// Executes commands via gRPC `AggregateCoordinatorServiceClient` per domain.
 #[derive(Clone)]
 pub struct GrpcCommandExecutor {
-    clients:
-        Arc<HashMap<String, Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>>>,
+    clients: Arc<
+        HashMap<String, Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>>,
+    >,
 }
 
 impl GrpcCommandExecutor {
     /// Create with domain -> gRPC client mapping.
     pub fn new(
-        clients: HashMap<String, AggregateCoordinatorClient<tonic::transport::Channel>>,
+        clients: HashMap<String, AggregateCoordinatorServiceClient<tonic::transport::Channel>>,
     ) -> Self {
         let wrapped = clients
             .into_iter()
@@ -77,17 +78,19 @@ impl CommandExecutor for GrpcCommandExecutor {
     }
 }
 
-/// Executes all commands via a single `AggregateCoordinatorClient`.
+/// Executes all commands via a single `AggregateCoordinatorServiceClient`.
 ///
 /// For deployments with a single aggregate sidecar handling all domains.
 /// Does not route by domain — all commands go to the same client.
 pub struct SingleClientExecutor {
-    client: Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>,
+    client: Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
 }
 
 impl SingleClientExecutor {
     /// Create with a single gRPC client.
-    pub fn new(client: Arc<Mutex<AggregateCoordinatorClient<tonic::transport::Channel>>>) -> Self {
+    pub fn new(
+        client: Arc<Mutex<AggregateCoordinatorServiceClient<tonic::transport::Channel>>>,
+    ) -> Self {
         Self { client }
     }
 }

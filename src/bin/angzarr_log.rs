@@ -28,7 +28,7 @@ use tracing::{error, info};
 
 use angzarr::config::Config;
 use angzarr::handlers::projectors::log::{LogService, LogServiceHandle};
-use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
+use angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorServiceServer;
 use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::init_tracing;
 
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Health reporter
     let (mut health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<ProjectorCoordinatorServer<LogServiceHandle>>()
+        .set_serving::<ProjectorCoordinatorServiceServer<LogServiceHandle>>()
         .await;
 
     info!("angzarr-log started");
@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = Server::builder()
         .layer(grpc_trace_layer())
         .add_service(health_service)
-        .add_service(ProjectorCoordinatorServer::new(projector_service));
+        .add_service(ProjectorCoordinatorServiceServer::new(projector_service));
 
     serve_with_transport(router, &config.transport, "log", None).await?;
 

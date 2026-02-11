@@ -9,7 +9,9 @@ use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::proto::event_page::Sequence;
-use crate::proto::{event_query_client::EventQueryClient, EventBook, Query, Uuid as ProtoUuid};
+use crate::proto::{
+    event_query_service_client::EventQueryServiceClient, EventBook, Query, Uuid as ProtoUuid,
+};
 
 /// Result type for repair operations.
 pub type Result<T> = std::result::Result<T, RepairError>;
@@ -90,7 +92,7 @@ pub fn extract_identity(book: &EventBook) -> Result<(String, Uuid)> {
 /// Makes a synchronous gRPC call to fetch the full event history
 /// for the given domain and root.
 pub async fn fetch_complete(
-    client: &mut EventQueryClient<Channel>,
+    client: &mut EventQueryServiceClient<Channel>,
     domain: &str,
     root: Uuid,
 ) -> Result<EventBook> {
@@ -131,7 +133,7 @@ pub async fn fetch_complete(
 /// EventBook from the EventQuery service. Returns the original book if
 /// already complete.
 pub async fn repair_if_needed(
-    client: &mut EventQueryClient<Channel>,
+    client: &mut EventQueryServiceClient<Channel>,
     book: EventBook,
 ) -> Result<EventBook> {
     if is_complete(&book) {
@@ -154,7 +156,7 @@ pub async fn repair_if_needed(
 /// Maintains a connection to the EventQuery service and provides
 /// convenient methods for repairing EventBooks.
 pub struct EventBookRepairer {
-    client: EventQueryClient<Channel>,
+    client: EventQueryServiceClient<Channel>,
 }
 
 impl EventBookRepairer {
@@ -166,14 +168,14 @@ impl EventBookRepairer {
             .await?;
 
         Ok(Self {
-            client: EventQueryClient::new(channel),
+            client: EventQueryServiceClient::new(channel),
         })
     }
 
     /// Create a new repairer from an existing channel.
     pub fn new(channel: Channel) -> Self {
         Self {
-            client: EventQueryClient::new(channel),
+            client: EventQueryServiceClient::new(channel),
         }
     }
 

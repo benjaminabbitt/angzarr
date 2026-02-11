@@ -826,7 +826,7 @@ See [Getting Started](getting-started.md) for prerequisites, installation, and y
 
 ## License
 
-SSPL-1.0 (Server Side Public License). See [LICENSE](../LICENSE) for details.
+AGPL-3.0 (GNU Affero General Public License v3). See [LICENSE](../LICENSE) for details.
 
 ---
 

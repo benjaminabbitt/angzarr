@@ -1,6 +1,6 @@
 //! gRPC process manager context.
 //!
-//! Delegates prepare/handle to remote `ProcessManagerClient` via gRPC.
+//! Delegates prepare/handle to remote `ProcessManagerServiceClient` via gRPC.
 //! Persists PM events directly to event store and publishes to event bus,
 //! bypassing the command pipeline (no aggregate sidecar for PM domain).
 
@@ -12,7 +12,7 @@ use tracing::error;
 
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
-use crate::proto::process_manager_client::ProcessManagerClient;
+use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
 use crate::proto::{
     CommandResponse, Edition, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest,
 };
@@ -26,7 +26,7 @@ use super::{PMContextFactory, PmHandleResponse, ProcessManagerContext};
 ///
 /// Persists PM state events directly to the event store (no aggregate sidecar).
 pub struct GrpcPMContext {
-    client: Arc<Mutex<ProcessManagerClient<tonic::transport::Channel>>>,
+    client: Arc<Mutex<ProcessManagerServiceClient<tonic::transport::Channel>>>,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
     pm_domain: String,
@@ -35,7 +35,7 @@ pub struct GrpcPMContext {
 impl GrpcPMContext {
     /// Create with gRPC client, event store, event bus, and PM domain.
     pub fn new(
-        client: Arc<Mutex<ProcessManagerClient<tonic::transport::Channel>>>,
+        client: Arc<Mutex<ProcessManagerServiceClient<tonic::transport::Channel>>>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         pm_domain: String,
@@ -202,7 +202,7 @@ impl ProcessManagerContext for GrpcPMContext {
 /// Captures long-lived gRPC client, event store, and event bus.
 /// Each call to `create()` produces a context for one PM invocation.
 pub struct GrpcPMContextFactory {
-    client: Arc<Mutex<ProcessManagerClient<tonic::transport::Channel>>>,
+    client: Arc<Mutex<ProcessManagerServiceClient<tonic::transport::Channel>>>,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
     name: String,
@@ -212,7 +212,7 @@ pub struct GrpcPMContextFactory {
 impl GrpcPMContextFactory {
     /// Create a new factory with gRPC client, event store, event bus, and PM domain.
     pub fn new(
-        client: Arc<Mutex<ProcessManagerClient<tonic::transport::Channel>>>,
+        client: Arc<Mutex<ProcessManagerServiceClient<tonic::transport::Channel>>>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         name: String,

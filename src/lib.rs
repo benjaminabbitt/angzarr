@@ -4,7 +4,6 @@
 //! event-sourced applications with CQRS architecture.
 
 pub mod bus;
-pub mod client_traits;
 pub mod clients;
 pub mod config;
 pub mod discovery;
@@ -27,11 +26,17 @@ pub mod validation;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
-pub mod proto {
-    tonic::include_proto!("angzarr");
-}
+// Re-export proto types from angzarr-client (includes both client and server)
+pub use angzarr_client::proto;
 
-pub use proto_ext::{
+// Re-export extension traits (our proto_ext module re-exports from angzarr-client + adds framework-specific)
+pub use angzarr_client::{
     CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt, ProtoUuidExt,
     UuidExt,
 };
+
+// Re-export client traits from angzarr-client
+pub mod client_traits {
+    pub use angzarr_client::error::{ClientError, Result};
+    pub use angzarr_client::traits::{GatewayClient, QueryClient, SpeculativeClient};
+}

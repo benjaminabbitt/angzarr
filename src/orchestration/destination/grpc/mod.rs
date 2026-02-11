@@ -1,6 +1,6 @@
 //! gRPC destination fetcher.
 //!
-//! Wraps `EventQueryClient` for fetching aggregate state from remote services.
+//! Wraps `EventQueryServiceClient` for fetching aggregate state from remote services.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,21 +9,23 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::proto::event_query_client::EventQueryClient;
+use crate::proto::event_query_service_client::EventQueryServiceClient;
 use crate::proto::{Cover, EventBook, Query};
 use crate::proto_ext::correlated_request;
 
 use super::DestinationFetcher;
 
-/// Fetches destination state via gRPC `EventQueryClient` per domain.
+/// Fetches destination state via gRPC `EventQueryServiceClient` per domain.
 #[derive(Clone)]
 pub struct GrpcDestinationFetcher {
-    clients: Arc<HashMap<String, Arc<Mutex<EventQueryClient<tonic::transport::Channel>>>>>,
+    clients: Arc<HashMap<String, Arc<Mutex<EventQueryServiceClient<tonic::transport::Channel>>>>>,
 }
 
 impl GrpcDestinationFetcher {
     /// Create with domain -> gRPC client mapping.
-    pub fn new(clients: HashMap<String, EventQueryClient<tonic::transport::Channel>>) -> Self {
+    pub fn new(
+        clients: HashMap<String, EventQueryServiceClient<tonic::transport::Channel>>,
+    ) -> Self {
         let wrapped = clients
             .into_iter()
             .map(|(k, v)| (k, Arc::new(Mutex::new(v))))

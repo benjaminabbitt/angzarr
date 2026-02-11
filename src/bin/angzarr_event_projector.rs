@@ -19,7 +19,7 @@ use angzarr::config::{
     UDS_BASE_PATH_ENV_VAR,
 };
 use angzarr::handlers::projectors::{connect_pool, EventService, EventServiceHandle};
-use angzarr::proto::projector_coordinator_server::ProjectorCoordinatorServer;
+use angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorServiceServer;
 use angzarr::transport::grpc_trace_layer;
 
 #[tokio::main]
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create gRPC health service
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<ProjectorCoordinatorServer<EventServiceHandle>>()
+        .set_serving::<ProjectorCoordinatorServiceServer<EventServiceHandle>>()
         .await;
 
     // Check transport type
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Server::builder()
             .layer(grpc_trace_layer())
             .add_service(health_service)
-            .add_service(ProjectorCoordinatorServer::new(handle))
+            .add_service(ProjectorCoordinatorServiceServer::new(handle))
             .serve_with_incoming(uds_stream)
             .await?;
     } else {
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Server::builder()
             .layer(grpc_trace_layer())
             .add_service(health_service)
-            .add_service(ProjectorCoordinatorServer::new(handle))
+            .add_service(ProjectorCoordinatorServiceServer::new(handle))
             .serve(addr)
             .await?;
     }
