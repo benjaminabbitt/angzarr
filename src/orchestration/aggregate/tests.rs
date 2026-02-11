@@ -1,6 +1,6 @@
 use super::*;
 use crate::proto::{event_page, CommandPage, Cover, Uuid as ProtoUuid};
-use crate::proto_ext::EventBookExt;
+use crate::proto_ext::{calculate_set_next_seq, EventBookExt};
 use prost_types::Any;
 
 fn make_command_book(domain: &str, root: Uuid, sequence: u32) -> CommandBook {
@@ -40,7 +40,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
         vec![]
     };
 
-    EventBook {
+    let mut book = EventBook {
         cover: Some(Cover {
             domain: domain.to_string(),
             root: Some(ProtoUuid {
@@ -52,7 +52,9 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
         pages,
         snapshot: None,
         ..Default::default()
-    }
+    };
+    calculate_set_next_seq(&mut book);
+    book
 }
 
 #[test]
@@ -142,6 +144,7 @@ fn test_next_sequence_from_snapshot() {
         sequence: 10,
         state: None,
     });
+    calculate_set_next_seq(&mut events);
 
     assert_eq!(events.next_sequence(), 11);
 }

@@ -8,8 +8,9 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 pub use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, EventBook, Query, Uuid as ProtoUuid,
+    aggregate_coordinator_service_client::AggregateCoordinatorServiceClient,
+    event_query_service_client::EventQueryServiceClient, CommandBook, CommandPage, CommandResponse,
+    Cover, EventBook, Query, Uuid as ProtoUuid,
 };
 
 /// Default Angzarr gateway port - exposed via NodePort 30084 -> hostPort 9084
@@ -33,9 +34,9 @@ fn get_gateway_endpoint() -> String {
     format!("http://{}:{}", host, port)
 }
 
-/// Creates a CommandGatewayClient connected to the gateway.
+/// Creates an AggregateCoordinatorServiceClient connected to the gateway.
 /// Gateway consolidates all gRPC services on ANGZARR_PORT.
-pub async fn create_gateway_client() -> CommandGatewayClient<Channel> {
+pub async fn create_gateway_client() -> AggregateCoordinatorServiceClient<Channel> {
     let endpoint = get_gateway_endpoint();
 
     let channel = Channel::from_shared(endpoint.clone())
@@ -44,12 +45,12 @@ pub async fn create_gateway_client() -> CommandGatewayClient<Channel> {
         .await
         .unwrap_or_else(|e| panic!("Failed to connect to gateway at {}: {}", endpoint, e));
 
-    CommandGatewayClient::new(channel)
+    AggregateCoordinatorServiceClient::new(channel)
 }
 
-/// Creates an EventQueryClient connected to the query service.
+/// Creates an EventQueryServiceClient connected to the query service.
 /// Gateway consolidates all gRPC services on ANGZARR_PORT.
-pub async fn create_query_client() -> EventQueryClient<Channel> {
+pub async fn create_query_client() -> EventQueryServiceClient<Channel> {
     let endpoint = get_gateway_endpoint();
 
     let channel = Channel::from_shared(endpoint.clone())
@@ -58,7 +59,7 @@ pub async fn create_query_client() -> EventQueryClient<Channel> {
         .await
         .unwrap_or_else(|e| panic!("Failed to connect to query service at {}: {}", endpoint, e));
 
-    EventQueryClient::new(channel)
+    EventQueryServiceClient::new(channel)
 }
 
 /// Builds a CommandBook for sending commands to the gateway.

@@ -32,6 +32,15 @@ from .helpers import (
     parse_timestamp,
 )
 from .builder import CommandBuilder, QueryBuilder
+from .wrappers import (
+    CoverW,
+    EventBookW,
+    CommandBookW,
+    QueryW,
+    EventPageW,
+    CommandPageW,
+    CommandResponseW,
+)
 
 __all__ = [
     # Clients
@@ -65,4 +74,12 @@ __all__ = [
     # Builders
     "CommandBuilder",
     "QueryBuilder",
+    # Wrappers
+    "CoverW",
+    "EventBookW",
+    "CommandBookW",
+    "QueryW",
+    "EventPageW",
+    "CommandPageW",
+    "CommandResponseW",
 ]

@@ -44,5 +44,6 @@ dev = [
 packages = ["angzarr_client"]
 
 [tool.mutmut]
-paths_to_mutate = ["angzarr_client/builder.py", "angzarr_client/client.py", "angzarr_client/errors.py", "angzarr_client/helpers.py"]
+paths_to_mutate = ["angzarr_client/builder.py", "angzarr_client/client.py", "angzarr_client/errors.py", "angzarr_client/helpers.py", "angzarr_client/wrappers.py"]
 pytest_add_cli_args_test_selection = ["tests/"]
+also_copy = ["angzarr_client/proto", "angzarr_client/__init__.py"]

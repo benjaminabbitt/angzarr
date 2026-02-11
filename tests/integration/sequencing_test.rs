@@ -34,7 +34,7 @@ async fn test_first_event_has_sequence_zero() {
     let command_book =
         build_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok(), "Command execution failed");
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -67,7 +67,7 @@ async fn test_sequential_commands_increment_sequence() {
     let command_book =
         build_command_book("customer", customer_id, create_command, "examples.CreateCustomer");
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok(), "First command failed");
 
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -85,7 +85,7 @@ async fn test_sequential_commands_increment_sequence() {
         1,
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok(), "Second command failed");
 
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -103,7 +103,7 @@ async fn test_sequential_commands_increment_sequence() {
         2,
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok(), "Third command failed");
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -141,7 +141,7 @@ async fn test_events_returned_in_sequence_order() {
     };
     let command_book =
         build_command_book("customer", customer_id, create_command, "examples.CreateCustomer");
-    gateway_client.execute(command_book).await.unwrap();
+    gateway_client.handle(command_book).await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
 
     for i in 1..5 {
@@ -156,7 +156,7 @@ async fn test_events_returned_in_sequence_order() {
             "examples.AddLoyaltyPoints",
             i as u32,
         );
-        gateway_client.execute(command_book).await.unwrap();
+        gateway_client.handle(command_book).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
     }
 
@@ -197,7 +197,7 @@ async fn test_wrong_sequence_rejected() {
     let command_book =
         build_command_book("customer", customer_id, create_command, "examples.CreateCustomer");
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok(), "First command should succeed");
 
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -215,7 +215,7 @@ async fn test_wrong_sequence_rejected() {
         5, // Wrong sequence - aggregate is at sequence 1
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(
         response.is_err(),
         "Command with wrong sequence should be rejected"
@@ -245,7 +245,7 @@ async fn test_response_includes_event_sequence() {
     let command_book =
         build_command_book("customer", customer_id, command, "examples.CreateCustomer");
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok());
 
     let response = response.unwrap().into_inner();
@@ -272,7 +272,7 @@ async fn test_query_bounds_respect_sequence() {
     };
     let command_book =
         build_command_book("customer", customer_id, create_command, "examples.CreateCustomer");
-    gateway_client.execute(command_book).await.unwrap();
+    gateway_client.handle(command_book).await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
 
     for i in 1..5 {
@@ -287,7 +287,7 @@ async fn test_query_bounds_respect_sequence() {
             "examples.AddLoyaltyPoints",
             i as u32,
         );
-        gateway_client.execute(command_book).await.unwrap();
+        gateway_client.handle(command_book).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
     }
 
@@ -337,17 +337,17 @@ async fn test_independent_aggregate_sequences() {
         email: "one@example.com".to_string(),
     };
     let cmd = build_command_book("customer", customer_id_1, create1, "examples.CreateCustomer");
-    gateway_client.execute(cmd).await.unwrap();
+    gateway_client.handle(cmd).await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
 
     let add1 = AddLoyaltyPoints { points: 100, reason: "c1-1".to_string() };
     let cmd = build_command_book_at_sequence("customer", customer_id_1, add1, "examples.AddLoyaltyPoints", 1);
-    gateway_client.execute(cmd).await.unwrap();
+    gateway_client.handle(cmd).await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
 
     let add2 = AddLoyaltyPoints { points: 200, reason: "c1-2".to_string() };
     let cmd = build_command_book_at_sequence("customer", customer_id_1, add2, "examples.AddLoyaltyPoints", 2);
-    gateway_client.execute(cmd).await.unwrap();
+    gateway_client.handle(cmd).await.unwrap();
 
     // Create second customer with only 1 event
     let create2 = CreateCustomer {
@@ -355,7 +355,7 @@ async fn test_independent_aggregate_sequences() {
         email: "two@example.com".to_string(),
     };
     let cmd = build_command_book("customer", customer_id_2, create2, "examples.CreateCustomer");
-    gateway_client.execute(cmd).await.unwrap();
+    gateway_client.handle(cmd).await.unwrap();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -386,13 +386,13 @@ async fn test_event_types_in_sequence() {
         email: "eventtype@example.com".to_string(),
     };
     let cmd = build_command_book("customer", customer_id, create, "examples.CreateCustomer");
-    gateway_client.execute(cmd).await.unwrap();
+    gateway_client.handle(cmd).await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
 
     // Add points
     let add = AddLoyaltyPoints { points: 100, reason: "test".to_string() };
     let cmd = build_command_book_at_sequence("customer", customer_id, add, "examples.AddLoyaltyPoints", 1);
-    gateway_client.execute(cmd).await.unwrap();
+    gateway_client.handle(cmd).await.unwrap();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 

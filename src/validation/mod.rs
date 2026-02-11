@@ -366,6 +366,12 @@ mod tests {
         }
 
         #[test]
+        fn test_component_name_max_length() {
+            let max_name = "a".repeat(128);
+            assert!(validate_component_name(&max_name).is_ok());
+        }
+
+        #[test]
         fn test_component_name_invalid_start() {
             assert!(validate_component_name("1saga").is_err());
             assert!(validate_component_name("-saga").is_err());

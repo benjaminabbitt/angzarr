@@ -215,9 +215,7 @@ mod tests {
 mod grpc_tests {
     use super::*;
     use crate::proto::event_page::Sequence;
-    use crate::proto::upcaster_service_server::{
-        Upcaster as UpcasterService, UpcasterServiceServer,
-    };
+    use crate::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
     use crate::proto::{UpcastRequest, UpcastResponse};
     use std::net::SocketAddr;
     use std::sync::atomic::{AtomicU32, Ordering};

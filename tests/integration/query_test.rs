@@ -75,7 +75,7 @@ async fn test_query_with_bounds() {
         "examples.InitializeStock",
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok());
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -131,7 +131,7 @@ async fn test_query_returns_correct_domain() {
         "examples.InitializeStock",
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok());
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -178,7 +178,7 @@ async fn test_query_events_preserve_order() {
         "examples.InitializeStock",
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok());
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -221,7 +221,7 @@ async fn test_query_event_payloads() {
         "examples.InitializeStock",
     );
 
-    let response = gateway_client.execute(command_book).await;
+    let response = gateway_client.handle(command_book).await;
     assert!(response.is_ok());
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

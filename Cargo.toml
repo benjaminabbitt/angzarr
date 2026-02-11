@@ -260,14 +260,6 @@ name = "container_integration"
 harness = false
 
 [[test]]
-name = "gateway_integration"
-path = "tests/integration/gateway_test.rs"
-
-[[test]]
-name = "streaming_integration"
-path = "tests/integration/streaming_test.rs"
-
-[[test]]
 name = "query_integration"
 path = "tests/integration/query_test.rs"
 

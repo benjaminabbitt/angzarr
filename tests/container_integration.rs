@@ -14,8 +14,9 @@ use uuid::Uuid;
 
 // Proto imports - generated from angzarr.proto and domains.proto
 use angzarr::proto::{
-    command_gateway_client::CommandGatewayClient, event_query_client::EventQueryClient,
-    CommandBook, CommandPage, CommandResponse, Cover, EventBook, Query, Uuid as ProtoUuid,
+    aggregate_coordinator_service_client::AggregateCoordinatorServiceClient,
+    event_query_service_client::EventQueryServiceClient, CommandBook, CommandPage, CommandResponse,
+    Cover, EventBook, Query, Uuid as ProtoUuid,
 };
 
 // Examples proto types
@@ -39,8 +40,8 @@ pub struct ContainerWorld {
     query_endpoint: String,
 
     /// gRPC clients (lazily initialized)
-    gateway_client: Option<CommandGatewayClient<Channel>>,
-    query_client: Option<EventQueryClient<Channel>>,
+    gateway_client: Option<AggregateCoordinatorServiceClient<Channel>>,
+    query_client: Option<EventQueryServiceClient<Channel>>,
 
     /// Current inventory aggregate ID
     current_inventory_id: Option<Uuid>,
@@ -86,26 +87,26 @@ impl ContainerWorld {
         }
     }
 
-    async fn get_gateway_client(&mut self) -> &mut CommandGatewayClient<Channel> {
+    async fn get_gateway_client(&mut self) -> &mut AggregateCoordinatorServiceClient<Channel> {
         if self.gateway_client.is_none() {
             let channel = Channel::from_shared(self.gateway_endpoint.clone())
                 .unwrap()
                 .connect()
                 .await
                 .expect("Failed to connect to gateway");
-            self.gateway_client = Some(CommandGatewayClient::new(channel));
+            self.gateway_client = Some(AggregateCoordinatorServiceClient::new(channel));
         }
         self.gateway_client.as_mut().unwrap()
     }
 
-    async fn get_query_client(&mut self) -> &mut EventQueryClient<Channel> {
+    async fn get_query_client(&mut self) -> &mut EventQueryServiceClient<Channel> {
         if self.query_client.is_none() {
             let channel = Channel::from_shared(self.query_endpoint.clone())
                 .unwrap()
                 .connect()
                 .await
                 .expect("Failed to connect to event query");
-            self.query_client = Some(EventQueryClient::new(channel));
+            self.query_client = Some(EventQueryServiceClient::new(channel));
         }
         self.query_client.as_mut().unwrap()
     }
@@ -209,7 +210,7 @@ async fn when_initialize_stock(world: &mut ContainerWorld, product_id: String, q
     );
 
     let client = world.get_gateway_client().await;
-    match client.execute(command_book).await {
+    match client.handle(command_book).await {
         Ok(response) => {
             world.last_response = Some(response.into_inner());
             world.last_error = None;
@@ -448,18 +449,10 @@ async fn when_initialize_stock_via_gateway(
         .unwrap_or_default();
     world.correlation_ids.write().await.push(correlation_id);
 
-    let client = world.get_gateway_client().await;
-    match client.execute_stream(command_book).await {
+    let mut client = world.get_gateway_client().await;
+    match client.handle(command_book).await {
         Ok(response) => {
-            let mut stream = response.into_inner();
-            let events = world.streamed_events.clone();
-            // Collect events with timeout
-            let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
-                while let Ok(Some(event_book)) = stream.message().await {
-                    events.write().await.push(event_book);
-                }
-            });
-            let _ = timeout.await;
+            world.last_response = Some(response.into_inner());
             world.last_error = None;
         }
         Err(status) => {
@@ -518,8 +511,8 @@ async fn when_subscribe_non_matching(world: &mut ContainerWorld) {
     }
 
     // This should timeout or return empty
-    let client = world.get_gateway_client().await;
-    let _ = client.execute_stream(command_book).await;
+    let mut client = world.get_gateway_client().await;
+    let _ = client.handle(command_book).await;
 }
 
 #[then(expr = "I receive at least {int} event from the stream")]
