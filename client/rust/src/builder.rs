@@ -262,3 +262,467 @@ pub fn decode_event<M: Message + Default>(event: &EventPage, type_suffix: &str) 
     }
     M::decode(any.value.as_slice()).ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proto::{Cover, Uuid as ProtoUuid};
+    use async_trait::async_trait;
+
+    // Mock client for testing QueryBuilder
+    struct MockQueryClient {
+        event_book: EventBook,
+    }
+
+    #[async_trait]
+    impl traits::QueryClient for MockQueryClient {
+        async fn get_event_book(&self, _query: Query) -> Result<EventBook> {
+            Ok(self.event_book.clone())
+        }
+
+        async fn get_events(&self, _query: Query) -> Result<Vec<EventBook>> {
+            Ok(vec![self.event_book.clone()])
+        }
+    }
+
+    // Mock client for testing CommandBuilder
+    struct MockGatewayClient {
+        response: CommandResponse,
+    }
+
+    #[async_trait]
+    impl traits::GatewayClient for MockGatewayClient {
+        async fn execute(&self, _command: CommandBook) -> Result<CommandResponse> {
+            Ok(self.response.clone())
+        }
+    }
+
+    fn make_cover(domain: &str, correlation_id: &str, root: Option<Uuid>) -> Cover {
+        Cover {
+            domain: domain.to_string(),
+            correlation_id: correlation_id.to_string(),
+            root: root.map(|u| ProtoUuid {
+                value: u.as_bytes().to_vec(),
+            }),
+            edition: None,
+        }
+    }
+
+    // CommandBuilder tests
+    #[test]
+    fn test_command_builder_with_correlation_id() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let root = Uuid::new_v4();
+        let builder =
+            CommandBuilder::new(&client, "orders", Some(root)).with_correlation_id("corr-123");
+
+        assert_eq!(builder.correlation_id, Some("corr-123".to_string()));
+    }
+
+    #[test]
+    fn test_command_builder_with_sequence() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let builder = CommandBuilder::new(&client, "orders", None).with_sequence(42);
+
+        assert_eq!(builder.sequence, 42);
+    }
+
+    #[test]
+    fn test_command_builder_with_command() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let msg = prost_types::Duration {
+            seconds: 42,
+            nanos: 0,
+        };
+        let builder = CommandBuilder::new(&client, "orders", None)
+            .with_command("type.googleapis.com/test.Command", &msg);
+
+        assert_eq!(
+            builder.type_url,
+            Some("type.googleapis.com/test.Command".to_string())
+        );
+        assert!(builder.payload.is_some());
+    }
+
+    #[test]
+    fn test_command_builder_build_success() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let root = Uuid::new_v4();
+        let msg = prost_types::Duration {
+            seconds: 42,
+            nanos: 0,
+        };
+        let cmd = CommandBuilder::new(&client, "orders", Some(root))
+            .with_correlation_id("corr-123")
+            .with_sequence(5)
+            .with_command("type.googleapis.com/test.Command", &msg)
+            .build()
+            .unwrap();
+
+        let cover = cmd.cover.unwrap();
+        assert_eq!(cover.domain, "orders");
+        assert_eq!(cover.correlation_id, "corr-123");
+        assert!(cover.root.is_some());
+        assert_eq!(cmd.pages.len(), 1);
+        assert_eq!(cmd.pages[0].sequence, 5);
+    }
+
+    #[test]
+    fn test_command_builder_build_generates_correlation_id() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let msg = prost_types::Duration {
+            seconds: 42,
+            nanos: 0,
+        };
+        let cmd = CommandBuilder::new(&client, "orders", None)
+            .with_command("type.googleapis.com/test.Command", &msg)
+            .build()
+            .unwrap();
+
+        let cover = cmd.cover.unwrap();
+        assert!(!cover.correlation_id.is_empty());
+    }
+
+    #[test]
+    fn test_command_builder_build_missing_type_url() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let result = CommandBuilder::new(&client, "orders", None).build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.is_invalid_argument());
+    }
+
+    #[test]
+    fn test_command_builder_build_missing_payload() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let mut builder = CommandBuilder::new(&client, "orders", None);
+        builder.type_url = Some("type.googleapis.com/test".to_string());
+        let result = builder.build();
+
+        assert!(result.is_err());
+    }
+
+    // QueryBuilder tests
+    #[test]
+    fn test_query_builder_by_correlation_id() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let root = Uuid::new_v4();
+        let builder =
+            QueryBuilder::new(&client, "orders", Some(root)).by_correlation_id("corr-123");
+
+        assert_eq!(builder.correlation_id, Some("corr-123".to_string()));
+        assert!(builder.root.is_none()); // root should be cleared
+    }
+
+    #[test]
+    fn test_query_builder_edition() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let builder = QueryBuilder::new(&client, "orders", None).edition("test-edition");
+
+        assert_eq!(builder.edition, Some("test-edition".to_string()));
+    }
+
+    #[test]
+    fn test_query_builder_range() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let builder = QueryBuilder::new(&client, "orders", None).range(10);
+
+        match builder.selection {
+            Some(Selection::Range(r)) => {
+                assert_eq!(r.lower, 10);
+                assert!(r.upper.is_none());
+            }
+            _ => panic!("expected Range selection"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_range_to() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let builder = QueryBuilder::new(&client, "orders", None).range_to(5, 15);
+
+        match builder.selection {
+            Some(Selection::Range(r)) => {
+                assert_eq!(r.lower, 5);
+                assert_eq!(r.upper, Some(15));
+            }
+            _ => panic!("expected Range selection"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_as_of_sequence() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let builder = QueryBuilder::new(&client, "orders", None).as_of_sequence(42);
+
+        match builder.selection {
+            Some(Selection::Temporal(t)) => match t.point_in_time {
+                Some(PointInTime::AsOfSequence(s)) => assert_eq!(s, 42),
+                _ => panic!("expected AsOfSequence"),
+            },
+            _ => panic!("expected Temporal selection"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_as_of_time_valid() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let builder = QueryBuilder::new(&client, "orders", None)
+            .as_of_time("2024-01-15T10:30:00Z")
+            .unwrap();
+
+        match builder.selection {
+            Some(Selection::Temporal(t)) => match t.point_in_time {
+                Some(PointInTime::AsOfTime(ts)) => assert_eq!(ts.seconds, 1705314600),
+                _ => panic!("expected AsOfTime"),
+            },
+            _ => panic!("expected Temporal selection"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_as_of_time_invalid() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let result = QueryBuilder::new(&client, "orders", None).as_of_time("not a timestamp");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_query_builder_build() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let root = Uuid::new_v4();
+        let query = QueryBuilder::new(&client, "orders", Some(root))
+            .edition("test-edition")
+            .range(10)
+            .build();
+
+        let cover = query.cover.unwrap();
+        assert_eq!(cover.domain, "orders");
+        assert!(cover.root.is_some());
+        assert!(cover.edition.is_some());
+        assert!(query.selection.is_some());
+    }
+
+    #[test]
+    fn test_query_builder_build_with_correlation_id() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let query = QueryBuilder::new(&client, "orders", None)
+            .by_correlation_id("corr-123")
+            .build();
+
+        let cover = query.cover.unwrap();
+        assert_eq!(cover.correlation_id, "corr-123");
+        assert!(cover.root.is_none());
+    }
+
+    // Helper function tests
+    #[test]
+    fn test_root_from_cover_some() {
+        let root = Uuid::new_v4();
+        let cover = make_cover("orders", "", Some(root));
+        assert_eq!(root_from_cover(&cover), Some(root));
+    }
+
+    #[test]
+    fn test_root_from_cover_none() {
+        let cover = make_cover("orders", "", None);
+        assert_eq!(root_from_cover(&cover), None);
+    }
+
+    #[test]
+    fn test_root_from_cover_invalid_uuid() {
+        let cover = Cover {
+            domain: "orders".to_string(),
+            correlation_id: String::new(),
+            root: Some(ProtoUuid {
+                value: vec![1, 2, 3], // invalid - not 16 bytes
+            }),
+            edition: None,
+        };
+        assert_eq!(root_from_cover(&cover), None);
+    }
+
+    #[test]
+    fn test_events_from_response_with_events() {
+        let events = EventBook {
+            cover: None,
+            pages: vec![EventPage::default(), EventPage::default()],
+            snapshot: None,
+            next_sequence: 0,
+        };
+        let response = CommandResponse {
+            events: Some(events),
+            ..Default::default()
+        };
+
+        let pages = events_from_response(&response);
+        assert_eq!(pages.len(), 2);
+    }
+
+    #[test]
+    fn test_events_from_response_no_events() {
+        let response = CommandResponse {
+            events: None,
+            ..Default::default()
+        };
+
+        let pages = events_from_response(&response);
+        assert!(pages.is_empty());
+    }
+
+    #[test]
+    fn test_decode_event_success() {
+        use crate::proto::event_page::Sequence;
+
+        // Use prost_types::Duration which implements Message + Default
+        let msg = prost_types::Duration {
+            seconds: 42,
+            nanos: 0,
+        };
+        let event = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
+                value: msg.encode_to_vec(),
+            }),
+            created_at: None,
+        };
+
+        let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
+        assert!(decoded.is_some());
+        assert_eq!(decoded.unwrap().seconds, 42);
+    }
+
+    #[test]
+    fn test_decode_event_type_mismatch() {
+        use crate::proto::event_page::Sequence;
+
+        let msg = prost_types::Duration {
+            seconds: 42,
+            nanos: 0,
+        };
+        let event = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
+                value: msg.encode_to_vec(),
+            }),
+            created_at: None,
+        };
+
+        let decoded: Option<prost_types::Duration> = decode_event(&event, "Timestamp");
+        assert!(decoded.is_none());
+    }
+
+    #[test]
+    fn test_decode_event_nil_event() {
+        use crate::proto::event_page::Sequence;
+
+        let event = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: None,
+            created_at: None,
+        };
+
+        let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
+        assert!(decoded.is_none());
+    }
+
+    #[test]
+    fn test_decode_event_invalid_payload() {
+        use crate::proto::event_page::Sequence;
+
+        let event = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
+                value: vec![0xFF, 0xFF, 0xFF], // garbage
+            }),
+            created_at: None,
+        };
+
+        let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
+        assert!(decoded.is_none());
+    }
+
+    // Extension trait tests
+    #[test]
+    fn test_command_builder_ext_command() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let root = Uuid::new_v4();
+        let builder = client.command("orders", root);
+
+        assert_eq!(builder.domain, "orders");
+        assert_eq!(builder.root, Some(root));
+    }
+
+    #[test]
+    fn test_command_builder_ext_command_new() {
+        let client = MockGatewayClient {
+            response: CommandResponse::default(),
+        };
+        let builder = client.command_new("orders");
+
+        assert_eq!(builder.domain, "orders");
+        assert!(builder.root.is_none());
+    }
+
+    #[test]
+    fn test_query_builder_ext_query() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let root = Uuid::new_v4();
+        let builder = client.query("orders", root);
+
+        assert_eq!(builder.domain, "orders");
+        assert_eq!(builder.root, Some(root));
+    }
+
+    #[test]
+    fn test_query_builder_ext_query_domain() {
+        let client = MockQueryClient {
+            event_book: EventBook::default(),
+        };
+        let builder = client.query_domain("orders");
+
+        assert_eq!(builder.domain, "orders");
+        assert!(builder.root.is_none());
+    }
+}

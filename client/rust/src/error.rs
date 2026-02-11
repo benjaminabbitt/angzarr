@@ -84,3 +84,158 @@ impl ClientError {
         matches!(self, ClientError::Connection(_) | ClientError::Transport(_))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_connection_error_display() {
+        let err = ClientError::Connection("refused".to_string());
+        assert_eq!(err.to_string(), "connection failed: refused");
+    }
+
+    #[test]
+    fn test_connection_error_message() {
+        let err = ClientError::Connection("timeout".to_string());
+        assert_eq!(err.message(), "timeout");
+    }
+
+    #[test]
+    fn test_invalid_argument_error_display() {
+        let err = ClientError::InvalidArgument("missing field".to_string());
+        assert_eq!(err.to_string(), "invalid argument: missing field");
+    }
+
+    #[test]
+    fn test_invalid_argument_error_message() {
+        let err = ClientError::InvalidArgument("bad value".to_string());
+        assert_eq!(err.message(), "bad value");
+    }
+
+    #[test]
+    fn test_invalid_timestamp_error_display() {
+        let err = ClientError::InvalidTimestamp("bad format".to_string());
+        assert_eq!(err.to_string(), "invalid timestamp: bad format");
+    }
+
+    #[test]
+    fn test_invalid_timestamp_error_message() {
+        let err = ClientError::InvalidTimestamp("parse failed".to_string());
+        assert_eq!(err.message(), "parse failed");
+    }
+
+    #[test]
+    fn test_grpc_error_from_status() {
+        let status = Status::not_found("resource not found");
+        let err: ClientError = status.into();
+        assert!(matches!(err, ClientError::Grpc(_)));
+    }
+
+    #[test]
+    fn test_grpc_error_message() {
+        let status = Status::internal("server error");
+        let err = ClientError::Grpc(Box::new(status));
+        assert_eq!(err.message(), "server error");
+    }
+
+    #[test]
+    fn test_grpc_error_code() {
+        let status = Status::not_found("missing");
+        let err = ClientError::Grpc(Box::new(status));
+        assert_eq!(err.code(), Some(Code::NotFound));
+    }
+
+    #[test]
+    fn test_grpc_error_status() {
+        let status = Status::permission_denied("access denied");
+        let err = ClientError::Grpc(Box::new(status));
+        let s = err.status().unwrap();
+        assert_eq!(s.code(), Code::PermissionDenied);
+        assert_eq!(s.message(), "access denied");
+    }
+
+    #[test]
+    fn test_non_grpc_error_code_is_none() {
+        let err = ClientError::Connection("refused".to_string());
+        assert_eq!(err.code(), None);
+    }
+
+    #[test]
+    fn test_non_grpc_error_status_is_none() {
+        let err = ClientError::InvalidArgument("bad".to_string());
+        assert!(err.status().is_none());
+    }
+
+    #[test]
+    fn test_is_not_found_true() {
+        let status = Status::not_found("missing");
+        let err = ClientError::Grpc(Box::new(status));
+        assert!(err.is_not_found());
+    }
+
+    #[test]
+    fn test_is_not_found_false_other_code() {
+        let status = Status::internal("error");
+        let err = ClientError::Grpc(Box::new(status));
+        assert!(!err.is_not_found());
+    }
+
+    #[test]
+    fn test_is_not_found_false_non_grpc() {
+        let err = ClientError::Connection("refused".to_string());
+        assert!(!err.is_not_found());
+    }
+
+    #[test]
+    fn test_is_precondition_failed_true() {
+        let status = Status::failed_precondition("conflict");
+        let err = ClientError::Grpc(Box::new(status));
+        assert!(err.is_precondition_failed());
+    }
+
+    #[test]
+    fn test_is_precondition_failed_false() {
+        let status = Status::not_found("missing");
+        let err = ClientError::Grpc(Box::new(status));
+        assert!(!err.is_precondition_failed());
+    }
+
+    #[test]
+    fn test_is_invalid_argument_grpc_true() {
+        let status = Status::invalid_argument("bad input");
+        let err = ClientError::Grpc(Box::new(status));
+        assert!(err.is_invalid_argument());
+    }
+
+    #[test]
+    fn test_is_invalid_argument_client_error_true() {
+        let err = ClientError::InvalidArgument("missing".to_string());
+        assert!(err.is_invalid_argument());
+    }
+
+    #[test]
+    fn test_is_invalid_argument_false() {
+        let err = ClientError::Connection("refused".to_string());
+        assert!(!err.is_invalid_argument());
+    }
+
+    #[test]
+    fn test_is_connection_error_connection_true() {
+        let err = ClientError::Connection("refused".to_string());
+        assert!(err.is_connection_error());
+    }
+
+    #[test]
+    fn test_is_connection_error_grpc_false() {
+        let status = Status::internal("error");
+        let err = ClientError::Grpc(Box::new(status));
+        assert!(!err.is_connection_error());
+    }
+
+    #[test]
+    fn test_is_connection_error_invalid_argument_false() {
+        let err = ClientError::InvalidArgument("bad".to_string());
+        assert!(!err.is_connection_error());
+    }
+}

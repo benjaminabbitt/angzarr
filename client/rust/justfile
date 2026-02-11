@@ -1,0 +1,36 @@
+# Rust client library commands
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+# Build Rust client (release)
+build:
+    cargo build -p angzarr-client --release
+
+# Run unit tests
+test:
+    cargo test -p angzarr-client --lib
+
+# Run tests with verbose output
+test-verbose:
+    cargo test -p angzarr-client --lib -- --nocapture
+
+# Run mutation testing with cargo-mutants
+mutate:
+    cd "{{TOP}}/client/rust" && cargo mutants --jobs 4
+
+# Dry-run mutation testing (show what would be mutated)
+mutate-dry:
+    cd "{{TOP}}/client/rust" && cargo mutants --list
+
+# Dry-run publish to crates.io
+publish-dry:
+    cd "{{TOP}}/client/rust" && cargo publish --dry-run
+
+# Publish to crates.io
+publish:
+    cd "{{TOP}}/client/rust" && cargo publish

@@ -138,4 +138,471 @@ mod tests {
         assert_eq!(edition.name, "v2");
         assert!(edition.divergences.is_empty());
     }
+
+    // EventPage tests
+    #[test]
+    fn test_event_page_sequence_num() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: Some(Sequence::Num(42)),
+            event: None,
+            created_at: None,
+        };
+        assert_eq!(page.sequence_num(), 42);
+    }
+
+    #[test]
+    fn test_event_page_sequence_num_force() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: Some(Sequence::Force(true)),
+            event: None,
+            created_at: None,
+        };
+        assert_eq!(page.sequence_num(), 0);
+    }
+
+    #[test]
+    fn test_event_page_sequence_num_none() {
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: None,
+            event: None,
+            created_at: None,
+        };
+        assert_eq!(page.sequence_num(), 0);
+    }
+
+    #[test]
+    fn test_event_page_type_url() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "type.googleapis.com/test.Event".to_string(),
+                value: vec![],
+            }),
+            created_at: None,
+        };
+        assert_eq!(page.type_url(), Some("type.googleapis.com/test.Event"));
+    }
+
+    #[test]
+    fn test_event_page_type_url_none() {
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: None,
+            event: None,
+            created_at: None,
+        };
+        assert_eq!(page.type_url(), None);
+    }
+
+    #[test]
+    fn test_event_page_payload() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "test".to_string(),
+                value: vec![1, 2, 3],
+            }),
+            created_at: None,
+        };
+        assert_eq!(page.payload(), Some(&[1u8, 2, 3][..]));
+    }
+
+    #[test]
+    fn test_event_page_payload_none() {
+        use crate::proto::EventPage;
+
+        let page = EventPage {
+            sequence: None,
+            event: None,
+            created_at: None,
+        };
+        assert_eq!(page.payload(), None);
+    }
+
+    #[test]
+    fn test_event_page_decode() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+        use prost::Message;
+
+        let msg = prost_types::Duration {
+            seconds: 99,
+            nanos: 0,
+        };
+        let page = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
+                value: msg.encode_to_vec(),
+            }),
+            created_at: None,
+        };
+        let decoded: Option<prost_types::Duration> = page.decode("Duration");
+        assert!(decoded.is_some());
+        assert_eq!(decoded.unwrap().seconds, 99);
+    }
+
+    #[test]
+    fn test_event_page_decode_type_mismatch() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+        use prost::Message;
+
+        let msg = prost_types::Duration {
+            seconds: 99,
+            nanos: 0,
+        };
+        let page = EventPage {
+            sequence: Some(Sequence::Num(1)),
+            event: Some(prost_types::Any {
+                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
+                value: msg.encode_to_vec(),
+            }),
+            created_at: None,
+        };
+        let decoded: Option<prost_types::Duration> = page.decode("Timestamp");
+        assert!(decoded.is_none());
+    }
+
+    // CommandPage tests
+    #[test]
+    fn test_command_page_sequence_num() {
+        use crate::proto::CommandPage;
+
+        let page = CommandPage {
+            sequence: 77,
+            command: None,
+        };
+        assert_eq!(page.sequence_num(), 77);
+    }
+
+    #[test]
+    fn test_command_page_type_url() {
+        use crate::proto::CommandPage;
+
+        let page = CommandPage {
+            sequence: 1,
+            command: Some(prost_types::Any {
+                type_url: "type.googleapis.com/test.Command".to_string(),
+                value: vec![],
+            }),
+        };
+        assert_eq!(page.type_url(), Some("type.googleapis.com/test.Command"));
+    }
+
+    #[test]
+    fn test_command_page_type_url_none() {
+        use crate::proto::CommandPage;
+
+        let page = CommandPage {
+            sequence: 1,
+            command: None,
+        };
+        assert_eq!(page.type_url(), None);
+    }
+
+    #[test]
+    fn test_command_page_payload() {
+        use crate::proto::CommandPage;
+
+        let page = CommandPage {
+            sequence: 1,
+            command: Some(prost_types::Any {
+                type_url: "test".to_string(),
+                value: vec![4, 5, 6],
+            }),
+        };
+        assert_eq!(page.payload(), Some(&[4u8, 5, 6][..]));
+    }
+
+    #[test]
+    fn test_command_page_decode() {
+        use crate::proto::CommandPage;
+        use prost::Message;
+
+        let msg = prost_types::Duration {
+            seconds: 123,
+            nanos: 0,
+        };
+        let page = CommandPage {
+            sequence: 1,
+            command: Some(prost_types::Any {
+                type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
+                value: msg.encode_to_vec(),
+            }),
+        };
+        let decoded: Option<prost_types::Duration> = page.decode("Duration");
+        assert!(decoded.is_some());
+        assert_eq!(decoded.unwrap().seconds, 123);
+    }
+
+    // EventBook extension tests
+    #[test]
+    fn test_event_book_next_sequence() {
+        let book = EventBook {
+            cover: None,
+            pages: vec![],
+            snapshot: None,
+            next_sequence: 42,
+        };
+        assert_eq!(book.next_sequence(), 42);
+    }
+
+    #[test]
+    fn test_event_book_is_empty_true() {
+        let book = EventBook {
+            cover: None,
+            pages: vec![],
+            snapshot: None,
+            next_sequence: 0,
+        };
+        assert!(book.is_empty());
+    }
+
+    #[test]
+    fn test_event_book_is_empty_false() {
+        use crate::proto::EventPage;
+
+        let book = EventBook {
+            cover: None,
+            pages: vec![EventPage::default()],
+            snapshot: None,
+            next_sequence: 0,
+        };
+        assert!(!book.is_empty());
+    }
+
+    #[test]
+    fn test_event_book_last_page() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let book = EventBook {
+            cover: None,
+            pages: vec![
+                EventPage {
+                    sequence: Some(Sequence::Num(1)),
+                    event: None,
+                    created_at: None,
+                },
+                EventPage {
+                    sequence: Some(Sequence::Num(2)),
+                    event: None,
+                    created_at: None,
+                },
+            ],
+            snapshot: None,
+            next_sequence: 0,
+        };
+        let last = book.last_page().unwrap();
+        assert_eq!(last.sequence_num(), 2);
+    }
+
+    #[test]
+    fn test_event_book_first_page() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let book = EventBook {
+            cover: None,
+            pages: vec![
+                EventPage {
+                    sequence: Some(Sequence::Num(1)),
+                    event: None,
+                    created_at: None,
+                },
+                EventPage {
+                    sequence: Some(Sequence::Num(2)),
+                    event: None,
+                    created_at: None,
+                },
+            ],
+            snapshot: None,
+            next_sequence: 0,
+        };
+        let first = book.first_page().unwrap();
+        assert_eq!(first.sequence_num(), 1);
+    }
+
+    // calculate_next_sequence tests
+    #[test]
+    fn test_calculate_next_sequence_from_pages() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let pages = vec![
+            EventPage {
+                sequence: Some(Sequence::Num(5)),
+                event: None,
+                created_at: None,
+            },
+            EventPage {
+                sequence: Some(Sequence::Num(6)),
+                event: None,
+                created_at: None,
+            },
+        ];
+        assert_eq!(calculate_next_sequence(&pages, None), 7);
+    }
+
+    #[test]
+    fn test_calculate_next_sequence_from_snapshot() {
+        use crate::proto::Snapshot;
+
+        let pages: Vec<crate::proto::EventPage> = vec![];
+        let snapshot = Snapshot {
+            sequence: 10,
+            state: None,
+        };
+        assert_eq!(calculate_next_sequence(&pages, Some(&snapshot)), 11);
+    }
+
+    #[test]
+    fn test_calculate_next_sequence_empty() {
+        let pages: Vec<crate::proto::EventPage> = vec![];
+        assert_eq!(calculate_next_sequence(&pages, None), 0);
+    }
+
+    #[test]
+    fn test_calculate_set_next_seq() {
+        use crate::proto::event_page::Sequence;
+        use crate::proto::EventPage;
+
+        let mut book = EventBook {
+            cover: None,
+            pages: vec![EventPage {
+                sequence: Some(Sequence::Num(10)),
+                event: None,
+                created_at: None,
+            }],
+            snapshot: None,
+            next_sequence: 0,
+        };
+        calculate_set_next_seq(&mut book);
+        assert_eq!(book.next_sequence, 11);
+    }
+
+    // CommandBook extension tests
+    #[test]
+    fn test_command_book_command_sequence() {
+        use crate::proto::CommandPage;
+
+        let book = CommandBook {
+            cover: None,
+            pages: vec![CommandPage {
+                sequence: 25,
+                command: None,
+            }],
+            saga_origin: None,
+        };
+        assert_eq!(book.command_sequence(), 25);
+    }
+
+    #[test]
+    fn test_command_book_command_sequence_empty() {
+        let book = CommandBook {
+            cover: None,
+            pages: vec![],
+            saga_origin: None,
+        };
+        assert_eq!(book.command_sequence(), 0);
+    }
+
+    #[test]
+    fn test_command_book_first_command() {
+        use crate::proto::CommandPage;
+
+        let book = CommandBook {
+            cover: None,
+            pages: vec![CommandPage {
+                sequence: 1,
+                command: None,
+            }],
+            saga_origin: None,
+        };
+        assert!(book.first_command().is_some());
+    }
+
+    // UUID extension tests
+    #[test]
+    fn test_proto_uuid_to_uuid() {
+        let uuid = ::uuid::Uuid::new_v4();
+        let proto = ProtoUuid {
+            value: uuid.as_bytes().to_vec(),
+        };
+        let back = proto.to_uuid().unwrap();
+        assert_eq!(uuid, back);
+    }
+
+    #[test]
+    fn test_proto_uuid_to_uuid_invalid() {
+        let proto = ProtoUuid {
+            value: vec![1, 2, 3], // invalid length
+        };
+        assert!(proto.to_uuid().is_err());
+    }
+
+    #[test]
+    fn test_proto_uuid_to_hex() {
+        let proto = ProtoUuid {
+            value: vec![0x01, 0x02, 0x03, 0x04],
+        };
+        assert_eq!(proto.to_hex(), "01020304");
+    }
+
+    #[test]
+    fn test_uuid_to_proto_uuid() {
+        let uuid = ::uuid::Uuid::new_v4();
+        let proto = uuid.to_proto_uuid();
+        assert_eq!(proto.value, uuid.as_bytes().to_vec());
+    }
+
+    // Edition empty test
+    #[test]
+    fn test_edition_is_empty_true() {
+        let edition = Edition {
+            name: String::new(),
+            divergences: vec![],
+        };
+        assert!(edition.is_empty());
+    }
+
+    #[test]
+    fn test_edition_is_empty_false() {
+        let edition = Edition {
+            name: "test".to_string(),
+            divergences: vec![],
+        };
+        assert!(!edition.is_empty());
+    }
+
+    #[test]
+    fn test_edition_name_or_default() {
+        let empty = Edition {
+            name: String::new(),
+            divergences: vec![],
+        };
+        assert_eq!(empty.name_or_default(), DEFAULT_EDITION);
+
+        let named = Edition {
+            name: "custom".to_string(),
+            divergences: vec![],
+        };
+        assert_eq!(named.name_or_default(), "custom");
+    }
 }
