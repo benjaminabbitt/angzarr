@@ -1,0 +1,36 @@
+# Go client library commands
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+# Build Go client
+build:
+    cd "{{TOP}}/client/go" && go build ./...
+
+# Run unit tests
+test:
+    cd "{{TOP}}/client/go" && go test -v ./...
+
+# Run tests with coverage report
+coverage:
+    cd "{{TOP}}/client/go" && go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
+
+# Show coverage in browser
+coverage-html:
+    cd "{{TOP}}/client/go" && go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
+
+# Run mutation testing with gremlins
+mutate:
+    cd "{{TOP}}/client/go" && gremlins unleash --timeout-coefficient 10 --exclude-files="proto/" .
+
+# Dry run mutation testing (show what would be mutated)
+mutate-dry:
+    cd "{{TOP}}/client/go" && gremlins unleash --dry-run --exclude-files="proto/" .
+
+# Clean build artifacts
+clean:
+    rm -f "{{TOP}}/client/go/coverage.out"
