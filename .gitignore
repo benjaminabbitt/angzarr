@@ -58,3 +58,6 @@ examples/go/*/proto/
 .vscode/
 *.ipr
 *.iws
+
+
+.scm/sessions/
