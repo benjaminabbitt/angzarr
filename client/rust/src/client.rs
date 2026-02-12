@@ -11,7 +11,45 @@ use crate::proto::{
 };
 use crate::traits;
 use async_trait::async_trait;
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Endpoint, Uri};
+
+/// Create a gRPC channel from an endpoint string.
+///
+/// Supports both TCP (host:port or http://host:port) and Unix Domain Sockets.
+/// UDS paths are detected by leading '/' or './' and use a custom connector.
+async fn create_channel(endpoint: &str) -> Result<Channel> {
+    let uds_path = if endpoint.starts_with('/') || endpoint.starts_with("./") {
+        Some(endpoint.to_string())
+    } else if let Some(path) = endpoint.strip_prefix("unix://") {
+        Some(path.to_string())
+    } else {
+        None
+    };
+
+    if let Some(path) = uds_path {
+        // Unix Domain Socket - use custom connector
+        // The URI doesn't matter for UDS, but tonic requires a valid one
+        let channel = Endpoint::try_from("http://[::]:50051")
+            .map_err(|e| ClientError::Connection(e.to_string()))?
+            .connect_with_connector(tower::service_fn(move |_: Uri| {
+                let path = path.clone();
+                async move {
+                    tokio::net::UnixStream::connect(path)
+                        .await
+                        .map(hyper_util::rt::TokioIo::new)
+                }
+            }))
+            .await?;
+        Ok(channel)
+    } else {
+        // TCP endpoint
+        let channel = Channel::from_shared(endpoint.to_string())
+            .map_err(|e| ClientError::Connection(e.to_string()))?
+            .connect()
+            .await?;
+        Ok(channel)
+    }
+}
 
 /// Default query client using tonic gRPC.
 #[derive(Clone)]
@@ -21,12 +59,10 @@ pub struct QueryClient {
 
 impl QueryClient {
     /// Connect to a query server at the given endpoint.
+    ///
+    /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection(e.to_string()))?
-            .connect()
-            .await?;
-
+        let channel = create_channel(endpoint).await?;
         Ok(Self::from_channel(channel))
     }
 
@@ -74,12 +110,10 @@ pub struct AggregateClient {
 
 impl AggregateClient {
     /// Connect to an aggregate coordinator at the given endpoint.
+    ///
+    /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection(e.to_string()))?
-            .connect()
-            .await?;
-
+        let channel = create_channel(endpoint).await?;
         Ok(Self::from_channel(channel))
     }
 
@@ -137,12 +171,10 @@ pub struct DomainClient {
 
 impl DomainClient {
     /// Connect to a domain's coordinator at the given endpoint.
+    ///
+    /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection(e.to_string()))?
-            .connect()
-            .await?;
-
+        let channel = create_channel(endpoint).await?;
         Ok(Self::from_channel(channel))
     }
 
@@ -174,12 +206,10 @@ pub struct SpeculativeClient {
 
 impl SpeculativeClient {
     /// Connect to a speculative service at the given endpoint.
+    ///
+    /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection(e.to_string()))?
-            .connect()
-            .await?;
-
+        let channel = create_channel(endpoint).await?;
         Ok(Self::from_channel(channel))
     }
 
@@ -240,12 +270,10 @@ pub struct Client {
 
 impl Client {
     /// Connect to a server providing aggregate, query, and speculative services.
+    ///
+    /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|e| ClientError::Connection(e.to_string()))?
-            .connect()
-            .await?;
-
+        let channel = create_channel(endpoint).await?;
         Ok(Self::from_channel(channel))
     }
 

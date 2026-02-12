@@ -3,11 +3,25 @@ package angzarr
 import (
 	"context"
 	"os"
+	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+// formatEndpoint converts an endpoint to gRPC target format.
+// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
+// UDS paths are detected by leading '/' or './' and converted to unix:// URIs.
+func formatEndpoint(endpoint string) string {
+	if strings.HasPrefix(endpoint, "/") || strings.HasPrefix(endpoint, "./") {
+		return "unix://" + endpoint
+	}
+	if strings.HasPrefix(endpoint, "unix://") {
+		return endpoint
+	}
+	return endpoint
+}
 
 // QueryClient wraps the EventQueryService for event retrieval.
 type QueryClient struct {
@@ -17,7 +31,7 @@ type QueryClient struct {
 
 // NewQueryClient connects to an event query service at the given endpoint.
 func NewQueryClient(endpoint string) (*QueryClient, error) {
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}
@@ -87,7 +101,7 @@ type AggregateClient struct {
 
 // NewAggregateClient connects to an aggregate coordinator at the given endpoint.
 func NewAggregateClient(endpoint string) (*AggregateClient, error) {
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}
@@ -157,7 +171,7 @@ type SpeculativeClient struct {
 
 // NewSpeculativeClient connects to a speculative service at the given endpoint.
 func NewSpeculativeClient(endpoint string) (*SpeculativeClient, error) {
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}
@@ -237,7 +251,7 @@ type DomainClient struct {
 
 // NewDomainClient connects to a domain's coordinator at the given endpoint.
 func NewDomainClient(endpoint string) (*DomainClient, error) {
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}
@@ -289,7 +303,7 @@ type Client struct {
 
 // NewClient connects to a server providing all services.
 func NewClient(endpoint string) (*Client, error) {
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}

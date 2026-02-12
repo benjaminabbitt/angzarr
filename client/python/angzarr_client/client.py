@@ -25,6 +25,23 @@ from .proto.angzarr import (
 from .errors import GRPCError, TransportError
 
 
+def _create_channel(endpoint: str) -> grpc.Channel:
+    """Create a gRPC channel for the given endpoint.
+
+    Supports both TCP (host:port) and Unix Domain Sockets (file paths).
+    UDS paths are detected by leading '/' or './' and converted to unix:// URIs.
+    """
+    if endpoint.startswith("/") or endpoint.startswith("./"):
+        # Unix domain socket path - convert to gRPC URI format
+        return grpc.insecure_channel(f"unix://{endpoint}")
+    elif endpoint.startswith("unix://"):
+        # Already in URI format
+        return grpc.insecure_channel(endpoint)
+    else:
+        # TCP endpoint (host:port)
+        return grpc.insecure_channel(endpoint)
+
+
 class QueryClient:
     """Client for the EventQueryService."""
 
@@ -35,7 +52,7 @@ class QueryClient:
     @classmethod
     def connect(cls, endpoint: str) -> "QueryClient":
         """Connect to an event query service at the given endpoint."""
-        channel = grpc.insecure_channel(endpoint)
+        channel = _create_channel(endpoint)
         return cls(channel)
 
     @classmethod
@@ -73,7 +90,7 @@ class AggregateClient:
     @classmethod
     def connect(cls, endpoint: str) -> "AggregateClient":
         """Connect to an aggregate coordinator at the given endpoint."""
-        channel = grpc.insecure_channel(endpoint)
+        channel = _create_channel(endpoint)
         return cls(channel)
 
     @classmethod
@@ -118,7 +135,7 @@ class SpeculativeClient:
     @classmethod
     def connect(cls, endpoint: str) -> "SpeculativeClient":
         """Connect to a speculative service at the given endpoint."""
-        channel = grpc.insecure_channel(endpoint)
+        channel = _create_channel(endpoint)
         return cls(channel)
 
     @classmethod
@@ -173,7 +190,7 @@ class DomainClient:
     @classmethod
     def connect(cls, endpoint: str) -> "DomainClient":
         """Connect to a domain's coordinator at the given endpoint."""
-        channel = grpc.insecure_channel(endpoint)
+        channel = _create_channel(endpoint)
         return cls(channel)
 
     @classmethod
@@ -203,7 +220,7 @@ class Client:
     @classmethod
     def connect(cls, endpoint: str) -> "Client":
         """Connect to a server providing all services."""
-        channel = grpc.insecure_channel(endpoint)
+        channel = _create_channel(endpoint)
         return cls(channel)
 
     @classmethod
