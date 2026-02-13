@@ -1,5 +1,0 @@
-PKG := "inventory-svc"
-BIN_PKG := "inventory-svc-svc"
-BIN := "inventory-server"
-
-import "../service.justfile"

@@ -27,7 +27,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // UpcasterService: transforms old event versions to current versions
-// Deployed as optional sidecar container in aggregate pod
+// Implemented by the client alongside AggregateService on the same gRPC server.
+// Optionally can be deployed as a separate binary for testing or complex migrations.
 type UpcasterServiceClient interface {
 	// Transform events to current version
 	// Returns events in same order, transformed where applicable
@@ -57,7 +58,8 @@ func (c *upcasterServiceClient) Upcast(ctx context.Context, in *UpcastRequest, o
 // for forward compatibility.
 //
 // UpcasterService: transforms old event versions to current versions
-// Deployed as optional sidecar container in aggregate pod
+// Implemented by the client alongside AggregateService on the same gRPC server.
+// Optionally can be deployed as a separate binary for testing or complex migrations.
 type UpcasterServiceServer interface {
 	// Transform events to current version
 	// Returns events in same order, transformed where applicable

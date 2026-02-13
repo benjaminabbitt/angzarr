@@ -1,20 +1,13 @@
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
-  name: angzarr-go-examples
+  name: poker-go
 
-# IMPORTANT: All image builds MUST go through skaffold.
-# Do NOT manually build with podman/docker and helm upgrade.
-# Kind nodes cache images by tag - skaffold uses unique git SHA tags to avoid this.
-
-# Require framework images - provides IMAGE_TAG_* template variables for deploy
+# Requires base angzarr infrastructure
 requires:
   - path: ../../skaffold.yaml
-    configs: [angzarr-build]
 
 build:
-  # Use git commit SHA for tags - ensures unique tag per build, avoiding
-  # Kind node image cache collisions. Never use sha256 or latest tags.
   tagPolicy:
     gitCommit:
       prefix: "dev-"
@@ -22,103 +15,51 @@ build:
   local:
     push: true
     useBuildkit: false
-    concurrency: 0
+    concurrency: 1
   artifacts:
-    # Domain Aggregates
-    - image: localhost:5001/aggregate-order-go
+    - image: localhost:5001/poker-go-player
       context: ../..
       docker:
         dockerfile: examples/go/Containerfile
-        target: order
+        target: agg-player
 
-    - image: localhost:5001/aggregate-inventory-go
+    - image: localhost:5001/poker-go-table
       context: ../..
       docker:
         dockerfile: examples/go/Containerfile
-        target: inventory
+        target: agg-table
 
-    - image: localhost:5001/aggregate-fulfillment-go
+    - image: localhost:5001/poker-go-hand
       context: ../..
       docker:
         dockerfile: examples/go/Containerfile
-        target: fulfillment
-
-    # Sagas
-    - image: localhost:5001/saga-order-fulfillment-go
-      context: ../..
-      docker:
-        dockerfile: examples/go/Containerfile
-        target: saga-fulfillment
-
-    - image: localhost:5001/saga-order-inventory-go
-      context: ../..
-      docker:
-        dockerfile: examples/go/Containerfile
-        target: saga-inventory-reservation
-
-    - image: localhost:5001/saga-fulfillment-inventory-go
-      context: ../..
-      docker:
-        dockerfile: examples/go/Containerfile
-        target: sag-fulfillment-inventory
-
-    # Projectors
-    - image: localhost:5001/projector-inventory-go
-      context: ../..
-      docker:
-        dockerfile: examples/go/Containerfile
-        target: projector-inventory
-
-    # Process Managers
-    - image: localhost:5001/process-manager-fulfillment-go
-      context: ../..
-      docker:
-        dockerfile: examples/go/Containerfile
-        target: process-manager-fulfillment
+        target: agg-hand
 
 deploy:
   helm:
     releases:
-      - name: angzarr
+      - name: poker-go
         chartPath: ../../deploy/helm/angzarr
         namespace: angzarr
         createNamespace: true
         valuesFiles:
-          - ../../deploy/helm/angzarr/values-go.yaml
-        setValueTemplates:
-          # Framework sidecar images
-          images.aggregate.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_aggregate}}"
-          images.aggregate.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_aggregate}}"
-          images.projector.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_projector}}"
-          images.projector.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_projector}}"
-          images.saga.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_saga}}"
-          images.saga.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_saga}}"
-          images.processManager.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_process_manager}}"
-          images.processManager.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_process_manager}}"
-          images.gateway.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_gateway}}"
-          images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
-          # Business aggregate images
-          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_order_go}}"
-          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_order_go}}"
-          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_inventory_go}}"
-          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_inventory_go}}"
-          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_aggregate_fulfillment_go}}"
-          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_aggregate_fulfillment_go}}"
-          # Saga images
-          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_order_fulfillment_go}}"
-          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_order_fulfillment_go}}"
-          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_order_inventory_go}}"
-          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_order_inventory_go}}"
-          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_saga_fulfillment_inventory_go}}"
-          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_saga_fulfillment_inventory_go}}"
-          # Process Manager images
-          applications.processManagers[0].image.repository: "{{.IMAGE_REPO_localhost_5001_process_manager_fulfillment_go}}"
-          applications.processManagers[0].image.tag: "{{.IMAGE_TAG_localhost_5001_process_manager_fulfillment_go}}"
-          # Projector images
-          applications.projectors[0].image.repository: "{{.IMAGE_REPO_localhost_5001_projector_inventory_go}}"
-          applications.projectors[0].image.tag: "{{.IMAGE_TAG_localhost_5001_projector_inventory_go}}"
-
-profiles:
-  - name: dev
-    activation:
-      - command: dev
+          - values.yaml
+        setValues:
+          # Player aggregate
+          applications.business[0].name: poker-player
+          applications.business[0].image.repository: localhost:5001/poker-go-player
+          applications.business[0].image.tag: latest
+          applications.business[0].domain: player
+          applications.business[0].port: 50201
+          # Table aggregate
+          applications.business[1].name: poker-table
+          applications.business[1].image.repository: localhost:5001/poker-go-table
+          applications.business[1].image.tag: latest
+          applications.business[1].domain: table
+          applications.business[1].port: 50202
+          # Hand aggregate
+          applications.business[2].name: poker-hand
+          applications.business[2].image.repository: localhost:5001/poker-go-hand
+          applications.business[2].image.tag: latest
+          applications.business[2].domain: hand
+          applications.business[2].port: 50203

@@ -7,7 +7,8 @@ from angzarr_client.proto.angzarr import upcaster_pb2 as angzarr_dot_upcaster__p
 
 class UpcasterServiceStub(object):
     """UpcasterService: transforms old event versions to current versions
-    Deployed as optional sidecar container in aggregate pod
+    Implemented by the client alongside AggregateService on the same gRPC server.
+    Optionally can be deployed as a separate binary for testing or complex migrations.
     """
 
     def __init__(self, channel):
@@ -25,7 +26,8 @@ class UpcasterServiceStub(object):
 
 class UpcasterServiceServicer(object):
     """UpcasterService: transforms old event versions to current versions
-    Deployed as optional sidecar container in aggregate pod
+    Implemented by the client alongside AggregateService on the same gRPC server.
+    Optionally can be deployed as a separate binary for testing or complex migrations.
     """
 
     def Upcast(self, request, context):
@@ -54,7 +56,8 @@ def add_UpcasterServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class UpcasterService(object):
     """UpcasterService: transforms old event versions to current versions
-    Deployed as optional sidecar container in aggregate pod
+    Implemented by the client alongside AggregateService on the same gRPC server.
+    Optionally can be deployed as a separate binary for testing or complex migrations.
     """
 
     @staticmethod

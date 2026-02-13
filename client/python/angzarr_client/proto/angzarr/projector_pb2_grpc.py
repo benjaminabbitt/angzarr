@@ -2,6 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
+from angzarr_client.proto.angzarr import projector_pb2 as angzarr_dot_projector__pb2
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
@@ -27,6 +28,11 @@ class ProjectorServiceStub(object):
                 request_serializer=angzarr_dot_types__pb2.EventBook.SerializeToString,
                 response_deserializer=angzarr_dot_types__pb2.Projection.FromString,
                 _registered_method=True)
+        self.HandleSpeculative = channel.unary_unary(
+                '/angzarr.ProjectorService/HandleSpeculative',
+                request_serializer=angzarr_dot_types__pb2.EventBook.SerializeToString,
+                response_deserializer=angzarr_dot_types__pb2.Projection.FromString,
+                _registered_method=True)
 
 
 class ProjectorServiceServicer(object):
@@ -42,7 +48,15 @@ class ProjectorServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Handle(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Async projection - projector should persist and return
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def HandleSpeculative(self, request, context):
+        """Speculative processing - projector must avoid external side effects
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -57,6 +71,11 @@ def add_ProjectorServiceServicer_to_server(servicer, server):
             ),
             'Handle': grpc.unary_unary_rpc_method_handler(
                     servicer.Handle,
+                    request_deserializer=angzarr_dot_types__pb2.EventBook.FromString,
+                    response_serializer=angzarr_dot_types__pb2.Projection.SerializeToString,
+            ),
+            'HandleSpeculative': grpc.unary_unary_rpc_method_handler(
+                    servicer.HandleSpeculative,
                     request_deserializer=angzarr_dot_types__pb2.EventBook.FromString,
                     response_serializer=angzarr_dot_types__pb2.Projection.SerializeToString,
             ),
@@ -127,6 +146,33 @@ class ProjectorService(object):
             metadata,
             _registered_method=True)
 
+    @staticmethod
+    def HandleSpeculative(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/angzarr.ProjectorService/HandleSpeculative',
+            angzarr_dot_types__pb2.EventBook.SerializeToString,
+            angzarr_dot_types__pb2.Projection.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
 
 class ProjectorCoordinatorServiceStub(object):
     """ProjectorCoordinatorService: orchestrates projection processing
@@ -150,7 +196,7 @@ class ProjectorCoordinatorServiceStub(object):
                 _registered_method=True)
         self.HandleSpeculative = channel.unary_unary(
                 '/angzarr.ProjectorCoordinatorService/HandleSpeculative',
-                request_serializer=angzarr_dot_types__pb2.EventBook.SerializeToString,
+                request_serializer=angzarr_dot_projector__pb2.SpeculateProjectorRequest.SerializeToString,
                 response_deserializer=angzarr_dot_types__pb2.Projection.FromString,
                 _registered_method=True)
 
@@ -195,7 +241,7 @@ def add_ProjectorCoordinatorServiceServicer_to_server(servicer, server):
             ),
             'HandleSpeculative': grpc.unary_unary_rpc_method_handler(
                     servicer.HandleSpeculative,
-                    request_deserializer=angzarr_dot_types__pb2.EventBook.FromString,
+                    request_deserializer=angzarr_dot_projector__pb2.SpeculateProjectorRequest.FromString,
                     response_serializer=angzarr_dot_types__pb2.Projection.SerializeToString,
             ),
     }
@@ -279,7 +325,7 @@ class ProjectorCoordinatorService(object):
             request,
             target,
             '/angzarr.ProjectorCoordinatorService/HandleSpeculative',
-            angzarr_dot_types__pb2.EventBook.SerializeToString,
+            angzarr_dot_projector__pb2.SpeculateProjectorRequest.SerializeToString,
             angzarr_dot_types__pb2.Projection.FromString,
             options,
             channel_credentials,

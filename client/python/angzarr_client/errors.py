@@ -75,3 +75,7 @@ class InvalidTimestampError(ClientError):
 
     def __init__(self, message: str):
         super().__init__(f"invalid timestamp: {message}")
+
+
+class CommandRejectedError(Exception):
+    """Command was rejected due to business rule violation."""

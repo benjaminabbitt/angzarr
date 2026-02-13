@@ -2,17 +2,6 @@
 members = [
     ".",
     "client/rust",
-    "examples/rust/common",
-    "examples/rust/agg-order",
-    "examples/rust/agg-inventory",
-    "examples/rust/agg-fulfillment",
-    "examples/rust/sag-order-fulfillment",
-    "examples/rust/sag-order-inventory",
-    "examples/rust/sag-fulfillment-inventory",
-    "examples/rust/pmg-fulfillment",
-    "examples/rust/prj-inventory",
-    "examples/rust/e2e",
-    "examples/rust/mock-fraud-service",
 ]
 resolver = "2"
 
@@ -61,7 +50,6 @@ sea-query-binder-sqlite = { package = "sea-query-binder", version = "0.7", featu
 # Local crates
 angzarr = { path = "." }
 angzarr-client = { path = "client/rust" }
-common = { path = "examples/rust/common" }
 
 [package]
 name = "angzarr"
@@ -247,21 +235,16 @@ name = "angzarr-topology"
 path = "src/bin/angzarr_topology.rs"
 required-features = ["topology"]
 
+[[bin]]
+name = "angzarr-upcaster"
+path = "src/bin/angzarr_upcaster.rs"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"
 cucumber = "0.21"
 futures = "0.3"
-common = { path = "examples/rust/common" }
 serial_test = "3"
-
-[[test]]
-name = "container_integration"
-harness = false
-
-[[test]]
-name = "query_integration"
-path = "tests/integration/query_test.rs"
 
 [[test]]
 name = "storage_mongodb"

@@ -4,9 +4,11 @@ use crate::error::{ClientError, Result};
 use crate::proto::{
     aggregate_coordinator_service_client::AggregateCoordinatorServiceClient as TonicAggregateClient,
     event_query_service_client::EventQueryServiceClient as TonicQueryClient,
-    speculative_service_client::SpeculativeServiceClient as TonicSpeculativeClient, CommandBook,
-    CommandResponse, DryRunRequest, EventBook, ProcessManagerHandleResponse, Projection, Query,
-    SagaResponse, SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest,
+    process_manager_coordinator_service_client::ProcessManagerCoordinatorServiceClient as TonicPmClient,
+    projector_coordinator_service_client::ProjectorCoordinatorServiceClient as TonicProjectorClient,
+    saga_coordinator_service_client::SagaCoordinatorServiceClient as TonicSagaClient, CommandBook,
+    CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query, SagaResponse,
+    SpeculateAggregateRequest, SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest,
     SyncCommandBook,
 };
 use crate::traits;
@@ -51,14 +53,14 @@ async fn create_channel(endpoint: &str) -> Result<Channel> {
     }
 }
 
-/// Default query client using tonic gRPC.
+/// Default event query client using tonic gRPC.
 #[derive(Clone)]
 pub struct QueryClient {
     inner: TonicQueryClient<Channel>,
 }
 
 impl QueryClient {
-    /// Connect to a query server at the given endpoint.
+    /// Connect to an event query service at the given endpoint.
     ///
     /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
@@ -78,31 +80,22 @@ impl QueryClient {
             inner: TonicQueryClient::new(channel),
         }
     }
+
+    /// Query events for an aggregate.
+    pub async fn get_events(&self, query: Query) -> Result<EventBook> {
+        let response = self.inner.clone().get_event_book(query).await?;
+        Ok(response.into_inner())
+    }
 }
 
 #[async_trait]
 impl traits::QueryClient for QueryClient {
-    async fn get_event_book(&self, query: Query) -> Result<EventBook> {
-        let response = self.inner.clone().get_event_book(query).await?;
-        Ok(response.into_inner())
-    }
-
-    async fn get_events(&self, query: Query) -> Result<Vec<EventBook>> {
-        let mut stream = self.inner.clone().get_events(query).await?.into_inner();
-        let mut events = Vec::new();
-
-        while let Some(event_book) = stream.message().await? {
-            events.push(event_book);
-        }
-
-        Ok(events)
+    async fn get_events(&self, query: Query) -> Result<EventBook> {
+        self.get_events(query).await
     }
 }
 
-/// Per-domain aggregate coordinator client using tonic gRPC.
-///
-/// Connects directly to a domain's aggregate coordinator (AggregateCoordinator service).
-/// Use this when connecting to per-domain endpoints rather than a central gateway.
+/// Default aggregate coordinator client using tonic gRPC.
 #[derive(Clone)]
 pub struct AggregateClient {
     inner: TonicAggregateClient<Channel>,
@@ -142,9 +135,12 @@ impl AggregateClient {
         Ok(response.into_inner())
     }
 
-    /// Dry-run a command against temporal state.
-    pub async fn dry_run_handle(&self, request: DryRunRequest) -> Result<CommandResponse> {
-        let response = self.inner.clone().dry_run_handle(request).await?;
+    /// Speculative execution against temporal state.
+    pub async fn handle_sync_speculative(
+        &self,
+        request: SpeculateAggregateRequest,
+    ) -> Result<CommandResponse> {
+        let response = self.inner.clone().handle_sync_speculative(request).await?;
         Ok(response.into_inner())
     }
 }
@@ -198,14 +194,20 @@ impl DomainClient {
     }
 }
 
-/// Default speculative client using tonic gRPC.
+/// Speculative client for what-if scenarios.
+///
+/// Provides speculative execution across different coordinator types.
+/// Each method targets a specific coordinator's speculative RPC.
 #[derive(Clone)]
 pub struct SpeculativeClient {
-    inner: TonicSpeculativeClient<Channel>,
+    aggregate: TonicAggregateClient<Channel>,
+    projector: TonicProjectorClient<Channel>,
+    saga: TonicSagaClient<Channel>,
+    pm: TonicPmClient<Channel>,
 }
 
 impl SpeculativeClient {
-    /// Connect to a speculative service at the given endpoint.
+    /// Connect to services at the given endpoint.
     ///
     /// Supports both TCP (host:port) and Unix Domain Sockets (file paths).
     pub async fn connect(endpoint: &str) -> Result<Self> {
@@ -222,25 +224,32 @@ impl SpeculativeClient {
     /// Create a client from an existing channel.
     pub fn from_channel(channel: Channel) -> Self {
         Self {
-            inner: TonicSpeculativeClient::new(channel),
+            aggregate: TonicAggregateClient::new(channel.clone()),
+            projector: TonicProjectorClient::new(channel.clone()),
+            saga: TonicSagaClient::new(channel.clone()),
+            pm: TonicPmClient::new(channel),
         }
     }
 }
 
 #[async_trait]
 impl traits::SpeculativeClient for SpeculativeClient {
-    async fn dry_run(&self, request: DryRunRequest) -> Result<CommandResponse> {
-        let response = self.inner.clone().dry_run_command(request).await?;
+    async fn aggregate(&self, request: SpeculateAggregateRequest) -> Result<CommandResponse> {
+        let response = self
+            .aggregate
+            .clone()
+            .handle_sync_speculative(request)
+            .await?;
         Ok(response.into_inner())
     }
 
     async fn projector(&self, request: SpeculateProjectorRequest) -> Result<Projection> {
-        let response = self.inner.clone().speculate_projector(request).await?;
+        let response = self.projector.clone().handle_speculative(request).await?;
         Ok(response.into_inner())
     }
 
     async fn saga(&self, request: SpeculateSagaRequest) -> Result<SagaResponse> {
-        let response = self.inner.clone().speculate_saga(request).await?;
+        let response = self.saga.clone().execute_speculative(request).await?;
         Ok(response.into_inner())
     }
 
@@ -248,11 +257,7 @@ impl traits::SpeculativeClient for SpeculativeClient {
         &self,
         request: SpeculatePmRequest,
     ) -> Result<ProcessManagerHandleResponse> {
-        let response = self
-            .inner
-            .clone()
-            .speculate_process_manager(request)
-            .await?;
+        let response = self.pm.clone().handle_speculative(request).await?;
         Ok(response.into_inner())
     }
 }
@@ -290,5 +295,29 @@ impl Client {
             query: QueryClient::from_channel(channel.clone()),
             speculative: SpeculativeClient::from_channel(channel),
         }
+    }
+
+    /// Execute a command (delegates to aggregate client).
+    pub async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
+        self.aggregate.handle(command).await
+    }
+
+    /// Query events (delegates to query client).
+    pub async fn get_events(&self, query: Query) -> Result<EventBook> {
+        self.query.get_events(query).await
+    }
+}
+
+#[async_trait]
+impl traits::GatewayClient for Client {
+    async fn execute(&self, command: CommandBook) -> Result<CommandResponse> {
+        self.execute(command).await
+    }
+}
+
+#[async_trait]
+impl traits::QueryClient for Client {
+    async fn get_events(&self, query: Query) -> Result<EventBook> {
+        self.get_events(query).await
     }
 }

@@ -226,7 +226,7 @@ class ProcessManagerCoordinatorServiceStub(object):
         """
         self.HandleSpeculative = channel.unary_unary(
                 '/angzarr.ProcessManagerCoordinatorService/HandleSpeculative',
-                request_serializer=angzarr_dot_process__manager__pb2.ProcessManagerHandleRequest.SerializeToString,
+                request_serializer=angzarr_dot_process__manager__pb2.SpeculatePmRequest.SerializeToString,
                 response_deserializer=angzarr_dot_process__manager__pb2.ProcessManagerHandleResponse.FromString,
                 _registered_method=True)
 
@@ -247,7 +247,7 @@ def add_ProcessManagerCoordinatorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'HandleSpeculative': grpc.unary_unary_rpc_method_handler(
                     servicer.HandleSpeculative,
-                    request_deserializer=angzarr_dot_process__manager__pb2.ProcessManagerHandleRequest.FromString,
+                    request_deserializer=angzarr_dot_process__manager__pb2.SpeculatePmRequest.FromString,
                     response_serializer=angzarr_dot_process__manager__pb2.ProcessManagerHandleResponse.SerializeToString,
             ),
     }
@@ -277,7 +277,7 @@ class ProcessManagerCoordinatorService(object):
             request,
             target,
             '/angzarr.ProcessManagerCoordinatorService/HandleSpeculative',
-            angzarr_dot_process__manager__pb2.ProcessManagerHandleRequest.SerializeToString,
+            angzarr_dot_process__manager__pb2.SpeculatePmRequest.SerializeToString,
             angzarr_dot_process__manager__pb2.ProcessManagerHandleResponse.FromString,
             options,
             channel_credentials,

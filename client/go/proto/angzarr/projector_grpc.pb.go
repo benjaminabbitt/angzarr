@@ -20,8 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProjectorService_GetDescriptor_FullMethodName = "/angzarr.ProjectorService/GetDescriptor"
-	ProjectorService_Handle_FullMethodName        = "/angzarr.ProjectorService/Handle"
+	ProjectorService_GetDescriptor_FullMethodName     = "/angzarr.ProjectorService/GetDescriptor"
+	ProjectorService_Handle_FullMethodName            = "/angzarr.ProjectorService/Handle"
+	ProjectorService_HandleSpeculative_FullMethodName = "/angzarr.ProjectorService/HandleSpeculative"
 )
 
 // ProjectorServiceClient is the client API for ProjectorService service.
@@ -33,7 +34,10 @@ const (
 type ProjectorServiceClient interface {
 	// Self-description: component type, subscribed domains, handled event types
 	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
+	// Async projection - projector should persist and return
 	Handle(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error)
+	// Speculative processing - projector must avoid external side effects
+	HandleSpeculative(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error)
 }
 
 type projectorServiceClient struct {
@@ -64,6 +68,16 @@ func (c *projectorServiceClient) Handle(ctx context.Context, in *EventBook, opts
 	return out, nil
 }
 
+func (c *projectorServiceClient) HandleSpeculative(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Projection)
+	err := c.cc.Invoke(ctx, ProjectorService_HandleSpeculative_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProjectorServiceServer is the server API for ProjectorService service.
 // All implementations must embed UnimplementedProjectorServiceServer
 // for forward compatibility.
@@ -73,7 +87,10 @@ func (c *projectorServiceClient) Handle(ctx context.Context, in *EventBook, opts
 type ProjectorServiceServer interface {
 	// Self-description: component type, subscribed domains, handled event types
 	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
+	// Async projection - projector should persist and return
 	Handle(context.Context, *EventBook) (*Projection, error)
+	// Speculative processing - projector must avoid external side effects
+	HandleSpeculative(context.Context, *EventBook) (*Projection, error)
 	mustEmbedUnimplementedProjectorServiceServer()
 }
 
@@ -89,6 +106,9 @@ func (UnimplementedProjectorServiceServer) GetDescriptor(context.Context, *GetDe
 }
 func (UnimplementedProjectorServiceServer) Handle(context.Context, *EventBook) (*Projection, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handle not implemented")
+}
+func (UnimplementedProjectorServiceServer) HandleSpeculative(context.Context, *EventBook) (*Projection, error) {
+	return nil, status.Error(codes.Unimplemented, "method HandleSpeculative not implemented")
 }
 func (UnimplementedProjectorServiceServer) mustEmbedUnimplementedProjectorServiceServer() {}
 func (UnimplementedProjectorServiceServer) testEmbeddedByValue()                          {}
@@ -147,6 +167,24 @@ func _ProjectorService_Handle_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProjectorService_HandleSpeculative_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EventBook)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectorServiceServer).HandleSpeculative(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectorService_HandleSpeculative_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectorServiceServer).HandleSpeculative(ctx, req.(*EventBook))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProjectorService_ServiceDesc is the grpc.ServiceDesc for ProjectorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -161,6 +199,10 @@ var ProjectorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Handle",
 			Handler:    _ProjectorService_Handle_Handler,
+		},
+		{
+			MethodName: "HandleSpeculative",
+			Handler:    _ProjectorService_HandleSpeculative_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -184,7 +226,7 @@ type ProjectorCoordinatorServiceClient interface {
 	// Async processing - fire and forget
 	Handle(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Speculative processing - returns projection without side effects
-	HandleSpeculative(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error)
+	HandleSpeculative(ctx context.Context, in *SpeculateProjectorRequest, opts ...grpc.CallOption) (*Projection, error)
 }
 
 type projectorCoordinatorServiceClient struct {
@@ -215,7 +257,7 @@ func (c *projectorCoordinatorServiceClient) Handle(ctx context.Context, in *Even
 	return out, nil
 }
 
-func (c *projectorCoordinatorServiceClient) HandleSpeculative(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error) {
+func (c *projectorCoordinatorServiceClient) HandleSpeculative(ctx context.Context, in *SpeculateProjectorRequest, opts ...grpc.CallOption) (*Projection, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Projection)
 	err := c.cc.Invoke(ctx, ProjectorCoordinatorService_HandleSpeculative_FullMethodName, in, out, cOpts...)
@@ -236,7 +278,7 @@ type ProjectorCoordinatorServiceServer interface {
 	// Async processing - fire and forget
 	Handle(context.Context, *EventBook) (*emptypb.Empty, error)
 	// Speculative processing - returns projection without side effects
-	HandleSpeculative(context.Context, *EventBook) (*Projection, error)
+	HandleSpeculative(context.Context, *SpeculateProjectorRequest) (*Projection, error)
 	mustEmbedUnimplementedProjectorCoordinatorServiceServer()
 }
 
@@ -253,7 +295,7 @@ func (UnimplementedProjectorCoordinatorServiceServer) HandleSync(context.Context
 func (UnimplementedProjectorCoordinatorServiceServer) Handle(context.Context, *EventBook) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handle not implemented")
 }
-func (UnimplementedProjectorCoordinatorServiceServer) HandleSpeculative(context.Context, *EventBook) (*Projection, error) {
+func (UnimplementedProjectorCoordinatorServiceServer) HandleSpeculative(context.Context, *SpeculateProjectorRequest) (*Projection, error) {
 	return nil, status.Error(codes.Unimplemented, "method HandleSpeculative not implemented")
 }
 func (UnimplementedProjectorCoordinatorServiceServer) mustEmbedUnimplementedProjectorCoordinatorServiceServer() {
@@ -315,7 +357,7 @@ func _ProjectorCoordinatorService_Handle_Handler(srv interface{}, ctx context.Co
 }
 
 func _ProjectorCoordinatorService_HandleSpeculative_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EventBook)
+	in := new(SpeculateProjectorRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -327,7 +369,7 @@ func _ProjectorCoordinatorService_HandleSpeculative_Handler(srv interface{}, ctx
 		FullMethod: ProjectorCoordinatorService_HandleSpeculative_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProjectorCoordinatorServiceServer).HandleSpeculative(ctx, req.(*EventBook))
+		return srv.(ProjectorCoordinatorServiceServer).HandleSpeculative(ctx, req.(*SpeculateProjectorRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

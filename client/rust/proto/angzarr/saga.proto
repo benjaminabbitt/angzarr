@@ -7,6 +7,7 @@ option csharp_namespace = "Angzarr";
 option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
+import "google/protobuf/timestamp.proto";
 
 // SagaService: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
@@ -19,8 +20,64 @@ service SagaService {
   rpc Execute (SagaExecuteRequest) returns (SagaResponse);
 }
 
-// SagaCoordinatorService: orchestrates saga execution across domains
+// SagaCoordinatorService: orchestrates saga execution
 service SagaCoordinatorService {
-  // Speculative execution - returns commands without executing them
-  rpc ExecuteSpeculative (SagaExecuteRequest) returns (SagaResponse);
+  // Async processing - fire and forget
+  rpc Execute (SagaExecuteRequest) returns (SagaResponse);
+  // Speculative execution - returns commands without side effects
+  rpc ExecuteSpeculative (SpeculateSagaRequest) returns (SagaResponse);
 }
+
+// Request for speculative saga execution at a point in time.
+message SpeculateSagaRequest {
+  SagaExecuteRequest request = 1;
+  TemporalQuery point_in_time = 2;
+}
+
+// Response from saga - commands for other aggregates
+message SagaResponse {
+  repeated CommandBook commands = 1;  // Commands to execute on other aggregates
+  repeated EventBook events = 2;      // Events to publish directly
+}
+
+// Two-phase saga protocol messages
+message SagaPrepareRequest {
+  EventBook source = 1;  // Source events that triggered the saga
+}
+
+message SagaPrepareResponse {
+  repeated Cover destinations = 1;  // Destination aggregates the saga needs to read
+}
+
+message SagaExecuteRequest {
+  EventBook source = 1;             // Source events (same as prepare)
+  repeated EventBook destinations = 2;  // Fetched destination state
+}
+
+message SagaRetryRequest {
+  EventBook source = 1;
+  repeated EventBook destinations = 2;
+  CommandBook rejected_command = 3;
+  string rejection_reason = 4;
+  uint32 attempt = 5;
+}
+
+// Command sent to original aggregate when saga command is rejected
+message RevokeEventCommand {
+  uint32 triggering_event_sequence = 1; // Which event triggered the failed saga flow
+  string saga_name = 2;                  // Saga that issued the rejected command
+  string rejection_reason = 3;           // Why the command was rejected
+  CommandBook rejected_command = 4;      // The command that was rejected
+}
+
+// System event when compensation fails/requested
+message SagaCompensationFailed {
+  Cover triggering_aggregate = 1;
+  uint32 triggering_event_sequence = 2;
+  string saga_name = 3;
+  string rejection_reason = 4;
+  string compensation_failure_reason = 5;
+  CommandBook rejected_command = 6;
+  google.protobuf.Timestamp occurred_at = 7;
+}
+

@@ -10,7 +10,7 @@ from angzarr_client.proto.angzarr import (
     CommandBook,
     CommandResponse,
     SyncCommandBook,
-    DryRunRequest,
+    SpeculateAggregateRequest,
     EventBook,
     Query,
     Projection,
@@ -229,29 +229,29 @@ class TestAggregateClient:
         with pytest.raises(GRPCError):
             client.handle_sync(cmd)
 
-    def test_dry_run_handle_success(self) -> None:
-        """dry_run_handle returns CommandResponse on success."""
+    def test_handle_sync_speculative_success(self) -> None:
+        """handle_sync_speculative returns CommandResponse on success."""
         channel = self._mock_channel()
         client = AggregateClient(channel)
         expected_resp = CommandResponse()
-        client._stub.DryRunHandle = Mock(return_value=expected_resp)
+        client._stub.HandleSyncSpeculative = Mock(return_value=expected_resp)
 
-        request = DryRunRequest()
-        result = client.dry_run_handle(request)
+        request = SpeculateAggregateRequest()
+        result = client.handle_sync_speculative(request)
 
-        client._stub.DryRunHandle.assert_called_once_with(request)
+        client._stub.HandleSyncSpeculative.assert_called_once_with(request)
         assert result is not None
 
-    def test_dry_run_handle_raises_grpc_error(self) -> None:
-        """dry_run_handle raises GRPCError on RpcError."""
+    def test_handle_sync_speculative_raises_grpc_error(self) -> None:
+        """handle_sync_speculative raises GRPCError on RpcError."""
         channel = self._mock_channel()
         client = AggregateClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INVALID_ARGUMENT)
-        client._stub.DryRunHandle = Mock(side_effect=rpc_error)
+        client._stub.HandleSyncSpeculative = Mock(side_effect=rpc_error)
 
-        request = DryRunRequest()
+        request = SpeculateAggregateRequest()
         with pytest.raises(GRPCError) as exc_info:
-            client.dry_run_handle(request)
+            client.handle_sync_speculative(request)
         assert exc_info.value.is_invalid_argument()
 
     def test_close_closes_channel(self) -> None:
@@ -269,12 +269,15 @@ class TestSpeculativeClient:
         """Create a mock gRPC channel."""
         return Mock(spec=grpc.Channel)
 
-    def test_init_creates_stub(self) -> None:
-        """Constructor creates stub from channel."""
+    def test_init_creates_stubs(self) -> None:
+        """Constructor creates stubs from channel."""
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         assert client._channel is channel
-        assert client._stub is not None
+        assert client._aggregate_stub is not None
+        assert client._saga_stub is not None
+        assert client._projector_stub is not None
+        assert client._pm_stub is not None
 
     @patch("angzarr_client.client.grpc.insecure_channel")
     def test_connect(self, mock_channel: Mock) -> None:
@@ -291,41 +294,41 @@ class TestSpeculativeClient:
         client = SpeculativeClient.from_env("SPEC_ENDPOINT", "default:8000")
         mock_channel.assert_called_once_with("spec-host:9000")
 
-    def test_dry_run_success(self) -> None:
-        """dry_run returns CommandResponse on success."""
+    def test_aggregate_success(self) -> None:
+        """aggregate returns CommandResponse on success."""
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         expected_resp = CommandResponse()
-        client._stub.DryRunCommand = Mock(return_value=expected_resp)
+        client._aggregate_stub.HandleSyncSpeculative = Mock(return_value=expected_resp)
 
-        request = DryRunRequest()
-        result = client.dry_run(request)
+        request = SpeculateAggregateRequest()
+        result = client.aggregate(request)
 
-        client._stub.DryRunCommand.assert_called_once_with(request)
+        client._aggregate_stub.HandleSyncSpeculative.assert_called_once_with(request)
         assert result is not None
 
-    def test_dry_run_raises_grpc_error(self) -> None:
-        """dry_run raises GRPCError on RpcError."""
+    def test_aggregate_raises_grpc_error(self) -> None:
+        """aggregate raises GRPCError on RpcError."""
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INTERNAL)
-        client._stub.DryRunCommand = Mock(side_effect=rpc_error)
+        client._aggregate_stub.HandleSyncSpeculative = Mock(side_effect=rpc_error)
 
-        request = DryRunRequest()
+        request = SpeculateAggregateRequest()
         with pytest.raises(GRPCError):
-            client.dry_run(request)
+            client.aggregate(request)
 
     def test_projector_success(self) -> None:
         """projector returns Projection on success."""
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         expected_proj = Projection()
-        client._stub.SpeculateProjector = Mock(return_value=expected_proj)
+        client._projector_stub.HandleSpeculative = Mock(return_value=expected_proj)
 
         request = SpeculateProjectorRequest()
         result = client.projector(request)
 
-        client._stub.SpeculateProjector.assert_called_once_with(request)
+        client._projector_stub.HandleSpeculative.assert_called_once_with(request)
         assert result is not None
 
     def test_projector_raises_grpc_error(self) -> None:
@@ -333,7 +336,7 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INTERNAL)
-        client._stub.SpeculateProjector = Mock(side_effect=rpc_error)
+        client._projector_stub.HandleSpeculative = Mock(side_effect=rpc_error)
 
         request = SpeculateProjectorRequest()
         with pytest.raises(GRPCError):
@@ -344,12 +347,12 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         expected_resp = SagaResponse()
-        client._stub.SpeculateSaga = Mock(return_value=expected_resp)
+        client._saga_stub.ExecuteSpeculative = Mock(return_value=expected_resp)
 
         request = SpeculateSagaRequest()
         result = client.saga(request)
 
-        client._stub.SpeculateSaga.assert_called_once_with(request)
+        client._saga_stub.ExecuteSpeculative.assert_called_once_with(request)
         assert result is not None
 
     def test_saga_raises_grpc_error(self) -> None:
@@ -357,7 +360,7 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INTERNAL)
-        client._stub.SpeculateSaga = Mock(side_effect=rpc_error)
+        client._saga_stub.ExecuteSpeculative = Mock(side_effect=rpc_error)
 
         request = SpeculateSagaRequest()
         with pytest.raises(GRPCError):
@@ -368,12 +371,12 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         expected_resp = ProcessManagerHandleResponse()
-        client._stub.SpeculateProcessManager = Mock(return_value=expected_resp)
+        client._pm_stub.HandleSpeculative = Mock(return_value=expected_resp)
 
         request = SpeculatePmRequest()
         result = client.process_manager(request)
 
-        client._stub.SpeculateProcessManager.assert_called_once_with(request)
+        client._pm_stub.HandleSpeculative.assert_called_once_with(request)
         assert result is not None
 
     def test_process_manager_raises_grpc_error(self) -> None:
@@ -381,7 +384,7 @@ class TestSpeculativeClient:
         channel = self._mock_channel()
         client = SpeculativeClient(channel)
         rpc_error = MockRpcError(grpc.StatusCode.INTERNAL)
-        client._stub.SpeculateProcessManager = Mock(side_effect=rpc_error)
+        client._pm_stub.HandleSpeculative = Mock(side_effect=rpc_error)
 
         request = SpeculatePmRequest()
         with pytest.raises(GRPCError):

@@ -1,3 +1,0 @@
-SERVICE := "saga-inventory-reservation"
-
-import "../service.justfile"

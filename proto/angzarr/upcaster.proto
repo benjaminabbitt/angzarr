@@ -9,7 +9,8 @@ option ruby_package = "Angzarr";
 import "angzarr/types.proto";
 
 // UpcasterService: transforms old event versions to current versions
-// Deployed as optional sidecar container in aggregate pod
+// Implemented by the client alongside AggregateService on the same gRPC server.
+// Optionally can be deployed as a separate binary for testing or complex migrations.
 service UpcasterService {
   // Transform events to current version
   // Returns events in same order, transformed where applicable

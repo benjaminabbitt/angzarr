@@ -1,0 +1,98 @@
+syntax = "proto3";
+package examples;
+
+import "examples/types.proto";
+
+// =============================================================================
+// AI Sidecar Service - gRPC interface for PyTorch model inference
+// Called by AI player implementation within player aggregate
+// =============================================================================
+
+service AiSidecar {
+  // Get recommended action from the AI model
+  rpc GetAction(ActionRequest) returns (ActionResponse);
+
+  // Health check
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Batch inference for training/simulation
+  rpc GetActionsBatch(BatchActionRequest) returns (BatchActionResponse);
+}
+
+message ActionRequest {
+  // Game state
+  string model_id = 1;           // Which model to use
+  GameVariant game_variant = 2;
+  BettingPhase phase = 3;
+
+  // Cards
+  repeated Card hole_cards = 4;
+  repeated Card community_cards = 5;
+
+  // Betting context
+  int64 pot_size = 6;
+  int64 stack_size = 7;
+  int64 amount_to_call = 8;
+  int64 min_raise = 9;
+  int64 max_raise = 10;
+
+  // Position info
+  int32 position = 11;           // 0 = button, increasing = earlier
+  int32 players_remaining = 12;
+  int32 players_to_act = 13;
+
+  // Historical context (for recurrent models)
+  repeated ActionHistory action_history = 14;
+
+  // Opponent modeling (optional)
+  repeated OpponentStats opponents = 15;
+}
+
+message ActionHistory {
+  bytes player_root = 1;
+  ActionType action = 2;
+  int64 amount = 3;
+  BettingPhase phase = 4;
+}
+
+message OpponentStats {
+  bytes player_root = 1;
+  int32 position = 2;
+  int64 stack = 3;
+  float vpip = 4;                // Voluntarily put in pot %
+  float pfr = 5;                 // Pre-flop raise %
+  float aggression = 6;          // Bet/raise frequency
+  int32 hands_played = 7;
+}
+
+message ActionResponse {
+  ActionType recommended_action = 1;
+  int64 amount = 2;              // For bet/raise
+
+  // Confidence scores for each action (for analysis)
+  float fold_probability = 3;
+  float check_call_probability = 4;
+  float bet_raise_probability = 5;
+
+  // Model metadata
+  string model_version = 6;
+  int64 inference_time_ms = 7;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string model_id = 2;
+  string model_version = 3;
+  int64 uptime_seconds = 4;
+  int64 requests_served = 5;
+}
+
+message BatchActionRequest {
+  repeated ActionRequest requests = 1;
+}
+
+message BatchActionResponse {
+  repeated ActionResponse responses = 1;
+}

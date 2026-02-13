@@ -3,7 +3,6 @@
 import grpc
 
 from angzarr_client.proto.angzarr import aggregate_pb2 as angzarr_dot_aggregate__pb2
-from angzarr_client.proto.angzarr import process_manager_pb2 as angzarr_dot_process__manager__pb2
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
@@ -27,7 +26,7 @@ class AggregateServiceStub(object):
         self.Handle = channel.unary_unary(
                 '/angzarr.AggregateService/Handle',
                 request_serializer=angzarr_dot_types__pb2.ContextualCommand.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.BusinessResponse.FromString,
+                response_deserializer=angzarr_dot_aggregate__pb2.BusinessResponse.FromString,
                 _registered_method=True)
 
 
@@ -45,7 +44,8 @@ class AggregateServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Handle(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Process command and return business response (events or revocation request)
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -61,7 +61,7 @@ def add_AggregateServiceServicer_to_server(servicer, server):
             'Handle': grpc.unary_unary_rpc_method_handler(
                     servicer.Handle,
                     request_deserializer=angzarr_dot_types__pb2.ContextualCommand.FromString,
-                    response_serializer=angzarr_dot_types__pb2.BusinessResponse.SerializeToString,
+                    response_serializer=angzarr_dot_aggregate__pb2.BusinessResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -120,7 +120,7 @@ class AggregateService(object):
             target,
             '/angzarr.AggregateService/Handle',
             angzarr_dot_types__pb2.ContextualCommand.SerializeToString,
-            angzarr_dot_types__pb2.BusinessResponse.FromString,
+            angzarr_dot_aggregate__pb2.BusinessResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -145,17 +145,17 @@ class AggregateCoordinatorServiceStub(object):
         self.Handle = channel.unary_unary(
                 '/angzarr.AggregateCoordinatorService/Handle',
                 request_serializer=angzarr_dot_types__pb2.CommandBook.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.CommandResponse.FromString,
+                response_deserializer=angzarr_dot_aggregate__pb2.CommandResponse.FromString,
                 _registered_method=True)
         self.HandleSync = channel.unary_unary(
                 '/angzarr.AggregateCoordinatorService/HandleSync',
                 request_serializer=angzarr_dot_types__pb2.SyncCommandBook.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.CommandResponse.FromString,
+                response_deserializer=angzarr_dot_aggregate__pb2.CommandResponse.FromString,
                 _registered_method=True)
-        self.DryRunHandle = channel.unary_unary(
-                '/angzarr.AggregateCoordinatorService/DryRunHandle',
-                request_serializer=angzarr_dot_types__pb2.DryRunRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.CommandResponse.FromString,
+        self.HandleSyncSpeculative = channel.unary_unary(
+                '/angzarr.AggregateCoordinatorService/HandleSyncSpeculative',
+                request_serializer=angzarr_dot_aggregate__pb2.SpeculateAggregateRequest.SerializeToString,
+                response_deserializer=angzarr_dot_aggregate__pb2.CommandResponse.FromString,
                 _registered_method=True)
 
 
@@ -177,8 +177,8 @@ class AggregateCoordinatorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DryRunHandle(self, request, context):
-        """Dry-run: execute against temporal state without persisting.
+    def HandleSyncSpeculative(self, request, context):
+        """Speculative execution - execute against temporal state without persisting
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -190,17 +190,17 @@ def add_AggregateCoordinatorServiceServicer_to_server(servicer, server):
             'Handle': grpc.unary_unary_rpc_method_handler(
                     servicer.Handle,
                     request_deserializer=angzarr_dot_types__pb2.CommandBook.FromString,
-                    response_serializer=angzarr_dot_types__pb2.CommandResponse.SerializeToString,
+                    response_serializer=angzarr_dot_aggregate__pb2.CommandResponse.SerializeToString,
             ),
             'HandleSync': grpc.unary_unary_rpc_method_handler(
                     servicer.HandleSync,
                     request_deserializer=angzarr_dot_types__pb2.SyncCommandBook.FromString,
-                    response_serializer=angzarr_dot_types__pb2.CommandResponse.SerializeToString,
+                    response_serializer=angzarr_dot_aggregate__pb2.CommandResponse.SerializeToString,
             ),
-            'DryRunHandle': grpc.unary_unary_rpc_method_handler(
-                    servicer.DryRunHandle,
-                    request_deserializer=angzarr_dot_types__pb2.DryRunRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.CommandResponse.SerializeToString,
+            'HandleSyncSpeculative': grpc.unary_unary_rpc_method_handler(
+                    servicer.HandleSyncSpeculative,
+                    request_deserializer=angzarr_dot_aggregate__pb2.SpeculateAggregateRequest.FromString,
+                    response_serializer=angzarr_dot_aggregate__pb2.CommandResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -230,7 +230,7 @@ class AggregateCoordinatorService(object):
             target,
             '/angzarr.AggregateCoordinatorService/Handle',
             angzarr_dot_types__pb2.CommandBook.SerializeToString,
-            angzarr_dot_types__pb2.CommandResponse.FromString,
+            angzarr_dot_aggregate__pb2.CommandResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -257,7 +257,7 @@ class AggregateCoordinatorService(object):
             target,
             '/angzarr.AggregateCoordinatorService/HandleSync',
             angzarr_dot_types__pb2.SyncCommandBook.SerializeToString,
-            angzarr_dot_types__pb2.CommandResponse.FromString,
+            angzarr_dot_aggregate__pb2.CommandResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -269,7 +269,7 @@ class AggregateCoordinatorService(object):
             _registered_method=True)
 
     @staticmethod
-    def DryRunHandle(request,
+    def HandleSyncSpeculative(request,
             target,
             options=(),
             channel_credentials=None,
@@ -282,224 +282,9 @@ class AggregateCoordinatorService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/angzarr.AggregateCoordinatorService/DryRunHandle',
-            angzarr_dot_types__pb2.DryRunRequest.SerializeToString,
-            angzarr_dot_types__pb2.CommandResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-
-class SpeculativeServiceStub(object):
-    """Speculative execution service - execute without persisting side effects.
-    Supports "what-if" scenarios for commands, projectors, sagas, and process managers.
-    """
-
-    def __init__(self, channel):
-        """Constructor.
-
-        Args:
-            channel: A grpc.Channel.
-        """
-        self.DryRunCommand = channel.unary_unary(
-                '/angzarr.SpeculativeService/DryRunCommand',
-                request_serializer=angzarr_dot_types__pb2.DryRunRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.CommandResponse.FromString,
-                _registered_method=True)
-        self.SpeculateProjector = channel.unary_unary(
-                '/angzarr.SpeculativeService/SpeculateProjector',
-                request_serializer=angzarr_dot_aggregate__pb2.SpeculateProjectorRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.Projection.FromString,
-                _registered_method=True)
-        self.SpeculateSaga = channel.unary_unary(
-                '/angzarr.SpeculativeService/SpeculateSaga',
-                request_serializer=angzarr_dot_aggregate__pb2.SpeculateSagaRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.SagaResponse.FromString,
-                _registered_method=True)
-        self.SpeculateProcessManager = channel.unary_unary(
-                '/angzarr.SpeculativeService/SpeculateProcessManager',
-                request_serializer=angzarr_dot_aggregate__pb2.SpeculatePmRequest.SerializeToString,
-                response_deserializer=angzarr_dot_process__manager__pb2.ProcessManagerHandleResponse.FromString,
-                _registered_method=True)
-
-
-class SpeculativeServiceServicer(object):
-    """Speculative execution service - execute without persisting side effects.
-    Supports "what-if" scenarios for commands, projectors, sagas, and process managers.
-    """
-
-    def DryRunCommand(self, request, context):
-        """Execute command against temporal state without persisting.
-        Returns speculative events only — no side effects.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SpeculateProjector(self, request, context):
-        """Execute projector against provided events without persisting.
-        Returns projection result.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SpeculateSaga(self, request, context):
-        """Execute saga against provided events without persisting.
-        Returns commands that would be produced.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SpeculateProcessManager(self, request, context):
-        """Execute process manager against provided context without persisting.
-        Returns commands and PM events that would be produced.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-
-def add_SpeculativeServiceServicer_to_server(servicer, server):
-    rpc_method_handlers = {
-            'DryRunCommand': grpc.unary_unary_rpc_method_handler(
-                    servicer.DryRunCommand,
-                    request_deserializer=angzarr_dot_types__pb2.DryRunRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.CommandResponse.SerializeToString,
-            ),
-            'SpeculateProjector': grpc.unary_unary_rpc_method_handler(
-                    servicer.SpeculateProjector,
-                    request_deserializer=angzarr_dot_aggregate__pb2.SpeculateProjectorRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.Projection.SerializeToString,
-            ),
-            'SpeculateSaga': grpc.unary_unary_rpc_method_handler(
-                    servicer.SpeculateSaga,
-                    request_deserializer=angzarr_dot_aggregate__pb2.SpeculateSagaRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.SagaResponse.SerializeToString,
-            ),
-            'SpeculateProcessManager': grpc.unary_unary_rpc_method_handler(
-                    servicer.SpeculateProcessManager,
-                    request_deserializer=angzarr_dot_aggregate__pb2.SpeculatePmRequest.FromString,
-                    response_serializer=angzarr_dot_process__manager__pb2.ProcessManagerHandleResponse.SerializeToString,
-            ),
-    }
-    generic_handler = grpc.method_handlers_generic_handler(
-            'angzarr.SpeculativeService', rpc_method_handlers)
-    server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('angzarr.SpeculativeService', rpc_method_handlers)
-
-
- # This class is part of an EXPERIMENTAL API.
-class SpeculativeService(object):
-    """Speculative execution service - execute without persisting side effects.
-    Supports "what-if" scenarios for commands, projectors, sagas, and process managers.
-    """
-
-    @staticmethod
-    def DryRunCommand(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.SpeculativeService/DryRunCommand',
-            angzarr_dot_types__pb2.DryRunRequest.SerializeToString,
-            angzarr_dot_types__pb2.CommandResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SpeculateProjector(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.SpeculativeService/SpeculateProjector',
-            angzarr_dot_aggregate__pb2.SpeculateProjectorRequest.SerializeToString,
-            angzarr_dot_types__pb2.Projection.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SpeculateSaga(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.SpeculativeService/SpeculateSaga',
-            angzarr_dot_aggregate__pb2.SpeculateSagaRequest.SerializeToString,
-            angzarr_dot_types__pb2.SagaResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SpeculateProcessManager(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.SpeculativeService/SpeculateProcessManager',
-            angzarr_dot_aggregate__pb2.SpeculatePmRequest.SerializeToString,
-            angzarr_dot_process__manager__pb2.ProcessManagerHandleResponse.FromString,
+            '/angzarr.AggregateCoordinatorService/HandleSyncSpeculative',
+            angzarr_dot_aggregate__pb2.SpeculateAggregateRequest.SerializeToString,
+            angzarr_dot_aggregate__pb2.CommandResponse.FromString,
             options,
             channel_credentials,
             insecure,

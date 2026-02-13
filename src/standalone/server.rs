@@ -19,8 +19,8 @@ use crate::config::ResourceLimits;
 use crate::proto::aggregate_coordinator_service_server::AggregateCoordinatorService;
 use crate::proto::event_query_service_server::EventQueryService as EventQueryTrait;
 use crate::proto::{
-    AggregateRoot, CommandBook, CommandResponse, DryRunRequest, EventBook, Query, SyncCommandBook,
-    Uuid as ProtoUuid,
+    AggregateRoot, CommandBook, CommandResponse, EventBook, Query, SpeculateAggregateRequest,
+    SyncCommandBook, Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
@@ -101,17 +101,17 @@ impl AggregateCoordinatorService for StandaloneAggregateService {
         Ok(Response::new(response))
     }
 
-    async fn dry_run_handle(
+    async fn handle_sync_speculative(
         &self,
-        request: Request<DryRunRequest>,
+        request: Request<SpeculateAggregateRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        let dry_run = request.into_inner();
-        let command = dry_run
-            .command
-            .ok_or_else(|| Status::invalid_argument("DryRunRequest must have a command"))?;
+        let speculate_req = request.into_inner();
+        let command = speculate_req.command.ok_or_else(|| {
+            Status::invalid_argument("SpeculateAggregateRequest must have a command")
+        })?;
         self.validate_domain(&command)?;
 
-        let (as_of_sequence, as_of_timestamp) = match dry_run.point_in_time {
+        let (as_of_sequence, as_of_timestamp) = match speculate_req.point_in_time {
             Some(temporal) => match temporal.point_in_time {
                 Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
                     (Some(seq), None)
@@ -127,7 +127,7 @@ impl AggregateCoordinatorService for StandaloneAggregateService {
 
         let response = self
             .router
-            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
+            .speculative(command, as_of_sequence, as_of_timestamp.as_deref())
             .await?;
         Ok(Response::new(response))
     }

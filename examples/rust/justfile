@@ -1,301 +1,54 @@
-# Rust example gRPC servers for angzarr e-commerce domain
-# Services: inventory, order, fulfillment
-# Sagas: saga-fulfillment, saga-inventory-reservation
-# Process Managers: process-manager-fulfillment
-# Projectors: projector-inventory
-#
-# Deployment Model:
-#   - Backing services (PostgreSQL, RabbitMQ): Deployed via Terraform/Helm (see root justfile)
-#   - Application services: Deployed via Skaffold (this justfile)
-#
-# For integration/acceptance tests, run from root: `just integration` or `just acceptance`
-# This ensures backing services are deployed first via Terraform.
+# Rust poker examples
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
-IMAGE_TAG := "latest"
-REGISTRY_PORT := "5001"
 
-# Show available commands
+# Default: list available commands
 default:
     @just --list
 
-# ============================================================================
-# Build / Test / Clean (workspace-level)
-# ============================================================================
-
-# Build all Rust example crates (includes angzarr with sqlite)
+# Build all poker aggregates (release)
 build:
-    cargo build --workspace --features sqlite
+    cargo build --release
 
-# Run unit tests (inline lib tests, no cluster required)
+# Build all poker aggregates (debug)
+build-dev:
+    cargo build
+
+# Run poker in standalone mode (player:50001, table:50002, hand:50003)
+run: build
+    mkdir -p "{{TOP}}/examples/rust/data"
+    cd "{{TOP}}" && cargo run \
+        --bin angzarr-standalone \
+        --features standalone,sqlite \
+        -- --config examples/rust/standalone.yaml
+
+# Run poker in standalone mode (debug build)
+run-dev: build-dev
+    mkdir -p "{{TOP}}/examples/rust/data"
+    cargo run --manifest-path "{{TOP}}/Cargo.toml" \
+        --bin angzarr-standalone \
+        --features standalone,sqlite \
+        -- --config "{{TOP}}/examples/rust/standalone.yaml"
+
+# Run tests
 test:
-    cargo test --workspace --lib
+    cargo test
 
-# Run integration tests (assumes backing services already deployed via root `just infra`)
-# Deploy application services via Skaffold, then run technical tests
-integration:
-    skaffold run
-    @echo "Waiting for application services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
-    ANGZARR_PORT=9084 \
-    TEST_LANGUAGE=rust cargo test --test container_integration --manifest-path "{{TOP}}/Cargo.toml"
+# Check code compiles
+check:
+    cargo check
 
-# Run acceptance tests (assumes backing services already deployed via root `just infra`)
-# Deploy application services via Skaffold, then run E2E cucumber tests in gateway mode
-acceptance:
-    @uv run "{{TOP}}/scripts/reset_event_store.py"
-    skaffold run
-    @echo "Waiting for application services to be ready..."
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=aggregate -n angzarr --timeout=300s || true
-    @kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=saga -n angzarr --timeout=300s || true
-    ANGZARR_TEST_MODE=gateway \
-    ANGZARR_ENDPOINT=http://localhost:9084 \
-    cargo test -p e2e --test acceptance
+# Format code
+fmt:
+    cargo fmt
+
+# Lint code
+lint:
+    cargo clippy -- -D warnings
 
 # Clean build artifacts
 clean:
     cargo clean
-
-# Format all code
-fmt:
-    cargo fmt --all
-
-# Lint all code
-lint:
-    cargo clippy --workspace -- -D warnings
-
-# Lint Helm chart
-helm-lint:
-    helm lint helm
-
-# ============================================================================
-# Container Images - DEPRECATED FOR K8S
-# ============================================================================
-#
-# WARNING: Do NOT use manual podman build + push for K8s deployments.
-# Kind nodes cache images by tag at the containerd level. Pushing a new
-# image with the same tag doesn't update pods - they continue using the
-# cached version. Skaffold solves this with unique git-commit-based tags.
-#
-# For K8s: Use `just run` or `just dev` (skaffold)
-# These targets exist only for local testing outside K8s.
-
-# ============================================================================
-# Skaffold Development (REQUIRED workflow for K8s)
-# ============================================================================
-#
-# ALWAYS use skaffold for K8s deployments:
-#   just dev    - watch mode, rebuilds on file change
-#   just run    - build and deploy once
-#
-# Skaffold uses git-commit-based tags (dev-<sha>) ensuring unique tags per
-# build. This avoids Kind's containerd image cache issues with reused tags.
-#
-# With lefthook: commits automatically trigger deployment (see lefthook.yml)
-
-# One-time setup: configure Podman and Skaffold for local registry
-setup:
-    @echo "Configuring Podman for local registry..."
-    @uv run "{{TOP}}/scripts/configure_podman_registry.py"
-    @echo "Configuring Skaffold for Kind..."
-    @uv run "{{TOP}}/scripts/configure_skaffold.py"
-    uv run "{{TOP}}/scripts/kind-with-registry.py"
-
-# Start skaffold dev loop (watches files, rebuilds on change)
-# Builds all images (framework + business) via 'requires' directive
-dev: setup
-    cd "{{TOP}}" && just secrets-init
-    @echo "=== Skaffold Dev Mode ==="
-    @echo "Building images with git-commit tags (dev-<sha>)"
-    @echo "Only changed images will be rebuilt"
-    @echo ""
-    skaffold dev
-
-# Build and deploy once
-run: setup
-    cd "{{TOP}}" && just secrets-init
-    @echo "=== Skaffold Deploy ==="
-    @echo "Building images with git-commit tags"
-    skaffold run
-
-# Build images only (no deploy)
-build-images:
-    skaffold build
-
-# Delete deployed resources
-delete:
-    skaffold delete
-
-# ============================================================================
-# Embedded Mode (Local Development with UDS)
-# Runs all services via angzarr-standalone orchestrator
-# ============================================================================
-
-# Build angzarr binaries for standalone mode
-build-angzarr:
-    cd {{TOP}} && cargo build --features sqlite --bin angzarr-aggregate --bin angzarr-saga --bin angzarr-projector --bin angzarr-gateway --bin angzarr-standalone
-
-# Clean up stale UDS sockets
-clean-sockets:
-    mkdir -p /tmp/angzarr
-    rm -f /tmp/angzarr/*.sock 2>/dev/null || true
-
-# Run a single aggregate service with its sidecar using UDS
-run-aggregate DOMAIN: build-angzarr build
-    #!/usr/bin/env bash
-    set -e
-    mkdir -p /tmp/angzarr
-    export TRANSPORT_TYPE=uds
-    export UDS_BASE_PATH=/tmp/angzarr
-    export ANGZARR_CONFIG=config/standalone.yaml
-    export SERVICE_NAME=business
-    export DOMAIN={{DOMAIN}}
-    
-    # Start client logic in background
-    # It will listen on $UDS_BASE_PATH/business-$DOMAIN.sock
-    ./target/debug/{{DOMAIN}}-server &
-    BUSINESS_PID=$!
-    
-    # Start angzarr sidecar
-    # It will listen on $UDS_BASE_PATH/aggregate-$DOMAIN.sock
-    # And connect to $UDS_BASE_PATH/business-$DOMAIN.sock
-    # Use ANGZARR_DISCOVERY=static to avoid K8s dependencies
-    export ANGZARR_DISCOVERY=static
-    {{TOP}}/target/debug/angzarr-aggregate --config config/standalone.yaml \
-        || kill $BUSINESS_PID
-    
-    kill $BUSINESS_PID 2>/dev/null || true
-
-# Run a single saga service with its sidecar using UDS
-run-saga DOMAIN: build-angzarr build
-    #!/usr/bin/env bash
-    set -e
-    mkdir -p /tmp/angzarr
-    export TRANSPORT_TYPE=uds
-    export UDS_BASE_PATH=/tmp/angzarr
-    export ANGZARR_CONFIG=config/standalone.yaml
-    export SERVICE_NAME=saga
-    export DOMAIN={{DOMAIN}}
-    
-    # Start saga logic in background
-    # It will listen on $UDS_BASE_PATH/saga-$DOMAIN.sock
-    ./target/debug/sag-{{DOMAIN}}-server &
-    SAGA_PID=$!
-    
-    # Start angzarr sidecar
-    # It will connect to $UDS_BASE_PATH/saga-$DOMAIN.sock
-    # For standalone, we often need static endpoints for two-phase routing
-    export ANGZARR_STATIC_ENDPOINTS="order=/tmp/angzarr/aggregate-order.sock,inventory=/tmp/angzarr/aggregate-inventory.sock,fulfillment=/tmp/angzarr/aggregate-fulfillment.sock"
-    {{TOP}}/target/debug/angzarr-saga --config config/standalone.yaml \
-        || kill $SAGA_PID
-    
-    kill $SAGA_PID 2>/dev/null || true
-
-# Run a single projector service with its sidecar using UDS
-run-projector NAME DOMAIN: build-angzarr build
-    #!/usr/bin/env bash
-    set -e
-    mkdir -p /tmp/angzarr
-    export TRANSPORT_TYPE=uds
-    export UDS_BASE_PATH=/tmp/angzarr
-    export ANGZARR_CONFIG=config/standalone.yaml
-    export SERVICE_NAME=projector-{{NAME}}
-    export DOMAIN={{DOMAIN}}
-    
-    # Start projector logic in background
-    ./target/debug/prj-{{NAME}}-server &
-    PROJ_PID=$!
-    
-    # Start angzarr sidecar
-    {{TOP}}/target/debug/angzarr-projector --config config/standalone.yaml \
-        || kill $PROJ_PID
-    
-    kill $PROJ_PID 2>/dev/null || true
-
-# Run a single process manager service with its sidecar using UDS
-run-pm DOMAIN: build-angzarr build
-    #!/usr/bin/env bash
-    set -e
-    mkdir -p /tmp/angzarr
-    export TRANSPORT_TYPE=uds
-    export UDS_BASE_PATH=/tmp/angzarr
-    export ANGZARR_CONFIG=config/standalone.yaml
-    export SERVICE_NAME=process-manager
-    export DOMAIN={{DOMAIN}}
-    
-    # Start PM logic in background
-    ./target/debug/pmg-{{DOMAIN}}-server &
-    PM_PID=$!
-    
-    # Start angzarr sidecar
-    export ANGZARR_STATIC_ENDPOINTS="order=/tmp/angzarr/aggregate-order.sock,inventory=/tmp/angzarr/aggregate-inventory.sock,fulfillment=/tmp/angzarr/aggregate-fulfillment.sock"
-    {{TOP}}/target/debug/angzarr-process-manager --config config/standalone.yaml \
-        || kill $PM_PID
-    
-    kill $PM_PID 2>/dev/null || true
-
-# Run all services in standalone mode (single command)
-embedded: build-angzarr clean-sockets build
-    cd {{TOP}}/examples/rust && ANGZARR_CONFIG=config/standalone.yaml {{TOP}}/target/debug/angzarr-standalone
-
-# Kill any stale embedded processes
-kill-embedded:
-    #!/usr/bin/env bash
-    # Use pgrep to find exact binary matches, then kill
-    for proc in angzarr-standalone angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
-        pids=$(pgrep -x "$proc" 2>/dev/null || true)
-        if [ -n "$pids" ]; then
-            echo "$pids" | xargs kill -9 2>/dev/null || true
-        fi
-    done
-    sleep 1
-
-# Run acceptance tests against embedded mode
-# Starts embedded runtime in background, runs tests, cleans up
-acceptance-embedded: build-angzarr kill-embedded clean-sockets build
-    #!/usr/bin/env bash
-    set -e
-    cd "{{TOP}}/examples/rust"
-
-    # Cleanup function
-    cleanup() {
-        echo "Cleaning up..."
-        for proc in angzarr-standalone angzarr-aggregate angzarr-saga angzarr-projector angzarr-gateway; do
-            pids=$(pgrep -x "$proc" 2>/dev/null || true)
-            if [ -n "$pids" ]; then
-                echo "$pids" | xargs kill -9 2>/dev/null || true
-            fi
-        done
-        rm -f /tmp/angzarr/*.sock 2>/dev/null || true
-    }
-    trap cleanup EXIT
-
-    # Start standalone runtime in background
-    echo "Starting standalone runtime..."
-    ANGZARR_CONFIG=config/standalone.yaml "{{TOP}}/target/debug/angzarr-standalone" &
-    EMBEDDED_PID=$!
-
-    # Wait for services to be ready (gateway on port 9084)
-    # Use TCP connection check (no reflection needed)
-    echo "Waiting for gateway to be ready..."
-    for i in {1..60}; do
-        if nc -z localhost 9084 2>/dev/null; then
-            echo "Gateway ready!"
-            break
-        fi
-        if [ $i -eq 60 ]; then
-            echo "Timeout waiting for gateway"
-            exit 1
-        fi
-        sleep 1
-    done
-
-    # Run acceptance tests
-    echo "Running acceptance tests..."
-    ANGZARR_PORT=9084 cargo test --workspace --test acceptance || TEST_RESULT=$?
-
-    exit ${TEST_RESULT:-0}
-
-
+    rm -rf data/

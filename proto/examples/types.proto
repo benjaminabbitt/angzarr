@@ -1,0 +1,118 @@
+syntax = "proto3";
+package examples;
+
+// =============================================================================
+// Common Types - Shared value objects for poker domains
+// =============================================================================
+
+// Card representation
+message Card {
+  Suit suit = 1;
+  Rank rank = 2;
+}
+
+enum Suit {
+  SUIT_UNSPECIFIED = 0;
+  CLUBS = 1;
+  DIAMONDS = 2;
+  HEARTS = 3;
+  SPADES = 4;
+}
+
+enum Rank {
+  RANK_UNSPECIFIED = 0;
+  TWO = 2;
+  THREE = 3;
+  FOUR = 4;
+  FIVE = 5;
+  SIX = 6;
+  SEVEN = 7;
+  EIGHT = 8;
+  NINE = 9;
+  TEN = 10;
+  JACK = 11;
+  QUEEN = 12;
+  KING = 13;
+  ACE = 14;
+}
+
+// Hand ranking result
+message HandRanking {
+  HandRankType rank_type = 1;
+  repeated Rank kickers = 2;  // For tie-breaking
+  int32 score = 3;            // Numeric score for comparison
+}
+
+enum HandRankType {
+  HAND_RANK_UNSPECIFIED = 0;
+  HIGH_CARD = 1;
+  PAIR = 2;
+  TWO_PAIR = 3;
+  THREE_OF_A_KIND = 4;
+  STRAIGHT = 5;
+  FLUSH = 6;
+  FULL_HOUSE = 7;
+  FOUR_OF_A_KIND = 8;
+  STRAIGHT_FLUSH = 9;
+  ROYAL_FLUSH = 10;
+}
+
+// Game variant configuration
+enum GameVariant {
+  GAME_VARIANT_UNSPECIFIED = 0;
+  TEXAS_HOLDEM = 1;
+  OMAHA = 2;
+  FIVE_CARD_DRAW = 3;
+  SEVEN_CARD_STUD = 4;
+}
+
+// Betting round phase
+enum BettingPhase {
+  BETTING_PHASE_UNSPECIFIED = 0;
+  PREFLOP = 1;
+  FLOP = 2;
+  TURN = 3;
+  RIVER = 4;
+  DRAW = 5;        // For draw games
+  SHOWDOWN = 6;
+}
+
+// Player action type
+enum ActionType {
+  ACTION_UNSPECIFIED = 0;
+  FOLD = 1;
+  CHECK = 2;
+  CALL = 3;
+  BET = 4;
+  RAISE = 5;
+  ALL_IN = 6;
+}
+
+// Player type - abstraction for human vs AI
+enum PlayerType {
+  PLAYER_TYPE_UNSPECIFIED = 0;
+  HUMAN = 1;
+  AI = 2;
+}
+
+// Currency amount (in smallest unit, e.g., cents)
+message Currency {
+  int64 amount = 1;
+  string currency_code = 2;  // "USD", "EUR", "CHIPS"
+}
+
+// Position at table
+message Seat {
+  int32 position = 1;        // 0-9 for 10-max table
+  bytes player_root = 2;     // Player aggregate root
+  Currency stack = 3;        // Current stack at table
+  bool is_active = 4;        // Still in current hand
+  bool is_sitting_out = 5;   // Temporarily away
+}
+
+// Pot structure (for side pots)
+message Pot {
+  int64 amount = 1;
+  repeated bytes eligible_players = 2;  // Player roots eligible for this pot
+  string pot_type = 3;                  // "main" or "side_N"
+}

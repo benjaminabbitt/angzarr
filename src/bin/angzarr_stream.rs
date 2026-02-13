@@ -36,7 +36,7 @@ use angzarr::proto::event_stream_service_server::EventStreamServiceServer;
 use angzarr::proto::projector_coordinator_service_server::{
     ProjectorCoordinatorService, ProjectorCoordinatorServiceServer,
 };
-use angzarr::proto::{EventBook, Projection, SyncEventBook};
+use angzarr::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
 use angzarr::transport::{grpc_trace_layer, serve_with_transport};
 use angzarr::utils::bootstrap::init_tracing;
 
@@ -80,7 +80,7 @@ impl angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorS
     /// Speculative handle - stream projector doesn't produce projections.
     async fn handle_speculative(
         &self,
-        _request: Request<EventBook>,
+        _request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
         // Stream projector doesn't produce projection output
         // Speculative execution is a no-op for streaming

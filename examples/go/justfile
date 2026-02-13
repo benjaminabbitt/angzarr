@@ -1,110 +1,37 @@
-# Go examples for angzarr e-commerce domain
-# Services: customer, product, inventory, order, cart, fulfillment
-# Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
-#
-# Deployment modes (use from examples/ directory):
-#   just examples standalone run go     # Run in standalone mode
-#   just examples standalone test go    # Test in standalone mode
-#   just examples k8s deploy go       # Deploy to K8s
-#   just examples k8s test go         # Test in K8s
+# Go poker examples
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 
-# Show available commands
+# Default: list available commands
 default:
     @just --list
 
-# ============================================================================
-# Build / Test / Clean
-# ============================================================================
-
-# Build all Go services
+# Build all Go aggregates
 build:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        echo "Building $dir..."; \
-        (cd "{{TOP}}/examples/go/$dir" && go build .) || true; \
-    done
+    cd "{{TOP}}/examples/go" && go build ./...
 
-# Run unit tests for all services
+# Run poker in standalone mode
+run: build
+    mkdir -p "{{TOP}}/examples/go/data"
+    cd "{{TOP}}" && cargo run \
+        --bin angzarr-standalone \
+        --features standalone,sqlite \
+        -- --config examples/go/standalone.yaml
+
+# Run tests
 test:
-    for dir in customer product inventory order cart fulfillment; do \
-        echo "Testing $dir..."; \
-        (cd "{{TOP}}/examples/go/$dir" && go test -v ./...) || true; \
-    done
+    cd "{{TOP}}/examples/go" && go test -v ./...
 
-# Clean all Go examples
-clean:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        (cd "{{TOP}}/examples/go/$dir" && go clean) 2>/dev/null || true; \
-    done
-
-# Format all Go code
+# Format code
 fmt:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        (cd "{{TOP}}/examples/go/$dir" && go fmt ./...) 2>/dev/null || true; \
-    done
+    cd "{{TOP}}/examples/go" && gofmt -w .
 
-# Lint all Go code
+# Lint code
 lint:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        (cd "{{TOP}}/examples/go/$dir" && go vet ./...) 2>/dev/null || true; \
-    done
+    cd "{{TOP}}/examples/go" && golangci-lint run
 
-# Lint Helm chart
-helm-lint:
-    helm lint helm
-
-# ============================================================================
-# Container Images - DEPRECATED FOR K8S
-# ============================================================================
-#
-# WARNING: Do NOT use manual podman build + push for K8s deployments.
-# Kind nodes cache images by tag at the containerd level. Pushing a new
-# image with the same tag doesn't update pods - they continue using the
-# cached version. Skaffold solves this with unique git-commit-based tags.
-#
-# For K8s: Use `just deploy` or `just dev` (delegates to skaffold via k8s.justfile)
-# The container-build target exists only for local testing outside K8s.
-
-# Build dev container (for local testing only, NOT for K8s)
-container-build:
-    cd {{TOP}} && podman build -t angzarr-dev-go -f examples/go/Containerfile.dev .
-
-# Run tests in container (for local testing only, NOT for K8s)
-container-test:
-    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/go angzarr-dev-go just test
-
-# ============================================================================
-# Standalone Mode Shortcuts (delegates to examples/standalone.justfile)
-# ============================================================================
-
-# Run in standalone mode
-standalone:
-    cd {{TOP}}/examples && just standalone run go
-
-# Run acceptance tests in standalone mode
-acceptance-standalone:
-    cd {{TOP}}/examples && just standalone test go
-
-# ============================================================================
-# K8s Mode Shortcuts (delegates to examples/k8s.justfile)
-# ============================================================================
-
-# Deploy to K8s
-deploy:
-    cd {{TOP}}/examples && just k8s deploy go
-
-# Run acceptance tests in K8s
-acceptance-k8s:
-    cd {{TOP}}/examples && just k8s test go
-
-# Start dev mode with file watching
-dev:
-    cd {{TOP}}/examples && just k8s dev go
-
-# Delete K8s deployment
-delete:
-    cd {{TOP}}/examples && just k8s delete go
-
+# Clean build artifacts
+clean:
+    rm -rf "{{TOP}}/examples/go/data"

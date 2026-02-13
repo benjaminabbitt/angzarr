@@ -10,7 +10,6 @@ from .types_pb2 import (
     Snapshot,
     CommandPage,
     CommandBook,
-    CommandResponse,
     SyncCommandBook,
     SyncEventBook,
     Query,
@@ -19,20 +18,30 @@ from .types_pb2 import (
     TemporalQuery,
     Projection,
     SyncMode,
-    DryRunRequest,
-    SagaResponse,
+    GetDescriptorRequest,
+    ComponentDescriptor,
+    Target,
+    ContextualCommand,
 )
 from .aggregate_pb2 import (
-    SpeculateProjectorRequest,
+    CommandResponse,
+    SpeculateAggregateRequest,
+    BusinessResponse,
+)
+from .aggregate_pb2_grpc import AggregateCoordinatorServiceStub
+from .saga_pb2 import (
+    SagaResponse,
     SpeculateSagaRequest,
-    SpeculatePmRequest,
+    SagaExecuteRequest,
+    SagaPrepareRequest,
+    SagaPrepareResponse,
 )
-from .aggregate_pb2_grpc import (
-    AggregateCoordinatorServiceStub,
-    SpeculativeServiceStub,
-)
+from .saga_pb2_grpc import SagaCoordinatorServiceStub
+from .projector_pb2 import SpeculateProjectorRequest
+from .projector_pb2_grpc import ProjectorCoordinatorServiceStub
+from .process_manager_pb2 import ProcessManagerHandleResponse, SpeculatePmRequest
+from .process_manager_pb2_grpc import ProcessManagerCoordinatorServiceStub
 from .query_pb2_grpc import EventQueryServiceStub
-from .process_manager_pb2 import ProcessManagerHandleResponse
 
 __all__ = [
     # Types
@@ -54,14 +63,16 @@ __all__ = [
     "TemporalQuery",
     "Projection",
     "SyncMode",
-    # Aggregate
+    # Speculative
+    "SpeculateAggregateRequest",
     "SpeculateProjectorRequest",
     "SpeculateSagaRequest",
     "SpeculatePmRequest",
-    "DryRunRequest",
     # Stubs
     "AggregateCoordinatorServiceStub",
-    "SpeculativeServiceStub",
+    "SagaCoordinatorServiceStub",
+    "ProjectorCoordinatorServiceStub",
+    "ProcessManagerCoordinatorServiceStub",
     "EventQueryServiceStub",
     # Responses
     "SagaResponse",

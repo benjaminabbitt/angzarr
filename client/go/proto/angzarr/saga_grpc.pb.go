@@ -209,6 +209,7 @@ var SagaService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	SagaCoordinatorService_Execute_FullMethodName            = "/angzarr.SagaCoordinatorService/Execute"
 	SagaCoordinatorService_ExecuteSpeculative_FullMethodName = "/angzarr.SagaCoordinatorService/ExecuteSpeculative"
 )
 
@@ -216,10 +217,12 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// SagaCoordinatorService: orchestrates saga execution across domains
+// SagaCoordinatorService: orchestrates saga execution
 type SagaCoordinatorServiceClient interface {
-	// Speculative execution - returns commands without executing them
-	ExecuteSpeculative(ctx context.Context, in *SagaExecuteRequest, opts ...grpc.CallOption) (*SagaResponse, error)
+	// Async processing - fire and forget
+	Execute(ctx context.Context, in *SagaExecuteRequest, opts ...grpc.CallOption) (*SagaResponse, error)
+	// Speculative execution - returns commands without side effects
+	ExecuteSpeculative(ctx context.Context, in *SpeculateSagaRequest, opts ...grpc.CallOption) (*SagaResponse, error)
 }
 
 type sagaCoordinatorServiceClient struct {
@@ -230,7 +233,17 @@ func NewSagaCoordinatorServiceClient(cc grpc.ClientConnInterface) SagaCoordinato
 	return &sagaCoordinatorServiceClient{cc}
 }
 
-func (c *sagaCoordinatorServiceClient) ExecuteSpeculative(ctx context.Context, in *SagaExecuteRequest, opts ...grpc.CallOption) (*SagaResponse, error) {
+func (c *sagaCoordinatorServiceClient) Execute(ctx context.Context, in *SagaExecuteRequest, opts ...grpc.CallOption) (*SagaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SagaResponse)
+	err := c.cc.Invoke(ctx, SagaCoordinatorService_Execute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sagaCoordinatorServiceClient) ExecuteSpeculative(ctx context.Context, in *SpeculateSagaRequest, opts ...grpc.CallOption) (*SagaResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SagaResponse)
 	err := c.cc.Invoke(ctx, SagaCoordinatorService_ExecuteSpeculative_FullMethodName, in, out, cOpts...)
@@ -244,10 +257,12 @@ func (c *sagaCoordinatorServiceClient) ExecuteSpeculative(ctx context.Context, i
 // All implementations must embed UnimplementedSagaCoordinatorServiceServer
 // for forward compatibility.
 //
-// SagaCoordinatorService: orchestrates saga execution across domains
+// SagaCoordinatorService: orchestrates saga execution
 type SagaCoordinatorServiceServer interface {
-	// Speculative execution - returns commands without executing them
-	ExecuteSpeculative(context.Context, *SagaExecuteRequest) (*SagaResponse, error)
+	// Async processing - fire and forget
+	Execute(context.Context, *SagaExecuteRequest) (*SagaResponse, error)
+	// Speculative execution - returns commands without side effects
+	ExecuteSpeculative(context.Context, *SpeculateSagaRequest) (*SagaResponse, error)
 	mustEmbedUnimplementedSagaCoordinatorServiceServer()
 }
 
@@ -258,7 +273,10 @@ type SagaCoordinatorServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSagaCoordinatorServiceServer struct{}
 
-func (UnimplementedSagaCoordinatorServiceServer) ExecuteSpeculative(context.Context, *SagaExecuteRequest) (*SagaResponse, error) {
+func (UnimplementedSagaCoordinatorServiceServer) Execute(context.Context, *SagaExecuteRequest) (*SagaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Execute not implemented")
+}
+func (UnimplementedSagaCoordinatorServiceServer) ExecuteSpeculative(context.Context, *SpeculateSagaRequest) (*SagaResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExecuteSpeculative not implemented")
 }
 func (UnimplementedSagaCoordinatorServiceServer) mustEmbedUnimplementedSagaCoordinatorServiceServer() {
@@ -283,8 +301,26 @@ func RegisterSagaCoordinatorServiceServer(s grpc.ServiceRegistrar, srv SagaCoord
 	s.RegisterService(&SagaCoordinatorService_ServiceDesc, srv)
 }
 
-func _SagaCoordinatorService_ExecuteSpeculative_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SagaCoordinatorService_Execute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SagaExecuteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SagaCoordinatorServiceServer).Execute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SagaCoordinatorService_Execute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SagaCoordinatorServiceServer).Execute(ctx, req.(*SagaExecuteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SagaCoordinatorService_ExecuteSpeculative_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SpeculateSagaRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -296,7 +332,7 @@ func _SagaCoordinatorService_ExecuteSpeculative_Handler(srv interface{}, ctx con
 		FullMethod: SagaCoordinatorService_ExecuteSpeculative_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SagaCoordinatorServiceServer).ExecuteSpeculative(ctx, req.(*SagaExecuteRequest))
+		return srv.(SagaCoordinatorServiceServer).ExecuteSpeculative(ctx, req.(*SpeculateSagaRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -308,6 +344,10 @@ var SagaCoordinatorService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "angzarr.SagaCoordinatorService",
 	HandlerType: (*SagaCoordinatorServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Execute",
+			Handler:    _SagaCoordinatorService_Execute_Handler,
+		},
 		{
 			MethodName: "ExecuteSpeculative",
 			Handler:    _SagaCoordinatorService_ExecuteSpeculative_Handler,

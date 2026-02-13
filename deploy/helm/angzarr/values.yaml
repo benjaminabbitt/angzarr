@@ -29,6 +29,10 @@ images:
     repository: angzarr-stream
     pullPolicy: IfNotPresent
     tag: "latest"
+  upcaster:
+    repository: angzarr-upcaster
+    pullPolicy: IfNotPresent
+    tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -246,6 +250,17 @@ storage:
   eventstoredb:
     # EventStoreDB connection string
     connectionString: "esdb://eventstore:2113?tls=false"
+
+# Upcaster configuration
+# Upcaster transforms old event versions to current versions during replay.
+# By default, the client binary implements UpcasterService alongside AggregateService.
+# The aggregate coordinator calls the client's UpcasterService on the same address.
+upcaster:
+  # Enable upcaster transformation during event replay
+  enabled: false
+  # Optional: separate address for upcaster service (if not on same server as client logic)
+  # If not set, uses the same address as client logic (default and recommended)
+  # address: "localhost:50053"
 
 # Messaging configuration
 messaging:

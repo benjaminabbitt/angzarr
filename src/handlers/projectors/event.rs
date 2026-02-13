@@ -11,7 +11,7 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
 use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
-use crate::proto::{EventBook, Projection, SyncEventBook};
+use crate::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
 
 // Database backend selection via features
 #[cfg(feature = "postgres")]
@@ -392,11 +392,12 @@ impl ProjectorCoordinatorService for EventService {
 
     async fn handle_speculative(
         &self,
-        request: Request<EventBook>,
+        request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
         // Event store projector doesn't produce a read model projection
-        let book = request.into_inner();
-        self.handle_book(&book).await?;
+        if let Some(book) = request.into_inner().events {
+            self.handle_book(&book).await?;
+        }
         Ok(Response::new(Projection::default()))
     }
 }
@@ -427,7 +428,7 @@ impl ProjectorCoordinatorService for EventServiceHandle {
 
     async fn handle_speculative(
         &self,
-        request: Request<EventBook>,
+        request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
         ProjectorCoordinatorService::handle_speculative(&*self.0, request).await
     }

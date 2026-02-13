@@ -13,9 +13,9 @@ use uuid::Uuid;
 
 use crate::client_traits::{self, ClientError};
 use crate::proto::{
-    CommandBook, CommandPage, CommandResponse, Cover, DryRunRequest, Edition, EventBook,
-    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculatePmRequest,
-    SpeculateProjectorRequest, SpeculateSagaRequest, Uuid as ProtoUuid,
+    CommandBook, CommandPage, CommandResponse, Cover, Edition, EventBook,
+    ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculateAggregateRequest,
+    SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest, Uuid as ProtoUuid,
 };
 use crate::repository::EventBookRepository;
 
@@ -76,14 +76,14 @@ impl CommandClient {
     /// persisted to the store, no events are published to the bus, and no sagas
     /// or projectors are triggered. Use this to validate business rules or
     /// explore "what-if" scenarios without side effects.
-    pub async fn dry_run(
+    pub async fn speculative(
         &self,
         command: CommandBook,
         as_of_sequence: Option<u32>,
         as_of_timestamp: Option<&str>,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
         self.router
-            .dry_run(command, as_of_sequence, as_of_timestamp)
+            .speculative(command, as_of_sequence, as_of_timestamp)
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
@@ -126,7 +126,7 @@ impl StandaloneQueryClient {
 
 #[async_trait]
 impl client_traits::QueryClient for StandaloneQueryClient {
-    async fn get_event_book(&self, query: Query) -> client_traits::Result<EventBook> {
+    async fn get_events(&self, query: Query) -> client_traits::Result<EventBook> {
         let bare_domain = query
             .cover
             .as_ref()
@@ -156,38 +156,6 @@ impl client_traits::QueryClient for StandaloneQueryClient {
             .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
 
         Ok(book)
-    }
-
-    async fn get_events(&self, query: Query) -> client_traits::Result<Vec<EventBook>> {
-        let bare_domain = query
-            .cover
-            .as_ref()
-            .map(|c| c.domain.as_str())
-            .unwrap_or("");
-
-        let store = self.domain_stores.get(bare_domain).ok_or_else(|| {
-            ClientError::from(Status::not_found(format!("Unknown domain: {bare_domain}")))
-        })?;
-
-        let repo =
-            EventBookRepository::new(store.event_store.clone(), store.snapshot_store.clone());
-
-        let root_uuid_bytes = query
-            .cover
-            .as_ref()
-            .and_then(|c| c.root.as_ref())
-            .map(|r| r.value.as_slice())
-            .unwrap_or(&[]);
-
-        let root_uuid = Uuid::from_slice(root_uuid_bytes)
-            .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
-
-        let book = repo
-            .get(bare_domain, DEFAULT_EDITION, root_uuid)
-            .await
-            .map_err(|e| ClientError::from(Status::internal(e.to_string())))?;
-
-        Ok(vec![book])
     }
 }
 
@@ -252,14 +220,14 @@ impl SpeculativeClient {
     /// Speculatively execute a command (dry-run) at a historical point.
     ///
     /// Returns the events that *would* be produced without persisting them.
-    pub async fn dry_run_command(
+    pub async fn speculative_command(
         &self,
         command: CommandBook,
         as_of_sequence: Option<u32>,
         as_of_timestamp: Option<&str>,
     ) -> Result<CommandResponse, Status> {
         self.router
-            .dry_run(command, as_of_sequence, as_of_timestamp)
+            .speculative(command, as_of_sequence, as_of_timestamp)
             .await
     }
 
@@ -303,28 +271,18 @@ impl SpeculativeClient {
 
 #[async_trait]
 impl client_traits::SpeculativeClient for SpeculativeClient {
-    async fn dry_run(&self, request: DryRunRequest) -> client_traits::Result<CommandResponse> {
+    async fn aggregate(
+        &self,
+        request: SpeculateAggregateRequest,
+    ) -> client_traits::Result<CommandResponse> {
         let command = request.command.ok_or_else(|| {
-            ClientError::InvalidArgument("DryRunRequest missing command".to_string())
+            ClientError::InvalidArgument("SpeculateAggregateRequest missing command".to_string())
         })?;
 
-        let (as_of_sequence, as_of_timestamp) = match request.point_in_time {
-            Some(temporal) => match temporal.point_in_time {
-                Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
-                    (Some(seq), None)
-                }
-                Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
-                    let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(&ts)
-                        .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
-                    (None, Some(rfc3339))
-                }
-                None => (None, None),
-            },
-            None => (None, None),
-        };
+        let (as_of_sequence, as_of_timestamp) = extract_temporal_params(&request.point_in_time)?;
 
         self.router
-            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
+            .speculative(command, as_of_sequence, as_of_timestamp.as_deref())
             .await
             .map_err(ClientError::from)
     }
@@ -336,28 +294,55 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
         let events = request.events.ok_or_else(|| {
             ClientError::InvalidArgument("SpeculateProjectorRequest missing events".to_string())
         })?;
+
+        // TODO: Use point_in_time for temporal projection queries
+        // let (_as_of_sequence, _as_of_timestamp) =
+        //     extract_temporal_params(&request.point_in_time)?;
+
+        // In standalone mode, use first registered projector for the domain
+        let domain = events
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+
         self.executor
-            .speculate_projector(&request.projector_name, &events)
+            .speculate_projector_by_domain(domain, &events)
             .await
             .map_err(ClientError::from)
     }
 
     async fn saga(&self, request: SpeculateSagaRequest) -> client_traits::Result<SagaResponse> {
-        let source = request.source.ok_or_else(|| {
-            ClientError::InvalidArgument("SpeculateSagaRequest missing source".to_string())
+        let execute_request = request.request.ok_or_else(|| {
+            ClientError::InvalidArgument("SpeculateSagaRequest missing request".to_string())
         })?;
+
+        let source = execute_request.source.ok_or_else(|| {
+            ClientError::InvalidArgument("SagaExecuteRequest missing source".to_string())
+        })?;
+
+        // TODO: Use point_in_time for temporal state queries
+        // let (_as_of_sequence, _as_of_timestamp) =
+        //     extract_temporal_params(&request.point_in_time)?;
 
         // Convert destinations to domain specs (explicit state)
         let mut domain_specs = HashMap::new();
-        for dest in request.destinations {
+        for dest in execute_request.destinations {
             if let Some(cover) = &dest.cover {
                 domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(dest));
             }
         }
 
+        // Route to saga based on source domain
+        let source_domain = source
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+
         let commands = self
             .executor
-            .speculate_saga(&request.saga_name, &source, &domain_specs)
+            .speculate_saga_by_source_domain(source_domain, &source, &domain_specs)
             .await
             .map_err(ClientError::from)?;
 
@@ -371,26 +356,41 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
         &self,
         request: SpeculatePmRequest,
     ) -> client_traits::Result<ProcessManagerHandleResponse> {
-        let trigger = request.trigger.ok_or_else(|| {
-            ClientError::InvalidArgument("SpeculatePmRequest missing trigger".to_string())
+        let handle_request = request.request.ok_or_else(|| {
+            ClientError::InvalidArgument("SpeculatePmRequest missing request".to_string())
         })?;
+
+        let trigger = handle_request.trigger.ok_or_else(|| {
+            ClientError::InvalidArgument("ProcessManagerHandleRequest missing trigger".to_string())
+        })?;
+
+        // TODO: Use point_in_time for temporal state queries
+        // let (_as_of_sequence, _as_of_timestamp) =
+        //     extract_temporal_params(&request.point_in_time)?;
 
         // Convert destinations and process_state to domain specs
         let mut domain_specs = HashMap::new();
-        if let Some(ps) = request.process_state {
+        if let Some(ps) = handle_request.process_state {
             if let Some(cover) = &ps.cover {
                 domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(ps));
             }
         }
-        for dest in request.destinations {
+        for dest in handle_request.destinations {
             if let Some(cover) = &dest.cover {
                 domain_specs.insert(cover.domain.clone(), DomainStateSpec::Explicit(dest));
             }
         }
 
+        // Route to PM based on trigger domain
+        let trigger_domain = trigger
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+
         let result = self
             .executor
-            .speculate_pm(&request.pm_name, &trigger, &domain_specs)
+            .speculate_pm_by_trigger_domain(trigger_domain, &trigger, &domain_specs)
             .await
             .map_err(ClientError::from)?;
 
@@ -398,6 +398,26 @@ impl client_traits::SpeculativeClient for SpeculativeClient {
             commands: result.commands,
             process_events: result.process_events,
         })
+    }
+}
+
+/// Extract temporal query parameters (sequence or timestamp) from a TemporalQuery.
+fn extract_temporal_params(
+    point_in_time: &Option<crate::proto::TemporalQuery>,
+) -> client_traits::Result<(Option<u32>, Option<String>)> {
+    match point_in_time {
+        Some(temporal) => match &temporal.point_in_time {
+            Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
+                Ok((Some(*seq), None))
+            }
+            Some(crate::proto::temporal_query::PointInTime::AsOfTime(ts)) => {
+                let rfc3339 = crate::storage::helpers::timestamp_to_rfc3339(ts)
+                    .map_err(|e| ClientError::from(Status::invalid_argument(e.to_string())))?;
+                Ok((None, Some(rfc3339)))
+            }
+            None => Ok((None, None)),
+        },
+        None => Ok((None, None)),
     }
 }
 
@@ -411,8 +431,8 @@ pub struct CommandBuilder {
     correlation_id: Option<String>,
     sequence: Option<u32>,
     edition: Option<String>,
-    dry_run_sequence: Option<u32>,
-    dry_run_timestamp: Option<String>,
+    speculative_sequence: Option<u32>,
+    speculative_timestamp: Option<String>,
 }
 
 impl CommandBuilder {
@@ -426,8 +446,8 @@ impl CommandBuilder {
             correlation_id: None,
             sequence: None,
             edition: None,
-            dry_run_sequence: None,
-            dry_run_timestamp: None,
+            speculative_sequence: None,
+            speculative_timestamp: None,
         }
     }
 
@@ -476,7 +496,7 @@ impl CommandBuilder {
     ///
     /// The aggregate state will be reconstructed from events `0..=sequence`.
     pub fn as_of_sequence(mut self, sequence: u32) -> Self {
-        self.dry_run_sequence = Some(sequence);
+        self.speculative_sequence = Some(sequence);
         self
     }
 
@@ -485,7 +505,7 @@ impl CommandBuilder {
     /// The aggregate state will be reconstructed from events created at or
     /// before this timestamp (RFC 3339 format).
     pub fn as_of_timestamp(mut self, timestamp: impl Into<String>) -> Self {
-        self.dry_run_timestamp = Some(timestamp.into());
+        self.speculative_timestamp = Some(timestamp.into());
         self
     }
 
@@ -535,16 +555,16 @@ impl CommandBuilder {
     /// *would* be produced. This is purely speculative: no events are persisted,
     /// published, or routed to sagas/projectors. Use this to validate business
     /// rules or explore "what-if" scenarios without side effects.
-    pub async fn dry_run(
+    pub async fn speculative(
         self,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
         let router = self.router.clone();
-        let as_of_sequence = self.dry_run_sequence;
-        let as_of_timestamp = self.dry_run_timestamp.clone();
+        let as_of_sequence = self.speculative_sequence;
+        let as_of_timestamp = self.speculative_timestamp.clone();
         let command = self.build();
 
         router
-            .dry_run(command, as_of_sequence, as_of_timestamp.as_deref())
+            .speculative(command, as_of_sequence, as_of_timestamp.as_deref())
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }

@@ -1,4 +1,0 @@
-PROTO_DIR := "angzarr"
-UNIT_TARGET := "--ignore=features/ --ignore=acceptance/"
-
-import "../service.justfile"

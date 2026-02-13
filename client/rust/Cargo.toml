@@ -17,6 +17,7 @@ prost-types = "0.13"
 
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 async-trait = "0.1"
 tower = "0.5"
 hyper-util = "0.1"

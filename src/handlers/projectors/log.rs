@@ -11,7 +11,7 @@ use tonic::{Request, Response, Status};
 use tracing::info;
 
 use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
-use crate::proto::{EventBook, Projection, SyncEventBook};
+use crate::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
 
 // ANSI color codes for terminal output
 const BLUE: &str = "\x1b[94m";
@@ -176,10 +176,11 @@ impl ProjectorCoordinatorService for LogService {
 
     async fn handle_speculative(
         &self,
-        request: Request<EventBook>,
+        request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
-        let book = request.into_inner();
-        self.handle(&book);
+        if let Some(book) = request.into_inner().events {
+            self.handle(&book);
+        }
         Ok(Response::new(Projection::default()))
     }
 }
@@ -210,7 +211,7 @@ impl ProjectorCoordinatorService for LogServiceHandle {
 
     async fn handle_speculative(
         &self,
-        request: Request<EventBook>,
+        request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
         ProjectorCoordinatorService::handle_speculative(&*self.0, request).await
     }

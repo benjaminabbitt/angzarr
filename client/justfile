@@ -1,4 +1,12 @@
-# Client library build and publish commands
+# Client library build and test commands
+#
+# Multi-language client libraries for Angzarr CQRS/ES framework.
+#
+# Usage:
+#   just client python test         # Test Python client
+#   just client go test             # Test Go client
+#   just client rust test           # Test Rust client
+#   just client test-all            # Test all clients
 
 set shell := ["bash", "-c"]
 
@@ -13,7 +21,18 @@ default:
 
 # Verify all clients build
 build-all:
-    just client rust build
-    just client python build
-    just client go build
+    just rust build
+    just python build
+    just go build
     @echo "All clients built successfully"
+
+# Run tests for all client libraries
+test-all:
+    @echo "=== Testing Python client library ==="
+    just python test
+    @echo ""
+    @echo "=== Testing Go client library ==="
+    just go test
+    @echo ""
+    @echo "=== Testing Rust client library ==="
+    just rust test

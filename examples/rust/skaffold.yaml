@@ -1,20 +1,13 @@
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
-  name: angzarr-rust-examples
+  name: poker-rust
 
-# IMPORTANT: All image builds MUST go through skaffold.
-# Do NOT manually build with podman/docker and helm upgrade.
-# Kind nodes cache images by tag - skaffold uses unique git SHA tags to avoid this.
-
-# Require framework images - provides IMAGE_TAG_* template variables for deploy
+# Requires base angzarr infrastructure
 requires:
   - path: ../../skaffold.yaml
-    configs: [angzarr-build]
 
 build:
-  # Use git commit SHA for tags - ensures unique tag per build, avoiding
-  # Kind node image cache collisions. Never use sha256 or latest tags.
   tagPolicy:
     gitCommit:
       prefix: "dev-"
@@ -22,207 +15,75 @@ build:
   local:
     push: true
     useBuildkit: false
-    concurrency: 0
+    concurrency: 1
   artifacts:
-    # Domain Aggregates
-    - image: localhost:5001/agg-order-rs
+    # Dev targets (fast builds)
+    - image: localhost:5001/poker-rust-player
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: agg-order-dev
+        target: agg-player-dev
 
-    - image: localhost:5001/agg-inventory-rs
+    - image: localhost:5001/poker-rust-table
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: agg-inventory-dev
+        target: agg-table-dev
 
-    - image: localhost:5001/agg-fulfillment-rs
+    - image: localhost:5001/poker-rust-hand
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
-        target: agg-fulfillment-dev
-
-    # Sagas
-    - image: localhost:5001/sag-order-fulfillment-rs
-      context: ../..
-      docker:
-        dockerfile: examples/rust/Containerfile
-        target: sag-order-fulfillment-dev
-
-    - image: localhost:5001/sag-order-inventory-rs
-      context: ../..
-      docker:
-        dockerfile: examples/rust/Containerfile
-        target: sag-order-inventory-dev
-
-    - image: localhost:5001/sag-fulfillment-inventory-rs
-      context: ../..
-      docker:
-        dockerfile: examples/rust/Containerfile
-        target: sag-fulfillment-inventory-dev
-
-    # Process Managers
-    - image: localhost:5001/pmg-fulfillment-rs
-      context: ../..
-      docker:
-        dockerfile: examples/rust/Containerfile
-        target: pmg-fulfillment-dev
-
-    # Projectors
-    - image: localhost:5001/prj-inventory-rs
-      context: ../..
-      docker:
-        dockerfile: examples/rust/Containerfile
-        target: prj-inventory-dev
-
-    # Mock Services (external service integration demos)
-    - image: localhost:5001/mock-fraud-service
-      context: ../..
-      docker:
-        dockerfile: examples/rust/mock-fraud-service/Containerfile
-        target: runtime
+        target: agg-hand-dev
 
 deploy:
   helm:
     releases:
-      # Infrastructure charts - deployed first
-      - name: angzarr-db
-        chartPath: ../../deploy/helm/angzarr-db-mongodb
-        namespace: angzarr
-        createNamespace: true
-        setValues:
-          mongodb.auth.rootPassword: angzarr-root-dev
-          mongodb.auth.passwords[0]: angzarr-dev
-          mongodb.image.registry: public.ecr.aws
-          mongodb.image.repository: bitnami/mongodb
-          mongodb.image.tag: "8.0"
-          mongodb.persistence.size: 2Gi
-          mongodb.resources.requests.memory: 128Mi
-          mongodb.resources.requests.cpu: 100m
-          mongodb.resources.limits.memory: 512Mi
-          mongodb.resources.limits.cpu: 500m
-
-      - name: angzarr-db-pg
-        chartPath: ../../deploy/helm/angzarr-db-postgres
-        namespace: angzarr
-        setValues:
-          postgresql.auth.postgresPassword: angzarr-postgres-dev
-          postgresql.auth.password: angzarr-dev
-          postgresql.image.registry: public.ecr.aws
-          postgresql.image.repository: bitnami/postgresql
-          postgresql.image.tag: "17"
-          postgresql.primary.persistence.size: 2Gi
-          postgresql.primary.resources.requests.memory: 128Mi
-          postgresql.primary.resources.requests.cpu: 100m
-          postgresql.primary.resources.limits.memory: 512Mi
-          postgresql.primary.resources.limits.cpu: 500m
-
-      - name: angzarr-mq
-        chartPath: ../../deploy/helm/angzarr-mq-rabbitmq
-        namespace: angzarr
-        setValues:
-          rabbitmq.auth.password: angzarr-dev
-          rabbitmq.image.registry: public.ecr.aws
-          rabbitmq.image.repository: bitnami/rabbitmq
-          rabbitmq.image.tag: "4.0"
-          rabbitmq.persistence.size: 1Gi
-          rabbitmq.resources.requests.memory: 128Mi
-          rabbitmq.resources.requests.cpu: 100m
-          rabbitmq.resources.limits.memory: 512Mi
-          rabbitmq.resources.limits.cpu: 500m
-
-      # Main application chart
-      - name: angzarr
+      - name: poker-rust
         chartPath: ../../deploy/helm/angzarr
         namespace: angzarr
+        createNamespace: true
         valuesFiles:
-          - ../../deploy/helm/angzarr/values-rust.yaml
-        setValueTemplates:
-          # Framework sidecar images
-          images.aggregate.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_aggregate}}"
-          images.aggregate.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_aggregate}}"
-          images.projector.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_projector}}"
-          images.projector.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_projector}}"
-          images.saga.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_saga}}"
-          images.saga.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_saga}}"
-          images.processManager.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_process_manager}}"
-          images.processManager.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_process_manager}}"
-          images.gateway.repository: "{{.IMAGE_REPO_localhost_5001_angzarr_gateway}}"
-          images.gateway.tag: "{{.IMAGE_TAG_localhost_5001_angzarr_gateway}}"
-          # Business aggregate images
-          applications.business[0].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_order_rs}}"
-          applications.business[0].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_order_rs}}"
-          applications.business[1].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_inventory_rs}}"
-          applications.business[1].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_inventory_rs}}"
-          applications.business[2].image.repository: "{{.IMAGE_REPO_localhost_5001_agg_fulfillment_rs}}"
-          applications.business[2].image.tag: "{{.IMAGE_TAG_localhost_5001_agg_fulfillment_rs}}"
-          # Saga images
-          applications.sagas[0].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_order_fulfillment_rs}}"
-          applications.sagas[0].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_order_fulfillment_rs}}"
-          applications.sagas[1].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_order_inventory_rs}}"
-          applications.sagas[1].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_order_inventory_rs}}"
-          applications.sagas[2].image.repository: "{{.IMAGE_REPO_localhost_5001_sag_fulfillment_inventory_rs}}"
-          applications.sagas[2].image.tag: "{{.IMAGE_TAG_localhost_5001_sag_fulfillment_inventory_rs}}"
-          # Process Manager images
-          applications.processManagers[0].image.repository: "{{.IMAGE_REPO_localhost_5001_pmg_fulfillment_rs}}"
-          applications.processManagers[0].image.tag: "{{.IMAGE_TAG_localhost_5001_pmg_fulfillment_rs}}"
-          # Projector images
-          applications.projectors[0].image.repository: "{{.IMAGE_REPO_localhost_5001_prj_inventory_rs}}"
-          applications.projectors[0].image.tag: "{{.IMAGE_TAG_localhost_5001_prj_inventory_rs}}"
-          # Mock service images
-          mockServices.fraud.image.repository: "{{.IMAGE_REPO_localhost_5001_mock_fraud_service}}"
-          mockServices.fraud.image.tag: "{{.IMAGE_TAG_localhost_5001_mock_fraud_service}}"
+          - values.yaml
+        setValues:
+          # Player aggregate
+          applications.business[0].name: poker-player
+          applications.business[0].image.repository: localhost:5001/poker-rust-player
+          applications.business[0].image.tag: latest
+          applications.business[0].domain: player
+          applications.business[0].port: 50001
+          # Table aggregate
+          applications.business[1].name: poker-table
+          applications.business[1].image.repository: localhost:5001/poker-rust-table
+          applications.business[1].image.tag: latest
+          applications.business[1].domain: table
+          applications.business[1].port: 50002
+          # Hand aggregate
+          applications.business[2].name: poker-hand
+          applications.business[2].image.repository: localhost:5001/poker-rust-hand
+          applications.business[2].image.tag: latest
+          applications.business[2].domain: hand
+          applications.business[2].port: 50003
 
 profiles:
-  # Release profile - musl builds, minimal images
+  # Release profile - slower builds, minimal images
   - name: release
     build:
       artifacts:
-        - image: localhost:5001/agg-order-rs
+        - image: localhost:5001/poker-rust-player
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: agg-order
+            target: agg-player
 
-        - image: localhost:5001/agg-inventory-rs
+        - image: localhost:5001/poker-rust-table
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: agg-inventory
+            target: agg-table
 
-        - image: localhost:5001/agg-fulfillment-rs
+        - image: localhost:5001/poker-rust-hand
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
-            target: agg-fulfillment
-
-        - image: localhost:5001/sag-order-fulfillment-rs
-          context: ../..
-          docker:
-            dockerfile: examples/rust/Containerfile
-            target: sag-order-fulfillment
-
-        - image: localhost:5001/sag-order-inventory-rs
-          context: ../..
-          docker:
-            dockerfile: examples/rust/Containerfile
-            target: sag-order-inventory
-
-        - image: localhost:5001/sag-fulfillment-inventory-rs
-          context: ../..
-          docker:
-            dockerfile: examples/rust/Containerfile
-            target: sag-fulfillment-inventory
-
-        - image: localhost:5001/pmg-fulfillment-rs
-          context: ../..
-          docker:
-            dockerfile: examples/rust/Containerfile
-            target: pmg-fulfillment
-
-        - image: localhost:5001/prj-inventory-rs
-          context: ../..
-          docker:
-            dockerfile: examples/rust/Containerfile
-            target: prj-inventory
+            target: agg-hand

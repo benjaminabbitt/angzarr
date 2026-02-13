@@ -1,0 +1,137 @@
+syntax = "proto3";
+package examples;
+
+import "google/protobuf/timestamp.proto";
+import "examples/types.proto";
+
+// =============================================================================
+// Player Domain - Player identity, bankroll, and player type abstraction
+// Root: player_id (derived from email or wallet address)
+// =============================================================================
+
+// Commands
+
+message RegisterPlayer {
+  string display_name = 1;
+  string email = 2;              // Used for root derivation
+  PlayerType player_type = 3;    // HUMAN or AI
+  string ai_model_id = 4;        // For AI players: which model to use
+}
+
+message DepositFunds {
+  Currency amount = 1;
+}
+
+message WithdrawFunds {
+  Currency amount = 1;
+}
+
+// Reserve funds when joining a table (buy-in)
+message ReserveFunds {
+  Currency amount = 1;
+  bytes table_root = 2;          // Which table the funds are reserved for
+}
+
+// Release reserved funds back to bankroll (leave table)
+message ReleaseFunds {
+  bytes table_root = 1;
+}
+
+// Transfer funds from one player to another (pot award)
+message TransferFunds {
+  bytes from_player_root = 1;    // Source player (for reserved funds)
+  Currency amount = 2;
+  bytes hand_root = 3;           // Which hand this transfer is for
+  string reason = 4;             // "pot_win", "side_pot_win", etc.
+}
+
+// Request action from player (triggers AI sidecar for AI players)
+message RequestAction {
+  bytes hand_root = 1;
+  bytes table_root = 2;
+  int64 amount_to_call = 3;
+  int64 min_raise = 4;
+  int64 max_raise = 5;           // Player's remaining stack
+  repeated Card hole_cards = 6;
+  repeated Card community_cards = 7;
+  int64 pot_size = 8;
+  BettingPhase phase = 9;
+  int32 timeout_seconds = 10;
+}
+
+// Events
+
+message PlayerRegistered {
+  string display_name = 1;
+  string email = 2;
+  PlayerType player_type = 3;
+  string ai_model_id = 4;
+  google.protobuf.Timestamp registered_at = 5;
+}
+
+message FundsDeposited {
+  Currency amount = 1;
+  Currency new_balance = 2;      // Absolute value after deposit
+  google.protobuf.Timestamp deposited_at = 3;
+}
+
+message FundsWithdrawn {
+  Currency amount = 1;
+  Currency new_balance = 2;      // Absolute value after withdrawal
+  google.protobuf.Timestamp withdrawn_at = 3;
+}
+
+message FundsReserved {
+  Currency amount = 1;
+  bytes table_root = 2;
+  Currency new_available_balance = 3;  // Bankroll minus reserved
+  Currency new_reserved_balance = 4;   // Total reserved across tables
+  google.protobuf.Timestamp reserved_at = 5;
+}
+
+message FundsReleased {
+  Currency amount = 1;
+  bytes table_root = 2;
+  Currency new_available_balance = 3;
+  Currency new_reserved_balance = 4;
+  google.protobuf.Timestamp released_at = 5;
+}
+
+message FundsTransferred {
+  bytes from_player_root = 1;
+  bytes to_player_root = 2;
+  Currency amount = 3;
+  bytes hand_root = 4;
+  string reason = 5;
+  Currency new_balance = 6;      // Recipient's new balance
+  google.protobuf.Timestamp transferred_at = 7;
+}
+
+// Emitted when action is needed - AI players respond via sidecar
+message ActionRequested {
+  bytes hand_root = 1;
+  bytes table_root = 2;
+  bytes player_root = 3;
+  PlayerType player_type = 4;
+  int64 amount_to_call = 5;
+  int64 min_raise = 6;
+  int64 max_raise = 7;
+  repeated Card hole_cards = 8;
+  repeated Card community_cards = 9;
+  int64 pot_size = 10;
+  BettingPhase phase = 11;
+  google.protobuf.Timestamp deadline = 12;
+}
+
+// State (for snapshots)
+message PlayerState {
+  string player_id = 1;
+  string display_name = 2;
+  string email = 3;
+  PlayerType player_type = 4;
+  string ai_model_id = 5;
+  Currency bankroll = 6;
+  Currency reserved_funds = 7;
+  map<string, int64> table_reservations = 8;  // table_root_hex -> amount
+  string status = 9;  // "active", "suspended", etc.
+}

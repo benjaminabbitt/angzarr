@@ -22,6 +22,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Request for speculative PM execution at a point in time.
+type SpeculatePmRequest struct {
+	state         protoimpl.MessageState       `protogen:"open.v1"`
+	Request       *ProcessManagerHandleRequest `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	PointInTime   *TemporalQuery               `protobuf:"bytes,2,opt,name=point_in_time,json=pointInTime,proto3" json:"point_in_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpeculatePmRequest) Reset() {
+	*x = SpeculatePmRequest{}
+	mi := &file_angzarr_process_manager_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpeculatePmRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpeculatePmRequest) ProtoMessage() {}
+
+func (x *SpeculatePmRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_process_manager_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpeculatePmRequest.ProtoReflect.Descriptor instead.
+func (*SpeculatePmRequest) Descriptor() ([]byte, []int) {
+	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SpeculatePmRequest) GetRequest() *ProcessManagerHandleRequest {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *SpeculatePmRequest) GetPointInTime() *TemporalQuery {
+	if x != nil {
+		return x.PointInTime
+	}
+	return nil
+}
+
 // Phase 1 request: PM declares additional destinations needed.
 type ProcessManagerPrepareRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -35,7 +88,7 @@ type ProcessManagerPrepareRequest struct {
 
 func (x *ProcessManagerPrepareRequest) Reset() {
 	*x = ProcessManagerPrepareRequest{}
-	mi := &file_angzarr_process_manager_proto_msgTypes[0]
+	mi := &file_angzarr_process_manager_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +100,7 @@ func (x *ProcessManagerPrepareRequest) String() string {
 func (*ProcessManagerPrepareRequest) ProtoMessage() {}
 
 func (x *ProcessManagerPrepareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_process_manager_proto_msgTypes[0]
+	mi := &file_angzarr_process_manager_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +113,7 @@ func (x *ProcessManagerPrepareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessManagerPrepareRequest.ProtoReflect.Descriptor instead.
 func (*ProcessManagerPrepareRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{0}
+	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ProcessManagerPrepareRequest) GetTrigger() *EventBook {
@@ -89,7 +142,7 @@ type ProcessManagerPrepareResponse struct {
 
 func (x *ProcessManagerPrepareResponse) Reset() {
 	*x = ProcessManagerPrepareResponse{}
-	mi := &file_angzarr_process_manager_proto_msgTypes[1]
+	mi := &file_angzarr_process_manager_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -101,7 +154,7 @@ func (x *ProcessManagerPrepareResponse) String() string {
 func (*ProcessManagerPrepareResponse) ProtoMessage() {}
 
 func (x *ProcessManagerPrepareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_process_manager_proto_msgTypes[1]
+	mi := &file_angzarr_process_manager_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -114,7 +167,7 @@ func (x *ProcessManagerPrepareResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessManagerPrepareResponse.ProtoReflect.Descriptor instead.
 func (*ProcessManagerPrepareResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{1}
+	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ProcessManagerPrepareResponse) GetDestinations() []*Cover {
@@ -139,7 +192,7 @@ type ProcessManagerHandleRequest struct {
 
 func (x *ProcessManagerHandleRequest) Reset() {
 	*x = ProcessManagerHandleRequest{}
-	mi := &file_angzarr_process_manager_proto_msgTypes[2]
+	mi := &file_angzarr_process_manager_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -151,7 +204,7 @@ func (x *ProcessManagerHandleRequest) String() string {
 func (*ProcessManagerHandleRequest) ProtoMessage() {}
 
 func (x *ProcessManagerHandleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_process_manager_proto_msgTypes[2]
+	mi := &file_angzarr_process_manager_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -164,7 +217,7 @@ func (x *ProcessManagerHandleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessManagerHandleRequest.ProtoReflect.Descriptor instead.
 func (*ProcessManagerHandleRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{2}
+	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ProcessManagerHandleRequest) GetTrigger() *EventBook {
@@ -202,7 +255,7 @@ type ProcessManagerHandleResponse struct {
 
 func (x *ProcessManagerHandleResponse) Reset() {
 	*x = ProcessManagerHandleResponse{}
-	mi := &file_angzarr_process_manager_proto_msgTypes[3]
+	mi := &file_angzarr_process_manager_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -214,7 +267,7 @@ func (x *ProcessManagerHandleResponse) String() string {
 func (*ProcessManagerHandleResponse) ProtoMessage() {}
 
 func (x *ProcessManagerHandleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_process_manager_proto_msgTypes[3]
+	mi := &file_angzarr_process_manager_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -227,7 +280,7 @@ func (x *ProcessManagerHandleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessManagerHandleResponse.ProtoReflect.Descriptor instead.
 func (*ProcessManagerHandleResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{3}
+	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ProcessManagerHandleResponse) GetCommands() []*CommandBook {
@@ -257,7 +310,7 @@ type ProcessTimeout struct {
 
 func (x *ProcessTimeout) Reset() {
 	*x = ProcessTimeout{}
-	mi := &file_angzarr_process_manager_proto_msgTypes[4]
+	mi := &file_angzarr_process_manager_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -269,7 +322,7 @@ func (x *ProcessTimeout) String() string {
 func (*ProcessTimeout) ProtoMessage() {}
 
 func (x *ProcessTimeout) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_process_manager_proto_msgTypes[4]
+	mi := &file_angzarr_process_manager_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -282,7 +335,7 @@ func (x *ProcessTimeout) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessTimeout.ProtoReflect.Descriptor instead.
 func (*ProcessTimeout) Descriptor() ([]byte, []int) {
-	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{4}
+	return file_angzarr_process_manager_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ProcessTimeout) GetCorrelationId() string {
@@ -317,7 +370,10 @@ var File_angzarr_process_manager_proto protoreflect.FileDescriptor
 
 const file_angzarr_process_manager_proto_rawDesc = "" +
 	"\n" +
-	"\x1dangzarr/process_manager.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x85\x01\n" +
+	"\x1dangzarr/process_manager.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x90\x01\n" +
+	"\x12SpeculatePmRequest\x12>\n" +
+	"\arequest\x18\x01 \x01(\v2$.angzarr.ProcessManagerHandleRequestR\arequest\x12:\n" +
+	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime\"\x85\x01\n" +
 	"\x1cProcessManagerPrepareRequest\x12,\n" +
 	"\atrigger\x18\x01 \x01(\v2\x12.angzarr.EventBookR\atrigger\x127\n" +
 	"\rprocess_state\x18\x02 \x01(\v2\x12.angzarr.EventBookR\fprocessState\"S\n" +
@@ -338,9 +394,9 @@ const file_angzarr_process_manager_proto_rawDesc = "" +
 	"\x15ProcessManagerService\x12L\n" +
 	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12X\n" +
 	"\aPrepare\x12%.angzarr.ProcessManagerPrepareRequest\x1a&.angzarr.ProcessManagerPrepareResponse\x12U\n" +
-	"\x06Handle\x12$.angzarr.ProcessManagerHandleRequest\x1a%.angzarr.ProcessManagerHandleResponse2\x84\x01\n" +
-	" ProcessManagerCoordinatorService\x12`\n" +
-	"\x11HandleSpeculative\x12$.angzarr.ProcessManagerHandleRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x99\x01\n" +
+	"\x06Handle\x12$.angzarr.ProcessManagerHandleRequest\x1a%.angzarr.ProcessManagerHandleResponse2{\n" +
+	" ProcessManagerCoordinatorService\x12W\n" +
+	"\x11HandleSpeculative\x12\x1b.angzarr.SpeculatePmRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x99\x01\n" +
 	"\vcom.angzarrB\x13ProcessManagerProtoP\x01Z9github.com/benjaminabbitt/angzarr/client/go/proto/angzarr\xa2\x02\x03AXX\xaa\x02\aAngzarr\xca\x02\aAngzarr\xe2\x02\x13Angzarr\\GPBMetadata\xea\x02\aAngzarrb\x06proto3"
 
 var (
@@ -355,43 +411,47 @@ func file_angzarr_process_manager_proto_rawDescGZIP() []byte {
 	return file_angzarr_process_manager_proto_rawDescData
 }
 
-var file_angzarr_process_manager_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_angzarr_process_manager_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_angzarr_process_manager_proto_goTypes = []any{
-	(*ProcessManagerPrepareRequest)(nil),  // 0: angzarr.ProcessManagerPrepareRequest
-	(*ProcessManagerPrepareResponse)(nil), // 1: angzarr.ProcessManagerPrepareResponse
-	(*ProcessManagerHandleRequest)(nil),   // 2: angzarr.ProcessManagerHandleRequest
-	(*ProcessManagerHandleResponse)(nil),  // 3: angzarr.ProcessManagerHandleResponse
-	(*ProcessTimeout)(nil),                // 4: angzarr.ProcessTimeout
-	(*EventBook)(nil),                     // 5: angzarr.EventBook
-	(*Cover)(nil),                         // 6: angzarr.Cover
-	(*CommandBook)(nil),                   // 7: angzarr.CommandBook
-	(*timestamppb.Timestamp)(nil),         // 8: google.protobuf.Timestamp
-	(*GetDescriptorRequest)(nil),          // 9: angzarr.GetDescriptorRequest
-	(*ComponentDescriptor)(nil),           // 10: angzarr.ComponentDescriptor
+	(*SpeculatePmRequest)(nil),            // 0: angzarr.SpeculatePmRequest
+	(*ProcessManagerPrepareRequest)(nil),  // 1: angzarr.ProcessManagerPrepareRequest
+	(*ProcessManagerPrepareResponse)(nil), // 2: angzarr.ProcessManagerPrepareResponse
+	(*ProcessManagerHandleRequest)(nil),   // 3: angzarr.ProcessManagerHandleRequest
+	(*ProcessManagerHandleResponse)(nil),  // 4: angzarr.ProcessManagerHandleResponse
+	(*ProcessTimeout)(nil),                // 5: angzarr.ProcessTimeout
+	(*TemporalQuery)(nil),                 // 6: angzarr.TemporalQuery
+	(*EventBook)(nil),                     // 7: angzarr.EventBook
+	(*Cover)(nil),                         // 8: angzarr.Cover
+	(*CommandBook)(nil),                   // 9: angzarr.CommandBook
+	(*timestamppb.Timestamp)(nil),         // 10: google.protobuf.Timestamp
+	(*GetDescriptorRequest)(nil),          // 11: angzarr.GetDescriptorRequest
+	(*ComponentDescriptor)(nil),           // 12: angzarr.ComponentDescriptor
 }
 var file_angzarr_process_manager_proto_depIdxs = []int32{
-	5,  // 0: angzarr.ProcessManagerPrepareRequest.trigger:type_name -> angzarr.EventBook
-	5,  // 1: angzarr.ProcessManagerPrepareRequest.process_state:type_name -> angzarr.EventBook
-	6,  // 2: angzarr.ProcessManagerPrepareResponse.destinations:type_name -> angzarr.Cover
-	5,  // 3: angzarr.ProcessManagerHandleRequest.trigger:type_name -> angzarr.EventBook
-	5,  // 4: angzarr.ProcessManagerHandleRequest.process_state:type_name -> angzarr.EventBook
-	5,  // 5: angzarr.ProcessManagerHandleRequest.destinations:type_name -> angzarr.EventBook
-	7,  // 6: angzarr.ProcessManagerHandleResponse.commands:type_name -> angzarr.CommandBook
-	5,  // 7: angzarr.ProcessManagerHandleResponse.process_events:type_name -> angzarr.EventBook
-	8,  // 8: angzarr.ProcessTimeout.deadline:type_name -> google.protobuf.Timestamp
-	9,  // 9: angzarr.ProcessManagerService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	0,  // 10: angzarr.ProcessManagerService.Prepare:input_type -> angzarr.ProcessManagerPrepareRequest
-	2,  // 11: angzarr.ProcessManagerService.Handle:input_type -> angzarr.ProcessManagerHandleRequest
-	2,  // 12: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:input_type -> angzarr.ProcessManagerHandleRequest
-	10, // 13: angzarr.ProcessManagerService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	1,  // 14: angzarr.ProcessManagerService.Prepare:output_type -> angzarr.ProcessManagerPrepareResponse
-	3,  // 15: angzarr.ProcessManagerService.Handle:output_type -> angzarr.ProcessManagerHandleResponse
-	3,  // 16: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:output_type -> angzarr.ProcessManagerHandleResponse
-	13, // [13:17] is the sub-list for method output_type
-	9,  // [9:13] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	3,  // 0: angzarr.SpeculatePmRequest.request:type_name -> angzarr.ProcessManagerHandleRequest
+	6,  // 1: angzarr.SpeculatePmRequest.point_in_time:type_name -> angzarr.TemporalQuery
+	7,  // 2: angzarr.ProcessManagerPrepareRequest.trigger:type_name -> angzarr.EventBook
+	7,  // 3: angzarr.ProcessManagerPrepareRequest.process_state:type_name -> angzarr.EventBook
+	8,  // 4: angzarr.ProcessManagerPrepareResponse.destinations:type_name -> angzarr.Cover
+	7,  // 5: angzarr.ProcessManagerHandleRequest.trigger:type_name -> angzarr.EventBook
+	7,  // 6: angzarr.ProcessManagerHandleRequest.process_state:type_name -> angzarr.EventBook
+	7,  // 7: angzarr.ProcessManagerHandleRequest.destinations:type_name -> angzarr.EventBook
+	9,  // 8: angzarr.ProcessManagerHandleResponse.commands:type_name -> angzarr.CommandBook
+	7,  // 9: angzarr.ProcessManagerHandleResponse.process_events:type_name -> angzarr.EventBook
+	10, // 10: angzarr.ProcessTimeout.deadline:type_name -> google.protobuf.Timestamp
+	11, // 11: angzarr.ProcessManagerService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
+	1,  // 12: angzarr.ProcessManagerService.Prepare:input_type -> angzarr.ProcessManagerPrepareRequest
+	3,  // 13: angzarr.ProcessManagerService.Handle:input_type -> angzarr.ProcessManagerHandleRequest
+	0,  // 14: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:input_type -> angzarr.SpeculatePmRequest
+	12, // 15: angzarr.ProcessManagerService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
+	2,  // 16: angzarr.ProcessManagerService.Prepare:output_type -> angzarr.ProcessManagerPrepareResponse
+	4,  // 17: angzarr.ProcessManagerService.Handle:output_type -> angzarr.ProcessManagerHandleResponse
+	4,  // 18: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:output_type -> angzarr.ProcessManagerHandleResponse
+	15, // [15:19] is the sub-list for method output_type
+	11, // [11:15] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_process_manager_proto_init() }
@@ -406,7 +466,7 @@ func file_angzarr_process_manager_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_process_manager_proto_rawDesc), len(file_angzarr_process_manager_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

@@ -42,9 +42,9 @@ func (m *mockEventQueryServiceClient) GetAggregateRoots(ctx context.Context, in 
 }
 
 type mockAggregateCoordinatorServiceClient struct {
-	handleFn       func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	handleSyncFn   func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	dryRunHandleFn func(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleFn                 func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleSyncFn             func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleSyncSpeculativeFn  func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
 }
 
 func (m *mockAggregateCoordinatorServiceClient) Handle(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
@@ -61,44 +61,62 @@ func (m *mockAggregateCoordinatorServiceClient) HandleSync(ctx context.Context, 
 	return &pb.CommandResponse{}, nil
 }
 
-func (m *mockAggregateCoordinatorServiceClient) DryRunHandle(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
-	if m.dryRunHandleFn != nil {
-		return m.dryRunHandleFn(ctx, in, opts...)
+func (m *mockAggregateCoordinatorServiceClient) HandleSyncSpeculative(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+	if m.handleSyncSpeculativeFn != nil {
+		return m.handleSyncSpeculativeFn(ctx, in, opts...)
 	}
 	return &pb.CommandResponse{}, nil
 }
 
-type mockSpeculativeServiceClient struct {
-	dryRunCommandFn          func(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	speculateProjectorFn     func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error)
-	speculateSagaFn          func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error)
-	speculateProcessManagerFn func(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error)
+type mockSagaCoordinatorServiceClient struct {
+	executeSpeculativeFn func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error)
 }
 
-func (m *mockSpeculativeServiceClient) DryRunCommand(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
-	if m.dryRunCommandFn != nil {
-		return m.dryRunCommandFn(ctx, in, opts...)
-	}
-	return &pb.CommandResponse{}, nil
+func (m *mockSagaCoordinatorServiceClient) Execute(ctx context.Context, in *pb.SagaExecuteRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
+	return &pb.SagaResponse{}, nil
 }
 
-func (m *mockSpeculativeServiceClient) SpeculateProjector(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
-	if m.speculateProjectorFn != nil {
-		return m.speculateProjectorFn(ctx, in, opts...)
-	}
-	return &pb.Projection{}, nil
-}
-
-func (m *mockSpeculativeServiceClient) SpeculateSaga(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
-	if m.speculateSagaFn != nil {
-		return m.speculateSagaFn(ctx, in, opts...)
+func (m *mockSagaCoordinatorServiceClient) ExecuteSpeculative(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
+	if m.executeSpeculativeFn != nil {
+		return m.executeSpeculativeFn(ctx, in, opts...)
 	}
 	return &pb.SagaResponse{}, nil
 }
 
-func (m *mockSpeculativeServiceClient) SpeculateProcessManager(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
-	if m.speculateProcessManagerFn != nil {
-		return m.speculateProcessManagerFn(ctx, in, opts...)
+type mockProjectorCoordinatorServiceClient struct {
+	handleSpeculativeFn func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error)
+}
+
+func (m *mockProjectorCoordinatorServiceClient) HandleSync(ctx context.Context, in *pb.SyncEventBook, opts ...grpc.CallOption) (*pb.Projection, error) {
+	return &pb.Projection{}, nil
+}
+
+func (m *mockProjectorCoordinatorServiceClient) Handle(ctx context.Context, in *pb.EventBook, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+func (m *mockProjectorCoordinatorServiceClient) HandleSpeculative(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
+	if m.handleSpeculativeFn != nil {
+		return m.handleSpeculativeFn(ctx, in, opts...)
+	}
+	return &pb.Projection{}, nil
+}
+
+type mockProcessManagerCoordinatorServiceClient struct {
+	handleSpeculativeFn func(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error)
+}
+
+func (m *mockProcessManagerCoordinatorServiceClient) Prepare(ctx context.Context, in *pb.ProcessManagerPrepareRequest, opts ...grpc.CallOption) (*pb.ProcessManagerPrepareResponse, error) {
+	return &pb.ProcessManagerPrepareResponse{}, nil
+}
+
+func (m *mockProcessManagerCoordinatorServiceClient) Handle(ctx context.Context, in *pb.ProcessManagerHandleRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
+	return &pb.ProcessManagerHandleResponse{}, nil
+}
+
+func (m *mockProcessManagerCoordinatorServiceClient) HandleSpeculative(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
+	if m.handleSpeculativeFn != nil {
+		return m.handleSpeculativeFn(ctx, in, opts...)
 	}
 	return &pb.ProcessManagerHandleResponse{}, nil
 }
@@ -250,16 +268,16 @@ func TestAggregateClient_HandleSync(t *testing.T) {
 	})
 }
 
-func TestAggregateClient_DryRunHandle(t *testing.T) {
+func TestAggregateClient_HandleSyncSpeculative(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
 		mock := &mockAggregateCoordinatorServiceClient{
-			dryRunHandleFn: func(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return &pb.CommandResponse{}, nil
 			},
 		}
 		client := &AggregateClient{inner: mock}
 
-		_, err := client.DryRunHandle(context.Background(), &pb.DryRunRequest{})
+		_, err := client.HandleSyncSpeculative(context.Background(), &pb.SpeculateAggregateRequest{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -267,13 +285,13 @@ func TestAggregateClient_DryRunHandle(t *testing.T) {
 
 	t.Run("grpc error", func(t *testing.T) {
 		mock := &mockAggregateCoordinatorServiceClient{
-			dryRunHandleFn: func(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return nil, status.Error(codes.InvalidArgument, "invalid")
 			},
 		}
 		client := &AggregateClient{inner: mock}
 
-		_, err := client.DryRunHandle(context.Background(), &pb.DryRunRequest{})
+		_, err := client.HandleSyncSpeculative(context.Background(), &pb.SpeculateAggregateRequest{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -299,30 +317,30 @@ func TestAggregateClientFromConn(t *testing.T) {
 
 // SpeculativeClient tests
 
-func TestSpeculativeClient_DryRun(t *testing.T) {
+func TestSpeculativeClient_Aggregate(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			dryRunCommandFn: func(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockAggregateCoordinatorServiceClient{
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return &pb.CommandResponse{}, nil
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{aggregateStub: mock}
 
-		_, err := client.DryRun(context.Background(), &pb.DryRunRequest{})
+		_, err := client.Aggregate(context.Background(), &pb.SpeculateAggregateRequest{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			dryRunCommandFn: func(ctx context.Context, in *pb.DryRunRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
+		mock := &mockAggregateCoordinatorServiceClient{
+			handleSyncSpeculativeFn: func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
 				return nil, status.Error(codes.Internal, "error")
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{aggregateStub: mock}
 
-		_, err := client.DryRun(context.Background(), &pb.DryRunRequest{})
+		_, err := client.Aggregate(context.Background(), &pb.SpeculateAggregateRequest{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -331,12 +349,12 @@ func TestSpeculativeClient_DryRun(t *testing.T) {
 
 func TestSpeculativeClient_Projector(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			speculateProjectorFn: func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
+		mock := &mockProjectorCoordinatorServiceClient{
+			handleSpeculativeFn: func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
 				return &pb.Projection{}, nil
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{projectorStub: mock}
 
 		_, err := client.Projector(context.Background(), &pb.SpeculateProjectorRequest{})
 		if err != nil {
@@ -345,12 +363,12 @@ func TestSpeculativeClient_Projector(t *testing.T) {
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			speculateProjectorFn: func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
+		mock := &mockProjectorCoordinatorServiceClient{
+			handleSpeculativeFn: func(ctx context.Context, in *pb.SpeculateProjectorRequest, opts ...grpc.CallOption) (*pb.Projection, error) {
 				return nil, status.Error(codes.Internal, "error")
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{projectorStub: mock}
 
 		_, err := client.Projector(context.Background(), &pb.SpeculateProjectorRequest{})
 		if err == nil {
@@ -361,12 +379,12 @@ func TestSpeculativeClient_Projector(t *testing.T) {
 
 func TestSpeculativeClient_Saga(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			speculateSagaFn: func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
+		mock := &mockSagaCoordinatorServiceClient{
+			executeSpeculativeFn: func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
 				return &pb.SagaResponse{}, nil
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{sagaStub: mock}
 
 		_, err := client.Saga(context.Background(), &pb.SpeculateSagaRequest{})
 		if err != nil {
@@ -375,12 +393,12 @@ func TestSpeculativeClient_Saga(t *testing.T) {
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			speculateSagaFn: func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
+		mock := &mockSagaCoordinatorServiceClient{
+			executeSpeculativeFn: func(ctx context.Context, in *pb.SpeculateSagaRequest, opts ...grpc.CallOption) (*pb.SagaResponse, error) {
 				return nil, status.Error(codes.Internal, "error")
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{sagaStub: mock}
 
 		_, err := client.Saga(context.Background(), &pb.SpeculateSagaRequest{})
 		if err == nil {
@@ -391,12 +409,12 @@ func TestSpeculativeClient_Saga(t *testing.T) {
 
 func TestSpeculativeClient_ProcessManager(t *testing.T) {
 	t.Run("successful response", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			speculateProcessManagerFn: func(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
+		mock := &mockProcessManagerCoordinatorServiceClient{
+			handleSpeculativeFn: func(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
 				return &pb.ProcessManagerHandleResponse{}, nil
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{pmStub: mock}
 
 		_, err := client.ProcessManager(context.Background(), &pb.SpeculatePmRequest{})
 		if err != nil {
@@ -405,12 +423,12 @@ func TestSpeculativeClient_ProcessManager(t *testing.T) {
 	})
 
 	t.Run("grpc error", func(t *testing.T) {
-		mock := &mockSpeculativeServiceClient{
-			speculateProcessManagerFn: func(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
+		mock := &mockProcessManagerCoordinatorServiceClient{
+			handleSpeculativeFn: func(ctx context.Context, in *pb.SpeculatePmRequest, opts ...grpc.CallOption) (*pb.ProcessManagerHandleResponse, error) {
 				return nil, status.Error(codes.Internal, "error")
 			},
 		}
-		client := &SpeculativeClient{inner: mock}
+		client := &SpeculativeClient{pmStub: mock}
 
 		_, err := client.ProcessManager(context.Background(), &pb.SpeculatePmRequest{})
 		if err == nil {

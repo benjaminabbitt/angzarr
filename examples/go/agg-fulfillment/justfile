@@ -1,3 +1,0 @@
-SERVICE := "fulfillment"
-
-import "../service.justfile"

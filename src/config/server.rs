@@ -62,6 +62,12 @@ pub struct ServiceConfig {
     #[serde(default)]
     pub port: Option<u16>,
 
+    /// Unix domain socket path for the domain's coordinator server (aggregates only).
+    /// When set, starts a per-domain gRPC server over UDS exposing AggregateCoordinator
+    /// and EventQuery services for this domain. Mutually exclusive with `port`.
+    #[serde(default)]
+    pub socket: Option<String>,
+
     /// Working directory for the spawned process.
     #[serde(default)]
     pub working_dir: Option<String>,

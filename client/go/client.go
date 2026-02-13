@@ -146,9 +146,9 @@ func (c *AggregateClient) HandleSync(ctx context.Context, cmd *pb.SyncCommandBoo
 	return resp, nil
 }
 
-// DryRunHandle executes a command in dry-run mode (no persistence).
-func (c *AggregateClient) DryRunHandle(ctx context.Context, req *pb.DryRunRequest) (*pb.CommandResponse, error) {
-	resp, err := c.inner.DryRunHandle(ctx, req)
+// HandleSyncSpeculative executes a command speculatively against temporal state (no persistence).
+func (c *AggregateClient) HandleSyncSpeculative(ctx context.Context, req *pb.SpeculateAggregateRequest) (*pb.CommandResponse, error) {
+	resp, err := c.inner.HandleSyncSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
@@ -163,21 +163,28 @@ func (c *AggregateClient) Close() error {
 	return nil
 }
 
-// SpeculativeClient wraps the SpeculativeService for what-if scenarios.
+// SpeculativeClient wraps coordinator services for speculative execution.
+// Speculative execution runs commands/events against temporal state without persistence.
 type SpeculativeClient struct {
-	inner pb.SpeculativeServiceClient
-	conn  *grpc.ClientConn
+	aggregateStub  pb.AggregateCoordinatorServiceClient
+	sagaStub       pb.SagaCoordinatorServiceClient
+	projectorStub  pb.ProjectorCoordinatorServiceClient
+	pmStub         pb.ProcessManagerCoordinatorServiceClient
+	conn           *grpc.ClientConn
 }
 
-// NewSpeculativeClient connects to a speculative service at the given endpoint.
+// NewSpeculativeClient connects to coordinator services at the given endpoint.
 func NewSpeculativeClient(endpoint string) (*SpeculativeClient, error) {
 	conn, err := grpc.NewClient(formatEndpoint(endpoint), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, TransportError(err)
 	}
 	return &SpeculativeClient{
-		inner: pb.NewSpeculativeServiceClient(conn),
-		conn:  conn,
+		aggregateStub:  pb.NewAggregateCoordinatorServiceClient(conn),
+		sagaStub:       pb.NewSagaCoordinatorServiceClient(conn),
+		projectorStub:  pb.NewProjectorCoordinatorServiceClient(conn),
+		pmStub:         pb.NewProcessManagerCoordinatorServiceClient(conn),
+		conn:           conn,
 	}, nil
 }
 
@@ -193,14 +200,17 @@ func SpeculativeClientFromEnv(envVar, defaultEndpoint string) (*SpeculativeClien
 // SpeculativeClientFromConn creates a client from an existing connection.
 func SpeculativeClientFromConn(conn *grpc.ClientConn) *SpeculativeClient {
 	return &SpeculativeClient{
-		inner: pb.NewSpeculativeServiceClient(conn),
-		conn:  conn,
+		aggregateStub:  pb.NewAggregateCoordinatorServiceClient(conn),
+		sagaStub:       pb.NewSagaCoordinatorServiceClient(conn),
+		projectorStub:  pb.NewProjectorCoordinatorServiceClient(conn),
+		pmStub:         pb.NewProcessManagerCoordinatorServiceClient(conn),
+		conn:           conn,
 	}
 }
 
-// DryRun executes a command without persistence.
-func (c *SpeculativeClient) DryRun(ctx context.Context, req *pb.DryRunRequest) (*pb.CommandResponse, error) {
-	resp, err := c.inner.DryRunCommand(ctx, req)
+// Aggregate executes a command speculatively against temporal state.
+func (c *SpeculativeClient) Aggregate(ctx context.Context, req *pb.SpeculateAggregateRequest) (*pb.CommandResponse, error) {
+	resp, err := c.aggregateStub.HandleSyncSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
@@ -209,7 +219,7 @@ func (c *SpeculativeClient) DryRun(ctx context.Context, req *pb.DryRunRequest) (
 
 // Projector speculatively executes a projector against events.
 func (c *SpeculativeClient) Projector(ctx context.Context, req *pb.SpeculateProjectorRequest) (*pb.Projection, error) {
-	resp, err := c.inner.SpeculateProjector(ctx, req)
+	resp, err := c.projectorStub.HandleSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
@@ -218,7 +228,7 @@ func (c *SpeculativeClient) Projector(ctx context.Context, req *pb.SpeculateProj
 
 // Saga speculatively executes a saga against events.
 func (c *SpeculativeClient) Saga(ctx context.Context, req *pb.SpeculateSagaRequest) (*pb.SagaResponse, error) {
-	resp, err := c.inner.SpeculateSaga(ctx, req)
+	resp, err := c.sagaStub.ExecuteSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
@@ -227,7 +237,7 @@ func (c *SpeculativeClient) Saga(ctx context.Context, req *pb.SpeculateSagaReque
 
 // ProcessManager speculatively executes a process manager.
 func (c *SpeculativeClient) ProcessManager(ctx context.Context, req *pb.SpeculatePmRequest) (*pb.ProcessManagerHandleResponse, error) {
-	resp, err := c.inner.SpeculateProcessManager(ctx, req)
+	resp, err := c.pmStub.HandleSpeculative(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}

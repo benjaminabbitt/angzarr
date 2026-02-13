@@ -124,6 +124,32 @@ def proto_to_uuid(u: UUID) -> PyUUID:
     return PyUUID(bytes=u.value)
 
 
+def bytes_to_uuid_text(b: bytes) -> str:
+    """Convert bytes to standard UUID text format.
+
+    If bytes are exactly 16 bytes, formats as UUID (8-4-4-4-12).
+    Otherwise returns hex encoding of the bytes.
+    """
+    if len(b) == 16:
+        return str(PyUUID(bytes=b))
+    return b.hex()
+
+
+def proto_uuid_to_text(u: Optional[UUID]) -> str:
+    """Convert a proto UUID to text format."""
+    if u is None:
+        return ""
+    return bytes_to_uuid_text(u.value)
+
+
+def root_id_text(obj: CoverBearer) -> str:
+    """Return the root UUID as standard text format (8-4-4-4-12), or empty string if missing."""
+    c = cover_of(obj)
+    if c is None or not c.HasField("root"):
+        return ""
+    return bytes_to_uuid_text(c.root.value)
+
+
 # Edition helpers
 
 

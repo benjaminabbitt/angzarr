@@ -1,1 +1,1 @@
-# Python integration tests package
+# Tests package

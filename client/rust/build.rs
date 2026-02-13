@@ -28,6 +28,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/query.proto",
                 "proto/angzarr/stream.proto",
                 "proto/angzarr/upcaster.proto",
+                "proto/angzarr/meta.proto",
+                // Example protos (poker)
+                "proto/examples/types.proto",
+                "proto/examples/player.proto",
+                "proto/examples/table.proto",
+                "proto/examples/hand.proto",
+                "proto/examples/ai_sidecar.proto",
             ],
             &["proto"],
         )?;

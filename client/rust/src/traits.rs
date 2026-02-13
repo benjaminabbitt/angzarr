@@ -8,8 +8,8 @@ use async_trait::async_trait;
 
 use crate::error::Result;
 use crate::proto::{
-    CommandBook, CommandResponse, DryRunRequest, EventBook, ProcessManagerHandleResponse,
-    Projection, Query, SagaResponse, SpeculatePmRequest, SpeculateProjectorRequest,
+    CommandBook, CommandResponse, EventBook, ProcessManagerHandleResponse, Projection, Query,
+    SagaResponse, SpeculateAggregateRequest, SpeculatePmRequest, SpeculateProjectorRequest,
     SpeculateSagaRequest,
 };
 
@@ -29,8 +29,8 @@ pub trait GatewayClient: Send + Sync {
 /// and process managers without persisting side effects.
 #[async_trait]
 pub trait SpeculativeClient: Send + Sync {
-    /// Execute a command with dry-run (no persistence).
-    async fn dry_run(&self, request: DryRunRequest) -> Result<CommandResponse>;
+    /// Execute a command speculatively (no persistence).
+    async fn aggregate(&self, request: SpeculateAggregateRequest) -> Result<CommandResponse>;
 
     /// Speculatively execute a projector against events.
     async fn projector(&self, request: SpeculateProjectorRequest) -> Result<Projection>;
@@ -51,9 +51,6 @@ pub trait SpeculativeClient: Send + Sync {
 /// alternative transport implementations.
 #[async_trait]
 pub trait QueryClient: Send + Sync {
-    /// Get a single EventBook for the given query.
-    async fn get_event_book(&self, query: Query) -> Result<EventBook>;
-
-    /// Get events as a vector (collects streaming results).
-    async fn get_events(&self, query: Query) -> Result<Vec<EventBook>>;
+    /// Get events for the given query.
+    async fn get_events(&self, query: Query) -> Result<EventBook>;
 }

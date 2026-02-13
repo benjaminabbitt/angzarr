@@ -200,6 +200,15 @@ spec:
               value: {{ $.Values.amqp.url }}
               {{- end }}
             {{- end }}
+            # Upcaster configuration (client implements UpcasterService on same server)
+            {{- if $.Values.upcaster.enabled }}
+            - name: ANGZARR_UPCASTER_ENABLED
+              value: "true"
+            {{- if $.Values.upcaster.address }}
+            - name: ANGZARR_UPCASTER_ADDRESS
+              value: {{ $.Values.upcaster.address | quote }}
+            {{- end }}
+            {{- end }}
             {{- include "angzarr.otel-env" (dict "root" $ "service" "aggregate" "domain" .domain) | nindent 12 }}
           livenessProbe:
             {{- toYaml $.Values.livenessProbe | nindent 12 }}

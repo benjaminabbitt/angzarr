@@ -14,8 +14,8 @@ use crate::orchestration::aggregate::{
 };
 use crate::proto::{
     aggregate_coordinator_service_server::AggregateCoordinatorService,
-    aggregate_service_client::AggregateServiceClient, CommandBook, CommandResponse, DryRunRequest,
-    SyncCommandBook,
+    aggregate_service_client::AggregateServiceClient, CommandBook, CommandResponse,
+    SpeculateAggregateRequest, SyncCommandBook,
 };
 #[cfg(feature = "otel")]
 use crate::proto_ext::CoverExt;
@@ -220,18 +220,18 @@ impl AggregateCoordinatorService for AggregateService {
         Ok(Response::new(result?))
     }
 
-    /// Dry-run: execute command against temporal state without persisting.
-    #[tracing::instrument(name = "aggregate.dry_run_handle", skip_all)]
-    async fn dry_run_handle(
+    /// Speculative: execute command against temporal state without persisting.
+    #[tracing::instrument(name = "aggregate.handle_sync_speculative", skip_all)]
+    async fn handle_sync_speculative(
         &self,
-        request: Request<DryRunRequest>,
+        request: Request<SpeculateAggregateRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        let dry_run = request.into_inner();
-        let command_book = dry_run
-            .command
-            .ok_or_else(|| Status::invalid_argument("DryRunRequest must have a command"))?;
+        let speculate_req = request.into_inner();
+        let command_book = speculate_req.command.ok_or_else(|| {
+            Status::invalid_argument("SpeculateAggregateRequest must have a command")
+        })?;
 
-        let (as_of_sequence, as_of_timestamp) = match dry_run.point_in_time {
+        let (as_of_sequence, as_of_timestamp) = match speculate_req.point_in_time {
             Some(temporal) => match temporal.point_in_time {
                 Some(crate::proto::temporal_query::PointInTime::AsOfSequence(seq)) => {
                     (Some(seq), None)
@@ -251,7 +251,7 @@ impl AggregateCoordinatorService for AggregateService {
             &ctx,
             &*self.business,
             command_book,
-            PipelineMode::DryRun {
+            PipelineMode::Speculative {
                 as_of_sequence,
                 as_of_timestamp,
             },

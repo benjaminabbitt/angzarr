@@ -37,6 +37,18 @@ service ProcessManagerService {
   rpc Handle (ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
 }
 
+// ProcessManagerCoordinatorService: orchestrates PM execution
+service ProcessManagerCoordinatorService {
+  // Speculative execution - returns commands and events without persisting
+  rpc HandleSpeculative (SpeculatePmRequest) returns (ProcessManagerHandleResponse);
+}
+
+// Request for speculative PM execution at a point in time.
+message SpeculatePmRequest {
+  ProcessManagerHandleRequest request = 1;
+  TemporalQuery point_in_time = 2;
+}
+
 // Phase 1 request: PM declares additional destinations needed.
 message ProcessManagerPrepareRequest {
   // Full state of triggering domain (by correlation_id).
@@ -79,8 +91,3 @@ message ProcessTimeout {
   google.protobuf.Timestamp deadline = 4;
 }
 
-// ProcessManagerCoordinatorService: orchestrates PM execution
-service ProcessManagerCoordinatorService {
-  // Speculative execution - returns commands and events without persisting
-  rpc HandleSpeculative (ProcessManagerHandleRequest) returns (ProcessManagerHandleResponse);
-}

@@ -46,8 +46,8 @@ pub enum TemporalQuery {
 pub enum PipelineMode {
     /// Normal execution: validate → invoke → persist → post-persist.
     Execute,
-    /// Dry-run: load temporal state → invoke → return (no persist/publish).
-    DryRun {
+    /// Speculative: load temporal state → invoke → return (no persist/publish).
+    Speculative {
         as_of_sequence: Option<u32>,
         as_of_timestamp: Option<String>,
     },
@@ -196,7 +196,7 @@ fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
 /// Flow:
 /// - **Execute**: parse → extract edition → correlation_id → pre-validate → load →
 ///   transform → validate sequence → invoke → persist → post-persist → response
-/// - **DryRun**: parse → extract edition → load temporal → transform → invoke →
+/// - **Speculative**: parse → extract edition → load temporal → transform → invoke →
 ///   response (no persist)
 pub async fn execute_command_pipeline(
     ctx: &dyn AggregateContext,
@@ -206,7 +206,7 @@ pub async fn execute_command_pipeline(
 ) -> Result<CommandResponse, Status> {
     match mode {
         PipelineMode::Execute => execute_mode(ctx, business, command_book).await,
-        PipelineMode::DryRun {
+        PipelineMode::Speculative {
             as_of_sequence,
             as_of_timestamp,
         } => {
@@ -215,11 +215,11 @@ pub async fn execute_command_pipeline(
                 (_, Some(ts)) => TemporalQuery::AsOfTimestamp(ts),
                 (None, None) => {
                     return Err(Status::invalid_argument(
-                        "DryRun requires either as_of_sequence or as_of_timestamp",
+                        "Speculative requires either as_of_sequence or as_of_timestamp",
                     ));
                 }
             };
-            dry_run_mode(ctx, business, command_book, temporal).await
+            speculative_mode(ctx, business, command_book, temporal).await
         }
     }
 }
@@ -345,8 +345,8 @@ async fn execute_mode(
     })
 }
 
-#[tracing::instrument(name = "aggregate.dry_run", skip_all, fields(domain, edition, root_uuid, ?temporal))]
-async fn dry_run_mode(
+#[tracing::instrument(name = "aggregate.speculative", skip_all, fields(domain, edition, root_uuid, ?temporal))]
+async fn speculative_mode(
     ctx: &dyn AggregateContext,
     business: &dyn ClientLogic,
     command_book: CommandBook,
@@ -375,7 +375,7 @@ async fn dry_run_mode(
         e
     })?;
 
-    // For dry-run, extract events but don't set correlation_id (speculative)
+    // For speculative mode, extract events but don't set correlation_id
     let speculative_events = extract_events_from_response(response, String::new())?;
 
     Ok(CommandResponse {

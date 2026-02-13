@@ -1,12 +1,13 @@
-//! Integration tests for the upcaster sidecar pattern.
+//! Integration tests for the upcaster client component.
 //!
 //! Tests the full flow: events stored as V1 -> upcaster transforms to V2 -> business logic receives V2.
+//! The upcaster is implemented by the client binary (same server as aggregate logic).
 
 use crate::common::*;
 use angzarr::proto::event_page::Sequence;
-use angzarr::proto::upcaster_service_server::{Upcaster as UpcasterService, UpcasterServiceServer};
+use angzarr::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
 use angzarr::proto::{EventPage, UpcastRequest, UpcastResponse};
-use angzarr::services::upcaster::{Upcaster, UpcasterConfig};
+use angzarr::services::upcaster::Upcaster;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tonic::transport::Server;
@@ -128,13 +129,9 @@ fn make_v1_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
 async fn test_upcaster_integration_transforms_v1_to_v2() {
     let (addr, service) = start_upcaster_service().await;
 
-    let config = UpcasterConfig {
-        enabled: true,
-        address: addr,
-        timeout_ms: 5000,
-    };
-
-    let upcaster = Upcaster::new(config).await.expect("Failed to connect");
+    let upcaster = Upcaster::from_address(&addr)
+        .await
+        .expect("Failed to connect");
 
     // Simulate loading V1 events from storage
     let stored_events = vec![
@@ -172,13 +169,7 @@ async fn test_upcaster_integration_transforms_v1_to_v2() {
 async fn test_upcaster_integration_preserves_ordering() {
     let (addr, _service) = start_upcaster_service().await;
 
-    let config = UpcasterConfig {
-        enabled: true,
-        address: addr,
-        timeout_ms: 5000,
-    };
-
-    let upcaster = Upcaster::new(config).await.unwrap();
+    let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     // Events with non-sequential sequence numbers (e.g., from a range query)
     let stored_events = vec![
@@ -200,13 +191,7 @@ async fn test_upcaster_integration_preserves_ordering() {
 async fn test_upcaster_integration_multiple_calls() {
     let (addr, service) = start_upcaster_service().await;
 
-    let config = UpcasterConfig {
-        enabled: true,
-        address: addr,
-        timeout_ms: 5000,
-    };
-
-    let upcaster = Upcaster::new(config).await.unwrap();
+    let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     // First aggregate load
     let events1 = vec![make_v1_event(0, "example.OrderCreatedV1", vec![1])];
@@ -231,13 +216,7 @@ async fn test_upcaster_integration_multiple_calls() {
 async fn test_upcaster_integration_empty_events_no_call() {
     let (addr, service) = start_upcaster_service().await;
 
-    let config = UpcasterConfig {
-        enabled: true,
-        address: addr,
-        timeout_ms: 5000,
-    };
-
-    let upcaster = Upcaster::new(config).await.unwrap();
+    let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     // Empty events should short-circuit
     let result = upcaster.upcast("order", vec![]).await.unwrap();
@@ -251,13 +230,7 @@ async fn test_upcaster_integration_empty_events_no_call() {
 async fn test_upcaster_integration_events_without_payload() {
     let (addr, _service) = start_upcaster_service().await;
 
-    let config = UpcasterConfig {
-        enabled: true,
-        address: addr,
-        timeout_ms: 5000,
-    };
-
-    let upcaster = Upcaster::new(config).await.unwrap();
+    let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     let events = vec![EventPage {
         sequence: Some(Sequence::Num(0)),
@@ -276,13 +249,7 @@ async fn test_upcaster_integration_events_without_payload() {
 async fn test_upcaster_integration_large_batch() {
     let (addr, service) = start_upcaster_service().await;
 
-    let config = UpcasterConfig {
-        enabled: true,
-        address: addr,
-        timeout_ms: 5000,
-    };
-
-    let upcaster = Upcaster::new(config).await.unwrap();
+    let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     // Create 100 V1 events
     let events: Vec<EventPage> = (0..100)

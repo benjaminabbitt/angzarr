@@ -9,10 +9,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/query.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/stream.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/upcaster.proto");
-    println!("cargo:rerun-if-changed=proto/examples/inventory.proto");
-    println!("cargo:rerun-if-changed=proto/examples/order.proto");
-    println!("cargo:rerun-if-changed=proto/examples/fulfillment.proto");
-    println!("cargo:rerun-if-changed=proto/examples/projections.proto");
+    println!("cargo:rerun-if-changed=proto/angzarr/meta.proto");
+    println!("cargo:rerun-if-changed=proto/examples/types.proto");
+    println!("cargo:rerun-if-changed=proto/examples/player.proto");
+    println!("cargo:rerun-if-changed=proto/examples/table.proto");
+    println!("cargo:rerun-if-changed=proto/examples/hand.proto");
+    println!("cargo:rerun-if-changed=proto/examples/ai_sidecar.proto");
 
     tonic_build::configure()
         .build_server(true)
@@ -40,10 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/query.proto",
                 "proto/angzarr/stream.proto",
                 "proto/angzarr/upcaster.proto",
-                "proto/examples/inventory.proto",
-                "proto/examples/order.proto",
-                "proto/examples/fulfillment.proto",
-                "proto/examples/projections.proto",
+                "proto/angzarr/meta.proto",
+                "proto/examples/types.proto",
+                "proto/examples/player.proto",
+                "proto/examples/table.proto",
+                "proto/examples/hand.proto",
+                "proto/examples/ai_sidecar.proto",
             ],
             &["proto"],
         )?;

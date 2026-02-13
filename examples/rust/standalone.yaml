@@ -1,136 +1,114 @@
-# Standalone mode configuration for Rust examples
-# Run with: ANGZARR_CONFIG=examples/rust/standalone.yaml cargo run --bin angzarr-standalone
+# Standalone mode configuration for Rust Poker example
+# Run with: cargo run --bin angzarr-standalone --features standalone,sqlite -- --config examples/rust/standalone.yaml
+
+storage:
+  type: sqlite
+
+messaging:
+  type: channel
 
 transport:
   type: uds
   uds:
-    base_path: /tmp/angzarr
-
-messaging:
-  type: ipc
-  ipc:
-    base_path: /tmp/angzarr
+    base_path: /tmp/angzarr-poker-rust
 
 standalone:
   aggregates:
-    - domain: customer
-      command: ["./target/debug/customer-server"]
+    - domain: player
+      port: 50001
+      command: ["./examples/rust/target/release/agg-player"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+        SERVICE_NAME: business
+        DOMAIN: player
       storage:
         type: sqlite
         sqlite:
-          path: ./data/customer.db
-    - domain: product
-      command: ["./target/debug/product-server"]
+          path: ./examples/rust/data/player.db
+
+    - domain: table
+      port: 50002
+      command: ["./examples/rust/target/release/agg-table"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+        SERVICE_NAME: business
+        DOMAIN: table
       storage:
         type: sqlite
         sqlite:
-          path: ./data/product.db
-    - domain: inventory
-      command: ["./target/debug/inventory-server"]
+          path: ./examples/rust/data/table.db
+
+    - domain: hand
+      port: 50003
+      command: ["./examples/rust/target/release/agg-hand"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+        SERVICE_NAME: business
+        DOMAIN: hand
       storage:
         type: sqlite
         sqlite:
-          path: ./data/inventory.db
-    - domain: order
-      command: ["./target/debug/order-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/order.db
-    - domain: cart
-      command: ["./target/debug/cart-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/cart.db
-    - domain: fulfillment
-      command: ["./target/debug/fulfillment-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/fulfillment.db
+          path: ./examples/rust/data/hand.db
 
   sagas:
-    - domain: fulfillment
-      listen_domain: order
-      command: ["./target/debug/saga-fulfillment-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/saga-fulfillment.db
-    - domain: cancellation
-      listen_domain: order
-      command: ["./target/debug/saga-cancellation-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/saga-cancellation.db
-    - domain: loyalty-earn
-      listen_domain: fulfillment
-      command: ["./target/debug/saga-loyalty-earn-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/saga-loyalty-earn.db
+    - name: saga-table-hand
+      port: 50010
+      source_domain: table
+      target_domain: hand
+      command: ["./target/release/saga-table-hand"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+
+    - name: saga-hand-table
+      port: 50011
+      source_domain: hand
+      target_domain: table
+      command: ["./target/release/saga-hand-table"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+
+    - name: saga-table-player
+      port: 50013
+      source_domain: table
+      target_domain: player
+      command: ["./target/release/saga-table-player"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+
+    - name: saga-hand-player
+      port: 50014
+      source_domain: hand
+      target_domain: player
+      command: ["./target/release/saga-hand-player"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+
+  process_managers:
+    - name: pmg-hand-flow
+      port: 50091
+      pm_domain: hand-flow
+      input_domains: [table, hand]
+      command: ["./target/release/pmg-hand-flow"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
 
   projectors:
-    - name: logging
-      domain: customer
-      listen_domain: customer
-      command: ["./target/debug/projector-logging-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-logging-customer.db
-    - name: logging
-      domain: product
-      listen_domain: product
-      command: ["./target/debug/projector-logging-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-logging-product.db
-    - name: logging
-      domain: inventory
-      listen_domain: inventory
-      command: ["./target/debug/projector-logging-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-logging-inventory.db
-    - name: logging
-      domain: order
-      listen_domain: order
-      command: ["./target/debug/projector-logging-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-logging-order.db
-    - name: logging
-      domain: cart
-      listen_domain: cart
-      command: ["./target/debug/projector-logging-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-logging-cart.db
-    - name: logging
-      domain: fulfillment
-      listen_domain: fulfillment
-      command: ["./target/debug/projector-logging-server"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-logging-fulfillment.db
-    # Stream projector - forwards all events to stream service for gateway streaming
-    - name: stream
-      domain: stream
-      listen_domain: "#"
-      address: /tmp/angzarr/stream.sock
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/projector-stream.db
+    - name: prj-output
+      port: 50090
+      listen_domains: [player, table, hand]
+      command: ["./target/release/prj-output"]
+      env:
+        RUST_LOG: info
+        UDS_BASE_PATH: /tmp/angzarr-poker-rust
+        HAND_LOG_FILE: ./hand_log.txt
 
   gateway:
     enabled: true

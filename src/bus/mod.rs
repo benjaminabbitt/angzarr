@@ -27,8 +27,6 @@ pub mod kafka;
 #[cfg(feature = "lossy")]
 pub mod lossy;
 pub mod mock;
-#[cfg(feature = "nats")]
-pub mod nats;
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod outbox;
 

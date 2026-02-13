@@ -1,0 +1,153 @@
+syntax = "proto3";
+package examples;
+
+import "google/protobuf/timestamp.proto";
+import "examples/types.proto";
+
+// =============================================================================
+// Table Domain - Game session, seating, and configuration
+// Root: table_id (derived from table_name)
+// =============================================================================
+
+// Commands
+
+message CreateTable {
+  string table_name = 1;
+  GameVariant game_variant = 2;
+  int64 small_blind = 3;
+  int64 big_blind = 4;
+  int64 min_buy_in = 5;
+  int64 max_buy_in = 6;
+  int32 max_players = 7;         // 2-10
+  int32 action_timeout_seconds = 8;
+}
+
+message JoinTable {
+  bytes player_root = 1;
+  int32 preferred_seat = 2;      // -1 for any available
+  int64 buy_in_amount = 3;
+}
+
+message LeaveTable {
+  bytes player_root = 1;
+}
+
+message SitOut {
+  bytes player_root = 1;
+}
+
+message SitIn {
+  bytes player_root = 1;
+}
+
+message StartHand {
+  // No parameters - uses current table state
+  // Dealer button advances automatically
+}
+
+message EndHand {
+  bytes hand_root = 1;
+  repeated PotResult results = 2;
+}
+
+message PotResult {
+  bytes winner_root = 1;
+  int64 amount = 2;
+  string pot_type = 3;           // "main" or "side_N"
+  HandRanking winning_hand = 4;
+}
+
+message AddChips {
+  bytes player_root = 1;
+  int64 amount = 2;
+}
+
+// Events
+
+message TableCreated {
+  string table_name = 1;
+  GameVariant game_variant = 2;
+  int64 small_blind = 3;
+  int64 big_blind = 4;
+  int64 min_buy_in = 5;
+  int64 max_buy_in = 6;
+  int32 max_players = 7;
+  int32 action_timeout_seconds = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message PlayerJoined {
+  bytes player_root = 1;
+  int32 seat_position = 2;
+  int64 buy_in_amount = 3;
+  int64 stack = 4;               // Absolute stack after buy-in
+  google.protobuf.Timestamp joined_at = 5;
+}
+
+message PlayerLeft {
+  bytes player_root = 1;
+  int32 seat_position = 2;
+  int64 chips_cashed_out = 3;
+  google.protobuf.Timestamp left_at = 4;
+}
+
+message PlayerSatOut {
+  bytes player_root = 1;
+  google.protobuf.Timestamp sat_out_at = 2;
+}
+
+message PlayerSatIn {
+  bytes player_root = 1;
+  google.protobuf.Timestamp sat_in_at = 2;
+}
+
+message HandStarted {
+  bytes hand_root = 1;           // New hand aggregate root
+  int64 hand_number = 2;
+  int32 dealer_position = 3;
+  int32 small_blind_position = 4;
+  int32 big_blind_position = 5;
+  repeated SeatSnapshot active_players = 6;
+  GameVariant game_variant = 7;
+  int64 small_blind = 8;
+  int64 big_blind = 9;
+  google.protobuf.Timestamp started_at = 10;
+}
+
+message SeatSnapshot {
+  int32 position = 1;
+  bytes player_root = 2;
+  int64 stack = 3;
+}
+
+message HandEnded {
+  bytes hand_root = 1;
+  repeated PotResult results = 2;
+  map<string, int64> stack_changes = 3;  // player_root_hex -> delta
+  google.protobuf.Timestamp ended_at = 4;
+}
+
+message ChipsAdded {
+  bytes player_root = 1;
+  int64 amount = 2;
+  int64 new_stack = 3;           // Absolute stack after add
+  google.protobuf.Timestamp added_at = 4;
+}
+
+// State (for snapshots)
+message TableState {
+  string table_id = 1;
+  string table_name = 2;
+  GameVariant game_variant = 3;
+  int64 small_blind = 4;
+  int64 big_blind = 5;
+  int64 min_buy_in = 6;
+  int64 max_buy_in = 7;
+  int32 max_players = 8;
+  int32 action_timeout_seconds = 9;
+  repeated Seat seats = 10;
+  int32 dealer_position = 11;
+  int64 hand_count = 12;
+  bytes current_hand_root = 13;
+  string status = 14;            // "waiting", "in_hand", "paused"
+}

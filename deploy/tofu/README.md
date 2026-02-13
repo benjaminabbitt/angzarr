@@ -8,11 +8,17 @@ Uses [OpenTofu](https://opentofu.org/) (open-source Terraform fork).
 ```
 deploy/tofu/
 ├── modules/                    # Reusable infrastructure modules
-│   ├── database/              # PostgreSQL or MongoDB via Helm
-│   ├── messaging/             # RabbitMQ or Kafka via Helm
-│   └── mesh/                  # Linkerd or Istio via Helm
+│   ├── database/              # PostgreSQL or MongoDB via Helm (K8s)
+│   ├── messaging/             # RabbitMQ or Kafka via Helm (K8s)
+│   ├── mesh/                  # Linkerd or Istio via Helm (K8s)
+│   ├── cloudsql/              # Cloud SQL PostgreSQL (GCP)
+│   ├── pubsub/                # Pub/Sub event bus (GCP)
+│   ├── domain/                # Domain module - aggregate/PM + sagas + projectors (GCP)
+│   ├── infrastructure/        # Stream + Topology services (GCP)
+│   └── registry/              # Service discovery aggregation (GCP)
 └── environments/              # Environment-specific configurations
-    ├── local/                 # Local development
+    ├── local/                 # Local development (K8s)
+    ├── gcp/                   # Google Cloud Run deployment
     ├── staging/               # Staging environment
     └── prod/                  # Production environment
 ```
@@ -44,7 +50,7 @@ For production, use External Secrets Operator to sync from:
 
 ESO syncs external secrets → K8s secret → OpenTofu reads it.
 
-## Quick Start (Local Development)
+## Quick Start (Local Development - K8s)
 
 ```bash
 # Deploy infrastructure (generates secrets + runs opentofu)
@@ -55,6 +61,107 @@ just secrets-init            # Generate and store credentials in K8s
 just tofu init local    # Initialize OpenTofu
 just tofu apply local   # Apply (will prompt for confirmation)
 ```
+
+## Quick Start (Google Cloud Run)
+
+Deploy angzarr to Google Cloud Run with serverless scaling.
+
+```bash
+cd deploy/tofu/environments/gcp
+
+# Configure variables
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your project settings
+
+# Initialize and deploy
+tofu init
+tofu plan
+tofu apply
+```
+
+### GCP Prerequisites
+
+1. GCP project with billing enabled
+2. APIs enabled:
+   - Cloud Run API
+   - Cloud SQL Admin API
+   - Pub/Sub API
+   - Secret Manager API
+3. Container images pushed to GCR or Artifact Registry
+4. Service account with appropriate permissions
+
+### GCP Module Reference
+
+#### Domain Module
+
+Deploys all components for a single domain (aggregate/PM + sagas + projectors).
+
+```hcl
+module "order" {
+  source = "../../modules/domain"
+
+  domain     = "order"
+  project_id = var.project_id
+  region     = var.region
+
+  aggregate = {
+    enabled = true
+    env     = { ORDER_FEATURE = "enabled" }
+    upcaster = {
+      enabled = true  # Optional upcaster sidecar
+    }
+  }
+
+  sagas = {
+    fulfillment = {
+      target_domain = "fulfillment"
+      env = { SAGA_TIMEOUT_MS = "5000" }
+    }
+  }
+
+  projectors = {
+    web = { env = {} }
+  }
+
+  images = {
+    grpc_gateway          = "gcr.io/project/grpc-gateway:latest"
+    coordinator_aggregate = "gcr.io/project/angzarr-aggregate:latest"
+    coordinator_saga      = "gcr.io/project/angzarr-saga:latest"
+    coordinator_projector = "gcr.io/project/angzarr-projector:latest"
+    coordinator_pm        = "gcr.io/project/angzarr-pm:latest"
+    logic                 = "gcr.io/project/agg-order:latest"
+    upcaster              = "gcr.io/project/upcaster-order:latest"
+    saga_logic            = { fulfillment = "gcr.io/project/saga-order-fulfillment:latest" }
+    projector_logic       = { web = "gcr.io/project/projector-order-web:latest" }
+  }
+
+  discovery_env   = module.registry.discovery_env
+  coordinator_env = merge(module.cloudsql.coordinator_env, module.pubsub.coordinator_env)
+}
+```
+
+#### Cloud Run Architecture
+
+Each Cloud Run service contains multiple containers:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Cloud Run Service                                           │
+│                                                              │
+│  ┌─────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │  grpc-gateway   │  │ Coordinator │  │  Business Logic │  │
+│  │  (REST bridge)  │  │ (angzarr)   │  │  (user code)    │  │
+│  │  Port: 8080     │  │ Port: 1310  │  │  Port: 50053    │  │
+│  └────────┬────────┘  └──────┬──────┘  └────────┬────────┘  │
+│           └────────localhost─┴──────────────────┘            │
+│  Optional: Upcaster sidecar (port 50054)                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **grpc-gateway**: REST→gRPC bridge (exposed port 8080)
+- **Coordinator**: Angzarr event sourcing machinery
+- **Business Logic**: Your domain code
+- **Upcaster**: Optional event upcasting sidecar
 
 ## State Backend Configuration
 

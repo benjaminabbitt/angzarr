@@ -1,5 +1,0 @@
-PROTO_DIR := "angzarr"
-UNIT_TARGET := "--ignore=features/ --ignore=acceptance/"
-RUN_FILE := "main.py"
-
-import "../service.justfile"

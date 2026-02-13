@@ -1,3 +1,0 @@
-SERVICE := "saga-fulfillment"
-
-import "../service.justfile"

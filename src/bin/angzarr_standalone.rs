@@ -609,6 +609,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start per-domain aggregate coordinator servers
     let mut servers: Vec<ServerInfo> = Vec::new();
     for svc in &config.standalone.aggregates {
+        // TCP port-based coordinator
         if let Some(port) = svc.port {
             let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
 
@@ -648,7 +649,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             servers.push(ServerInfo::from_parts(local_addr, shutdown_tx));
-            info!(domain = %svc.domain, addr = %local_addr, "Coordinator listening");
+            info!(domain = %svc.domain, addr = %local_addr, "Coordinator listening (TCP)");
+        }
+        // UDS socket-based coordinator
+        else if let Some(socket_path) = &svc.socket {
+            let storage = domain_stores.get(&svc.domain).ok_or_else(|| {
+                format!(
+                    "No storage for domain '{}' when starting coordinator",
+                    svc.domain
+                )
+            })?;
+
+            let aggregate_svc = StandaloneAggregateService::with_limits(
+                svc.domain.clone(),
+                router.clone(),
+                config.limits.clone(),
+            );
+            let event_query = SingleDomainEventQuery::new(svc.domain.clone(), storage.clone());
+
+            let grpc_router = tonic::transport::Server::builder()
+                .layer(grpc_trace_layer())
+                .add_service(AggregateCoordinatorServiceServer::new(aggregate_svc))
+                .add_service(EventQueryServiceServer::new(event_query));
+
+            // Remove stale socket file if it exists
+            let _ = std::fs::remove_file(socket_path);
+
+            let uds = tokio::net::UnixListener::bind(socket_path)?;
+            let incoming = tokio_stream::wrappers::UnixListenerStream::new(uds);
+
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
+            let domain = svc.domain.clone();
+            let socket_path_log = socket_path.clone();
+            tokio::spawn(async move {
+                let server = grpc_router.serve_with_incoming_shutdown(incoming, async {
+                    let _ = shutdown_rx.await;
+                });
+                if let Err(e) = server.await {
+                    error!(domain = %domain, error = %e, "Coordinator server error");
+                }
+            });
+
+            // ServerInfo expects SocketAddr, but we have UDS - create a dummy for tracking
+            let dummy_addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
+            servers.push(ServerInfo::from_parts(dummy_addr, shutdown_tx));
+            info!(domain = %svc.domain, socket = %socket_path_log, "Coordinator listening (UDS)");
         }
     }
 
@@ -674,6 +720,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Spawn heartbeat for re-registration (handles topology startup race)
+    // Get meta domain storage to query current sequences
+    let meta_event_store = domain_stores
+        .get(META_DOMAIN)
+        .expect("meta domain storage must exist")
+        .event_store
+        .clone();
     let hb_executor = executor.clone();
     let strategy = config.standalone.registration.build_strategy();
     tokio::spawn(async move {
@@ -682,7 +734,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(delay) = strategy.next_delay(attempt) {
                 tokio::time::sleep(delay).await;
                 for cmd in &commands {
-                    let _ = hb_executor.execute(cmd.clone()).await;
+                    // Query current sequence for this component's aggregate root
+                    let root_uuid = cmd
+                        .cover
+                        .as_ref()
+                        .and_then(|c| c.root.as_ref())
+                        .map(|r| uuid::Uuid::from_slice(&r.value).unwrap_or_default())
+                        .unwrap_or_default();
+
+                    let next_seq = meta_event_store
+                        .get_next_sequence(META_DOMAIN, "angzarr", root_uuid)
+                        .await
+                        .unwrap_or(0);
+
+                    // Update command with correct sequence
+                    let mut cmd = cmd.clone();
+                    if let Some(page) = cmd.pages.first_mut() {
+                        page.sequence = next_seq;
+                    }
+
+                    let _ = hb_executor.execute(cmd).await;
                 }
                 attempt = attempt.saturating_add(1);
             } else {

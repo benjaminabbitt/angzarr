@@ -297,129 +297,6 @@ func (x *DomainDivergence) GetSequence() uint32 {
 	return 0
 }
 
-// Delete all events for an edition+domain combination.
-// Main timeline ('angzarr' or empty edition name) cannot be deleted.
-type DeleteEditionEvents struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Edition       string                 `protobuf:"bytes,1,opt,name=edition,proto3" json:"edition,omitempty"` // Edition name to delete from
-	Domain        string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`   // Domain to delete from
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DeleteEditionEvents) Reset() {
-	*x = DeleteEditionEvents{}
-	mi := &file_angzarr_types_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DeleteEditionEvents) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DeleteEditionEvents) ProtoMessage() {}
-
-func (x *DeleteEditionEvents) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DeleteEditionEvents.ProtoReflect.Descriptor instead.
-func (*DeleteEditionEvents) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *DeleteEditionEvents) GetEdition() string {
-	if x != nil {
-		return x.Edition
-	}
-	return ""
-}
-
-func (x *DeleteEditionEvents) GetDomain() string {
-	if x != nil {
-		return x.Domain
-	}
-	return ""
-}
-
-// Response from edition event deletion.
-type EditionEventsDeleted struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Edition       string                 `protobuf:"bytes,1,opt,name=edition,proto3" json:"edition,omitempty"`
-	Domain        string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`
-	DeletedCount  uint32                 `protobuf:"varint,3,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
-	DeletedAt     string                 `protobuf:"bytes,4,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *EditionEventsDeleted) Reset() {
-	*x = EditionEventsDeleted{}
-	mi := &file_angzarr_types_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *EditionEventsDeleted) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*EditionEventsDeleted) ProtoMessage() {}
-
-func (x *EditionEventsDeleted) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use EditionEventsDeleted.ProtoReflect.Descriptor instead.
-func (*EditionEventsDeleted) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *EditionEventsDeleted) GetEdition() string {
-	if x != nil {
-		return x.Edition
-	}
-	return ""
-}
-
-func (x *EditionEventsDeleted) GetDomain() string {
-	if x != nil {
-		return x.Domain
-	}
-	return ""
-}
-
-func (x *EditionEventsDeleted) GetDeletedCount() uint32 {
-	if x != nil {
-		return x.DeletedCount
-	}
-	return 0
-}
-
-func (x *EditionEventsDeleted) GetDeletedAt() string {
-	if x != nil {
-		return x.DeletedAt
-	}
-	return ""
-}
-
 type EventPage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Sequence:
@@ -435,7 +312,7 @@ type EventPage struct {
 
 func (x *EventPage) Reset() {
 	*x = EventPage{}
-	mi := &file_angzarr_types_proto_msgTypes[6]
+	mi := &file_angzarr_types_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -447,7 +324,7 @@ func (x *EventPage) String() string {
 func (*EventPage) ProtoMessage() {}
 
 func (x *EventPage) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[6]
+	mi := &file_angzarr_types_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -460,7 +337,7 @@ func (x *EventPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventPage.ProtoReflect.Descriptor instead.
 func (*EventPage) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{6}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *EventPage) GetSequence() isEventPage_Sequence {
@@ -530,7 +407,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_angzarr_types_proto_msgTypes[7]
+	mi := &file_angzarr_types_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -542,7 +419,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[7]
+	mi := &file_angzarr_types_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -555,7 +432,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{7}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Snapshot) GetSequence() uint32 {
@@ -586,7 +463,7 @@ type EventBook struct {
 
 func (x *EventBook) Reset() {
 	*x = EventBook{}
-	mi := &file_angzarr_types_proto_msgTypes[8]
+	mi := &file_angzarr_types_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -598,7 +475,7 @@ func (x *EventBook) String() string {
 func (*EventBook) ProtoMessage() {}
 
 func (x *EventBook) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[8]
+	mi := &file_angzarr_types_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -611,7 +488,7 @@ func (x *EventBook) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventBook.ProtoReflect.Descriptor instead.
 func (*EventBook) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{8}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EventBook) GetCover() *Cover {
@@ -652,7 +529,7 @@ type SyncEventBook struct {
 
 func (x *SyncEventBook) Reset() {
 	*x = SyncEventBook{}
-	mi := &file_angzarr_types_proto_msgTypes[9]
+	mi := &file_angzarr_types_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -664,7 +541,7 @@ func (x *SyncEventBook) String() string {
 func (*SyncEventBook) ProtoMessage() {}
 
 func (x *SyncEventBook) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[9]
+	mi := &file_angzarr_types_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -677,7 +554,7 @@ func (x *SyncEventBook) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncEventBook.ProtoReflect.Descriptor instead.
 func (*SyncEventBook) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{9}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SyncEventBook) GetEvents() *EventBook {
@@ -706,7 +583,7 @@ type Projection struct {
 
 func (x *Projection) Reset() {
 	*x = Projection{}
-	mi := &file_angzarr_types_proto_msgTypes[10]
+	mi := &file_angzarr_types_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -718,7 +595,7 @@ func (x *Projection) String() string {
 func (*Projection) ProtoMessage() {}
 
 func (x *Projection) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[10]
+	mi := &file_angzarr_types_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -731,7 +608,7 @@ func (x *Projection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Projection.ProtoReflect.Descriptor instead.
 func (*Projection) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{10}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Projection) GetCover() *Cover {
@@ -762,712 +639,6 @@ func (x *Projection) GetProjection() *anypb.Any {
 	return nil
 }
 
-// Response from entity - aggregate events + sync projector results
-type CommandResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Events        *EventBook             `protobuf:"bytes,1,opt,name=events,proto3" json:"events,omitempty"`           // Events from the target aggregate
-	Projections   []*Projection          `protobuf:"bytes,2,rep,name=projections,proto3" json:"projections,omitempty"` // Synchronous projector results
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CommandResponse) Reset() {
-	*x = CommandResponse{}
-	mi := &file_angzarr_types_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CommandResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CommandResponse) ProtoMessage() {}
-
-func (x *CommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CommandResponse.ProtoReflect.Descriptor instead.
-func (*CommandResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *CommandResponse) GetEvents() *EventBook {
-	if x != nil {
-		return x.Events
-	}
-	return nil
-}
-
-func (x *CommandResponse) GetProjections() []*Projection {
-	if x != nil {
-		return x.Projections
-	}
-	return nil
-}
-
-// Response from saga - commands for other aggregates
-type SagaResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Commands      []*CommandBook         `protobuf:"bytes,1,rep,name=commands,proto3" json:"commands,omitempty"` // Commands to execute on other aggregates
-	Events        []*EventBook           `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`     // Events to publish directly
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SagaResponse) Reset() {
-	*x = SagaResponse{}
-	mi := &file_angzarr_types_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaResponse) ProtoMessage() {}
-
-func (x *SagaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaResponse.ProtoReflect.Descriptor instead.
-func (*SagaResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *SagaResponse) GetCommands() []*CommandBook {
-	if x != nil {
-		return x.Commands
-	}
-	return nil
-}
-
-func (x *SagaResponse) GetEvents() []*EventBook {
-	if x != nil {
-		return x.Events
-	}
-	return nil
-}
-
-// Two-phase saga protocol messages
-type SagaPrepareRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        *EventBook             `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"` // Source events that triggered the saga
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SagaPrepareRequest) Reset() {
-	*x = SagaPrepareRequest{}
-	mi := &file_angzarr_types_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaPrepareRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaPrepareRequest) ProtoMessage() {}
-
-func (x *SagaPrepareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaPrepareRequest.ProtoReflect.Descriptor instead.
-func (*SagaPrepareRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *SagaPrepareRequest) GetSource() *EventBook {
-	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-type SagaPrepareResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Destinations  []*Cover               `protobuf:"bytes,1,rep,name=destinations,proto3" json:"destinations,omitempty"` // Destination aggregates the saga needs to read
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SagaPrepareResponse) Reset() {
-	*x = SagaPrepareResponse{}
-	mi := &file_angzarr_types_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaPrepareResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaPrepareResponse) ProtoMessage() {}
-
-func (x *SagaPrepareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaPrepareResponse.ProtoReflect.Descriptor instead.
-func (*SagaPrepareResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *SagaPrepareResponse) GetDestinations() []*Cover {
-	if x != nil {
-		return x.Destinations
-	}
-	return nil
-}
-
-type SagaExecuteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        *EventBook             `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`             // Source events (same as prepare)
-	Destinations  []*EventBook           `protobuf:"bytes,2,rep,name=destinations,proto3" json:"destinations,omitempty"` // Fetched destination state
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SagaExecuteRequest) Reset() {
-	*x = SagaExecuteRequest{}
-	mi := &file_angzarr_types_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaExecuteRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaExecuteRequest) ProtoMessage() {}
-
-func (x *SagaExecuteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaExecuteRequest.ProtoReflect.Descriptor instead.
-func (*SagaExecuteRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *SagaExecuteRequest) GetSource() *EventBook {
-	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-func (x *SagaExecuteRequest) GetDestinations() []*EventBook {
-	if x != nil {
-		return x.Destinations
-	}
-	return nil
-}
-
-type SagaRetryRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Source          *EventBook             `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Destinations    []*EventBook           `protobuf:"bytes,2,rep,name=destinations,proto3" json:"destinations,omitempty"`
-	RejectedCommand *CommandBook           `protobuf:"bytes,3,opt,name=rejected_command,json=rejectedCommand,proto3" json:"rejected_command,omitempty"`
-	RejectionReason string                 `protobuf:"bytes,4,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
-	Attempt         uint32                 `protobuf:"varint,5,opt,name=attempt,proto3" json:"attempt,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *SagaRetryRequest) Reset() {
-	*x = SagaRetryRequest{}
-	mi := &file_angzarr_types_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaRetryRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaRetryRequest) ProtoMessage() {}
-
-func (x *SagaRetryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaRetryRequest.ProtoReflect.Descriptor instead.
-func (*SagaRetryRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *SagaRetryRequest) GetSource() *EventBook {
-	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-func (x *SagaRetryRequest) GetDestinations() []*EventBook {
-	if x != nil {
-		return x.Destinations
-	}
-	return nil
-}
-
-func (x *SagaRetryRequest) GetRejectedCommand() *CommandBook {
-	if x != nil {
-		return x.RejectedCommand
-	}
-	return nil
-}
-
-func (x *SagaRetryRequest) GetRejectionReason() string {
-	if x != nil {
-		return x.RejectionReason
-	}
-	return ""
-}
-
-func (x *SagaRetryRequest) GetAttempt() uint32 {
-	if x != nil {
-		return x.Attempt
-	}
-	return 0
-}
-
-// Track saga command origin for compensation flow
-type SagaCommandOrigin struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	SagaName                string                 `protobuf:"bytes,1,opt,name=saga_name,json=sagaName,proto3" json:"saga_name,omitempty"`                                                 // Name of the saga that issued the command
-	TriggeringAggregate     *Cover                 `protobuf:"bytes,2,opt,name=triggering_aggregate,json=triggeringAggregate,proto3" json:"triggering_aggregate,omitempty"`                // Domain+root of aggregate that triggered the saga
-	TriggeringEventSequence uint32                 `protobuf:"varint,3,opt,name=triggering_event_sequence,json=triggeringEventSequence,proto3" json:"triggering_event_sequence,omitempty"` // Sequence number of the triggering event
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
-}
-
-func (x *SagaCommandOrigin) Reset() {
-	*x = SagaCommandOrigin{}
-	mi := &file_angzarr_types_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaCommandOrigin) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaCommandOrigin) ProtoMessage() {}
-
-func (x *SagaCommandOrigin) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaCommandOrigin.ProtoReflect.Descriptor instead.
-func (*SagaCommandOrigin) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *SagaCommandOrigin) GetSagaName() string {
-	if x != nil {
-		return x.SagaName
-	}
-	return ""
-}
-
-func (x *SagaCommandOrigin) GetTriggeringAggregate() *Cover {
-	if x != nil {
-		return x.TriggeringAggregate
-	}
-	return nil
-}
-
-func (x *SagaCommandOrigin) GetTriggeringEventSequence() uint32 {
-	if x != nil {
-		return x.TriggeringEventSequence
-	}
-	return 0
-}
-
-// Command sent to original aggregate when saga command is rejected
-type RevokeEventCommand struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	TriggeringEventSequence uint32                 `protobuf:"varint,1,opt,name=triggering_event_sequence,json=triggeringEventSequence,proto3" json:"triggering_event_sequence,omitempty"` // Which event triggered the failed saga flow
-	SagaName                string                 `protobuf:"bytes,2,opt,name=saga_name,json=sagaName,proto3" json:"saga_name,omitempty"`                                                 // Saga that issued the rejected command
-	RejectionReason         string                 `protobuf:"bytes,3,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`                            // Why the command was rejected
-	RejectedCommand         *CommandBook           `protobuf:"bytes,4,opt,name=rejected_command,json=rejectedCommand,proto3" json:"rejected_command,omitempty"`                            // The command that was rejected
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
-}
-
-func (x *RevokeEventCommand) Reset() {
-	*x = RevokeEventCommand{}
-	mi := &file_angzarr_types_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RevokeEventCommand) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RevokeEventCommand) ProtoMessage() {}
-
-func (x *RevokeEventCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RevokeEventCommand.ProtoReflect.Descriptor instead.
-func (*RevokeEventCommand) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *RevokeEventCommand) GetTriggeringEventSequence() uint32 {
-	if x != nil {
-		return x.TriggeringEventSequence
-	}
-	return 0
-}
-
-func (x *RevokeEventCommand) GetSagaName() string {
-	if x != nil {
-		return x.SagaName
-	}
-	return ""
-}
-
-func (x *RevokeEventCommand) GetRejectionReason() string {
-	if x != nil {
-		return x.RejectionReason
-	}
-	return ""
-}
-
-func (x *RevokeEventCommand) GetRejectedCommand() *CommandBook {
-	if x != nil {
-		return x.RejectedCommand
-	}
-	return nil
-}
-
-// client logic requests framework to handle revocation
-type RevocationResponse struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	EmitSystemRevocation  bool                   `protobuf:"varint,1,opt,name=emit_system_revocation,json=emitSystemRevocation,proto3" json:"emit_system_revocation,omitempty"`        // Emit SagaCompensationFailed event
-	SendToDeadLetterQueue bool                   `protobuf:"varint,2,opt,name=send_to_dead_letter_queue,json=sendToDeadLetterQueue,proto3" json:"send_to_dead_letter_queue,omitempty"` // Send to DLQ
-	Escalate              bool                   `protobuf:"varint,3,opt,name=escalate,proto3" json:"escalate,omitempty"`                                                              // Flag for alerting/human intervention
-	Abort                 bool                   `protobuf:"varint,4,opt,name=abort,proto3" json:"abort,omitempty"`                                                                    // Stop saga chain, propagate error to caller
-	Reason                string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`                                                                   // Context/reason
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
-}
-
-func (x *RevocationResponse) Reset() {
-	*x = RevocationResponse{}
-	mi := &file_angzarr_types_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RevocationResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RevocationResponse) ProtoMessage() {}
-
-func (x *RevocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RevocationResponse.ProtoReflect.Descriptor instead.
-func (*RevocationResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{19}
-}
-
-func (x *RevocationResponse) GetEmitSystemRevocation() bool {
-	if x != nil {
-		return x.EmitSystemRevocation
-	}
-	return false
-}
-
-func (x *RevocationResponse) GetSendToDeadLetterQueue() bool {
-	if x != nil {
-		return x.SendToDeadLetterQueue
-	}
-	return false
-}
-
-func (x *RevocationResponse) GetEscalate() bool {
-	if x != nil {
-		return x.Escalate
-	}
-	return false
-}
-
-func (x *RevocationResponse) GetAbort() bool {
-	if x != nil {
-		return x.Abort
-	}
-	return false
-}
-
-func (x *RevocationResponse) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
-// Wrapper response for BusinessLogic.Handle
-type BusinessResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Result:
-	//
-	//	*BusinessResponse_Events
-	//	*BusinessResponse_Revocation
-	Result        isBusinessResponse_Result `protobuf_oneof:"result"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *BusinessResponse) Reset() {
-	*x = BusinessResponse{}
-	mi := &file_angzarr_types_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *BusinessResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*BusinessResponse) ProtoMessage() {}
-
-func (x *BusinessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use BusinessResponse.ProtoReflect.Descriptor instead.
-func (*BusinessResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{20}
-}
-
-func (x *BusinessResponse) GetResult() isBusinessResponse_Result {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
-func (x *BusinessResponse) GetEvents() *EventBook {
-	if x != nil {
-		if x, ok := x.Result.(*BusinessResponse_Events); ok {
-			return x.Events
-		}
-	}
-	return nil
-}
-
-func (x *BusinessResponse) GetRevocation() *RevocationResponse {
-	if x != nil {
-		if x, ok := x.Result.(*BusinessResponse_Revocation); ok {
-			return x.Revocation
-		}
-	}
-	return nil
-}
-
-type isBusinessResponse_Result interface {
-	isBusinessResponse_Result()
-}
-
-type BusinessResponse_Events struct {
-	Events *EventBook `protobuf:"bytes,1,opt,name=events,proto3,oneof"` // Business provides compensation events
-}
-
-type BusinessResponse_Revocation struct {
-	Revocation *RevocationResponse `protobuf:"bytes,2,opt,name=revocation,proto3,oneof"` // Business requests framework action
-}
-
-func (*BusinessResponse_Events) isBusinessResponse_Result() {}
-
-func (*BusinessResponse_Revocation) isBusinessResponse_Result() {}
-
-// System event when compensation fails/requested
-type SagaCompensationFailed struct {
-	state                     protoimpl.MessageState `protogen:"open.v1"`
-	TriggeringAggregate       *Cover                 `protobuf:"bytes,1,opt,name=triggering_aggregate,json=triggeringAggregate,proto3" json:"triggering_aggregate,omitempty"`
-	TriggeringEventSequence   uint32                 `protobuf:"varint,2,opt,name=triggering_event_sequence,json=triggeringEventSequence,proto3" json:"triggering_event_sequence,omitempty"`
-	SagaName                  string                 `protobuf:"bytes,3,opt,name=saga_name,json=sagaName,proto3" json:"saga_name,omitempty"`
-	RejectionReason           string                 `protobuf:"bytes,4,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`
-	CompensationFailureReason string                 `protobuf:"bytes,5,opt,name=compensation_failure_reason,json=compensationFailureReason,proto3" json:"compensation_failure_reason,omitempty"`
-	RejectedCommand           *CommandBook           `protobuf:"bytes,6,opt,name=rejected_command,json=rejectedCommand,proto3" json:"rejected_command,omitempty"`
-	OccurredAt                *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
-}
-
-func (x *SagaCompensationFailed) Reset() {
-	*x = SagaCompensationFailed{}
-	mi := &file_angzarr_types_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SagaCompensationFailed) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SagaCompensationFailed) ProtoMessage() {}
-
-func (x *SagaCompensationFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SagaCompensationFailed.ProtoReflect.Descriptor instead.
-func (*SagaCompensationFailed) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *SagaCompensationFailed) GetTriggeringAggregate() *Cover {
-	if x != nil {
-		return x.TriggeringAggregate
-	}
-	return nil
-}
-
-func (x *SagaCompensationFailed) GetTriggeringEventSequence() uint32 {
-	if x != nil {
-		return x.TriggeringEventSequence
-	}
-	return 0
-}
-
-func (x *SagaCompensationFailed) GetSagaName() string {
-	if x != nil {
-		return x.SagaName
-	}
-	return ""
-}
-
-func (x *SagaCompensationFailed) GetRejectionReason() string {
-	if x != nil {
-		return x.RejectionReason
-	}
-	return ""
-}
-
-func (x *SagaCompensationFailed) GetCompensationFailureReason() string {
-	if x != nil {
-		return x.CompensationFailureReason
-	}
-	return ""
-}
-
-func (x *SagaCompensationFailed) GetRejectedCommand() *CommandBook {
-	if x != nil {
-		return x.RejectedCommand
-	}
-	return nil
-}
-
-func (x *SagaCompensationFailed) GetOccurredAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.OccurredAt
-	}
-	return nil
-}
-
 type CommandPage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Expected sequence number for this command's events.
@@ -1481,7 +652,7 @@ type CommandPage struct {
 
 func (x *CommandPage) Reset() {
 	*x = CommandPage{}
-	mi := &file_angzarr_types_proto_msgTypes[22]
+	mi := &file_angzarr_types_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1493,7 +664,7 @@ func (x *CommandPage) String() string {
 func (*CommandPage) ProtoMessage() {}
 
 func (x *CommandPage) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[22]
+	mi := &file_angzarr_types_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1506,7 +677,7 @@ func (x *CommandPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandPage.ProtoReflect.Descriptor instead.
 func (*CommandPage) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{22}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CommandPage) GetSequence() uint32 {
@@ -1535,7 +706,7 @@ type CommandBook struct {
 
 func (x *CommandBook) Reset() {
 	*x = CommandBook{}
-	mi := &file_angzarr_types_proto_msgTypes[23]
+	mi := &file_angzarr_types_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1547,7 +718,7 @@ func (x *CommandBook) String() string {
 func (*CommandBook) ProtoMessage() {}
 
 func (x *CommandBook) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[23]
+	mi := &file_angzarr_types_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1560,7 +731,7 @@ func (x *CommandBook) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandBook.ProtoReflect.Descriptor instead.
 func (*CommandBook) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{23}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CommandBook) GetCover() *Cover {
@@ -1594,7 +765,7 @@ type SyncCommandBook struct {
 
 func (x *SyncCommandBook) Reset() {
 	*x = SyncCommandBook{}
-	mi := &file_angzarr_types_proto_msgTypes[24]
+	mi := &file_angzarr_types_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1606,7 +777,7 @@ func (x *SyncCommandBook) String() string {
 func (*SyncCommandBook) ProtoMessage() {}
 
 func (x *SyncCommandBook) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[24]
+	mi := &file_angzarr_types_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1619,7 +790,7 @@ func (x *SyncCommandBook) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncCommandBook.ProtoReflect.Descriptor instead.
 func (*SyncCommandBook) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{24}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SyncCommandBook) GetCommand() *CommandBook {
@@ -1647,7 +818,7 @@ type ContextualCommand struct {
 
 func (x *ContextualCommand) Reset() {
 	*x = ContextualCommand{}
-	mi := &file_angzarr_types_proto_msgTypes[25]
+	mi := &file_angzarr_types_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1659,7 +830,7 @@ func (x *ContextualCommand) String() string {
 func (*ContextualCommand) ProtoMessage() {}
 
 func (x *ContextualCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[25]
+	mi := &file_angzarr_types_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1672,7 +843,7 @@ func (x *ContextualCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContextualCommand.ProtoReflect.Descriptor instead.
 func (*ContextualCommand) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{25}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ContextualCommand) GetEvents() *EventBook {
@@ -1699,7 +870,7 @@ type SyncContextualCommand struct {
 
 func (x *SyncContextualCommand) Reset() {
 	*x = SyncContextualCommand{}
-	mi := &file_angzarr_types_proto_msgTypes[26]
+	mi := &file_angzarr_types_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1711,7 +882,7 @@ func (x *SyncContextualCommand) String() string {
 func (*SyncContextualCommand) ProtoMessage() {}
 
 func (x *SyncContextualCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[26]
+	mi := &file_angzarr_types_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1724,7 +895,7 @@ func (x *SyncContextualCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncContextualCommand.ProtoReflect.Descriptor instead.
 func (*SyncContextualCommand) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{26}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SyncContextualCommand) GetCommand() *ContextualCommand {
@@ -1752,7 +923,7 @@ type SequenceRange struct {
 
 func (x *SequenceRange) Reset() {
 	*x = SequenceRange{}
-	mi := &file_angzarr_types_proto_msgTypes[27]
+	mi := &file_angzarr_types_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1764,7 +935,7 @@ func (x *SequenceRange) String() string {
 func (*SequenceRange) ProtoMessage() {}
 
 func (x *SequenceRange) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[27]
+	mi := &file_angzarr_types_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1777,7 +948,7 @@ func (x *SequenceRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SequenceRange.ProtoReflect.Descriptor instead.
 func (*SequenceRange) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{27}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SequenceRange) GetLower() uint32 {
@@ -1803,7 +974,7 @@ type SequenceSet struct {
 
 func (x *SequenceSet) Reset() {
 	*x = SequenceSet{}
-	mi := &file_angzarr_types_proto_msgTypes[28]
+	mi := &file_angzarr_types_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1815,7 +986,7 @@ func (x *SequenceSet) String() string {
 func (*SequenceSet) ProtoMessage() {}
 
 func (x *SequenceSet) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[28]
+	mi := &file_angzarr_types_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1828,7 +999,7 @@ func (x *SequenceSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SequenceSet.ProtoReflect.Descriptor instead.
 func (*SequenceSet) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{28}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SequenceSet) GetValues() []uint32 {
@@ -1853,7 +1024,7 @@ type TemporalQuery struct {
 
 func (x *TemporalQuery) Reset() {
 	*x = TemporalQuery{}
-	mi := &file_angzarr_types_proto_msgTypes[29]
+	mi := &file_angzarr_types_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1865,7 +1036,7 @@ func (x *TemporalQuery) String() string {
 func (*TemporalQuery) ProtoMessage() {}
 
 func (x *TemporalQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[29]
+	mi := &file_angzarr_types_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1878,7 +1049,7 @@ func (x *TemporalQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TemporalQuery.ProtoReflect.Descriptor instead.
 func (*TemporalQuery) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{29}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TemporalQuery) GetPointInTime() isTemporalQuery_PointInTime {
@@ -1942,7 +1113,7 @@ type Query struct {
 
 func (x *Query) Reset() {
 	*x = Query{}
-	mi := &file_angzarr_types_proto_msgTypes[30]
+	mi := &file_angzarr_types_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1954,7 +1125,7 @@ func (x *Query) String() string {
 func (*Query) ProtoMessage() {}
 
 func (x *Query) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[30]
+	mi := &file_angzarr_types_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1967,7 +1138,7 @@ func (x *Query) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Query.ProtoReflect.Descriptor instead.
 func (*Query) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{30}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Query) GetCover() *Cover {
@@ -2043,7 +1214,7 @@ type AggregateRoot struct {
 
 func (x *AggregateRoot) Reset() {
 	*x = AggregateRoot{}
-	mi := &file_angzarr_types_proto_msgTypes[31]
+	mi := &file_angzarr_types_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2055,7 +1226,7 @@ func (x *AggregateRoot) String() string {
 func (*AggregateRoot) ProtoMessage() {}
 
 func (x *AggregateRoot) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[31]
+	mi := &file_angzarr_types_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2068,7 +1239,7 @@ func (x *AggregateRoot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateRoot.ProtoReflect.Descriptor instead.
 func (*AggregateRoot) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{31}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *AggregateRoot) GetDomain() string {
@@ -2085,59 +1256,6 @@ func (x *AggregateRoot) GetRoot() *UUID {
 	return nil
 }
 
-// Request for dry-run command execution against temporal state.
-type DryRunRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Command       *CommandBook           `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
-	PointInTime   *TemporalQuery         `protobuf:"bytes,2,opt,name=point_in_time,json=pointInTime,proto3" json:"point_in_time,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DryRunRequest) Reset() {
-	*x = DryRunRequest{}
-	mi := &file_angzarr_types_proto_msgTypes[32]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DryRunRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DryRunRequest) ProtoMessage() {}
-
-func (x *DryRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[32]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DryRunRequest.ProtoReflect.Descriptor instead.
-func (*DryRunRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{32}
-}
-
-func (x *DryRunRequest) GetCommand() *CommandBook {
-	if x != nil {
-		return x.Command
-	}
-	return nil
-}
-
-func (x *DryRunRequest) GetPointInTime() *TemporalQuery {
-	if x != nil {
-		return x.PointInTime
-	}
-	return nil
-}
-
 // Subscription filter for event streaming
 type EventStreamFilter struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2148,7 +1266,7 @@ type EventStreamFilter struct {
 
 func (x *EventStreamFilter) Reset() {
 	*x = EventStreamFilter{}
-	mi := &file_angzarr_types_proto_msgTypes[33]
+	mi := &file_angzarr_types_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2160,7 +1278,7 @@ func (x *EventStreamFilter) String() string {
 func (*EventStreamFilter) ProtoMessage() {}
 
 func (x *EventStreamFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[33]
+	mi := &file_angzarr_types_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2173,7 +1291,7 @@ func (x *EventStreamFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventStreamFilter.ProtoReflect.Descriptor instead.
 func (*EventStreamFilter) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{33}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *EventStreamFilter) GetCorrelationId() string {
@@ -2195,7 +1313,7 @@ type Target struct {
 
 func (x *Target) Reset() {
 	*x = Target{}
-	mi := &file_angzarr_types_proto_msgTypes[34]
+	mi := &file_angzarr_types_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2207,7 +1325,7 @@ func (x *Target) String() string {
 func (*Target) ProtoMessage() {}
 
 func (x *Target) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[34]
+	mi := &file_angzarr_types_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2220,7 +1338,7 @@ func (x *Target) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Target.ProtoReflect.Descriptor instead.
 func (*Target) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{34}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Target) GetDomain() string {
@@ -2250,7 +1368,7 @@ type ComponentDescriptor struct {
 
 func (x *ComponentDescriptor) Reset() {
 	*x = ComponentDescriptor{}
-	mi := &file_angzarr_types_proto_msgTypes[35]
+	mi := &file_angzarr_types_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2262,7 +1380,7 @@ func (x *ComponentDescriptor) String() string {
 func (*ComponentDescriptor) ProtoMessage() {}
 
 func (x *ComponentDescriptor) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[35]
+	mi := &file_angzarr_types_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2275,7 +1393,7 @@ func (x *ComponentDescriptor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentDescriptor.ProtoReflect.Descriptor instead.
 func (*ComponentDescriptor) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{35}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ComponentDescriptor) GetName() string {
@@ -2308,7 +1426,7 @@ type GetDescriptorRequest struct {
 
 func (x *GetDescriptorRequest) Reset() {
 	*x = GetDescriptorRequest{}
-	mi := &file_angzarr_types_proto_msgTypes[36]
+	mi := &file_angzarr_types_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2320,7 +1438,7 @@ func (x *GetDescriptorRequest) String() string {
 func (*GetDescriptorRequest) ProtoMessage() {}
 
 func (x *GetDescriptorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[36]
+	mi := &file_angzarr_types_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2333,34 +1451,34 @@ func (x *GetDescriptorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDescriptorRequest.ProtoReflect.Descriptor instead.
 func (*GetDescriptorRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{36}
+	return file_angzarr_types_proto_rawDescGZIP(), []int{22}
 }
 
-// Command to register a component in the topology registry.
-// Root UUID is derived from descriptor.name for idempotent registration.
-type RegisterComponent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Descriptor_   *ComponentDescriptor   `protobuf:"bytes,1,opt,name=descriptor,proto3" json:"descriptor,omitempty"`
-	PodId         string                 `protobuf:"bytes,2,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"` // K8s pod name or hostname for standalone
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+// Track saga command origin for compensation flow
+type SagaCommandOrigin struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	SagaName                string                 `protobuf:"bytes,1,opt,name=saga_name,json=sagaName,proto3" json:"saga_name,omitempty"`                                                 // Name of the saga that issued the command
+	TriggeringAggregate     *Cover                 `protobuf:"bytes,2,opt,name=triggering_aggregate,json=triggeringAggregate,proto3" json:"triggering_aggregate,omitempty"`                // Domain+root of aggregate that triggered the saga
+	TriggeringEventSequence uint32                 `protobuf:"varint,3,opt,name=triggering_event_sequence,json=triggeringEventSequence,proto3" json:"triggering_event_sequence,omitempty"` // Sequence number of the triggering event
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
-func (x *RegisterComponent) Reset() {
-	*x = RegisterComponent{}
-	mi := &file_angzarr_types_proto_msgTypes[37]
+func (x *SagaCommandOrigin) Reset() {
+	*x = SagaCommandOrigin{}
+	mi := &file_angzarr_types_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RegisterComponent) String() string {
+func (x *SagaCommandOrigin) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RegisterComponent) ProtoMessage() {}
+func (*SagaCommandOrigin) ProtoMessage() {}
 
-func (x *RegisterComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[37]
+func (x *SagaCommandOrigin) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_types_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2371,84 +1489,30 @@ func (x *RegisterComponent) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RegisterComponent.ProtoReflect.Descriptor instead.
-func (*RegisterComponent) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{37}
+// Deprecated: Use SagaCommandOrigin.ProtoReflect.Descriptor instead.
+func (*SagaCommandOrigin) Descriptor() ([]byte, []int) {
+	return file_angzarr_types_proto_rawDescGZIP(), []int{23}
 }
 
-func (x *RegisterComponent) GetDescriptor_() *ComponentDescriptor {
+func (x *SagaCommandOrigin) GetSagaName() string {
 	if x != nil {
-		return x.Descriptor_
-	}
-	return nil
-}
-
-func (x *RegisterComponent) GetPodId() string {
-	if x != nil {
-		return x.PodId
+		return x.SagaName
 	}
 	return ""
 }
 
-// Event emitted when a component registers or re-registers.
-type ComponentRegistered struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Descriptor_   *ComponentDescriptor   `protobuf:"bytes,1,opt,name=descriptor,proto3" json:"descriptor,omitempty"`
-	PodId         string                 `protobuf:"bytes,2,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
-	RegisteredAt  *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ComponentRegistered) Reset() {
-	*x = ComponentRegistered{}
-	mi := &file_angzarr_types_proto_msgTypes[38]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ComponentRegistered) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ComponentRegistered) ProtoMessage() {}
-
-func (x *ComponentRegistered) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_types_proto_msgTypes[38]
+func (x *SagaCommandOrigin) GetTriggeringAggregate() *Cover {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ComponentRegistered.ProtoReflect.Descriptor instead.
-func (*ComponentRegistered) Descriptor() ([]byte, []int) {
-	return file_angzarr_types_proto_rawDescGZIP(), []int{38}
-}
-
-func (x *ComponentRegistered) GetDescriptor_() *ComponentDescriptor {
-	if x != nil {
-		return x.Descriptor_
+		return x.TriggeringAggregate
 	}
 	return nil
 }
 
-func (x *ComponentRegistered) GetPodId() string {
+func (x *SagaCommandOrigin) GetTriggeringEventSequence() uint32 {
 	if x != nil {
-		return x.PodId
+		return x.TriggeringEventSequence
 	}
-	return ""
-}
-
-func (x *ComponentRegistered) GetRegisteredAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.RegisteredAt
-	}
-	return nil
+	return 0
 }
 
 var File_angzarr_types_proto protoreflect.FileDescriptor
@@ -2468,16 +1532,7 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"\vdivergences\x18\x02 \x03(\v2\x19.angzarr.DomainDivergenceR\vdivergences\"F\n" +
 	"\x10DomainDivergence\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\x12\x1a\n" +
-	"\bsequence\x18\x02 \x01(\rR\bsequence\"G\n" +
-	"\x13DeleteEditionEvents\x12\x18\n" +
-	"\aedition\x18\x01 \x01(\tR\aedition\x12\x16\n" +
-	"\x06domain\x18\x02 \x01(\tR\x06domain\"\x8c\x01\n" +
-	"\x14EditionEventsDeleted\x12\x18\n" +
-	"\aedition\x18\x01 \x01(\tR\aedition\x12\x16\n" +
-	"\x06domain\x18\x02 \x01(\tR\x06domain\x12#\n" +
-	"\rdeleted_count\x18\x03 \x01(\rR\fdeletedCount\x12\x1d\n" +
-	"\n" +
-	"deleted_at\x18\x04 \x01(\tR\tdeletedAt\"\xaa\x01\n" +
+	"\bsequence\x18\x02 \x01(\rR\bsequence\"\xaa\x01\n" +
 	"\tEventPage\x12\x12\n" +
 	"\x03num\x18\x01 \x01(\rH\x00R\x03num\x12\x16\n" +
 	"\x05force\x18\x02 \x01(\bH\x00R\x05force\x129\n" +
@@ -2504,56 +1559,7 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"\bsequence\x18\x03 \x01(\rR\bsequence\x124\n" +
 	"\n" +
 	"projection\x18\x04 \x01(\v2\x14.google.protobuf.AnyR\n" +
-	"projection\"t\n" +
-	"\x0fCommandResponse\x12*\n" +
-	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06events\x125\n" +
-	"\vprojections\x18\x02 \x03(\v2\x13.angzarr.ProjectionR\vprojections\"l\n" +
-	"\fSagaResponse\x120\n" +
-	"\bcommands\x18\x01 \x03(\v2\x14.angzarr.CommandBookR\bcommands\x12*\n" +
-	"\x06events\x18\x02 \x03(\v2\x12.angzarr.EventBookR\x06events\"@\n" +
-	"\x12SagaPrepareRequest\x12*\n" +
-	"\x06source\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06source\"I\n" +
-	"\x13SagaPrepareResponse\x122\n" +
-	"\fdestinations\x18\x01 \x03(\v2\x0e.angzarr.CoverR\fdestinations\"x\n" +
-	"\x12SagaExecuteRequest\x12*\n" +
-	"\x06source\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06source\x126\n" +
-	"\fdestinations\x18\x02 \x03(\v2\x12.angzarr.EventBookR\fdestinations\"\xfc\x01\n" +
-	"\x10SagaRetryRequest\x12*\n" +
-	"\x06source\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06source\x126\n" +
-	"\fdestinations\x18\x02 \x03(\v2\x12.angzarr.EventBookR\fdestinations\x12?\n" +
-	"\x10rejected_command\x18\x03 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\x12)\n" +
-	"\x10rejection_reason\x18\x04 \x01(\tR\x0frejectionReason\x12\x18\n" +
-	"\aattempt\x18\x05 \x01(\rR\aattempt\"\xaf\x01\n" +
-	"\x11SagaCommandOrigin\x12\x1b\n" +
-	"\tsaga_name\x18\x01 \x01(\tR\bsagaName\x12A\n" +
-	"\x14triggering_aggregate\x18\x02 \x01(\v2\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n" +
-	"\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence\"\xd9\x01\n" +
-	"\x12RevokeEventCommand\x12:\n" +
-	"\x19triggering_event_sequence\x18\x01 \x01(\rR\x17triggeringEventSequence\x12\x1b\n" +
-	"\tsaga_name\x18\x02 \x01(\tR\bsagaName\x12)\n" +
-	"\x10rejection_reason\x18\x03 \x01(\tR\x0frejectionReason\x12?\n" +
-	"\x10rejected_command\x18\x04 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\"\xce\x01\n" +
-	"\x12RevocationResponse\x124\n" +
-	"\x16emit_system_revocation\x18\x01 \x01(\bR\x14emitSystemRevocation\x128\n" +
-	"\x19send_to_dead_letter_queue\x18\x02 \x01(\bR\x15sendToDeadLetterQueue\x12\x1a\n" +
-	"\bescalate\x18\x03 \x01(\bR\bescalate\x12\x14\n" +
-	"\x05abort\x18\x04 \x01(\bR\x05abort\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\"\x89\x01\n" +
-	"\x10BusinessResponse\x12,\n" +
-	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookH\x00R\x06events\x12=\n" +
-	"\n" +
-	"revocation\x18\x02 \x01(\v2\x1b.angzarr.RevocationResponseH\x00R\n" +
-	"revocationB\b\n" +
-	"\x06result\"\x9d\x03\n" +
-	"\x16SagaCompensationFailed\x12A\n" +
-	"\x14triggering_aggregate\x18\x01 \x01(\v2\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n" +
-	"\x19triggering_event_sequence\x18\x02 \x01(\rR\x17triggeringEventSequence\x12\x1b\n" +
-	"\tsaga_name\x18\x03 \x01(\tR\bsagaName\x12)\n" +
-	"\x10rejection_reason\x18\x04 \x01(\tR\x0frejectionReason\x12>\n" +
-	"\x1bcompensation_failure_reason\x18\x05 \x01(\tR\x19compensationFailureReason\x12?\n" +
-	"\x10rejected_command\x18\x06 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\x12;\n" +
-	"\voccurred_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt\"Y\n" +
+	"projection\"Y\n" +
 	"\vCommandPage\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\rR\bsequence\x12.\n" +
 	"\acommand\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\acommand\"\x9c\x01\n" +
@@ -2590,10 +1596,7 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"\tselection\"J\n" +
 	"\rAggregateRoot\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\x12!\n" +
-	"\x04root\x18\x02 \x01(\v2\r.angzarr.UUIDR\x04root\"{\n" +
-	"\rDryRunRequest\x12.\n" +
-	"\acommand\x18\x01 \x01(\v2\x14.angzarr.CommandBookR\acommand\x12:\n" +
-	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime\":\n" +
+	"\x04root\x18\x02 \x01(\v2\r.angzarr.UUIDR\x04root\":\n" +
 	"\x11EventStreamFilter\x12%\n" +
 	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\"6\n" +
 	"\x06Target\x12\x16\n" +
@@ -2603,18 +1606,11 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
 	"\x0ecomponent_type\x18\x02 \x01(\tR\rcomponentType\x12'\n" +
 	"\x06inputs\x18\x03 \x03(\v2\x0f.angzarr.TargetR\x06inputs\"\x16\n" +
-	"\x14GetDescriptorRequest\"h\n" +
-	"\x11RegisterComponent\x12<\n" +
-	"\n" +
-	"descriptor\x18\x01 \x01(\v2\x1c.angzarr.ComponentDescriptorR\n" +
-	"descriptor\x12\x15\n" +
-	"\x06pod_id\x18\x02 \x01(\tR\x05podId\"\xab\x01\n" +
-	"\x13ComponentRegistered\x12<\n" +
-	"\n" +
-	"descriptor\x18\x01 \x01(\v2\x1c.angzarr.ComponentDescriptorR\n" +
-	"descriptor\x12\x15\n" +
-	"\x06pod_id\x18\x02 \x01(\tR\x05podId\x12?\n" +
-	"\rregistered_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt*R\n" +
+	"\x14GetDescriptorRequest\"\xaf\x01\n" +
+	"\x11SagaCommandOrigin\x12\x1b\n" +
+	"\tsaga_name\x18\x01 \x01(\tR\bsagaName\x12A\n" +
+	"\x14triggering_aggregate\x18\x02 \x01(\v2\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n" +
+	"\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence*R\n" +
 	"\bSyncMode\x12\x19\n" +
 	"\x15SYNC_MODE_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10SYNC_MODE_SIMPLE\x10\x01\x12\x15\n" +
@@ -2635,110 +1631,73 @@ func file_angzarr_types_proto_rawDescGZIP() []byte {
 }
 
 var file_angzarr_types_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_angzarr_types_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_angzarr_types_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_angzarr_types_proto_goTypes = []any{
-	(SyncMode)(0),                  // 0: angzarr.SyncMode
-	(*UUID)(nil),                   // 1: angzarr.UUID
-	(*Cover)(nil),                  // 2: angzarr.Cover
-	(*Edition)(nil),                // 3: angzarr.Edition
-	(*DomainDivergence)(nil),       // 4: angzarr.DomainDivergence
-	(*DeleteEditionEvents)(nil),    // 5: angzarr.DeleteEditionEvents
-	(*EditionEventsDeleted)(nil),   // 6: angzarr.EditionEventsDeleted
-	(*EventPage)(nil),              // 7: angzarr.EventPage
-	(*Snapshot)(nil),               // 8: angzarr.Snapshot
-	(*EventBook)(nil),              // 9: angzarr.EventBook
-	(*SyncEventBook)(nil),          // 10: angzarr.SyncEventBook
-	(*Projection)(nil),             // 11: angzarr.Projection
-	(*CommandResponse)(nil),        // 12: angzarr.CommandResponse
-	(*SagaResponse)(nil),           // 13: angzarr.SagaResponse
-	(*SagaPrepareRequest)(nil),     // 14: angzarr.SagaPrepareRequest
-	(*SagaPrepareResponse)(nil),    // 15: angzarr.SagaPrepareResponse
-	(*SagaExecuteRequest)(nil),     // 16: angzarr.SagaExecuteRequest
-	(*SagaRetryRequest)(nil),       // 17: angzarr.SagaRetryRequest
-	(*SagaCommandOrigin)(nil),      // 18: angzarr.SagaCommandOrigin
-	(*RevokeEventCommand)(nil),     // 19: angzarr.RevokeEventCommand
-	(*RevocationResponse)(nil),     // 20: angzarr.RevocationResponse
-	(*BusinessResponse)(nil),       // 21: angzarr.BusinessResponse
-	(*SagaCompensationFailed)(nil), // 22: angzarr.SagaCompensationFailed
-	(*CommandPage)(nil),            // 23: angzarr.CommandPage
-	(*CommandBook)(nil),            // 24: angzarr.CommandBook
-	(*SyncCommandBook)(nil),        // 25: angzarr.SyncCommandBook
-	(*ContextualCommand)(nil),      // 26: angzarr.ContextualCommand
-	(*SyncContextualCommand)(nil),  // 27: angzarr.SyncContextualCommand
-	(*SequenceRange)(nil),          // 28: angzarr.SequenceRange
-	(*SequenceSet)(nil),            // 29: angzarr.SequenceSet
-	(*TemporalQuery)(nil),          // 30: angzarr.TemporalQuery
-	(*Query)(nil),                  // 31: angzarr.Query
-	(*AggregateRoot)(nil),          // 32: angzarr.AggregateRoot
-	(*DryRunRequest)(nil),          // 33: angzarr.DryRunRequest
-	(*EventStreamFilter)(nil),      // 34: angzarr.EventStreamFilter
-	(*Target)(nil),                 // 35: angzarr.Target
-	(*ComponentDescriptor)(nil),    // 36: angzarr.ComponentDescriptor
-	(*GetDescriptorRequest)(nil),   // 37: angzarr.GetDescriptorRequest
-	(*RegisterComponent)(nil),      // 38: angzarr.RegisterComponent
-	(*ComponentRegistered)(nil),    // 39: angzarr.ComponentRegistered
-	(*timestamppb.Timestamp)(nil),  // 40: google.protobuf.Timestamp
-	(*anypb.Any)(nil),              // 41: google.protobuf.Any
+	(SyncMode)(0),                 // 0: angzarr.SyncMode
+	(*UUID)(nil),                  // 1: angzarr.UUID
+	(*Cover)(nil),                 // 2: angzarr.Cover
+	(*Edition)(nil),               // 3: angzarr.Edition
+	(*DomainDivergence)(nil),      // 4: angzarr.DomainDivergence
+	(*EventPage)(nil),             // 5: angzarr.EventPage
+	(*Snapshot)(nil),              // 6: angzarr.Snapshot
+	(*EventBook)(nil),             // 7: angzarr.EventBook
+	(*SyncEventBook)(nil),         // 8: angzarr.SyncEventBook
+	(*Projection)(nil),            // 9: angzarr.Projection
+	(*CommandPage)(nil),           // 10: angzarr.CommandPage
+	(*CommandBook)(nil),           // 11: angzarr.CommandBook
+	(*SyncCommandBook)(nil),       // 12: angzarr.SyncCommandBook
+	(*ContextualCommand)(nil),     // 13: angzarr.ContextualCommand
+	(*SyncContextualCommand)(nil), // 14: angzarr.SyncContextualCommand
+	(*SequenceRange)(nil),         // 15: angzarr.SequenceRange
+	(*SequenceSet)(nil),           // 16: angzarr.SequenceSet
+	(*TemporalQuery)(nil),         // 17: angzarr.TemporalQuery
+	(*Query)(nil),                 // 18: angzarr.Query
+	(*AggregateRoot)(nil),         // 19: angzarr.AggregateRoot
+	(*EventStreamFilter)(nil),     // 20: angzarr.EventStreamFilter
+	(*Target)(nil),                // 21: angzarr.Target
+	(*ComponentDescriptor)(nil),   // 22: angzarr.ComponentDescriptor
+	(*GetDescriptorRequest)(nil),  // 23: angzarr.GetDescriptorRequest
+	(*SagaCommandOrigin)(nil),     // 24: angzarr.SagaCommandOrigin
+	(*timestamppb.Timestamp)(nil), // 25: google.protobuf.Timestamp
+	(*anypb.Any)(nil),             // 26: google.protobuf.Any
 }
 var file_angzarr_types_proto_depIdxs = []int32{
 	1,  // 0: angzarr.Cover.root:type_name -> angzarr.UUID
 	3,  // 1: angzarr.Cover.edition:type_name -> angzarr.Edition
 	4,  // 2: angzarr.Edition.divergences:type_name -> angzarr.DomainDivergence
-	40, // 3: angzarr.EventPage.created_at:type_name -> google.protobuf.Timestamp
-	41, // 4: angzarr.EventPage.event:type_name -> google.protobuf.Any
-	41, // 5: angzarr.Snapshot.state:type_name -> google.protobuf.Any
+	25, // 3: angzarr.EventPage.created_at:type_name -> google.protobuf.Timestamp
+	26, // 4: angzarr.EventPage.event:type_name -> google.protobuf.Any
+	26, // 5: angzarr.Snapshot.state:type_name -> google.protobuf.Any
 	2,  // 6: angzarr.EventBook.cover:type_name -> angzarr.Cover
-	8,  // 7: angzarr.EventBook.snapshot:type_name -> angzarr.Snapshot
-	7,  // 8: angzarr.EventBook.pages:type_name -> angzarr.EventPage
-	9,  // 9: angzarr.SyncEventBook.events:type_name -> angzarr.EventBook
+	6,  // 7: angzarr.EventBook.snapshot:type_name -> angzarr.Snapshot
+	5,  // 8: angzarr.EventBook.pages:type_name -> angzarr.EventPage
+	7,  // 9: angzarr.SyncEventBook.events:type_name -> angzarr.EventBook
 	0,  // 10: angzarr.SyncEventBook.sync_mode:type_name -> angzarr.SyncMode
 	2,  // 11: angzarr.Projection.cover:type_name -> angzarr.Cover
-	41, // 12: angzarr.Projection.projection:type_name -> google.protobuf.Any
-	9,  // 13: angzarr.CommandResponse.events:type_name -> angzarr.EventBook
-	11, // 14: angzarr.CommandResponse.projections:type_name -> angzarr.Projection
-	24, // 15: angzarr.SagaResponse.commands:type_name -> angzarr.CommandBook
-	9,  // 16: angzarr.SagaResponse.events:type_name -> angzarr.EventBook
-	9,  // 17: angzarr.SagaPrepareRequest.source:type_name -> angzarr.EventBook
-	2,  // 18: angzarr.SagaPrepareResponse.destinations:type_name -> angzarr.Cover
-	9,  // 19: angzarr.SagaExecuteRequest.source:type_name -> angzarr.EventBook
-	9,  // 20: angzarr.SagaExecuteRequest.destinations:type_name -> angzarr.EventBook
-	9,  // 21: angzarr.SagaRetryRequest.source:type_name -> angzarr.EventBook
-	9,  // 22: angzarr.SagaRetryRequest.destinations:type_name -> angzarr.EventBook
-	24, // 23: angzarr.SagaRetryRequest.rejected_command:type_name -> angzarr.CommandBook
-	2,  // 24: angzarr.SagaCommandOrigin.triggering_aggregate:type_name -> angzarr.Cover
-	24, // 25: angzarr.RevokeEventCommand.rejected_command:type_name -> angzarr.CommandBook
-	9,  // 26: angzarr.BusinessResponse.events:type_name -> angzarr.EventBook
-	20, // 27: angzarr.BusinessResponse.revocation:type_name -> angzarr.RevocationResponse
-	2,  // 28: angzarr.SagaCompensationFailed.triggering_aggregate:type_name -> angzarr.Cover
-	24, // 29: angzarr.SagaCompensationFailed.rejected_command:type_name -> angzarr.CommandBook
-	40, // 30: angzarr.SagaCompensationFailed.occurred_at:type_name -> google.protobuf.Timestamp
-	41, // 31: angzarr.CommandPage.command:type_name -> google.protobuf.Any
-	2,  // 32: angzarr.CommandBook.cover:type_name -> angzarr.Cover
-	23, // 33: angzarr.CommandBook.pages:type_name -> angzarr.CommandPage
-	18, // 34: angzarr.CommandBook.saga_origin:type_name -> angzarr.SagaCommandOrigin
-	24, // 35: angzarr.SyncCommandBook.command:type_name -> angzarr.CommandBook
-	0,  // 36: angzarr.SyncCommandBook.sync_mode:type_name -> angzarr.SyncMode
-	9,  // 37: angzarr.ContextualCommand.events:type_name -> angzarr.EventBook
-	24, // 38: angzarr.ContextualCommand.command:type_name -> angzarr.CommandBook
-	26, // 39: angzarr.SyncContextualCommand.command:type_name -> angzarr.ContextualCommand
-	0,  // 40: angzarr.SyncContextualCommand.sync_mode:type_name -> angzarr.SyncMode
-	40, // 41: angzarr.TemporalQuery.as_of_time:type_name -> google.protobuf.Timestamp
-	2,  // 42: angzarr.Query.cover:type_name -> angzarr.Cover
-	28, // 43: angzarr.Query.range:type_name -> angzarr.SequenceRange
-	29, // 44: angzarr.Query.sequences:type_name -> angzarr.SequenceSet
-	30, // 45: angzarr.Query.temporal:type_name -> angzarr.TemporalQuery
-	1,  // 46: angzarr.AggregateRoot.root:type_name -> angzarr.UUID
-	24, // 47: angzarr.DryRunRequest.command:type_name -> angzarr.CommandBook
-	30, // 48: angzarr.DryRunRequest.point_in_time:type_name -> angzarr.TemporalQuery
-	35, // 49: angzarr.ComponentDescriptor.inputs:type_name -> angzarr.Target
-	36, // 50: angzarr.RegisterComponent.descriptor:type_name -> angzarr.ComponentDescriptor
-	36, // 51: angzarr.ComponentRegistered.descriptor:type_name -> angzarr.ComponentDescriptor
-	40, // 52: angzarr.ComponentRegistered.registered_at:type_name -> google.protobuf.Timestamp
-	53, // [53:53] is the sub-list for method output_type
-	53, // [53:53] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+	26, // 12: angzarr.Projection.projection:type_name -> google.protobuf.Any
+	26, // 13: angzarr.CommandPage.command:type_name -> google.protobuf.Any
+	2,  // 14: angzarr.CommandBook.cover:type_name -> angzarr.Cover
+	10, // 15: angzarr.CommandBook.pages:type_name -> angzarr.CommandPage
+	24, // 16: angzarr.CommandBook.saga_origin:type_name -> angzarr.SagaCommandOrigin
+	11, // 17: angzarr.SyncCommandBook.command:type_name -> angzarr.CommandBook
+	0,  // 18: angzarr.SyncCommandBook.sync_mode:type_name -> angzarr.SyncMode
+	7,  // 19: angzarr.ContextualCommand.events:type_name -> angzarr.EventBook
+	11, // 20: angzarr.ContextualCommand.command:type_name -> angzarr.CommandBook
+	13, // 21: angzarr.SyncContextualCommand.command:type_name -> angzarr.ContextualCommand
+	0,  // 22: angzarr.SyncContextualCommand.sync_mode:type_name -> angzarr.SyncMode
+	25, // 23: angzarr.TemporalQuery.as_of_time:type_name -> google.protobuf.Timestamp
+	2,  // 24: angzarr.Query.cover:type_name -> angzarr.Cover
+	15, // 25: angzarr.Query.range:type_name -> angzarr.SequenceRange
+	16, // 26: angzarr.Query.sequences:type_name -> angzarr.SequenceSet
+	17, // 27: angzarr.Query.temporal:type_name -> angzarr.TemporalQuery
+	1,  // 28: angzarr.AggregateRoot.root:type_name -> angzarr.UUID
+	21, // 29: angzarr.ComponentDescriptor.inputs:type_name -> angzarr.Target
+	2,  // 30: angzarr.SagaCommandOrigin.triggering_aggregate:type_name -> angzarr.Cover
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_types_proto_init() }
@@ -2746,20 +1705,16 @@ func file_angzarr_types_proto_init() {
 	if File_angzarr_types_proto != nil {
 		return
 	}
-	file_angzarr_types_proto_msgTypes[6].OneofWrappers = []any{
+	file_angzarr_types_proto_msgTypes[4].OneofWrappers = []any{
 		(*EventPage_Num)(nil),
 		(*EventPage_Force)(nil),
 	}
-	file_angzarr_types_proto_msgTypes[20].OneofWrappers = []any{
-		(*BusinessResponse_Events)(nil),
-		(*BusinessResponse_Revocation)(nil),
-	}
-	file_angzarr_types_proto_msgTypes[27].OneofWrappers = []any{}
-	file_angzarr_types_proto_msgTypes[29].OneofWrappers = []any{
+	file_angzarr_types_proto_msgTypes[14].OneofWrappers = []any{}
+	file_angzarr_types_proto_msgTypes[16].OneofWrappers = []any{
 		(*TemporalQuery_AsOfTime)(nil),
 		(*TemporalQuery_AsOfSequence)(nil),
 	}
-	file_angzarr_types_proto_msgTypes[30].OneofWrappers = []any{
+	file_angzarr_types_proto_msgTypes[17].OneofWrappers = []any{
 		(*Query_Range)(nil),
 		(*Query_Sequences)(nil),
 		(*Query_Temporal)(nil),
@@ -2770,7 +1725,7 @@ func file_angzarr_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_types_proto_rawDesc), len(file_angzarr_types_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   39,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -108,6 +108,26 @@ impl SpeculativeExecutor {
         handler.handle(events, ProjectionMode::Speculate).await
     }
 
+    /// Speculatively run a projector for the given domain.
+    ///
+    /// Routes to the first projector that handles events from the specified domain.
+    /// Used when the projector name is not explicitly provided (trait-based interface).
+    pub async fn speculate_projector_by_domain(
+        &self,
+        domain: &str,
+        events: &EventBook,
+    ) -> Result<Projection, Status> {
+        // Find a projector that handles this domain
+        // For now, use the first registered projector
+        // TODO: Add domain routing based on handler descriptors
+        let (name, handler) = self.projectors.iter().next().ok_or_else(|| {
+            Status::not_found(format!("No projector registered for domain: {domain}"))
+        })?;
+
+        debug!(projector = %name, %domain, "Routing speculative projector by domain");
+        handler.handle(events, ProjectionMode::Speculate).await
+    }
+
     /// Speculatively run a saga against source events.
     ///
     /// Invokes the same `SagaHandler::prepare()` and `execute()` registered
@@ -124,6 +144,41 @@ impl SpeculativeExecutor {
             .get(name)
             .ok_or_else(|| Status::not_found(format!("No saga registered with name: {name}")))?;
 
+        self.execute_saga_speculative(handler.as_ref(), source, domain_specs)
+            .await
+    }
+
+    /// Speculatively run a saga for the given source domain.
+    ///
+    /// Routes to the first saga that handles events from the specified domain.
+    /// Used when the saga name is not explicitly provided (trait-based interface).
+    pub async fn speculate_saga_by_source_domain(
+        &self,
+        source_domain: &str,
+        source: &EventBook,
+        domain_specs: &HashMap<String, DomainStateSpec>,
+    ) -> Result<Vec<CommandBook>, Status> {
+        // Find a saga that handles this source domain
+        // For now, use the first registered saga
+        // TODO: Add domain routing based on handler descriptors
+        let (name, handler) = self.sagas.iter().next().ok_or_else(|| {
+            Status::not_found(format!(
+                "No saga registered for source domain: {source_domain}"
+            ))
+        })?;
+
+        debug!(saga = %name, source_domain = %source_domain, "Routing speculative saga by domain");
+        self.execute_saga_speculative(handler.as_ref(), source, domain_specs)
+            .await
+    }
+
+    /// Execute saga speculatively (shared implementation).
+    async fn execute_saga_speculative(
+        &self,
+        handler: &dyn SagaHandler,
+        source: &EventBook,
+        domain_specs: &HashMap<String, DomainStateSpec>,
+    ) -> Result<Vec<CommandBook>, Status> {
         // Phase 1: prepare — declare destination covers
         let covers = handler.prepare(source).await?;
 
@@ -152,6 +207,44 @@ impl SpeculativeExecutor {
             Status::not_found(format!("No process manager registered with name: {name}"))
         })?;
 
+        self.execute_pm_speculative(name, handler.as_ref(), pm_domain, trigger, domain_specs)
+            .await
+    }
+
+    /// Speculatively run a process manager for the given trigger domain.
+    ///
+    /// Routes to the first PM that handles events from the specified domain.
+    /// Used when the PM name is not explicitly provided (trait-based interface).
+    pub async fn speculate_pm_by_trigger_domain(
+        &self,
+        trigger_domain: &str,
+        trigger: &EventBook,
+        domain_specs: &HashMap<String, DomainStateSpec>,
+    ) -> Result<PmSpeculativeResult, Status> {
+        // Find a PM that handles this trigger domain
+        // For now, use the first registered PM
+        // TODO: Add domain routing based on handler descriptors
+        let (name, (handler, pm_domain)) =
+            self.process_managers.iter().next().ok_or_else(|| {
+                Status::not_found(format!(
+                    "No process manager registered for trigger domain: {trigger_domain}"
+                ))
+            })?;
+
+        debug!(pm = %name, trigger_domain = %trigger_domain, "Routing speculative PM by domain");
+        self.execute_pm_speculative(name, handler.as_ref(), pm_domain, trigger, domain_specs)
+            .await
+    }
+
+    /// Execute PM speculatively (shared implementation).
+    async fn execute_pm_speculative(
+        &self,
+        name: &str,
+        handler: &dyn ProcessManagerHandler,
+        pm_domain: &str,
+        trigger: &EventBook,
+        domain_specs: &HashMap<String, DomainStateSpec>,
+    ) -> Result<PmSpeculativeResult, Status> {
         // Resolve PM's own state
         let pm_root = Self::root_from_event_book(trigger);
         let pm_state = if let Some(root) = pm_root {

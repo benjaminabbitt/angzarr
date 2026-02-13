@@ -33,6 +33,7 @@ const (
 type AggregateServiceClient interface {
 	// Self-description: component type, subscribed domains, handled command types
 	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
+	// Process command and return business response (events or revocation request)
 	Handle(ctx context.Context, in *ContextualCommand, opts ...grpc.CallOption) (*BusinessResponse, error)
 }
 
@@ -74,6 +75,7 @@ func (c *aggregateServiceClient) Handle(ctx context.Context, in *ContextualComma
 type AggregateServiceServer interface {
 	// Self-description: component type, subscribed domains, handled command types
 	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
+	// Process command and return business response (events or revocation request)
 	Handle(context.Context, *ContextualCommand) (*BusinessResponse, error)
 	mustEmbedUnimplementedAggregateServiceServer()
 }
@@ -169,9 +171,9 @@ var AggregateService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AggregateCoordinatorService_Handle_FullMethodName       = "/angzarr.AggregateCoordinatorService/Handle"
-	AggregateCoordinatorService_HandleSync_FullMethodName   = "/angzarr.AggregateCoordinatorService/HandleSync"
-	AggregateCoordinatorService_DryRunHandle_FullMethodName = "/angzarr.AggregateCoordinatorService/DryRunHandle"
+	AggregateCoordinatorService_Handle_FullMethodName                = "/angzarr.AggregateCoordinatorService/Handle"
+	AggregateCoordinatorService_HandleSync_FullMethodName            = "/angzarr.AggregateCoordinatorService/HandleSync"
+	AggregateCoordinatorService_HandleSyncSpeculative_FullMethodName = "/angzarr.AggregateCoordinatorService/HandleSyncSpeculative"
 )
 
 // AggregateCoordinatorServiceClient is the client API for AggregateCoordinatorService service.
@@ -184,8 +186,8 @@ type AggregateCoordinatorServiceClient interface {
 	Handle(ctx context.Context, in *CommandBook, opts ...grpc.CallOption) (*CommandResponse, error)
 	// Sync processing - waits for completion based on sync_mode
 	HandleSync(ctx context.Context, in *SyncCommandBook, opts ...grpc.CallOption) (*CommandResponse, error)
-	// Dry-run: execute against temporal state without persisting.
-	DryRunHandle(ctx context.Context, in *DryRunRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	// Speculative execution - execute against temporal state without persisting
+	HandleSyncSpeculative(ctx context.Context, in *SpeculateAggregateRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 }
 
 type aggregateCoordinatorServiceClient struct {
@@ -216,10 +218,10 @@ func (c *aggregateCoordinatorServiceClient) HandleSync(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *aggregateCoordinatorServiceClient) DryRunHandle(ctx context.Context, in *DryRunRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+func (c *aggregateCoordinatorServiceClient) HandleSyncSpeculative(ctx context.Context, in *SpeculateAggregateRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CommandResponse)
-	err := c.cc.Invoke(ctx, AggregateCoordinatorService_DryRunHandle_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, AggregateCoordinatorService_HandleSyncSpeculative_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,8 +238,8 @@ type AggregateCoordinatorServiceServer interface {
 	Handle(context.Context, *CommandBook) (*CommandResponse, error)
 	// Sync processing - waits for completion based on sync_mode
 	HandleSync(context.Context, *SyncCommandBook) (*CommandResponse, error)
-	// Dry-run: execute against temporal state without persisting.
-	DryRunHandle(context.Context, *DryRunRequest) (*CommandResponse, error)
+	// Speculative execution - execute against temporal state without persisting
+	HandleSyncSpeculative(context.Context, *SpeculateAggregateRequest) (*CommandResponse, error)
 	mustEmbedUnimplementedAggregateCoordinatorServiceServer()
 }
 
@@ -254,8 +256,8 @@ func (UnimplementedAggregateCoordinatorServiceServer) Handle(context.Context, *C
 func (UnimplementedAggregateCoordinatorServiceServer) HandleSync(context.Context, *SyncCommandBook) (*CommandResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HandleSync not implemented")
 }
-func (UnimplementedAggregateCoordinatorServiceServer) DryRunHandle(context.Context, *DryRunRequest) (*CommandResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DryRunHandle not implemented")
+func (UnimplementedAggregateCoordinatorServiceServer) HandleSyncSpeculative(context.Context, *SpeculateAggregateRequest) (*CommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HandleSyncSpeculative not implemented")
 }
 func (UnimplementedAggregateCoordinatorServiceServer) mustEmbedUnimplementedAggregateCoordinatorServiceServer() {
 }
@@ -315,20 +317,20 @@ func _AggregateCoordinatorService_HandleSync_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AggregateCoordinatorService_DryRunHandle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DryRunRequest)
+func _AggregateCoordinatorService_HandleSyncSpeculative_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SpeculateAggregateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AggregateCoordinatorServiceServer).DryRunHandle(ctx, in)
+		return srv.(AggregateCoordinatorServiceServer).HandleSyncSpeculative(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AggregateCoordinatorService_DryRunHandle_FullMethodName,
+		FullMethod: AggregateCoordinatorService_HandleSyncSpeculative_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggregateCoordinatorServiceServer).DryRunHandle(ctx, req.(*DryRunRequest))
+		return srv.(AggregateCoordinatorServiceServer).HandleSyncSpeculative(ctx, req.(*SpeculateAggregateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -349,246 +351,8 @@ var AggregateCoordinatorService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AggregateCoordinatorService_HandleSync_Handler,
 		},
 		{
-			MethodName: "DryRunHandle",
-			Handler:    _AggregateCoordinatorService_DryRunHandle_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "angzarr/aggregate.proto",
-}
-
-const (
-	SpeculativeService_DryRunCommand_FullMethodName           = "/angzarr.SpeculativeService/DryRunCommand"
-	SpeculativeService_SpeculateProjector_FullMethodName      = "/angzarr.SpeculativeService/SpeculateProjector"
-	SpeculativeService_SpeculateSaga_FullMethodName           = "/angzarr.SpeculativeService/SpeculateSaga"
-	SpeculativeService_SpeculateProcessManager_FullMethodName = "/angzarr.SpeculativeService/SpeculateProcessManager"
-)
-
-// SpeculativeServiceClient is the client API for SpeculativeService service.
-//
-// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// Speculative execution service - execute without persisting side effects.
-// Supports "what-if" scenarios for commands, projectors, sagas, and process managers.
-type SpeculativeServiceClient interface {
-	// Execute command against temporal state without persisting.
-	// Returns speculative events only — no side effects.
-	DryRunCommand(ctx context.Context, in *DryRunRequest, opts ...grpc.CallOption) (*CommandResponse, error)
-	// Execute projector against provided events without persisting.
-	// Returns projection result.
-	SpeculateProjector(ctx context.Context, in *SpeculateProjectorRequest, opts ...grpc.CallOption) (*Projection, error)
-	// Execute saga against provided events without persisting.
-	// Returns commands that would be produced.
-	SpeculateSaga(ctx context.Context, in *SpeculateSagaRequest, opts ...grpc.CallOption) (*SagaResponse, error)
-	// Execute process manager against provided context without persisting.
-	// Returns commands and PM events that would be produced.
-	SpeculateProcessManager(ctx context.Context, in *SpeculatePmRequest, opts ...grpc.CallOption) (*ProcessManagerHandleResponse, error)
-}
-
-type speculativeServiceClient struct {
-	cc grpc.ClientConnInterface
-}
-
-func NewSpeculativeServiceClient(cc grpc.ClientConnInterface) SpeculativeServiceClient {
-	return &speculativeServiceClient{cc}
-}
-
-func (c *speculativeServiceClient) DryRunCommand(ctx context.Context, in *DryRunRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CommandResponse)
-	err := c.cc.Invoke(ctx, SpeculativeService_DryRunCommand_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *speculativeServiceClient) SpeculateProjector(ctx context.Context, in *SpeculateProjectorRequest, opts ...grpc.CallOption) (*Projection, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Projection)
-	err := c.cc.Invoke(ctx, SpeculativeService_SpeculateProjector_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *speculativeServiceClient) SpeculateSaga(ctx context.Context, in *SpeculateSagaRequest, opts ...grpc.CallOption) (*SagaResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SagaResponse)
-	err := c.cc.Invoke(ctx, SpeculativeService_SpeculateSaga_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *speculativeServiceClient) SpeculateProcessManager(ctx context.Context, in *SpeculatePmRequest, opts ...grpc.CallOption) (*ProcessManagerHandleResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ProcessManagerHandleResponse)
-	err := c.cc.Invoke(ctx, SpeculativeService_SpeculateProcessManager_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// SpeculativeServiceServer is the server API for SpeculativeService service.
-// All implementations must embed UnimplementedSpeculativeServiceServer
-// for forward compatibility.
-//
-// Speculative execution service - execute without persisting side effects.
-// Supports "what-if" scenarios for commands, projectors, sagas, and process managers.
-type SpeculativeServiceServer interface {
-	// Execute command against temporal state without persisting.
-	// Returns speculative events only — no side effects.
-	DryRunCommand(context.Context, *DryRunRequest) (*CommandResponse, error)
-	// Execute projector against provided events without persisting.
-	// Returns projection result.
-	SpeculateProjector(context.Context, *SpeculateProjectorRequest) (*Projection, error)
-	// Execute saga against provided events without persisting.
-	// Returns commands that would be produced.
-	SpeculateSaga(context.Context, *SpeculateSagaRequest) (*SagaResponse, error)
-	// Execute process manager against provided context without persisting.
-	// Returns commands and PM events that would be produced.
-	SpeculateProcessManager(context.Context, *SpeculatePmRequest) (*ProcessManagerHandleResponse, error)
-	mustEmbedUnimplementedSpeculativeServiceServer()
-}
-
-// UnimplementedSpeculativeServiceServer must be embedded to have
-// forward compatible implementations.
-//
-// NOTE: this should be embedded by value instead of pointer to avoid a nil
-// pointer dereference when methods are called.
-type UnimplementedSpeculativeServiceServer struct{}
-
-func (UnimplementedSpeculativeServiceServer) DryRunCommand(context.Context, *DryRunRequest) (*CommandResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DryRunCommand not implemented")
-}
-func (UnimplementedSpeculativeServiceServer) SpeculateProjector(context.Context, *SpeculateProjectorRequest) (*Projection, error) {
-	return nil, status.Error(codes.Unimplemented, "method SpeculateProjector not implemented")
-}
-func (UnimplementedSpeculativeServiceServer) SpeculateSaga(context.Context, *SpeculateSagaRequest) (*SagaResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SpeculateSaga not implemented")
-}
-func (UnimplementedSpeculativeServiceServer) SpeculateProcessManager(context.Context, *SpeculatePmRequest) (*ProcessManagerHandleResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SpeculateProcessManager not implemented")
-}
-func (UnimplementedSpeculativeServiceServer) mustEmbedUnimplementedSpeculativeServiceServer() {}
-func (UnimplementedSpeculativeServiceServer) testEmbeddedByValue()                            {}
-
-// UnsafeSpeculativeServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to SpeculativeServiceServer will
-// result in compilation errors.
-type UnsafeSpeculativeServiceServer interface {
-	mustEmbedUnimplementedSpeculativeServiceServer()
-}
-
-func RegisterSpeculativeServiceServer(s grpc.ServiceRegistrar, srv SpeculativeServiceServer) {
-	// If the following call panics, it indicates UnimplementedSpeculativeServiceServer was
-	// embedded by pointer and is nil.  This will cause panics if an
-	// unimplemented method is ever invoked, so we test this at initialization
-	// time to prevent it from happening at runtime later due to I/O.
-	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
-		t.testEmbeddedByValue()
-	}
-	s.RegisterService(&SpeculativeService_ServiceDesc, srv)
-}
-
-func _SpeculativeService_DryRunCommand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DryRunRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SpeculativeServiceServer).DryRunCommand(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SpeculativeService_DryRunCommand_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SpeculativeServiceServer).DryRunCommand(ctx, req.(*DryRunRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _SpeculativeService_SpeculateProjector_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SpeculateProjectorRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SpeculativeServiceServer).SpeculateProjector(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SpeculativeService_SpeculateProjector_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SpeculativeServiceServer).SpeculateProjector(ctx, req.(*SpeculateProjectorRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _SpeculativeService_SpeculateSaga_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SpeculateSagaRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SpeculativeServiceServer).SpeculateSaga(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SpeculativeService_SpeculateSaga_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SpeculativeServiceServer).SpeculateSaga(ctx, req.(*SpeculateSagaRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _SpeculativeService_SpeculateProcessManager_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SpeculatePmRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SpeculativeServiceServer).SpeculateProcessManager(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SpeculativeService_SpeculateProcessManager_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SpeculativeServiceServer).SpeculateProcessManager(ctx, req.(*SpeculatePmRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// SpeculativeService_ServiceDesc is the grpc.ServiceDesc for SpeculativeService service.
-// It's only intended for direct use with grpc.RegisterService,
-// and not to be introspected or modified (even as a copy)
-var SpeculativeService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "angzarr.SpeculativeService",
-	HandlerType: (*SpeculativeServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "DryRunCommand",
-			Handler:    _SpeculativeService_DryRunCommand_Handler,
-		},
-		{
-			MethodName: "SpeculateProjector",
-			Handler:    _SpeculativeService_SpeculateProjector_Handler,
-		},
-		{
-			MethodName: "SpeculateSaga",
-			Handler:    _SpeculativeService_SpeculateSaga_Handler,
-		},
-		{
-			MethodName: "SpeculateProcessManager",
-			Handler:    _SpeculativeService_SpeculateProcessManager_Handler,
+			MethodName: "HandleSyncSpeculative",
+			Handler:    _AggregateCoordinatorService_HandleSyncSpeculative_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

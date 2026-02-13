@@ -7,12 +7,14 @@ import grpc
 
 from .proto.angzarr import (
     AggregateCoordinatorServiceStub,
+    SagaCoordinatorServiceStub,
+    ProjectorCoordinatorServiceStub,
+    ProcessManagerCoordinatorServiceStub,
     EventQueryServiceStub,
-    SpeculativeServiceStub,
     CommandBook,
     CommandResponse,
     SyncCommandBook,
-    DryRunRequest,
+    SpeculateAggregateRequest,
     EventBook,
     Query,
     Projection,
@@ -29,12 +31,26 @@ def _create_channel(endpoint: str) -> grpc.Channel:
     """Create a gRPC channel for the given endpoint.
 
     Supports both TCP (host:port) and Unix Domain Sockets (file paths).
-    UDS paths are detected by leading '/' or './' and converted to unix:// URIs.
+    UDS paths are detected by leading '/' or './' and converted to unix: URIs.
+    Note: grpc-python uses unix:path for relative, unix:///path for absolute.
+
+    KNOWN LIMITATION: grpc-python 1.57+ has a cross-language interoperability
+    issue with tonic (Rust) servers over Unix Domain Sockets. Connections fail
+    with "RST_STREAM with error code 1" (PROTOCOL_ERROR). This is tracked in:
+    - https://github.com/hyperium/tonic/issues/826
+    - https://github.com/hyperium/tonic/issues/742
+    - https://github.com/grpc/grpc/issues/34760
+
+    Workaround: Use TCP instead of UDS when Python clients connect to Rust
+    (tonic) servers. UDS works fine for same-language communication.
     """
-    if endpoint.startswith("/") or endpoint.startswith("./"):
-        # Unix domain socket path - convert to gRPC URI format
+    if endpoint.startswith("./"):
+        # Relative Unix domain socket path - use unix:path format
+        return grpc.insecure_channel(f"unix:{endpoint}")
+    elif endpoint.startswith("/"):
+        # Absolute Unix domain socket path - use unix:///path format
         return grpc.insecure_channel(f"unix://{endpoint}")
-    elif endpoint.startswith("unix://"):
+    elif endpoint.startswith("unix:"):
         # Already in URI format
         return grpc.insecure_channel(endpoint)
     else:
@@ -113,10 +129,12 @@ class AggregateClient:
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
-    def dry_run_handle(self, request: DryRunRequest) -> CommandResponse:
-        """Execute a command in dry-run mode (no persistence)."""
+    def handle_sync_speculative(
+        self, request: SpeculateAggregateRequest
+    ) -> CommandResponse:
+        """Execute a command speculatively against temporal state (no persistence)."""
         try:
-            return self._stub.DryRunHandle(request)
+            return self._stub.HandleSyncSpeculative(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
@@ -126,15 +144,22 @@ class AggregateClient:
 
 
 class SpeculativeClient:
-    """Client for the SpeculativeService."""
+    """Client for speculative operations across coordinator services.
+
+    Speculative execution runs commands/events against temporal state without persistence.
+    Each coordinator service now provides its own speculative method.
+    """
 
     def __init__(self, channel: grpc.Channel):
-        self._stub = SpeculativeServiceStub(channel)
+        self._aggregate_stub = AggregateCoordinatorServiceStub(channel)
+        self._saga_stub = SagaCoordinatorServiceStub(channel)
+        self._projector_stub = ProjectorCoordinatorServiceStub(channel)
+        self._pm_stub = ProcessManagerCoordinatorServiceStub(channel)
         self._channel = channel
 
     @classmethod
     def connect(cls, endpoint: str) -> "SpeculativeClient":
-        """Connect to a speculative service at the given endpoint."""
+        """Connect to coordinator services at the given endpoint."""
         channel = _create_channel(endpoint)
         return cls(channel)
 
@@ -144,24 +169,24 @@ class SpeculativeClient:
         endpoint = os.environ.get(env_var, default)
         return cls.connect(endpoint)
 
-    def dry_run(self, request: DryRunRequest) -> CommandResponse:
-        """Execute a command without persistence."""
+    def aggregate(self, request: SpeculateAggregateRequest) -> CommandResponse:
+        """Execute a command speculatively against temporal state."""
         try:
-            return self._stub.DryRunCommand(request)
+            return self._aggregate_stub.HandleSyncSpeculative(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
     def projector(self, request: SpeculateProjectorRequest) -> Projection:
         """Speculatively execute a projector against events."""
         try:
-            return self._stub.SpeculateProjector(request)
+            return self._projector_stub.HandleSpeculative(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
     def saga(self, request: SpeculateSagaRequest) -> SagaResponse:
         """Speculatively execute a saga against events."""
         try:
-            return self._stub.SpeculateSaga(request)
+            return self._saga_stub.ExecuteSpeculative(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
@@ -170,7 +195,7 @@ class SpeculativeClient:
     ) -> ProcessManagerHandleResponse:
         """Speculatively execute a process manager."""
         try:
-            return self._stub.SpeculateProcessManager(request)
+            return self._pm_stub.HandleSpeculative(request)
         except grpc.RpcError as e:
             raise GRPCError(e) from e
 
@@ -232,3 +257,5 @@ class Client:
     def close(self) -> None:
         """Close the underlying channel."""
         self._channel.close()
+
+

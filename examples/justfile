@@ -1,150 +1,33 @@
-# Angzarr examples - multi-language gRPC implementations
+# Angzarr examples - poker game implementations
 #
-# Two deployment modes:
-#   - Standalone: Local development with UDS transport (fast iteration)
-#   - K8s: Kubernetes deployment via Skaffold (production-like)
+# Multi-language examples demonstrating full CQRS/ES architecture.
 #
 # Usage:
-#   just examples standalone run rust      # Run Rust in standalone mode
-#   just examples standalone test rust     # Test Rust in standalone mode
-#   just examples k8s deploy rust          # Deploy Rust to K8s
-#   just examples k8s test rust            # Test Rust in K8s
-#
-# Language-specific commands are in their respective justfiles (e.g., rust/justfile)
+#   just examples python test       # Test Python examples
+#   just examples go test           # Test Go examples
+#   just examples rust test         # Test Rust examples
+#   just examples test-all          # Test all languages
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 
-# Import deployment mode modules
-mod standalone "standalone.justfile"
-mod k8s "k8s.justfile"
-
-# Import language-specific justfiles as modules
+# Import language examples
+mod python "python/justfile"
 mod rust "rust/justfile"
 mod go "go/justfile"
-mod python "python/justfile"
 
 # Show available commands
 default:
     @just --list
 
-# ============================================================================
-# Proto Management (cross-language)
-# ============================================================================
-
-# Generate all proto files (Python, Go)
-proto-generate:
-    cd "{{TOP}}" && just proto python
-    cd "{{TOP}}" && just proto go
-
-# Distribute generated Python protos to all Python services
-proto-dist-python:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    GENERATED="{{TOP}}/generated/python/examples"
-    # Aggregates
-    for svc in cart customer product order inventory fulfillment; do
-        mkdir -p "{{TOP}}/examples/python/$svc/proto"
-        touch "{{TOP}}/examples/python/$svc/proto/__init__.py"
-        cp "$GENERATED/domains_pb2.py" "{{TOP}}/examples/python/$svc/proto/"
-        cp "$GENERATED/domains_pb2_grpc.py" "{{TOP}}/examples/python/$svc/proto/"
-    done
-    # Sagas
-    for svc in saga-fulfillment saga-cancellation saga-loyalty-earn; do
-        mkdir -p "{{TOP}}/examples/python/$svc/proto"
-        touch "{{TOP}}/examples/python/$svc/proto/__init__.py"
-        cp "$GENERATED/domains_pb2.py" "{{TOP}}/examples/python/$svc/proto/"
-        cp "$GENERATED/domains_pb2_grpc.py" "{{TOP}}/examples/python/$svc/proto/"
-    done
-    # Projectors
-    for svc in projector-receipt; do
-        mkdir -p "{{TOP}}/examples/python/$svc/proto"
-        touch "{{TOP}}/examples/python/$svc/proto/__init__.py"
-        cp "$GENERATED/domains_pb2.py" "{{TOP}}/examples/python/$svc/proto/"
-        cp "$GENERATED/domains_pb2_grpc.py" "{{TOP}}/examples/python/$svc/proto/"
-    done
-    echo "Python protos distributed to all services"
-
-# Distribute generated Go protos to all Go services
-proto-dist-go:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    GENERATED="{{TOP}}/generated/go"
-    TARGET="{{TOP}}/examples/go/proto"
-    mkdir -p "$TARGET"
-    cp -r "$GENERATED"/* "$TARGET/"
-    echo "Go protos distributed"
-
-# Distribute all generated protos to example services
-proto-dist: proto-dist-python proto-dist-go
-
-# Generate and distribute protos (full workflow)
-proto: proto-generate proto-dist
-
-# ============================================================================
-# Quick Access (shortcuts to common operations)
-# ============================================================================
-
-# Run standalone mode for a language
-run LANG:
-    just standalone run {{LANG}}
-
-# Run acceptance tests in standalone mode
-test LANG:
-    just standalone test {{LANG}}
-
-# Deploy to K8s
-deploy LANG:
-    just k8s deploy {{LANG}}
-
-# Start K8s dev mode with file watching
-dev LANG:
-    just k8s dev {{LANG}}
-
-# ============================================================================
-# Cross-Language Operations
-# ============================================================================
-
-# Clean all examples
-clean:
-    just rust clean || true
-    just go clean || true
-    just python clean || true
-
-# Format all examples
-fmt:
-    just rust fmt || true
-    just go fmt || true
-    just python fmt || true
-
-# Lint all examples
-lint:
-    just rust lint || true
-    just go lint || true
-    just python lint || true
-
-# Lint all Helm charts
-helm-lint:
-    just rust helm-lint || true
-    just go helm-lint || true
-    just python helm-lint || true
-
-# ============================================================================
-# Container Cache Management
-# ============================================================================
-
-# Show podman disk usage
-cache-status:
-    @echo "=== Podman System Disk Usage ==="
-    podman system df
+# Run tests for all example languages
+test-all:
+    @echo "=== Testing Python examples ==="
+    just python test || true
     @echo ""
-    @echo "=== Example Images ==="
-    podman images --filter "reference=*aggregate-*" --filter "reference=*saga-*"
-
-# Prune unused images
-cache-prune:
-    @echo "Pruning dangling images..."
-    podman image prune -f
+    @echo "=== Testing Go examples ==="
+    just go test || true
     @echo ""
-    podman system df
+    @echo "=== Testing Rust examples ==="
+    just rust test || true

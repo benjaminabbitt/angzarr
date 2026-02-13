@@ -14,7 +14,10 @@ import "google/protobuf/empty.proto";
 service ProjectorService {
   // Self-description: component type, subscribed domains, handled event types
   rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
+  // Async projection - projector should persist and return
   rpc Handle (EventBook) returns (Projection);
+  // Speculative processing - projector must avoid external side effects
+  rpc HandleSpeculative (EventBook) returns (Projection);
 }
 
 // ProjectorCoordinatorService: orchestrates projection processing
@@ -24,5 +27,12 @@ service ProjectorCoordinatorService {
   // Async processing - fire and forget
   rpc Handle (EventBook) returns (google.protobuf.Empty);
   // Speculative processing - returns projection without side effects
-  rpc HandleSpeculative (EventBook) returns (Projection);
+  rpc HandleSpeculative (SpeculateProjectorRequest) returns (Projection);
 }
+
+// Request for speculative projector execution at a point in time.
+message SpeculateProjectorRequest {
+  EventBook events = 1;
+  TemporalQuery point_in_time = 2;
+}
+

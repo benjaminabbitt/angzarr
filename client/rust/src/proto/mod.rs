@@ -5,3 +5,8 @@
 
 // Include the generated code from tonic_build
 tonic::include_proto!("angzarr");
+
+/// Example domain protos (poker)
+pub mod examples {
+    tonic::include_proto!("examples");
+}

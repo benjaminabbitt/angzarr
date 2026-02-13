@@ -1,20 +1,21 @@
 //! Upcaster client for event version transformation.
 //!
-//! Transforms old event versions to current versions by calling an external
-//! upcaster service. Deployed as an optional sidecar container in the aggregate pod.
+//! Transforms old event versions to current versions by calling the client's
+//! UpcasterService implementation. The client binary implements both
+//! AggregateService and UpcasterService on the same gRPC server.
 //!
 //! # Configuration
 //!
 //! ```yaml
 //! upcaster:
 //!   enabled: true
+//!   # Optional: override address (defaults to client logic address)
 //!   address: "localhost:50053"
-//!   timeout_ms: 5000
 //! ```
 //!
 //! Or via environment:
 //! - `ANGZARR_UPCASTER_ENABLED=true`
-//! - `ANGZARR_UPCASTER_ADDRESS=localhost:50053`
+//! - `ANGZARR_UPCASTER_ADDRESS=localhost:50053` (optional override)
 
 use std::sync::Arc;
 
@@ -39,11 +40,10 @@ pub struct UpcasterConfig {
     /// Enable upcaster. Default: false.
     /// Can be overridden via ANGZARR_UPCASTER_ENABLED env var.
     pub enabled: bool,
-    /// Upcaster service address. Default: "localhost:50053".
+    /// Optional address override. If not set, uses the same address as client logic.
     /// Can be overridden via ANGZARR_UPCASTER_ADDRESS env var.
-    pub address: String,
-    /// Timeout in milliseconds. Default: 5000.
-    pub timeout_ms: u64,
+    #[serde(default)]
+    pub address: Option<String>,
 }
 
 impl Default for UpcasterConfig {
@@ -52,9 +52,7 @@ impl Default for UpcasterConfig {
             enabled: std::env::var(UPCASTER_ENABLED_ENV_VAR)
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            address: std::env::var(UPCASTER_ADDRESS_ENV_VAR)
-                .unwrap_or_else(|_| "localhost:50053".to_string()),
-            timeout_ms: 5000,
+            address: std::env::var(UPCASTER_ADDRESS_ENV_VAR).ok(),
         }
     }
 }
@@ -68,9 +66,11 @@ impl UpcasterConfig {
                 .unwrap_or(false)
     }
 
-    /// Get the upcaster address (config or env var).
-    pub fn get_address(&self) -> String {
-        std::env::var(UPCASTER_ADDRESS_ENV_VAR).unwrap_or_else(|_| self.address.clone())
+    /// Get optional address override (config or env var).
+    pub fn get_address_override(&self) -> Option<String> {
+        std::env::var(UPCASTER_ADDRESS_ENV_VAR)
+            .ok()
+            .or_else(|| self.address.clone())
     }
 }
 
@@ -80,52 +80,42 @@ impl UpcasterConfig {
 
 /// Upcaster client wrapper.
 ///
-/// Handles connection to the upcaster service and provides a simple interface
-/// for transforming events.
+/// Calls the client's UpcasterService to transform old event versions.
+/// By default uses the same gRPC channel as client logic (AggregateService).
 pub struct Upcaster {
     client: Option<Arc<Mutex<UpcasterServiceClient<Channel>>>>,
-    #[allow(dead_code)] // Reserved for reconnection logic
-    config: UpcasterConfig,
 }
 
 impl Upcaster {
-    /// Create a new upcaster client.
+    /// Create an upcaster client from an existing channel.
     ///
-    /// If upcaster is disabled, creates a passthrough client that returns events unchanged.
-    pub async fn new(
-        config: UpcasterConfig,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        if !config.is_enabled() {
-            info!("Upcaster disabled");
-            return Ok(Self {
-                client: None,
-                config,
-            });
-        }
-
-        let address = config.get_address();
-        let endpoint = format!("http://{}", address);
-
-        let channel = Channel::from_shared(endpoint.clone())?
-            .timeout(std::time::Duration::from_millis(config.timeout_ms))
-            .connect()
-            .await?;
-
+    /// Uses the same channel as client logic (both services on same server).
+    pub fn from_channel(channel: Channel) -> Self {
         let client = UpcasterServiceClient::new(channel);
-        info!(address = %address, "Upcaster client connected");
+        info!("Upcaster client created (shared channel with client logic)");
+        Self {
+            client: Some(Arc::new(Mutex::new(client))),
+        }
+    }
+
+    /// Create an upcaster client with a separate address.
+    ///
+    /// Used when upcaster runs as a separate sidecar.
+    pub async fn from_address(address: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        use crate::transport::connect_to_address;
+
+        let channel = connect_to_address(address).await?;
+        let client = UpcasterServiceClient::new(channel);
+        info!(address = %address, "Upcaster client connected (separate address)");
 
         Ok(Self {
             client: Some(Arc::new(Mutex::new(client))),
-            config,
         })
     }
 
     /// Create a disabled upcaster (passthrough).
     pub fn disabled() -> Self {
-        Self {
-            client: None,
-            config: UpcasterConfig::default(),
-        }
+        Self { client: None }
     }
 
     /// Check if upcaster is enabled.
@@ -179,8 +169,7 @@ mod tests {
     fn test_upcaster_config_default() {
         let config = UpcasterConfig::default();
         assert!(!config.enabled);
-        assert_eq!(config.address, "localhost:50053");
-        assert_eq!(config.timeout_ms, 5000);
+        assert!(config.address.is_none());
     }
 
     #[test]
@@ -318,13 +307,9 @@ mod grpc_tests {
     async fn test_upcaster_transforms_events() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
 
-        let config = UpcasterConfig {
-            enabled: true,
-            address: addr.to_string(),
-            timeout_ms: 5000,
-        };
-
-        let upcaster = Upcaster::new(config).await.expect("Failed to connect");
+        let upcaster = Upcaster::from_address(&addr.to_string())
+            .await
+            .expect("Failed to connect");
         assert!(upcaster.is_enabled());
 
         let events = vec![
@@ -350,13 +335,7 @@ mod grpc_tests {
     async fn test_upcaster_preserves_non_v1_events() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
 
-        let config = UpcasterConfig {
-            enabled: true,
-            address: addr.to_string(),
-            timeout_ms: 5000,
-        };
-
-        let upcaster = Upcaster::new(config).await.unwrap();
+        let upcaster = Upcaster::from_address(&addr.to_string()).await.unwrap();
 
         let events = vec![
             make_test_event(0, "example.OrderCreated", vec![1, 2]), // No V1 suffix
@@ -374,13 +353,7 @@ mod grpc_tests {
     async fn test_upcaster_preserves_sequence_numbers() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
 
-        let config = UpcasterConfig {
-            enabled: true,
-            address: addr.to_string(),
-            timeout_ms: 5000,
-        };
-
-        let upcaster = Upcaster::new(config).await.unwrap();
+        let upcaster = Upcaster::from_address(&addr.to_string()).await.unwrap();
 
         let events = vec![
             make_test_event(5, "example.EventV1", vec![]),
@@ -400,13 +373,7 @@ mod grpc_tests {
     async fn test_upcaster_handles_empty_events() {
         let addr = start_mock_server(MockUpcasterService::new()).await;
 
-        let config = UpcasterConfig {
-            enabled: true,
-            address: addr.to_string(),
-            timeout_ms: 5000,
-        };
-
-        let upcaster = Upcaster::new(config).await.unwrap();
+        let upcaster = Upcaster::from_address(&addr.to_string()).await.unwrap();
 
         // Empty events should short-circuit without calling server
         let result = upcaster.upcast("test", vec![]).await.unwrap();
@@ -417,13 +384,7 @@ mod grpc_tests {
     async fn test_upcaster_error_propagation() {
         let addr = start_mock_server(MockUpcasterService::failing()).await;
 
-        let config = UpcasterConfig {
-            enabled: true,
-            address: addr.to_string(),
-            timeout_ms: 5000,
-        };
-
-        let upcaster = Upcaster::new(config).await.unwrap();
+        let upcaster = Upcaster::from_address(&addr.to_string()).await.unwrap();
 
         let events = vec![make_test_event(0, "example.Event", vec![1])];
 
@@ -437,13 +398,31 @@ mod grpc_tests {
 
     #[tokio::test]
     async fn test_upcaster_connection_failure() {
-        let config = UpcasterConfig {
-            enabled: true,
-            address: "127.0.0.1:1".to_string(), // Invalid port
-            timeout_ms: 100,
-        };
-
-        let result = Upcaster::new(config).await;
+        let result = Upcaster::from_address("127.0.0.1:1").await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_upcaster_from_channel() {
+        let addr = start_mock_server(MockUpcasterService::new()).await;
+
+        // Connect via channel (simulates sharing channel with client logic)
+        let channel = Channel::from_shared(format!("http://{}", addr))
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+
+        let upcaster = Upcaster::from_channel(channel);
+        assert!(upcaster.is_enabled());
+
+        let events = vec![make_test_event(0, "example.EventV1", vec![1])];
+        let result = upcaster.upcast("test", events).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[0].event.as_ref().unwrap().type_url,
+            "example.EventV2"
+        );
     }
 }

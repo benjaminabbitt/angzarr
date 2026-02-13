@@ -1,243 +1,86 @@
 # syntax=docker/dockerfile:1.4
-# Go examples - optimized multi-stage build with optional UPX compression
-# Build dev: podman build -t go-customer --target customer -f examples/go/Containerfile .
-# Build prod: podman build --build-arg COMPRESS=true -t go-customer --target customer -f examples/go/Containerfile .
+# Go poker examples - optimized multi-stage build
+# Build: podman build -t go-poker-player --target agg-player -f examples/go/Containerfile .
 # Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
-# Context must be repo root for angzarr library access
+# Context must be repo root for proto access
 #
 # Optimizations:
-# 1. Shared deps-fetcher stage - all go.mod downloaded once
-# 2. Pre-compilation of gRPC/proto packages (cache warmer)
-# 3. Optional UPX compression (COMPRESS=true for prod, false for dev)
-# 4. Scratch runtime - absolute minimal image (~3-5MB compressed)
-# 5. Named cache IDs for go mod/build persistence
-# 6. Multi-arch support (amd64 + arm64)
+# 1. Shared deps-fetcher stage - go mod download runs once
+# 2. Named cache IDs for Go module cache persistence
+# 3. Distroless runtime - minimal attack surface
+# 4. Multi-arch support (amd64 + arm64)
 
-ARG GO_VERSION=1.24
-ARG ALPINE_VERSION=3.21
-ARG COMPRESS=false
+ARG GO_VERSION=1.23
 
 # ============================================================================
-# Base builder - common tooling and settings
+# Base builder - common SDK
 # ============================================================================
-FROM docker.io/library/golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS base
+FROM docker.io/library/golang:${GO_VERSION}-alpine AS base
 
-RUN apk add --no-cache git ca-certificates tzdata
-
-# Optimize Go builds
-ENV CGO_ENABLED=0 \
-    GOOS=linux \
-    GOFLAGS="-trimpath" \
-    LDFLAGS="-s -w"
+RUN apk add --no-cache ca-certificates git
 
 WORKDIR /app
 
 # ============================================================================
-# Deps fetcher - downloads ALL modules once with maximum cache sharing
+# Deps fetcher - downloads ALL dependencies once
 # ============================================================================
 FROM base AS deps-fetcher
 
-# Copy ALL go.mod/go.sum files first (changes rarely)
-# angzarr shared library - full copy needed for replace directive resolution
-COPY examples/go/angzarr/ /deps/angzarr/
-COPY examples/go/order/go.mod examples/go/order/go.sum /deps/order/
-COPY examples/go/inventory/go.mod examples/go/inventory/go.sum /deps/inventory/
-COPY examples/go/fulfillment/go.mod examples/go/fulfillment/go.sum /deps/fulfillment/
-COPY examples/go/saga-fulfillment/go.mod examples/go/saga-fulfillment/go.sum /deps/saga-fulfillment/
-COPY examples/go/saga-inventory-reservation/go.mod examples/go/saga-inventory-reservation/go.sum /deps/saga-inventory-reservation/
-COPY examples/go/sag-fulfillment-inventory/go.mod examples/go/sag-fulfillment-inventory/go.sum /deps/sag-fulfillment-inventory/
-COPY examples/go/projector-inventory/go.mod examples/go/projector-inventory/go.sum /deps/projector-inventory/
-COPY examples/go/process-manager-fulfillment/go.mod examples/go/process-manager-fulfillment/go.sum /deps/process-manager-fulfillment/
+# Copy go.mod/go.sum for dependency resolution
+COPY examples/go/go.mod examples/go/go.sum ./
 
-# Download ALL dependencies in one layer with persistent cache
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    for dir in /deps/*/; do cd "$dir" && go mod download; done
+# Download dependencies with persistent cache
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    go mod download
 
 # ============================================================================
-# Pre-warm build cache with common dependencies
+# Service builds - each builds a static binary
 # ============================================================================
-FROM deps-fetcher AS cache-warmer
-
-# Copy angzarr to /angzarr for replace directive resolution from /build
-COPY examples/go/angzarr/ /angzarr/
-
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    cd /deps/order && \
-    go build -v google.golang.org/grpc/... 2>/dev/null || true && \
-    go build -v google.golang.org/protobuf/... 2>/dev/null || true
-
-# ============================================================================
-# Service builds - each reuses the warm cache
-# ============================================================================
-FROM cache-warmer AS build-order
+FROM deps-fetcher AS build-player
 WORKDIR /build
-COPY examples/go/order/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./agg-player
 
-FROM cache-warmer AS build-inventory
+FROM deps-fetcher AS build-table
 WORKDIR /build
-COPY examples/go/inventory/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./agg-table
 
-FROM cache-warmer AS build-fulfillment
+FROM deps-fetcher AS build-hand
 WORKDIR /build
-COPY examples/go/fulfillment/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-saga-fulfillment
-WORKDIR /build
-COPY examples/go/saga-fulfillment/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-saga-inventory-reservation
-WORKDIR /build
-COPY examples/go/saga-inventory-reservation/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-sag-fulfillment-inventory
-WORKDIR /build
-COPY examples/go/sag-fulfillment-inventory/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-projector-inventory
-WORKDIR /build
-COPY examples/go/projector-inventory/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
-
-FROM cache-warmer AS build-process-manager-fulfillment
-WORKDIR /build
-COPY examples/go/process-manager-fulfillment/ ./
-RUN --mount=type=cache,id=go-mod-cache-v2,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=go-build-cache-v2,target=/root/.cache/go-build,sharing=locked \
-    go build -ldflags="${LDFLAGS}" -o /server .
+COPY examples/go/ ./
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./agg-hand
 
 # ============================================================================
-# UPX compression stages (conditional - only used when COMPRESS=true)
+# Runtime base - distroless static (minimal, secure)
 # ============================================================================
-FROM docker.io/library/alpine:${ALPINE_VERSION} AS upx-base
-RUN apk add --no-cache upx
-
-FROM upx-base AS compress-order
-ARG COMPRESS
-COPY --from=build-order /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-inventory
-ARG COMPRESS
-COPY --from=build-inventory /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-fulfillment
-ARG COMPRESS
-COPY --from=build-fulfillment /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-saga-fulfillment
-ARG COMPRESS
-COPY --from=build-saga-fulfillment /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-saga-inventory-reservation
-ARG COMPRESS
-COPY --from=build-saga-inventory-reservation /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-sag-fulfillment-inventory
-ARG COMPRESS
-COPY --from=build-sag-fulfillment-inventory /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-projector-inventory
-ARG COMPRESS
-COPY --from=build-projector-inventory /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-FROM upx-base AS compress-process-manager-fulfillment
-ARG COMPRESS
-COPY --from=build-process-manager-fulfillment /server /server
-RUN if [ "$COMPRESS" = "true" ]; then upx --best --lzma /server; fi
-
-# ============================================================================
-# Runtime base - scratch (absolute minimal, just the binary)
-# ============================================================================
-FROM scratch AS runtime
-COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=base /usr/share/zoneinfo /usr/share/zoneinfo
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 WORKDIR /app
+USER nonroot:nonroot
 
 # ============================================================================
 # Domain Aggregates
 # ============================================================================
-FROM runtime AS order
-COPY --from=compress-order /server ./server
+FROM runtime AS agg-player
+COPY --from=build-player --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50201
+EXPOSE 50201
+ENTRYPOINT ["./server"]
+
+FROM runtime AS agg-table
+COPY --from=build-table --chown=nonroot:nonroot /out/server ./server
+ENV PORT=50202
+EXPOSE 50202
+ENTRYPOINT ["./server"]
+
+FROM runtime AS agg-hand
+COPY --from=build-hand --chown=nonroot:nonroot /out/server ./server
 ENV PORT=50203
 EXPOSE 50203
 ENTRYPOINT ["./server"]
-
-FROM runtime AS inventory
-COPY --from=compress-inventory /server ./server
-ENV PORT=50204
-EXPOSE 50204
-ENTRYPOINT ["./server"]
-
-FROM runtime AS fulfillment
-COPY --from=compress-fulfillment /server ./server
-ENV PORT=50205
-EXPOSE 50205
-ENTRYPOINT ["./server"]
-
-# ============================================================================
-# Sagas
-# ============================================================================
-FROM runtime AS saga-fulfillment
-COPY --from=compress-saga-fulfillment /server ./server
-ENV PORT=50210
-EXPOSE 50210
-ENTRYPOINT ["./server"]
-
-FROM runtime AS saga-inventory-reservation
-COPY --from=compress-saga-inventory-reservation /server ./server
-ENV PORT=50213
-EXPOSE 50213
-ENTRYPOINT ["./server"]
-
-FROM runtime AS sag-fulfillment-inventory
-COPY --from=compress-sag-fulfillment-inventory /server ./server
-ENV PORT=50214
-EXPOSE 50214
-ENTRYPOINT ["./server"]
-
-# ============================================================================
-# Projectors
-# ============================================================================
-FROM runtime AS projector-inventory
-COPY --from=compress-projector-inventory /server ./server
-ENV PORT=50220
-EXPOSE 50220
-ENTRYPOINT ["./server"]
-
-# ============================================================================
-# Process Managers
-# ============================================================================
-FROM runtime AS process-manager-fulfillment
-COPY --from=compress-process-manager-fulfillment /server ./server
-ENV PORT=50230
-EXPOSE 50230
-ENTRYPOINT ["./server"]
-

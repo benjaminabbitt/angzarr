@@ -201,7 +201,7 @@ impl CommandRouter {
     /// published to the bus, and no sagas or projectors are triggered. Use this
     /// to validate business rules or explore "what-if" scenarios without side
     /// effects.
-    pub async fn dry_run(
+    pub async fn speculative(
         &self,
         command_book: CommandBook,
         as_of_sequence: Option<u32>,
@@ -214,7 +214,7 @@ impl CommandRouter {
             root = %root_uuid,
             ?as_of_sequence,
             ?as_of_timestamp,
-            "Dry-run command"
+            "Speculative command"
         );
 
         let business = self.business.get(&domain).ok_or_else(|| {
@@ -241,7 +241,7 @@ impl CommandRouter {
             &*ctx,
             &**business,
             command_book,
-            PipelineMode::DryRun {
+            PipelineMode::Speculative {
                 as_of_sequence,
                 as_of_timestamp: as_of_timestamp.map(|s| s.to_string()),
             },

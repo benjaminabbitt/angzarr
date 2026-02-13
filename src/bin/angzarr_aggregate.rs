@@ -51,7 +51,7 @@ use angzarr::proto::{
     aggregate_service_client::AggregateServiceClient,
     event_query_service_server::EventQueryServiceServer,
 };
-use angzarr::services::{AggregateService, EventQueryService};
+use angzarr::services::{AggregateService, EventQueryService, Upcaster};
 use angzarr::storage::init_storage;
 use angzarr::transport::{grpc_trace_layer, max_grpc_message_size, serve_with_transport};
 
@@ -88,7 +88,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use angzarr::transport::connect_to_address;
     let channel = connect_to_address(&address).await?;
 
-    let client_logic_client = AggregateServiceClient::new(channel);
+    let client_logic_client = AggregateServiceClient::new(channel.clone());
+
+    // Create upcaster if enabled
+    // By default, upcaster uses the same channel as client logic (same server)
+    // Optional address override for separate sidecar deployment
+    let upcaster: Option<Arc<Upcaster>> = if config.upcaster.is_enabled() {
+        let upcaster = match config.upcaster.get_address_override() {
+            Some(override_addr) => {
+                info!(address = %override_addr, "Upcaster using separate address");
+                Upcaster::from_address(&override_addr).await?
+            }
+            None => {
+                info!("Upcaster using client logic channel");
+                Upcaster::from_channel(channel)
+            }
+        };
+        Some(Arc::new(upcaster))
+    } else {
+        info!("Upcaster disabled");
+        None
+    };
 
     let event_bus: Arc<dyn EventBus> = match &config.messaging {
         Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {
@@ -150,13 +170,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         warn!(error = %e, "Failed to write descriptor annotation");
     }
 
-    let aggregate_service = AggregateService::new(
+    let mut aggregate_service = AggregateService::new(
         event_store.clone(),
         snapshot_store.clone(),
         client_logic_client,
         event_bus,
         discovery,
     );
+
+    if let Some(upcaster) = upcaster {
+        aggregate_service = aggregate_service.with_upcaster(upcaster);
+    }
 
     let event_query = EventQueryService::new(event_store, snapshot_store);
 

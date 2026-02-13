@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "agg-player",
+    "agg-table",
+    "agg-hand",
+    "saga-table-hand",
+    "saga-hand-table",
+    "saga-hand-player",
+    "saga-table-player",
+    "prj-output",
+    "pmg-hand-flow",
+    "tests",
+]
+
+[workspace.dependencies]
+angzarr-client = { path = "../../client/rust" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+hex = "0.4"
+sha2 = "0.10"
+rand = "0.8"
+chrono = "0.4"

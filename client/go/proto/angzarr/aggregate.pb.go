@@ -9,6 +9,7 @@ package angzarr
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	_ "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -21,31 +22,29 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Request to speculatively execute a projector.
-type SpeculateProjectorRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the projector to execute.
-	ProjectorName string `protobuf:"bytes,1,opt,name=projector_name,json=projectorName,proto3" json:"projector_name,omitempty"`
-	// Events to project.
-	Events        *EventBook `protobuf:"bytes,2,opt,name=events,proto3" json:"events,omitempty"`
+// Response from entity - aggregate events + sync projector results
+type CommandResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Events        *EventBook             `protobuf:"bytes,1,opt,name=events,proto3" json:"events,omitempty"`           // Events from the target aggregate
+	Projections   []*Projection          `protobuf:"bytes,2,rep,name=projections,proto3" json:"projections,omitempty"` // Synchronous projector results
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SpeculateProjectorRequest) Reset() {
-	*x = SpeculateProjectorRequest{}
+func (x *CommandResponse) Reset() {
+	*x = CommandResponse{}
 	mi := &file_angzarr_aggregate_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SpeculateProjectorRequest) String() string {
+func (x *CommandResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SpeculateProjectorRequest) ProtoMessage() {}
+func (*CommandResponse) ProtoMessage() {}
 
-func (x *SpeculateProjectorRequest) ProtoReflect() protoreflect.Message {
+func (x *CommandResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_angzarr_aggregate_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -57,53 +56,51 @@ func (x *SpeculateProjectorRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SpeculateProjectorRequest.ProtoReflect.Descriptor instead.
-func (*SpeculateProjectorRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CommandResponse.ProtoReflect.Descriptor instead.
+func (*CommandResponse) Descriptor() ([]byte, []int) {
 	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *SpeculateProjectorRequest) GetProjectorName() string {
-	if x != nil {
-		return x.ProjectorName
-	}
-	return ""
-}
-
-func (x *SpeculateProjectorRequest) GetEvents() *EventBook {
+func (x *CommandResponse) GetEvents() *EventBook {
 	if x != nil {
 		return x.Events
 	}
 	return nil
 }
 
-// Request to speculatively execute a saga.
-type SpeculateSagaRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the saga to execute.
-	SagaName string `protobuf:"bytes,1,opt,name=saga_name,json=sagaName,proto3" json:"saga_name,omitempty"`
-	// Source events that trigger the saga.
-	Source *EventBook `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
-	// Pre-fetched destination state (optional).
-	// If empty, saga will run with empty destinations.
-	Destinations  []*EventBook `protobuf:"bytes,3,rep,name=destinations,proto3" json:"destinations,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+func (x *CommandResponse) GetProjections() []*Projection {
+	if x != nil {
+		return x.Projections
+	}
+	return nil
 }
 
-func (x *SpeculateSagaRequest) Reset() {
-	*x = SpeculateSagaRequest{}
+// client logic requests framework to handle revocation
+type RevocationResponse struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	EmitSystemRevocation  bool                   `protobuf:"varint,1,opt,name=emit_system_revocation,json=emitSystemRevocation,proto3" json:"emit_system_revocation,omitempty"`        // Emit SagaCompensationFailed event
+	SendToDeadLetterQueue bool                   `protobuf:"varint,2,opt,name=send_to_dead_letter_queue,json=sendToDeadLetterQueue,proto3" json:"send_to_dead_letter_queue,omitempty"` // Send to DLQ
+	Escalate              bool                   `protobuf:"varint,3,opt,name=escalate,proto3" json:"escalate,omitempty"`                                                              // Flag for alerting/human intervention
+	Abort                 bool                   `protobuf:"varint,4,opt,name=abort,proto3" json:"abort,omitempty"`                                                                    // Stop saga chain, propagate error to caller
+	Reason                string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`                                                                   // Context/reason
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *RevocationResponse) Reset() {
+	*x = RevocationResponse{}
 	mi := &file_angzarr_aggregate_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SpeculateSagaRequest) String() string {
+func (x *RevocationResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SpeculateSagaRequest) ProtoMessage() {}
+func (*RevocationResponse) ProtoMessage() {}
 
-func (x *SpeculateSagaRequest) ProtoReflect() protoreflect.Message {
+func (x *RevocationResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_angzarr_aggregate_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -115,61 +112,72 @@ func (x *SpeculateSagaRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SpeculateSagaRequest.ProtoReflect.Descriptor instead.
-func (*SpeculateSagaRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use RevocationResponse.ProtoReflect.Descriptor instead.
+func (*RevocationResponse) Descriptor() ([]byte, []int) {
 	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *SpeculateSagaRequest) GetSagaName() string {
+func (x *RevocationResponse) GetEmitSystemRevocation() bool {
 	if x != nil {
-		return x.SagaName
+		return x.EmitSystemRevocation
+	}
+	return false
+}
+
+func (x *RevocationResponse) GetSendToDeadLetterQueue() bool {
+	if x != nil {
+		return x.SendToDeadLetterQueue
+	}
+	return false
+}
+
+func (x *RevocationResponse) GetEscalate() bool {
+	if x != nil {
+		return x.Escalate
+	}
+	return false
+}
+
+func (x *RevocationResponse) GetAbort() bool {
+	if x != nil {
+		return x.Abort
+	}
+	return false
+}
+
+func (x *RevocationResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
 	}
 	return ""
 }
 
-func (x *SpeculateSagaRequest) GetSource() *EventBook {
-	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-func (x *SpeculateSagaRequest) GetDestinations() []*EventBook {
-	if x != nil {
-		return x.Destinations
-	}
-	return nil
-}
-
-// Request to speculatively execute a process manager.
-type SpeculatePmRequest struct {
+// Wrapper response for BusinessLogic.Handle
+type BusinessResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the process manager to execute.
-	PmName string `protobuf:"bytes,1,opt,name=pm_name,json=pmName,proto3" json:"pm_name,omitempty"`
-	// Triggering events.
-	Trigger *EventBook `protobuf:"bytes,2,opt,name=trigger,proto3" json:"trigger,omitempty"`
-	// Current process manager state (optional).
-	ProcessState *EventBook `protobuf:"bytes,3,opt,name=process_state,json=processState,proto3" json:"process_state,omitempty"`
-	// Pre-fetched destination state (optional).
-	Destinations  []*EventBook `protobuf:"bytes,4,rep,name=destinations,proto3" json:"destinations,omitempty"`
+	// Types that are valid to be assigned to Result:
+	//
+	//	*BusinessResponse_Events
+	//	*BusinessResponse_Revocation
+	Result        isBusinessResponse_Result `protobuf_oneof:"result"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SpeculatePmRequest) Reset() {
-	*x = SpeculatePmRequest{}
+func (x *BusinessResponse) Reset() {
+	*x = BusinessResponse{}
 	mi := &file_angzarr_aggregate_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SpeculatePmRequest) String() string {
+func (x *BusinessResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SpeculatePmRequest) ProtoMessage() {}
+func (*BusinessResponse) ProtoMessage() {}
 
-func (x *SpeculatePmRequest) ProtoReflect() protoreflect.Message {
+func (x *BusinessResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_angzarr_aggregate_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -181,35 +189,101 @@ func (x *SpeculatePmRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SpeculatePmRequest.ProtoReflect.Descriptor instead.
-func (*SpeculatePmRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use BusinessResponse.ProtoReflect.Descriptor instead.
+func (*BusinessResponse) Descriptor() ([]byte, []int) {
 	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *SpeculatePmRequest) GetPmName() string {
+func (x *BusinessResponse) GetResult() isBusinessResponse_Result {
 	if x != nil {
-		return x.PmName
-	}
-	return ""
-}
-
-func (x *SpeculatePmRequest) GetTrigger() *EventBook {
-	if x != nil {
-		return x.Trigger
+		return x.Result
 	}
 	return nil
 }
 
-func (x *SpeculatePmRequest) GetProcessState() *EventBook {
+func (x *BusinessResponse) GetEvents() *EventBook {
 	if x != nil {
-		return x.ProcessState
+		if x, ok := x.Result.(*BusinessResponse_Events); ok {
+			return x.Events
+		}
 	}
 	return nil
 }
 
-func (x *SpeculatePmRequest) GetDestinations() []*EventBook {
+func (x *BusinessResponse) GetRevocation() *RevocationResponse {
 	if x != nil {
-		return x.Destinations
+		if x, ok := x.Result.(*BusinessResponse_Revocation); ok {
+			return x.Revocation
+		}
+	}
+	return nil
+}
+
+type isBusinessResponse_Result interface {
+	isBusinessResponse_Result()
+}
+
+type BusinessResponse_Events struct {
+	Events *EventBook `protobuf:"bytes,1,opt,name=events,proto3,oneof"` // Business provides compensation events
+}
+
+type BusinessResponse_Revocation struct {
+	Revocation *RevocationResponse `protobuf:"bytes,2,opt,name=revocation,proto3,oneof"` // Business requests framework action
+}
+
+func (*BusinessResponse_Events) isBusinessResponse_Result() {}
+
+func (*BusinessResponse_Revocation) isBusinessResponse_Result() {}
+
+// Request for speculative command execution against temporal state.
+type SpeculateAggregateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Command       *CommandBook           `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	PointInTime   *TemporalQuery         `protobuf:"bytes,2,opt,name=point_in_time,json=pointInTime,proto3" json:"point_in_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpeculateAggregateRequest) Reset() {
+	*x = SpeculateAggregateRequest{}
+	mi := &file_angzarr_aggregate_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpeculateAggregateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpeculateAggregateRequest) ProtoMessage() {}
+
+func (x *SpeculateAggregateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_aggregate_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpeculateAggregateRequest.ProtoReflect.Descriptor instead.
+func (*SpeculateAggregateRequest) Descriptor() ([]byte, []int) {
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SpeculateAggregateRequest) GetCommand() *CommandBook {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+func (x *SpeculateAggregateRequest) GetPointInTime() *TemporalQuery {
+	if x != nil {
+		return x.PointInTime
 	}
 	return nil
 }
@@ -218,32 +292,33 @@ var File_angzarr_aggregate_proto protoreflect.FileDescriptor
 
 const file_angzarr_aggregate_proto_rawDesc = "" +
 	"\n" +
-	"\x17angzarr/aggregate.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1dangzarr/process_manager.proto\"n\n" +
-	"\x19SpeculateProjectorRequest\x12%\n" +
-	"\x0eprojector_name\x18\x01 \x01(\tR\rprojectorName\x12*\n" +
-	"\x06events\x18\x02 \x01(\v2\x12.angzarr.EventBookR\x06events\"\x97\x01\n" +
-	"\x14SpeculateSagaRequest\x12\x1b\n" +
-	"\tsaga_name\x18\x01 \x01(\tR\bsagaName\x12*\n" +
-	"\x06source\x18\x02 \x01(\v2\x12.angzarr.EventBookR\x06source\x126\n" +
-	"\fdestinations\x18\x03 \x03(\v2\x12.angzarr.EventBookR\fdestinations\"\xcc\x01\n" +
-	"\x12SpeculatePmRequest\x12\x17\n" +
-	"\apm_name\x18\x01 \x01(\tR\x06pmName\x12,\n" +
-	"\atrigger\x18\x02 \x01(\v2\x12.angzarr.EventBookR\atrigger\x127\n" +
-	"\rprocess_state\x18\x03 \x01(\v2\x12.angzarr.EventBookR\fprocessState\x126\n" +
-	"\fdestinations\x18\x04 \x03(\v2\x12.angzarr.EventBookR\fdestinations2\xa1\x01\n" +
+	"\x17angzarr/aggregate.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"t\n" +
+	"\x0fCommandResponse\x12*\n" +
+	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06events\x125\n" +
+	"\vprojections\x18\x02 \x03(\v2\x13.angzarr.ProjectionR\vprojections\"\xce\x01\n" +
+	"\x12RevocationResponse\x124\n" +
+	"\x16emit_system_revocation\x18\x01 \x01(\bR\x14emitSystemRevocation\x128\n" +
+	"\x19send_to_dead_letter_queue\x18\x02 \x01(\bR\x15sendToDeadLetterQueue\x12\x1a\n" +
+	"\bescalate\x18\x03 \x01(\bR\bescalate\x12\x14\n" +
+	"\x05abort\x18\x04 \x01(\bR\x05abort\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"\x89\x01\n" +
+	"\x10BusinessResponse\x12,\n" +
+	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookH\x00R\x06events\x12=\n" +
+	"\n" +
+	"revocation\x18\x02 \x01(\v2\x1b.angzarr.RevocationResponseH\x00R\n" +
+	"revocationB\b\n" +
+	"\x06result\"\x87\x01\n" +
+	"\x19SpeculateAggregateRequest\x12.\n" +
+	"\acommand\x18\x01 \x01(\v2\x14.angzarr.CommandBookR\acommand\x12:\n" +
+	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\xa1\x01\n" +
 	"\x10AggregateService\x12L\n" +
 	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n" +
-	"\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse2\xdb\x01\n" +
+	"\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse2\xf0\x01\n" +
 	"\x1bAggregateCoordinatorService\x128\n" +
 	"\x06Handle\x12\x14.angzarr.CommandBook\x1a\x18.angzarr.CommandResponse\x12@\n" +
 	"\n" +
-	"HandleSync\x12\x18.angzarr.SyncCommandBook\x1a\x18.angzarr.CommandResponse\x12@\n" +
-	"\fDryRunHandle\x12\x16.angzarr.DryRunRequest\x1a\x18.angzarr.CommandResponse2\xcc\x02\n" +
-	"\x12SpeculativeService\x12A\n" +
-	"\rDryRunCommand\x12\x16.angzarr.DryRunRequest\x1a\x18.angzarr.CommandResponse\x12M\n" +
-	"\x12SpeculateProjector\x12\".angzarr.SpeculateProjectorRequest\x1a\x13.angzarr.Projection\x12E\n" +
-	"\rSpeculateSaga\x12\x1d.angzarr.SpeculateSagaRequest\x1a\x15.angzarr.SagaResponse\x12]\n" +
-	"\x17SpeculateProcessManager\x12\x1b.angzarr.SpeculatePmRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x94\x01\n" +
+	"HandleSync\x12\x18.angzarr.SyncCommandBook\x1a\x18.angzarr.CommandResponse\x12U\n" +
+	"\x15HandleSyncSpeculative\x12\".angzarr.SpeculateAggregateRequest\x1a\x18.angzarr.CommandResponseB\x94\x01\n" +
 	"\vcom.angzarrB\x0eAggregateProtoP\x01Z9github.com/benjaminabbitt/angzarr/client/go/proto/angzarr\xa2\x02\x03AXX\xaa\x02\aAngzarr\xca\x02\aAngzarr\xe2\x02\x13Angzarr\\GPBMetadata\xea\x02\aAngzarrb\x06proto3"
 
 var (
@@ -258,51 +333,40 @@ func file_angzarr_aggregate_proto_rawDescGZIP() []byte {
 	return file_angzarr_aggregate_proto_rawDescData
 }
 
-var file_angzarr_aggregate_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_angzarr_aggregate_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_angzarr_aggregate_proto_goTypes = []any{
-	(*SpeculateProjectorRequest)(nil),    // 0: angzarr.SpeculateProjectorRequest
-	(*SpeculateSagaRequest)(nil),         // 1: angzarr.SpeculateSagaRequest
-	(*SpeculatePmRequest)(nil),           // 2: angzarr.SpeculatePmRequest
-	(*EventBook)(nil),                    // 3: angzarr.EventBook
-	(*GetDescriptorRequest)(nil),         // 4: angzarr.GetDescriptorRequest
-	(*ContextualCommand)(nil),            // 5: angzarr.ContextualCommand
-	(*CommandBook)(nil),                  // 6: angzarr.CommandBook
-	(*SyncCommandBook)(nil),              // 7: angzarr.SyncCommandBook
-	(*DryRunRequest)(nil),                // 8: angzarr.DryRunRequest
-	(*ComponentDescriptor)(nil),          // 9: angzarr.ComponentDescriptor
-	(*BusinessResponse)(nil),             // 10: angzarr.BusinessResponse
-	(*CommandResponse)(nil),              // 11: angzarr.CommandResponse
-	(*Projection)(nil),                   // 12: angzarr.Projection
-	(*SagaResponse)(nil),                 // 13: angzarr.SagaResponse
-	(*ProcessManagerHandleResponse)(nil), // 14: angzarr.ProcessManagerHandleResponse
+	(*CommandResponse)(nil),           // 0: angzarr.CommandResponse
+	(*RevocationResponse)(nil),        // 1: angzarr.RevocationResponse
+	(*BusinessResponse)(nil),          // 2: angzarr.BusinessResponse
+	(*SpeculateAggregateRequest)(nil), // 3: angzarr.SpeculateAggregateRequest
+	(*EventBook)(nil),                 // 4: angzarr.EventBook
+	(*Projection)(nil),                // 5: angzarr.Projection
+	(*CommandBook)(nil),               // 6: angzarr.CommandBook
+	(*TemporalQuery)(nil),             // 7: angzarr.TemporalQuery
+	(*GetDescriptorRequest)(nil),      // 8: angzarr.GetDescriptorRequest
+	(*ContextualCommand)(nil),         // 9: angzarr.ContextualCommand
+	(*SyncCommandBook)(nil),           // 10: angzarr.SyncCommandBook
+	(*ComponentDescriptor)(nil),       // 11: angzarr.ComponentDescriptor
 }
 var file_angzarr_aggregate_proto_depIdxs = []int32{
-	3,  // 0: angzarr.SpeculateProjectorRequest.events:type_name -> angzarr.EventBook
-	3,  // 1: angzarr.SpeculateSagaRequest.source:type_name -> angzarr.EventBook
-	3,  // 2: angzarr.SpeculateSagaRequest.destinations:type_name -> angzarr.EventBook
-	3,  // 3: angzarr.SpeculatePmRequest.trigger:type_name -> angzarr.EventBook
-	3,  // 4: angzarr.SpeculatePmRequest.process_state:type_name -> angzarr.EventBook
-	3,  // 5: angzarr.SpeculatePmRequest.destinations:type_name -> angzarr.EventBook
-	4,  // 6: angzarr.AggregateService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	5,  // 7: angzarr.AggregateService.Handle:input_type -> angzarr.ContextualCommand
+	4,  // 0: angzarr.CommandResponse.events:type_name -> angzarr.EventBook
+	5,  // 1: angzarr.CommandResponse.projections:type_name -> angzarr.Projection
+	4,  // 2: angzarr.BusinessResponse.events:type_name -> angzarr.EventBook
+	1,  // 3: angzarr.BusinessResponse.revocation:type_name -> angzarr.RevocationResponse
+	6,  // 4: angzarr.SpeculateAggregateRequest.command:type_name -> angzarr.CommandBook
+	7,  // 5: angzarr.SpeculateAggregateRequest.point_in_time:type_name -> angzarr.TemporalQuery
+	8,  // 6: angzarr.AggregateService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
+	9,  // 7: angzarr.AggregateService.Handle:input_type -> angzarr.ContextualCommand
 	6,  // 8: angzarr.AggregateCoordinatorService.Handle:input_type -> angzarr.CommandBook
-	7,  // 9: angzarr.AggregateCoordinatorService.HandleSync:input_type -> angzarr.SyncCommandBook
-	8,  // 10: angzarr.AggregateCoordinatorService.DryRunHandle:input_type -> angzarr.DryRunRequest
-	8,  // 11: angzarr.SpeculativeService.DryRunCommand:input_type -> angzarr.DryRunRequest
-	0,  // 12: angzarr.SpeculativeService.SpeculateProjector:input_type -> angzarr.SpeculateProjectorRequest
-	1,  // 13: angzarr.SpeculativeService.SpeculateSaga:input_type -> angzarr.SpeculateSagaRequest
-	2,  // 14: angzarr.SpeculativeService.SpeculateProcessManager:input_type -> angzarr.SpeculatePmRequest
-	9,  // 15: angzarr.AggregateService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	10, // 16: angzarr.AggregateService.Handle:output_type -> angzarr.BusinessResponse
-	11, // 17: angzarr.AggregateCoordinatorService.Handle:output_type -> angzarr.CommandResponse
-	11, // 18: angzarr.AggregateCoordinatorService.HandleSync:output_type -> angzarr.CommandResponse
-	11, // 19: angzarr.AggregateCoordinatorService.DryRunHandle:output_type -> angzarr.CommandResponse
-	11, // 20: angzarr.SpeculativeService.DryRunCommand:output_type -> angzarr.CommandResponse
-	12, // 21: angzarr.SpeculativeService.SpeculateProjector:output_type -> angzarr.Projection
-	13, // 22: angzarr.SpeculativeService.SpeculateSaga:output_type -> angzarr.SagaResponse
-	14, // 23: angzarr.SpeculativeService.SpeculateProcessManager:output_type -> angzarr.ProcessManagerHandleResponse
-	15, // [15:24] is the sub-list for method output_type
-	6,  // [6:15] is the sub-list for method input_type
+	10, // 9: angzarr.AggregateCoordinatorService.HandleSync:input_type -> angzarr.SyncCommandBook
+	3,  // 10: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:input_type -> angzarr.SpeculateAggregateRequest
+	11, // 11: angzarr.AggregateService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
+	2,  // 12: angzarr.AggregateService.Handle:output_type -> angzarr.BusinessResponse
+	0,  // 13: angzarr.AggregateCoordinatorService.Handle:output_type -> angzarr.CommandResponse
+	0,  // 14: angzarr.AggregateCoordinatorService.HandleSync:output_type -> angzarr.CommandResponse
+	0,  // 15: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:output_type -> angzarr.CommandResponse
+	11, // [11:16] is the sub-list for method output_type
+	6,  // [6:11] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -314,16 +378,19 @@ func file_angzarr_aggregate_proto_init() {
 		return
 	}
 	file_angzarr_types_proto_init()
-	file_angzarr_process_manager_proto_init()
+	file_angzarr_aggregate_proto_msgTypes[2].OneofWrappers = []any{
+		(*BusinessResponse_Events)(nil),
+		(*BusinessResponse_Revocation)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_aggregate_proto_rawDesc), len(file_angzarr_aggregate_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
-			NumServices:   3,
+			NumServices:   2,
 		},
 		GoTypes:           file_angzarr_aggregate_proto_goTypes,
 		DependencyIndexes: file_angzarr_aggregate_proto_depIdxs,

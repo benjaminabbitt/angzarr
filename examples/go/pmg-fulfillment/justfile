@@ -1,3 +1,0 @@
-SERVICE := "process-manager-fulfillment"
-
-import "../service.justfile"

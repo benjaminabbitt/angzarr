@@ -132,3 +132,23 @@ transport:
 #     address: /tmp/angzarr/saga-fulfillment.sock
 #   - name: cancellation
 #     address: /tmp/angzarr/saga-cancellation.sock
+
+# =============================================================================
+# Upcaster Configuration
+# =============================================================================
+# Upcaster transforms old event versions to current versions during replay.
+# The client binary implements UpcasterService alongside AggregateService.
+# By default, the aggregate coordinator calls the client's UpcasterService
+# on the same address as the client logic.
+#
+# Enable upcaster:
+# upcaster:
+#   enabled: true
+#
+# With separate sidecar (optional):
+# upcaster:
+#   enabled: true
+#   address: /tmp/angzarr/upcaster.sock  # Only if running separate upcaster binary
+#
+# For testing, use the no-op upcaster binary:
+#   cargo run --bin angzarr-upcaster

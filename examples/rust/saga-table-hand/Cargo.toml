@@ -1,0 +1,13 @@
+[package]
+name = "saga-table-hand"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+angzarr-client = { workspace = true }
+tokio = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "angzarr-client"
+version = "0.1.2"
+description = "Python client library for Angzarr gRPC services"
+readme = "README.md"
+license = "AGPL-3.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "Benjamin Abbitt" }
+]
+keywords = ["angzarr", "grpc", "event-sourcing", "cqrs"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "grpcio>=1.60.0",
+    "protobuf>=4.25.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/benjaminabbitt/angzarr"
+Repository = "https://github.com/benjaminabbitt/angzarr"
+Documentation = "https://github.com/benjaminabbitt/angzarr/tree/main/client/python"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mutmut>=2.5.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["angzarr_client"]
+
+[tool.mutmut]
+paths_to_mutate = ["angzarr_client/builder.py", "angzarr_client/client.py", "angzarr_client/errors.py", "angzarr_client/helpers.py", "angzarr_client/wrappers.py"]
+pytest_add_cli_args_test_selection = ["tests/"]
+also_copy = ["angzarr_client/proto", "angzarr_client/__init__.py"]

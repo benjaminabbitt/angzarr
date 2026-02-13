@@ -1,46 +1,105 @@
-# Standalone mode configuration for Go examples
-# Run with: ANGZARR_CONFIG=examples/go/standalone.yaml cargo run --bin angzarr-standalone
+# Standalone mode configuration for Go Poker example
+# Run with: ANGZARR_CONFIG=examples/go/standalone.yaml ./target/debug/angzarr-standalone
 
 storage:
   type: sqlite
 
+messaging:
+  type: channel
+
 transport:
   type: uds
   uds:
-    base_path: /tmp/angzarr
-
-messaging:
-  type: ipc
-  ipc:
-    base_path: /tmp/angzarr
+    base_path: /tmp/angzarr-poker-go
 
 standalone:
   aggregates:
-    - domain: customer
-      command: ["go", "run", "./examples/go/customer"]
-    - domain: product
-      command: ["go", "run", "./examples/go/product"]
-    - domain: inventory
-      command: ["go", "run", "./examples/go/inventory"]
-    - domain: order
-      command: ["go", "run", "./examples/go/order"]
-    - domain: cart
-      command: ["go", "run", "./examples/go/cart"]
-    - domain: fulfillment
-      command: ["go", "run", "./examples/go/fulfillment"]
+    - domain: player
+      port: 50201
+      command: ["go", "run", "./agg-player"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+        SERVICE_NAME: business
+        DOMAIN: player
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./examples/go/data/player.db
+
+    - domain: table
+      port: 50202
+      command: ["go", "run", "./agg-table"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+        SERVICE_NAME: business
+        DOMAIN: table
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./examples/go/data/table.db
+
+    - domain: hand
+      port: 50203
+      command: ["go", "run", "./agg-hand"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+        SERVICE_NAME: business
+        DOMAIN: hand
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./examples/go/data/hand.db
 
   sagas:
-    - domain: fulfillment
-      listen_domain: order
-      command: ["go", "run", "./examples/go/saga-fulfillment"]
-    - domain: cancellation
-      listen_domain: order
-      command: ["go", "run", "./examples/go/saga-cancellation"]
-    - domain: loyalty-earn
-      listen_domain: fulfillment
-      command: ["go", "run", "./examples/go/saga-loyalty-earn"]
+    - name: saga-table-hand
+      port: 50211
+      source_domain: table
+      target_domain: hand
+      command: ["go", "run", "./saga-table-hand"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
 
-  projectors: []
+    - name: saga-hand-table
+      port: 50212
+      source_domain: hand
+      target_domain: table
+      command: ["go", "run", "./saga-hand-table"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+
+    - name: saga-table-player
+      port: 50213
+      source_domain: table
+      target_domain: player
+      command: ["go", "run", "./saga-table-player"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+
+    - name: saga-hand-player
+      port: 50214
+      source_domain: hand
+      target_domain: player
+      command: ["go", "run", "./saga-hand-player"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+
+  process_managers:
+    - name: pmg-hand-flow
+      port: 50291
+      pm_domain: hand-flow
+      input_domains: [table, hand]
+      command: ["go", "run", "./pmg-hand-flow"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+
+  projectors:
+    - name: prj-output
+      port: 50290
+      listen_domains: [player, table, hand]
+      command: ["go", "run", "./prj-output"]
+      env:
+        UDS_BASE_PATH: /tmp/angzarr-poker-go
+        HAND_LOG_FILE: ./hand_log.txt
 
   gateway:
     enabled: true

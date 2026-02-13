@@ -15,7 +15,8 @@ use crate::config::ServiceEndpoint;
 use crate::grpc::connect_channel;
 use crate::proto::{
     projector_coordinator_service_server::ProjectorCoordinatorService,
-    projector_service_client::ProjectorServiceClient, EventBook, Projection, SyncEventBook,
+    projector_service_client::ProjectorServiceClient, EventBook, Projection,
+    SpeculateProjectorRequest, SyncEventBook,
 };
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::services::event_book_repair::EventBookRepairer;
@@ -185,9 +186,13 @@ impl ProjectorCoordinatorService for ProjectorCoord {
     /// Same as handle_sync but explicitly for speculative execution.
     async fn handle_speculative(
         &self,
-        request: Request<EventBook>,
+        request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
-        let event_book = request.into_inner();
+        let speculate_request = request.into_inner();
+        let event_book = speculate_request
+            .events
+            .ok_or_else(|| Status::invalid_argument("SpeculateProjectorRequest requires events"))?;
+        // TODO: use speculate_request.point_in_time for temporal queries
 
         // Repair EventBook if incomplete
         let event_book = self

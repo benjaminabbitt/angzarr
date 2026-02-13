@@ -1,0 +1,30 @@
+[package]
+name = "poker-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+angzarr-client = { path = "../../../client/rust" }
+agg-player = { path = "../agg-player" }
+agg-table = { path = "../agg-table" }
+agg-hand = { path = "../agg-hand" }
+cucumber = "0.21"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures = "0.3"
+prost = "0.13"
+prost-types = "0.13"
+hex = "0.4"
+sha2 = "0.10"
+regex = "1"
+
+[[test]]
+name = "player"
+harness = false
+
+[[test]]
+name = "table"
+harness = false
+
+[[test]]
+name = "hand"
+harness = false

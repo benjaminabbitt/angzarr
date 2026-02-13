@@ -1,71 +1,76 @@
-# Standalone mode configuration for Python examples
-# Run with: ANGZARR_CONFIG=examples/python/standalone.yaml cargo run --bin angzarr-standalone
+# Standalone mode configuration for Poker example
+# Run with: ANGZARR_CONFIG=standalone.yaml ./bin/angzarr-standalone
+#
+# NOTE: Coordinators that need Python client access must expose TCP ports.
+# grpc-python 1.57+ has a cross-language interop issue with tonic (Rust)
+# over Unix Domain Sockets, causing "RST_STREAM with error code 1".
+# See: https://github.com/hyperium/tonic/issues/826
+#      https://github.com/grpc/grpc/issues/34760
+# UDS works fine for Rust-to-Rust and Python-to-Python communication.
 
-# Default storage (used when aggregate doesn't specify its own)
 storage:
   type: sqlite
 
 transport:
   type: uds
   uds:
-    base_path: /tmp/angzarr
+    base_path: ./tmp
 
 messaging:
   type: ipc
   ipc:
-    base_path: /tmp/angzarr
+    base_path: ./tmp
 
 standalone:
   aggregates:
-    - domain: customer
-      command: ["uv", "run", "--directory", "examples/python/customer", "python", "server.py"]
+    - domain: player
+      socket: ./tmp/coordinator-player.sock
+      port: 50301
+      command: ["uv", "run", "python", "agg-player/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+        SERVICE_NAME: business
+        DOMAIN: player
       storage:
         type: sqlite
         sqlite:
-          path: ./data/customer.db
-    - domain: product
-      command: ["uv", "run", "--directory", "examples/python/product", "python", "server.py"]
+          path: ./data/player.db
+    - domain: table
+      socket: ./tmp/coordinator-table.sock
+      command: ["uv", "run", "python", "agg-table/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+        SERVICE_NAME: business
+        DOMAIN: table
       storage:
         type: sqlite
         sqlite:
-          path: ./data/product.db
-    - domain: inventory
-      command: ["uv", "run", "--directory", "examples/python/inventory", "python", "server.py"]
+          path: ./data/table.db
+    - domain: hand
+      socket: ./tmp/coordinator-hand.sock
+      command: ["uv", "run", "python", "agg-hand/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+        SERVICE_NAME: business
+        DOMAIN: hand
       storage:
         type: sqlite
         sqlite:
-          path: ./data/inventory.db
-    - domain: order
-      command: ["uv", "run", "--directory", "examples/python/order", "python", "server.py"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/order.db
-    - domain: cart
-      command: ["uv", "run", "--directory", "examples/python/cart", "python", "server.py"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/cart.db
-    - domain: fulfillment
-      command: ["uv", "run", "--directory", "examples/python/fulfillment", "python", "server.py"]
-      storage:
-        type: sqlite
-        sqlite:
-          path: ./data/fulfillment.db
+          path: ./data/hand.db
 
-  sagas:
-    - domain: fulfillment
-      listen_domain: order
-      command: ["uv", "run", "--directory", "examples/python/saga-fulfillment", "python", "server.py"]
-    - domain: cancellation
-      listen_domain: order
-      command: ["uv", "run", "--directory", "examples/python/saga-cancellation", "python", "server.py"]
-    - domain: loyalty-earn
-      listen_domain: fulfillment
-      command: ["uv", "run", "--directory", "examples/python/saga-loyalty-earn", "python", "server.py"]
+  sagas: []
 
-  projectors: []
+  process_managers: []
+
+  projectors:
+    - domain: output
+      listen_domain: hand
+      command: ["uv", "run", "python", "prj-output/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+        SERVICE_NAME: projector
+        PROJECTOR_NAME: output
+        HAND_LOG_FILE: ./hand_log.txt
 
   gateway:
     enabled: true

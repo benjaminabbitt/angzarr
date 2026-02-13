@@ -1,16 +1,22 @@
 # syntax=docker/dockerfile:1.4
-# Rust example images - unified dev/release build
+# Rust poker examples - optimized multi-stage build
+# Build: podman build -t rust-poker-player --target agg-player -f examples/rust/Containerfile .
+# Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
+# Context must be repo root for proto access
 #
-# Dev (fast):     podman build --target agg-order-dev -t agg-order-rs -f examples/rust/Containerfile .
-# Release (slow): podman build --target agg-order -t agg-order-rs -f examples/rust/Containerfile .
-#
-# Dev uses native glibc target + debian runtime (no cross-compilation)
-# Release uses musl static target + scratch runtime (smallest images)
+# Optimizations:
+# 1. Shared deps-fetcher stage - cargo build deps runs once
+# 2. Named cache IDs for cargo registry/target persistence
+# 3. Dev vs release profiles (fast dev builds, minimal release images)
+# 4. Distroless runtime for release - minimal attack surface
+# 5. Multi-arch support (amd64 + arm64)
 
-# =============================================================================
+ARG RUST_VERSION=1.92
+
+# ============================================================================
 # Dev builder - native glibc (fast compilation)
-# =============================================================================
-FROM docker.io/library/rust:1.92-bookworm AS builder-dev
+# ============================================================================
+FROM docker.io/library/rust:${RUST_VERSION}-bookworm AS builder-dev-deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler \
@@ -19,40 +25,63 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto/ ./proto/
-COPY src/ ./src/
-COPY angzarr-client/ ./angzarr-client/
-COPY examples/rust examples/rust/
+# Copy proto files (needed by client library build.rs)
+COPY proto ./proto
 
-RUN mkdir -p tests/integration && \
-    for f in acceptance container_integration mongodb_debug \
-             storage_mongodb storage_redis storage_postgres storage_sqlite \
-             standalone_integration; do \
-      echo "fn main() {}" > tests/$f.rs; \
-    done && \
-    for f in gateway_test streaming_test query_test; do \
-      echo "fn main() {}" > tests/integration/$f.rs; \
-    done
+# Copy client library manifests
+COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
+COPY client/rust/build.rs ./client/rust/build.rs
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,id=examples-target,target=/app/target \
-    cargo build --profile container-dev \
-    -p agg-order --bin agg-order-server \
-    -p agg-inventory --bin agg-inventory-server \
-    -p agg-fulfillment --bin agg-fulfillment-server \
-    -p sag-order-fulfillment --bin sag-order-fulfillment-server \
-    -p sag-order-inventory --bin sag-order-inventory-server \
-    -p sag-fulfillment-inventory --bin sag-fulfillment-inventory-server \
-    -p pmg-fulfillment --bin pmg-fulfillment-server \
-    -p prj-inventory --bin prj-inventory-server && \
-    cp target/container-dev/*-server /tmp/
+# Copy examples workspace manifests
+COPY examples/rust/Cargo.toml examples/rust/Cargo.lock ./examples/rust/
+COPY examples/rust/agg-player/Cargo.toml ./examples/rust/agg-player/Cargo.toml
+COPY examples/rust/agg-table/Cargo.toml ./examples/rust/agg-table/Cargo.toml
+COPY examples/rust/agg-hand/Cargo.toml ./examples/rust/agg-hand/Cargo.toml
 
-# =============================================================================
-# Release builder - musl static (small images)
-# =============================================================================
-FROM docker.io/library/rust:1.92-alpine AS builder-release
+# Create minimal stubs
+RUN mkdir -p client/rust/src \
+    examples/rust/agg-player/src \
+    examples/rust/agg-table/src \
+    examples/rust/agg-hand/src && \
+    echo "pub fn stub() {}" > client/rust/src/lib.rs && \
+    echo "fn main() {}" > examples/rust/agg-player/src/main.rs && \
+    echo "fn main() {}" > examples/rust/agg-table/src/main.rs && \
+    echo "fn main() {}" > examples/rust/agg-hand/src/main.rs
+
+# Build deps only with persistent cache
+WORKDIR /app/examples/rust
+RUN --mount=type=cache,id=rust-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=rust-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    cargo build --profile container-dev --workspace 2>/dev/null || true
+
+# ============================================================================
+# Dev builder - source
+# ============================================================================
+FROM builder-dev-deps AS builder-dev
+
+WORKDIR /app
+
+# Copy real source
+COPY client/rust/src ./client/rust/src
+COPY examples/rust/agg-player/src ./examples/rust/agg-player/src
+COPY examples/rust/agg-table/src ./examples/rust/agg-table/src
+COPY examples/rust/agg-hand/src ./examples/rust/agg-hand/src
+
+# Build all with persistent cache
+WORKDIR /app/examples/rust
+RUN --mount=type=cache,id=rust-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=rust-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    cargo build --profile container-dev --workspace && \
+    cp target/container-dev/agg-player /tmp/ && \
+    cp target/container-dev/agg-table /tmp/ && \
+    cp target/container-dev/agg-hand /tmp/
+
+# ============================================================================
+# Release builder - musl static for minimal images
+# ============================================================================
+FROM docker.io/library/rust:${RUST_VERSION}-alpine AS builder-release-deps
+
+ARG TARGETARCH
 
 RUN apk add --no-cache \
     musl-dev \
@@ -62,7 +91,7 @@ RUN apk add --no-cache \
     openssl-libs-static \
     pkgconfig
 
-RUN rustup target add x86_64-unknown-linux-musl
+RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
@@ -70,165 +99,119 @@ ENV OPENSSL_DIR=/usr
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto/ ./proto/
-COPY src/ ./src/
-COPY angzarr-client/ ./angzarr-client/
-COPY examples/rust examples/rust/
+# Copy proto files
+COPY proto ./proto
 
-RUN mkdir -p tests/integration && \
-    for f in acceptance container_integration mongodb_debug \
-             storage_mongodb storage_redis storage_postgres storage_sqlite \
-             standalone_integration; do \
-      echo "fn main() {}" > tests/$f.rs; \
-    done && \
-    for f in gateway_test streaming_test query_test; do \
-      echo "fn main() {}" > tests/integration/$f.rs; \
-    done
+# Copy client library manifests
+COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
+COPY client/rust/build.rs ./client/rust/build.rs
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    cargo build --release --target x86_64-unknown-linux-musl \
-    -p agg-order --bin agg-order-server \
-    -p agg-inventory --bin agg-inventory-server \
-    -p agg-fulfillment --bin agg-fulfillment-server \
-    -p sag-order-fulfillment --bin sag-order-fulfillment-server \
-    -p sag-order-inventory --bin sag-order-inventory-server \
-    -p sag-fulfillment-inventory --bin sag-fulfillment-inventory-server \
-    -p pmg-fulfillment --bin pmg-fulfillment-server \
-    -p prj-inventory --bin prj-inventory-server && \
-    cp target/x86_64-unknown-linux-musl/release/*-server /tmp/
+# Copy examples workspace manifests
+COPY examples/rust/Cargo.toml examples/rust/Cargo.lock ./examples/rust/
+COPY examples/rust/agg-player/Cargo.toml ./examples/rust/agg-player/Cargo.toml
+COPY examples/rust/agg-table/Cargo.toml ./examples/rust/agg-table/Cargo.toml
+COPY examples/rust/agg-hand/Cargo.toml ./examples/rust/agg-hand/Cargo.toml
 
-# =============================================================================
+# Create minimal stubs
+RUN mkdir -p client/rust/src \
+    examples/rust/agg-player/src \
+    examples/rust/agg-table/src \
+    examples/rust/agg-hand/src && \
+    echo "pub fn stub() {}" > client/rust/src/lib.rs && \
+    echo "fn main() {}" > examples/rust/agg-player/src/main.rs && \
+    echo "fn main() {}" > examples/rust/agg-table/src/main.rs && \
+    echo "fn main() {}" > examples/rust/agg-hand/src/main.rs
+
+# Build deps with persistent cache
+WORKDIR /app/examples/rust
+RUN --mount=type=cache,id=rust-musl-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=rust-musl-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        TARGET="aarch64-unknown-linux-musl"; \
+    else \
+        TARGET="x86_64-unknown-linux-musl"; \
+    fi && \
+    cargo build --profile production --target $TARGET --workspace 2>/dev/null || true
+
+# ============================================================================
+# Release builder - source
+# ============================================================================
+FROM builder-release-deps AS builder-release
+
+ARG TARGETARCH
+
+WORKDIR /app
+
+COPY client/rust/src ./client/rust/src
+COPY examples/rust/agg-player/src ./examples/rust/agg-player/src
+COPY examples/rust/agg-table/src ./examples/rust/agg-table/src
+COPY examples/rust/agg-hand/src ./examples/rust/agg-hand/src
+
+WORKDIR /app/examples/rust
+RUN --mount=type=cache,id=rust-musl-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=rust-musl-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        TARGET="aarch64-unknown-linux-musl"; \
+    else \
+        TARGET="x86_64-unknown-linux-musl"; \
+    fi && \
+    cargo build --profile production --target $TARGET --workspace && \
+    cp target/$TARGET/production/agg-player /tmp/ && \
+    cp target/$TARGET/production/agg-table /tmp/ && \
+    cp target/$TARGET/production/agg-hand /tmp/
+
+# ============================================================================
 # Runtime bases
-# =============================================================================
+# ============================================================================
 FROM docker.io/library/debian:bookworm-slim AS runtime-dev-base
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    gdb \
-    gdbserver \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+ENV RUST_LOG=info
 
-FROM scratch AS runtime-release-base
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime-release-base
 WORKDIR /app
+USER nonroot:nonroot
+ENV RUST_LOG=info
 
-# =============================================================================
-# Dev images - Domain Aggregates
-# =============================================================================
-FROM runtime-dev-base AS agg-order-dev
-COPY --from=builder-dev /tmp/agg-order-server ./server
-ENV PORT=50000
-EXPOSE 50000
+# ============================================================================
+# Dev images (fast builds, larger runtime with debug tools)
+# ============================================================================
+FROM runtime-dev-base AS agg-player-dev
+COPY --from=builder-dev /tmp/agg-player ./server
+ENV PORT=50001
+EXPOSE 50001
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS agg-inventory-dev
-COPY --from=builder-dev /tmp/agg-inventory-server ./server
+FROM runtime-dev-base AS agg-table-dev
+COPY --from=builder-dev /tmp/agg-table ./server
+ENV PORT=50002
+EXPOSE 50002
+ENTRYPOINT ["./server"]
+
+FROM runtime-dev-base AS agg-hand-dev
+COPY --from=builder-dev /tmp/agg-hand ./server
 ENV PORT=50003
 EXPOSE 50003
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS agg-fulfillment-dev
-COPY --from=builder-dev /tmp/agg-fulfillment-server ./server
-ENV PORT=50006
-EXPOSE 50006
+# ============================================================================
+# Release images (minimal, secure)
+# ============================================================================
+FROM runtime-release-base AS agg-player
+COPY --from=builder-release --chown=nonroot:nonroot /tmp/agg-player ./server
+ENV PORT=50001
+EXPOSE 50001
 ENTRYPOINT ["./server"]
 
-# =============================================================================
-# Dev images - Sagas
-# =============================================================================
-FROM runtime-dev-base AS sag-order-fulfillment-dev
-COPY --from=builder-dev /tmp/sag-order-fulfillment-server ./server
-ENV PORT=50018
-EXPOSE 50018
+FROM runtime-release-base AS agg-table
+COPY --from=builder-release --chown=nonroot:nonroot /tmp/agg-table ./server
+ENV PORT=50002
+EXPOSE 50002
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS sag-order-inventory-dev
-COPY --from=builder-dev /tmp/sag-order-inventory-server ./server
-ENV PORT=50021
-EXPOSE 50021
-ENTRYPOINT ["./server"]
-
-FROM runtime-dev-base AS sag-fulfillment-inventory-dev
-COPY --from=builder-dev /tmp/sag-fulfillment-inventory-server ./server
-ENV PORT=50024
-EXPOSE 50024
-ENTRYPOINT ["./server"]
-
-# =============================================================================
-# Dev images - Process Managers
-# =============================================================================
-FROM runtime-dev-base AS pmg-fulfillment-dev
-COPY --from=builder-dev /tmp/pmg-fulfillment-server ./server
-ENV PORT=50039
-EXPOSE 50039
-ENTRYPOINT ["./server"]
-
-# =============================================================================
-# Dev images - Projectors
-# =============================================================================
-FROM runtime-dev-base AS prj-inventory-dev
-COPY --from=builder-dev /tmp/prj-inventory-server ./server
-ENV PORT=50033
-EXPOSE 50033
-ENTRYPOINT ["./server"]
-
-# =============================================================================
-# Release images - Domain Aggregates
-# =============================================================================
-FROM runtime-release-base AS agg-order
-COPY --from=builder-release /tmp/agg-order-server ./server
-ENV PORT=50000
-EXPOSE 50000
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS agg-inventory
-COPY --from=builder-release /tmp/agg-inventory-server ./server
+FROM runtime-release-base AS agg-hand
+COPY --from=builder-release --chown=nonroot:nonroot /tmp/agg-hand ./server
 ENV PORT=50003
 EXPOSE 50003
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS agg-fulfillment
-COPY --from=builder-release /tmp/agg-fulfillment-server ./server
-ENV PORT=50006
-EXPOSE 50006
-ENTRYPOINT ["./server"]
-
-# =============================================================================
-# Release images - Sagas
-# =============================================================================
-FROM runtime-release-base AS sag-order-fulfillment
-COPY --from=builder-release /tmp/sag-order-fulfillment-server ./server
-ENV PORT=50018
-EXPOSE 50018
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS sag-order-inventory
-COPY --from=builder-release /tmp/sag-order-inventory-server ./server
-ENV PORT=50021
-EXPOSE 50021
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS sag-fulfillment-inventory
-COPY --from=builder-release /tmp/sag-fulfillment-inventory-server ./server
-ENV PORT=50024
-EXPOSE 50024
-ENTRYPOINT ["./server"]
-
-# =============================================================================
-# Release images - Process Managers
-# =============================================================================
-FROM runtime-release-base AS pmg-fulfillment
-COPY --from=builder-release /tmp/pmg-fulfillment-server ./server
-ENV PORT=50039
-EXPOSE 50039
-ENTRYPOINT ["./server"]
-
-# =============================================================================
-# Release images - Projectors
-# =============================================================================
-FROM runtime-release-base AS prj-inventory
-COPY --from=builder-release /tmp/prj-inventory-server ./server
-ENV PORT=50033
-EXPOSE 50033
 ENTRYPOINT ["./server"]

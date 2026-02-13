@@ -1,0 +1,945 @@
+{
+    "tests_by_mangled_function_name": {
+        "angzarr_client.helpers.x_proto_to_uuid": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_minimal",
+            "tests/test_helpers.py::TestUuidConversion::test_round_trip",
+            "tests/test_builder.py::TestQueryBuilder::test_build_with_root",
+            "tests/test_builder.py::TestCommandBuilder::test_build_minimal"
+        ],
+        "angzarr_client.builder.x\u01c1CommandBuilder\u01c1with_command": [
+            "tests/test_builder.py::TestCommandBuilder::test_fluent_chaining",
+            "tests/test_builder.py::TestCommandBuilder::test_execute_calls_handle",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_root",
+            "tests/test_builder.py::TestCommandBuilder::test_build_minimal",
+            "tests/test_builder.py::TestCommandBuilder::test_with_sequence",
+            "tests/test_builder.py::TestCommandBuilder::test_with_correlation_id"
+        ],
+        "angzarr_client.builder.x\u01c1CommandBuilder\u01c1build": [
+            "tests/test_builder.py::TestCommandBuilder::test_build_propagates_stored_error",
+            "tests/test_builder.py::TestCommandBuilder::test_execute_calls_handle",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_payload_raises",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_root",
+            "tests/test_builder.py::TestCommandBuilder::test_build_minimal",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_type_url_raises",
+            "tests/test_builder.py::TestCommandBuilder::test_with_sequence",
+            "tests/test_builder.py::TestCommandBuilder::test_with_correlation_id"
+        ],
+        "angzarr_client.builder.x\u01c1CommandBuilder\u01c1__init__": [
+            "tests/test_builder.py::TestCommandBuilder::test_build_propagates_stored_error",
+            "tests/test_builder.py::TestCommandBuilder::test_fluent_chaining",
+            "tests/test_builder.py::TestCommandBuilder::test_execute_calls_handle",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_payload_raises",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_root",
+            "tests/test_builder.py::TestConvenienceFunctions::test_command_new_creates_builder_without_root",
+            "tests/test_builder.py::TestCommandBuilder::test_build_minimal",
+            "tests/test_builder.py::TestConvenienceFunctions::test_command_creates_builder_with_root",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_type_url_raises",
+            "tests/test_builder.py::TestCommandBuilder::test_with_sequence",
+            "tests/test_builder.py::TestCommandBuilder::test_with_correlation_id"
+        ],
+        "angzarr_client.helpers.x_uuid_to_proto": [
+            "tests/test_builder.py::TestQueryBuilder::test_build_with_root",
+            "tests/test_helpers.py::TestUuidConversion::test_uuid_to_proto_bytes",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_command_book",
+            "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_hex",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_minimal",
+            "tests/test_helpers.py::TestRootIdHex::test_returns_hex_string",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_and_root",
+            "tests/test_wrappers.py::TestCoverW::test_cache_key_format",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_correlation",
+            "tests/test_helpers.py::TestRootUuid::test_returns_uuid",
+            "tests/test_builder.py::TestCommandBuilder::test_build_minimal",
+            "tests/test_helpers.py::TestUuidConversion::test_round_trip",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_edition",
+            "tests/test_wrappers.py::TestEventBookW::test_cache_key_returns_domain_and_root",
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_uuid",
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_uuid"
+        ],
+        "angzarr_client.builder.x\u01c1CommandBuilder\u01c1with_correlation_id": [
+            "tests/test_builder.py::TestCommandBuilder::test_with_correlation_id",
+            "tests/test_builder.py::TestCommandBuilder::test_fluent_chaining"
+        ],
+        "angzarr_client.builder.x\u01c1CommandBuilder\u01c1with_sequence": [
+            "tests/test_builder.py::TestCommandBuilder::test_with_sequence",
+            "tests/test_builder.py::TestCommandBuilder::test_fluent_chaining"
+        ],
+        "angzarr_client.errors.x\u01c1ClientError\u01c1__init__": [
+            "tests/test_errors.py::TestInvalidArgumentError::test_exception_inheritance",
+            "tests/test_errors.py::TestGRPCError::test_exception_inheritance",
+            "tests/test_errors.py::TestInvalidTimestampError::test_message_formatting",
+            "tests/test_errors.py::TestGRPCError::test_is_not_found_false",
+            "tests/test_client.py::TestQueryClient::test_get_events_raises_grpc_error",
+            "tests/test_errors.py::TestTransportError::test_exception_inheritance",
+            "tests/test_client.py::TestSpeculativeClient::test_process_manager_raises_grpc_error",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_type_url_raises",
+            "tests/test_errors.py::TestClientError::test_message_only",
+            "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_false",
+            "tests/test_errors.py::TestInvalidTimestampError::test_exception_inheritance",
+            "tests/test_client.py::TestQueryClient::test_get_event_book_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_wraps_rpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_dry_run_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_false",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error",
+            "tests/test_client.py::TestSpeculativeClient::test_projector_raises_grpc_error",
+            "tests/test_errors.py::TestTransportError::test_wraps_cause",
+            "tests/test_errors.py::TestConnectionError::test_exception_inheritance",
+            "tests/test_client.py::TestSpeculativeClient::test_saga_raises_grpc_error",
+            "tests/test_errors.py::TestInvalidArgumentError::test_message_formatting",
+            "tests/test_client.py::TestAggregateClient::test_handle_sync_raises_grpc_error",
+            "tests/test_errors.py::TestClientError::test_with_cause",
+            "tests/test_errors.py::TestConnectionError::test_message_formatting",
+            "tests/test_errors.py::TestClientError::test_exception_inheritance",
+            "tests/test_errors.py::TestGRPCError::test_details_property",
+            "tests/test_errors.py::TestGRPCError::test_is_not_found_true",
+            "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_invalid_raises",
+            "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_true",
+            "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_true",
+            "tests/test_client.py::TestAggregateClient::test_handle_raises_grpc_error",
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_code_property",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_payload_raises"
+        ],
+        "angzarr_client.errors.x\u01c1InvalidArgumentError\u01c1__init__": [
+            "tests/test_errors.py::TestInvalidArgumentError::test_exception_inheritance",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_payload_raises",
+            "tests/test_errors.py::TestInvalidArgumentError::test_message_formatting",
+            "tests/test_builder.py::TestCommandBuilder::test_build_without_type_url_raises"
+        ],
+        "angzarr_client.builder.x\u01c1CommandBuilder\u01c1execute": [
+            "tests/test_builder.py::TestCommandBuilder::test_execute_calls_handle"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1build": [
+            "tests/test_builder.py::TestQueryBuilder::test_with_edition",
+            "tests/test_builder.py::TestQueryBuilder::test_get_event_book",
+            "tests/test_builder.py::TestQueryBuilder::test_get_events",
+            "tests/test_builder.py::TestQueryBuilder::test_build_with_root",
+            "tests/test_builder.py::TestQueryBuilder::test_range_lower_only",
+            "tests/test_builder.py::TestQueryBuilder::test_by_correlation_id_clears_root",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error",
+            "tests/test_builder.py::TestQueryBuilder::test_range_to",
+            "tests/test_builder.py::TestQueryBuilder::test_get_pages",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_valid",
+            "tests/test_builder.py::TestQueryBuilder::test_build_propagates_stored_error",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_sequence",
+            "tests/test_builder.py::TestQueryBuilder::test_build_by_correlation_id"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1__init__": [
+            "tests/test_builder.py::TestQueryBuilder::test_with_edition",
+            "tests/test_builder.py::TestQueryBuilder::test_get_event_book",
+            "tests/test_builder.py::TestQueryBuilder::test_get_events",
+            "tests/test_builder.py::TestQueryBuilder::test_build_with_root",
+            "tests/test_builder.py::TestQueryBuilder::test_range_lower_only",
+            "tests/test_builder.py::TestQueryBuilder::test_by_correlation_id_clears_root",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error",
+            "tests/test_builder.py::TestQueryBuilder::test_fluent_chaining",
+            "tests/test_builder.py::TestQueryBuilder::test_range_to",
+            "tests/test_builder.py::TestConvenienceFunctions::test_query_creates_builder_with_root",
+            "tests/test_builder.py::TestConvenienceFunctions::test_query_domain_creates_builder_without_root",
+            "tests/test_builder.py::TestQueryBuilder::test_get_pages",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_valid",
+            "tests/test_builder.py::TestQueryBuilder::test_build_propagates_stored_error",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_sequence",
+            "tests/test_builder.py::TestQueryBuilder::test_build_by_correlation_id"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1by_correlation_id": [
+            "tests/test_builder.py::TestQueryBuilder::test_by_correlation_id_clears_root",
+            "tests/test_builder.py::TestQueryBuilder::test_build_by_correlation_id"
+        ],
+        "angzarr_client.helpers.x_implicit_edition": [
+            "tests/test_builder.py::TestQueryBuilder::test_with_edition",
+            "tests/test_helpers.py::TestEditionHelpers::test_implicit_edition",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_edition"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1with_edition": [
+            "tests/test_builder.py::TestQueryBuilder::test_with_edition",
+            "tests/test_builder.py::TestQueryBuilder::test_fluent_chaining"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1range": [
+            "tests/test_builder.py::TestQueryBuilder::test_range_lower_only"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1range_to": [
+            "tests/test_builder.py::TestQueryBuilder::test_fluent_chaining",
+            "tests/test_builder.py::TestQueryBuilder::test_range_to"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1as_of_sequence": [
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_sequence"
+        ],
+        "angzarr_client.helpers.x_parse_timestamp": [
+            "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_invalid_raises",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error",
+            "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_with_nanos",
+            "tests/test_helpers.py::TestConstructionHelpers::test_temporal_by_time",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_valid",
+            "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_valid"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1as_of_time": [
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error",
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_valid"
+        ],
+        "angzarr_client.errors.x\u01c1InvalidTimestampError\u01c1__init__": [
+            "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error",
+            "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_invalid_raises",
+            "tests/test_errors.py::TestInvalidTimestampError::test_message_formatting",
+            "tests/test_errors.py::TestInvalidTimestampError::test_exception_inheritance"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1get_event_book": [
+            "tests/test_builder.py::TestQueryBuilder::test_get_pages",
+            "tests/test_builder.py::TestQueryBuilder::test_get_event_book"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1get_events": [
+            "tests/test_builder.py::TestQueryBuilder::test_get_events"
+        ],
+        "angzarr_client.builder.x\u01c1QueryBuilder\u01c1get_pages": [
+            "tests/test_builder.py::TestQueryBuilder::test_get_pages"
+        ],
+        "angzarr_client.builder.x_command": [
+            "tests/test_builder.py::TestConvenienceFunctions::test_command_creates_builder_with_root"
+        ],
+        "angzarr_client.builder.x_command_new": [
+            "tests/test_builder.py::TestConvenienceFunctions::test_command_new_creates_builder_without_root"
+        ],
+        "angzarr_client.builder.x_query": [
+            "tests/test_builder.py::TestConvenienceFunctions::test_query_creates_builder_with_root"
+        ],
+        "angzarr_client.builder.x_query_domain": [
+            "tests/test_builder.py::TestConvenienceFunctions::test_query_domain_creates_builder_without_root"
+        ],
+        "angzarr_client.client.x\u01c1QueryClient\u01c1__init__": [
+            "tests/test_client.py::TestQueryClient::test_get_events_raises_grpc_error",
+            "tests/test_client.py::TestDomainClient::test_connect",
+            "tests/test_client.py::TestClient::test_init_creates_all_sub_clients",
+            "tests/test_client.py::TestQueryClient::test_get_event_book_success",
+            "tests/test_client.py::TestQueryClient::test_from_env_uses_default",
+            "tests/test_client.py::TestDomainClient::test_init_creates_sub_clients",
+            "tests/test_client.py::TestClient::test_close_closes_channel",
+            "tests/test_client.py::TestQueryClient::test_get_event_book_raises_grpc_error",
+            "tests/test_client.py::TestClient::test_connect",
+            "tests/test_client.py::TestQueryClient::test_get_events_success",
+            "tests/test_client.py::TestQueryClient::test_init_creates_stub",
+            "tests/test_client.py::TestQueryClient::test_close_closes_channel",
+            "tests/test_client.py::TestDomainClient::test_execute_delegates_to_aggregate",
+            "tests/test_client.py::TestClient::test_from_env_uses_default",
+            "tests/test_client.py::TestQueryClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestDomainClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestQueryClient::test_connect",
+            "tests/test_client.py::TestDomainClient::test_close_closes_channel"
+        ],
+        "angzarr_client.client.x\u01c1QueryClient\u01c1get_event_book": [
+            "tests/test_client.py::TestQueryClient::test_get_event_book_success",
+            "tests/test_client.py::TestQueryClient::test_get_event_book_raises_grpc_error"
+        ],
+        "angzarr_client.errors.x\u01c1GRPCError\u01c1__init__": [
+            "tests/test_errors.py::TestGRPCError::test_exception_inheritance",
+            "tests/test_errors.py::TestGRPCError::test_is_not_found_false",
+            "tests/test_client.py::TestQueryClient::test_get_events_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_process_manager_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_false",
+            "tests/test_client.py::TestQueryClient::test_get_event_book_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_wraps_rpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_dry_run_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_false",
+            "tests/test_client.py::TestSpeculativeClient::test_projector_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_saga_raises_grpc_error",
+            "tests/test_client.py::TestAggregateClient::test_handle_sync_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_is_not_found_true",
+            "tests/test_errors.py::TestGRPCError::test_details_property",
+            "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_true",
+            "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_true",
+            "tests/test_client.py::TestAggregateClient::test_handle_raises_grpc_error",
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_code_property"
+        ],
+        "angzarr_client.errors.x\u01c1GRPCError\u01c1is_not_found": [
+            "tests/test_errors.py::TestGRPCError::test_is_not_found_true",
+            "tests/test_client.py::TestQueryClient::test_get_event_book_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_is_not_found_false"
+        ],
+        "angzarr_client.client.x\u01c1QueryClient\u01c1get_events": [
+            "tests/test_client.py::TestQueryClient::test_get_events_raises_grpc_error",
+            "tests/test_client.py::TestQueryClient::test_get_events_success"
+        ],
+        "angzarr_client.client.x\u01c1AggregateClient\u01c1__init__": [
+            "tests/test_client.py::TestAggregateClient::test_close_closes_channel",
+            "tests/test_client.py::TestAggregateClient::test_handle_success",
+            "tests/test_client.py::TestDomainClient::test_connect",
+            "tests/test_client.py::TestAggregateClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestClient::test_init_creates_all_sub_clients",
+            "tests/test_client.py::TestAggregateClient::test_init_creates_stub",
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_success",
+            "tests/test_client.py::TestDomainClient::test_init_creates_sub_clients",
+            "tests/test_client.py::TestClient::test_close_closes_channel",
+            "tests/test_client.py::TestClient::test_connect",
+            "tests/test_client.py::TestAggregateClient::test_handle_sync_success",
+            "tests/test_client.py::TestAggregateClient::test_handle_sync_raises_grpc_error",
+            "tests/test_client.py::TestDomainClient::test_execute_delegates_to_aggregate",
+            "tests/test_client.py::TestClient::test_from_env_uses_default",
+            "tests/test_client.py::TestDomainClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestAggregateClient::test_connect",
+            "tests/test_client.py::TestAggregateClient::test_handle_raises_grpc_error",
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_raises_grpc_error",
+            "tests/test_client.py::TestDomainClient::test_close_closes_channel"
+        ],
+        "angzarr_client.client.x\u01c1AggregateClient\u01c1handle": [
+            "tests/test_client.py::TestAggregateClient::test_handle_success",
+            "tests/test_client.py::TestDomainClient::test_execute_delegates_to_aggregate",
+            "tests/test_client.py::TestAggregateClient::test_handle_raises_grpc_error"
+        ],
+        "angzarr_client.errors.x\u01c1GRPCError\u01c1is_precondition_failed": [
+            "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_true",
+            "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_false",
+            "tests/test_client.py::TestAggregateClient::test_handle_raises_grpc_error"
+        ],
+        "angzarr_client.client.x\u01c1AggregateClient\u01c1handle_sync": [
+            "tests/test_client.py::TestAggregateClient::test_handle_sync_raises_grpc_error",
+            "tests/test_client.py::TestAggregateClient::test_handle_sync_success"
+        ],
+        "angzarr_client.client.x\u01c1AggregateClient\u01c1dry_run_handle": [
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_success",
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_raises_grpc_error"
+        ],
+        "angzarr_client.errors.x\u01c1GRPCError\u01c1is_invalid_argument": [
+            "tests/test_client.py::TestAggregateClient::test_dry_run_handle_raises_grpc_error",
+            "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_true",
+            "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_false"
+        ],
+        "angzarr_client.client.x\u01c1SpeculativeClient\u01c1__init__": [
+            "tests/test_client.py::TestClient::test_from_env_uses_default",
+            "tests/test_client.py::TestClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestSpeculativeClient::test_connect",
+            "tests/test_client.py::TestSpeculativeClient::test_init_creates_stub",
+            "tests/test_client.py::TestSpeculativeClient::test_saga_success",
+            "tests/test_client.py::TestSpeculativeClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestSpeculativeClient::test_projector_success",
+            "tests/test_client.py::TestSpeculativeClient::test_projector_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_close_closes_channel",
+            "tests/test_client.py::TestSpeculativeClient::test_process_manager_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_saga_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_process_manager_success",
+            "tests/test_client.py::TestClient::test_close_closes_channel",
+            "tests/test_client.py::TestClient::test_init_creates_all_sub_clients",
+            "tests/test_client.py::TestClient::test_connect",
+            "tests/test_client.py::TestSpeculativeClient::test_dry_run_success",
+            "tests/test_client.py::TestSpeculativeClient::test_dry_run_raises_grpc_error"
+        ],
+        "angzarr_client.client.x\u01c1SpeculativeClient\u01c1dry_run": [
+            "tests/test_client.py::TestSpeculativeClient::test_dry_run_success",
+            "tests/test_client.py::TestSpeculativeClient::test_dry_run_raises_grpc_error"
+        ],
+        "angzarr_client.client.x\u01c1SpeculativeClient\u01c1projector": [
+            "tests/test_client.py::TestSpeculativeClient::test_projector_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_projector_success"
+        ],
+        "angzarr_client.client.x\u01c1SpeculativeClient\u01c1saga": [
+            "tests/test_client.py::TestSpeculativeClient::test_saga_success",
+            "tests/test_client.py::TestSpeculativeClient::test_saga_raises_grpc_error"
+        ],
+        "angzarr_client.client.x\u01c1SpeculativeClient\u01c1process_manager": [
+            "tests/test_client.py::TestSpeculativeClient::test_process_manager_raises_grpc_error",
+            "tests/test_client.py::TestSpeculativeClient::test_process_manager_success"
+        ],
+        "angzarr_client.client.x\u01c1DomainClient\u01c1__init__": [
+            "tests/test_client.py::TestDomainClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestDomainClient::test_connect",
+            "tests/test_client.py::TestDomainClient::test_init_creates_sub_clients",
+            "tests/test_client.py::TestDomainClient::test_execute_delegates_to_aggregate",
+            "tests/test_client.py::TestDomainClient::test_close_closes_channel"
+        ],
+        "angzarr_client.client.x\u01c1DomainClient\u01c1execute": [
+            "tests/test_client.py::TestDomainClient::test_execute_delegates_to_aggregate"
+        ],
+        "angzarr_client.client.x\u01c1Client\u01c1__init__": [
+            "tests/test_client.py::TestClient::test_from_env_uses_default",
+            "tests/test_client.py::TestClient::test_from_env_uses_env_var",
+            "tests/test_client.py::TestClient::test_close_closes_channel",
+            "tests/test_client.py::TestClient::test_init_creates_all_sub_clients",
+            "tests/test_client.py::TestClient::test_connect"
+        ],
+        "angzarr_client.errors.x\u01c1ConnectionError\u01c1__init__": [
+            "tests/test_errors.py::TestConnectionError::test_exception_inheritance",
+            "tests/test_errors.py::TestConnectionError::test_message_formatting"
+        ],
+        "angzarr_client.errors.x\u01c1TransportError\u01c1__init__": [
+            "tests/test_errors.py::TestTransportError::test_wraps_cause",
+            "tests/test_errors.py::TestTransportError::test_exception_inheritance"
+        ],
+        "angzarr_client.helpers.x_cover_of": [
+            "tests/test_helpers.py::TestHasCorrelationId::test_true_when_set",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_and_root",
+            "tests/test_helpers.py::TestCoverOf::test_command_book_returns_cover",
+            "tests/test_helpers.py::TestEdition::test_returns_default_for_empty_name",
+            "tests/test_helpers.py::TestRoutingKey::test_returns_domain",
+            "tests/test_helpers.py::TestDomain::test_returns_unknown_for_none",
+            "tests/test_helpers.py::TestCoverOf::test_cover_returns_self",
+            "tests/test_helpers.py::TestRootUuid::test_returns_none_for_invalid_bytes",
+            "tests/test_helpers.py::TestEditionOpt::test_returns_none_when_not_set",
+            "tests/test_helpers.py::TestDomain::test_returns_unknown_for_empty_domain",
+            "tests/test_helpers.py::TestDomain::test_returns_domain_from_cover",
+            "tests/test_helpers.py::TestHasCorrelationId::test_false_for_invalid",
+            "tests/test_helpers.py::TestEdition::test_returns_edition_name",
+            "tests/test_helpers.py::TestCoverOf::test_object_without_cover_returns_none",
+            "tests/test_helpers.py::TestCorrelationId::test_returns_correlation_id",
+            "tests/test_helpers.py::TestRootIdHex::test_returns_hex_string",
+            "tests/test_helpers.py::TestRootUuid::test_returns_uuid",
+            "tests/test_helpers.py::TestEdition::test_returns_default_when_not_set",
+            "tests/test_helpers.py::TestCorrelationId::test_returns_empty_for_no_correlation",
+            "tests/test_helpers.py::TestCoverOf::test_event_book_returns_cover",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_with_empty_root",
+            "tests/test_helpers.py::TestEditionOpt::test_returns_edition_name",
+            "tests/test_helpers.py::TestRootUuid::test_returns_none_when_no_root",
+            "tests/test_helpers.py::TestCorrelationId::test_returns_empty_for_invalid_input",
+            "tests/test_helpers.py::TestCoverOf::test_query_returns_cover",
+            "tests/test_helpers.py::TestRootIdHex::test_returns_empty_when_no_root",
+            "tests/test_helpers.py::TestHasCorrelationId::test_false_when_empty"
+        ],
+        "angzarr_client.helpers.x_domain": [
+            "tests/test_helpers.py::TestDomain::test_returns_unknown_for_none",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_and_root",
+            "tests/test_helpers.py::TestDomain::test_returns_unknown_for_empty_domain",
+            "tests/test_helpers.py::TestRoutingKey::test_returns_domain",
+            "tests/test_helpers.py::TestDomain::test_returns_domain_from_cover",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_with_empty_root"
+        ],
+        "angzarr_client.helpers.x_correlation_id": [
+            "tests/test_helpers.py::TestHasCorrelationId::test_true_when_set",
+            "tests/test_helpers.py::TestCorrelationId::test_returns_correlation_id",
+            "tests/test_helpers.py::TestCorrelationId::test_returns_empty_for_invalid_input",
+            "tests/test_helpers.py::TestCorrelationId::test_returns_empty_for_no_correlation",
+            "tests/test_helpers.py::TestHasCorrelationId::test_false_for_invalid",
+            "tests/test_helpers.py::TestHasCorrelationId::test_false_when_empty"
+        ],
+        "angzarr_client.helpers.x_has_correlation_id": [
+            "tests/test_helpers.py::TestHasCorrelationId::test_false_for_invalid",
+            "tests/test_helpers.py::TestHasCorrelationId::test_true_when_set",
+            "tests/test_helpers.py::TestHasCorrelationId::test_false_when_empty"
+        ],
+        "angzarr_client.helpers.x_root_uuid": [
+            "tests/test_helpers.py::TestRootUuid::test_returns_none_for_invalid_bytes",
+            "tests/test_helpers.py::TestRootUuid::test_returns_none_when_no_root",
+            "tests/test_helpers.py::TestRootUuid::test_returns_uuid"
+        ],
+        "angzarr_client.helpers.x_root_id_hex": [
+            "tests/test_helpers.py::TestRootIdHex::test_returns_hex_string",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_and_root",
+            "tests/test_helpers.py::TestRootIdHex::test_returns_empty_when_no_root",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_with_empty_root"
+        ],
+        "angzarr_client.helpers.x_edition": [
+            "tests/test_helpers.py::TestEdition::test_returns_default_when_not_set",
+            "tests/test_helpers.py::TestEdition::test_returns_default_for_empty_name",
+            "tests/test_helpers.py::TestEdition::test_returns_edition_name"
+        ],
+        "angzarr_client.helpers.x_edition_opt": [
+            "tests/test_helpers.py::TestEditionOpt::test_returns_none_when_not_set",
+            "tests/test_helpers.py::TestEditionOpt::test_returns_edition_name"
+        ],
+        "angzarr_client.helpers.x_routing_key": [
+            "tests/test_helpers.py::TestRoutingKey::test_returns_domain"
+        ],
+        "angzarr_client.helpers.x_cache_key": [
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_and_root",
+            "tests/test_helpers.py::TestCacheKey::test_returns_domain_with_empty_root"
+        ],
+        "angzarr_client.helpers.x_main_timeline": [
+            "tests/test_helpers.py::TestEditionHelpers::test_main_timeline"
+        ],
+        "angzarr_client.helpers.x_explicit_edition": [
+            "tests/test_helpers.py::TestEditionHelpers::test_explicit_edition"
+        ],
+        "angzarr_client.helpers.x_is_main_timeline": [
+            "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_other",
+            "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_default",
+            "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_empty_name",
+            "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_none"
+        ],
+        "angzarr_client.helpers.x_divergence_for": [
+            "tests/test_helpers.py::TestEditionHelpers::test_divergence_for_not_found",
+            "tests/test_helpers.py::TestEditionHelpers::test_divergence_for_none",
+            "tests/test_helpers.py::TestEditionHelpers::test_divergence_for_found"
+        ],
+        "angzarr_client.helpers.x_next_sequence": [
+            "tests/test_helpers.py::TestEventBookHelpers::test_next_sequence_none_returns_zero",
+            "tests/test_helpers.py::TestEventBookHelpers::test_next_sequence_returns_value"
+        ],
+        "angzarr_client.helpers.x_event_pages": [
+            "tests/test_helpers.py::TestEventBookHelpers::test_event_pages_none_returns_empty",
+            "tests/test_helpers.py::TestEventBookHelpers::test_event_pages_returns_list"
+        ],
+        "angzarr_client.helpers.x_command_pages": [
+            "tests/test_helpers.py::TestCommandBookHelpers::test_command_pages_returns_list",
+            "tests/test_helpers.py::TestCommandBookHelpers::test_command_pages_none_returns_empty"
+        ],
+        "angzarr_client.helpers.x_events_from_response": [
+            "tests/test_helpers.py::TestEventsFromResponse::test_returns_none_for_none_response",
+            "tests/test_helpers.py::TestEventsFromResponse::test_returns_empty_for_no_events_field",
+            "tests/test_helpers.py::TestEventsFromResponse::test_returns_pages_when_present"
+        ],
+        "angzarr_client.helpers.x_type_name_from_url": [
+            "tests/test_helpers.py::TestTypeUrlHelpers::test_type_name_from_url_plain",
+            "tests/test_helpers.py::TestTypeUrlHelpers::test_type_name_from_url_with_dot",
+            "tests/test_helpers.py::TestTypeUrlHelpers::test_type_name_from_url_with_slash"
+        ],
+        "angzarr_client.helpers.x_type_url_matches": [
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_message",
+            "tests/test_helpers.py::TestTypeUrlHelpers::test_type_url_matches_true",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_type_mismatch",
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_for_mismatch",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_decode_failure",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_decoded_message",
+            "tests/test_helpers.py::TestTypeUrlHelpers::test_type_url_matches_false"
+        ],
+        "angzarr_client.helpers.x_now": [
+            "tests/test_helpers.py::TestTimestampHelpers::test_now_returns_timestamp"
+        ],
+        "angzarr_client.helpers.x_decode_event": [
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_none_page",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_type_mismatch",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_decode_failure",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_no_event_field",
+            "tests/test_helpers.py::TestDecodeEvent::test_returns_decoded_message"
+        ],
+        "angzarr_client.helpers.x_new_cover": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_minimal",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_edition",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_correlation",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_command_book"
+        ],
+        "angzarr_client.helpers.x_new_command_page": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_command_book",
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_command_page"
+        ],
+        "angzarr_client.helpers.x_new_command_book": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_new_command_book"
+        ],
+        "angzarr_client.helpers.x_range_selection": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_range_selection_lower_only",
+            "tests/test_helpers.py::TestConstructionHelpers::test_range_selection_with_upper"
+        ],
+        "angzarr_client.helpers.x_temporal_by_sequence": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_temporal_by_sequence"
+        ],
+        "angzarr_client.helpers.x_temporal_by_time": [
+            "tests/test_helpers.py::TestConstructionHelpers::test_temporal_by_time"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1__init__": [
+            "tests/test_wrappers.py::TestEventBookW::test_domain_returns_unknown_when_not_set",
+            "tests/test_wrappers.py::TestWrapperAttributeAccess::test_event_book_w_delegates_proto_fields",
+            "tests/test_wrappers.py::TestEventBookW::test_pages_returns_wrapped_list",
+            "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_empty_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_domain_returns_domain_from_cover",
+            "tests/test_wrappers.py::TestEventBookW::test_cache_key_returns_domain_and_root",
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_uuid",
+            "tests/test_wrappers.py::TestEventBookW::test_edition_returns_default_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_next_sequence_default_zero",
+            "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_value",
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_cover_wrapper_returns_cover_w",
+            "tests/test_wrappers.py::TestEventBookW::test_next_sequence_returns_value",
+            "tests/test_wrappers.py::TestEventBookW::test_routing_key_returns_domain",
+            "tests/test_wrappers.py::TestEventBookW::test_pages_returns_empty_list_when_none",
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_false",
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_true",
+            "tests/test_wrappers.py::TestEventBookW::test_edition_returns_edition_name",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_wrapped_event_book",
+            "tests/test_wrappers.py::TestEventBookW::test_constructor_accepts_proto"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1pages": [
+            "tests/test_wrappers.py::TestEventBookW::test_pages_returns_wrapped_list",
+            "tests/test_wrappers.py::TestEventBookW::test_pages_returns_empty_list_when_none"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventPageW\u01c1__init__": [
+            "tests/test_wrappers.py::TestEventBookW::test_pages_returns_wrapped_list",
+            "tests/test_wrappers.py::TestEventPageW::test_constructor_accepts_proto",
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_message",
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_when_no_event",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_wrapped_pages_when_present",
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_for_mismatch"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1domain": [
+            "tests/test_wrappers.py::TestEventBookW::test_cache_key_returns_domain_and_root",
+            "tests/test_wrappers.py::TestEventBookW::test_domain_returns_domain_from_cover",
+            "tests/test_wrappers.py::TestEventBookW::test_routing_key_returns_domain",
+            "tests/test_wrappers.py::TestEventBookW::test_domain_returns_unknown_when_not_set"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1_cover": [
+            "tests/test_wrappers.py::TestEventBookW::test_edition_returns_default_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_value",
+            "tests/test_wrappers.py::TestEventBookW::test_domain_returns_unknown_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_cover_wrapper_returns_cover_w",
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_false",
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_true",
+            "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_empty_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_edition_returns_edition_name",
+            "tests/test_wrappers.py::TestEventBookW::test_domain_returns_domain_from_cover",
+            "tests/test_wrappers.py::TestEventBookW::test_routing_key_returns_domain",
+            "tests/test_wrappers.py::TestEventBookW::test_cache_key_returns_domain_and_root",
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_uuid"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1correlation_id": [
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_true",
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_false",
+            "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_value",
+            "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_empty_when_not_set"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1has_correlation_id": [
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_false",
+            "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_true"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1root_uuid": [
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_uuid"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1edition": [
+            "tests/test_wrappers.py::TestEventBookW::test_edition_returns_edition_name",
+            "tests/test_wrappers.py::TestEventBookW::test_edition_returns_default_when_not_set"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1root_id_hex": [
+            "tests/test_wrappers.py::TestEventBookW::test_cache_key_returns_domain_and_root"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventBookW\u01c1cover_wrapper": [
+            "tests/test_wrappers.py::TestEventBookW::test_cover_wrapper_returns_cover_w"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1domain": [
+            "tests/test_wrappers.py::TestCoverW::test_cache_key_format",
+            "tests/test_wrappers.py::TestEventBookW::test_cover_wrapper_returns_cover_w",
+            "tests/test_wrappers.py::TestCoverW::test_domain_returns_domain",
+            "tests/test_wrappers.py::TestCoverW::test_routing_key_returns_domain",
+            "tests/test_wrappers.py::TestCoverW::test_domain_returns_unknown_for_empty"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1__init__": [
+            "tests/test_wrappers.py::TestCoverW::test_edition_returns_default_when_not_set",
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_empty_when_not_set",
+            "tests/test_wrappers.py::TestWrapperAttributeAccess::test_cover_w_delegates_proto_fields",
+            "tests/test_wrappers.py::TestCoverW::test_has_correlation_id_false",
+            "tests/test_wrappers.py::TestCoverW::test_constructor_accepts_proto",
+            "tests/test_wrappers.py::TestCoverW::test_domain_returns_domain",
+            "tests/test_wrappers.py::TestCoverW::test_has_correlation_id_true",
+            "tests/test_wrappers.py::TestCoverW::test_routing_key_returns_domain",
+            "tests/test_wrappers.py::TestCoverW::test_cache_key_format",
+            "tests/test_wrappers.py::TestEventBookW::test_cover_wrapper_returns_cover_w",
+            "tests/test_wrappers.py::TestCoverW::test_edition_opt_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestCoverW::test_correlation_id_returns_empty_for_unset",
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_uuid",
+            "tests/test_wrappers.py::TestCoverW::test_domain_returns_unknown_for_empty",
+            "tests/test_wrappers.py::TestCoverW::test_edition_opt_returns_name",
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_none_for_invalid_bytes",
+            "tests/test_wrappers.py::TestCoverW::test_edition_returns_name",
+            "tests/test_wrappers.py::TestCoverW::test_correlation_id_returns_value",
+            "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_hex"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandBookW\u01c1__init__": [
+            "tests/test_wrappers.py::TestCommandBookW::test_constructor_accepts_proto",
+            "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_empty_list_when_none",
+            "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_wrapped_list",
+            "tests/test_wrappers.py::TestCommandBookW::test_domain_returns_domain_from_cover",
+            "tests/test_wrappers.py::TestCommandBookW::test_correlation_id_returns_value"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandBookW\u01c1pages": [
+            "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_wrapped_list",
+            "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_empty_list_when_none"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandPageW\u01c1__init__": [
+            "tests/test_wrappers.py::TestCommandPageW::test_sequence_returns_value",
+            "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_wrapped_list",
+            "tests/test_wrappers.py::TestCommandPageW::test_constructor_accepts_proto"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandBookW\u01c1_cover": [
+            "tests/test_wrappers.py::TestCommandBookW::test_domain_returns_domain_from_cover",
+            "tests/test_wrappers.py::TestCommandBookW::test_correlation_id_returns_value"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandBookW\u01c1domain": [
+            "tests/test_wrappers.py::TestCommandBookW::test_domain_returns_domain_from_cover"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandBookW\u01c1correlation_id": [
+            "tests/test_wrappers.py::TestCommandBookW::test_correlation_id_returns_value"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1has_correlation_id": [
+            "tests/test_wrappers.py::TestCoverW::test_has_correlation_id_true",
+            "tests/test_wrappers.py::TestCoverW::test_has_correlation_id_false"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1root_uuid": [
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_uuid",
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_none_for_invalid_bytes"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1root_id_hex": [
+            "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_empty_when_not_set",
+            "tests/test_wrappers.py::TestCoverW::test_cache_key_format",
+            "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_hex"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1edition": [
+            "tests/test_wrappers.py::TestCoverW::test_edition_returns_name",
+            "tests/test_wrappers.py::TestCoverW::test_edition_returns_default_when_not_set"
+        ],
+        "angzarr_client.wrappers.x\u01c1CoverW\u01c1edition_opt": [
+            "tests/test_wrappers.py::TestCoverW::test_edition_opt_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestCoverW::test_edition_opt_returns_name"
+        ],
+        "angzarr_client.wrappers.x\u01c1QueryW\u01c1__init__": [
+            "tests/test_wrappers.py::TestQueryW::test_correlation_id_returns_value",
+            "tests/test_wrappers.py::TestQueryW::test_domain_returns_domain_from_cover",
+            "tests/test_wrappers.py::TestQueryW::test_constructor_accepts_proto"
+        ],
+        "angzarr_client.wrappers.x\u01c1QueryW\u01c1_cover": [
+            "tests/test_wrappers.py::TestQueryW::test_correlation_id_returns_value",
+            "tests/test_wrappers.py::TestQueryW::test_domain_returns_domain_from_cover"
+        ],
+        "angzarr_client.wrappers.x\u01c1QueryW\u01c1domain": [
+            "tests/test_wrappers.py::TestQueryW::test_domain_returns_domain_from_cover"
+        ],
+        "angzarr_client.wrappers.x\u01c1QueryW\u01c1correlation_id": [
+            "tests/test_wrappers.py::TestQueryW::test_correlation_id_returns_value"
+        ],
+        "angzarr_client.wrappers.x\u01c1EventPageW\u01c1decode_event": [
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_when_no_event",
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_message",
+            "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_for_mismatch"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandResponseW\u01c1__init__": [
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_empty_when_not_set",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_none_when_not_set",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_wrapped_event_book",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_wrapped_pages_when_present",
+            "tests/test_wrappers.py::TestCommandResponseW::test_constructor_accepts_proto"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandResponseW\u01c1events_book": [
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_wrapped_event_book",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_none_when_not_set"
+        ],
+        "angzarr_client.wrappers.x\u01c1CommandResponseW\u01c1events": [
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_empty_when_not_set",
+            "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_wrapped_pages_when_present"
+        ]
+    },
+    "duration_by_test": {
+        "tests/test_builder.py::TestCommandBuilder::test_build_minimal": 0.0005637700014631264,
+        "tests/test_builder.py::TestCommandBuilder::test_build_without_root": 0.0002552370006014826,
+        "tests/test_builder.py::TestCommandBuilder::test_with_correlation_id": 0.00020353299987618811,
+        "tests/test_builder.py::TestCommandBuilder::test_with_sequence": 0.0001927760022226721,
+        "tests/test_builder.py::TestCommandBuilder::test_build_without_type_url_raises": 0.00021575400023721159,
+        "tests/test_builder.py::TestCommandBuilder::test_build_without_payload_raises": 0.0002052470008493401,
+        "tests/test_builder.py::TestCommandBuilder::test_build_propagates_stored_error": 0.0001660369998717215,
+        "tests/test_builder.py::TestCommandBuilder::test_execute_calls_handle": 0.00021066800218250137,
+        "tests/test_builder.py::TestCommandBuilder::test_fluent_chaining": 0.00017889800255943555,
+        "tests/test_builder.py::TestQueryBuilder::test_build_with_root": 0.0001924010011862265,
+        "tests/test_builder.py::TestQueryBuilder::test_build_by_correlation_id": 0.00018003700279223267,
+        "tests/test_builder.py::TestQueryBuilder::test_by_correlation_id_clears_root": 0.000194172002011328,
+        "tests/test_builder.py::TestQueryBuilder::test_with_edition": 0.00017499199930171017,
+        "tests/test_builder.py::TestQueryBuilder::test_range_lower_only": 0.0001659199970163172,
+        "tests/test_builder.py::TestQueryBuilder::test_range_to": 0.00020311800290073734,
+        "tests/test_builder.py::TestQueryBuilder::test_as_of_sequence": 0.0001897449983516708,
+        "tests/test_builder.py::TestQueryBuilder::test_as_of_time_valid": 0.0011175580002600327,
+        "tests/test_builder.py::TestQueryBuilder::test_as_of_time_invalid_stores_error": 0.00023855699873820413,
+        "tests/test_builder.py::TestQueryBuilder::test_build_propagates_stored_error": 0.00018248499691253528,
+        "tests/test_builder.py::TestQueryBuilder::test_get_event_book": 0.00021069399736006744,
+        "tests/test_builder.py::TestQueryBuilder::test_get_events": 0.00020614399909391068,
+        "tests/test_builder.py::TestQueryBuilder::test_get_pages": 0.00019305900059407577,
+        "tests/test_builder.py::TestQueryBuilder::test_fluent_chaining": 0.00018101999921782408,
+        "tests/test_builder.py::TestConvenienceFunctions::test_command_creates_builder_with_root": 0.0001435249996575294,
+        "tests/test_builder.py::TestConvenienceFunctions::test_command_new_creates_builder_without_root": 0.0001322270018135896,
+        "tests/test_builder.py::TestConvenienceFunctions::test_query_creates_builder_with_root": 0.00013572499847214203,
+        "tests/test_builder.py::TestConvenienceFunctions::test_query_domain_creates_builder_without_root": 0.00015559399798803497,
+        "tests/test_client.py::TestQueryClient::test_init_creates_stub": 0.000594026998442132,
+        "tests/test_client.py::TestQueryClient::test_connect": 0.000785990998338093,
+        "tests/test_client.py::TestQueryClient::test_from_env_uses_env_var": 0.0016610290003882255,
+        "tests/test_client.py::TestQueryClient::test_from_env_uses_default": 0.0006497959984699264,
+        "tests/test_client.py::TestQueryClient::test_get_event_book_success": 0.0004971300004399382,
+        "tests/test_client.py::TestQueryClient::test_get_event_book_raises_grpc_error": 0.0005707039999833796,
+        "tests/test_client.py::TestQueryClient::test_get_events_success": 0.0005436829997051973,
+        "tests/test_client.py::TestQueryClient::test_get_events_raises_grpc_error": 0.0005152359990461264,
+        "tests/test_client.py::TestQueryClient::test_close_closes_channel": 0.0005492520012921887,
+        "tests/test_client.py::TestAggregateClient::test_init_creates_stub": 0.00046226599806686863,
+        "tests/test_client.py::TestAggregateClient::test_connect": 0.0006211219988472294,
+        "tests/test_client.py::TestAggregateClient::test_from_env_uses_env_var": 0.0008028579995880136,
+        "tests/test_client.py::TestAggregateClient::test_handle_success": 0.0004833860002690926,
+        "tests/test_client.py::TestAggregateClient::test_handle_raises_grpc_error": 0.0005034600017097546,
+        "tests/test_client.py::TestAggregateClient::test_handle_sync_success": 0.0005160639993846416,
+        "tests/test_client.py::TestAggregateClient::test_handle_sync_raises_grpc_error": 0.001752277001287439,
+        "tests/test_client.py::TestAggregateClient::test_dry_run_handle_success": 0.000902817000678624,
+        "tests/test_client.py::TestAggregateClient::test_dry_run_handle_raises_grpc_error": 0.0004691520007327199,
+        "tests/test_client.py::TestAggregateClient::test_close_closes_channel": 0.000430412997957319,
+        "tests/test_client.py::TestSpeculativeClient::test_init_creates_stub": 0.00043448799806355964,
+        "tests/test_client.py::TestSpeculativeClient::test_connect": 0.0005817080018459819,
+        "tests/test_client.py::TestSpeculativeClient::test_from_env_uses_env_var": 0.0007154570030252216,
+        "tests/test_client.py::TestSpeculativeClient::test_dry_run_success": 0.0004675330001191469,
+        "tests/test_client.py::TestSpeculativeClient::test_dry_run_raises_grpc_error": 0.00043635000110953115,
+        "tests/test_client.py::TestSpeculativeClient::test_projector_success": 0.0005201259991736151,
+        "tests/test_client.py::TestSpeculativeClient::test_projector_raises_grpc_error": 0.0006216749989107484,
+        "tests/test_client.py::TestSpeculativeClient::test_saga_success": 0.0004987600023014238,
+        "tests/test_client.py::TestSpeculativeClient::test_saga_raises_grpc_error": 0.0005090910017315764,
+        "tests/test_client.py::TestSpeculativeClient::test_process_manager_success": 0.000506345999383484,
+        "tests/test_client.py::TestSpeculativeClient::test_process_manager_raises_grpc_error": 0.0005709089982701698,
+        "tests/test_client.py::TestSpeculativeClient::test_close_closes_channel": 0.0004675599975598743,
+        "tests/test_client.py::TestDomainClient::test_init_creates_sub_clients": 0.0004984970018995227,
+        "tests/test_client.py::TestDomainClient::test_connect": 0.0011424899985286174,
+        "tests/test_client.py::TestDomainClient::test_from_env_uses_env_var": 0.0012740889978886116,
+        "tests/test_client.py::TestDomainClient::test_execute_delegates_to_aggregate": 0.000563501000215183,
+        "tests/test_client.py::TestDomainClient::test_close_closes_channel": 0.0005486050013132626,
+        "tests/test_client.py::TestClient::test_init_creates_all_sub_clients": 0.0005470510022860253,
+        "tests/test_client.py::TestClient::test_connect": 0.000729272000171477,
+        "tests/test_client.py::TestClient::test_from_env_uses_env_var": 0.000894053997399169,
+        "tests/test_client.py::TestClient::test_from_env_uses_default": 0.0007316139981412562,
+        "tests/test_client.py::TestClient::test_close_closes_channel": 0.0005840840003656922,
+        "tests/test_errors.py::TestClientError::test_message_only": 0.0001578190003783675,
+        "tests/test_errors.py::TestClientError::test_with_cause": 0.0001332100000581704,
+        "tests/test_errors.py::TestClientError::test_exception_inheritance": 0.00012303300172789022,
+        "tests/test_errors.py::TestConnectionError::test_message_formatting": 0.00013370299893722404,
+        "tests/test_errors.py::TestConnectionError::test_exception_inheritance": 0.00013936999857833143,
+        "tests/test_errors.py::TestTransportError::test_wraps_cause": 0.00013458100147545338,
+        "tests/test_errors.py::TestTransportError::test_exception_inheritance": 0.00014561699936166406,
+        "tests/test_errors.py::TestGRPCError::test_wraps_rpc_error": 0.00014442100109590683,
+        "tests/test_errors.py::TestGRPCError::test_code_property": 0.0001360080004815245,
+        "tests/test_errors.py::TestGRPCError::test_details_property": 0.00013058300100965425,
+        "tests/test_errors.py::TestGRPCError::test_is_not_found_true": 0.0001339009995717788,
+        "tests/test_errors.py::TestGRPCError::test_is_not_found_false": 0.00012478399912652094,
+        "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_true": 0.0001360320020467043,
+        "tests/test_errors.py::TestGRPCError::test_is_precondition_failed_false": 0.00012758499906340148,
+        "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_true": 0.00012442200022633187,
+        "tests/test_errors.py::TestGRPCError::test_is_invalid_argument_false": 0.00012100199819542468,
+        "tests/test_errors.py::TestGRPCError::test_exception_inheritance": 0.00013154799853509758,
+        "tests/test_errors.py::TestInvalidArgumentError::test_message_formatting": 0.00012439700003596954,
+        "tests/test_errors.py::TestInvalidArgumentError::test_exception_inheritance": 0.00014013599684403744,
+        "tests/test_errors.py::TestInvalidTimestampError::test_message_formatting": 0.0001660309990256792,
+        "tests/test_errors.py::TestInvalidTimestampError::test_exception_inheritance": 0.00013001699880987871,
+        "tests/test_helpers.py::TestConstants::test_unknown_domain": 0.00011509600153658539,
+        "tests/test_helpers.py::TestConstants::test_wildcard_domain": 0.00011558100050024223,
+        "tests/test_helpers.py::TestConstants::test_default_edition": 0.00011424699914641678,
+        "tests/test_helpers.py::TestConstants::test_meta_domain": 0.0001132280012825504,
+        "tests/test_helpers.py::TestConstants::test_projection_prefix": 0.00011402699965401553,
+        "tests/test_helpers.py::TestConstants::test_correlation_header": 0.00011725599870260339,
+        "tests/test_helpers.py::TestConstants::test_type_url_prefix": 0.00013158799811208155,
+        "tests/test_helpers.py::TestCoverOf::test_cover_returns_self": 0.00013387499893724453,
+        "tests/test_helpers.py::TestCoverOf::test_event_book_returns_cover": 0.0001377039989165496,
+        "tests/test_helpers.py::TestCoverOf::test_command_book_returns_cover": 0.00013306500295584556,
+        "tests/test_helpers.py::TestCoverOf::test_query_returns_cover": 0.00013881099948775955,
+        "tests/test_helpers.py::TestCoverOf::test_object_without_cover_returns_none": 0.00012382800196064636,
+        "tests/test_helpers.py::TestDomain::test_returns_domain_from_cover": 0.0001260290009668097,
+        "tests/test_helpers.py::TestDomain::test_returns_unknown_for_empty_domain": 0.00013105499965604395,
+        "tests/test_helpers.py::TestDomain::test_returns_unknown_for_none": 0.00012365799921099097,
+        "tests/test_helpers.py::TestCorrelationId::test_returns_correlation_id": 0.00012526700083981268,
+        "tests/test_helpers.py::TestCorrelationId::test_returns_empty_for_no_correlation": 0.00012331900143180974,
+        "tests/test_helpers.py::TestCorrelationId::test_returns_empty_for_invalid_input": 0.00012748100016324315,
+        "tests/test_helpers.py::TestHasCorrelationId::test_true_when_set": 0.000134295998577727,
+        "tests/test_helpers.py::TestHasCorrelationId::test_false_when_empty": 0.00012356199840724003,
+        "tests/test_helpers.py::TestHasCorrelationId::test_false_for_invalid": 0.00012118800077587366,
+        "tests/test_helpers.py::TestRootUuid::test_returns_uuid": 0.00014162200022838078,
+        "tests/test_helpers.py::TestRootUuid::test_returns_none_when_no_root": 0.0001338219990429934,
+        "tests/test_helpers.py::TestRootUuid::test_returns_none_for_invalid_bytes": 0.0001302900000155205,
+        "tests/test_helpers.py::TestRootIdHex::test_returns_hex_string": 0.0001563180012453813,
+        "tests/test_helpers.py::TestRootIdHex::test_returns_empty_when_no_root": 0.00012428800073394086,
+        "tests/test_helpers.py::TestEdition::test_returns_edition_name": 0.001338604999546078,
+        "tests/test_helpers.py::TestEdition::test_returns_default_when_not_set": 0.00014551499771187082,
+        "tests/test_helpers.py::TestEdition::test_returns_default_for_empty_name": 0.0001336069981334731,
+        "tests/test_helpers.py::TestEditionOpt::test_returns_edition_name": 0.00012994900134799536,
+        "tests/test_helpers.py::TestEditionOpt::test_returns_none_when_not_set": 0.00012936500206706114,
+        "tests/test_helpers.py::TestRoutingKey::test_returns_domain": 0.0001323849992331816,
+        "tests/test_helpers.py::TestCacheKey::test_returns_domain_and_root": 0.00013907900029153097,
+        "tests/test_helpers.py::TestCacheKey::test_returns_domain_with_empty_root": 0.0001439809984731255,
+        "tests/test_helpers.py::TestUuidConversion::test_round_trip": 0.00014256499889597762,
+        "tests/test_helpers.py::TestUuidConversion::test_uuid_to_proto_bytes": 0.00013672199929715134,
+        "tests/test_helpers.py::TestEditionHelpers::test_main_timeline": 0.00013811400094709825,
+        "tests/test_helpers.py::TestEditionHelpers::test_implicit_edition": 0.00013566400048148353,
+        "tests/test_helpers.py::TestEditionHelpers::test_explicit_edition": 0.00012859800153819378,
+        "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_none": 0.00012036799853376579,
+        "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_empty_name": 0.00011714399806805886,
+        "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_default": 0.00012559099923237227,
+        "tests/test_helpers.py::TestEditionHelpers::test_is_main_timeline_other": 0.00012277600035304204,
+        "tests/test_helpers.py::TestEditionHelpers::test_divergence_for_found": 0.0001317450023634592,
+        "tests/test_helpers.py::TestEditionHelpers::test_divergence_for_not_found": 0.0001285620000999188,
+        "tests/test_helpers.py::TestEditionHelpers::test_divergence_for_none": 0.00011463800183264539,
+        "tests/test_helpers.py::TestEventBookHelpers::test_next_sequence_returns_value": 0.00011914100105059333,
+        "tests/test_helpers.py::TestEventBookHelpers::test_next_sequence_none_returns_zero": 0.00016394100020988844,
+        "tests/test_helpers.py::TestEventBookHelpers::test_event_pages_returns_list": 0.0001367659970128443,
+        "tests/test_helpers.py::TestEventBookHelpers::test_event_pages_none_returns_empty": 0.00011899000128323678,
+        "tests/test_helpers.py::TestCommandBookHelpers::test_command_pages_returns_list": 0.00013288400077726692,
+        "tests/test_helpers.py::TestCommandBookHelpers::test_command_pages_none_returns_empty": 0.0001208100002259016,
+        "tests/test_helpers.py::TestEventsFromResponse::test_returns_none_for_none_response": 0.0001220599988300819,
+        "tests/test_helpers.py::TestEventsFromResponse::test_returns_empty_for_no_events_field": 0.00012173900177003816,
+        "tests/test_helpers.py::TestEventsFromResponse::test_returns_pages_when_present": 0.00014530499902321026,
+        "tests/test_helpers.py::TestTypeUrlHelpers::test_type_url_construction": 0.00011992399777227547,
+        "tests/test_helpers.py::TestTypeUrlHelpers::test_type_name_from_url_with_dot": 0.00012195199815323576,
+        "tests/test_helpers.py::TestTypeUrlHelpers::test_type_name_from_url_with_slash": 0.00012099800005671568,
+        "tests/test_helpers.py::TestTypeUrlHelpers::test_type_name_from_url_plain": 0.0001170250016002683,
+        "tests/test_helpers.py::TestTypeUrlHelpers::test_type_url_matches_true": 0.00013427100020635407,
+        "tests/test_helpers.py::TestTypeUrlHelpers::test_type_url_matches_false": 0.0001286249971599318,
+        "tests/test_helpers.py::TestTimestampHelpers::test_now_returns_timestamp": 0.00015985999925760552,
+        "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_valid": 0.00016124300054798368,
+        "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_with_nanos": 0.00014451899915002286,
+        "tests/test_helpers.py::TestTimestampHelpers::test_parse_timestamp_invalid_raises": 0.00017595399913261645,
+        "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_none_page": 0.00012748100198223256,
+        "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_no_event_field": 0.00012814200090360828,
+        "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_type_mismatch": 0.00012825100020563696,
+        "tests/test_helpers.py::TestDecodeEvent::test_returns_decoded_message": 0.0001494330026616808,
+        "tests/test_helpers.py::TestDecodeEvent::test_returns_none_for_decode_failure": 0.00014320000082079787,
+        "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_minimal": 0.00014351800018630456,
+        "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_correlation": 0.0001283429992327001,
+        "tests/test_helpers.py::TestConstructionHelpers::test_new_cover_with_edition": 0.00013293099982547574,
+        "tests/test_helpers.py::TestConstructionHelpers::test_new_command_page": 0.0001257069998246152,
+        "tests/test_helpers.py::TestConstructionHelpers::test_new_command_book": 0.00015900700236670673,
+        "tests/test_helpers.py::TestConstructionHelpers::test_range_selection_lower_only": 0.0001241650006704731,
+        "tests/test_helpers.py::TestConstructionHelpers::test_range_selection_with_upper": 0.00012681299995165318,
+        "tests/test_helpers.py::TestConstructionHelpers::test_temporal_by_sequence": 0.00011886500033142511,
+        "tests/test_helpers.py::TestConstructionHelpers::test_temporal_by_time": 0.00015257600352924783,
+        "tests/test_wrappers.py::TestEventBookW::test_constructor_accepts_proto": 0.0001389399985782802,
+        "tests/test_wrappers.py::TestEventBookW::test_next_sequence_returns_value": 0.00013790599768981338,
+        "tests/test_wrappers.py::TestEventBookW::test_next_sequence_default_zero": 0.00013127800048096105,
+        "tests/test_wrappers.py::TestEventBookW::test_pages_returns_wrapped_list": 0.00015512399841099977,
+        "tests/test_wrappers.py::TestEventBookW::test_pages_returns_empty_list_when_none": 0.0001376330001221504,
+        "tests/test_wrappers.py::TestEventBookW::test_domain_returns_domain_from_cover": 0.00014480099889624398,
+        "tests/test_wrappers.py::TestEventBookW::test_domain_returns_unknown_when_not_set": 0.00012766499639838003,
+        "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_value": 0.00013951199980510864,
+        "tests/test_wrappers.py::TestEventBookW::test_correlation_id_returns_empty_when_not_set": 0.0001328290018136613,
+        "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_true": 0.00013177700020605698,
+        "tests/test_wrappers.py::TestEventBookW::test_has_correlation_id_false": 0.0001394099981553154,
+        "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_uuid": 0.0001544539991300553,
+        "tests/test_wrappers.py::TestEventBookW::test_root_uuid_returns_none_when_not_set": 0.00012889699974039104,
+        "tests/test_wrappers.py::TestEventBookW::test_edition_returns_edition_name": 0.0001351530008832924,
+        "tests/test_wrappers.py::TestEventBookW::test_edition_returns_default_when_not_set": 0.0001375720003125025,
+        "tests/test_wrappers.py::TestEventBookW::test_routing_key_returns_domain": 0.00015192200044111814,
+        "tests/test_wrappers.py::TestEventBookW::test_cache_key_returns_domain_and_root": 0.00014672899851575494,
+        "tests/test_wrappers.py::TestEventBookW::test_cover_wrapper_returns_cover_w": 0.00013732200022786856,
+        "tests/test_wrappers.py::TestCommandBookW::test_constructor_accepts_proto": 0.00014464699961536098,
+        "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_wrapped_list": 0.00015188799989118706,
+        "tests/test_wrappers.py::TestCommandBookW::test_pages_returns_empty_list_when_none": 0.0005586849983956199,
+        "tests/test_wrappers.py::TestCommandBookW::test_domain_returns_domain_from_cover": 0.0005474839999806136,
+        "tests/test_wrappers.py::TestCommandBookW::test_correlation_id_returns_value": 0.00013174800005799625,
+        "tests/test_wrappers.py::TestCoverW::test_constructor_accepts_proto": 0.00012888300079794135,
+        "tests/test_wrappers.py::TestCoverW::test_domain_returns_domain": 0.00012698699902102817,
+        "tests/test_wrappers.py::TestCoverW::test_domain_returns_unknown_for_empty": 0.00012157499986642506,
+        "tests/test_wrappers.py::TestCoverW::test_correlation_id_returns_value": 0.000123447998703341,
+        "tests/test_wrappers.py::TestCoverW::test_correlation_id_returns_empty_for_unset": 0.00012207699728605803,
+        "tests/test_wrappers.py::TestCoverW::test_has_correlation_id_true": 0.00013079400196147617,
+        "tests/test_wrappers.py::TestCoverW::test_has_correlation_id_false": 0.00012852600229962263,
+        "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_uuid": 0.00013667900020664092,
+        "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_none_when_not_set": 0.00012460000107239466,
+        "tests/test_wrappers.py::TestCoverW::test_root_uuid_returns_none_for_invalid_bytes": 0.00013312500050233211,
+        "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_hex": 0.00013619799938169308,
+        "tests/test_wrappers.py::TestCoverW::test_root_id_hex_returns_empty_when_not_set": 0.000122835999718518,
+        "tests/test_wrappers.py::TestCoverW::test_edition_returns_name": 0.00013167500037525315,
+        "tests/test_wrappers.py::TestCoverW::test_edition_returns_default_when_not_set": 0.00012703500033239834,
+        "tests/test_wrappers.py::TestCoverW::test_edition_opt_returns_name": 0.00013172199760447256,
+        "tests/test_wrappers.py::TestCoverW::test_edition_opt_returns_none_when_not_set": 0.00012437700024747755,
+        "tests/test_wrappers.py::TestCoverW::test_routing_key_returns_domain": 0.0001241549998667324,
+        "tests/test_wrappers.py::TestCoverW::test_cache_key_format": 0.00013934999878983945,
+        "tests/test_wrappers.py::TestQueryW::test_constructor_accepts_proto": 0.0001261039997189073,
+        "tests/test_wrappers.py::TestQueryW::test_domain_returns_domain_from_cover": 0.00013358500109461602,
+        "tests/test_wrappers.py::TestQueryW::test_correlation_id_returns_value": 0.00012999899990973063,
+        "tests/test_wrappers.py::TestEventPageW::test_constructor_accepts_proto": 0.00012191899986646604,
+        "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_message": 0.00014135400124359876,
+        "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_for_mismatch": 0.00013609999768959824,
+        "tests/test_wrappers.py::TestEventPageW::test_decode_event_returns_none_when_no_event": 0.0001272489989787573,
+        "tests/test_wrappers.py::TestCommandPageW::test_constructor_accepts_proto": 0.0001250589994015172,
+        "tests/test_wrappers.py::TestCommandPageW::test_sequence_returns_value": 0.00012495800001488533,
+        "tests/test_wrappers.py::TestCommandResponseW::test_constructor_accepts_proto": 0.00013127400052326266,
+        "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_wrapped_event_book": 0.00013929700071457773,
+        "tests/test_wrappers.py::TestCommandResponseW::test_events_book_returns_none_when_not_set": 0.00012797199997294229,
+        "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_wrapped_pages_when_present": 0.00014914799976395443,
+        "tests/test_wrappers.py::TestCommandResponseW::test_events_returns_empty_when_not_set": 0.0001363259998470312,
+        "tests/test_wrappers.py::TestWrapperAttributeAccess::test_event_book_w_delegates_proto_fields": 0.00013564400069299154,
+        "tests/test_wrappers.py::TestWrapperAttributeAccess::test_cover_w_delegates_proto_fields": 0.00015706200065324083
+    },
+    "stats_time": 0.7325514630000001
+}

@@ -2,6 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
+from angzarr_client.proto.angzarr import saga_pb2 as angzarr_dot_saga__pb2
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
@@ -23,13 +24,13 @@ class SagaServiceStub(object):
                 _registered_method=True)
         self.Prepare = channel.unary_unary(
                 '/angzarr.SagaService/Prepare',
-                request_serializer=angzarr_dot_types__pb2.SagaPrepareRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.SagaPrepareResponse.FromString,
+                request_serializer=angzarr_dot_saga__pb2.SagaPrepareRequest.SerializeToString,
+                response_deserializer=angzarr_dot_saga__pb2.SagaPrepareResponse.FromString,
                 _registered_method=True)
         self.Execute = channel.unary_unary(
                 '/angzarr.SagaService/Execute',
-                request_serializer=angzarr_dot_types__pb2.SagaExecuteRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.SagaResponse.FromString,
+                request_serializer=angzarr_dot_saga__pb2.SagaExecuteRequest.SerializeToString,
+                response_deserializer=angzarr_dot_saga__pb2.SagaResponse.FromString,
                 _registered_method=True)
 
 
@@ -69,13 +70,13 @@ def add_SagaServiceServicer_to_server(servicer, server):
             ),
             'Prepare': grpc.unary_unary_rpc_method_handler(
                     servicer.Prepare,
-                    request_deserializer=angzarr_dot_types__pb2.SagaPrepareRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.SagaPrepareResponse.SerializeToString,
+                    request_deserializer=angzarr_dot_saga__pb2.SagaPrepareRequest.FromString,
+                    response_serializer=angzarr_dot_saga__pb2.SagaPrepareResponse.SerializeToString,
             ),
             'Execute': grpc.unary_unary_rpc_method_handler(
                     servicer.Execute,
-                    request_deserializer=angzarr_dot_types__pb2.SagaExecuteRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.SagaResponse.SerializeToString,
+                    request_deserializer=angzarr_dot_saga__pb2.SagaExecuteRequest.FromString,
+                    response_serializer=angzarr_dot_saga__pb2.SagaResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -132,8 +133,8 @@ class SagaService(object):
             request,
             target,
             '/angzarr.SagaService/Prepare',
-            angzarr_dot_types__pb2.SagaPrepareRequest.SerializeToString,
-            angzarr_dot_types__pb2.SagaPrepareResponse.FromString,
+            angzarr_dot_saga__pb2.SagaPrepareRequest.SerializeToString,
+            angzarr_dot_saga__pb2.SagaPrepareResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -159,8 +160,8 @@ class SagaService(object):
             request,
             target,
             '/angzarr.SagaService/Execute',
-            angzarr_dot_types__pb2.SagaExecuteRequest.SerializeToString,
-            angzarr_dot_types__pb2.SagaResponse.FromString,
+            angzarr_dot_saga__pb2.SagaExecuteRequest.SerializeToString,
+            angzarr_dot_saga__pb2.SagaResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -173,7 +174,7 @@ class SagaService(object):
 
 
 class SagaCoordinatorServiceStub(object):
-    """SagaCoordinatorService: orchestrates saga execution across domains
+    """SagaCoordinatorService: orchestrates saga execution
     """
 
     def __init__(self, channel):
@@ -182,19 +183,31 @@ class SagaCoordinatorServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
+        self.Execute = channel.unary_unary(
+                '/angzarr.SagaCoordinatorService/Execute',
+                request_serializer=angzarr_dot_saga__pb2.SagaExecuteRequest.SerializeToString,
+                response_deserializer=angzarr_dot_saga__pb2.SagaResponse.FromString,
+                _registered_method=True)
         self.ExecuteSpeculative = channel.unary_unary(
                 '/angzarr.SagaCoordinatorService/ExecuteSpeculative',
-                request_serializer=angzarr_dot_types__pb2.SagaExecuteRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.SagaResponse.FromString,
+                request_serializer=angzarr_dot_saga__pb2.SpeculateSagaRequest.SerializeToString,
+                response_deserializer=angzarr_dot_saga__pb2.SagaResponse.FromString,
                 _registered_method=True)
 
 
 class SagaCoordinatorServiceServicer(object):
-    """SagaCoordinatorService: orchestrates saga execution across domains
+    """SagaCoordinatorService: orchestrates saga execution
     """
 
+    def Execute(self, request, context):
+        """Async processing - fire and forget
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ExecuteSpeculative(self, request, context):
-        """Speculative execution - returns commands without executing them
+        """Speculative execution - returns commands without side effects
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -203,10 +216,15 @@ class SagaCoordinatorServiceServicer(object):
 
 def add_SagaCoordinatorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'Execute': grpc.unary_unary_rpc_method_handler(
+                    servicer.Execute,
+                    request_deserializer=angzarr_dot_saga__pb2.SagaExecuteRequest.FromString,
+                    response_serializer=angzarr_dot_saga__pb2.SagaResponse.SerializeToString,
+            ),
             'ExecuteSpeculative': grpc.unary_unary_rpc_method_handler(
                     servicer.ExecuteSpeculative,
-                    request_deserializer=angzarr_dot_types__pb2.SagaExecuteRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.SagaResponse.SerializeToString,
+                    request_deserializer=angzarr_dot_saga__pb2.SpeculateSagaRequest.FromString,
+                    response_serializer=angzarr_dot_saga__pb2.SagaResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -217,8 +235,35 @@ def add_SagaCoordinatorServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class SagaCoordinatorService(object):
-    """SagaCoordinatorService: orchestrates saga execution across domains
+    """SagaCoordinatorService: orchestrates saga execution
     """
+
+    @staticmethod
+    def Execute(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/angzarr.SagaCoordinatorService/Execute',
+            angzarr_dot_saga__pb2.SagaExecuteRequest.SerializeToString,
+            angzarr_dot_saga__pb2.SagaResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def ExecuteSpeculative(request,
@@ -235,8 +280,8 @@ class SagaCoordinatorService(object):
             request,
             target,
             '/angzarr.SagaCoordinatorService/ExecuteSpeculative',
-            angzarr_dot_types__pb2.SagaExecuteRequest.SerializeToString,
-            angzarr_dot_types__pb2.SagaResponse.FromString,
+            angzarr_dot_saga__pb2.SpeculateSagaRequest.SerializeToString,
+            angzarr_dot_saga__pb2.SagaResponse.FromString,
             options,
             channel_credentials,
             insecure,

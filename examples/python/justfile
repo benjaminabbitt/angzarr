@@ -1,117 +1,83 @@
-# Python examples for angzarr e-commerce domain
-# Services: customer, product, inventory, order, cart, fulfillment
-# Sagas: saga-loyalty-earn, saga-fulfillment, saga-cancellation
-#
-# Deployment modes (use from examples/ directory):
-#   just examples standalone run python     # Run in standalone mode
-#   just examples standalone test python    # Test in standalone mode
-#   just examples k8s deploy python       # Deploy to K8s
-#   just examples k8s test python         # Test in K8s
-
-set shell := ["bash", "-c"]
+# Poker engine justfile
 
 TOP := `git rev-parse --show-toplevel`
 
-# Show available commands
+# Default: list available commands
 default:
     @just --list
 
-# ============================================================================
-# Build / Test / Clean
-# ============================================================================
-
-# Sync all Python service dependencies
-sync:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        (cd "{{TOP}}/examples/python/$dir" && uv sync); \
+# Generate Python protobuf files from proto definitions
+proto:
+    uv run python -m grpc_tools.protoc \
+        -I{{TOP}}/proto \
+        -I{{TOP}}/../angzarr/proto \
+        --python_out={{TOP}}/agg-player/proto \
+        --grpc_python_out={{TOP}}/agg-player/proto \
+        {{TOP}}/proto/poker/*.proto
+    uv run python -m grpc_tools.protoc \
+        -I{{TOP}}/proto \
+        -I{{TOP}}/../angzarr/proto \
+        --python_out={{TOP}}/agg-table/proto \
+        --grpc_python_out={{TOP}}/agg-table/proto \
+        {{TOP}}/proto/poker/*.proto
+    uv run python -m grpc_tools.protoc \
+        -I{{TOP}}/proto \
+        -I{{TOP}}/../angzarr/proto \
+        --python_out={{TOP}}/agg-hand/proto \
+        --grpc_python_out={{TOP}}/agg-hand/proto \
+        {{TOP}}/proto/poker/*.proto
+    uv run python -m grpc_tools.protoc \
+        -I{{TOP}}/proto \
+        -I{{TOP}}/../angzarr/proto \
+        --python_out={{TOP}}/prj-output/proto \
+        --grpc_python_out={{TOP}}/prj-output/proto \
+        {{TOP}}/proto/poker/*.proto
+    # Fix imports in generated files - rewrite poker -> proto.poker
+    for f in {{TOP}}/agg-*/proto/poker/*_pb2*.py {{TOP}}/prj-*/proto/poker/*_pb2*.py; do \
+        sed -i 's/from poker import/from proto.poker import/g' "$$f" 2>/dev/null || true; \
+        sed -i 's/import poker\b/import proto.poker/g' "$$f" 2>/dev/null || true; \
     done
+    @echo "Proto files generated"
 
-# Run unit tests for all services
+# Run unit tests
 test:
-    for dir in customer product inventory order cart fulfillment; do \
-        echo "Testing $dir..."; \
-        (cd "{{TOP}}/examples/python/$dir" && uv run pytest -v) || true; \
-    done
+    uv run pytest -v
 
-# Clean all Python examples
-clean:
-    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-    find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-    find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+# Run BDD/Gherkin tests
+test-bdd:
+    cd "{{TOP}}/examples/python" && uv run behave features/
 
-# Format all Python code
+# Run all tests (unit + BDD)
+test-all: test test-bdd
+
+# Run player aggregate server
+run-player:
+    cd agg-player && uv run python main.py
+
+# Run table aggregate server
+run-table:
+    cd agg-table && uv run python main.py
+
+# Run hand aggregate server
+run-hand:
+    cd agg-hand && uv run python main.py
+
+# Run output projector
+run-output:
+    cd prj-output && uv run python main.py
+
+# Install dependencies
+install:
+    uv sync
+
+# Format code
 fmt:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        (cd "{{TOP}}/examples/python/$dir" && uv run ruff format .) 2>/dev/null || true; \
-    done
+    uv run black .
 
-# Lint all Python code
+# Lint code
 lint:
-    for dir in customer product inventory order cart fulfillment saga-fulfillment saga-cancellation saga-loyalty-earn; do \
-        (cd "{{TOP}}/examples/python/$dir" && uv run ruff check .) 2>/dev/null || true; \
-    done
+    uv run ruff check .
 
-# Lint Helm chart
-helm-lint:
-    helm lint helm
-
-# ============================================================================
-# Container Images - LOCAL DEV ONLY
-# ============================================================================
-#
-# These targets are for local development/testing in containers.
-# For K8s deployments, use `just deploy` or `just dev` which delegate to
-# skaffold via k8s.justfile. Skaffold uses unique git-commit tags to avoid
-# Kind's containerd image cache issues.
-
-# Build dev container (for local testing only, NOT for K8s)
-container-build:
-    cd {{TOP}} && podman build -t angzarr-dev-python -f examples/python/Containerfile.dev .
-
-# Run tests in container (for local testing only, NOT for K8s)
-container-test:
-    cd {{TOP}} && podman run --rm -v .:/app:Z -w /app/examples/python angzarr-dev-python just test
-
-# ============================================================================
-# Integration Tests
-# ============================================================================
-
-# Setup integration tests
-setup-tests:
-    cd tests && uv sync
-
-# Run integration tests (assumes gateway available)
-integration GATEWAY="localhost:9084": setup-tests
-    cd tests && ANGZARR_PORT=9084 ANGZARR_TEST_MODE=container uv run pytest -v
-
-# ============================================================================
-# Standalone Mode Shortcuts (delegates to examples/standalone.justfile)
-# ============================================================================
-
-# Run in standalone mode
-standalone:
-    cd {{TOP}}/examples && just standalone run python
-
-# Run acceptance tests in standalone mode
-acceptance-standalone:
-    cd {{TOP}}/examples && just standalone test python
-
-# ============================================================================
-# K8s Mode Shortcuts (delegates to examples/k8s.justfile)
-# ============================================================================
-
-# Deploy to K8s
-deploy:
-    cd {{TOP}}/examples && just k8s deploy python
-
-# Run acceptance tests in K8s
-acceptance-k8s:
-    cd {{TOP}}/examples && just k8s test python
-
-# Start dev mode with file watching
-dev:
-    cd {{TOP}}/examples && just k8s dev python
-
-# Delete K8s deployment
-delete:
-    cd {{TOP}}/examples && just k8s delete python
+# Type check
+typecheck:
+    uv run mypy . --ignore-missing-imports

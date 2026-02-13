@@ -184,15 +184,8 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
         }
     }
 
-    /// Execute the query and return a single EventBook.
-    pub async fn get_event_book(self) -> Result<EventBook> {
-        let client = self.client;
-        let query = self.build_inner();
-        client.get_event_book(query).await
-    }
-
-    /// Execute the query and return all matching EventBooks.
-    pub async fn get_events(self) -> Result<Vec<EventBook>> {
+    /// Execute the query and return the EventBook.
+    pub async fn get_events(self) -> Result<EventBook> {
         let client = self.client;
         let query = self.build_inner();
         client.get_events(query).await
@@ -202,7 +195,7 @@ impl<'a, C: traits::QueryClient> QueryBuilder<'a, C> {
     pub async fn get_pages(self) -> Result<Vec<EventPage>> {
         let client = self.client;
         let query = self.build_inner();
-        let event_book = client.get_event_book(query).await?;
+        let event_book = client.get_events(query).await?;
         Ok(event_book.pages)
     }
 }
@@ -276,12 +269,8 @@ mod tests {
 
     #[async_trait]
     impl traits::QueryClient for MockQueryClient {
-        async fn get_event_book(&self, _query: Query) -> Result<EventBook> {
+        async fn get_events(&self, _query: Query) -> Result<EventBook> {
             Ok(self.event_book.clone())
-        }
-
-        async fn get_events(&self, _query: Query) -> Result<Vec<EventBook>> {
-            Ok(vec![self.event_book.clone()])
         }
     }
 

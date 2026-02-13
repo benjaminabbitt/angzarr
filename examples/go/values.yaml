@@ -1,0 +1,68 @@
+# Go poker example - local development values
+
+replicaCount: 1
+
+# Use local Kind registry
+imagePullSecrets: []
+
+storage:
+  type: mongodb
+  mongodb:
+    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
+    database: "angzarr"
+
+messaging:
+  type: amqp
+  amqp:
+    enabled: true
+    url: "amqp://guest:guest@angzarr-rabbitmq:5672"
+
+# Poker domain aggregates
+applications:
+  business:
+    - name: poker-player
+      domain: player
+      port: 50201
+      image:
+        repository: localhost:5001/poker-go-player
+        tag: latest
+        pullPolicy: IfNotPresent
+
+    - name: poker-table
+      domain: table
+      port: 50202
+      image:
+        repository: localhost:5001/poker-go-table
+        tag: latest
+        pullPolicy: IfNotPresent
+
+    - name: poker-hand
+      domain: hand
+      port: 50203
+      image:
+        repository: localhost:5001/poker-go-hand
+        tag: latest
+        pullPolicy: IfNotPresent
+
+  # Sagas to be added later
+  sagas: []
+
+  # Projectors to be added later
+  projectors: []
+
+# Resource limits for development
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"

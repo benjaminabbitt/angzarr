@@ -249,7 +249,7 @@ const (
 // ProcessManagerCoordinatorService: orchestrates PM execution
 type ProcessManagerCoordinatorServiceClient interface {
 	// Speculative execution - returns commands and events without persisting
-	HandleSpeculative(ctx context.Context, in *ProcessManagerHandleRequest, opts ...grpc.CallOption) (*ProcessManagerHandleResponse, error)
+	HandleSpeculative(ctx context.Context, in *SpeculatePmRequest, opts ...grpc.CallOption) (*ProcessManagerHandleResponse, error)
 }
 
 type processManagerCoordinatorServiceClient struct {
@@ -260,7 +260,7 @@ func NewProcessManagerCoordinatorServiceClient(cc grpc.ClientConnInterface) Proc
 	return &processManagerCoordinatorServiceClient{cc}
 }
 
-func (c *processManagerCoordinatorServiceClient) HandleSpeculative(ctx context.Context, in *ProcessManagerHandleRequest, opts ...grpc.CallOption) (*ProcessManagerHandleResponse, error) {
+func (c *processManagerCoordinatorServiceClient) HandleSpeculative(ctx context.Context, in *SpeculatePmRequest, opts ...grpc.CallOption) (*ProcessManagerHandleResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProcessManagerHandleResponse)
 	err := c.cc.Invoke(ctx, ProcessManagerCoordinatorService_HandleSpeculative_FullMethodName, in, out, cOpts...)
@@ -277,7 +277,7 @@ func (c *processManagerCoordinatorServiceClient) HandleSpeculative(ctx context.C
 // ProcessManagerCoordinatorService: orchestrates PM execution
 type ProcessManagerCoordinatorServiceServer interface {
 	// Speculative execution - returns commands and events without persisting
-	HandleSpeculative(context.Context, *ProcessManagerHandleRequest) (*ProcessManagerHandleResponse, error)
+	HandleSpeculative(context.Context, *SpeculatePmRequest) (*ProcessManagerHandleResponse, error)
 	mustEmbedUnimplementedProcessManagerCoordinatorServiceServer()
 }
 
@@ -288,7 +288,7 @@ type ProcessManagerCoordinatorServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedProcessManagerCoordinatorServiceServer struct{}
 
-func (UnimplementedProcessManagerCoordinatorServiceServer) HandleSpeculative(context.Context, *ProcessManagerHandleRequest) (*ProcessManagerHandleResponse, error) {
+func (UnimplementedProcessManagerCoordinatorServiceServer) HandleSpeculative(context.Context, *SpeculatePmRequest) (*ProcessManagerHandleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HandleSpeculative not implemented")
 }
 func (UnimplementedProcessManagerCoordinatorServiceServer) mustEmbedUnimplementedProcessManagerCoordinatorServiceServer() {
@@ -314,7 +314,7 @@ func RegisterProcessManagerCoordinatorServiceServer(s grpc.ServiceRegistrar, srv
 }
 
 func _ProcessManagerCoordinatorService_HandleSpeculative_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ProcessManagerHandleRequest)
+	in := new(SpeculatePmRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func _ProcessManagerCoordinatorService_HandleSpeculative_Handler(srv interface{}
 		FullMethod: ProcessManagerCoordinatorService_HandleSpeculative_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProcessManagerCoordinatorServiceServer).HandleSpeculative(ctx, req.(*ProcessManagerHandleRequest))
+		return srv.(ProcessManagerCoordinatorServiceServer).HandleSpeculative(ctx, req.(*SpeculatePmRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

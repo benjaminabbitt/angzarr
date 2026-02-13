@@ -36,6 +36,9 @@ buf-gen-python:
     # Fix imports: protoc generates `from angzarr import` but package is angzarr_client.proto.angzarr
     find "{{TOP}}/client/python/angzarr_client/proto" -name "*.py" -exec \
         sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \;
+    # Fix imports: protoc generates `from examples import` but package is angzarr_client.proto.examples
+    find "{{TOP}}/client/python/angzarr_client/proto/examples" -name "*.py" -exec \
+        sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
 
 # === Proto Generation (Legacy Podman) ===
 

@@ -57,8 +57,11 @@ pub mod builder;
 pub mod client;
 pub mod convert;
 pub mod error;
+pub mod handler;
 pub mod proto;
 pub mod proto_ext;
+pub mod router;
+pub mod server;
 pub mod traits;
 
 // Re-export main types at crate root
@@ -79,4 +82,21 @@ pub use convert::{
 pub use proto_ext::{
     CommandBookExt, CommandPageExt, CoverExt, EditionExt, EventBookExt, EventPageExt, ProtoUuidExt,
     UuidExt,
+};
+
+// Re-export router types
+pub use router::{
+    event_book_from, event_page, pack_event, CommandHandler, CommandRejectedError, CommandResult,
+    CommandRouter, EventHandler, EventRouter, PrepareHandler, ProcessManagerHandler,
+    ProcessManagerPrepareHandler, ProcessManagerResponse, ProcessManagerRouter,
+    ProcessManagerStateRebuilder, StateRebuilder, UnpackAny,
+};
+
+// Re-export handler types
+pub use handler::{AggregateHandler, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler};
+
+// Re-export server utilities
+pub use server::{
+    run_aggregate_server, run_process_manager_server, run_projector_server, run_saga_server,
+    ServerConfig,
 };

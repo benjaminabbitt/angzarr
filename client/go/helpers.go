@@ -129,6 +129,36 @@ func ProtoToUUID(u *pb.UUID) (uuid.UUID, error) {
 	return uuid.FromBytes(u.Value)
 }
 
+// BytesToUUIDText converts bytes to standard UUID text format.
+// If bytes are exactly 16 bytes, formats as UUID (8-4-4-4-12).
+// Otherwise returns hex encoding of the bytes.
+func BytesToUUIDText(b []byte) string {
+	if len(b) == 16 {
+		u, err := uuid.FromBytes(b)
+		if err == nil {
+			return u.String()
+		}
+	}
+	return hex.EncodeToString(b)
+}
+
+// ProtoUUIDToText converts a proto UUID to text format.
+func ProtoUUIDToText(u *pb.UUID) string {
+	if u == nil {
+		return ""
+	}
+	return BytesToUUIDText(u.Value)
+}
+
+// RootIDText returns the root UUID as standard text format (8-4-4-4-12), or empty if missing.
+func RootIDText(v interface{}) string {
+	c := CoverOf(v)
+	if c == nil || c.Root == nil {
+		return ""
+	}
+	return BytesToUUIDText(c.Root.Value)
+}
+
 // Edition helpers
 
 // MainTimeline returns an Edition representing the main timeline.
