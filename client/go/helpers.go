@@ -213,6 +213,39 @@ func EventPages(book *pb.EventBook) []*pb.EventPage {
 	return book.Pages
 }
 
+// NewEventBook creates an EventBook with a single event page.
+// This is the common pattern for command handlers returning a single event.
+func NewEventBook(cover *pb.Cover, seq uint32, event *anypb.Any) *pb.EventBook {
+	return &pb.EventBook{
+		Cover: cover,
+		Pages: []*pb.EventPage{
+			{
+				Sequence:  &pb.EventPage_Num{Num: seq},
+				Event:     event,
+				CreatedAt: timestamppb.Now(),
+			},
+		},
+	}
+}
+
+// NewEventBookMulti creates an EventBook with multiple event pages.
+// Useful for handlers that emit multiple events (e.g., AwardPot + HandComplete).
+func NewEventBookMulti(cover *pb.Cover, startSeq uint32, events ...*anypb.Any) *pb.EventBook {
+	pages := make([]*pb.EventPage, len(events))
+	now := timestamppb.Now()
+	for i, event := range events {
+		pages[i] = &pb.EventPage{
+			Sequence:  &pb.EventPage_Num{Num: startSeq + uint32(i)},
+			Event:     event,
+			CreatedAt: now,
+		}
+	}
+	return &pb.EventBook{
+		Cover: cover,
+		Pages: pages,
+	}
+}
+
 // CommandBook helpers
 
 // CommandPages returns the command pages from a CommandBook, or empty slice if nil.

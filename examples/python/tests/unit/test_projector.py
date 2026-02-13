@@ -63,7 +63,7 @@ def ctx():
 def make_event_page(event_msg, time_str: str = None) -> types.EventPage:
     """Create EventPage with optional timestamp."""
     event_any = ProtoAny()
-    event_any.Pack(event_msg, type_url_prefix="type.poker/")
+    event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
 
     created_at = None
     if time_str:

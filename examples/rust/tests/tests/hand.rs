@@ -602,6 +602,101 @@ fn given_showdown_hands(world: &mut HandWorld, step: &cucumber::gherkin::Step) {
     }
 }
 
+#[given(regex = r#"a hand at showdown with player "([^"]*)" holding "([^"]*)" and community "([^"]*)""#)]
+fn given_hand_at_showdown_with_cards(
+    world: &mut HandWorld,
+    player_id: String,
+    hole_cards_str: String,
+    community_cards_str: String,
+) {
+    let hole_cards = parse_cards(&hole_cards_str);
+    let community_cards = parse_cards(&community_cards_str);
+
+    // Set up a 2-player hand with the specific hole cards
+    let players = vec![
+        (&player_id as &str, 0, 500i64),
+        ("player-2", 1, 500i64),
+    ];
+
+    // Create CardsDealt event with specific hole cards
+    world.game_variant = GameVariant::TexasHoldem;
+    world.players = players
+        .iter()
+        .map(|(id, pos, stack)| PlayerInHand {
+            player_root: world.player_root(id),
+            position: *pos,
+            stack: *stack,
+        })
+        .collect();
+
+    // Create player hole cards - player-1 gets the specific cards, player-2 gets dummy cards
+    let player_cards: Vec<PlayerHoleCards> = vec![
+        PlayerHoleCards {
+            player_root: world.player_root(&player_id),
+            cards: hole_cards,
+        },
+        PlayerHoleCards {
+            player_root: world.player_root("player-2"),
+            cards: vec![
+                Card { rank: 2, suit: 0 }, // 2c
+                Card { rank: 3, suit: 0 }, // 3c
+            ],
+        },
+    ];
+
+    // Create remaining deck
+    let remaining_deck: Vec<Card> = (0..40)
+        .map(|i| Card {
+            suit: (i % 4) as i32,
+            rank: (2 + i / 4) as i32,
+        })
+        .collect();
+
+    let cards_dealt = CardsDealt {
+        table_root: world.table_root(),
+        hand_number: 1,
+        game_variant: GameVariant::TexasHoldem as i32,
+        player_cards,
+        dealer_position: 0,
+        players: world.players.clone(),
+        dealt_at: None,
+        remaining_deck,
+    };
+    world.events.push(pack_event(&cards_dealt, "examples.CardsDealt"));
+    world.hand_number = 1;
+
+    // Add blinds
+    world.add_blinds(15, 10);
+    world.pot_total = 15;
+    world.current_bet = 10;
+    world.min_raise = 10;
+
+    // Add betting round complete for preflop
+    let betting_complete = BettingRoundComplete {
+        completed_phase: BettingPhase::Preflop as i32,
+        pot_total: world.pot_total,
+        stacks: vec![],
+        completed_at: None,
+    };
+    world.events.push(pack_event(&betting_complete, "examples.BettingRoundComplete"));
+
+    // Deal community cards
+    let community_dealt = CommunityCardsDealt {
+        cards: community_cards.clone(),
+        phase: BettingPhase::River as i32,
+        all_community_cards: community_cards,
+        dealt_at: None,
+    };
+    world.events.push(pack_event(&community_dealt, "examples.CommunityCardsDealt"));
+
+    // Add showdown started
+    let showdown_started = ShowdownStarted {
+        players_to_show: vec![],
+        started_at: None,
+    };
+    world.events.push(pack_event(&showdown_started, "examples.ShowdownStarted"));
+}
+
 // =============================================================================
 // When steps
 // =============================================================================
@@ -1228,6 +1323,45 @@ fn then_active_player_count(world: &mut HandWorld, expected: usize) {
     let event_book = world.event_book();
     let state = rebuild_state(&event_book);
     assert_eq!(state.active_player_count(), expected);
+}
+
+#[then(expr = "the revealed ranking is {string}")]
+fn then_revealed_ranking(world: &mut HandWorld, expected: String) {
+    let expected_type = match expected.as_str() {
+        "ROYAL_FLUSH" => HandRankType::RoyalFlush,
+        "STRAIGHT_FLUSH" => HandRankType::StraightFlush,
+        "FOUR_OF_A_KIND" => HandRankType::FourOfAKind,
+        "FULL_HOUSE" => HandRankType::FullHouse,
+        "FLUSH" => HandRankType::Flush,
+        "STRAIGHT" => HandRankType::Straight,
+        "THREE_OF_A_KIND" => HandRankType::ThreeOfAKind,
+        "TWO_PAIR" => HandRankType::TwoPair,
+        "PAIR" => HandRankType::Pair,
+        "HIGH_CARD" => HandRankType::HighCard,
+        _ => panic!("Unknown ranking: {}", expected),
+    };
+
+    let result = world.result.as_ref().expect("No result from command");
+    let event_book = result.as_ref().expect("Command failed");
+    let event_any = event_book
+        .pages
+        .first()
+        .expect("No event page")
+        .event
+        .as_ref()
+        .expect("No event");
+
+    let revealed: CardsRevealed = event_any.unpack().expect("Failed to unpack CardsRevealed");
+    let ranking = revealed.ranking.expect("No ranking in CardsRevealed");
+
+    assert_eq!(
+        HandRankType::try_from(ranking.rank_type).unwrap_or(HandRankType::HighCard),
+        expected_type,
+        "Expected ranking {:?} but got {:?} (score: {})",
+        expected_type,
+        HandRankType::try_from(ranking.rank_type),
+        ranking.score
+    );
 }
 
 #[tokio::main]

@@ -348,6 +348,29 @@ pub fn event_book_from(command_book: &CommandBook, pages: Vec<EventPage>) -> Eve
     }
 }
 
+/// Helper to create an EventBook with a single event.
+///
+/// This is the common pattern for command handlers returning a single event.
+pub fn new_event_book(command_book: &CommandBook, seq: u32, event: Any) -> EventBook {
+    event_book_from(command_book, vec![event_page(seq, event)])
+}
+
+/// Helper to create an EventBook with multiple events.
+///
+/// Useful for handlers that emit multiple events (e.g., AwardPot + HandComplete).
+pub fn new_event_book_multi(
+    command_book: &CommandBook,
+    start_seq: u32,
+    events: Vec<Any>,
+) -> EventBook {
+    let pages = events
+        .into_iter()
+        .enumerate()
+        .map(|(i, event)| event_page(start_seq + i as u32, event))
+        .collect();
+    event_book_from(command_book, pages)
+}
+
 /// Pack a protobuf message into an Any with the given type URL.
 pub fn pack_event<M: prost::Message>(msg: &M, type_name: &str) -> Any {
     Any {

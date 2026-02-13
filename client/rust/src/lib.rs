@@ -86,10 +86,10 @@ pub use proto_ext::{
 
 // Re-export router types
 pub use router::{
-    event_book_from, event_page, pack_event, CommandHandler, CommandRejectedError, CommandResult,
-    CommandRouter, EventHandler, EventRouter, PrepareHandler, ProcessManagerHandler,
-    ProcessManagerPrepareHandler, ProcessManagerResponse, ProcessManagerRouter,
-    ProcessManagerStateRebuilder, StateRebuilder, UnpackAny,
+    event_book_from, event_page, new_event_book, new_event_book_multi, pack_event, CommandHandler,
+    CommandRejectedError, CommandResult, CommandRouter, EventHandler, EventRouter, PrepareHandler,
+    ProcessManagerHandler, ProcessManagerPrepareHandler, ProcessManagerResponse,
+    ProcessManagerRouter, ProcessManagerStateRebuilder, StateRebuilder, UnpackAny,
 };
 
 // Re-export handler types

@@ -39,7 +39,7 @@ def make_timestamp():
 def make_event_page(event_msg, num: int = 0) -> types.EventPage:
     """Create EventPage with packed event."""
     event_any = ProtoAny()
-    event_any.Pack(event_msg, type_url_prefix="type.poker/")
+    event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
         num=num,
         event=event_any,
@@ -61,7 +61,7 @@ def _make_event_book(pages):
 def _make_command_book(command_msg):
     """Create a CommandBook with a packed command."""
     command_any = ProtoAny()
-    command_any.Pack(command_msg, type_url_prefix="type.poker/")
+    command_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
     return types.CommandBook(
         cover=types.Cover(
             root=types.UUID(value=b"player-123"),

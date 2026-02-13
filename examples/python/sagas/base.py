@@ -138,7 +138,7 @@ class SagaRouter:
 
     def _extract_event_type(self, type_url: str) -> str:
         """Extract event type name from type_url."""
-        # Format: "type.poker/examples.EventName"
+        # Format: "type.googleapis.com/examples.EventName"
         if "." in type_url:
             return type_url.split(".")[-1]
         return type_url

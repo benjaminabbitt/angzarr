@@ -16,7 +16,7 @@ standalone:
   aggregates:
     - domain: player
       port: 50201
-      command: ["go", "run", "./agg-player"]
+      command: ["go", "run", "./player/agg"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
         SERVICE_NAME: business
@@ -28,7 +28,7 @@ standalone:
 
     - domain: table
       port: 50202
-      command: ["go", "run", "./agg-table"]
+      command: ["go", "run", "./table/agg"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
         SERVICE_NAME: business
@@ -40,7 +40,7 @@ standalone:
 
     - domain: hand
       port: 50203
-      command: ["go", "run", "./agg-hand"]
+      command: ["go", "run", "./hand/agg"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
         SERVICE_NAME: business
@@ -55,7 +55,7 @@ standalone:
       port: 50211
       source_domain: table
       target_domain: hand
-      command: ["go", "run", "./saga-table-hand"]
+      command: ["go", "run", "./table/saga-hand"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
 
@@ -63,7 +63,7 @@ standalone:
       port: 50212
       source_domain: hand
       target_domain: table
-      command: ["go", "run", "./saga-hand-table"]
+      command: ["go", "run", "./hand/saga-table"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
 
@@ -71,7 +71,7 @@ standalone:
       port: 50213
       source_domain: table
       target_domain: player
-      command: ["go", "run", "./saga-table-player"]
+      command: ["go", "run", "./table/saga-player"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
 
@@ -79,7 +79,7 @@ standalone:
       port: 50214
       source_domain: hand
       target_domain: player
-      command: ["go", "run", "./saga-hand-player"]
+      command: ["go", "run", "./hand/saga-player"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
 

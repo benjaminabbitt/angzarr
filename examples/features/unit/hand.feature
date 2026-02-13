@@ -264,7 +264,7 @@ Feature: Hand aggregate logic
     Then a HandComplete event is emitted
     And the hand status is "complete"
 
-  # --- Hand evaluation scenarios ---
+  # --- Hand evaluation scenarios (test evaluator logic) ---
 
   Scenario: Royal flush beats straight flush
     Given a showdown with player hands:
@@ -295,6 +295,74 @@ Feature: Hand aggregate logic
     Then player "player-1" has ranking "HIGH_CARD"
     And player "player-2" has ranking "PAIR"
     And player "player-2" wins
+
+  # --- Handler hand evaluation scenarios (test through RevealCards handler) ---
+
+  Scenario: Handler detects straight
+    Given a hand at showdown with player "player-1" holding "Th 9c" and community "8d 7s 6h 2c 3d"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "STRAIGHT"
+
+  Scenario: Handler detects wheel straight (A-2-3-4-5)
+    Given a hand at showdown with player "player-1" holding "Ah 2c" and community "3d 4s 5h Kc Qd"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "STRAIGHT"
+
+  Scenario: Handler detects straight flush
+    Given a hand at showdown with player "player-1" holding "9h 8h" and community "7h 6h 5h 2c 3d"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "STRAIGHT_FLUSH"
+
+  Scenario: Handler detects royal flush
+    Given a hand at showdown with player "player-1" holding "As Ks" and community "Qs Js Ts 2c 3d"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "ROYAL_FLUSH"
+
+  Scenario: Handler detects four of a kind
+    Given a hand at showdown with player "player-1" holding "Kh Kd" and community "Ks Kc 2h 3d 4s"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "FOUR_OF_A_KIND"
+
+  Scenario: Handler detects full house
+    Given a hand at showdown with player "player-1" holding "Ah Ad" and community "Ac 2d 2h 4s 6c"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "FULL_HOUSE"
+
+  Scenario: Handler detects flush
+    Given a hand at showdown with player "player-1" holding "Ah 7h" and community "2h 4h 6h Kc Qd"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "FLUSH"
+
+  Scenario: Handler detects three of a kind
+    Given a hand at showdown with player "player-1" holding "Jh Jd" and community "Js 2c 4d 6h 8s"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "THREE_OF_A_KIND"
+
+  Scenario: Handler detects two pair
+    Given a hand at showdown with player "player-1" holding "Th Td" and community "5s 5c 2h 3d Ks"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "TWO_PAIR"
+
+  Scenario: Handler detects pair
+    Given a hand at showdown with player "player-1" holding "Ah Ac" and community "Kd Js 9h 4c 2d"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "PAIR"
+
+  Scenario: Handler detects high card
+    Given a hand at showdown with player "player-1" holding "Ah Qc" and community "Kd Js 9h 4c 2d"
+    When I handle a RevealCards command for player "player-1" with muck false
+    Then the result is a CardsRevealed event
+    And the revealed ranking is "HIGH_CARD"
 
   # --- State reconstruction scenarios ---
 

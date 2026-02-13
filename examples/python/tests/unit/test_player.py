@@ -10,8 +10,8 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 # Add paths
 root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root))
-sys.path.insert(0, str(root / "agg-player"))
-sys.path.insert(0, str(root / "agg-player" / "handlers"))
+sys.path.insert(0, str(root / "player" / "agg"))
+sys.path.insert(0, str(root / "player" / "agg" / "handlers"))
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
@@ -52,7 +52,7 @@ def _event_book(ctx: ScenarioContext) -> types.EventBook:
 def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
     """Execute a command handler."""
     cmd_any = ProtoAny()
-    cmd_any.Pack(command_msg, type_url_prefix="type.poker/")
+    cmd_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
 
     event_book = _event_book(ctx)
     state = rebuild_state(event_book)

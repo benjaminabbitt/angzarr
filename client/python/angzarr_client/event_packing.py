@@ -4,6 +4,7 @@ Wraps protobuf events into EventBook structures with cover, sequence, and timest
 """
 
 from datetime import datetime, timezone
+from typing import Sequence
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf.message import Message
@@ -14,6 +15,63 @@ from .proto.angzarr import types_pb2 as angzarr
 
 def _now_timestamp() -> Timestamp:
     return Timestamp(seconds=int(datetime.now(timezone.utc).timestamp()))
+
+
+def new_event_book(
+    command_book: angzarr.CommandBook,
+    seq: int,
+    event: Any,
+) -> angzarr.EventBook:
+    """Create an EventBook with a single pre-packed event.
+
+    Args:
+        command_book: The command book (cover is extracted from it).
+        seq: The sequence number for this event.
+        event: The pre-packed Any event.
+
+    Returns:
+        An EventBook containing one page with the event.
+    """
+    return angzarr.EventBook(
+        cover=command_book.cover,
+        pages=[
+            angzarr.EventPage(
+                num=seq,
+                event=event,
+                created_at=_now_timestamp(),
+            ),
+        ],
+    )
+
+
+def new_event_book_multi(
+    command_book: angzarr.CommandBook,
+    start_seq: int,
+    events: Sequence[Any],
+) -> angzarr.EventBook:
+    """Create an EventBook with multiple pre-packed events.
+
+    Args:
+        command_book: The command book (cover is extracted from it).
+        start_seq: The starting sequence number.
+        events: List of pre-packed Any events.
+
+    Returns:
+        An EventBook containing one page per event with sequential numbering.
+    """
+    now = _now_timestamp()
+    pages = [
+        angzarr.EventPage(
+            num=start_seq + i,
+            event=event,
+            created_at=now,
+        )
+        for i, event in enumerate(events)
+    ]
+    return angzarr.EventBook(
+        cover=command_book.cover,
+        pages=pages,
+    )
 
 
 def pack_event(

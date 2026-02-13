@@ -50,7 +50,7 @@ def make_timestamp():
 def make_event_page(event_msg, num: int = 0) -> types.EventPage:
     """Create EventPage with packed event."""
     event_any = ProtoAny()
-    event_any.Pack(event_msg, type_url_prefix="type.poker/")
+    event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
         num=num,
         event=event_any,
@@ -72,7 +72,7 @@ def _make_event_book(pages):
 def _make_command_book(command_msg):
     """Create a CommandBook with a packed command."""
     command_any = ProtoAny()
-    command_any.Pack(command_msg, type_url_prefix="type.poker/")
+    command_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
     return types.CommandBook(
         cover=types.Cover(
             root=types.UUID(value=b"hand-123"),
@@ -478,6 +478,80 @@ def step_given_showdown_with_hands(context):
         context.player_hands[player_id] = [_parse_card(c) for c in hole_str]
 
 
+@given(r'a hand at showdown with player "(?P<player_id>[^"]+)" holding "(?P<hole_str>[^"]+)" and community "(?P<community_str>[^"]+)"')
+def step_given_hand_at_showdown_with_cards(context, player_id, hole_str, community_str):
+    """Set up a hand at showdown with specific hole and community cards."""
+    if not hasattr(context, "events"):
+        context.events = []
+
+    hole_cards = [_parse_card(c) for c in hole_str.split()]
+    community_cards = [_parse_card(c) for c in community_str.split()]
+
+    # Create CardsDealt event with specific hole cards
+    player_cards = [
+        hand.PlayerHoleCards(
+            player_root=player_id.encode(),
+            cards=[poker_types.Card(rank=r, suit=s) for s, r in hole_cards],
+        ),
+        hand.PlayerHoleCards(
+            player_root=b"player-2",
+            cards=[poker_types.Card(rank=poker_types.TWO, suit=poker_types.CLUBS),
+                   poker_types.Card(rank=poker_types.THREE, suit=poker_types.CLUBS)],
+        ),
+    ]
+
+    cards_dealt = hand.CardsDealt(
+        table_root=b"table-1",
+        hand_number=1,
+        game_variant=poker_types.TEXAS_HOLDEM,
+        player_cards=player_cards,
+        dealer_position=0,
+        players=[
+            hand.PlayerInHand(player_root=player_id.encode(), position=0, stack=500),
+            hand.PlayerInHand(player_root=b"player-2", position=1, stack=500),
+        ],
+    )
+    context.events.append(make_event_page(cards_dealt, len(context.events)))
+
+    # Add blinds
+    sb = hand.BlindPosted(
+        player_root=player_id.encode(),
+        blind_type="small",
+        amount=5,
+        player_stack=495,
+        pot_total=5,
+    )
+    context.events.append(make_event_page(sb, len(context.events)))
+
+    bb = hand.BlindPosted(
+        player_root=b"player-2",
+        blind_type="big",
+        amount=10,
+        player_stack=490,
+        pot_total=15,
+    )
+    context.events.append(make_event_page(bb, len(context.events)))
+
+    # Add betting round complete
+    betting_complete = hand.BettingRoundComplete(
+        completed_phase=poker_types.PREFLOP,
+        pot_total=15,
+    )
+    context.events.append(make_event_page(betting_complete, len(context.events)))
+
+    # Deal community cards
+    community_dealt = hand.CommunityCardsDealt(
+        cards=[poker_types.Card(rank=r, suit=s) for s, r in community_cards],
+        phase=poker_types.RIVER,
+        all_community_cards=[poker_types.Card(rank=r, suit=s) for s, r in community_cards],
+    )
+    context.events.append(make_event_page(community_dealt, len(context.events)))
+
+    # Add showdown started
+    showdown_started = hand.ShowdownStarted()
+    context.events.append(make_event_page(showdown_started, len(context.events)))
+
+
 # --- When steps ---
 
 
@@ -857,6 +931,36 @@ def step_then_reveal_event_has_ranking(context):
     event = hand.CardsRevealed()
     context.result_event_any.Unpack(event)
     assert event.ranking is not None, "Expected hand ranking"
+
+
+@then(r'the revealed ranking is "(?P<expected_ranking>[^"]+)"')
+def step_then_revealed_ranking_is(context, expected_ranking):
+    """Verify the ranking in the CardsRevealed event from the handler."""
+    ranking_map = {
+        "ROYAL_FLUSH": poker_types.ROYAL_FLUSH,
+        "STRAIGHT_FLUSH": poker_types.STRAIGHT_FLUSH,
+        "FOUR_OF_A_KIND": poker_types.FOUR_OF_A_KIND,
+        "FULL_HOUSE": poker_types.FULL_HOUSE,
+        "FLUSH": poker_types.FLUSH,
+        "STRAIGHT": poker_types.STRAIGHT,
+        "THREE_OF_A_KIND": poker_types.THREE_OF_A_KIND,
+        "TWO_PAIR": poker_types.TWO_PAIR,
+        "PAIR": poker_types.PAIR,
+        "HIGH_CARD": poker_types.HIGH_CARD,
+    }
+    expected_type = ranking_map.get(expected_ranking, poker_types.HIGH_CARD)
+
+    event = hand.CardsRevealed()
+    context.result_event_any.Unpack(event)
+    assert event.ranking is not None, "No ranking in CardsRevealed event"
+
+    actual_type = event.ranking.rank_type
+    actual_name = poker_types.HandRankType.Name(actual_type)
+
+    assert actual_type == expected_type, (
+        f"Expected ranking '{expected_ranking}' but got '{actual_name}' "
+        f"(score: {event.ranking.score})"
+    )
 
 
 @then(r'the award event has winner "(?P<winner>[^"]+)" with amount (?P<amount>\d+)')

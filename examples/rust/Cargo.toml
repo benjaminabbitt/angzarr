@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "agg-player",
-    "agg-table",
-    "agg-hand",
-    "saga-table-hand",
-    "saga-hand-table",
-    "saga-hand-player",
-    "saga-table-player",
+    "player/agg",
+    "table/agg",
+    "table/saga-hand",
+    "table/saga-player",
+    "hand/agg",
+    "hand/saga-table",
+    "hand/saga-player",
     "prj-output",
     "pmg-hand-flow",
     "tests",

@@ -72,7 +72,7 @@ class TableSyncSaga(Saga):
             cmd.players.extend(players)
 
             cmd_any = Any()
-            cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+            cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
             # Get sequence from destination state
             seq = context.next_sequence_for("hand", event.hand_root)
@@ -123,7 +123,7 @@ class TableSyncSaga(Saga):
             cmd.results.extend(results)
 
             cmd_any = Any()
-            cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+            cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
             # Get sequence from destination state
             seq = context.next_sequence_for("table", event.table_root)

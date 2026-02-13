@@ -34,19 +34,19 @@ COPY client/rust/build.rs ./client/rust/build.rs
 
 # Copy examples workspace manifests
 COPY examples/rust/Cargo.toml examples/rust/Cargo.lock ./examples/rust/
-COPY examples/rust/agg-player/Cargo.toml ./examples/rust/agg-player/Cargo.toml
-COPY examples/rust/agg-table/Cargo.toml ./examples/rust/agg-table/Cargo.toml
-COPY examples/rust/agg-hand/Cargo.toml ./examples/rust/agg-hand/Cargo.toml
+COPY examples/rust/player/agg/Cargo.toml ./examples/rust/player/agg/Cargo.toml
+COPY examples/rust/table/agg/Cargo.toml ./examples/rust/table/agg/Cargo.toml
+COPY examples/rust/hand/agg/Cargo.toml ./examples/rust/hand/agg/Cargo.toml
 
 # Create minimal stubs
 RUN mkdir -p client/rust/src \
-    examples/rust/agg-player/src \
-    examples/rust/agg-table/src \
-    examples/rust/agg-hand/src && \
+    examples/rust/player/agg/src \
+    examples/rust/table/agg/src \
+    examples/rust/hand/agg/src && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    echo "fn main() {}" > examples/rust/agg-player/src/main.rs && \
-    echo "fn main() {}" > examples/rust/agg-table/src/main.rs && \
-    echo "fn main() {}" > examples/rust/agg-hand/src/main.rs
+    echo "fn main() {}" > examples/rust/player/agg/src/main.rs && \
+    echo "fn main() {}" > examples/rust/table/agg/src/main.rs && \
+    echo "fn main() {}" > examples/rust/hand/agg/src/main.rs
 
 # Build deps only with persistent cache
 WORKDIR /app/examples/rust
@@ -63,9 +63,9 @@ WORKDIR /app
 
 # Copy real source
 COPY client/rust/src ./client/rust/src
-COPY examples/rust/agg-player/src ./examples/rust/agg-player/src
-COPY examples/rust/agg-table/src ./examples/rust/agg-table/src
-COPY examples/rust/agg-hand/src ./examples/rust/agg-hand/src
+COPY examples/rust/player/agg/src ./examples/rust/player/agg/src
+COPY examples/rust/table/agg/src ./examples/rust/table/agg/src
+COPY examples/rust/hand/agg/src ./examples/rust/hand/agg/src
 
 # Build all with persistent cache
 WORKDIR /app/examples/rust
@@ -108,19 +108,19 @@ COPY client/rust/build.rs ./client/rust/build.rs
 
 # Copy examples workspace manifests
 COPY examples/rust/Cargo.toml examples/rust/Cargo.lock ./examples/rust/
-COPY examples/rust/agg-player/Cargo.toml ./examples/rust/agg-player/Cargo.toml
-COPY examples/rust/agg-table/Cargo.toml ./examples/rust/agg-table/Cargo.toml
-COPY examples/rust/agg-hand/Cargo.toml ./examples/rust/agg-hand/Cargo.toml
+COPY examples/rust/player/agg/Cargo.toml ./examples/rust/player/agg/Cargo.toml
+COPY examples/rust/table/agg/Cargo.toml ./examples/rust/table/agg/Cargo.toml
+COPY examples/rust/hand/agg/Cargo.toml ./examples/rust/hand/agg/Cargo.toml
 
 # Create minimal stubs
 RUN mkdir -p client/rust/src \
-    examples/rust/agg-player/src \
-    examples/rust/agg-table/src \
-    examples/rust/agg-hand/src && \
+    examples/rust/player/agg/src \
+    examples/rust/table/agg/src \
+    examples/rust/hand/agg/src && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    echo "fn main() {}" > examples/rust/agg-player/src/main.rs && \
-    echo "fn main() {}" > examples/rust/agg-table/src/main.rs && \
-    echo "fn main() {}" > examples/rust/agg-hand/src/main.rs
+    echo "fn main() {}" > examples/rust/player/agg/src/main.rs && \
+    echo "fn main() {}" > examples/rust/table/agg/src/main.rs && \
+    echo "fn main() {}" > examples/rust/hand/agg/src/main.rs
 
 # Build deps with persistent cache
 WORKDIR /app/examples/rust
@@ -143,9 +143,9 @@ ARG TARGETARCH
 WORKDIR /app
 
 COPY client/rust/src ./client/rust/src
-COPY examples/rust/agg-player/src ./examples/rust/agg-player/src
-COPY examples/rust/agg-table/src ./examples/rust/agg-table/src
-COPY examples/rust/agg-hand/src ./examples/rust/agg-hand/src
+COPY examples/rust/player/agg/src ./examples/rust/player/agg/src
+COPY examples/rust/table/agg/src ./examples/rust/table/agg/src
+COPY examples/rust/hand/agg/src ./examples/rust/hand/agg/src
 
 WORKDIR /app/examples/rust
 RUN --mount=type=cache,id=rust-musl-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \

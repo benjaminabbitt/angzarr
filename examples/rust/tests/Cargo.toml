@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 angzarr-client = { path = "../../../client/rust" }
-agg-player = { path = "../agg-player" }
-agg-table = { path = "../agg-table" }
-agg-hand = { path = "../agg-hand" }
+agg-player = { path = "../player/agg" }
+agg-table = { path = "../table/agg" }
+agg-hand = { path = "../hand/agg" }
 cucumber = "0.21"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 futures = "0.3"

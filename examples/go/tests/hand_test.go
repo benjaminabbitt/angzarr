@@ -22,7 +22,7 @@ import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"github.com/benjaminabbitt/angzarr/examples/go/agg-hand/handlers"
+	"github.com/benjaminabbitt/angzarr/examples/go/hand/agg/handlers"
 )
 
 // handTestContext holds the state for a single hand scenario.
@@ -1809,6 +1809,148 @@ func playerWins(ctx context.Context, playerName string) error {
 	return nil
 }
 
+// --- Handler Evaluation Step Definitions ---
+
+// aHandAtShowdownWithPlayerHoldingAndCommunity sets up a hand ready for reveal
+// with specific hole and community cards to test the handler's evaluateHand function.
+func aHandAtShowdownWithPlayerHoldingAndCommunity(ctx context.Context, playerName, holeCardsStr, communityCardsStr string) error {
+	tc := ctx.Value("handTestContext").(*handTestContext)
+
+	holeCards := parseCards(holeCardsStr)
+	communityCards := parseCards(communityCardsStr)
+
+	// Create a CardsDealt event with the specific hole cards
+	cardsDealt := &examples.CardsDealt{
+		TableRoot:      tc.root,
+		HandNumber:     1,
+		GameVariant:    examples.GameVariant_TEXAS_HOLDEM,
+		DealerPosition: 0,
+		Players: []*examples.PlayerInHand{
+			{PlayerRoot: uuidFor(playerName), Position: 0, Stack: 500},
+			{PlayerRoot: uuidFor("player-2"), Position: 1, Stack: 500},
+		},
+		PlayerCards: []*examples.PlayerHoleCards{
+			{PlayerRoot: uuidFor(playerName), Cards: holeCards},
+			{PlayerRoot: uuidFor("player-2"), Cards: []*examples.Card{
+				{Rank: examples.Rank_TWO, Suit: examples.Suit_CLUBS},
+				{Rank: examples.Rank_THREE, Suit: examples.Suit_CLUBS},
+			}},
+		},
+		RemainingDeck: createDeck()[:40], // Use some deck
+	}
+	cardsDealtAny, _ := anypb.New(cardsDealt)
+	tc.events = append(tc.events, &pb.EventPage{
+		Sequence:  &pb.EventPage_Num{Num: tc.nextSequence},
+		Event:     cardsDealtAny,
+		CreatedAt: timestamppb.New(time.Now()),
+	})
+	tc.nextSequence++
+
+	// Add blinds posted events
+	smallBlind := &examples.BlindPosted{
+		PlayerRoot:  uuidFor(playerName),
+		BlindType:   "small",
+		Amount:      5,
+		PlayerStack: 495,
+		PotTotal:    5,
+	}
+	sbAny, _ := anypb.New(smallBlind)
+	tc.events = append(tc.events, &pb.EventPage{
+		Sequence:  &pb.EventPage_Num{Num: tc.nextSequence},
+		Event:     sbAny,
+		CreatedAt: timestamppb.New(time.Now()),
+	})
+	tc.nextSequence++
+
+	bigBlind := &examples.BlindPosted{
+		PlayerRoot:  uuidFor("player-2"),
+		BlindType:   "big",
+		Amount:      10,
+		PlayerStack: 490,
+		PotTotal:    15,
+	}
+	bbAny, _ := anypb.New(bigBlind)
+	tc.events = append(tc.events, &pb.EventPage{
+		Sequence:  &pb.EventPage_Num{Num: tc.nextSequence},
+		Event:     bbAny,
+		CreatedAt: timestamppb.New(time.Now()),
+	})
+	tc.nextSequence++
+
+	// Add betting round complete
+	bettingComplete := &examples.BettingRoundComplete{
+		CompletedPhase: examples.BettingPhase_PREFLOP,
+		PotTotal:       15,
+	}
+	bcAny, _ := anypb.New(bettingComplete)
+	tc.events = append(tc.events, &pb.EventPage{
+		Sequence:  &pb.EventPage_Num{Num: tc.nextSequence},
+		Event:     bcAny,
+		CreatedAt: timestamppb.New(time.Now()),
+	})
+	tc.nextSequence++
+
+	// Deal community cards (flop, turn, river)
+	communityDealt := &examples.CommunityCardsDealt{
+		Cards:             communityCards,
+		Phase:             examples.BettingPhase_RIVER,
+		AllCommunityCards: communityCards,
+	}
+	cdAny, _ := anypb.New(communityDealt)
+	tc.events = append(tc.events, &pb.EventPage{
+		Sequence:  &pb.EventPage_Num{Num: tc.nextSequence},
+		Event:     cdAny,
+		CreatedAt: timestamppb.New(time.Now()),
+	})
+	tc.nextSequence++
+
+	// Add showdown started
+	showdownStarted := &examples.ShowdownStarted{}
+	ssAny, _ := anypb.New(showdownStarted)
+	tc.events = append(tc.events, &pb.EventPage{
+		Sequence:  &pb.EventPage_Num{Num: tc.nextSequence},
+		Event:     ssAny,
+		CreatedAt: timestamppb.New(time.Now()),
+	})
+	tc.nextSequence++
+
+	return nil
+}
+
+// theRevealedRankingIs checks the ranking returned by the RevealCards handler.
+func theRevealedRankingIs(ctx context.Context, expectedRanking string) error {
+	tc := ctx.Value("handTestContext").(*handTestContext)
+
+	if tc.lastEventBook == nil {
+		return errors.New("no event book from last command")
+	}
+	if len(tc.lastEventBook.Pages) == 0 {
+		return errors.New("no events in event book")
+	}
+
+	eventAny := tc.lastEventBook.Pages[0].Event
+	if eventAny == nil {
+		return errors.New("no event in page")
+	}
+
+	var revealed examples.CardsRevealed
+	if err := eventAny.UnmarshalTo(&revealed); err != nil {
+		return fmt.Errorf("failed to unmarshal CardsRevealed: %w", err)
+	}
+
+	if revealed.Ranking == nil {
+		return errors.New("no ranking in CardsRevealed event")
+	}
+
+	actualRanking := revealed.Ranking.RankType.String()
+	if actualRanking != expectedRanking {
+		return fmt.Errorf("expected ranking '%s' but got '%s' (score: %d)",
+			expectedRanking, actualRanking, revealed.Ranking.Score)
+	}
+
+	return nil
+}
+
 // InitializeHandScenario sets up the godog scenario context for hand tests.
 func InitializeHandScenario(ctx *godog.ScenarioContext) {
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
@@ -1835,6 +1977,7 @@ func InitializeHandScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a CardsRevealed event for player "([^"]*)" with ranking (\w+)$`, aCardsRevealedEventForPlayerWithRanking)
 	ctx.Step(`^a CardsMucked event for player "([^"]*)"$`, aCardsMuckedEventForPlayer)
 	ctx.Step(`^a showdown with player hands:$`, aShowdownWithPlayerHands)
+	ctx.Step(`^a hand at showdown with player "([^"]*)" holding "([^"]*)" and community "([^"]*)"$`, aHandAtShowdownWithPlayerHoldingAndCommunity)
 
 	// When steps
 	ctx.Step(`^I handle a DealCards command for (\w+) with players:$`, iHandleADealCardsCommandForVariantWithPlayers)
@@ -1887,6 +2030,7 @@ func InitializeHandScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^player "([^"]*)" wins$`, playerWins)
 	ctx.Step(`^the reveal event has cards for player "([^"]*)"$`, theRevealEventHasCardsForPlayer)
 	ctx.Step(`^the reveal event has a hand ranking$`, theRevealEventHasAHandRanking)
+	ctx.Step(`^the revealed ranking is "([^"]*)"$`, theRevealedRankingIs)
 	ctx.Step(`^the award event has winner "([^"]*)" with amount (\d+)$`, theAwardEventHasWinnerWithAmount)
 	ctx.Step(`^a HandComplete event is emitted$`, aHandCompleteEventIsEmitted)
 	ctx.Step(`^the hand status is "([^"]*)"$`, theHandStatusIs)

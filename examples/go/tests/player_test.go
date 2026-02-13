@@ -21,7 +21,7 @@ import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"github.com/benjaminabbitt/angzarr/examples/go/agg-player/handlers"
+	"github.com/benjaminabbitt/angzarr/examples/go/player/agg/handlers"
 )
 
 // testContext holds the state for a single scenario.

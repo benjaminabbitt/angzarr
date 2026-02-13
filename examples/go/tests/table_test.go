@@ -23,7 +23,7 @@ import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"github.com/benjaminabbitt/angzarr/examples/go/agg-table/handlers"
+	"github.com/benjaminabbitt/angzarr/examples/go/table/agg/handlers"
 )
 
 // tableTestContext holds the state for a single table scenario.

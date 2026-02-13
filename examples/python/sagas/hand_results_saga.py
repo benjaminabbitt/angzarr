@@ -64,7 +64,7 @@ class HandResultsSaga(Saga):
                 )
 
                 cmd_any = Any()
-                cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+                cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
                 # Get sequence from destination state
                 seq = context.next_sequence_for("player", player_root)
@@ -109,7 +109,7 @@ class HandResultsSaga(Saga):
                 )
 
                 cmd_any = Any()
-                cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+                cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
                 # Get sequence from destination state
                 seq = context.next_sequence_for("player", winner.player_root)

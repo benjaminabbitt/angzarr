@@ -94,7 +94,7 @@ from .identity import (
     fulfillment_root,
     to_proto_bytes,
 )
-from .event_packing import pack_event, pack_events
+from .event_packing import pack_event, pack_events, new_event_book, new_event_book_multi
 from .state_builder import StateBuilder, StateApplier, SnapshotLoader, StateFactory
 
 __all__ = [
@@ -190,6 +190,8 @@ __all__ = [
     # Event packing
     "pack_event",
     "pack_events",
+    "new_event_book",
+    "new_event_book_multi",
     # State builder
     "StateBuilder",
     "StateApplier",

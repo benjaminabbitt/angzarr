@@ -26,7 +26,7 @@ standalone:
     - domain: player
       socket: ./tmp/coordinator-player.sock
       port: 50301
-      command: ["uv", "run", "python", "agg-player/main.py"]
+      command: ["uv", "run", "python", "player/agg/main.py"]
       env:
         UDS_BASE_PATH: ./tmp
         SERVICE_NAME: business
@@ -37,7 +37,7 @@ standalone:
           path: ./data/player.db
     - domain: table
       socket: ./tmp/coordinator-table.sock
-      command: ["uv", "run", "python", "agg-table/main.py"]
+      command: ["uv", "run", "python", "table/agg/main.py"]
       env:
         UDS_BASE_PATH: ./tmp
         SERVICE_NAME: business
@@ -48,7 +48,7 @@ standalone:
           path: ./data/table.db
     - domain: hand
       socket: ./tmp/coordinator-hand.sock
-      command: ["uv", "run", "python", "agg-hand/main.py"]
+      command: ["uv", "run", "python", "hand/agg/main.py"]
       env:
         UDS_BASE_PATH: ./tmp
         SERVICE_NAME: business

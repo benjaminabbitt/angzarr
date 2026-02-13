@@ -55,7 +55,7 @@ def _load_handler_package(agg_path: Path, pkg_name: str) -> dict:
     return modules
 
 
-_agg_path = Path(__file__).parent.parent.parent / "agg-table"
+_agg_path = Path(__file__).parent.parent.parent / "table" / "agg"
 _mods = _load_handler_package(_agg_path, "table_handlers")
 
 TableState = _mods["state"].TableState
@@ -95,7 +95,7 @@ def _event_book(ctx: ScenarioContext) -> types.EventBook:
 def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
     """Execute a command handler."""
     cmd_any = ProtoAny()
-    cmd_any.Pack(command_msg, type_url_prefix="type.poker/")
+    cmd_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
 
     event_book = _event_book(ctx)
     state = rebuild_state(event_book)

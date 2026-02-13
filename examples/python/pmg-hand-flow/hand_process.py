@@ -300,7 +300,7 @@ class HandProcessManager:
         )
 
         cmd_any = Any()
-        cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+        cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
         self._command_sender(
@@ -448,7 +448,7 @@ class HandProcessManager:
         cmd = hand.DealCommunityCards(count=count)
 
         cmd_any = Any()
-        cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+        cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
         self._command_sender(
@@ -489,7 +489,7 @@ class HandProcessManager:
         cmd.awards.extend(awards)
 
         cmd_any = Any()
-        cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+        cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
         self._command_sender(
@@ -532,7 +532,7 @@ class HandProcessManager:
         cmd.awards.extend(awards)
 
         cmd_any = Any()
-        cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+        cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
         self._command_sender(
@@ -606,7 +606,7 @@ class HandProcessManager:
         )
 
         cmd_any = Any()
-        cmd_any.Pack(cmd, type_url_prefix="type.poker/")
+        cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
 
         hand_root = bytes.fromhex(process.hand_id.split("_")[0])
         self._command_sender(

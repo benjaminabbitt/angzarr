@@ -28,7 +28,7 @@ def make_timestamp():
 def make_event_page(event_msg, num: int = 0) -> types.EventPage:
     """Create EventPage with packed event."""
     event_any = ProtoAny()
-    event_any.Pack(event_msg, type_url_prefix="type.poker/")
+    event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
         num=num,
         event=event_any,
