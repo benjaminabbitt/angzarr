@@ -236,6 +236,53 @@ Topology serves a REST API for Grafana Node Graph panel:
   - Once set, angzarr propagates correlation_id through sagas, PMs, and resulting commands
   - PMs require correlation_id—events without one are skipped (guarded at router level) 
 
+## Project Layout
+
+Organize example projects by domain. Each domain gets its own directory containing its aggregate and outbound sagas.
+
+### Directory Structure
+```
+examples/{lang}/
+├── {domain}/
+│   ├── agg/              # Domain aggregate
+│   └── saga-{target}/    # Saga: this domain → target domain
+├── pmg-{name}/           # Process managers (peers to domains)
+├── prj-{name}/           # Projectors (peers to domains)
+└── tests/
+```
+
+### Placement Rules
+
+| Component | Location | Naming |
+|-----------|----------|--------|
+| Aggregate | `{domain}/agg/` | Binary: `agg-{domain}` |
+| Saga | `{source}/saga-{target}/` | Binary: `saga-{source}-{target}` |
+| Process Manager | `pmg-{name}/` | Peer to domains |
+| Projector | `prj-{name}/` | Peer to domains |
+
+### Example: Poker Domain
+```
+examples/rust/
+├── player/
+│   └── agg/                    # Player aggregate
+├── table/
+│   ├── agg/                    # Table aggregate
+│   ├── saga-hand/              # Table events → Hand commands
+│   └── saga-player/            # Table events → Player commands
+├── hand/
+│   ├── agg/                    # Hand aggregate
+│   ├── saga-table/             # Hand events → Table commands
+│   └── saga-player/            # Hand events → Player commands
+├── pmg-hand-flow/              # Cross-domain hand orchestration
+├── prj-output/                 # Multi-domain projector
+└── tests/
+```
+
+### Rationale
+- **Sagas live with source domain**: A saga translates FROM its source domain TO another. Grouping by source keeps related translation logic together.
+- **Process managers are peers**: PMs correlate events across multiple domains—no single domain owns them.
+- **Projectors are peers**: Multi-domain projectors don't belong to any single domain.
+
 ## Crate Organization
 - Each saga is its own crate with focused, single-purpose translation logic
 - Each projector in its own crate with focused, single-purpose output logic
