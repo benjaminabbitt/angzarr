@@ -13,7 +13,7 @@ from angzarr_client.proto.examples import types_pb2 as poker_types
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "pmg-hand-flow"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "hand-flow"))
 
 from hand_process import HandProcess, HandProcessManager, HandPhase, PlayerState
 

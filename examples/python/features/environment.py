@@ -7,7 +7,7 @@ from pathlib import Path
 root = Path(__file__).parent.parent
 sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "prj-output"))
-sys.path.insert(0, str(root / "pmg-hand-flow"))
+sys.path.insert(0, str(root / "hand-flow"))
 
 # Add aggregate paths
 for agg in ["agg-player", "agg-table", "agg-hand"]:

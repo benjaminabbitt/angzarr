@@ -84,11 +84,11 @@ standalone:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
 
   process_managers:
-    - name: pmg-hand-flow
+    - name: hand-flow
       port: 50291
       pm_domain: hand-flow
       input_domains: [table, hand]
-      command: ["go", "run", "./pmg-hand-flow"]
+      command: ["go", "run", "./hand-flow"]
       env:
         UDS_BASE_PATH: /tmp/angzarr-poker-go
 

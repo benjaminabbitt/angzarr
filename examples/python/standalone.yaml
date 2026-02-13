@@ -1,5 +1,5 @@
-# Standalone mode configuration for Poker example
-# Run with: ANGZARR_CONFIG=standalone.yaml ./bin/angzarr-standalone
+# Standalone mode configuration for Python Poker example
+# Run with: ANGZARR_CONFIG=examples/python/standalone.yaml ./target/debug/angzarr-standalone
 #
 # NOTE: Coordinators that need Python client access must expose TCP ports.
 # grpc-python 1.57+ has a cross-language interop issue with tonic (Rust)
@@ -24,8 +24,7 @@ messaging:
 standalone:
   aggregates:
     - domain: player
-      socket: ./tmp/coordinator-player.sock
-      port: 50301
+      port: 50401
       command: ["uv", "run", "python", "player/agg/main.py"]
       env:
         UDS_BASE_PATH: ./tmp
@@ -35,8 +34,9 @@ standalone:
         type: sqlite
         sqlite:
           path: ./data/player.db
+
     - domain: table
-      socket: ./tmp/coordinator-table.sock
+      port: 50402
       command: ["uv", "run", "python", "table/agg/main.py"]
       env:
         UDS_BASE_PATH: ./tmp
@@ -46,8 +46,9 @@ standalone:
         type: sqlite
         sqlite:
           path: ./data/table.db
+
     - domain: hand
-      socket: ./tmp/coordinator-hand.sock
+      port: 50403
       command: ["uv", "run", "python", "hand/agg/main.py"]
       env:
         UDS_BASE_PATH: ./tmp
@@ -58,13 +59,52 @@ standalone:
         sqlite:
           path: ./data/hand.db
 
-  sagas: []
+  sagas:
+    - name: saga-table-hand
+      port: 50411
+      source_domain: table
+      target_domain: hand
+      command: ["uv", "run", "python", "table/saga-hand/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
 
-  process_managers: []
+    - name: saga-hand-table
+      port: 50412
+      source_domain: hand
+      target_domain: table
+      command: ["uv", "run", "python", "hand/saga-table/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+
+    - name: saga-table-player
+      port: 50413
+      source_domain: table
+      target_domain: player
+      command: ["uv", "run", "python", "table/saga-player/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+
+    - name: saga-hand-player
+      port: 50414
+      source_domain: hand
+      target_domain: player
+      command: ["uv", "run", "python", "hand/saga-player/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
+
+  process_managers:
+    - name: hand-flow
+      port: 50491
+      pm_domain: hand-flow
+      input_domains: [table, hand]
+      command: ["uv", "run", "python", "hand-flow/main.py"]
+      env:
+        UDS_BASE_PATH: ./tmp
 
   projectors:
-    - domain: output
-      listen_domain: hand
+    - name: prj-output
+      port: 50490
+      listen_domains: [player, table, hand]
       command: ["uv", "run", "python", "prj-output/main.py"]
       env:
         UDS_BASE_PATH: ./tmp

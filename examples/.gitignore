@@ -1,0 +1,24 @@
+# Data directories (SQLite databases)
+*/data/
+data/
+
+# Build outputs
+rust/target/
+
+# Python artifacts
+python/.venv/
+python/__pycache__/
+python/**/__pycache__/
+python/*.pyc
+python/.pytest_cache/
+
+# Go build cache
+go/bin/
+
+# Log files
+*.log
+hand_log.txt
+
+# Temporary files
+tmp/
+*.tmp

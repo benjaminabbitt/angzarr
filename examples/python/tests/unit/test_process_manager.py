@@ -11,7 +11,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 # Add paths
 root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root))
-sys.path.insert(0, str(root / "pmg-hand-flow"))
+sys.path.insert(0, str(root / "hand-flow"))
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import table_pb2 as table

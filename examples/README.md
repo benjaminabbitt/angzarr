@@ -30,7 +30,7 @@ examples/rust/                  # (same structure for go/, python/)
 │   ├── agg/                    # Hand aggregate (cards, betting, pots)
 │   ├── saga-table/             # Hand events → Table commands
 │   └── saga-player/            # Hand events → Player commands
-├── pmg-hand-flow/              # Cross-domain hand orchestration
+├── hand-flow/                  # Cross-domain hand orchestration (PM)
 ├── prj-output/                 # Event logging projector
 └── tests/
 ```

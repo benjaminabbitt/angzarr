@@ -1,5 +1,5 @@
 [package]
-name = "pmg-hand-flow"
+name = "hand-flow"
 version = "0.1.0"
 edition = "2021"
 

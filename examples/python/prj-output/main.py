@@ -103,7 +103,7 @@ def main():
     try:
         run_projector_server(
             name="output",
-            default_port="9090",
+            default_port="50490",
             handler=handler,
             logger=logger,
         )

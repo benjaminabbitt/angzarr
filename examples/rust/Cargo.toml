@@ -9,7 +9,7 @@ members = [
     "hand/saga-table",
     "hand/saga-player",
     "prj-output",
-    "pmg-hand-flow",
+    "hand-flow",
     "tests",
 ]
 

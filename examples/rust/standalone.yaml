@@ -91,11 +91,11 @@ standalone:
         UDS_BASE_PATH: /tmp/angzarr-poker-rust
 
   process_managers:
-    - name: pmg-hand-flow
+    - name: hand-flow
       port: 50091
       pm_domain: hand-flow
       input_domains: [table, hand]
-      command: ["./target/release/pmg-hand-flow"]
+      command: ["./target/release/hand-flow"]
       env:
         RUST_LOG: info
         UDS_BASE_PATH: /tmp/angzarr-poker-rust
