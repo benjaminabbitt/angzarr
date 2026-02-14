@@ -14,6 +14,9 @@ from angzarr_client.router import (
     EventRouter,
     TargetDesc,
     next_sequence,
+    command_handler,
+    _pack_events,
+    _pack_any,
 )
 
 # ============================================================================
@@ -436,3 +439,250 @@ class TestEventRouterMetadata:
         assert len(desc.inputs) == 1
         assert desc.inputs[0].domain == DOMAIN_ORDER
         assert desc.inputs[0].types == [SUFFIX_ORDER_COMPLETED]
+
+
+# ============================================================================
+# @command_handler decorator tests
+# ============================================================================
+
+
+class FakeCommand:
+    """Fake protobuf command for testing."""
+
+    DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
+
+    def __init__(self, value: str = ""):
+        self.value = value
+
+    def SerializeToString(self, deterministic=None):
+        return self.value.encode()
+
+    def ParseFromString(self, data: bytes):
+        self.value = data.decode()
+
+
+class FakeEvent:
+    """Fake protobuf event for testing."""
+
+    DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeEvent"})()
+
+    def __init__(self, result: str = ""):
+        self.result = result
+
+    def SerializeToString(self, deterministic=None):
+        return self.result.encode()
+
+    def ParseFromString(self, data: bytes):
+        self.result = data.decode()
+
+
+class AnotherCommand:
+    """Another fake command for testing."""
+
+    DESCRIPTOR = type("Descriptor", (), {"full_name": "test.AnotherCommand"})()
+
+    def __init__(self, name: str = ""):
+        self.name = name
+
+    def SerializeToString(self, deterministic=None):
+        return self.name.encode()
+
+    def ParseFromString(self, data: bytes):
+        self.name = data.decode()
+
+
+class TestCommandHandlerDecorator:
+    def test_decorator_validates_missing_param(self):
+        with pytest.raises(TypeError, match="must have cmd parameter"):
+
+            @command_handler(FakeCommand)
+            def bad_handler():
+                pass
+
+    def test_decorator_validates_missing_type_hint(self):
+        with pytest.raises(TypeError, match="missing type hint"):
+
+            @command_handler(FakeCommand)
+            def bad_handler(cmd):
+                pass
+
+    def test_decorator_validates_type_hint_mismatch(self):
+        with pytest.raises(TypeError, match="doesn't match type hint"):
+
+            @command_handler(FakeCommand)
+            def bad_handler(cmd: AnotherCommand):
+                pass
+
+    def test_decorator_preserves_function_name(self):
+        @command_handler(FakeCommand)
+        def handle_create(cmd: FakeCommand, state, seq: int):
+            return FakeEvent()
+
+        assert handle_create.__name__ == "handle_create"
+
+    def test_decorator_stores_command_type(self):
+        @command_handler(FakeCommand)
+        def handle_create(cmd: FakeCommand, state, seq: int):
+            return FakeEvent()
+
+        assert handle_create._command_type == FakeCommand
+
+    def test_decorated_handler_unpacks_command(self):
+        captured = {}
+
+        @command_handler(FakeCommand)
+        def handle_create(cmd: FakeCommand, state, seq: int):
+            captured["cmd"] = cmd
+            captured["state"] = state
+            captured["seq"] = seq
+            return FakeEvent(result="done")
+
+        # Create command_any with FakeCommand packed
+        cmd = FakeCommand(value="test_value")
+        command_any = any_pb2.Any()
+        command_any.Pack(cmd)
+
+        command_book = angzarr.CommandBook()
+        result = handle_create(command_book, command_any, FakeState(), 5)
+
+        assert isinstance(captured["cmd"], FakeCommand)
+        assert captured["cmd"].value == "test_value"
+        assert isinstance(captured["state"], FakeState)
+        assert captured["seq"] == 5
+        assert isinstance(result, angzarr.EventBook)
+
+    def test_decorated_handler_packs_single_event(self):
+        @command_handler(FakeCommand)
+        def handle_create(cmd: FakeCommand, state, seq: int):
+            return FakeEvent(result="created")
+
+        cmd = FakeCommand()
+        command_any = any_pb2.Any()
+        command_any.Pack(cmd)
+
+        result = handle_create(angzarr.CommandBook(), command_any, FakeState(), 0)
+
+        assert isinstance(result, angzarr.EventBook)
+        assert len(result.pages) == 1
+        assert "FakeEvent" in result.pages[0].event.type_url
+
+    def test_decorated_handler_packs_multiple_events(self):
+        @command_handler(FakeCommand)
+        def handle_multi(cmd: FakeCommand, state, seq: int):
+            return (FakeEvent(result="first"), FakeEvent(result="second"))
+
+        cmd = FakeCommand()
+        command_any = any_pb2.Any()
+        command_any.Pack(cmd)
+
+        result = handle_multi(angzarr.CommandBook(), command_any, FakeState(), 0)
+
+        assert isinstance(result, angzarr.EventBook)
+        assert len(result.pages) == 2
+
+    def test_decorated_handler_handles_none_return(self):
+        @command_handler(FakeCommand)
+        def handle_noop(cmd: FakeCommand, state, seq: int):
+            return None
+
+        cmd = FakeCommand()
+        command_any = any_pb2.Any()
+        command_any.Pack(cmd)
+
+        result = handle_noop(angzarr.CommandBook(), command_any, FakeState(), 0)
+
+        assert isinstance(result, angzarr.EventBook)
+        assert len(result.pages) == 0
+
+    def test_integration_with_command_router(self):
+        @command_handler(FakeCommand)
+        def handle_create(cmd: FakeCommand, state, seq: int):
+            return FakeEvent(result=f"created:{cmd.value}")
+
+        router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
+            "FakeCommand", handle_create
+        )
+
+        # Create contextual command
+        cmd = FakeCommand(value="test123")
+        cmd_any = any_pb2.Any()
+        cmd_any.Pack(cmd)
+
+        ctx_cmd = angzarr.ContextualCommand(
+            command=angzarr.CommandBook(
+                pages=[angzarr.CommandPage(command=cmd_any)],
+            ),
+        )
+
+        resp = router.dispatch(ctx_cmd)
+
+        assert resp.WhichOneof("result") == "events"
+        assert len(resp.events.pages) == 1
+
+    def test_integration_with_reflection(self):
+        """Test single-argument .on() that derives suffix from decorator."""
+
+        @command_handler(FakeCommand)
+        def handle_create(cmd: FakeCommand, state, seq: int):
+            return FakeEvent(result=f"reflected:{cmd.value}")
+
+        # Single argument - suffix derived from @command_handler
+        router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(handle_create)
+
+        # Verify the type was registered correctly
+        assert router.types() == ["FakeCommand"]
+
+        # Create contextual command
+        cmd = FakeCommand(value="test456")
+        cmd_any = any_pb2.Any()
+        cmd_any.Pack(cmd)
+
+        ctx_cmd = angzarr.ContextualCommand(
+            command=angzarr.CommandBook(
+                pages=[angzarr.CommandPage(command=cmd_any)],
+            ),
+        )
+
+        resp = router.dispatch(ctx_cmd)
+
+        assert resp.WhichOneof("result") == "events"
+        assert len(resp.events.pages) == 1
+
+    def test_reflection_requires_decorator(self):
+        """Test that single-argument .on() requires @command_handler."""
+
+        def plain_handler(cb, cmd_any, state, seq):
+            return angzarr.EventBook()
+
+        with pytest.raises(TypeError, match="must be decorated with @command_handler"):
+            CommandRouter(DOMAIN_TEST, dummy_rebuild).on(plain_handler)
+
+
+class TestPackEvents:
+    def test_pack_single_event(self):
+        event = FakeEvent(result="test")
+        result = _pack_events(event)
+
+        assert isinstance(result, angzarr.EventBook)
+        assert len(result.pages) == 1
+
+    def test_pack_tuple_of_events(self):
+        events = (FakeEvent(result="a"), FakeEvent(result="b"))
+        result = _pack_events(events)
+
+        assert len(result.pages) == 2
+
+    def test_pack_none(self):
+        result = _pack_events(None)
+
+        assert isinstance(result, angzarr.EventBook)
+        assert len(result.pages) == 0
+
+
+class TestPackAny:
+    def test_pack_any_sets_type_url(self):
+        event = FakeEvent(result="test")
+        result = _pack_any(event)
+
+        assert isinstance(result, any_pb2.Any)
+        assert "FakeEvent" in result.type_url

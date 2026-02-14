@@ -182,37 +182,81 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
     }
 }
 
-/// Execute saga commands with retry on sequence conflicts.
-#[tracing::instrument(name = "saga.retry", skip_all, fields(%saga_name, %correlation_id))]
-async fn execute_with_retry(
-    context: &dyn SagaRetryContext,
-    executor: &dyn CommandExecutor,
-    fetcher: Option<&dyn DestinationFetcher>,
-    initial_commands: Vec<CommandBook>,
-    initial_destinations: Vec<EventBook>,
-    saga_name: &str,
-    correlation_id: &str,
+/// Builder for saga command execution with retry.
+struct SagaRetryBuilder<'a> {
+    context: &'a dyn SagaRetryContext,
+    executor: &'a dyn CommandExecutor,
+    saga_name: &'a str,
+    correlation_id: &'a str,
+    fetcher: Option<&'a dyn DestinationFetcher>,
+    commands: Vec<CommandBook>,
+    destinations: Vec<EventBook>,
     backoff: ExponentialBuilder,
-) {
-    if initial_commands.is_empty() {
-        return;
+}
+
+impl<'a> SagaRetryBuilder<'a> {
+    fn new(
+        context: &'a dyn SagaRetryContext,
+        executor: &'a dyn CommandExecutor,
+        saga_name: &'a str,
+        correlation_id: &'a str,
+    ) -> Self {
+        Self {
+            context,
+            executor,
+            saga_name,
+            correlation_id,
+            fetcher: None,
+            commands: Vec::new(),
+            destinations: Vec::new(),
+            backoff: ExponentialBuilder::default(),
+        }
     }
 
-    let operation = SagaOperation {
-        context,
-        executor,
-        fetcher,
-        correlation_id,
-        commands: initial_commands,
-        failed_domains: HashSet::new(),
-        cached_destinations: initial_destinations
-            .into_iter()
-            .map(|d| (d.cache_key(), d))
-            .collect(),
-    };
+    fn fetcher(mut self, fetcher: Option<&'a dyn DestinationFetcher>) -> Self {
+        self.fetcher = fetcher;
+        self
+    }
 
-    if let Err(e) = run_with_retry(operation, backoff).await {
-        error!(error = %e, "Saga execution failed after multiple retries");
+    fn commands(mut self, commands: Vec<CommandBook>) -> Self {
+        self.commands = commands;
+        self
+    }
+
+    fn destinations(mut self, destinations: Vec<EventBook>) -> Self {
+        self.destinations = destinations;
+        self
+    }
+
+    fn backoff(mut self, backoff: ExponentialBuilder) -> Self {
+        self.backoff = backoff;
+        self
+    }
+
+    /// Execute saga commands with retry on sequence conflicts.
+    #[tracing::instrument(name = "saga.retry", skip_all, fields(saga_name = %self.saga_name, correlation_id = %self.correlation_id))]
+    async fn execute(self) {
+        if self.commands.is_empty() {
+            return;
+        }
+
+        let operation = SagaOperation {
+            context: self.context,
+            executor: self.executor,
+            fetcher: self.fetcher,
+            correlation_id: self.correlation_id,
+            commands: self.commands,
+            failed_domains: HashSet::new(),
+            cached_destinations: self
+                .destinations
+                .into_iter()
+                .map(|d| (d.cache_key(), d))
+                .collect(),
+        };
+
+        if let Err(e) = run_with_retry(operation, self.backoff).await {
+            error!(error = %e, "Saga execution failed after multiple retries");
+        }
     }
 }
 
@@ -288,17 +332,13 @@ pub async fn orchestrate_saga(
     }
 
     // Phase 5: Execute commands with retry
-    execute_with_retry(
-        ctx,
-        executor,
-        fetcher,
-        commands,
-        destinations,
-        saga_name,
-        correlation_id,
-        backoff,
-    )
-    .await;
+    SagaRetryBuilder::new(ctx, executor, saga_name, correlation_id)
+        .fetcher(fetcher)
+        .commands(commands)
+        .destinations(destinations)
+        .backoff(backoff)
+        .execute()
+        .await;
 
     #[cfg(feature = "otel")]
     {

@@ -3,11 +3,18 @@
 CommandRouter replaces manual if/elif chains in aggregate handlers.
 EventRouter replaces manual if/elif chains in saga event handlers.
 Both auto-derive descriptors from their .on() registrations.
+
+The @command_handler decorator simplifies handler functions by:
+- Auto-unpacking commands from Any to concrete proto types
+- Auto-packing returned events into EventBook
 """
 
 from __future__ import annotations
 
+import inspect
+import typing
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any, Callable, Generic, TypeVar
 
 from google.protobuf import any_pb2
@@ -24,6 +31,293 @@ COMPONENT_SAGA = "saga"
 # Error message constants.
 ERRMSG_UNKNOWN_COMMAND = "Unknown command type"
 ERRMSG_NO_COMMAND_PAGES = "No command pages"
+
+
+# ============================================================================
+# @command_handler decorator for function-based handlers
+# ============================================================================
+
+
+def validate_command_handler(
+    func: Callable,
+    command_type: type,
+    cmd_param_index: int,
+    decorator_name: str,
+) -> str:
+    """Validate a command handler's signature.
+
+    Shared validation logic for @handles and @command_handler decorators.
+
+    Args:
+        func: The function/method being decorated.
+        command_type: Expected command type from decorator argument.
+        cmd_param_index: Index of the cmd parameter (0 for functions, 1 for methods).
+        decorator_name: Name of decorator for error messages.
+
+    Returns:
+        The name of the cmd parameter.
+
+    Raises:
+        TypeError: If validation fails.
+    """
+    hints = typing.get_type_hints(func)
+    sig = inspect.signature(func)
+    params = list(sig.parameters.keys())
+
+    min_params = cmd_param_index + 1
+    if len(params) < min_params:
+        raise TypeError(f"{func.__name__}: must have cmd parameter")
+
+    cmd_param = params[cmd_param_index]
+    if cmd_param not in hints:
+        raise TypeError(f"{func.__name__}: missing type hint for '{cmd_param}'")
+
+    hint_type = hints[cmd_param]
+    if hint_type != command_type:
+        raise TypeError(
+            f"{func.__name__}: @{decorator_name}({command_type.__name__}) "
+            f"doesn't match type hint {hint_type.__name__}"
+        )
+
+    return cmd_param
+
+
+def command_handler(command_type: type):
+    """Decorator for function-based command handlers.
+
+    Simplifies handler functions by:
+    - Auto-unpacking the command from Any to the concrete proto type
+    - Auto-packing returned event(s) into EventBook
+
+    The decorated function receives the unpacked command instead of Any,
+    and can return a single event or tuple of events instead of EventBook.
+
+    Original signature (manual):
+        handler(cb: CommandBook, cmd_any: Any, state: S, seq: int) -> EventBook
+
+    Decorated signature (simplified):
+        handler(cmd: ConcreteCommand, state: S, seq: int) -> Event | tuple[Event, ...]
+
+    Example:
+        @command_handler(cart_pb2.CreateCart)
+        def handle_create(cmd: cart_pb2.CreateCart, state: CartState, seq: int):
+            return cart_pb2.CartCreated(cart_id=cmd.cart_id)
+
+        # Register with router:
+        router = CommandRouter("cart", rebuild).on("CreateCart", handle_create)
+
+    Args:
+        command_type: The protobuf command class to unpack to.
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match command_type.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        validate_command_handler(func, command_type, cmd_param_index=0, decorator_name="command_handler")
+
+        @wraps(func)
+        def wrapper(
+            command_book: types.CommandBook,
+            command_any: any_pb2.Any,
+            state,
+            seq: int,
+        ) -> types.EventBook:
+            # Unpack command
+            cmd = command_type()
+            command_any.Unpack(cmd)
+
+            # Call handler with unpacked command
+            result = func(cmd, state, seq)
+
+            # Pack result into EventBook
+            return _pack_events(result)
+
+        # Preserve command type for introspection
+        wrapper._command_type = command_type
+        return wrapper
+
+    return decorator
+
+
+def _pack_events(result) -> types.EventBook:
+    """Pack event(s) into an EventBook.
+
+    Args:
+        result: Single event, tuple of events, or None.
+
+    Returns:
+        EventBook containing packed events.
+    """
+    pages = []
+
+    if result is None:
+        pass
+    elif isinstance(result, tuple):
+        for event in result:
+            pages.append(types.EventPage(event=_pack_any(event)))
+    else:
+        pages.append(types.EventPage(event=_pack_any(result)))
+
+    return types.EventBook(pages=pages)
+
+
+def _pack_any(event) -> any_pb2.Any:
+    """Pack a protobuf message into Any."""
+    event_any = any_pb2.Any()
+    event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+    return event_any
+
+
+# ============================================================================
+# @reacts_to decorator for sagas and process managers
+# ============================================================================
+
+
+def reacts_to(event_type: type, *, input_domain: str = None, output_domain: str = None):
+    """Decorator for event handler methods on Saga or ProcessManager.
+
+    Registers the method as a handler for the given event type.
+    Validates that event_type matches the method's type hint.
+
+    The decorated method should return either:
+    - A single protobuf command message
+    - A tuple of protobuf command messages
+    - None (no command to emit)
+
+    Args:
+        event_type: The protobuf event class to handle.
+        input_domain: Source domain for this event (ProcessManager only).
+        output_domain: Target domain for commands (optional override).
+
+    Example (Saga):
+        @reacts_to(OrderCompleted)
+        def handle_completed(self, event: OrderCompleted) -> CreateShipment:
+            return CreateShipment(order_id=event.order_id)
+
+    Example (ProcessManager):
+        @reacts_to(OrderCreated, input_domain="order")
+        def on_order_created(self, event: OrderCreated) -> ReserveInventory:
+            return ReserveInventory(...)
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match event_type.
+    """
+
+    def decorator(method: Callable) -> Callable:
+        # Validate at decoration time (event is at index 1 after self)
+        validate_command_handler(
+            method, event_type, cmd_param_index=1, decorator_name="reacts_to"
+        )
+
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            return method(self, *args, **kwargs)
+
+        wrapper._is_handler = True
+        wrapper._event_type = event_type
+        wrapper._input_domain = input_domain
+        wrapper._output_domain = output_domain
+        return wrapper
+
+    return decorator
+
+
+# ============================================================================
+# @projects decorator for projectors
+# ============================================================================
+
+
+def projects(event_type: type):
+    """Decorator for projector event handler methods.
+
+    Registers the method as a handler for the given event type.
+    Validates that event_type matches the method's type hint.
+
+    The decorated method should return a Projection message.
+
+    Example:
+        @projects(StockUpdated)
+        def project_stock(self, event: StockUpdated) -> Projection:
+            return Projection(...)
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match event_type.
+    """
+
+    def decorator(method: Callable) -> Callable:
+        # Validate at decoration time (event is at index 1 after self)
+        validate_command_handler(
+            method, event_type, cmd_param_index=1, decorator_name="projects"
+        )
+
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            return method(self, *args, **kwargs)
+
+        wrapper._is_handler = True
+        wrapper._event_type = event_type
+        return wrapper
+
+    return decorator
+
+
+# ============================================================================
+# @event_handler decorator for function-based event handlers
+# ============================================================================
+
+
+def event_handler(event_type: type):
+    """Decorator for function-based event handlers (sagas, projectors).
+
+    Simplifies handler functions by:
+    - Auto-unpacking the event from Any to the concrete proto type
+    - Storing event type for router reflection
+
+    Original signature (manual):
+        handler(event_any: Any, root: bytes, correlation_id: str) -> Result
+
+    Decorated signature (simplified):
+        handler(event: ConcreteEvent, root: bytes, correlation_id: str) -> Result
+
+    Example:
+        @event_handler(OrderCompleted)
+        def handle_completed(event: OrderCompleted, root: bytes, corr_id: str):
+            return [CommandBook(...)]
+
+        # Register with EventRouter:
+        router = EventRouter("saga", "order").on(handle_completed)
+
+    Args:
+        event_type: The protobuf event class to unpack to.
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match event_type.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        validate_command_handler(
+            func, event_type, cmd_param_index=0, decorator_name="event_handler"
+        )
+
+        @wraps(func)
+        def wrapper(
+            event_any: any_pb2.Any,
+            root,
+            correlation_id: str,
+            destinations: list = None,
+        ):
+            # Unpack event
+            event = event_type()
+            event_any.Unpack(event)
+
+            # Call handler with unpacked event
+            return func(event, root, correlation_id, destinations or [])
+
+        wrapper._event_type = event_type
+        return wrapper
+
+    return decorator
 
 
 # ============================================================================
@@ -93,8 +387,28 @@ class CommandRouter(Generic[S]):
         self._rebuild = rebuild
         self._handlers: list[tuple[str, Callable]] = []
 
-    def on(self, suffix: str, handler: Callable) -> CommandRouter[S]:
-        """Register a handler for a command type_url suffix."""
+    def on(self, suffix_or_handler, handler: Callable = None) -> CommandRouter[S]:
+        """Register a handler for a command type_url suffix.
+
+        Two calling patterns:
+            router.on("CreateCart", handle_create)  # Explicit suffix
+            router.on(handle_create)                # Derive suffix from @command_handler
+
+        When passing only a handler, it must be decorated with @command_handler
+        so the command type can be derived via reflection.
+        """
+        if handler is None:
+            # Single argument: derive suffix from @command_handler decorator
+            handler = suffix_or_handler
+            if not hasattr(handler, "_command_type"):
+                raise TypeError(
+                    f"{handler.__name__}: must be decorated with @command_handler "
+                    "to use single-argument .on()"
+                )
+            suffix = handler._command_type.__name__
+        else:
+            suffix = suffix_or_handler
+
         self._handlers.append((suffix, handler))
         return self
 
@@ -223,8 +537,28 @@ class EventRouter:
         self._prepare_handlers[suffix] = handler
         return self
 
-    def on(self, suffix: str, handler: Callable) -> EventRouter:
-        """Register a handler for an event type_url suffix."""
+    def on(self, suffix_or_handler, handler: Callable = None) -> EventRouter:
+        """Register a handler for an event type_url suffix.
+
+        Two calling patterns:
+            router.on("OrderCompleted", handle_completed)  # Explicit suffix
+            router.on(handle_completed)                    # Derive suffix from @event_handler
+
+        When passing only a handler, it must be decorated with @event_handler
+        so the event type can be derived via reflection.
+        """
+        if handler is None:
+            # Single argument: derive suffix from @event_handler decorator
+            handler = suffix_or_handler
+            if not hasattr(handler, "_event_type"):
+                raise TypeError(
+                    f"{handler.__name__}: must be decorated with @event_handler "
+                    "to use single-argument .on()"
+                )
+            suffix = handler._event_type.__name__
+        else:
+            suffix = suffix_or_handler
+
         self._handlers.append((suffix, handler))
         return self
 
@@ -294,3 +628,164 @@ class EventRouter:
     def output_types(self, domain: str) -> list[str]:
         """Return the command types for a given output domain."""
         return self._output_targets.get(domain, [])
+
+
+# ============================================================================
+# @upcaster decorator for function-based upcasters
+# ============================================================================
+
+
+def upcaster(from_type: type, to_type: type):
+    """Decorator for function-based upcaster handlers.
+
+    Simplifies handler functions by:
+    - Auto-unpacking the old event from Any to concrete type
+    - Auto-packing the new event into Any
+    - Storing types for router reflection
+
+    Original signature (manual):
+        handler(event_any: Any) -> Any
+
+    Decorated signature (simplified):
+        handler(old: OldEventType) -> NewEventType
+
+    Example:
+        @upcaster(OrderCreatedV1, OrderCreated)
+        def upcast_created(old: OrderCreatedV1) -> OrderCreated:
+            return OrderCreated(order_id=old.order_id, total=0)
+
+        router = UpcasterRouter("order").on(upcast_created)
+
+    Args:
+        from_type: The old event version to transform from.
+        to_type: The new event version to transform to.
+
+    Raises:
+        TypeError: If type hints don't match decorator arguments.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        validate_command_handler(
+            func, from_type, cmd_param_index=0, decorator_name="upcaster"
+        )
+
+        @wraps(func)
+        def wrapper(event_any: any_pb2.Any) -> any_pb2.Any:
+            # Unpack old event
+            old_event = from_type()
+            event_any.Unpack(old_event)
+
+            # Transform
+            new_event = func(old_event)
+
+            # Pack new event
+            new_any = any_pb2.Any()
+            new_any.Pack(new_event)
+            return new_any
+
+        wrapper._from_type = from_type
+        wrapper._to_type = to_type
+        return wrapper
+
+    return decorator
+
+
+# ============================================================================
+# UpcasterRouter — event version transformation
+# ============================================================================
+
+
+class UpcasterRouter:
+    """DRY event transformer for upcasters.
+
+    Matches old event type_url suffixes and transforms to new versions.
+    Events without registered transformations pass through unchanged.
+
+    Example::
+
+        router = (UpcasterRouter("order")
+            .on(upcast_created_v1)
+            .on(upcast_shipped_v1))
+
+        # Transform events:
+        new_events = router.upcast(old_events)
+
+        # For topology:
+        desc = router.descriptor()
+    """
+
+    def __init__(self, domain: str) -> None:
+        self.domain = domain
+        self._handlers: list[tuple[str, Callable, type]] = []  # (suffix, handler, to_type)
+
+    def on(self, suffix_or_handler, handler: Callable = None) -> UpcasterRouter:
+        """Register a handler for an old event type_url suffix.
+
+        Two calling patterns:
+            router.on("OrderCreatedV1", upcast_created)  # Explicit suffix
+            router.on(upcast_created)                     # Derive suffix from @upcaster
+
+        When passing only a handler, it must be decorated with @upcaster
+        so the from_type can be derived via reflection.
+        """
+        if handler is None:
+            # Single argument: derive suffix from @upcaster decorator
+            handler = suffix_or_handler
+            if not hasattr(handler, "_from_type"):
+                raise TypeError(
+                    f"{handler.__name__}: must be decorated with @upcaster "
+                    "to use single-argument .on()"
+                )
+            suffix = handler._from_type.__name__
+            to_type = handler._to_type
+        else:
+            suffix = suffix_or_handler
+            to_type = getattr(handler, "_to_type", None)
+
+        self._handlers.append((suffix, handler, to_type))
+        return self
+
+    def upcast(self, events: list[types.EventPage]) -> list[types.EventPage]:
+        """Transform a list of events to current versions.
+
+        Args:
+            events: List of EventPages to transform.
+
+        Returns:
+            List of EventPages with transformed events.
+        """
+        result = []
+
+        for page in events:
+            if not page.HasField("event"):
+                result.append(page)
+                continue
+
+            type_url = page.event.type_url
+            transformed = False
+
+            for suffix, handler, _ in self._handlers:
+                if type_url.endswith(suffix):
+                    new_event = handler(page.event)
+                    new_page = types.EventPage(event=new_event, num=page.num)
+                    new_page.created_at.CopyFrom(page.created_at)
+                    result.append(new_page)
+                    transformed = True
+                    break
+
+            if not transformed:
+                result.append(page)
+
+        return result
+
+    def descriptor(self) -> Descriptor:
+        """Build a component descriptor from registered handlers."""
+        return Descriptor(
+            name=f"upcaster-{self.domain}",
+            component_type="upcaster",
+            inputs=[TargetDesc(domain=self.domain, types=self.types())],
+        )
+
+    def types(self) -> list[str]:
+        """Return registered old event type suffixes."""
+        return [suffix for suffix, _, _ in self._handlers]

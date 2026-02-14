@@ -18,7 +18,16 @@ from handlers import (
     handle_start_hand,
     handle_end_hand,
 )
-from handlers.state import rebuild_state
+from handlers.state import TableState, build_state
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = TableState()
+    if event_book is None:
+        return state
+    events = [page.event for page in event_book.pages if page.event]
+    return build_state(state, events)
 from angzarr_client.proto.examples import table_pb2 as table
 
 structlog.configure(
@@ -35,7 +44,7 @@ structlog.configure(
 logger = structlog.get_logger()
 
 router = (
-    CommandRouter("table", rebuild_state)
+    CommandRouter("table", state_from_event_book)
     .on(name(table.CreateTable), handle_create_table)
     .on(name(table.JoinTable), handle_join_table)
     .on(name(table.LeaveTable), handle_leave_table)

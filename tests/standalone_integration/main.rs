@@ -11,6 +11,7 @@ mod gateway;
 mod grpc_uds;
 mod ipc;
 mod lossy_bus;
+mod merge_strategy;
 mod process_manager;
 mod projector;
 mod runtime;

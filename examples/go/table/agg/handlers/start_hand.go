@@ -13,43 +13,27 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// HandleStartHand handles the StartHand command.
-func HandleStartHand(
-	commandBook *pb.CommandBook,
-	commandAny *anypb.Any,
-	state TableState,
-	seq uint32,
-) (*pb.EventBook, error) {
+func guardStartHand(state TableState) error {
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Table does not exist")
+		return angzarr.NewCommandRejectedError("Table does not exist")
 	}
-
-	// Just verify it's the right command type
-	var cmd examples.StartHand
-	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
-		return nil, err
-	}
-
-	// Check current state
 	if state.Status == "in_hand" {
-		return nil, angzarr.NewCommandRejectedError("Hand already in progress")
+		return angzarr.NewCommandRejectedError("Hand already in progress")
 	}
-
-	// Need at least 2 active players
 	if state.ActivePlayerCount() < 2 {
-		return nil, angzarr.NewCommandRejectedError("Not enough players to start hand")
+		return angzarr.NewCommandRejectedError("Not enough players to start hand")
 	}
+	return nil
+}
 
-	// Generate hand root from table root + hand number
+func computeHandStarted(state TableState, tableRoot []byte) *examples.HandStarted {
 	handNumber := state.HandCount + 1
-	handRoot := generateHandRoot(commandBook.Cover.Root.Value, handNumber)
+	handRoot := generateHandRoot(tableRoot, handNumber)
 
-	// Advance dealer position to next active player
 	dealerPosition := advanceToNextActive(state.DealerPosition, state)
 	smallBlindPosition := advanceToNextActive(dealerPosition, state)
 	bigBlindPosition := advanceToNextActive(smallBlindPosition, state)
 
-	// Build active player snapshots
 	var activePlayers []*examples.SeatSnapshot
 	for _, seat := range state.Seats {
 		if !seat.IsSittingOut {
@@ -61,7 +45,7 @@ func HandleStartHand(
 		}
 	}
 
-	event := &examples.HandStarted{
+	return &examples.HandStarted{
 		HandRoot:           handRoot,
 		HandNumber:         handNumber,
 		DealerPosition:     dealerPosition,
@@ -73,6 +57,25 @@ func HandleStartHand(
 		BigBlind:           state.BigBlind,
 		StartedAt:          timestamppb.New(time.Now()),
 	}
+}
+
+// HandleStartHand handles the StartHand command.
+func HandleStartHand(
+	commandBook *pb.CommandBook,
+	commandAny *anypb.Any,
+	state TableState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	var cmd examples.StartHand
+	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
+		return nil, err
+	}
+
+	if err := guardStartHand(state); err != nil {
+		return nil, err
+	}
+
+	event := computeHandStarted(state, commandBook.Cover.Root.Value)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

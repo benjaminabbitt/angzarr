@@ -12,6 +12,38 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func guardEndHand(state TableState) error {
+	if !state.Exists() {
+		return angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.Status != "in_hand" {
+		return angzarr.NewCommandRejectedError("No hand in progress")
+	}
+	return nil
+}
+
+func validateEndHand(cmd *examples.EndHand, state TableState) error {
+	if hex.EncodeToString(cmd.HandRoot) != hex.EncodeToString(state.CurrentHandRoot) {
+		return angzarr.NewCommandRejectedError("Hand root mismatch")
+	}
+	return nil
+}
+
+func computeHandEnded(cmd *examples.EndHand) *examples.HandEnded {
+	stackChanges := make(map[string]int64)
+	for _, result := range cmd.Results {
+		winnerHex := hex.EncodeToString(result.WinnerRoot)
+		stackChanges[winnerHex] += result.Amount
+	}
+
+	return &examples.HandEnded{
+		HandRoot:     cmd.HandRoot,
+		Results:      cmd.Results,
+		StackChanges: stackChanges,
+		EndedAt:      timestamppb.New(time.Now()),
+	}
+}
+
 // HandleEndHand handles the EndHand command.
 func HandleEndHand(
 	commandBook *pb.CommandBook,
@@ -19,38 +51,19 @@ func HandleEndHand(
 	state TableState,
 	seq uint32,
 ) (*pb.EventBook, error) {
-	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Table does not exist")
-	}
-
 	var cmd examples.EndHand
 	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
 		return nil, err
 	}
 
-	// Verify we're in a hand
-	if state.Status != "in_hand" {
-		return nil, angzarr.NewCommandRejectedError("No hand in progress")
+	if err := guardEndHand(state); err != nil {
+		return nil, err
+	}
+	if err := validateEndHand(&cmd, state); err != nil {
+		return nil, err
 	}
 
-	// Verify hand root matches
-	if hex.EncodeToString(cmd.HandRoot) != hex.EncodeToString(state.CurrentHandRoot) {
-		return nil, angzarr.NewCommandRejectedError("Hand root mismatch")
-	}
-
-	// Calculate stack changes from pot results
-	stackChanges := make(map[string]int64)
-	for _, result := range cmd.Results {
-		winnerHex := hex.EncodeToString(result.WinnerRoot)
-		stackChanges[winnerHex] += result.Amount
-	}
-
-	event := &examples.HandEnded{
-		HandRoot:     cmd.HandRoot,
-		Results:      cmd.Results,
-		StackChanges: stackChanges,
-		EndedAt:      timestamppb.New(time.Now()),
-	}
+	event := computeHandEnded(&cmd)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

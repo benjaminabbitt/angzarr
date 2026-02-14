@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tonic::Status;
 use uuid::Uuid;
 
-use crate::proto::{event_page, EventBook, Snapshot};
+use crate::proto::{event_page, EventBook, Snapshot, SnapshotRetention};
 use crate::storage::SnapshotStore;
 
 /// Computes the snapshot sequence from the last event in an EventBook.
@@ -69,6 +69,7 @@ pub async fn persist_snapshot_if_present(
             let persisted_snapshot = Snapshot {
                 sequence: snapshot_sequence,
                 state: Some(state.clone()),
+                retention: SnapshotRetention::RetentionDefault as i32,
             };
             snapshot_store
                 .put(domain, edition, root_uuid, persisted_snapshot)

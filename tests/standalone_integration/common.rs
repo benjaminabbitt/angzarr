@@ -194,6 +194,7 @@ impl EventHandler for RecordingHandler {
 }
 
 pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32) -> CommandBook {
+    use angzarr::proto::MergeStrategy;
     CommandBook {
         cover: Some(Cover {
             domain: domain.to_string(),
@@ -209,6 +210,7 @@ pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32)
                 type_url: "test.TestCommand".to_string(),
                 value: data.to_vec(),
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
     }

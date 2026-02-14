@@ -12,28 +12,25 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// HandlePlayerAction handles the PlayerAction command.
-func HandlePlayerAction(
-	commandBook *pb.CommandBook,
-	commandAny *anypb.Any,
-	state HandState,
-	seq uint32,
-) (*pb.EventBook, error) {
+func guardPlayerAction(state HandState) error {
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return angzarr.NewCommandRejectedError("Hand does not exist")
 	}
 	if state.IsComplete() {
-		return nil, angzarr.NewCommandRejectedError("Hand already complete")
+		return angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.Status != "betting" {
-		return nil, angzarr.NewCommandRejectedError("Not in betting phase")
+		return angzarr.NewCommandRejectedError("Not in betting phase")
 	}
+	return nil
+}
 
-	var cmd examples.PlayerAction
-	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
-		return nil, err
-	}
+type validatedAction struct {
+	player       *PlayerHandState
+	actualAmount int64
+}
 
+func validatePlayerAction(cmd *examples.PlayerAction, state HandState) (*validatedAction, error) {
 	player := state.GetPlayerByRoot(cmd.PlayerRoot)
 	if player == nil {
 		return nil, angzarr.NewCommandRejectedError("Player not in hand")
@@ -45,7 +42,6 @@ func HandlePlayerAction(
 		return nil, angzarr.NewCommandRejectedError("Player is all-in")
 	}
 
-	// Validate action
 	amountToCall := state.CurrentBet - player.BetThisRound
 	actualAmount := int64(0)
 
@@ -64,7 +60,7 @@ func HandlePlayerAction(
 		}
 		actualAmount = amountToCall
 		if actualAmount > player.Stack {
-			actualAmount = player.Stack // All-in call
+			actualAmount = player.Stack
 		}
 
 	case examples.ActionType_BET:
@@ -73,7 +69,7 @@ func HandlePlayerAction(
 		}
 		minBet := state.MinRaise
 		if minBet == 0 {
-			minBet = 10 // Default big blind
+			minBet = 10
 		}
 		if cmd.Amount < minBet {
 			return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Bet must be at least %d", minBet))
@@ -104,30 +100,30 @@ func HandlePlayerAction(
 		return nil, angzarr.NewCommandRejectedError("Unknown action")
 	}
 
-	newStack := player.Stack - actualAmount
-	newPot := state.TotalPot() + actualAmount
+	return &validatedAction{player: player, actualAmount: actualAmount}, nil
+}
 
-	// Calculate new current bet
+func computeActionTaken(cmd *examples.PlayerAction, state HandState, va *validatedAction) *examples.ActionTaken {
+	newStack := va.player.Stack - va.actualAmount
+	newPot := state.TotalPot() + va.actualAmount
+
 	newCurrentBet := state.CurrentBet
-	playerTotalBet := player.BetThisRound + actualAmount
+	playerTotalBet := va.player.BetThisRound + va.actualAmount
 	if playerTotalBet > newCurrentBet {
 		newCurrentBet = playerTotalBet
 	}
 
-	// Action to emit
 	action := cmd.Action
-	if actualAmount == player.Stack && actualAmount > 0 {
+	if va.actualAmount == va.player.Stack && va.actualAmount > 0 {
 		action = examples.ActionType_ALL_IN
 	}
 
-	// Amount to emit in event depends on action type
-	// For BET/RAISE, use total bet; for CALL, use chips put in
-	amountToEmit := actualAmount
+	amountToEmit := va.actualAmount
 	if cmd.Action == examples.ActionType_BET || cmd.Action == examples.ActionType_RAISE {
 		amountToEmit = cmd.Amount
 	}
 
-	event := &examples.ActionTaken{
+	return &examples.ActionTaken{
 		PlayerRoot:   cmd.PlayerRoot,
 		Action:       action,
 		Amount:       amountToEmit,
@@ -136,6 +132,29 @@ func HandlePlayerAction(
 		AmountToCall: newCurrentBet,
 		ActionAt:     timestamppb.New(time.Now()),
 	}
+}
+
+// HandlePlayerAction handles the PlayerAction command.
+func HandlePlayerAction(
+	commandBook *pb.CommandBook,
+	commandAny *anypb.Any,
+	state HandState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	var cmd examples.PlayerAction
+	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
+		return nil, err
+	}
+
+	if err := guardPlayerAction(state); err != nil {
+		return nil, err
+	}
+	va, err := validatePlayerAction(&cmd, state)
+	if err != nil {
+		return nil, err
+	}
+
+	event := computeActionTaken(&cmd, state, va)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

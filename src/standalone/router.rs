@@ -16,7 +16,7 @@ use crate::orchestration::aggregate::{
     execute_command_pipeline, execute_command_with_retry, parse_command_cover, AggregateContext,
     ClientLogic, PipelineMode,
 };
-use crate::proto::{CommandBook, CommandResponse, Cover, Uuid as ProtoUuid};
+use crate::proto::{CommandBook, CommandResponse, Cover, MergeStrategy, Uuid as ProtoUuid};
 use crate::storage::{EventStore, SnapshotStore};
 use crate::utils::retry::saga_backoff;
 
@@ -281,6 +281,7 @@ pub fn create_command_book(
                 type_url: command_type.to_string(),
                 value: command_data,
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
     }

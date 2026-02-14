@@ -12,6 +12,39 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func guardReleaseFunds(state PlayerState) error {
+	if !state.Exists() {
+		return angzarr.NewCommandRejectedError("Player does not exist")
+	}
+	return nil
+}
+
+func validateReleaseFunds(cmd *examples.ReleaseFunds, state PlayerState) (int64, error) {
+	if cmd.TableRoot == nil || len(cmd.TableRoot) == 0 {
+		return 0, angzarr.NewCommandRejectedError("table_root is required")
+	}
+
+	tableKey := hex.EncodeToString(cmd.TableRoot)
+	reserved, ok := state.TableReservations[tableKey]
+	if !ok {
+		return 0, angzarr.NewCommandRejectedError("No funds reserved for this table")
+	}
+
+	return reserved, nil
+}
+
+func computeFundsReleased(cmd *examples.ReleaseFunds, state PlayerState, reserved int64) *examples.FundsReleased {
+	newReserved := state.ReservedFunds - reserved
+	newAvailable := state.Bankroll - newReserved
+	return &examples.FundsReleased{
+		Amount:              &examples.Currency{Amount: reserved, CurrencyCode: "CHIPS"},
+		TableRoot:           cmd.TableRoot,
+		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
+		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
+		ReleasedAt:          timestamppb.New(time.Now()),
+	}
+}
+
 // HandleReleaseFunds handles the ReleaseFunds command (release reserved funds back to bankroll).
 func HandleReleaseFunds(
 	commandBook *pb.CommandBook,
@@ -19,35 +52,20 @@ func HandleReleaseFunds(
 	state PlayerState,
 	seq uint32,
 ) (*pb.EventBook, error) {
-	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Player does not exist")
-	}
-
 	var cmd examples.ReleaseFunds
 	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
 		return nil, err
 	}
 
-	if cmd.TableRoot == nil || len(cmd.TableRoot) == 0 {
-		return nil, angzarr.NewCommandRejectedError("table_root is required")
+	if err := guardReleaseFunds(state); err != nil {
+		return nil, err
+	}
+	reserved, err := validateReleaseFunds(&cmd, state)
+	if err != nil {
+		return nil, err
 	}
 
-	tableKey := hex.EncodeToString(cmd.TableRoot)
-	reserved, ok := state.TableReservations[tableKey]
-	if !ok {
-		return nil, angzarr.NewCommandRejectedError("No funds reserved for this table")
-	}
-
-	newReserved := state.ReservedFunds - reserved
-	newAvailable := state.Bankroll - newReserved
-
-	event := &examples.FundsReleased{
-		Amount:              &examples.Currency{Amount: reserved, CurrencyCode: "CHIPS"},
-		TableRoot:           cmd.TableRoot,
-		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
-		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
-		ReleasedAt:          timestamppb.New(time.Now()),
-	}
+	event := computeFundsReleased(&cmd, state, reserved)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

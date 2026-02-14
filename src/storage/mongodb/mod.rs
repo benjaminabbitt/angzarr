@@ -16,8 +16,11 @@ pub use topology_store::MongoTopologyStore;
 pub(crate) const EVENTS_COLLECTION: &str = "events";
 pub(crate) const SNAPSHOTS_COLLECTION: &str = "snapshots";
 pub(crate) const POSITIONS_COLLECTION: &str = "positions";
+#[cfg(feature = "topology")]
 pub(crate) const TOPOLOGY_NODES_COLLECTION: &str = "topology_nodes";
+#[cfg(feature = "topology")]
 pub(crate) const TOPOLOGY_EDGES_COLLECTION: &str = "topology_edges";
+#[cfg(feature = "topology")]
 pub(crate) const TOPOLOGY_CORRELATIONS_COLLECTION: &str = "topology_correlations";
 
 #[cfg(test)]

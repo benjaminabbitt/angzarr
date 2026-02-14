@@ -26,7 +26,7 @@ from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13\x61ngzarr/types.proto\x12\x07\x61ngzarr\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n\x04UUID\x12\x14\n\x05value\x18\x01 \x01(\x0cR\x05value\"\x95\x01\n\x05\x43over\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x01 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\x12%\n\x0e\x63orrelation_id\x18\x03 \x01(\tR\rcorrelationId\x12*\n\x07\x65\x64ition\x18\x04 \x01(\x0b\x32\x10.angzarr.EditionR\x07\x65\x64ition\"Z\n\x07\x45\x64ition\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12;\n\x0b\x64ivergences\x18\x02 \x03(\x0b\x32\x19.angzarr.DomainDivergenceR\x0b\x64ivergences\"F\n\x10\x44omainDivergence\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\"\xaa\x01\n\tEventPage\x12\x12\n\x03num\x18\x01 \x01(\rH\x00R\x03num\x12\x16\n\x05\x66orce\x18\x02 \x01(\x08H\x00R\x05\x66orce\x12\x39\n\ncreated_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12*\n\x05\x65vent\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05\x65ventB\n\n\x08sequence\"R\n\x08Snapshot\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\x12*\n\x05state\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05state\"\xaf\x01\n\tEventBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12-\n\x08snapshot\x18\x02 \x01(\x0b\x32\x11.angzarr.SnapshotR\x08snapshot\x12(\n\x05pages\x18\x03 \x03(\x0b\x32\x12.angzarr.EventPageR\x05pages\x12#\n\rnext_sequence\x18\x06 \x01(\rR\x0cnextSequence\"k\n\rSyncEventBook\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"\xa2\x01\n\nProjection\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12\x1c\n\tprojector\x18\x02 \x01(\tR\tprojector\x12\x1a\n\x08sequence\x18\x03 \x01(\rR\x08sequence\x12\x34\n\nprojection\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyR\nprojection\"Y\n\x0b\x43ommandPage\x12\x1a\n\x08sequence\x18\x01 \x01(\rR\x08sequence\x12.\n\x07\x63ommand\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyR\x07\x63ommand\"\x9c\x01\n\x0b\x43ommandBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12*\n\x05pages\x18\x02 \x03(\x0b\x32\x14.angzarr.CommandPageR\x05pages\x12;\n\x0bsaga_origin\x18\x04 \x01(\x0b\x32\x1a.angzarr.SagaCommandOriginR\nsagaOrigin\"q\n\x0fSyncCommandBook\x12.\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"o\n\x11\x43ontextualCommand\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\x07\x63ommand\x18\x02 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\"}\n\x15SyncContextualCommand\x12\x34\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x1a.angzarr.ContextualCommandR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"J\n\rSequenceRange\x12\x14\n\x05lower\x18\x01 \x01(\rR\x05lower\x12\x19\n\x05upper\x18\x02 \x01(\rH\x00R\x05upper\x88\x01\x01\x42\x08\n\x06_upper\"%\n\x0bSequenceSet\x12\x16\n\x06values\x18\x01 \x03(\rR\x06values\"\x84\x01\n\rTemporalQuery\x12:\n\nas_of_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00R\x08\x61sOfTime\x12&\n\x0e\x61s_of_sequence\x18\x02 \x01(\rH\x00R\x0c\x61sOfSequenceB\x0f\n\rpoint_in_time\"\xd6\x01\n\x05Query\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12.\n\x05range\x18\x03 \x01(\x0b\x32\x16.angzarr.SequenceRangeH\x00R\x05range\x12\x34\n\tsequences\x18\x04 \x01(\x0b\x32\x14.angzarr.SequenceSetH\x00R\tsequences\x12\x34\n\x08temporal\x18\x05 \x01(\x0b\x32\x16.angzarr.TemporalQueryH\x00R\x08temporalB\x0b\n\tselection\"J\n\rAggregateRoot\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x02 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\":\n\x11\x45ventStreamFilter\x12%\n\x0e\x63orrelation_id\x18\x01 \x01(\tR\rcorrelationId\"6\n\x06Target\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12\x14\n\x05types\x18\x02 \x03(\tR\x05types\"y\n\x13\x43omponentDescriptor\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12%\n\x0e\x63omponent_type\x18\x02 \x01(\tR\rcomponentType\x12\'\n\x06inputs\x18\x03 \x03(\x0b\x32\x0f.angzarr.TargetR\x06inputs\"\x16\n\x14GetDescriptorRequest\"\xaf\x01\n\x11SagaCommandOrigin\x12\x1b\n\tsaga_name\x18\x01 \x01(\tR\x08sagaName\x12\x41\n\x14triggering_aggregate\x18\x02 \x01(\x0b\x32\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence*R\n\x08SyncMode\x12\x19\n\x15SYNC_MODE_UNSPECIFIED\x10\x00\x12\x14\n\x10SYNC_MODE_SIMPLE\x10\x01\x12\x15\n\x11SYNC_MODE_CASCADE\x10\x02\x42\x7f\n\x0b\x63om.angzarrB\nTypesProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13\x61ngzarr/types.proto\x12\x07\x61ngzarr\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n\x04UUID\x12\x14\n\x05value\x18\x01 \x01(\x0cR\x05value\"\x95\x01\n\x05\x43over\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x01 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\x12%\n\x0e\x63orrelation_id\x18\x03 \x01(\tR\rcorrelationId\x12*\n\x07\x65\x64ition\x18\x04 \x01(\x0b\x32\x10.angzarr.EditionR\x07\x65\x64ition\"Z\n\x07\x45\x64ition\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12;\n\x0b\x64ivergences\x18\x02 \x03(\x0b\x32\x19.angzarr.DomainDivergenceR\x0b\x64ivergences\"F\n\x10\x44omainDivergence\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\"\xaa\x01\n\tEventPage\x12\x12\n\x03num\x18\x01 \x01(\rH\x00R\x03num\x12\x16\n\x05\x66orce\x18\x02 \x01(\x08H\x00R\x05\x66orce\x12\x39\n\ncreated_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12*\n\x05\x65vent\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05\x65ventB\n\n\x08sequence\"\x8c\x01\n\x08Snapshot\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\x12*\n\x05state\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05state\x12\x38\n\tretention\x18\x04 \x01(\x0e\x32\x1a.angzarr.SnapshotRetentionR\tretention\"\xaf\x01\n\tEventBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12-\n\x08snapshot\x18\x02 \x01(\x0b\x32\x11.angzarr.SnapshotR\x08snapshot\x12(\n\x05pages\x18\x03 \x03(\x0b\x32\x12.angzarr.EventPageR\x05pages\x12#\n\rnext_sequence\x18\x06 \x01(\rR\x0cnextSequence\"k\n\rSyncEventBook\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"\xa2\x01\n\nProjection\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12\x1c\n\tprojector\x18\x02 \x01(\tR\tprojector\x12\x1a\n\x08sequence\x18\x03 \x01(\rR\x08sequence\x12\x34\n\nprojection\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyR\nprojection\"\x98\x01\n\x0b\x43ommandPage\x12\x1a\n\x08sequence\x18\x01 \x01(\rR\x08sequence\x12.\n\x07\x63ommand\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyR\x07\x63ommand\x12=\n\x0emerge_strategy\x18\x04 \x01(\x0e\x32\x16.angzarr.MergeStrategyR\rmergeStrategy\"\x9c\x01\n\x0b\x43ommandBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12*\n\x05pages\x18\x02 \x03(\x0b\x32\x14.angzarr.CommandPageR\x05pages\x12;\n\x0bsaga_origin\x18\x04 \x01(\x0b\x32\x1a.angzarr.SagaCommandOriginR\nsagaOrigin\"q\n\x0fSyncCommandBook\x12.\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"o\n\x11\x43ontextualCommand\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\x07\x63ommand\x18\x02 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\"}\n\x15SyncContextualCommand\x12\x34\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x1a.angzarr.ContextualCommandR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"J\n\rSequenceRange\x12\x14\n\x05lower\x18\x01 \x01(\rR\x05lower\x12\x19\n\x05upper\x18\x02 \x01(\rH\x00R\x05upper\x88\x01\x01\x42\x08\n\x06_upper\"%\n\x0bSequenceSet\x12\x16\n\x06values\x18\x01 \x03(\rR\x06values\"\x84\x01\n\rTemporalQuery\x12:\n\nas_of_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00R\x08\x61sOfTime\x12&\n\x0e\x61s_of_sequence\x18\x02 \x01(\rH\x00R\x0c\x61sOfSequenceB\x0f\n\rpoint_in_time\"\xd6\x01\n\x05Query\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12.\n\x05range\x18\x03 \x01(\x0b\x32\x16.angzarr.SequenceRangeH\x00R\x05range\x12\x34\n\tsequences\x18\x04 \x01(\x0b\x32\x14.angzarr.SequenceSetH\x00R\tsequences\x12\x34\n\x08temporal\x18\x05 \x01(\x0b\x32\x16.angzarr.TemporalQueryH\x00R\x08temporalB\x0b\n\tselection\"J\n\rAggregateRoot\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x02 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\":\n\x11\x45ventStreamFilter\x12%\n\x0e\x63orrelation_id\x18\x01 \x01(\tR\rcorrelationId\"6\n\x06Target\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12\x14\n\x05types\x18\x02 \x03(\tR\x05types\"y\n\x13\x43omponentDescriptor\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12%\n\x0e\x63omponent_type\x18\x02 \x01(\tR\rcomponentType\x12\'\n\x06inputs\x18\x03 \x03(\x0b\x32\x0f.angzarr.TargetR\x06inputs\"\x16\n\x14GetDescriptorRequest\"\xaf\x01\n\x11SagaCommandOrigin\x12\x1b\n\tsaga_name\x18\x01 \x01(\tR\x08sagaName\x12\x41\n\x14triggering_aggregate\x18\x02 \x01(\x0b\x32\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence*R\n\x08SyncMode\x12\x19\n\x15SYNC_MODE_UNSPECIFIED\x10\x00\x12\x14\n\x10SYNC_MODE_SIMPLE\x10\x01\x12\x15\n\x11SYNC_MODE_CASCADE\x10\x02*8\n\rMergeStrategy\x12\x10\n\x0cMERGE_REJECT\x10\x00\x12\x15\n\x11MERGE_COMMUTATIVE\x10\x01*Z\n\x11SnapshotRetention\x12\x15\n\x11RETENTION_DEFAULT\x10\x00\x12\x15\n\x11RETENTION_PERSIST\x10\x01\x12\x17\n\x13RETENTION_TRANSIENT\x10\x02\x42\x7f\n\x0b\x63om.angzarrB\nTypesProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,8 +34,12 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.types_pb2', _global
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\nTypesProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_SYNCMODE']._serialized_start=2736
-  _globals['_SYNCMODE']._serialized_end=2818
+  _globals['_SYNCMODE']._serialized_start=2859
+  _globals['_SYNCMODE']._serialized_end=2941
+  _globals['_MERGESTRATEGY']._serialized_start=2943
+  _globals['_MERGESTRATEGY']._serialized_end=2999
+  _globals['_SNAPSHOTRETENTION']._serialized_start=3001
+  _globals['_SNAPSHOTRETENTION']._serialized_end=3091
   _globals['_UUID']._serialized_start=92
   _globals['_UUID']._serialized_end=120
   _globals['_COVER']._serialized_start=123
@@ -46,42 +50,42 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_DOMAINDIVERGENCE']._serialized_end=436
   _globals['_EVENTPAGE']._serialized_start=439
   _globals['_EVENTPAGE']._serialized_end=609
-  _globals['_SNAPSHOT']._serialized_start=611
-  _globals['_SNAPSHOT']._serialized_end=693
-  _globals['_EVENTBOOK']._serialized_start=696
-  _globals['_EVENTBOOK']._serialized_end=871
-  _globals['_SYNCEVENTBOOK']._serialized_start=873
-  _globals['_SYNCEVENTBOOK']._serialized_end=980
-  _globals['_PROJECTION']._serialized_start=983
-  _globals['_PROJECTION']._serialized_end=1145
-  _globals['_COMMANDPAGE']._serialized_start=1147
-  _globals['_COMMANDPAGE']._serialized_end=1236
-  _globals['_COMMANDBOOK']._serialized_start=1239
-  _globals['_COMMANDBOOK']._serialized_end=1395
-  _globals['_SYNCCOMMANDBOOK']._serialized_start=1397
-  _globals['_SYNCCOMMANDBOOK']._serialized_end=1510
-  _globals['_CONTEXTUALCOMMAND']._serialized_start=1512
-  _globals['_CONTEXTUALCOMMAND']._serialized_end=1623
-  _globals['_SYNCCONTEXTUALCOMMAND']._serialized_start=1625
-  _globals['_SYNCCONTEXTUALCOMMAND']._serialized_end=1750
-  _globals['_SEQUENCERANGE']._serialized_start=1752
-  _globals['_SEQUENCERANGE']._serialized_end=1826
-  _globals['_SEQUENCESET']._serialized_start=1828
-  _globals['_SEQUENCESET']._serialized_end=1865
-  _globals['_TEMPORALQUERY']._serialized_start=1868
-  _globals['_TEMPORALQUERY']._serialized_end=2000
-  _globals['_QUERY']._serialized_start=2003
-  _globals['_QUERY']._serialized_end=2217
-  _globals['_AGGREGATEROOT']._serialized_start=2219
-  _globals['_AGGREGATEROOT']._serialized_end=2293
-  _globals['_EVENTSTREAMFILTER']._serialized_start=2295
-  _globals['_EVENTSTREAMFILTER']._serialized_end=2353
-  _globals['_TARGET']._serialized_start=2355
-  _globals['_TARGET']._serialized_end=2409
-  _globals['_COMPONENTDESCRIPTOR']._serialized_start=2411
-  _globals['_COMPONENTDESCRIPTOR']._serialized_end=2532
-  _globals['_GETDESCRIPTORREQUEST']._serialized_start=2534
-  _globals['_GETDESCRIPTORREQUEST']._serialized_end=2556
-  _globals['_SAGACOMMANDORIGIN']._serialized_start=2559
-  _globals['_SAGACOMMANDORIGIN']._serialized_end=2734
+  _globals['_SNAPSHOT']._serialized_start=612
+  _globals['_SNAPSHOT']._serialized_end=752
+  _globals['_EVENTBOOK']._serialized_start=755
+  _globals['_EVENTBOOK']._serialized_end=930
+  _globals['_SYNCEVENTBOOK']._serialized_start=932
+  _globals['_SYNCEVENTBOOK']._serialized_end=1039
+  _globals['_PROJECTION']._serialized_start=1042
+  _globals['_PROJECTION']._serialized_end=1204
+  _globals['_COMMANDPAGE']._serialized_start=1207
+  _globals['_COMMANDPAGE']._serialized_end=1359
+  _globals['_COMMANDBOOK']._serialized_start=1362
+  _globals['_COMMANDBOOK']._serialized_end=1518
+  _globals['_SYNCCOMMANDBOOK']._serialized_start=1520
+  _globals['_SYNCCOMMANDBOOK']._serialized_end=1633
+  _globals['_CONTEXTUALCOMMAND']._serialized_start=1635
+  _globals['_CONTEXTUALCOMMAND']._serialized_end=1746
+  _globals['_SYNCCONTEXTUALCOMMAND']._serialized_start=1748
+  _globals['_SYNCCONTEXTUALCOMMAND']._serialized_end=1873
+  _globals['_SEQUENCERANGE']._serialized_start=1875
+  _globals['_SEQUENCERANGE']._serialized_end=1949
+  _globals['_SEQUENCESET']._serialized_start=1951
+  _globals['_SEQUENCESET']._serialized_end=1988
+  _globals['_TEMPORALQUERY']._serialized_start=1991
+  _globals['_TEMPORALQUERY']._serialized_end=2123
+  _globals['_QUERY']._serialized_start=2126
+  _globals['_QUERY']._serialized_end=2340
+  _globals['_AGGREGATEROOT']._serialized_start=2342
+  _globals['_AGGREGATEROOT']._serialized_end=2416
+  _globals['_EVENTSTREAMFILTER']._serialized_start=2418
+  _globals['_EVENTSTREAMFILTER']._serialized_end=2476
+  _globals['_TARGET']._serialized_start=2478
+  _globals['_TARGET']._serialized_end=2532
+  _globals['_COMPONENTDESCRIPTOR']._serialized_start=2534
+  _globals['_COMPONENTDESCRIPTOR']._serialized_end=2655
+  _globals['_GETDESCRIPTORREQUEST']._serialized_start=2657
+  _globals['_GETDESCRIPTORREQUEST']._serialized_end=2679
+  _globals['_SAGACOMMANDORIGIN']._serialized_start=2682
+  _globals['_SAGACOMMANDORIGIN']._serialized_end=2857
 # @@protoc_insertion_point(module_scope)

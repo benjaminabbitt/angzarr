@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::config::SagaCompensationConfig;
 use crate::proto::{
-    business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage,
+    business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage, MergeStrategy,
     RevocationResponse, RevokeEventCommand, SagaCommandOrigin, SagaCompensationFailed,
     Uuid as ProtoUuid,
 };
@@ -114,6 +114,7 @@ pub fn build_revoke_command_book(context: &CompensationContext) -> Result<Comman
                 type_url: "type.angzarr/angzarr.RevokeEventCommand".to_string(),
                 value: revoke_cmd.encode_to_vec(),
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None, // Revoke commands don't have their own saga origin
     })

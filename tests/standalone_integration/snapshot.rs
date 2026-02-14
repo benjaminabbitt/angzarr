@@ -1,7 +1,7 @@
 //! Snapshot store integration tests.
 
 use crate::common::*;
-use angzarr::proto::Snapshot;
+use angzarr::proto::{Snapshot, SnapshotRetention};
 
 #[tokio::test]
 async fn test_snapshot_store_and_retrieve() {
@@ -21,6 +21,7 @@ async fn test_snapshot_store_and_retrieve() {
             type_url: "test.State".to_string(),
             value: b"snapshot-data".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     runtime
@@ -63,6 +64,7 @@ async fn test_snapshot_isolation_between_aggregates() {
             type_url: "test.State".to_string(),
             value: b"state-1".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     let snapshot2 = Snapshot {
@@ -71,6 +73,7 @@ async fn test_snapshot_isolation_between_aggregates() {
             type_url: "test.State".to_string(),
             value: b"state-2".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     runtime
@@ -125,6 +128,7 @@ async fn test_snapshot_isolation_between_domains() {
             type_url: "test.State".to_string(),
             value: b"domain-a".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     let snapshot_b = Snapshot {
@@ -133,6 +137,7 @@ async fn test_snapshot_isolation_between_domains() {
             type_url: "test.State".to_string(),
             value: b"domain-b".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     runtime
@@ -186,6 +191,7 @@ async fn test_snapshot_update_overwrites() {
             type_url: "test.State".to_string(),
             value: b"initial".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     runtime
@@ -202,6 +208,7 @@ async fn test_snapshot_update_overwrites() {
             type_url: "test.State".to_string(),
             value: b"updated".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     runtime
@@ -246,6 +253,7 @@ async fn test_snapshot_delete() {
             type_url: "test.State".to_string(),
             value: b"to-delete".to_vec(),
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     };
 
     runtime

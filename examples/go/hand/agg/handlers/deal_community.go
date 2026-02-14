@@ -11,31 +11,25 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// HandleDealCommunityCards handles dealing community cards (flop/turn/river).
-func HandleDealCommunityCards(
-	commandBook *pb.CommandBook,
-	commandAny *anypb.Any,
-	state HandState,
-	seq uint32,
-) (*pb.EventBook, error) {
+func guardDealCommunityCards(state HandState) error {
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return angzarr.NewCommandRejectedError("Hand does not exist")
 	}
 	if state.IsComplete() {
-		return nil, angzarr.NewCommandRejectedError("Hand already complete")
+		return angzarr.NewCommandRejectedError("Hand already complete")
 	}
-
-	// Check game variant supports community cards
 	if state.GameVariant == examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Five Card Draw does not use community cards")
+		return angzarr.NewCommandRejectedError("Five Card Draw does not use community cards")
 	}
+	return nil
+}
 
-	var cmd examples.DealCommunityCards
-	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
-		return nil, err
-	}
+type validatedCommunityDeal struct {
+	newPhase    examples.BettingPhase
+	cardsToDeal int
+}
 
-	// Determine next phase and cards to deal
+func validateDealCommunityCards(cmd *examples.DealCommunityCards, state HandState) (*validatedCommunityDeal, error) {
 	var newPhase examples.BettingPhase
 	var cardsToDeal int
 
@@ -53,26 +47,50 @@ func HandleDealCommunityCards(
 		return nil, angzarr.NewCommandRejectedError("Cannot deal more community cards")
 	}
 
-	// Validate count if specified
 	if cmd.Count > 0 && int(cmd.Count) != cardsToDeal {
 		return nil, angzarr.NewCommandRejectedError("Invalid card count for phase")
 	}
 
-	// Check we have enough cards in deck
 	if len(state.RemainingDeck) < cardsToDeal {
 		return nil, angzarr.NewCommandRejectedError("Not enough cards in deck")
 	}
 
-	// Deal cards from remaining deck
-	newCards := state.RemainingDeck[:cardsToDeal]
+	return &validatedCommunityDeal{newPhase: newPhase, cardsToDeal: cardsToDeal}, nil
+}
+
+func computeCommunityCardsDealt(state HandState, vcd *validatedCommunityDeal) *examples.CommunityCardsDealt {
+	newCards := state.RemainingDeck[:vcd.cardsToDeal]
 	allCommunity := append(state.CommunityCards, newCards...)
 
-	event := &examples.CommunityCardsDealt{
+	return &examples.CommunityCardsDealt{
 		Cards:             newCards,
-		Phase:             newPhase,
+		Phase:             vcd.newPhase,
 		AllCommunityCards: allCommunity,
 		DealtAt:           timestamppb.New(time.Now()),
 	}
+}
+
+// HandleDealCommunityCards handles dealing community cards (flop/turn/river).
+func HandleDealCommunityCards(
+	commandBook *pb.CommandBook,
+	commandAny *anypb.Any,
+	state HandState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	var cmd examples.DealCommunityCards
+	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
+		return nil, err
+	}
+
+	if err := guardDealCommunityCards(state); err != nil {
+		return nil, err
+	}
+	vcd, err := validateDealCommunityCards(&cmd, state)
+	if err != nil {
+		return nil, err
+	}
+
+	event := computeCommunityCardsDealt(state, vcd)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

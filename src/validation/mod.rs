@@ -428,7 +428,7 @@ mod tests {
 
     mod resource_limits_validation {
         use super::*;
-        use crate::proto::{CommandPage, Cover};
+        use crate::proto::{CommandPage, Cover, MergeStrategy};
         use prost_types::Any;
 
         fn make_command_book(pages: Vec<CommandPage>) -> CommandBook {
@@ -451,6 +451,7 @@ mod tests {
                     type_url: "test/Command".to_string(),
                     value: vec![0u8; size],
                 }),
+                merge_strategy: MergeStrategy::MergeCommutative as i32,
             }
         }
 

@@ -2,7 +2,7 @@
 //!
 //! Provides convenient accessors for sequence, type URL, and payload decoding.
 
-use crate::proto::{CommandPage, EventPage};
+use crate::proto::{CommandPage, EventPage, MergeStrategy};
 
 /// Extension trait for EventPage proto type.
 ///
@@ -68,6 +68,11 @@ pub trait CommandPageExt {
     /// Returns None if the command is missing, type URL doesn't match the suffix,
     /// or decoding fails.
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
+
+    /// Get the merge strategy for this command.
+    ///
+    /// Returns the MergeStrategy enum value. Defaults to Commutative (0) if unset.
+    fn merge_strategy(&self) -> MergeStrategy;
 }
 
 impl CommandPageExt for CommandPage {
@@ -89,5 +94,9 @@ impl CommandPageExt for CommandPage {
             return None;
         }
         M::decode(command.value.as_slice()).ok()
+    }
+
+    fn merge_strategy(&self) -> MergeStrategy {
+        MergeStrategy::try_from(self.merge_strategy).unwrap_or(MergeStrategy::MergeCommutative)
     }
 }

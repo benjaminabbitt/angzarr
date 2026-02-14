@@ -9,46 +9,27 @@ use prost_types::Any;
 
 use crate::state::TableState;
 
-pub fn handle_start_hand(
-    command_book: &CommandBook,
-    command_any: &Any,
-    state: &TableState,
-    seq: u32,
-) -> CommandResult<EventBook> {
+fn guard(state: &TableState) -> CommandResult<()> {
     if !state.exists() {
         return Err(CommandRejectedError::new("Table does not exist"));
     }
-
-    let _cmd: StartHand = command_any
-        .unpack()
-        .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
-
-    // Check current state
     if state.status == "in_hand" {
         return Err(CommandRejectedError::new("Hand already in progress"));
     }
-
-    // Need at least 2 active players
     if state.active_player_count() < 2 {
         return Err(CommandRejectedError::new("Not enough players to start hand"));
     }
+    Ok(())
+}
 
-    // Generate hand root from table root + hand number
+fn compute(state: &TableState, table_root: &[u8]) -> HandStarted {
     let hand_number = state.hand_count + 1;
-    let table_root = command_book
-        .cover
-        .as_ref()
-        .and_then(|c| c.root.as_ref())
-        .map(|u| u.value.as_slice())
-        .unwrap_or(&[]);
     let hand_root = generate_hand_root(table_root, hand_number);
 
-    // Advance dealer position to next active player
     let dealer_position = advance_to_next_active(state.dealer_position, state);
     let small_blind_position = advance_to_next_active(dealer_position, state);
     let big_blind_position = advance_to_next_active(small_blind_position, state);
 
-    // Build active player snapshots
     let active_players: Vec<SeatSnapshot> = state
         .seats
         .values()
@@ -60,7 +41,7 @@ pub fn handle_start_hand(
         })
         .collect();
 
-    let event = HandStarted {
+    HandStarted {
         hand_root,
         hand_number,
         dealer_position,
@@ -71,8 +52,29 @@ pub fn handle_start_hand(
         small_blind: state.small_blind,
         big_blind: state.big_blind,
         started_at: Some(angzarr_client::now()),
-    };
+    }
+}
 
+pub fn handle_start_hand(
+    command_book: &CommandBook,
+    command_any: &Any,
+    state: &TableState,
+    seq: u32,
+) -> CommandResult<EventBook> {
+    let _cmd: StartHand = command_any
+        .unpack()
+        .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
+
+    guard(state)?;
+
+    let table_root = command_book
+        .cover
+        .as_ref()
+        .and_then(|c| c.root.as_ref())
+        .map(|u| u.value.as_slice())
+        .unwrap_or(&[]);
+
+    let event = compute(state, table_root);
     let event_any = pack_event(&event, "examples.HandStarted");
 
     Ok(new_event_book(command_book, seq, event_any))

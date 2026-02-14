@@ -1,11 +1,12 @@
-<!-- SCM:BEGIN -->
-@.scm/context.md
-<!-- SCM:END -->
-
 ## General Rules
 I am not willing to trade speed for correctness.  Correctness is the priority.  Second priority is reducing human reviewer cognitive loading.  
 
 Keep the standalone mode as close to distributed mode as possible, excepting that it runs as a few, limited processes rather than on k8s and uses different bus transports and storage.  The implementations only differ where they absolutely must.  Similarly, keep distributed mode as close to standalone mode as possible.
+
+Focus on readability.  The primary costs are developer and AI time.  Optimizing for understanding, minimizing foot-guns, and reducing cognitive load is the primary goal.  Secondary is performance, but that's a secondary goal that can be figured out and optimized for in the future.
+
+### Enums
+ese enum names, not integer representations, in code
 
 ## Tooling
 ### Helm
@@ -114,6 +115,113 @@ When using proto generated code, use extension traits to add functionality to th
 ## Coordinators
 ### Aggregates
 Business logic is implemented in aggregates.  Accept commands, emit events.
+
+#### Handler Pattern: guard/validate/compute
+
+All aggregate command handlers follow a three-function pattern that makes business logic **100% unit testable** without mocking frameworks or infrastructure:
+
+```
+guard(state) → Result<()>
+    Check state preconditions (aggregate exists, correct phase, etc.)
+    Pure function: state in, Result out
+
+validate(cmd, state) → Result<ValidatedData>
+    Validate command inputs against current state
+    Returns validated/transformed data needed by compute
+    Pure function: command + state in, Result out
+
+compute(cmd, state, validated) → Event
+    Build the resulting event from inputs
+    Pure function: no side effects, deterministic output
+    All business calculations happen here
+```
+
+The public `handle_*` function is thin orchestration:
+1. Unpack protobuf command
+2. Call guard → validate → compute
+3. Pack event into EventBook
+
+**Why this matters:**
+- `guard()`, `validate()`, `compute()` are pure functions—call directly in tests
+- No mocking required: pass state structs directly, assert on returned events
+- Each function has single responsibility, testable in isolation
+- Proto serialization tested separately from business logic
+- Same pattern across all languages (Python, Go, Rust)
+
+**Example test (Rust):**
+```rust
+#[test]
+fn test_deposit_increases_bankroll() {
+    let state = PlayerState { bankroll: 100, ..Default::default() };
+    let cmd = DepositFunds { amount: 50 };
+
+    let event = compute(&cmd, &state);
+
+    assert_eq!(event.new_bankroll, 150);
+}
+```
+
+**Example test (Python):**
+```python
+def test_deposit_increases_bankroll():
+    state = PlayerState(bankroll=100)
+    cmd = DepositFunds(amount=50)
+
+    event = compute(cmd, state)
+
+    assert event.new_bankroll == 150
+```
+
+#### Event Sourcing: The Any Boundary
+
+Events cross a serialization boundary between business logic and the framework:
+
+```
+Business Logic                    Framework
+─────────────────────────────────────────────────────
+compute(cmd, state) → raw event
+                      ↓
+                      Any.Pack(event)  →  persist to EventBook
+                      ↓
+                      EventBook.pages[].event  (Any-wrapped)
+                      ↓
+build_state(state, events)  ←  extract events from pages
+                      ↓
+_apply_event(state, event_any)
+                      ↓
+                      event_any.Unpack(typed_event)
+                      ↓
+                      mutate state
+```
+
+**Key insight:** The framework stores events as opaque `Any` blobs—it doesn't know business types. Business logic must decode the `Any` because only it knows `PlayerRegistered`, `FundsDeposited`, etc.
+
+**`build_state(state, events)`** takes Any-wrapped events:
+- This matches what comes from EventBook (framework → business)
+- `_apply_event` unpacks Any into typed events and mutates state
+- Tests wrap raw events into Any before calling, mimicking production
+
+**Full event sourcing test cycle:**
+```python
+def test_deposit_cycle():
+    # 1. Start with state
+    state = PlayerState(bankroll=100)
+    cmd = DepositFunds(amount=50)
+
+    # 2. compute() produces raw event
+    event = compute(cmd, state)
+
+    # 3. Wrap in Any (what framework does for persistence)
+    event_any = Any()
+    event_any.Pack(event, type_url_prefix="type.googleapis.com/")
+
+    # 4. build_state applies Any-wrapped events → new state
+    new_state = build_state(state, [event_any])
+
+    assert new_state.bankroll == 150
+```
+
+Tests mimic the production boundary exactly—no special test-only interfaces.
 
 ### Sagas
 Domain translators. They translate the language of domain A to the language of domain B. Accept events from a single domain, emit commands to a different domain. Single domain in, single domain out. There may be multiple sagas per aggregate, bridging to different domains.

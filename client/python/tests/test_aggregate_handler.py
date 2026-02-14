@@ -175,9 +175,199 @@ class TestAggregateHandlerDescriptor:
             .on("CancelOrder", handler_a)
         )
         handler = AggregateHandler(router)
-        desc = handler.descriptor()
+        context = MagicMock(spec=grpc.ServicerContext)
+        request = MagicMock()
+        resp = handler.GetDescriptor(request, context)
 
-        assert desc.name == "order"
-        assert desc.component_type == COMPONENT_AGGREGATE
-        assert len(desc.inputs) == 1
-        assert len(desc.inputs[0].types) == 2
+        assert resp.name == "order"
+        assert resp.component_type == COMPONENT_AGGREGATE
+        assert len(resp.inputs) == 1
+        assert len(resp.inputs[0].types) == 2
+
+
+class TestAggregateHandlerWithAggregateClass:
+    """Test AggregateHandler with Aggregate class (OO approach)."""
+
+    def test_aggregate_class_dispatch(self):
+        from dataclasses import dataclass
+        from angzarr_client import Aggregate, handles
+
+        class FakeCommand:
+            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
+            def __init__(self, value: str = ""):
+                self.value = value
+            def SerializeToString(self, deterministic=None):
+                return self.value.encode()
+
+        class FakeEvent:
+            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeEvent"})()
+            def __init__(self, result: str = ""):
+                self.result = result
+            def SerializeToString(self, deterministic=None):
+                return self.result.encode()
+
+        @dataclass
+        class TestState:
+            initialized: bool = False
+
+        class TestAgg(Aggregate[TestState]):
+            domain = "testagg"
+
+            def _create_empty_state(self):
+                return TestState()
+
+            def _apply_event(self, state, event_any):
+                if "FakeEvent" in event_any.type_url:
+                    state.initialized = True
+
+            @handles(FakeCommand)
+            def do_something(self, cmd: FakeCommand) -> FakeEvent:
+                return FakeEvent(result="done")
+
+        handler = AggregateHandler(TestAgg)
+        context = MagicMock(spec=grpc.ServicerContext)
+
+        cmd = angzarr.ContextualCommand(
+            command=angzarr.CommandBook(
+                pages=[
+                    angzarr.CommandPage(
+                        command=any_pb2.Any(type_url="test.FakeCommand", value=b""),
+                    ),
+                ],
+            ),
+        )
+        resp = handler.Handle(cmd, context)
+
+        assert resp.WhichOneof("result") == "events"
+        assert len(resp.events.pages) == 1
+
+    def test_aggregate_class_domain_property(self):
+        from dataclasses import dataclass
+        from angzarr_client import Aggregate
+
+        @dataclass
+        class TestState:
+            pass
+
+        class TestAgg(Aggregate[TestState]):
+            domain = "myagg"
+
+            def _create_empty_state(self):
+                return TestState()
+
+            def _apply_event(self, state, event_any):
+                pass
+
+        handler = AggregateHandler(TestAgg)
+        assert handler.domain == "myagg"
+
+    def test_aggregate_class_descriptor(self):
+        from dataclasses import dataclass
+        from angzarr_client import Aggregate, handles
+
+        class FakeCommand:
+            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
+            def SerializeToString(self, deterministic=None):
+                return b""
+
+        @dataclass
+        class TestState:
+            pass
+
+        class TestAgg(Aggregate[TestState]):
+            domain = "descagg"
+
+            def _create_empty_state(self):
+                return TestState()
+
+            def _apply_event(self, state, event_any):
+                pass
+
+            @handles(FakeCommand)
+            def do_it(self, cmd: FakeCommand):
+                pass
+
+        handler = AggregateHandler(TestAgg)
+        context = MagicMock(spec=grpc.ServicerContext)
+        resp = handler.GetDescriptor(MagicMock(), context)
+
+        assert resp.name == "descagg"
+        assert "FakeCommand" in resp.inputs[0].types
+
+
+class TestAggregateHandlerReplay:
+    """Test Replay RPC for Aggregate class handlers."""
+
+    def test_replay_with_aggregate_class(self):
+        from google.protobuf import any_pb2
+        from angzarr_client import Aggregate, handles
+        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+
+        class FakeCommand:
+            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
+            def SerializeToString(self, deterministic=None):
+                return b""
+
+        class FakeEvent:
+            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeEvent"})()
+            def __init__(self, result: str = ""):
+                self.result = result
+            def SerializeToString(self, deterministic=None):
+                return self.result.encode()
+
+        class TestState:
+            """Protobuf-like state for Pack() compatibility."""
+            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.TestState"})()
+
+            def __init__(self, initialized: bool = False):
+                self.initialized = initialized
+
+            def SerializeToString(self, deterministic=None):
+                return b"1" if self.initialized else b"0"
+
+        class ReplayableAgg(Aggregate[TestState]):
+            domain = "replayable"
+
+            def _create_empty_state(self):
+                return TestState()
+
+            def _apply_event(self, state, event_any):
+                if "FakeEvent" in event_any.type_url:
+                    state.initialized = True
+
+            @handles(FakeCommand)
+            def do_something(self, cmd: FakeCommand):
+                return FakeEvent(result="done")
+
+        handler = AggregateHandler(ReplayableAgg)
+        context = MagicMock(spec=grpc.ServicerContext)
+
+        event_any = any_pb2.Any(type_url="test.FakeEvent", value=b"test")
+        request = aggregate.ReplayRequest(
+            events=[angzarr.EventPage(event=event_any)],
+        )
+
+        response = handler.Replay(request, context)
+
+        # Should return computed state
+        assert response.state.type_url != ""
+        context.abort.assert_not_called()
+
+    def test_replay_not_supported_for_command_router(self):
+        router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
+            SUFFIX_COMMAND_A, handler_a
+        )
+        handler = AggregateHandler(router)
+        context = MagicMock(spec=grpc.ServicerContext)
+        context.abort.side_effect = grpc.RpcError()
+
+        from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+        request = aggregate.ReplayRequest()
+
+        with pytest.raises(grpc.RpcError):
+            handler.Replay(request, context)
+
+        context.abort.assert_called_once_with(
+            grpc.StatusCode.UNIMPLEMENTED,
+            "Replay not supported for CommandRouter-based aggregates",
+        )

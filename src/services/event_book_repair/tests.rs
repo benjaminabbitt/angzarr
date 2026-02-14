@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{EventPage, Snapshot};
+use crate::proto::{EventPage, Snapshot, SnapshotRetention};
 use crate::test_utils::{make_cover, make_event_page};
 
 #[test]
@@ -22,6 +22,7 @@ fn test_is_complete_with_snapshot() {
         snapshot: Some(Snapshot {
             sequence: 5,
             state: None,
+            retention: SnapshotRetention::RetentionDefault as i32,
         }),
         ..Default::default()
     };
@@ -266,6 +267,7 @@ mod grpc_integration {
                         type_url: "TestState".to_string(),
                         value: vec![1, 2, 3],
                     }),
+                    retention: SnapshotRetention::RetentionDefault as i32,
                 },
             )
             .await

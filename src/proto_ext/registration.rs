@@ -3,7 +3,9 @@
 //! Functions for building registration commands and deriving component UUIDs.
 
 use crate::orchestration::correlation::ANGZARR_UUID_NAMESPACE;
-use crate::proto::{CommandBook, CommandPage, ComponentDescriptor, Cover, RegisterComponent, Uuid};
+use crate::proto::{
+    CommandBook, CommandPage, ComponentDescriptor, Cover, MergeStrategy, RegisterComponent, Uuid,
+};
 
 use angzarr_client::proto_ext::constants::{META_ANGZARR_DOMAIN, REGISTER_COMPONENT_TYPE_URL};
 
@@ -51,6 +53,7 @@ pub fn build_registration_commands(
                         type_url: REGISTER_COMPONENT_TYPE_URL.to_string(),
                         value: buf,
                     }),
+                    merge_strategy: MergeStrategy::MergeCommutative as i32,
                 }],
                 saga_origin: None,
             }

@@ -19,7 +19,16 @@ from handlers import (
     handle_release_funds,
     handle_request_action,
 )
-from handlers.state import rebuild_state
+from handlers.state import PlayerState, build_state
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = PlayerState()
+    if event_book is None:
+        return state
+    events = [page.event for page in event_book.pages if page.event]
+    return build_state(state, events)
 from angzarr_client.proto.examples import player_pb2 as player
 
 structlog.configure(
@@ -36,7 +45,7 @@ structlog.configure(
 logger = structlog.get_logger()
 
 router = (
-    CommandRouter("player", rebuild_state)
+    CommandRouter("player", state_from_event_book)
     .on(name(player.RegisterPlayer), handle_register_player)
     .on(name(player.DepositFunds), handle_deposit_funds)
     .on(name(player.WithdrawFunds), handle_withdraw_funds)

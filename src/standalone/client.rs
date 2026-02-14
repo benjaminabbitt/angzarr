@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::client_traits::{self, ClientError};
 use crate::proto::{
-    CommandBook, CommandPage, CommandResponse, Cover, Edition, EventBook,
+    CommandBook, CommandPage, CommandResponse, Cover, Edition, EventBook, MergeStrategy,
     ProcessManagerHandleResponse, Projection, Query, SagaResponse, SpeculateAggregateRequest,
     SpeculatePmRequest, SpeculateProjectorRequest, SpeculateSagaRequest, Uuid as ProtoUuid,
 };
@@ -531,6 +531,7 @@ impl CommandBuilder {
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),
                 command,
+                merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
             saga_origin: None,
         }
@@ -595,6 +596,7 @@ mod tests {
                     type_url: "CreateOrder".to_string(),
                     value: vec![1, 2, 3],
                 }),
+                merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
             saga_origin: None,
         };

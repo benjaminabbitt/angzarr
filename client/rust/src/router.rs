@@ -1,3 +1,6 @@
+// Status is the standard gRPC error type from tonic - boxing would change API
+#![allow(clippy::result_large_err)]
+
 //! Command and event routing for aggregate and saga handlers.
 //!
 //! This module provides routing infrastructure for dispatching commands and events

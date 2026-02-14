@@ -1,6 +1,6 @@
 use super::*;
 use crate::config::DEFAULT_SAGA_FALLBACK_DOMAIN;
-use crate::proto::CommandPage;
+use crate::proto::{CommandPage, MergeStrategy};
 
 fn make_saga_origin() -> SagaCommandOrigin {
     SagaCommandOrigin {
@@ -33,6 +33,7 @@ fn make_test_command() -> CommandBook {
                 type_url: "test.AddPoints".to_string(),
                 value: vec![],
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: Some(make_saga_origin()),
     }

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
-use crate::proto::{EventBook, Projection, Snapshot, SyncEventBook};
+use crate::proto::{EventBook, Projection, Snapshot, SnapshotRetention, SyncEventBook};
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
 use crate::services::upcaster::Upcaster;
@@ -186,7 +186,7 @@ impl AggregateContext for GrpcAggregateContext {
             .iter()
             .filter(|p| {
                 let seq = p.sequence_num();
-                prior_max_seq.map_or(true, |max| seq > max)
+                prior_max_seq.is_none_or(|max| seq > max)
             })
             .cloned()
             .collect();
@@ -240,6 +240,7 @@ impl AggregateContext for GrpcAggregateContext {
                     let persisted_snapshot = Snapshot {
                         sequence: last_seq,
                         state: Some(state.clone()),
+                        retention: SnapshotRetention::RetentionDefault as i32,
                     };
                     self.snapshot_store
                         .put(domain, edition, root, persisted_snapshot)

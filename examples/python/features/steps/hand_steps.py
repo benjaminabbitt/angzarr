@@ -34,7 +34,22 @@ handle_deal_community_cards = _hand_handlers.handle_deal_community_cards
 handle_request_draw = _hand_handlers.handle_request_draw
 handle_reveal_cards = _hand_handlers.handle_reveal_cards
 handle_award_pot = _hand_handlers.handle_award_pot
-rebuild_state = _hand_handlers.rebuild_state
+build_state = _hand_handlers.build_state
+HandState = _hand_handlers.HandState
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = HandState()
+    if event_book is None or not event_book.pages:
+        return state
+    def get_seq(p):
+        if p.WhichOneof('sequence') == 'num':
+            return p.num
+        return 0
+    sorted_pages = sorted(event_book.pages, key=get_seq)
+    events = [page.event for page in sorted_pages if page.event]
+    return build_state(state, events)
 HandState = _hand_handlers.HandState
 get_game_rules = _hand_handlers.get_game_rules
 
@@ -90,7 +105,7 @@ def _make_command_book(command_msg):
 def _execute_handler(context, cmd, handler):
     """Execute a command handler and capture result or error."""
     event_book = _make_event_book(context.events if hasattr(context, "events") else [])
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     command_book = _make_command_book(cmd)
     seq = len(context.events) if hasattr(context, "events") else 0
 
@@ -270,7 +285,7 @@ def step_given_blind_posted(context, player_id, amount):
         context.events = []
 
     event_book = _make_event_book(context.events)
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     pot_total = state.get_pot_total() + int(amount)
 
     event = hand.BlindPosted(
@@ -704,7 +719,7 @@ def step_when_hands_evaluated(context):
 def step_when_rebuild_state(context):
     """Rebuild hand state from events."""
     event_book = _make_event_book(context.events)
-    context.state = rebuild_state(event_book)
+    context.state = state_from_event_book(event_book)
 
 
 # --- Then steps ---
@@ -981,7 +996,7 @@ def step_then_hand_status_is(context, status):
     """Verify hand status after operation."""
     # Rebuild state to check
     event_book = _make_event_book(context.events + list(context.result.pages))
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     assert state.status == status, f"Expected status={status}, got {state.status}"
 
 

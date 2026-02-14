@@ -45,6 +45,20 @@ enum SyncMode {
   SYNC_MODE_CASCADE = 2;      // Full sync: projectors + saga cascade (expensive)
 }
 
+// Controls how concurrent commands to the same aggregate are handled
+enum MergeStrategy {
+  MERGE_COMMUTATIVE = 0;       // Default: allow if state field mutations don't overlap
+  MERGE_STRICT = 1;            // Reject if sequence mismatch (optimistic concurrency)
+  MERGE_AGGREGATE_HANDLES = 2; // Aggregate handles its own concurrency
+}
+
+// Controls snapshot retention during cleanup
+enum SnapshotRetention {
+  RETENTION_DEFAULT = 0;   // Persist every 16 events, treated as TRANSIENT otherwise
+  RETENTION_PERSIST = 1;   // Keep indefinitely (business milestone)
+  RETENTION_TRANSIENT = 2; // Delete when newer snapshot written
+}
+
 message EventPage {
   oneof sequence {
     uint32 num = 1;
@@ -59,6 +73,7 @@ message EventPage {
 message Snapshot {
   uint32 sequence = 2;
   google.protobuf.Any state = 3;
+  SnapshotRetention retention = 4; // Controls cleanup behavior
 }
 
 message EventBook {
@@ -88,6 +103,7 @@ message CommandPage {
   // For new aggregates, use 0.
   uint32 sequence = 1;
   google.protobuf.Any command = 3;
+  MergeStrategy merge_strategy = 4; // How to handle sequence conflicts
 }
 
 message CommandBook {

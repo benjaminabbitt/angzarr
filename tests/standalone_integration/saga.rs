@@ -5,6 +5,7 @@ use crate::common::*;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
+use angzarr::proto::MergeStrategy;
 use async_trait::async_trait;
 use prost_types::Any;
 use tonic::Status;
@@ -72,6 +73,7 @@ impl SagaHandler for FulfillmentSaga {
                                 type_url: "inventory.ReserveStock".to_string(),
                                 value: event.value.clone(),
                             }),
+                            merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
                         ..Default::default()
                     };
@@ -157,6 +159,7 @@ impl SagaHandler for OrdersToInventorySaga {
                                 type_url: "inventory.ReserveStock".to_string(),
                                 value: event.value.clone(),
                             }),
+                            merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
                         ..Default::default()
                     });
@@ -219,6 +222,7 @@ impl SagaHandler for InventoryToShippingSaga {
                                 type_url: "shipping.CreateShipment".to_string(),
                                 value: event.value.clone(),
                             }),
+                            merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
                         ..Default::default()
                     });
@@ -716,6 +720,7 @@ async fn test_two_phase_saga_fetches_destinations() {
                                 type_url: "inventory.Reserve".to_string(),
                                 value: b"reserve".to_vec(),
                             }),
+                            merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
                         ..Default::default()
                     }],
@@ -767,6 +772,7 @@ async fn test_two_phase_saga_fetches_destinations() {
                 type_url: "inventory.CreateProduct".to_string(),
                 value: b"product-data".to_vec(),
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         ..Default::default()
     };
@@ -868,6 +874,7 @@ async fn test_two_phase_saga_no_destinations_needed() {
                                 type_url: "shipping.CreateShipment".to_string(),
                                 value: b"ship".to_vec(),
                             }),
+                            merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
                         ..Default::default()
                     }],
@@ -974,6 +981,7 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
                                 type_url: "target.DoSomething".to_string(),
                                 value: b"data".to_vec(),
                             }),
+                            merge_strategy: MergeStrategy::MergeCommutative as i32,
                         }],
                         ..Default::default()
                     }],

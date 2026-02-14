@@ -6,7 +6,7 @@
 use prost_types::Any;
 use uuid::Uuid;
 
-use angzarr::proto::Snapshot;
+use angzarr::proto::{Snapshot, SnapshotRetention};
 use angzarr::storage::SnapshotStore;
 
 /// Create a test snapshot at the given sequence.
@@ -17,6 +17,7 @@ pub fn make_snapshot(seq: u32) -> Snapshot {
             type_url: format!("type.example/TestState{}", seq),
             value: vec![10, 20, 30, seq as u8],
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     }
 }
 
@@ -28,6 +29,7 @@ pub fn make_snapshot_with_data(seq: u32, data: Vec<u8>) -> Snapshot {
             type_url: "type.example/CustomState".to_string(),
             value: data,
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     }
 }
 

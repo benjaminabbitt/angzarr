@@ -595,7 +595,6 @@ mod tests {
 mod integration_tests {
     use super::*;
     use crate::proto::{event_page::Sequence, Cover, EventPage, Uuid};
-    use futures::future::BoxFuture;
     use prost_types::Any;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;

@@ -31,7 +31,17 @@ handle_join_table = _table_handlers.handle_join_table
 handle_leave_table = _table_handlers.handle_leave_table
 handle_start_hand = _table_handlers.handle_start_hand
 handle_end_hand = _table_handlers.handle_end_hand
-rebuild_state = _table_handlers.rebuild_state
+build_state = _table_handlers.build_state
+TableState = _table_handlers.TableState
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = TableState()
+    if event_book is None:
+        return state
+    events = [page.event for page in event_book.pages if page.event]
+    return build_state(state, events)
 TableState = _table_handlers.TableState
 
 # Use regex matchers for flexibility
@@ -195,7 +205,7 @@ def step_given_hand_started(context, hand_num):
 
     # Get seated players from prior events to build hand root
     event_book = _make_event_book(context.events)
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
 
     active_players = []
     for pos, seat in state.seats.items():
@@ -230,7 +240,7 @@ def step_given_hand_started_with_dealer(context, hand_num, seat):
 
     # Get seated players from prior events
     event_book = _make_event_book(context.events)
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
 
     active_players = []
     for pos, seat_state in state.seats.items():
@@ -331,7 +341,7 @@ def step_when_end_hand(context, winner, amount):
     """Handle EndHand command."""
     # Get current hand root from state
     event_book = _make_event_book(context.events if hasattr(context, "events") else [])
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
 
     cmd = table.EndHand(
         hand_root=state.current_hand_root,
@@ -350,13 +360,13 @@ def step_when_end_hand(context, winner, amount):
 def step_when_rebuild_state(context):
     """Rebuild table state from events."""
     event_book = _make_event_book(context.events)
-    context.state = rebuild_state(event_book)
+    context.state = state_from_event_book(event_book)
 
 
 def _execute_handler(context, cmd, handler):
     """Execute a command handler and capture result or error."""
     event_book = _make_event_book(context.events if hasattr(context, "events") else [])
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     command_book = _make_command_book(cmd)
     seq = len(context.events) if hasattr(context, "events") else 0
 

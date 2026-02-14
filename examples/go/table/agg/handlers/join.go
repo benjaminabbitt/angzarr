@@ -12,6 +12,55 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func guardJoinTable(state TableState) error {
+	if !state.Exists() {
+		return angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	return nil
+}
+
+func validateJoinTable(cmd *examples.JoinTable, state TableState) (int32, error) {
+	if len(cmd.PlayerRoot) == 0 {
+		return 0, angzarr.NewCommandRejectedError("player_root is required")
+	}
+
+	if state.FindSeatByPlayer(cmd.PlayerRoot) >= 0 {
+		return 0, angzarr.NewCommandRejectedError("Player already seated")
+	}
+
+	if cmd.BuyInAmount < state.MinBuyIn {
+		return 0, angzarr.NewCommandRejectedError(fmt.Sprintf("Buy-in must be at least %d", state.MinBuyIn))
+	}
+	if cmd.BuyInAmount > state.MaxBuyIn {
+		return 0, angzarr.NewCommandRejectedError("Buy-in above maximum")
+	}
+
+	var seatPosition int32
+	if cmd.PreferredSeat >= 0 && cmd.PreferredSeat < state.MaxPlayers {
+		if _, taken := state.Seats[cmd.PreferredSeat]; taken {
+			return 0, angzarr.NewCommandRejectedError("Seat is occupied")
+		}
+		seatPosition = cmd.PreferredSeat
+	} else {
+		seatPosition = state.NextAvailableSeat()
+		if seatPosition < 0 {
+			return 0, angzarr.NewCommandRejectedError("Table is full")
+		}
+	}
+
+	return seatPosition, nil
+}
+
+func computePlayerJoined(cmd *examples.JoinTable, seatPosition int32) *examples.PlayerJoined {
+	return &examples.PlayerJoined{
+		PlayerRoot:   cmd.PlayerRoot,
+		SeatPosition: seatPosition,
+		BuyInAmount:  cmd.BuyInAmount,
+		Stack:        cmd.BuyInAmount,
+		JoinedAt:     timestamppb.New(time.Now()),
+	}
+}
+
 // HandleJoinTable handles the JoinTable command.
 func HandleJoinTable(
 	commandBook *pb.CommandBook,
@@ -19,53 +68,20 @@ func HandleJoinTable(
 	state TableState,
 	seq uint32,
 ) (*pb.EventBook, error) {
-	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Table does not exist")
-	}
-
 	var cmd examples.JoinTable
 	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
 		return nil, err
 	}
 
-	if len(cmd.PlayerRoot) == 0 {
-		return nil, angzarr.NewCommandRejectedError("player_root is required")
+	if err := guardJoinTable(state); err != nil {
+		return nil, err
+	}
+	seatPosition, err := validateJoinTable(&cmd, state)
+	if err != nil {
+		return nil, err
 	}
 
-	// Check if player already seated
-	if state.FindSeatByPlayer(cmd.PlayerRoot) >= 0 {
-		return nil, angzarr.NewCommandRejectedError("Player already seated")
-	}
-
-	// Validate buy-in
-	if cmd.BuyInAmount < state.MinBuyIn {
-		return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Buy-in must be at least %d", state.MinBuyIn))
-	}
-	if cmd.BuyInAmount > state.MaxBuyIn {
-		return nil, angzarr.NewCommandRejectedError("Buy-in above maximum")
-	}
-
-	// Find seat
-	var seatPosition int32
-	if cmd.PreferredSeat >= 0 && cmd.PreferredSeat < state.MaxPlayers {
-		if _, taken := state.Seats[cmd.PreferredSeat]; taken {
-			return nil, angzarr.NewCommandRejectedError("Seat is occupied")
-		}
-		seatPosition = cmd.PreferredSeat
-	} else {
-		seatPosition = state.NextAvailableSeat()
-		if seatPosition < 0 {
-			return nil, angzarr.NewCommandRejectedError("Table is full")
-		}
-	}
-
-	event := &examples.PlayerJoined{
-		PlayerRoot:   cmd.PlayerRoot,
-		SeatPosition: seatPosition,
-		BuyInAmount:  cmd.BuyInAmount,
-		Stack:        cmd.BuyInAmount,
-		JoinedAt:     timestamppb.New(time.Now()),
-	}
+	event := computePlayerJoined(&cmd, seatPosition)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

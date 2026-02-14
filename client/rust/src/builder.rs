@@ -87,6 +87,7 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
                     type_url,
                     value: payload,
                 }),
+                merge_strategy: crate::proto::MergeStrategy::MergeCommutative as i32,
             }],
             saga_origin: None,
         })

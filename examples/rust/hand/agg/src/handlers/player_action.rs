@@ -5,14 +5,16 @@ use angzarr_client::proto::{CommandBook, EventBook};
 use angzarr_client::{new_event_book, pack_event, CommandRejectedError, CommandResult, UnpackAny};
 use prost_types::Any;
 
-use crate::state::HandState;
+use crate::state::{HandState, PlayerHandState};
 
-pub fn handle_player_action(
-    command_book: &CommandBook,
-    command_any: &Any,
-    state: &HandState,
-    seq: u32,
-) -> CommandResult<EventBook> {
+/// Validated action result containing computed values.
+struct ValidatedAction {
+    chips_put_in: i64,
+    event_amount: i64,
+    final_action: ActionType,
+}
+
+fn guard(state: &HandState) -> CommandResult<()> {
     if !state.exists() {
         return Err(CommandRejectedError::new("Hand does not exist"));
     }
@@ -22,11 +24,13 @@ pub fn handle_player_action(
     if state.status != "betting" {
         return Err(CommandRejectedError::new("Not in betting phase"));
     }
+    Ok(())
+}
 
-    let cmd: PlayerAction = command_any
-        .unpack()
-        .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
-
+fn validate<'a>(
+    cmd: &PlayerAction,
+    state: &'a HandState,
+) -> CommandResult<(&'a PlayerHandState, ValidatedAction)> {
     let player = state
         .get_player(&cmd.player_root)
         .ok_or_else(|| CommandRejectedError::new("Player not in hand"))?;
@@ -38,11 +42,10 @@ pub fn handle_player_action(
         return Err(CommandRejectedError::new("Player is all-in"));
     }
 
-    // Validate action
     let action = ActionType::try_from(cmd.action).unwrap_or_default();
     let amount_to_call = state.current_bet - player.bet_this_round;
-    let chips_put_in: i64; // Actual chips added to pot
-    let event_amount: i64; // Amount to record in event
+    let chips_put_in: i64;
+    let event_amount: i64;
 
     match action {
         ActionType::Fold => {
@@ -86,7 +89,6 @@ pub fn handle_player_action(
             }
             let to_put_in = cmd.amount - player.bet_this_round;
             chips_put_in = to_put_in.min(player.stack);
-            // Record total bet (cmd.amount) in event for raises
             event_amount = cmd.amount;
         }
         ActionType::AllIn => {
@@ -98,30 +100,58 @@ pub fn handle_player_action(
         }
     }
 
-    let new_stack = player.stack - chips_put_in;
-    let new_pot = state.total_pot() + chips_put_in;
-
-    // Calculate new current bet
-    let player_total_bet = player.bet_this_round + chips_put_in;
-    let new_current_bet = state.current_bet.max(player_total_bet);
-
-    // Determine final action type
     let final_action = if chips_put_in == player.stack && chips_put_in > 0 {
         ActionType::AllIn
     } else {
         action
     };
 
-    let event = ActionTaken {
-        player_root: cmd.player_root,
-        action: final_action as i32,
-        amount: event_amount,
+    Ok((
+        player,
+        ValidatedAction {
+            chips_put_in,
+            event_amount,
+            final_action,
+        },
+    ))
+}
+
+fn compute(
+    cmd: &PlayerAction,
+    state: &HandState,
+    player: &PlayerHandState,
+    validated: &ValidatedAction,
+) -> ActionTaken {
+    let new_stack = player.stack - validated.chips_put_in;
+    let new_pot = state.total_pot() + validated.chips_put_in;
+    let player_total_bet = player.bet_this_round + validated.chips_put_in;
+    let new_current_bet = state.current_bet.max(player_total_bet);
+
+    ActionTaken {
+        player_root: cmd.player_root.clone(),
+        action: validated.final_action as i32,
+        amount: validated.event_amount,
         player_stack: new_stack,
         pot_total: new_pot,
         amount_to_call: new_current_bet,
         action_at: Some(angzarr_client::now()),
-    };
+    }
+}
 
+pub fn handle_player_action(
+    command_book: &CommandBook,
+    command_any: &Any,
+    state: &HandState,
+    seq: u32,
+) -> CommandResult<EventBook> {
+    let cmd: PlayerAction = command_any
+        .unpack()
+        .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
+
+    guard(state)?;
+    let (player, validated) = validate(&cmd, state)?;
+
+    let event = compute(&cmd, state, player, &validated);
     let event_any = pack_event(&event, "examples.ActionTaken");
 
     Ok(new_event_book(command_book, seq, event_any))

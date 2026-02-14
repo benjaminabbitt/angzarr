@@ -75,6 +75,7 @@ mongodb = ["dep:mongodb"]
 postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/postgres", "sqlx/migrate", "sqlx/uuid", "sea-query-binder/sqlx-postgres"]
 sqlite = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/sqlite", "sqlx/migrate", "sea-query-binder/sqlx-sqlite"]
 redis = ["dep:redis"]
+immudb = ["dep:sqlx", "dep:sea-query", "sqlx/postgres", "sqlx/uuid"]  # Uses pgsql wire protocol
 bigtable = []    # placeholder, no deps yet
 dynamo = []      # placeholder, no deps yet
 
@@ -91,7 +92,7 @@ lossy = ["dep:rand"]
 standalone = ["sqlite", "channel", "topology"]
 
 # All features for development
-full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "bigtable", "dynamo", "lossy", "otel", "topology"]
+full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "immudb", "bigtable", "dynamo", "lossy", "otel", "topology"]
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)

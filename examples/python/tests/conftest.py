@@ -13,9 +13,9 @@ from google.protobuf.timestamp_pb2 import Timestamp
 # Add paths for imports
 root = Path(__file__).parent.parent
 sys.path.insert(0, str(root))
-sys.path.insert(0, str(root / "agg-player"))
-sys.path.insert(0, str(root / "agg-table"))
-sys.path.insert(0, str(root / "agg-hand"))
+sys.path.insert(0, str(root / "player" / "agg"))
+sys.path.insert(0, str(root / "table" / "agg"))
+sys.path.insert(0, str(root / "hand" / "agg"))
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player

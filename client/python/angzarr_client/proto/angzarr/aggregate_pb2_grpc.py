@@ -28,6 +28,11 @@ class AggregateServiceStub(object):
                 request_serializer=angzarr_dot_types__pb2.ContextualCommand.SerializeToString,
                 response_deserializer=angzarr_dot_aggregate__pb2.BusinessResponse.FromString,
                 _registered_method=True)
+        self.Replay = channel.unary_unary(
+                '/angzarr.AggregateService/Replay',
+                request_serializer=angzarr_dot_aggregate__pb2.ReplayRequest.SerializeToString,
+                response_deserializer=angzarr_dot_aggregate__pb2.ReplayResponse.FromString,
+                _registered_method=True)
 
 
 class AggregateServiceServicer(object):
@@ -50,6 +55,14 @@ class AggregateServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Replay(self, request, context):
+        """Replay events to compute state (for conflict detection)
+        Optional: only needed if aggregate supports MERGE_COMMUTATIVE
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AggregateServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -62,6 +75,11 @@ def add_AggregateServiceServicer_to_server(servicer, server):
                     servicer.Handle,
                     request_deserializer=angzarr_dot_types__pb2.ContextualCommand.FromString,
                     response_serializer=angzarr_dot_aggregate__pb2.BusinessResponse.SerializeToString,
+            ),
+            'Replay': grpc.unary_unary_rpc_method_handler(
+                    servicer.Replay,
+                    request_deserializer=angzarr_dot_aggregate__pb2.ReplayRequest.FromString,
+                    response_serializer=angzarr_dot_aggregate__pb2.ReplayResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -121,6 +139,33 @@ class AggregateService(object):
             '/angzarr.AggregateService/Handle',
             angzarr_dot_types__pb2.ContextualCommand.SerializeToString,
             angzarr_dot_aggregate__pb2.BusinessResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Replay(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/angzarr.AggregateService/Replay',
+            angzarr_dot_aggregate__pb2.ReplayRequest.SerializeToString,
+            angzarr_dot_aggregate__pb2.ReplayResponse.FromString,
             options,
             channel_credentials,
             insecure,

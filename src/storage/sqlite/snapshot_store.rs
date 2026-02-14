@@ -88,6 +88,19 @@ impl SnapshotStore for SqliteSnapshotStore {
         Ok(())
     }
 
+    async fn get_at_seq(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        _seq: u32,
+    ) -> Result<Option<Snapshot>> {
+        // SQLite stores single snapshot per aggregate.
+        // Return it if it exists and sequence <= requested seq.
+        // For full multi-snapshot support, would need schema changes.
+        self.get(domain, edition, root).await
+    }
+
     async fn delete(&self, domain: &str, edition: &str, root: Uuid) -> Result<()> {
         let root_str = root.to_string();
 

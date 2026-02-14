@@ -52,6 +52,11 @@ from .router import (
     ERRMSG_UNKNOWN_COMMAND,
     ERRMSG_NO_COMMAND_PAGES,
     next_sequence as router_next_sequence,
+    command_handler,
+    event_handler,
+    validate_command_handler,
+    reacts_to,
+    projects,
 )
 from .server import (
     configure_logging,
@@ -96,6 +101,13 @@ from .identity import (
 )
 from .event_packing import pack_event, pack_events, new_event_book, new_event_book_multi
 from .state_builder import StateBuilder, StateApplier, SnapshotLoader, StateFactory
+from .aggregate import Aggregate, handles
+from .saga import Saga
+from .process_manager import ProcessManager
+from .projector import Projector
+from .upcaster import Upcaster, upcasts
+from .upcaster_handler import UpcasterHandler, run_upcaster_server, UpcasterHandleFunc
+from .router import upcaster, UpcasterRouter
 
 __all__ = [
     # Clients
@@ -148,6 +160,10 @@ __all__ = [
     "ERRMSG_UNKNOWN_COMMAND",
     "ERRMSG_NO_COMMAND_PAGES",
     "router_next_sequence",
+    "command_handler",
+    "event_handler",
+    "reacts_to",
+    "projects",
     # Server
     "configure_logging",
     "get_transport_config",
@@ -197,4 +213,17 @@ __all__ = [
     "StateApplier",
     "SnapshotLoader",
     "StateFactory",
+    # Component base classes
+    "Aggregate",
+    "handles",
+    "Saga",
+    "ProcessManager",
+    "Projector",
+    "Upcaster",
+    "upcasts",
+    "upcaster",
+    "UpcasterRouter",
+    "UpcasterHandler",
+    "run_upcaster_server",
+    "UpcasterHandleFunc",
 ]

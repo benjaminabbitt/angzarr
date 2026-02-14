@@ -20,7 +20,22 @@ from handlers import (
     handle_reveal_cards,
     handle_award_pot,
 )
-from handlers.state import rebuild_state
+from handlers.state import HandState, build_state
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = HandState()
+    if event_book is None or not event_book.pages:
+        return state
+    # Sort by sequence for correct ordering
+    def get_seq(p):
+        if p.WhichOneof('sequence') == 'num':
+            return p.num
+        return 0
+    sorted_pages = sorted(event_book.pages, key=get_seq)
+    events = [page.event for page in sorted_pages if page.event]
+    return build_state(state, events)
 from angzarr_client.proto.examples import hand_pb2 as hand
 
 structlog.configure(
@@ -37,7 +52,7 @@ structlog.configure(
 logger = structlog.get_logger()
 
 router = (
-    CommandRouter("hand", rebuild_state)
+    CommandRouter("hand", state_from_event_book)
     .on(name(hand.DealCards), handle_deal_cards)
     .on(name(hand.PostBlind), handle_post_blind)
     .on(name(hand.PlayerAction), handle_player_action)

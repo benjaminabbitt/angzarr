@@ -1,9 +1,9 @@
 //! Tests for gRPC communication over Unix Domain Sockets (UDS).
 
 use crate::common::*;
-use angzarr::proto::aggregate_coordinator_client::AggregateCoordinatorClient;
+use angzarr::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
 use angzarr::proto::aggregate_coordinator_service_server::{
-    AggregateCoordinator, AggregateCoordinatorServiceServer,
+    AggregateCoordinatorService, AggregateCoordinatorServiceServer,
 };
 use angzarr::proto::{CommandResponse, SyncCommandBook};
 use angzarr::transport::{connect_to_address, prepare_uds_socket};
@@ -78,12 +78,12 @@ impl AggregateCoordinatorService for MockAggregateService {
         }))
     }
 
-    async fn dry_run_handle(
+    async fn handle_sync_speculative(
         &self,
-        request: Request<angzarr::proto::DryRunRequest>,
+        request: Request<angzarr::proto::SpeculateAggregateRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        let dry_run = request.into_inner();
-        let cmd = dry_run.command.unwrap_or_default();
+        let speculate = request.into_inner();
+        let cmd = speculate.command.unwrap_or_default();
         self.handle(Request::new(cmd)).await
     }
 }
@@ -113,7 +113,7 @@ async fn test_grpc_server_and_client_over_uds() {
     let channel = connect_to_address(socket_path.to_str().unwrap())
         .await
         .expect("Failed to connect");
-    let mut client = AggregateCoordinatorClient::new(channel);
+    let mut client = AggregateCoordinatorServiceClient::new(channel);
 
     // Execute command
     let command = create_test_command("orders", Uuid::new_v4(), b"test-data", 0);
@@ -157,7 +157,7 @@ async fn test_multiple_concurrent_uds_requests() {
             let channel = connect_to_address(path.to_str().unwrap())
                 .await
                 .expect("Failed to connect");
-            let mut client = AggregateCoordinatorClient::new(channel);
+            let mut client = AggregateCoordinatorServiceClient::new(channel);
 
             let command = create_test_command(
                 "orders",
@@ -220,7 +220,7 @@ async fn test_uds_socket_cleanup_on_server_restart() {
     let channel = connect_to_address(socket_path.to_str().unwrap())
         .await
         .expect("Failed to connect to restarted server");
-    let mut client = AggregateCoordinatorClient::new(channel);
+    let mut client = AggregateCoordinatorServiceClient::new(channel);
 
     let command = create_test_command("orders", Uuid::new_v4(), b"after-restart", 0);
     let response = client

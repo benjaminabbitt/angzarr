@@ -307,6 +307,7 @@ impl AggregateContext for LocalAggregateContext {
                     let persisted_snapshot = crate::proto::Snapshot {
                         sequence: last_seq,
                         state: Some(state.clone()),
+                        retention: crate::proto::SnapshotRetention::RetentionDefault as i32,
                     };
                     self.storage
                         .snapshot_store

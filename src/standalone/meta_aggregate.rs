@@ -132,7 +132,7 @@ impl AggregateHandler for MetaAggregateHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{CommandBook, CommandPage, Uuid as ProtoUuid};
+    use crate::proto::{CommandBook, CommandPage, MergeStrategy, Uuid as ProtoUuid};
     use crate::proto_ext::{component_name_to_uuid, REGISTER_COMPONENT_TYPE_URL};
 
     fn make_register_command(name: &str, pod_id: &str) -> ContextualCommand {
@@ -169,6 +169,7 @@ mod tests {
                         type_url: REGISTER_COMPONENT_TYPE_URL.to_string(),
                         value: buf,
                     }),
+                    merge_strategy: MergeStrategy::MergeCommutative as i32,
                 }],
                 saga_origin: None,
             }),

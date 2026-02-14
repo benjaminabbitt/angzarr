@@ -2,7 +2,7 @@
 //!
 //! Provides convenience methods for working with pages and sequence numbers.
 
-use crate::proto::{CommandBook, CommandPage, EventBook, EventPage, Snapshot};
+use crate::proto::{CommandBook, CommandPage, EventBook, EventPage, MergeStrategy, Snapshot};
 
 use super::cover::CoverExt;
 use super::pages::{CommandPageExt, EventPageExt};
@@ -70,6 +70,11 @@ pub trait CommandBookExt: CoverExt {
 
     /// Get the first command page, if any.
     fn first_command(&self) -> Option<&CommandPage>;
+
+    /// Get the merge strategy from the first command page.
+    ///
+    /// Returns the MergeStrategy enum value. Defaults to Commutative if no pages.
+    fn merge_strategy(&self) -> MergeStrategy;
 }
 
 impl CommandBookExt for CommandBook {
@@ -79,5 +84,12 @@ impl CommandBookExt for CommandBook {
 
     fn first_command(&self) -> Option<&CommandPage> {
         self.pages.first()
+    }
+
+    fn merge_strategy(&self) -> MergeStrategy {
+        self.pages
+            .first()
+            .map(|p| p.merge_strategy())
+            .unwrap_or(MergeStrategy::MergeCommutative)
     }
 }

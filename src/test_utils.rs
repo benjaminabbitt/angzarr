@@ -4,7 +4,8 @@
 //! Provides reusable constructors for proto types that appear across many test modules.
 
 use crate::proto::{
-    event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, Uuid as ProtoUuid,
+    event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
+    Uuid as ProtoUuid,
 };
 use prost_types::Any;
 use uuid::Uuid;
@@ -110,6 +111,7 @@ pub fn make_command_book_with_sequence(domain: &str, root: Uuid, sequence: u32) 
                 type_url: "test.Command".to_string(),
                 value: vec![],
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
     }
@@ -134,6 +136,7 @@ pub fn make_command_book_correlated(with_correlation: bool) -> CommandBook {
                 type_url: "test.Command".to_string(),
                 value: vec![],
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
     }

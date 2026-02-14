@@ -11,10 +11,12 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from .proto.angzarr import types_pb2 as angzarr
+from .helpers import now
 
 
 def _now_timestamp() -> Timestamp:
-    return Timestamp(seconds=int(datetime.now(timezone.utc).timestamp()))
+    """Internal alias for now()."""
+    return now()
 
 
 def new_event_book(

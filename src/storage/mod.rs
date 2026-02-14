@@ -5,7 +5,7 @@
 //! - `SnapshotStore` trait: Snapshot optimization
 //! - `PositionStore` trait: Handler checkpoint tracking
 //! - Storage configuration types
-//! - Implementations: MongoDB, PostgreSQL, SQLite, Redis, Bigtable, DynamoDB
+//! - Implementations: MongoDB, PostgreSQL, SQLite, Redis, Bigtable, DynamoDB, ImmuDB
 
 use std::sync::Arc;
 
@@ -28,6 +28,8 @@ pub mod bigtable;
 #[cfg(feature = "dynamo")]
 pub mod dynamo;
 pub mod helpers;
+#[cfg(feature = "immudb")]
+pub mod immudb;
 pub mod mock;
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
@@ -35,7 +37,7 @@ pub mod mongodb;
 pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
-#[cfg(any(feature = "postgres", feature = "sqlite"))]
+#[cfg(any(feature = "postgres", feature = "sqlite", feature = "immudb"))]
 pub mod schema;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
@@ -45,6 +47,8 @@ pub mod sqlite;
 pub use bigtable::{BigtableEventStore, BigtablePositionStore, BigtableSnapshotStore};
 #[cfg(feature = "dynamo")]
 pub use dynamo::{DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
+#[cfg(feature = "immudb")]
+pub use immudb::ImmudbEventStore;
 pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
 #[cfg(all(feature = "mongodb", feature = "topology"))]
 pub use mongodb::MongoTopologyStore;

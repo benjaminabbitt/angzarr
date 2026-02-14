@@ -11,25 +11,17 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// HandleRevealCards handles revealing or mucking cards at showdown.
-func HandleRevealCards(
-	commandBook *pb.CommandBook,
-	commandAny *anypb.Any,
-	state HandState,
-	seq uint32,
-) (*pb.EventBook, error) {
+func guardRevealCards(state HandState) error {
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return angzarr.NewCommandRejectedError("Hand does not exist")
 	}
 	if state.IsComplete() {
-		return nil, angzarr.NewCommandRejectedError("Hand already complete")
+		return angzarr.NewCommandRejectedError("Hand already complete")
 	}
+	return nil
+}
 
-	var cmd examples.RevealCards
-	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
-		return nil, err
-	}
-
+func validateRevealCards(cmd *examples.RevealCards, state HandState) (*PlayerHandState, error) {
 	player := state.GetPlayerByRoot(cmd.PlayerRoot)
 	if player == nil {
 		return nil, angzarr.NewCommandRejectedError("Player not in hand")
@@ -37,40 +29,64 @@ func HandleRevealCards(
 	if player.HasFolded {
 		return nil, angzarr.NewCommandRejectedError("Player has folded")
 	}
+	return player, nil
+}
+
+func computeCardsMucked(cmd *examples.RevealCards) *examples.CardsMucked {
+	return &examples.CardsMucked{
+		PlayerRoot: cmd.PlayerRoot,
+		MuckedAt:   timestamppb.New(time.Now()),
+	}
+}
+
+func computeCardsRevealed(cmd *examples.RevealCards, state HandState, player *PlayerHandState) *examples.CardsRevealed {
+	rules := GetRules(state.GameVariant)
+	handRank := rules.EvaluateHand(player.HoleCards, state.CommunityCards)
+
+	ranking := &examples.HandRanking{
+		RankType: handRank.RankType,
+		Score:    handRank.Score,
+	}
+
+	return &examples.CardsRevealed{
+		PlayerRoot: cmd.PlayerRoot,
+		Cards:      player.HoleCards,
+		Ranking:    ranking,
+		RevealedAt: timestamppb.New(time.Now()),
+	}
+}
+
+// HandleRevealCards handles revealing or mucking cards at showdown.
+func HandleRevealCards(
+	commandBook *pb.CommandBook,
+	commandAny *anypb.Any,
+	state HandState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	var cmd examples.RevealCards
+	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
+		return nil, err
+	}
+
+	if err := guardRevealCards(state); err != nil {
+		return nil, err
+	}
+	player, err := validateRevealCards(&cmd, state)
+	if err != nil {
+		return nil, err
+	}
 
 	var eventAny *anypb.Any
-	var err error
 
 	if cmd.Muck {
-		// Player mucks their cards
-		event := &examples.CardsMucked{
-			PlayerRoot: cmd.PlayerRoot,
-			MuckedAt:   timestamppb.New(time.Now()),
-		}
+		event := computeCardsMucked(&cmd)
 		eventAny, err = anypb.New(event)
-		if err != nil {
-			return nil, err
-		}
 	} else {
-		// Player reveals their cards - use proper game rules for hand evaluation
-		rules := GetRules(state.GameVariant)
-		handRank := rules.EvaluateHand(player.HoleCards, state.CommunityCards)
-
-		ranking := &examples.HandRanking{
-			RankType: handRank.RankType,
-			Score:    handRank.Score,
-		}
-
-		event := &examples.CardsRevealed{
-			PlayerRoot: cmd.PlayerRoot,
-			Cards:      player.HoleCards,
-			Ranking:    ranking,
-			RevealedAt: timestamppb.New(time.Now()),
-		}
+		event := computeCardsRevealed(&cmd, state, player)
 		eventAny, err = anypb.New(event)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return angzarr.NewEventBook(commandBook.Cover, seq, eventAny), nil

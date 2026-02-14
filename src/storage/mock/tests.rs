@@ -183,6 +183,7 @@ async fn test_mock_snapshot_store() {
     let snapshot = Snapshot {
         sequence: 5,
         state: None,
+        retention: crate::proto::SnapshotRetention::RetentionDefault as i32,
     };
 
     store

@@ -36,7 +36,7 @@ pub fn extract_correlation_id(command_book: &CommandBook) -> Result<String, Stat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{CommandPage, Cover, Uuid as ProtoUuid};
+    use crate::proto::{CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid};
     use prost_types::Any;
 
     fn make_command_book(with_correlation: bool) -> CommandBook {
@@ -59,6 +59,7 @@ mod tests {
                     type_url: "test.Command".to_string(),
                     value: vec![],
                 }),
+                merge_strategy: MergeStrategy::MergeCommutative as i32,
             }],
             saga_origin: None,
         }

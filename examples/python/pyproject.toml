@@ -22,6 +22,7 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "pytest-cov>=7.0.0",
 ]
 
 [build-system]
@@ -33,3 +34,7 @@ packages = ["angzarr", "agg-player", "agg-table", "agg-hand"]
 
 [tool.uv.sources]
 angzarr-client = { path = "../../client/python", editable = true }
+
+[tool.pytest.ini_options]
+pythonpath = ["player/agg", "table/agg", "hand/agg"]
+testpaths = ["player/agg/handlers", "table/agg/handlers", "hand/agg/handlers"]

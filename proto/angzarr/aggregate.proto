@@ -7,6 +7,7 @@ option csharp_namespace = "Angzarr";
 option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
+import "google/protobuf/any.proto";
 import "google/protobuf/empty.proto";
 
 // AggregateService: client logic that processes commands and emits events
@@ -17,6 +18,20 @@ service AggregateService {
   rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
   // Process command and return business response (events or revocation request)
   rpc Handle (ContextualCommand) returns (BusinessResponse);
+  // Replay events to compute state (for conflict detection)
+  // Optional: only needed if aggregate supports MERGE_COMMUTATIVE
+  rpc Replay (ReplayRequest) returns (ReplayResponse);
+}
+
+// Request to replay events and compute resulting state
+message ReplayRequest {
+  Snapshot base_snapshot = 1;     // Starting state (empty = initial state)
+  repeated EventPage events = 2;  // Events to apply in order
+}
+
+// Response with computed state after replay
+message ReplayResponse {
+  google.protobuf.Any state = 1;  // Resulting state
 }
 
 // AggregateCoordinatorService: orchestrates command processing for aggregates

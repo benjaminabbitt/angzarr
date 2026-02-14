@@ -95,6 +95,48 @@ impl SnapshotStore for MongoSnapshotStore {
         Ok(())
     }
 
+    async fn get_at_seq(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        seq: u32,
+    ) -> Result<Option<Snapshot>> {
+        let root_str = root.to_string();
+
+        // Find snapshot with highest sequence <= seq
+        let filter = doc! {
+            "edition": edition,
+            "domain": domain,
+            "root": &root_str,
+            "sequence": { "$lte": seq as i32 }
+        };
+
+        let options = mongodb::options::FindOneOptions::builder()
+            .sort(doc! { "sequence": -1 })
+            .build();
+
+        let result = self
+            .snapshots
+            .find_one(filter)
+            .with_options(options)
+            .await?;
+
+        match result {
+            Some(doc) => {
+                let state_data =
+                    doc.get_binary_generic("state_data")
+                        .map_err(|_| StorageError::NotFound {
+                            domain: domain.to_string(),
+                            root,
+                        })?;
+                let snapshot = Snapshot::decode(state_data.as_slice())?;
+                Ok(Some(snapshot))
+            }
+            None => Ok(None),
+        }
+    }
+
     async fn delete(&self, domain: &str, edition: &str, root: Uuid) -> Result<()> {
         let root_str = root.to_string();
 

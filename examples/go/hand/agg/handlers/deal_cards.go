@@ -15,27 +15,21 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// HandleDealCards handles the DealCards command to start a new hand.
-func HandleDealCards(
-	commandBook *pb.CommandBook,
-	commandAny *anypb.Any,
-	state HandState,
-	seq uint32,
-) (*pb.EventBook, error) {
+func guardDealCards(state HandState) error {
 	if state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand already dealt")
+		return angzarr.NewCommandRejectedError("Hand already dealt")
 	}
+	return nil
+}
 
-	var cmd examples.DealCards
-	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
-		return nil, err
-	}
-
+func validateDealCards(cmd *examples.DealCards) error {
 	if len(cmd.Players) < 2 {
-		return nil, angzarr.NewCommandRejectedError("Need at least 2 players")
+		return angzarr.NewCommandRejectedError("Need at least 2 players")
 	}
+	return nil
+}
 
-	// Create and shuffle deck
+func computeCardsDealt(cmd *examples.DealCards) *examples.CardsDealt {
 	deck := createDeck()
 	seed := cmd.DeckSeed
 	if len(seed) == 0 {
@@ -44,7 +38,6 @@ func HandleDealCards(
 	}
 	shuffleDeck(deck, seed)
 
-	// Deal hole cards based on game variant
 	cardsPerPlayer := getCardsPerPlayer(cmd.GameVariant)
 	playerCards := make([]*examples.PlayerHoleCards, len(cmd.Players))
 
@@ -60,7 +53,7 @@ func HandleDealCards(
 		}
 	}
 
-	event := &examples.CardsDealt{
+	return &examples.CardsDealt{
 		TableRoot:      cmd.TableRoot,
 		HandNumber:     cmd.HandNumber,
 		GameVariant:    cmd.GameVariant,
@@ -69,6 +62,28 @@ func HandleDealCards(
 		Players:        cmd.Players,
 		DealtAt:        timestamppb.New(time.Now()),
 	}
+}
+
+// HandleDealCards handles the DealCards command to start a new hand.
+func HandleDealCards(
+	commandBook *pb.CommandBook,
+	commandAny *anypb.Any,
+	state HandState,
+	seq uint32,
+) (*pb.EventBook, error) {
+	var cmd examples.DealCards
+	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
+		return nil, err
+	}
+
+	if err := guardDealCards(state); err != nil {
+		return nil, err
+	}
+	if err := validateDealCards(&cmd); err != nil {
+		return nil, err
+	}
+
+	event := computeCardsDealt(&cmd)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

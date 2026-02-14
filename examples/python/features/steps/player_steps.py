@@ -25,7 +25,16 @@ from handlers import (
     handle_reserve_funds,
     handle_release_funds,
 )
-from handlers.state import rebuild_state, PlayerState
+from handlers.state import build_state, PlayerState
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = PlayerState()
+    if event_book is None:
+        return state
+    events = [page.event for page in event_book.pages if page.event]
+    return build_state(state, events)
 
 # Use regex matchers for flexibility
 use_step_matcher("re")
@@ -237,13 +246,13 @@ def step_when_release_funds(context, table_id):
 def step_when_rebuild_state(context):
     """Rebuild player state from events."""
     event_book = _make_event_book(context.events)
-    context.state = rebuild_state(event_book)
+    context.state = state_from_event_book(event_book)
 
 
 def _execute_handler(context, cmd, handler):
     """Execute a command handler and capture result or error."""
     event_book = _make_event_book(context.events if hasattr(context, "events") else [])
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     command_book = _make_command_book(cmd)
     seq = len(context.events) if hasattr(context, "events") else 0
 

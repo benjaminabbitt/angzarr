@@ -10,7 +10,7 @@ This guide documents common patterns used in CQRS and Event Sourcing architectur
 |----------|----------|
 | [Delivery & Consistency](#delivery--consistency-patterns) | Outbox, Idempotent Consumer |
 | [Schema Evolution](#schema-evolution-patterns) | Upcasting |
-| [Coordination](#coordination-patterns) | Correlation ID, Sync Mode, Process Manager, Saga |
+| [Coordination](#coordination-patterns) | Correlation ID, Sync Mode, Merge Strategy, Process Manager, Saga |
 | [Query](#query-patterns) | Temporal Query |
 
 ---
@@ -589,6 +589,154 @@ let response = aggregate.handle_sync(sync_command).await?;
 - Default to `NONE` unless you have a specific consistency requirement
 - Use `SIMPLE` for APIs that read back data immediately after write
 - Avoid `CASCADE` in hot paths; consider background processing instead
+
+---
+
+### Merge Strategy
+
+The **MergeStrategy** enum controls how the aggregate coordinator handles sequence conflicts when concurrent commands target the same aggregate. This is optimistic concurrency control at the framework level.
+
+#### The Problem
+
+In event sourcing, each command must specify the sequence number it expects:
+
+```
+Command 1: sequence=5 → succeeds (aggregate at seq 5)
+Command 2: sequence=5 → conflict! (aggregate now at seq 6)
+```
+
+Without concurrency control, the second command would silently overwrite or conflict. MergeStrategy determines the response.
+
+#### Strategies
+
+```protobuf
+enum MergeStrategy {
+  MERGE_COMMUTATIVE = 0;      // Default: retryable conflict
+  MERGE_STRICT = 1;           // Immediate rejection
+  MERGE_AGGREGATE_HANDLES = 2; // Delegate to aggregate
+}
+```
+
+| Strategy | Error Code | Behavior | Use Case |
+|----------|------------|----------|----------|
+| `COMMUTATIVE` | `FAILED_PRECONDITION` | Retryable error with fresh state | Most commands; sagas with auto-retry |
+| `STRICT` | `ABORTED` | Immediate, non-retryable rejection | Commands requiring latest state |
+| `AGGREGATE_HANDLES` | N/A (bypasses validation) | Aggregate implements conflict resolution | Counter increments, set operations, CRDTs |
+
+#### MERGE_COMMUTATIVE (Default)
+
+Most commands use COMMUTATIVE. When a sequence conflict occurs:
+
+1. Coordinator returns `FAILED_PRECONDITION` with current EventBook
+2. Client extracts fresh state from error details
+3. Client rebuilds command with correct sequence
+4. Client retries
+
+**Saga retry flow:**
+```
+Saga emits command (seq=5) → Conflict (aggregate at seq=7)
+                           ← FAILED_PRECONDITION + EventBook
+Saga fetches fresh state (seq=7)
+Saga emits command (seq=7) → Success
+```
+
+#### MERGE_STRICT
+
+Use when commands MUST be based on the absolute latest state:
+
+```python
+# Financial transfer - stale state could cause overdraft
+command = CommandBook(
+    cover=Cover(domain="account", root=account_id),
+    pages=[CommandPage(
+        sequence=current_seq,
+        command=TransferFunds(amount=1000),
+        merge_strategy=MergeStrategy.MERGE_STRICT,
+    )],
+)
+```
+
+On conflict: `ABORTED` error. Client must explicitly reload state and re-evaluate.
+
+#### MERGE_AGGREGATE_HANDLES
+
+Bypass coordinator validation entirely. The aggregate receives the full EventBook and implements its own conflict resolution:
+
+```rust
+// Counter aggregate - increments are naturally commutative
+impl AggregateHandler for CounterAggregate {
+    async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
+        let current_value = self.compute_value(&ctx.events);
+        let increment = extract_increment(&ctx.command);
+
+        // No conflict possible - just add
+        Ok(EventBook {
+            pages: vec![EventPage {
+                sequence: ctx.events.next_sequence(),
+                event: CounterIncremented { new_value: current_value + increment },
+            }],
+            ..Default::default()
+        })
+    }
+}
+```
+
+Use cases:
+- Counter aggregates (increment by N)
+- Set operations (add/remove items)
+- CRDTs (conflict-free replicated data types)
+- Idempotent operations
+
+#### Setting MergeStrategy
+
+**Proto:**
+```protobuf
+message CommandPage {
+  uint32 sequence = 1;
+  google.protobuf.Any command = 2;
+  MergeStrategy merge_strategy = 3;
+}
+```
+
+**Rust:**
+```rust
+CommandPage {
+    sequence: next_seq,
+    command: Some(any_packed_command),
+    merge_strategy: MergeStrategy::MergeStrict as i32,
+}
+```
+
+**Python:**
+```python
+CommandPage(
+    sequence=next_seq,
+    command=any_packed_command,
+    merge_strategy=MergeStrategy.MERGE_COMMUTATIVE,
+)
+```
+
+**Go:**
+```go
+&pb.CommandPage{
+    Sequence:      nextSeq,
+    Command:       anyPackedCommand,
+    MergeStrategy: pb.MergeStrategy_MERGE_STRICT,
+}
+```
+
+#### Testing
+
+Comprehensive integration tests are available in Gherkin format:
+- **Feature file:** [`examples/features/unit/merge_strategy.feature`](../examples/features/unit/merge_strategy.feature)
+- **Rust tests:** `tests/standalone_integration/merge_strategy.rs`
+
+The Gherkin tests document all edge cases including:
+- Correct sequence succeeds for all strategies
+- Stale sequence behavior per strategy
+- Future sequence handling
+- Default strategy when unspecified
+- Counter and set aggregate examples
 
 ---
 

@@ -8,7 +8,7 @@ Python client library for Angzarr CQRS/ES framework.
 pip install angzarr-client
 ```
 
-## Usage
+## Client Usage
 
 ```python
 from angzarr_client import DomainClient
@@ -24,6 +24,128 @@ response = client.command("order", root_id) \
 # Query events
 events = client.query("order", root_id) \
     .get_event_book()
+```
+
+## Aggregate Implementation
+
+Two approaches for implementing aggregates:
+
+### 1. Rich Domain Model (Recommended)
+
+Use `Aggregate` ABC with `@handles` decorator for OO-style aggregates:
+
+```python
+from angzarr_client import Aggregate, handles
+from angzarr_client.errors import CommandRejectedError
+
+@dataclass
+class _PlayerState:
+    player_id: str = ""
+    bankroll: int = 0
+
+class Player(Aggregate[_PlayerState]):
+    domain = "player"  # Required
+
+    def _create_empty_state(self) -> _PlayerState:
+        return _PlayerState()
+
+    def _apply_event(self, state: _PlayerState, event_any) -> None:
+        if event_any.type_url.endswith("PlayerRegistered"):
+            event = PlayerRegistered()
+            event_any.Unpack(event)
+            state.player_id = event.player_id
+
+    @handles(RegisterPlayer)
+    def register(self, cmd: RegisterPlayer) -> PlayerRegistered:
+        if self.exists:
+            raise CommandRejectedError("Player already exists")
+        return PlayerRegistered(player_id=cmd.player_id, ...)
+
+    @handles(DepositFunds)
+    def deposit(self, cmd: DepositFunds) -> FundsDeposited:
+        ...
+
+    @property
+    def exists(self) -> bool:
+        return bool(self._get_state().player_id)
+```
+
+**Features:**
+- `@handles(CommandType)` validates type hints at decoration time
+- Dispatch table built automatically at class definition
+- `domain` attribute required, enforced at class creation
+- Abstract methods `_create_empty_state()` and `_apply_event()` enforced
+
+**gRPC Server:**
+```python
+from angzarr_client import run_aggregate_server
+
+run_aggregate_server(Player, "50303")
+```
+
+### 2. Function-Based (CommandRouter)
+
+Use `CommandRouter` with standalone handler functions:
+
+```python
+from angzarr_client import CommandRouter
+from angzarr_client.proto.angzarr import types_pb2 as types
+
+def rebuild_state(event_book: types.EventBook) -> PlayerState:
+    state = PlayerState()
+    if event_book:
+        for page in event_book.pages:
+            apply_event(state, page.event)
+    return state
+
+def handle_register(cb, cmd_any, state, seq) -> types.EventBook:
+    cmd = RegisterPlayer()
+    cmd_any.Unpack(cmd)
+    if state.exists:
+        raise CommandRejectedError("Player already exists")
+    event = PlayerRegistered(player_id=cmd.player_id, ...)
+    return pack_event(event, seq)
+
+router = CommandRouter("player", rebuild_state) \
+    .on("RegisterPlayer", handle_register) \
+    .on("DepositFunds", handle_deposit)
+```
+
+**gRPC Server:**
+```python
+from angzarr_client import run_aggregate_server
+
+run_aggregate_server(router, "50303")
+```
+
+### Comparison
+
+| Aspect | Rich Domain Model | Function-Based |
+|--------|------------------|----------------|
+| Pattern | OO, encapsulated | Procedural, explicit |
+| State | Internal, lazy rebuild | External, passed in |
+| Commands | Method per command | Function per command |
+| Validation | `@handles` decorator | Manual type unpacking |
+| Topology | Auto from `domain` + `@handles` | Auto from `CommandRouter.on()` |
+
+## Testing Aggregates
+
+Both patterns support unit testing without infrastructure:
+
+```python
+# Rich Domain Model
+def test_register_creates_player():
+    player = Player()  # Empty event book
+    event = player.register(RegisterPlayer(player_id="alice"))
+    assert event.player_id == "alice"
+    assert player.exists
+
+# With prior state (rehydration)
+def test_deposit_increases_bankroll():
+    event_book = build_event_book([PlayerRegistered(...)])
+    player = Player(event_book)
+    event = player.deposit(DepositFunds(amount=100))
+    assert player.bankroll == 100
 ```
 
 ## License

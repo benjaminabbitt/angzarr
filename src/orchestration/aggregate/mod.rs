@@ -24,9 +24,9 @@ use uuid::Uuid;
 
 use crate::proto::{
     aggregate_service_client::AggregateServiceClient, BusinessResponse, CommandBook,
-    CommandResponse, ContextualCommand, EventBook, Projection,
+    CommandResponse, ContextualCommand, EventBook, MergeStrategy, Projection,
 };
-use crate::proto_ext::{calculate_set_next_seq, CoverExt, EventBookExt};
+use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, CoverExt, EventBookExt};
 use crate::utils::response_builder::extract_events_from_response;
 use crate::utils::retry::{is_retryable_status, run_with_retry, RetryOutcome, RetryableOperation};
 
@@ -272,7 +272,7 @@ pub async fn execute_command_with_retry(
 #[tracing::instrument(
     name = "aggregate.execute",
     skip_all,
-    fields(domain, edition, root_uuid)
+    fields(domain, edition, root_uuid, merge_strategy)
 )]
 async fn execute_mode(
     ctx: &dyn AggregateContext,
@@ -282,16 +282,23 @@ async fn execute_mode(
     let (domain, root_uuid) = parse_command_cover(&command_book)?;
     let edition = extract_edition(&command_book)?;
     let correlation_id = crate::orchestration::correlation::extract_correlation_id(&command_book)?;
+    let merge_strategy = command_book.merge_strategy();
 
     let span = tracing::Span::current();
     span.record("domain", domain.as_str());
     span.record("edition", edition.as_str());
     span.record("root_uuid", tracing::field::display(&root_uuid));
+    span.record("merge_strategy", tracing::field::debug(&merge_strategy));
 
-    // Pre-validate sequence (gRPC fast-path, no-op for local)
     let expected = extract_command_sequence(&command_book);
-    ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
-        .await?;
+
+    // For AGGREGATE_HANDLES, skip all coordinator-level sequence validation.
+    // The aggregate is responsible for its own concurrency control.
+    if merge_strategy != MergeStrategy::MergeAggregateHandles {
+        // Pre-validate sequence (gRPC fast-path, no-op for local)
+        ctx.pre_validate_sequence(&domain, &edition, root_uuid, expected)
+            .await?;
+    }
 
     // Load prior events
     let prior_events = ctx
@@ -301,12 +308,26 @@ async fn execute_mode(
     // Transform events (upcasting)
     let prior_events = ctx.transform_events(&domain, prior_events).await?;
 
-    // Validate command sequence against loaded events
+    // Sequence validation based on merge strategy
     let actual = prior_events.next_sequence();
     if expected != actual {
-        return Err(Status::aborted(format!(
-            "Sequence mismatch: command expects {expected}, aggregate at {actual}"
-        )));
+        match merge_strategy {
+            MergeStrategy::MergeStrict => {
+                // Reject immediately on sequence mismatch
+                return Err(Status::aborted(format!(
+                    "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+                )));
+            }
+            MergeStrategy::MergeCommutative => {
+                // Mark as retryable - let retry loop reload with fresh state
+                return Err(Status::failed_precondition(format!(
+                    "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+                )));
+            }
+            MergeStrategy::MergeAggregateHandles => {
+                // No validation - aggregate handles it
+            }
+        }
     }
 
     // Invoke client logic

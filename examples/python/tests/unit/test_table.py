@@ -59,7 +59,17 @@ _agg_path = Path(__file__).parent.parent.parent / "table" / "agg"
 _mods = _load_handler_package(_agg_path, "table_handlers")
 
 TableState = _mods["state"].TableState
-rebuild_state = _mods["state"].rebuild_state
+build_state = _mods["state"].build_state
+TableState = _mods["state"].TableState
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = TableState()
+    if event_book is None:
+        return state
+    events = [page.event for page in event_book.pages if page.event]
+    return build_state(state, events)
 handle_create_table = _mods["create_table"].handle_create_table
 handle_join_table = _mods["join_table"].handle_join_table
 handle_leave_table = _mods["leave_table"].handle_leave_table
@@ -98,7 +108,7 @@ def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
     cmd_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
 
     event_book = _event_book(ctx)
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     seq = len(ctx.events)
 
     cmd_book = make_command_book(
@@ -290,7 +300,7 @@ def handle_start_hand_cmd(ctx):
 def handle_end_hand_cmd(ctx, winner_id, amount):
     """Handle EndHand command."""
     # Need hand root from state
-    state = rebuild_state(_event_book(ctx))
+    state = build_state(_event_book(ctx))
 
     cmd = table.EndHand(
         hand_root=state.current_hand_root or b"",
@@ -307,7 +317,7 @@ def handle_end_hand_cmd(ctx, winner_id, amount):
 @when("I rebuild the table state")
 def rebuild_table_state(ctx):
     """Rebuild state from events."""
-    ctx.state = rebuild_state(_event_book(ctx))
+    ctx.state = build_state(_event_book(ctx))
 
 
 # --- Then steps ---

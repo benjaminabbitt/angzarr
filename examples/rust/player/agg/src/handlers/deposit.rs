@@ -7,36 +7,47 @@ use prost_types::Any;
 
 use crate::state::PlayerState;
 
+fn guard(state: &PlayerState) -> CommandResult<()> {
+    if !state.exists() {
+        return Err(CommandRejectedError::new("Player does not exist"));
+    }
+    Ok(())
+}
+
+fn validate(cmd: &DepositFunds) -> CommandResult<i64> {
+    let amount = cmd.amount.as_ref().map(|c| c.amount).unwrap_or(0);
+    if amount <= 0 {
+        return Err(CommandRejectedError::new("amount must be positive"));
+    }
+    Ok(amount)
+}
+
+fn compute(cmd: &DepositFunds, state: &PlayerState, amount: i64) -> FundsDeposited {
+    let new_balance = state.bankroll + amount;
+    FundsDeposited {
+        amount: cmd.amount.clone(),
+        new_balance: Some(Currency {
+            amount: new_balance,
+            currency_code: "CHIPS".to_string(),
+        }),
+        deposited_at: Some(angzarr_client::now()),
+    }
+}
+
 pub fn handle_deposit_funds(
     command_book: &CommandBook,
     command_any: &Any,
     state: &PlayerState,
     seq: u32,
 ) -> CommandResult<EventBook> {
-    if !state.exists() {
-        return Err(CommandRejectedError::new("Player does not exist"));
-    }
-
     let cmd: DepositFunds = command_any
         .unpack()
         .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
 
-    let amount = cmd.amount.as_ref().map(|c| c.amount).unwrap_or(0);
-    if amount <= 0 {
-        return Err(CommandRejectedError::new("amount must be positive"));
-    }
+    guard(state)?;
+    let amount = validate(&cmd)?;
 
-    let new_balance = state.bankroll + amount;
-
-    let event = FundsDeposited {
-        amount: cmd.amount,
-        new_balance: Some(Currency {
-            amount: new_balance,
-            currency_code: "CHIPS".to_string(),
-        }),
-        deposited_at: Some(angzarr_client::now()),
-    };
-
+    let event = compute(&cmd, state, amount);
     let event_any = pack_event(&event, "examples.FundsDeposited");
 
     Ok(new_event_book(command_book, seq, event_any))

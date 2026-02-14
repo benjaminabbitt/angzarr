@@ -1,4 +1,5 @@
 use super::*;
+use crate::proto::SnapshotRetention;
 use crate::storage::mock::MockSnapshotStore;
 use prost_types::Any;
 
@@ -9,6 +10,7 @@ fn test_snapshot(sequence: u32) -> Snapshot {
             type_url: "type.googleapis.com/TestState".to_string(),
             value: vec![10, 20, 30, sequence as u8],
         }),
+        retention: SnapshotRetention::RetentionDefault as i32,
     }
 }
 

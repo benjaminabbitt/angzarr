@@ -616,6 +616,7 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
             type_url: "test.CustomerState".to_string(),
             value: vec![1, 2, 3],
         }),
+        retention: crate::proto::SnapshotRetention::RetentionDefault as i32,
     };
     snapshot_store
         .put("customer", DEFAULT_EDITION, root, snapshot)

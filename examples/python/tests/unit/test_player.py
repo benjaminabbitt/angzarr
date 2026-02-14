@@ -18,7 +18,16 @@ from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
 
-from handlers.state import PlayerState, rebuild_state
+from handlers.state import PlayerState, build_state
+
+
+def state_from_event_book(event_book):
+    """Build state from EventBook - extracts Any-wrapped events and applies them."""
+    state = PlayerState()
+    if event_book is None:
+        return state
+    events = [page.event for page in event_book.pages if page.event]
+    return build_state(state, events)
 from handlers.register_player import handle_register_player
 from handlers.deposit_funds import handle_deposit_funds
 from handlers.withdraw_funds import handle_withdraw_funds
@@ -55,7 +64,7 @@ def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
     cmd_any.Pack(command_msg, type_url_prefix="type.googleapis.com/")
 
     event_book = _event_book(ctx)
-    state = rebuild_state(event_book)
+    state = state_from_event_book(event_book)
     seq = len(ctx.events)
 
     cmd_book = make_command_book(
@@ -206,7 +215,7 @@ def handle_release_funds_cmd(ctx, table_id):
 @when("I rebuild the player state")
 def rebuild_player_state(ctx):
     """Rebuild state from events."""
-    ctx.state = rebuild_state(_event_book(ctx))
+    ctx.state = build_state(_event_book(ctx))
 
 
 # --- Then steps ---

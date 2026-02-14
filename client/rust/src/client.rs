@@ -22,10 +22,8 @@ use tonic::transport::{Channel, Endpoint, Uri};
 async fn create_channel(endpoint: &str) -> Result<Channel> {
     let uds_path = if endpoint.starts_with('/') || endpoint.starts_with("./") {
         Some(endpoint.to_string())
-    } else if let Some(path) = endpoint.strip_prefix("unix://") {
-        Some(path.to_string())
     } else {
-        None
+        endpoint.strip_prefix("unix://").map(str::to_string)
     };
 
     if let Some(path) = uds_path {

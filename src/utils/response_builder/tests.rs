@@ -1,6 +1,8 @@
 use super::*;
 use crate::bus::MockEventBus;
-use crate::proto::{CommandBook, CommandPage, Cover, RevocationResponse, Uuid as ProtoUuid};
+use crate::proto::{
+    CommandBook, CommandPage, Cover, MergeStrategy, RevocationResponse, Uuid as ProtoUuid,
+};
 use prost_types::Any;
 
 fn make_command_book(with_correlation: bool) -> CommandBook {
@@ -23,6 +25,7 @@ fn make_command_book(with_correlation: bool) -> CommandBook {
                 type_url: "test.Command".to_string(),
                 value: vec![],
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
     }

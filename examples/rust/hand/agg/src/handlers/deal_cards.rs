@@ -13,25 +13,21 @@ use prost_types::Any;
 use crate::game_rules::get_rules;
 use crate::state::HandState;
 
-pub fn handle_deal_cards(
-    command_book: &CommandBook,
-    command_any: &Any,
-    state: &HandState,
-    seq: u32,
-) -> CommandResult<EventBook> {
+fn guard(state: &HandState) -> CommandResult<()> {
     if state.exists() {
         return Err(CommandRejectedError::new("Hand already dealt"));
     }
+    Ok(())
+}
 
-    let cmd: DealCards = command_any
-        .unpack()
-        .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
-
+fn validate(cmd: &DealCards) -> CommandResult<()> {
     if cmd.players.len() < 2 {
         return Err(CommandRejectedError::new("Need at least 2 players"));
     }
+    Ok(())
+}
 
-    // Create and shuffle deck
+fn compute(cmd: &DealCards) -> CardsDealt {
     let mut deck = create_deck();
     let seed = if cmd.deck_seed.is_empty() {
         let mut rng = rand::thread_rng();
@@ -43,7 +39,6 @@ pub fn handle_deal_cards(
     };
     shuffle_deck(&mut deck, &seed);
 
-    // Get game rules for variant
     let variant = GameVariant::try_from(cmd.game_variant).unwrap_or(GameVariant::TexasHoldem);
     let rules = get_rules(variant);
     let cards_per_player = rules.hole_card_count();
@@ -51,7 +46,6 @@ pub fn handle_deal_cards(
     let mut player_cards = Vec::new();
     let total_cards_to_deal = cmd.players.len() * cards_per_player;
 
-    // Deal hole cards
     for (i, player) in cmd.players.iter().enumerate() {
         let start = i * cards_per_player;
         let end = start + cards_per_player;
@@ -62,20 +56,34 @@ pub fn handle_deal_cards(
         });
     }
 
-    // Remaining deck for community cards / draws
     let remaining_deck: Vec<Card> = deck[total_cards_to_deal..].to_vec();
 
-    let event = CardsDealt {
-        table_root: cmd.table_root,
+    CardsDealt {
+        table_root: cmd.table_root.clone(),
         hand_number: cmd.hand_number,
         game_variant: cmd.game_variant,
         player_cards,
         dealer_position: cmd.dealer_position,
-        players: cmd.players,
+        players: cmd.players.clone(),
         dealt_at: Some(angzarr_client::now()),
         remaining_deck,
-    };
+    }
+}
 
+pub fn handle_deal_cards(
+    command_book: &CommandBook,
+    command_any: &Any,
+    state: &HandState,
+    seq: u32,
+) -> CommandResult<EventBook> {
+    let cmd: DealCards = command_any
+        .unpack()
+        .map_err(|e| CommandRejectedError::new(format!("Failed to decode command: {}", e)))?;
+
+    guard(state)?;
+    validate(&cmd)?;
+
+    let event = compute(&cmd);
     let event_any = pack_event(&event, "examples.CardsDealt");
 
     Ok(new_event_book(command_book, seq, event_any))

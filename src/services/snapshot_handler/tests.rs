@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{Cover, EventPage, Uuid as ProtoUuid};
+use crate::proto::{Cover, EventPage, SnapshotRetention, Uuid as ProtoUuid};
 use crate::storage::mock::MockSnapshotStore;
 use prost_types::Any;
 
@@ -32,6 +32,7 @@ fn make_event_book_with_snapshot(pages: Vec<EventPage>, has_snapshot: bool) -> E
                     type_url: "test.State".to_string(),
                     value: vec![1, 2, 3],
                 }),
+                retention: SnapshotRetention::RetentionDefault as i32,
             })
         } else {
             None

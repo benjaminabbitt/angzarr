@@ -11,6 +11,39 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func guardLeaveTable(state TableState) error {
+	if !state.Exists() {
+		return angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.Status == "in_hand" {
+		return angzarr.NewCommandRejectedError("Cannot leave during a hand")
+	}
+	return nil
+}
+
+func validateLeaveTable(cmd *examples.LeaveTable, state TableState) (*SeatState, int32, error) {
+	if len(cmd.PlayerRoot) == 0 {
+		return nil, 0, angzarr.NewCommandRejectedError("player_root is required")
+	}
+
+	seatPosition := state.FindSeatByPlayer(cmd.PlayerRoot)
+	if seatPosition < 0 {
+		return nil, 0, angzarr.NewCommandRejectedError("Player not seated at table")
+	}
+
+	seat := state.Seats[seatPosition]
+	return seat, seatPosition, nil
+}
+
+func computePlayerLeft(cmd *examples.LeaveTable, seat *SeatState, seatPosition int32) *examples.PlayerLeft {
+	return &examples.PlayerLeft{
+		PlayerRoot:     cmd.PlayerRoot,
+		SeatPosition:   seatPosition,
+		ChipsCashedOut: seat.Stack,
+		LeftAt:         timestamppb.New(time.Now()),
+	}
+}
+
 // HandleLeaveTable handles the LeaveTable command.
 func HandleLeaveTable(
 	commandBook *pb.CommandBook,
@@ -18,37 +51,20 @@ func HandleLeaveTable(
 	state TableState,
 	seq uint32,
 ) (*pb.EventBook, error) {
-	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Table does not exist")
-	}
-
 	var cmd examples.LeaveTable
 	if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
 		return nil, err
 	}
 
-	if len(cmd.PlayerRoot) == 0 {
-		return nil, angzarr.NewCommandRejectedError("player_root is required")
+	if err := guardLeaveTable(state); err != nil {
+		return nil, err
+	}
+	seat, seatPosition, err := validateLeaveTable(&cmd, state)
+	if err != nil {
+		return nil, err
 	}
 
-	seatPosition := state.FindSeatByPlayer(cmd.PlayerRoot)
-	if seatPosition < 0 {
-		return nil, angzarr.NewCommandRejectedError("Player not seated at table")
-	}
-
-	// Can't leave during a hand
-	if state.Status == "in_hand" {
-		return nil, angzarr.NewCommandRejectedError("Cannot leave during a hand")
-	}
-
-	seat := state.Seats[seatPosition]
-
-	event := &examples.PlayerLeft{
-		PlayerRoot:     cmd.PlayerRoot,
-		SeatPosition:   seatPosition,
-		ChipsCashedOut: seat.Stack,
-		LeftAt:         timestamppb.New(time.Now()),
-	}
+	event := computePlayerLeft(&cmd, seat, seatPosition)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

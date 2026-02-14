@@ -23,10 +23,11 @@ _sym_db = _symbol_database.Default()
 
 
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
+from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ngzarr/aggregate.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"t\n\x0f\x43ommandResponse\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12\x35\n\x0bprojections\x18\x02 \x03(\x0b\x32\x13.angzarr.ProjectionR\x0bprojections\"\xce\x01\n\x12RevocationResponse\x12\x34\n\x16\x65mit_system_revocation\x18\x01 \x01(\x08R\x14\x65mitSystemRevocation\x12\x38\n\x19send_to_dead_letter_queue\x18\x02 \x01(\x08R\x15sendToDeadLetterQueue\x12\x1a\n\x08\x65scalate\x18\x03 \x01(\x08R\x08\x65scalate\x12\x14\n\x05\x61\x62ort\x18\x04 \x01(\x08R\x05\x61\x62ort\x12\x16\n\x06reason\x18\x05 \x01(\tR\x06reason\"\x89\x01\n\x10\x42usinessResponse\x12,\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookH\x00R\x06\x65vents\x12=\n\nrevocation\x18\x02 \x01(\x0b\x32\x1b.angzarr.RevocationResponseH\x00R\nrevocationB\x08\n\x06result\"\x87\x01\n\x19SpeculateAggregateRequest\x12.\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\x12:\n\rpoint_in_time\x18\x02 \x01(\x0b\x32\x16.angzarr.TemporalQueryR\x0bpointInTime2\xa1\x01\n\x10\x41ggregateService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse2\xf0\x01\n\x1b\x41ggregateCoordinatorService\x12\x38\n\x06Handle\x12\x14.angzarr.CommandBook\x1a\x18.angzarr.CommandResponse\x12@\n\nHandleSync\x12\x18.angzarr.SyncCommandBook\x1a\x18.angzarr.CommandResponse\x12U\n\x15HandleSyncSpeculative\x12\".angzarr.SpeculateAggregateRequest\x1a\x18.angzarr.CommandResponseB\x83\x01\n\x0b\x63om.angzarrB\x0e\x41ggregateProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ngzarr/aggregate.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x19google/protobuf/any.proto\x1a\x1bgoogle/protobuf/empty.proto\"s\n\rReplayRequest\x12\x36\n\rbase_snapshot\x18\x01 \x01(\x0b\x32\x11.angzarr.SnapshotR\x0c\x62\x61seSnapshot\x12*\n\x06\x65vents\x18\x02 \x03(\x0b\x32\x12.angzarr.EventPageR\x06\x65vents\"<\n\x0eReplayResponse\x12*\n\x05state\x18\x01 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05state\"t\n\x0f\x43ommandResponse\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12\x35\n\x0bprojections\x18\x02 \x03(\x0b\x32\x13.angzarr.ProjectionR\x0bprojections\"\xce\x01\n\x12RevocationResponse\x12\x34\n\x16\x65mit_system_revocation\x18\x01 \x01(\x08R\x14\x65mitSystemRevocation\x12\x38\n\x19send_to_dead_letter_queue\x18\x02 \x01(\x08R\x15sendToDeadLetterQueue\x12\x1a\n\x08\x65scalate\x18\x03 \x01(\x08R\x08\x65scalate\x12\x14\n\x05\x61\x62ort\x18\x04 \x01(\x08R\x05\x61\x62ort\x12\x16\n\x06reason\x18\x05 \x01(\tR\x06reason\"\x89\x01\n\x10\x42usinessResponse\x12,\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookH\x00R\x06\x65vents\x12=\n\nrevocation\x18\x02 \x01(\x0b\x32\x1b.angzarr.RevocationResponseH\x00R\nrevocationB\x08\n\x06result\"\x87\x01\n\x19SpeculateAggregateRequest\x12.\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\x12:\n\rpoint_in_time\x18\x02 \x01(\x0b\x32\x16.angzarr.TemporalQueryR\x0bpointInTime2\xdc\x01\n\x10\x41ggregateService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse\x12\x39\n\x06Replay\x12\x16.angzarr.ReplayRequest\x1a\x17.angzarr.ReplayResponse2\xf0\x01\n\x1b\x41ggregateCoordinatorService\x12\x38\n\x06Handle\x12\x14.angzarr.CommandBook\x1a\x18.angzarr.CommandResponse\x12@\n\nHandleSync\x12\x18.angzarr.SyncCommandBook\x1a\x18.angzarr.CommandResponse\x12U\n\x15HandleSyncSpeculative\x12\".angzarr.SpeculateAggregateRequest\x1a\x18.angzarr.CommandResponseB\x83\x01\n\x0b\x63om.angzarrB\x0e\x41ggregateProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,16 +35,20 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.aggregate_pb2', _gl
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\016AggregateProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_COMMANDRESPONSE']._serialized_start=86
-  _globals['_COMMANDRESPONSE']._serialized_end=202
-  _globals['_REVOCATIONRESPONSE']._serialized_start=205
-  _globals['_REVOCATIONRESPONSE']._serialized_end=411
-  _globals['_BUSINESSRESPONSE']._serialized_start=414
-  _globals['_BUSINESSRESPONSE']._serialized_end=551
-  _globals['_SPECULATEAGGREGATEREQUEST']._serialized_start=554
-  _globals['_SPECULATEAGGREGATEREQUEST']._serialized_end=689
-  _globals['_AGGREGATESERVICE']._serialized_start=692
-  _globals['_AGGREGATESERVICE']._serialized_end=853
-  _globals['_AGGREGATECOORDINATORSERVICE']._serialized_start=856
-  _globals['_AGGREGATECOORDINATORSERVICE']._serialized_end=1096
+  _globals['_REPLAYREQUEST']._serialized_start=113
+  _globals['_REPLAYREQUEST']._serialized_end=228
+  _globals['_REPLAYRESPONSE']._serialized_start=230
+  _globals['_REPLAYRESPONSE']._serialized_end=290
+  _globals['_COMMANDRESPONSE']._serialized_start=292
+  _globals['_COMMANDRESPONSE']._serialized_end=408
+  _globals['_REVOCATIONRESPONSE']._serialized_start=411
+  _globals['_REVOCATIONRESPONSE']._serialized_end=617
+  _globals['_BUSINESSRESPONSE']._serialized_start=620
+  _globals['_BUSINESSRESPONSE']._serialized_end=757
+  _globals['_SPECULATEAGGREGATEREQUEST']._serialized_start=760
+  _globals['_SPECULATEAGGREGATEREQUEST']._serialized_end=895
+  _globals['_AGGREGATESERVICE']._serialized_start=898
+  _globals['_AGGREGATESERVICE']._serialized_end=1118
+  _globals['_AGGREGATECOORDINATORSERVICE']._serialized_start=1121
+  _globals['_AGGREGATECOORDINATORSERVICE']._serialized_end=1361
 # @@protoc_insertion_point(module_scope)

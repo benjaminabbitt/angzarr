@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{event_page, EventPage, Snapshot};
+use crate::proto::{event_page, EventPage, Snapshot, SnapshotRetention};
 use crate::storage::mock::{MockEventStore, MockSnapshotStore};
 use crate::test_utils::{make_event_book_with_root, make_event_page};
 
@@ -62,6 +62,7 @@ async fn test_get_with_snapshot_starts_from_snapshot_sequence() {
             Snapshot {
                 sequence: 3,
                 state: None,
+                retention: SnapshotRetention::RetentionDefault as i32,
             },
         )
         .await
@@ -225,6 +226,7 @@ async fn test_with_config_snapshot_read_disabled_ignores_snapshot() {
             Snapshot {
                 sequence: 3,
                 state: None,
+                retention: SnapshotRetention::RetentionDefault as i32,
             },
         )
         .await
@@ -266,6 +268,7 @@ async fn test_with_config_snapshot_read_enabled_uses_snapshot() {
             Snapshot {
                 sequence: 3,
                 state: None,
+                retention: SnapshotRetention::RetentionDefault as i32,
             },
         )
         .await
@@ -310,6 +313,7 @@ async fn test_with_config_defaults_match_new_constructor() {
             Snapshot {
                 sequence: 2,
                 state: None,
+                retention: SnapshotRetention::RetentionDefault as i32,
             },
         )
         .await
@@ -349,6 +353,7 @@ mod mock_integration {
                 type_url: "type.googleapis.com/TestState".to_string(),
                 value: vec![10, 20, 30],
             }),
+            retention: SnapshotRetention::RetentionDefault as i32,
         }
     }
 
