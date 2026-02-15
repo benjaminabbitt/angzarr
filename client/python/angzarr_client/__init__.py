@@ -57,6 +57,7 @@ from .router import (
     validate_command_handler,
     reacts_to,
     projects,
+    rejected,
 )
 from .server import (
     configure_logging,
@@ -108,6 +109,13 @@ from .projector import Projector
 from .upcaster import Upcaster, upcasts
 from .upcaster_handler import UpcasterHandler, run_upcaster_server, UpcasterHandleFunc
 from .router import upcaster, UpcasterRouter
+from .compensation import (
+    CompensationContext,
+    delegate_to_framework,
+    emit_compensation_events,
+    pm_delegate_to_framework,
+    pm_emit_compensation_events,
+)
 
 __all__ = [
     # Clients
@@ -164,6 +172,7 @@ __all__ = [
     "event_handler",
     "reacts_to",
     "projects",
+    "rejected",
     # Server
     "configure_logging",
     "get_transport_config",
@@ -226,4 +235,10 @@ __all__ = [
     "UpcasterHandler",
     "run_upcaster_server",
     "UpcasterHandleFunc",
+    # Compensation
+    "CompensationContext",
+    "delegate_to_framework",
+    "emit_compensation_events",
+    "pm_delegate_to_framework",
+    "pm_emit_compensation_events",
 ]

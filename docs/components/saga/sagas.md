@@ -559,6 +559,8 @@ If you're building compensation into every saga path, your domain boundaries are
 
 ## Compensation Flow
 
+> For detailed protocol messages and implementation, see [Saga Revocation](revocation.md).
+
 When a saga command is rejected, Angzarr initiates compensation:
 
 ```mermaid

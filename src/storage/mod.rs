@@ -95,7 +95,7 @@ pub enum StorageError {
     #[error("Invalid UUID: {0}")]
     InvalidUuid(#[from] uuid::Error),
 
-    #[cfg(any(feature = "postgres", feature = "sqlite"))]
+    #[cfg(any(feature = "postgres", feature = "sqlite", feature = "immudb"))]
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 

@@ -28,7 +28,8 @@ use prost_types::Any;
 use tonic::Status;
 
 use crate::proto::{
-    event_page, BusinessResponse, CommandBook, ContextualCommand, EventBook, EventPage,
+    business_response, event_page, BusinessResponse, CommandBook, ContextualCommand, EventBook,
+    EventPage, Notification, RejectionNotification, RevocationResponse,
 };
 use crate::{type_url, EventBookExt};
 
@@ -72,13 +73,29 @@ pub type StateRebuilder<S> = fn(&EventBook) -> S;
 /// Returns EventBook on success or CommandRejectedError on failure.
 pub type CommandHandler<S> = fn(&CommandBook, &Any, &S, u32) -> CommandResult<EventBook>;
 
+/// Revocation handler function type.
+///
+/// Takes notification (containing RejectionNotification payload) and current state.
+/// Returns EventBook on success or CommandRejectedError on failure.
+///
+/// To access rejection details:
+/// ```rust,ignore
+/// let rejection = notification.payload.as_ref()
+///     .map(|p| RejectionNotification::decode(p.value.as_slice()))
+///     .transpose()?
+///     .unwrap_or_default();
+/// ```
+pub type RevocationHandler<S> = fn(&Notification, &S) -> CommandResult<EventBook>;
+
 /// Command router for aggregate handlers.
 ///
 /// Routes commands to handlers based on type URL suffix matching.
+/// Also routes revocation commands to rejection handlers based on domain/command.
 pub struct CommandRouter<S> {
     domain: String,
     rebuild: StateRebuilder<S>,
     handlers: HashMap<String, CommandHandler<S>>,
+    rejection_handlers: HashMap<String, RevocationHandler<S>>,
 }
 
 impl<S> CommandRouter<S> {
@@ -88,12 +105,34 @@ impl<S> CommandRouter<S> {
             domain: domain.into(),
             rebuild,
             handlers: HashMap::new(),
+            rejection_handlers: HashMap::new(),
         }
     }
 
     /// Register a command handler for commands ending with the given suffix.
     pub fn on(mut self, suffix: impl Into<String>, handler: CommandHandler<S>) -> Self {
         self.handlers.insert(suffix.into(), handler);
+        self
+    }
+
+    /// Register a rejection handler for when a specific command is rejected.
+    ///
+    /// Called when a saga/PM command targeting the specified domain and command
+    /// type is rejected by the target aggregate.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// router.on_rejected("payment", "ProcessPayment", handle_payment_rejected)
+    /// ```
+    pub fn on_rejected(
+        mut self,
+        domain: impl Into<String>,
+        command: impl Into<String>,
+        handler: RevocationHandler<S>,
+    ) -> Self {
+        let key = format!("{}/{}", domain.into(), command.into());
+        self.rejection_handlers.insert(key, handler);
         self
     }
 
@@ -108,6 +147,8 @@ impl<S> CommandRouter<S> {
     }
 
     /// Dispatch a contextual command to the appropriate handler.
+    ///
+    /// Detects Notification and routes to rejection handlers.
     pub fn dispatch(&self, cmd: &ContextualCommand) -> Result<BusinessResponse, Status> {
         let command_book = cmd
             .command
@@ -132,8 +173,14 @@ impl<S> CommandRouter<S> {
         // Rebuild state
         let state = (self.rebuild)(event_book);
 
-        // Find handler by suffix
         let type_url = &command_any.type_url;
+
+        // Check for Notification (rejection/compensation)
+        if type_url.ends_with("Notification") {
+            return self.dispatch_notification(command_any, &state);
+        }
+
+        // Find handler by suffix
         let handler = self
             .handlers
             .iter()
@@ -148,8 +195,93 @@ impl<S> CommandRouter<S> {
         let result_book = handler(command_book, command_any, &state, seq)?;
 
         Ok(BusinessResponse {
-            result: Some(crate::proto::business_response::Result::Events(result_book)),
+            result: Some(business_response::Result::Events(result_book)),
         })
+    }
+
+    /// Dispatch a Notification to the appropriate rejection handler.
+    fn dispatch_notification(
+        &self,
+        command_any: &Any,
+        state: &S,
+    ) -> Result<BusinessResponse, Status> {
+        use prost::Message;
+
+        // Decode the Notification
+        let notification = Notification::decode(command_any.value.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Failed to decode Notification: {}", e)))?;
+
+        // Unpack rejection details from payload
+        let rejection = notification
+            .payload
+            .as_ref()
+            .map(|p| RejectionNotification::decode(p.value.as_slice()))
+            .transpose()
+            .map_err(|e| Status::invalid_argument(format!("Failed to decode RejectionNotification: {}", e)))?
+            .unwrap_or_default();
+
+        // Extract domain and command type from rejected_command
+        let (domain, cmd_suffix) = extract_rejection_key(&rejection);
+
+        // Build dispatch key and call handler
+        self.call_rejection_handler(&notification, state, &domain, &cmd_suffix)
+    }
+
+    /// Call the appropriate rejection handler.
+    fn call_rejection_handler(
+        &self,
+        notification: &Notification,
+        state: &S,
+        domain: &str,
+        cmd_suffix: &str,
+    ) -> Result<BusinessResponse, Status> {
+        let key = format!("{}/{}", domain, cmd_suffix);
+
+        if let Some(handler) = self.rejection_handlers.get(&key) {
+            let result_book = handler(notification, state)?;
+            return Ok(BusinessResponse {
+                result: Some(business_response::Result::Events(result_book)),
+            });
+        }
+
+        // Default: delegate to framework
+        Ok(BusinessResponse {
+            result: Some(business_response::Result::Revocation(RevocationResponse {
+                emit_system_revocation: true,
+                send_to_dead_letter_queue: false,
+                escalate: false,
+                abort: false,
+                reason: format!("Aggregate {} has no custom compensation for {}", self.domain, key),
+            })),
+        })
+    }
+}
+
+/// Extract domain and command suffix from a RejectionNotification.
+fn extract_rejection_key(rejection: &RejectionNotification) -> (String, String) {
+    if let Some(rejected) = &rejection.rejected_command {
+        let domain = rejected
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_default();
+
+        let cmd_suffix = rejected
+            .pages
+            .first()
+            .and_then(|p| p.command.as_ref())
+            .map(|c| {
+                c.type_url
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&c.type_url)
+                    .to_string()
+            })
+            .unwrap_or_default();
+
+        (domain, cmd_suffix)
+    } else {
+        (String::new(), String::new())
     }
 }
 

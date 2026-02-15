@@ -9,9 +9,11 @@ sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "prj-output"))
 sys.path.insert(0, str(root / "hand-flow"))
 
-# Add aggregate paths
-for agg in ["agg-player", "agg-table", "agg-hand"]:
-    sys.path.insert(0, str(root / agg))
+# Add aggregate paths (both naming conventions for compatibility)
+for agg in ["player/agg", "table/agg", "hand/agg", "sagas"]:
+    path = root / agg
+    if path.exists():
+        sys.path.insert(0, str(path))
 
 
 def before_scenario(context, scenario):

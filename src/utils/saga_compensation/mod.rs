@@ -1,7 +1,7 @@
 //! Saga compensation handling.
 //!
 //! Provides utilities for handling saga command rejections, including:
-//! - Building RevokeEventCommand messages
+//! - Building Notification messages with RejectionNotification payload
 //! - Emitting SagaCompensationFailed events
 //! - Dead letter queue routing
 //! - Escalation triggers
@@ -13,8 +13,8 @@ use uuid::Uuid;
 use crate::config::SagaCompensationConfig;
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage, MergeStrategy,
-    RevocationResponse, RevokeEventCommand, SagaCommandOrigin, SagaCompensationFailed,
-    Uuid as ProtoUuid,
+    Notification, RejectionNotification, RevocationResponse, SagaCommandOrigin,
+    SagaCompensationFailed, Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;
 
@@ -77,28 +77,50 @@ impl CompensationContext {
     }
 }
 
-/// Build a RevokeEventCommand for a rejected saga command.
+/// Build a RejectionNotification for a rejected saga command.
 ///
-/// This command will be sent to the original aggregate that triggered
-/// the saga, allowing it to emit compensation events.
-pub fn build_revoke_command(context: &CompensationContext) -> RevokeEventCommand {
-    RevokeEventCommand {
-        triggering_event_sequence: context.saga_origin.triggering_event_sequence,
-        saga_name: context.saga_origin.saga_name.clone(),
-        rejection_reason: context.rejection_reason.clone(),
+/// This is the payload for the Notification sent to the original aggregate
+/// that triggered the saga, allowing it to emit compensation events.
+pub fn build_rejection_notification(context: &CompensationContext) -> RejectionNotification {
+    RejectionNotification {
         rejected_command: Some(context.rejected_command.clone()),
+        rejection_reason: context.rejection_reason.clone(),
+        issuer_name: context.saga_origin.saga_name.clone(),
+        issuer_type: "saga".to_string(),
+        source_aggregate: context.saga_origin.triggering_aggregate.clone(),
+        source_event_sequence: context.saga_origin.triggering_event_sequence,
     }
 }
 
-/// Build a CommandBook to send the RevokeEventCommand to the triggering aggregate.
-pub fn build_revoke_command_book(context: &CompensationContext) -> Result<CommandBook> {
+/// Build a Notification wrapping a RejectionNotification.
+///
+/// This is the new pattern for compensation - Notification with typed payload.
+pub fn build_notification(context: &CompensationContext) -> Notification {
+    let rejection = build_rejection_notification(context);
+
+    // Build cover from triggering aggregate
+    let cover = context.saga_origin.triggering_aggregate.clone();
+
+    Notification {
+        cover,
+        payload: Some(prost_types::Any {
+            type_url: "type.googleapis.com/angzarr.RejectionNotification".to_string(),
+            value: rejection.encode_to_vec(),
+        }),
+        sent_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+        metadata: std::collections::HashMap::new(),
+    }
+}
+
+/// Build a CommandBook to send the Notification to the triggering aggregate.
+pub fn build_notification_command_book(context: &CompensationContext) -> Result<CommandBook> {
     let triggering_aggregate = context
         .saga_origin
         .triggering_aggregate
         .as_ref()
         .ok_or(CompensationError::MissingTriggeringAggregate)?;
 
-    let revoke_cmd = build_revoke_command(context);
+    let notification = build_notification(context);
 
     // Clone triggering aggregate and set correlation_id on cover
     let mut cover = triggering_aggregate.clone();
@@ -111,12 +133,12 @@ pub fn build_revoke_command_book(context: &CompensationContext) -> Result<Comman
         pages: vec![crate::proto::CommandPage {
             sequence: 0,
             command: Some(prost_types::Any {
-                type_url: "type.angzarr/angzarr.RevokeEventCommand".to_string(),
-                value: revoke_cmd.encode_to_vec(),
+                type_url: "type.googleapis.com/angzarr.Notification".to_string(),
+                value: notification.encode_to_vec(),
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
-        saga_origin: None, // Revoke commands don't have their own saga origin
+        saga_origin: None, // Notifications don't have their own saga origin
     })
 }
 
@@ -172,7 +194,7 @@ pub fn build_compensation_failed_event_book(
     }
 }
 
-/// Outcome of handling a business response to a RevokeEventCommand.
+/// Outcome of handling a business response to a rejection Notification.
 #[derive(Debug)]
 pub enum CompensationOutcome {
     /// Business provided compensation events - use them.
@@ -185,7 +207,7 @@ pub enum CompensationOutcome {
     Aborted { reason: String },
 }
 
-/// Handle a BusinessResponse to a RevokeEventCommand.
+/// Handle a BusinessResponse to a rejection Notification.
 ///
 /// Implements the decision logic for processing revocation responses:
 /// 1. If business returns events with pages → use them

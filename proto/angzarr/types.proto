@@ -196,3 +196,37 @@ message SagaCommandOrigin {
   Cover triggering_aggregate = 2;       // Domain+root of aggregate that triggered the saga
   uint32 triggering_event_sequence = 3; // Sequence number of the triggering event
 }
+
+// ============================================================================
+// Notifications - Non-persisted messages for signaling
+// ============================================================================
+//
+// Notifications differ from Events in key ways:
+// - NOT persisted to event store (ephemeral)
+// - NO sequence numbers (not ordered within an aggregate)
+// - NO event sourcing replay (fire-and-forget)
+// - Used for: compensation signals, real-time alerts, system warnings
+//
+// Notifications reuse Cover for routing (domain, root, correlation_id) but
+// lack EventPage's sequence semantics.
+
+// Base notification message for transient system signals.
+// Contains routing info via Cover but no persistence semantics.
+// Type discrimination via payload.type_url (standard Any behavior).
+message Notification {
+  Cover cover = 1;                          // Routing: domain, root, correlation_id
+  google.protobuf.Any payload = 2;          // Type-specific content (RejectionNotification, etc.)
+  google.protobuf.Timestamp sent_at = 3;    // When notification was created
+  map<string, string> metadata = 4;         // Optional key-value metadata
+}
+
+// Notification payload for command rejection scenarios.
+// Embedded in Notification.payload when a saga/PM command is rejected.
+message RejectionNotification {
+  CommandBook rejected_command = 1;         // The command that was rejected (full context)
+  string rejection_reason = 2;              // Why: "insufficient_funds", "out_of_stock", etc.
+  string issuer_name = 3;                   // Saga/PM name that issued the command
+  string issuer_type = 4;                   // "saga" | "process_manager"
+  Cover source_aggregate = 5;               // Aggregate that originally triggered the flow
+  uint32 source_event_sequence = 6;         // Event sequence that triggered the saga/PM
+}

@@ -20,7 +20,7 @@ from angzarr_client.proto.examples import types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
 
 # Import hand handlers explicitly from the correct path
-_hand_handlers_path = project_root / "agg-hand" / "handlers"
+_hand_handlers_path = project_root / "hand" / "agg" / "handlers"
 _hand_handlers_init = _hand_handlers_path / "__init__.py"
 _spec = importlib.util.spec_from_file_location("hand_handlers", _hand_handlers_init)
 _hand_handlers = importlib.util.module_from_spec(_spec)

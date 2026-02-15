@@ -35,6 +35,7 @@ from typing import TypeVar, Generic, Callable, Any as TypingAny
 from google.protobuf.any_pb2 import Any
 
 from .proto.angzarr import aggregate_pb2 as aggregate
+from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 from .router import COMPONENT_AGGREGATE, Descriptor, TargetDesc, validate_command_handler
 
@@ -89,6 +90,7 @@ class Aggregate(Generic[StateT], ABC):
 
     Provides:
     - Command dispatch via @handles decorated methods
+    - Rejection dispatch via @rejected decorated methods
     - Event book management (storage and retrieval)
     - State caching with lazy rebuild
     - Event recording via _apply_and_record()
@@ -99,6 +101,7 @@ class Aggregate(Generic[StateT], ABC):
     - Implement `_create_empty_state() -> StateT`
     - Implement `_apply_event(state: StateT, event_any: Any) -> None`
     - Decorate command handlers with `@handles(CommandType)`
+    - Optionally decorate rejection handlers with `@rejected(domain, command)`
 
     Usage:
         class Player(Aggregate[_PlayerState]):
@@ -119,10 +122,15 @@ class Aggregate(Generic[StateT], ABC):
             def register(self, cmd: RegisterPlayer) -> PlayerRegistered:
                 # Business logic...
                 return PlayerRegistered(...)
+
+            @rejected(domain="payment", command="ProcessPayment")
+            def handle_payment_rejected(self, revoke_cmd) -> FundsReleased:
+                return FundsReleased(amount=self.state.reserved_amount)
     """
 
     domain: str
     _dispatch_table: dict[str, tuple[str, type]] = {}
+    _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -136,6 +144,7 @@ class Aggregate(Generic[StateT], ABC):
             raise TypeError(f"{cls.__name__} must define 'domain' class attribute")
 
         cls._dispatch_table = cls._build_dispatch_table()
+        cls._rejection_table = cls._build_rejection_table()
 
     @classmethod
     def _build_dispatch_table(cls) -> dict[str, tuple[str, type]]:
@@ -151,6 +160,27 @@ class Aggregate(Generic[StateT], ABC):
                         f"{cls.__name__}: duplicate handler for {suffix}"
                     )
                 table[suffix] = (name, cmd_type)
+        return table
+
+    @classmethod
+    def _build_rejection_table(cls) -> dict[str, str]:
+        """Scan for @rejected methods and build rejection dispatch table.
+
+        Returns:
+            Dict mapping "domain/command" keys to method names.
+        """
+        table = {}
+        for name in dir(cls):
+            attr = getattr(cls, name, None)
+            if callable(attr) and getattr(attr, "_is_rejection_handler", False):
+                domain = attr._rejection_domain
+                command = attr._rejection_command
+                key = f"{domain}/{command}"
+                if key in table:
+                    raise TypeError(
+                        f"{cls.__name__}: duplicate rejection handler for {key}"
+                    )
+                table[key] = name
         return table
 
     def __init__(self, event_book: types.EventBook = None):
@@ -190,12 +220,13 @@ class Aggregate(Generic[StateT], ABC):
         """Handle a full gRPC request.
 
         Creates aggregate instance, dispatches command, returns event book.
+        Detects Notification and routes to handle_revocation().
 
         Args:
             request: ContextualCommand with command and prior events.
 
         Returns:
-            BusinessResponse wrapping the new events.
+            BusinessResponse wrapping the new events or RevocationResponse.
 
         Raises:
             ValueError: If no command pages in request.
@@ -207,9 +238,75 @@ class Aggregate(Generic[StateT], ABC):
             raise ValueError("No command pages")
 
         command_any = request.command.pages[0].command
-        agg.dispatch(command_any)
 
+        # Check for Notification (rejection/compensation)
+        if command_any.type_url.endswith("Notification"):
+            notification = types.Notification()
+            command_any.Unpack(notification)
+            return agg.handle_revocation(notification)
+
+        agg.dispatch(command_any)
         return aggregate.BusinessResponse(events=agg.event_book())
+
+    def handle_revocation(self, notification: types.Notification) -> aggregate.BusinessResponse:
+        """Handle a rejection notification.
+
+        Called when a saga/PM command is rejected and compensation is needed.
+        Dispatches to @rejected decorated methods based on target domain
+        and rejected command type.
+
+        If no matching @rejected handler is found, delegates to framework.
+
+        Args:
+            notification: Notification containing RejectionNotification payload.
+
+        Returns:
+            BusinessResponse with either:
+            - events: Compensation events to emit
+            - revocation: RevocationResponse flags for framework action
+
+        Usage:
+            @rejected(domain="payment", command="ProcessPayment")
+            def handle_payment_rejected(self, notification) -> FundsReleased:
+                rejection = types.RejectionNotification()
+                notification.payload.Unpack(rejection)
+                return FundsReleased(amount=self.state.reserved_amount)
+        """
+        # Unpack rejection details from notification payload
+        rejection = types.RejectionNotification()
+        if notification.HasField("payload"):
+            notification.payload.Unpack(rejection)
+
+        # Extract domain and command type from rejected_command
+        domain = ""
+        command_suffix = ""
+
+        if rejection.HasField("rejected_command") and rejection.rejected_command.pages:
+            rejected_cmd = rejection.rejected_command
+            if rejected_cmd.HasField("cover"):
+                domain = rejected_cmd.cover.domain
+            if rejected_cmd.pages[0].HasField("command"):
+                type_url = rejected_cmd.pages[0].command.type_url
+                # Extract suffix (e.g., "ProcessPayment" from "type.googleapis.com/.../ProcessPayment")
+                command_suffix = type_url.rsplit("/", 1)[-1] if "/" in type_url else type_url
+
+        # Dispatch to @rejected handler if found (use suffix matching like regular dispatch)
+        for key, method_name in self._rejection_table.items():
+            expected_domain, expected_command = key.split("/", 1)
+            if domain == expected_domain and command_suffix.endswith(expected_command):
+                # Ensure state is built before calling handler
+                _ = self._get_state()
+                # Call the handler (wrapper will auto-apply events)
+                getattr(self, method_name)(notification)
+                return aggregate.BusinessResponse(events=self.event_book())
+
+        # Default: request framework to emit system revocation event
+        return aggregate.BusinessResponse(
+            revocation=aggregate.RevocationResponse(
+                emit_system_revocation=True,
+                reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_suffix}",
+            )
+        )
 
     @classmethod
     def descriptor(cls) -> Descriptor:
@@ -257,6 +354,17 @@ class Aggregate(Generic[StateT], ABC):
         Events from rehydration are cleared after being applied.
         """
         return self._event_book
+
+    @property
+    def state(self) -> StateT:
+        """Get current state (convenience property for _get_state)."""
+        return self._get_state()
+
+    @property
+    def exists(self) -> bool:
+        """Returns True if this aggregate has prior events (not new)."""
+        # Check if we had events before rebuild cleared them, or have new events
+        return self._state is not None or len(self._event_book.pages) > 0
 
     def _get_state(self) -> StateT:
         """Get current state, rebuilding from events if needed."""

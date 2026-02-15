@@ -6,7 +6,8 @@ use async_trait::async_trait;
 use tonic::Status;
 
 use crate::proto::{
-    CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook, SagaResponse,
+    BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook,
+    Notification, RejectionNotification, RevocationResponse, SagaResponse,
 };
 
 /// client logic handler for a domain aggregate.
@@ -45,8 +46,61 @@ pub trait AggregateHandler: Send + Sync + 'static {
     fn descriptor(&self) -> ComponentDescriptor {
         ComponentDescriptor::default()
     }
+
     /// Handle a contextual command and return new events.
     async fn handle(&self, command: ContextualCommand) -> Result<EventBook, Status>;
+
+    /// Handle a rejection notification.
+    ///
+    /// Called when a saga/PM command is rejected and compensation is needed.
+    /// Override to provide custom compensation logic (emit compensation events).
+    ///
+    /// Default behavior: request framework to emit SagaCompensationFailed event.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn handle_revocation(&self, notification: &Notification) -> BusinessResponse {
+    ///     // Unpack rejection details
+    ///     let rejection = RejectionNotification::decode(
+    ///         notification.payload.as_ref().unwrap().value.as_slice()
+    ///     ).unwrap();
+    ///
+    ///     // Custom compensation: emit events
+    ///     let event = OrderCancelled {
+    ///         reason: format!("{} failed: {}", rejection.issuer_name, rejection.rejection_reason),
+    ///         ..Default::default()
+    ///     };
+    ///     BusinessResponse {
+    ///         result: Some(business_response::Result::Events(pack_events(vec![event]))),
+    ///     }
+    /// }
+    /// ```
+    fn handle_revocation(&self, notification: &Notification) -> BusinessResponse {
+        // Extract issuer_name from notification payload for default message
+        let issuer_name = notification
+            .payload
+            .as_ref()
+            .and_then(|p| {
+                use prost::Message;
+                RejectionNotification::decode(p.value.as_slice()).ok()
+            })
+            .map(|r| r.issuer_name)
+            .unwrap_or_else(|| "unknown".to_string());
+
+        BusinessResponse {
+            result: Some(crate::proto::business_response::Result::Revocation(
+                RevocationResponse {
+                    emit_system_revocation: true,
+                    reason: format!(
+                        "Aggregate has no custom compensation for {}",
+                        issuer_name
+                    ),
+                    ..Default::default()
+                },
+            )),
+        }
+    }
 }
 
 pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
@@ -237,6 +291,12 @@ impl SagaConfig {
 /// Phase 2 (`handle`): PM receives trigger + PM state + fetched destinations,
 /// returns commands to issue and PM events to persist.
 ///
+/// # Compensation
+///
+/// When a PM's command is rejected by the target aggregate, `handle_revocation()`
+/// is called. The PM can emit compensation events to its own domain or delegate
+/// to framework handling. Override to provide custom compensation logic.
+///
 /// # Example
 ///
 /// ```ignore
@@ -292,6 +352,83 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
         process_state: Option<&EventBook>,
         destinations: &[EventBook],
     ) -> (Vec<CommandBook>, Option<EventBook>);
+
+    /// Handle a rejection notification for commands this PM issued.
+    ///
+    /// Called when a command produced by this PM is rejected by the target aggregate.
+    /// Override to provide custom compensation logic (emit PM events to record
+    /// the failed workflow step).
+    ///
+    /// Default behavior: request framework to emit SagaCompensationFailed event.
+    ///
+    /// # Arguments
+    ///
+    /// * `notification` - The notification with RejectionNotification payload
+    /// * `process_state` - Current PM state for this correlation_id
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (optional PM events to persist, RevocationResponse for framework).
+    /// Return events to record compensation in PM state. Return RevocationResponse
+    /// to delegate to framework handling.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn handle_revocation(
+    ///     &self,
+    ///     notification: &Notification,
+    ///     process_state: Option<&EventBook>,
+    /// ) -> (Option<EventBook>, RevocationResponse) {
+    ///     // Unpack rejection details
+    ///     let rejection = RejectionNotification::decode(
+    ///         notification.payload.as_ref().unwrap().value.as_slice()
+    ///     ).unwrap();
+    ///
+    ///     // Record the failure in PM state
+    ///     let event = WorkflowStepFailed {
+    ///         issuer_name: rejection.issuer_name.clone(),
+    ///         reason: rejection.rejection_reason.clone(),
+    ///     };
+    ///     let events = pack_events(vec![event]);
+    ///
+    ///     // Also delegate to framework for system tracking
+    ///     (Some(events), RevocationResponse {
+    ///         emit_system_revocation: true,
+    ///         reason: format!("PM recorded failure for {}", rejection.issuer_name),
+    ///         ..Default::default()
+    ///     })
+    /// }
+    /// ```
+    fn handle_revocation(
+        &self,
+        notification: &Notification,
+        _process_state: Option<&EventBook>,
+    ) -> (Option<EventBook>, RevocationResponse) {
+        // Extract issuer_name from notification payload for default message
+        let issuer_name = notification
+            .payload
+            .as_ref()
+            .and_then(|p| {
+                use prost::Message;
+                RejectionNotification::decode(p.value.as_slice()).ok()
+            })
+            .map(|r| r.issuer_name)
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Default: no PM events, delegate to framework
+        (
+            None,
+            RevocationResponse {
+                emit_system_revocation: true,
+                reason: format!(
+                    "ProcessManager has no custom compensation for {}",
+                    issuer_name
+                ),
+                ..Default::default()
+            },
+        )
+    }
 }
 
 /// Configuration for a process manager.

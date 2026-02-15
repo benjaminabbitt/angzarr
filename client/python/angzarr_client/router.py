@@ -20,6 +20,7 @@ from typing import Any, Callable, Generic, TypeVar
 from google.protobuf import any_pb2
 
 from .proto.angzarr import aggregate_pb2 as aggregate
+from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 
 S = TypeVar("S")
@@ -224,6 +225,62 @@ def reacts_to(event_type: type, *, input_domain: str = None, output_domain: str 
 
 
 # ============================================================================
+# @rejected decorator for compensation handlers
+# ============================================================================
+
+
+def rejected(*, domain: str, command: str):
+    """Decorator for rejection handler methods on Aggregate or ProcessManager.
+
+    Registers the method as a handler for when a specific command is rejected.
+    The method is called when a saga/PM command targeting the specified domain
+    and command type is rejected by the target aggregate.
+
+    Args:
+        domain: The target domain of the rejected command.
+        command: The type name of the rejected command.
+
+    Example (Aggregate):
+        @rejected(domain="payment", command="ProcessPayment")
+        def handle_payment_rejected(self, notification: Notification) -> FundsReleased:
+            rejection = RejectionNotification()
+            notification.payload.Unpack(rejection)
+            return FundsReleased(
+                player_root=self.state.player_root,
+                amount=self.state.reserved_amount,
+                reason=f"Payment failed: {rejection.rejection_reason}",
+            )
+
+    Example (ProcessManager):
+        @rejected(domain="inventory", command="ReserveInventory")
+        def handle_reserve_rejected(self, notification: Notification) -> WorkflowFailed:
+            rejection = RejectionNotification()
+            notification.payload.Unpack(rejection)
+            return WorkflowFailed(reason=rejection.rejection_reason)
+    """
+
+    def decorator(method: Callable) -> Callable:
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            result = method(self, *args, **kwargs)
+            # For aggregates, auto-apply and record the event
+            if hasattr(self, "_apply_and_record") and result is not None:
+                if isinstance(result, tuple):
+                    for event in result:
+                        self._apply_and_record(event)
+                else:
+                    self._apply_and_record(result)
+            return result
+
+        wrapper._is_rejection_handler = True
+        wrapper._rejection_domain = domain
+        wrapper._rejection_command = command
+        return wrapper
+
+    return decorator
+
+
+# ============================================================================
 # @projects decorator for projectors
 # ============================================================================
 
@@ -367,11 +424,15 @@ class CommandRouter(Generic[S]):
     The handler signature:
         handler(cb: CommandBook, command_any: Any, state: S, seq: int) -> EventBook
 
+    The rejection handler signature:
+        handler(notification: Notification, state: S) -> EventBook
+
     Example::
 
         router = (CommandRouter("cart", rebuild_state)
             .on("CreateCart", handle_create_cart)
-            .on("AddItem", handle_add_item))
+            .on("AddItem", handle_add_item)
+            .on_rejected("payment", "ProcessPayment", handle_payment_rejected))
 
         # In Handle():
         response = router.dispatch(request)
@@ -386,6 +447,7 @@ class CommandRouter(Generic[S]):
         self.domain = domain
         self._rebuild = rebuild
         self._handlers: list[tuple[str, Callable]] = []
+        self._rejection_handlers: dict[str, Callable] = {}  # "domain/command" -> handler
 
     def on(self, suffix_or_handler, handler: Callable = None) -> CommandRouter[S]:
         """Register a handler for a command type_url suffix.
@@ -412,14 +474,57 @@ class CommandRouter(Generic[S]):
         self._handlers.append((suffix, handler))
         return self
 
+    def on_rejected(
+        self, domain: str, command: str, handler: Callable
+    ) -> CommandRouter[S]:
+        """Register a handler for rejected commands.
+
+        Called when a saga/PM command targeting the specified domain and command
+        type is rejected by the target aggregate.
+
+        The handler signature:
+            handler(notification: Notification, state: S) -> EventBook
+
+        The notification.payload contains a RejectionNotification with:
+        - rejected_command: The command that was rejected
+        - rejection_reason: Why it was rejected
+        - issuer_name: Saga/PM that issued the command
+        - issuer_type: "saga" or "process_manager"
+        - source_aggregate: Cover of triggering aggregate
+        - source_event_sequence: Event that triggered the saga/PM
+
+        Example:
+            def handle_payment_rejected(notification, state):
+                rejection = RejectionNotification()
+                notification.payload.Unpack(rejection)
+                return pack_events(FundsReleased(
+                    amount=state.reserved_amount,
+                    reason=rejection.rejection_reason,
+                ))
+
+            router.on_rejected("payment", "ProcessPayment", handle_payment_rejected)
+
+        Args:
+            domain: The target domain of the rejected command.
+            command: The type name of the rejected command.
+            handler: Function to handle the rejection.
+
+        Returns:
+            Self for chaining.
+        """
+        key = f"{domain}/{command}"
+        self._rejection_handlers[key] = handler
+        return self
+
     def dispatch(self, cmd: types.ContextualCommand) -> aggregate.BusinessResponse:
         """Dispatch a ContextualCommand to the matching handler.
 
         Extracts command + prior events, rebuilds state, matches type_url
-        suffix, and calls the registered handler.
+        suffix, and calls the registered handler. Detects Notification
+        and routes to rejection handlers.
 
         Returns:
-            BusinessResponse wrapping the handler's EventBook.
+            BusinessResponse wrapping the handler's EventBook or RevocationResponse.
 
         Raises:
             ValueError: If no command pages or no handler matches.
@@ -438,12 +543,64 @@ class CommandRouter(Generic[S]):
             raise ValueError(ERRMSG_NO_COMMAND_PAGES)
 
         type_url = command_any.type_url
+
+        # Check for Notification (rejection/compensation)
+        if type_url.endswith("Notification"):
+            notification = types.Notification()
+            command_any.Unpack(notification)
+            return self._dispatch_rejection(notification, state)
+
+        # Normal command dispatch
         for suffix, handler in self._handlers:
             if type_url.endswith(suffix):
                 events = handler(command_book, command_any, state, seq)
                 return aggregate.BusinessResponse(events=events)
 
         raise ValueError(f"{ERRMSG_UNKNOWN_COMMAND}: {type_url}")
+
+    def _dispatch_rejection(
+        self, notification: types.Notification, state: S
+    ) -> aggregate.BusinessResponse:
+        """Dispatch a rejection Notification to the matching handler.
+
+        Args:
+            notification: The notification containing RejectionNotification payload.
+            state: Current aggregate state.
+
+        Returns:
+            BusinessResponse with events or RevocationResponse.
+        """
+        # Unpack rejection details from notification payload
+        rejection = types.RejectionNotification()
+        if notification.HasField("payload"):
+            notification.payload.Unpack(rejection)
+
+        # Extract domain and command type from rejected_command
+        domain = ""
+        command_suffix = ""
+
+        if rejection.HasField("rejected_command") and rejection.rejected_command.pages:
+            rejected_cmd = rejection.rejected_command
+            if rejected_cmd.HasField("cover"):
+                domain = rejected_cmd.cover.domain
+            if rejected_cmd.pages[0].HasField("command"):
+                cmd_type_url = rejected_cmd.pages[0].command.type_url
+                command_suffix = cmd_type_url.rsplit("/", 1)[-1] if "/" in cmd_type_url else cmd_type_url
+
+        # Dispatch to rejection handler if found (use suffix matching like regular dispatch)
+        for key, handler in self._rejection_handlers.items():
+            expected_domain, expected_command = key.split("/", 1)
+            if domain == expected_domain and command_suffix.endswith(expected_command):
+                events = handler(notification, state)
+                return aggregate.BusinessResponse(events=events)
+
+        # Default: delegate to framework
+        return aggregate.BusinessResponse(
+            revocation=aggregate.RevocationResponse(
+                emit_system_revocation=True,
+                reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_suffix}",
+            )
+        )
 
     def descriptor(self) -> Descriptor:
         """Build a component descriptor from registered handlers."""

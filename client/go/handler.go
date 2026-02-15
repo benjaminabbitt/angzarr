@@ -239,13 +239,28 @@ type PMPrepareFunc func(trigger, processState *pb.EventBook) []*pb.Cover
 // PMHandleFunc processes events and returns commands and process events.
 type PMHandleFunc func(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error)
 
+// PMRevocationFunc handles saga/PM compensation for commands issued by this PM.
+// Called when a command produced by this PM is rejected by the target aggregate.
+//
+// Parameters:
+//   - notification: The Notification with RejectionNotification payload
+//   - processState: Current PM state
+//
+// Returns: PMRevocationResponse with optional PM events and RevocationResponse
+//
+// To access rejection details:
+//
+//	ctx := NewCompensationContext(notification)
+type PMRevocationFunc func(notification *pb.Notification, processState *pb.EventBook) *PMRevocationResponse
+
 // ProcessManagerHandler wraps functions for the gRPC ProcessManager service.
 type ProcessManagerHandler struct {
 	pb.UnimplementedProcessManagerServiceServer
-	name      string
-	inputs    []*pb.Target
-	prepareFn PMPrepareFunc
-	handleFn  PMHandleFunc
+	name          string
+	inputs        []*pb.Target
+	prepareFn     PMPrepareFunc
+	handleFn      PMHandleFunc
+	revocationFn  PMRevocationFunc
 }
 
 // NewProcessManagerHandler creates a new process manager handler.
@@ -271,6 +286,20 @@ func (h *ProcessManagerHandler) WithPrepare(fn PMPrepareFunc) *ProcessManagerHan
 // WithHandle sets the handle callback.
 func (h *ProcessManagerHandler) WithHandle(fn PMHandleFunc) *ProcessManagerHandler {
 	h.handleFn = fn
+	return h
+}
+
+// WithRevocationHandler sets the handler for saga compensation requests.
+//
+// Called when a command produced by this PM is rejected by the target aggregate.
+// The handler should decide whether to:
+// 1. Emit PM events to record the failure (return with ProcessEvents)
+// 2. Delegate to framework (return with RevocationResponse only)
+// 3. Both (return with ProcessEvents and RevocationResponse)
+//
+// If no handler is set, revocations delegate to framework by default.
+func (h *ProcessManagerHandler) WithRevocationHandler(fn PMRevocationFunc) *ProcessManagerHandler {
+	h.revocationFn = fn
 	return h
 }
 

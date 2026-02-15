@@ -19,7 +19,7 @@ use crate::proto::{
 };
 use crate::proto_ext::EditionExt;
 use crate::proto_ext::{correlated_request, CoverExt};
-use crate::utils::saga_compensation::{build_revoke_command_book, CompensationContext};
+use crate::utils::saga_compensation::{build_notification_command_book, CompensationContext};
 
 use super::{SagaContextFactory, SagaRetryContext};
 
@@ -148,7 +148,8 @@ impl SagaRetryContext for GrpcSagaContext {
 /// Handle a rejected saga command by initiating compensation flow.
 ///
 /// If the command has a saga_origin (meaning it came from a saga),
-/// sends a RevokeEventCommand to the triggering aggregate for compensation.
+/// sends a Notification with RejectionNotification payload to the
+/// triggering aggregate for compensation.
 /// If compensation fails or client logic requests it, emits a fallback event.
 async fn handle_command_rejection(
     rejected_command: &CommandBook,
@@ -183,17 +184,17 @@ async fn handle_command_rejection(
         "Saga command rejected, initiating compensation"
     );
 
-    let revoke_command = match build_revoke_command_book(&context) {
+    let notification_command = match build_notification_command_book(&context) {
         Ok(cmd) => cmd,
         Err(e) => {
             error!(
                 saga = %saga_name,
                 error = %e,
-                "Failed to build revoke command, emitting fallback event"
+                "Failed to build notification, emitting fallback event"
             );
             emit_fallback_event(
                 &context,
-                "Failed to build revoke command",
+                "Failed to build notification",
                 publisher,
                 config,
             )
@@ -202,17 +203,17 @@ async fn handle_command_rejection(
         }
     };
 
-    let triggering_domain = revoke_command.domain().to_string();
-    let correlation_id = revoke_command.correlation_id().to_string();
+    let triggering_domain = notification_command.domain().to_string();
+    let correlation_id = notification_command.correlation_id().to_string();
 
     info!(
         saga = %saga_name,
         triggering_domain = %triggering_domain,
-        "Sending RevokeEventCommand to triggering aggregate"
+        "Sending rejection Notification to triggering aggregate"
     );
 
     match handler
-        .handle(correlated_request(revoke_command, &correlation_id))
+        .handle(correlated_request(notification_command, &correlation_id))
         .await
     {
         Ok(response) => {
@@ -227,7 +228,7 @@ async fn handle_command_rejection(
                 debug!(
                     saga = %saga_name,
                     triggering_domain = %triggering_domain,
-                    "Revocation handled, no compensation events produced"
+                    "Rejection notification handled, no compensation events produced"
                 );
             }
         }
@@ -236,11 +237,11 @@ async fn handle_command_rejection(
                 saga = %saga_name,
                 triggering_domain = %triggering_domain,
                 error = %e,
-                "RevokeEventCommand failed, emitting fallback event"
+                "Rejection notification failed, emitting fallback event"
             );
             emit_fallback_event(
                 &context,
-                &format!("RevokeEventCommand failed: {}", e),
+                &format!("Rejection notification failed: {}", e),
                 publisher,
                 config,
             )

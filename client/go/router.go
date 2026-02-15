@@ -40,20 +40,37 @@ type CommandHandler[S any] func(cb *pb.CommandBook, cmd *anypb.Any, state S, seq
 // StateRebuilder reconstructs state from prior events.
 type StateRebuilder[S any] func(events *pb.EventBook) S
 
+// RevocationHandler handles saga compensation requests.
+// Called when a saga command targeting this aggregate's events is rejected.
+//
+// Parameters:
+//   - notification: Notification containing RejectionNotification payload
+//   - state: Current aggregate state
+//
+// Returns: BusinessResponse with events or RevocationResponse
+//
+// To access rejection details:
+//
+//	rejection := &pb.RejectionNotification{}
+//	notification.Payload.UnmarshalTo(rejection)
+type RevocationHandler[S any] func(notification *pb.Notification, state S) *pb.BusinessResponse
+
 // CommandRouter dispatches commands to handlers by type_url suffix.
 //
 // Example:
 //
 //	router := NewCommandRouter("cart", rebuildState).
 //	    On("CreateCart", handleCreateCart).
-//	    On("AddItem", handleAddItem)
+//	    On("AddItem", handleAddItem).
+//	    OnRejected("payment", "ProcessPayment", handlePaymentRejected)
 //
 //	// In Handle():
 //	response, err := router.Dispatch(request)
 type CommandRouter[S any] struct {
-	domain   string
-	rebuild  StateRebuilder[S]
-	handlers []commandRegistration[S]
+	domain            string
+	rebuild           StateRebuilder[S]
+	handlers          []commandRegistration[S]
+	rejectionHandlers map[string]RevocationHandler[S] // Key: "domain/command"
 }
 
 type commandRegistration[S any] struct {
@@ -64,9 +81,10 @@ type commandRegistration[S any] struct {
 // NewCommandRouter creates a new router for the given domain.
 func NewCommandRouter[S any](domain string, rebuild StateRebuilder[S]) *CommandRouter[S] {
 	return &CommandRouter[S]{
-		domain:   domain,
-		rebuild:  rebuild,
-		handlers: make([]commandRegistration[S], 0),
+		domain:            domain,
+		rebuild:           rebuild,
+		handlers:          make([]commandRegistration[S], 0),
+		rejectionHandlers: make(map[string]RevocationHandler[S]),
 	}
 }
 
@@ -76,10 +94,29 @@ func (r *CommandRouter[S]) On(suffix string, handler CommandHandler[S]) *Command
 	return r
 }
 
+// OnRejected registers a handler for rejected commands.
+//
+// Called when a saga/PM command targeting the specified domain and command
+// type is rejected by the target aggregate. The handler should decide whether to:
+// 1. Emit compensation events (return with Events)
+// 2. Delegate to framework (return with RevocationResponse)
+//
+// If no handler matches, revocations delegate to framework by default.
+//
+// Example:
+//
+//	router.OnRejected("payment", "ProcessPayment", handlePaymentRejected)
+func (r *CommandRouter[S]) OnRejected(domain, command string, handler RevocationHandler[S]) *CommandRouter[S] {
+	key := domain + "/" + command
+	r.rejectionHandlers[key] = handler
+	return r
+}
+
 // Dispatch routes a ContextualCommand to the matching handler.
 //
 // Extracts command + prior events, rebuilds state, matches type_url suffix,
-// and calls the registered handler.
+// and calls the registered handler. Detects Notification and routes
+// to the rejection handler.
 func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	commandBook := cmd.Command
 	priorEvents := cmd.Events
@@ -97,6 +134,17 @@ func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResp
 	}
 
 	typeURL := commandAny.TypeUrl
+
+	// Check for Notification (rejection/compensation)
+	if strings.HasSuffix(typeURL, "Notification") {
+		notification := &pb.Notification{}
+		if err := commandAny.UnmarshalTo(notification); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Notification: %w", err)
+		}
+		return r.dispatchRejection(notification, state)
+	}
+
+	// Normal command dispatch
 	for _, reg := range r.handlers {
 		if strings.HasSuffix(typeURL, reg.suffix) {
 			events, err := reg.handler(commandBook, commandAny, state, seq)
@@ -110,6 +158,43 @@ func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResp
 	}
 
 	return nil, fmt.Errorf("%s: %s", ErrMsgUnknownCommand, typeURL)
+}
+
+// dispatchRejection routes a rejection Notification to the matching handler.
+func (r *CommandRouter[S]) dispatchRejection(notification *pb.Notification, state S) (*pb.BusinessResponse, error) {
+	// Unpack rejection details from notification payload
+	rejection := &pb.RejectionNotification{}
+	if notification.Payload != nil {
+		if err := notification.Payload.UnmarshalTo(rejection); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal RejectionNotification: %w", err)
+		}
+	}
+
+	// Extract domain and command type from rejected_command
+	var domain, cmdSuffix string
+	if rejection.RejectedCommand != nil && len(rejection.RejectedCommand.Pages) > 0 {
+		if rejection.RejectedCommand.Cover != nil {
+			domain = rejection.RejectedCommand.Cover.Domain
+		}
+		if rejection.RejectedCommand.Pages[0].Command != nil {
+			cmdTypeURL := rejection.RejectedCommand.Pages[0].Command.TypeUrl
+			if idx := strings.LastIndex(cmdTypeURL, "/"); idx >= 0 {
+				cmdSuffix = cmdTypeURL[idx+1:]
+			} else {
+				cmdSuffix = cmdTypeURL
+			}
+		}
+	}
+
+	// Build dispatch key and look up handler
+	key := domain + "/" + cmdSuffix
+	if handler, ok := r.rejectionHandlers[key]; ok {
+		return handler(notification, state), nil
+	}
+
+	return DelegateToFramework(
+		fmt.Sprintf("Aggregate %s has no custom compensation for %s", r.domain, key),
+	), nil
 }
 
 // Descriptor builds a ComponentDescriptor from registered handlers.

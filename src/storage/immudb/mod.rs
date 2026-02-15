@@ -11,6 +11,33 @@
 //! - **Time-travel queries**: `SINCE TX` / `BEFORE TX` for temporal queries
 //! - **Audit trail**: Built-in history tracking via `HISTORY OF` queries
 //!
+//! # Snapshots Are NOT Stored in immudb
+//!
+//! This module provides `EventStore` only—**not** `SnapshotStore`.
+//!
+//! Snapshots are mutable by design: they get overwritten with newer state
+//! as aggregates evolve. This fundamentally conflicts with immudb's
+//! immutability guarantees. Storing snapshots in immudb would mean:
+//! - Every snapshot update creates a new row (history accumulates forever)
+//! - No way to reclaim space from obsolete snapshots
+//! - Queries must filter to "latest" snapshot, negating immudb's strengths
+//!
+//! **Recommended architecture:**
+//! ```text
+//! ┌─────────────────┐     ┌─────────────────┐
+//! │     immudb      │     │   PostgreSQL    │
+//! │  (EventStore)   │     │ (SnapshotStore) │
+//! │                 │     │                 │
+//! │  Immutable      │     │  Mutable        │
+//! │  Append-only    │     │  Overwrite OK   │
+//! │  Tamper-evident │     │  Space-efficient│
+//! └─────────────────┘     └─────────────────┘
+//! ```
+//!
+//! Use `PostgresSnapshotStore`, `SqliteSnapshotStore`, or `RedisSnapshotStore`
+//! alongside `ImmudbEventStore`. The event store is the source of truth;
+//! snapshots are a disposable optimization.
+//!
 //! # Connection
 //!
 //! immudb exposes a PostgreSQL wire protocol, allowing standard Postgres

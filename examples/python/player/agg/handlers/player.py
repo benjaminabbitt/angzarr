@@ -1,11 +1,20 @@
 """Player aggregate - rich domain model."""
 
 from dataclasses import dataclass, field
+import logging
 
 from angzarr_client import Aggregate, handles, now
+from angzarr_client.compensation import (
+    CompensationContext,
+    delegate_to_framework,
+)
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player_proto
 from angzarr_client.proto.examples import types_pb2 as poker_types
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -243,4 +252,41 @@ class Player(Aggregate[_PlayerState]):
                 amount=new_reserved, currency_code="CHIPS"
             ),
             released_at=now(),
+        )
+
+    # --- Saga/PM Compensation ---
+
+    def handle_revocation(self, notification: types.Notification) -> aggregate.BusinessResponse:
+        """Handle rejection for player-related saga/PM failures.
+
+        Called when a saga/PM command targeting another aggregate is rejected.
+        For example, if ReserveFunds succeeded but the subsequent table join failed,
+        this method handles compensation.
+
+        Uses CompensationContext helpers for cleaner code.
+        """
+        ctx = CompensationContext.from_notification(notification)
+
+        logger.warning(
+            "Player compensation: issuer=%s reason=%s seq=%d",
+            ctx.issuer_name,
+            ctx.rejection_reason,
+            ctx.source_event_sequence,
+        )
+
+        # Example: Auto-release funds if a table join saga failed
+        # if "table" in ctx.issuer_name.lower():
+        #     # Extract table_root from rejected command
+        #     table_root = ...
+        #     event = player_proto.FundsReleased(
+        #         table_root=table_root,
+        #         amount=self.table_reservations.get(table_root.hex(), 0),
+        #         released_at=now(),
+        #     )
+        #     self._apply_and_record(event)
+        #     return emit_compensation_events(self.event_book())
+
+        # Default: delegate to framework
+        return delegate_to_framework(
+            reason=f"Player aggregate: no custom compensation for {ctx.issuer_name}"
         )

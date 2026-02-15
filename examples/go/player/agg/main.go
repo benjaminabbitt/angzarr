@@ -12,7 +12,8 @@ func main() {
 		On("DepositFunds", handlers.HandleDepositFunds).
 		On("WithdrawFunds", handlers.HandleWithdrawFunds).
 		On("ReserveFunds", handlers.HandleReserveFunds).
-		On("ReleaseFunds", handlers.HandleReleaseFunds)
+		On("ReleaseFunds", handlers.HandleReleaseFunds).
+		WithRevocationHandler(handlers.HandleRevocation)
 
 	angzarr.RunAggregateServer("player", "50201", router)
 }

@@ -19,7 +19,7 @@ from angzarr_client.proto.examples import types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
 
 # Import table handlers explicitly from the correct path
-_table_handlers_path = project_root / "agg-table" / "handlers"
+_table_handlers_path = project_root / "table" / "agg" / "handlers"
 _table_handlers_init = _table_handlers_path / "__init__.py"
 _spec = importlib.util.spec_from_file_location("table_handlers", _table_handlers_init)
 _table_handlers = importlib.util.module_from_spec(_spec)

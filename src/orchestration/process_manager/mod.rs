@@ -63,6 +63,27 @@ pub trait ProcessManagerContext: Send + Sync {
         process_events: &EventBook,
         correlation_id: &str,
     ) -> CommandOutcome;
+
+    /// Handle a rejected command produced by this PM.
+    ///
+    /// Called when a command produced by this PM is rejected by the target aggregate.
+    /// Implementations should invoke `handle_revocation()` on the PM handler and
+    /// persist any resulting PM events.
+    ///
+    /// Default implementation logs the rejection. Override in implementations
+    /// that have access to compensation handlers.
+    async fn on_command_rejected(
+        &self,
+        _command: &CommandBook,
+        _reason: &str,
+        _correlation_id: &str,
+    ) {
+        // Default: log only, no compensation
+        tracing::error!(
+            reason = %_reason,
+            "PM command rejected (no compensation path configured)"
+        );
+    }
 }
 
 /// Factory for creating per-invocation PM contexts.
@@ -200,7 +221,7 @@ pub async fn orchestrate_pm(
 
         // Execute commands produced by process manager
         // PM handler must set correct sequences on commands from destination.next_sequence()
-        super::shared::execute_commands(executor, response.commands, correlation_id).await;
+        execute_pm_commands(ctx, executor, response.commands, correlation_id).await;
 
         // Success — exit retry loop
         break;
@@ -219,6 +240,59 @@ pub async fn orchestrate_pm(
     }
 
     Ok(())
+}
+
+/// Execute PM commands with compensation callback on rejection.
+///
+/// Unlike `shared::execute_commands`, this calls `on_command_rejected` when
+/// commands fail, allowing PMs to record failures in their own state.
+async fn execute_pm_commands(
+    ctx: &dyn ProcessManagerContext,
+    executor: &dyn CommandExecutor,
+    mut commands: Vec<CommandBook>,
+    correlation_id: &str,
+) {
+    use super::shared::fill_correlation_id;
+    fill_correlation_id(&mut commands, correlation_id);
+
+    for command_book in commands {
+        let cmd_domain = command_book
+            .cover
+            .as_ref()
+            .map(|c| c.domain.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        debug!(
+            domain = %cmd_domain,
+            "Executing PM command"
+        );
+
+        match executor.execute(command_book.clone()).await {
+            CommandOutcome::Success(cmd_response) => {
+                debug!(
+                    domain = %cmd_domain,
+                    has_events = cmd_response.events.is_some(),
+                    "PM command executed successfully"
+                );
+            }
+            CommandOutcome::Retryable { reason, .. } => {
+                warn!(
+                    domain = %cmd_domain,
+                    error = %reason,
+                    "PM command sequence conflict (will be retried)"
+                );
+            }
+            CommandOutcome::Rejected(reason) => {
+                error!(
+                    domain = %cmd_domain,
+                    error = %reason,
+                    "PM command rejected, invoking compensation"
+                );
+                ctx.on_command_rejected(&command_book, &reason, correlation_id)
+                    .await;
+            }
+        }
+    }
 }
 
 #[cfg(test)]

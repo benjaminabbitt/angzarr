@@ -7,7 +7,7 @@ from pathlib import Path
 # Add paths for imports
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "agg-player"))
+sys.path.insert(0, str(project_root / "player" / "agg"))
 
 from behave import given, when, then, use_step_matcher
 from google.protobuf.any_pb2 import Any as ProtoAny
