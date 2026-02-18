@@ -393,6 +393,39 @@ let router = CommandRouter::new("player", build_state)
 ```
 
 </TabItem>
+<TabItem value="java" label="Java">
+
+```java
+CommandRouter router = new CommandRouter("player", StateBuilder::build)
+    .on(RegisterPlayer.class, PlayerHandlers::handleRegister)
+    .on(DepositFunds.class, PlayerHandlers::handleDeposit)
+    .on(ReserveFunds.class, PlayerHandlers::handleReserve)
+    .on(ReleaseFunds.class, PlayerHandlers::handleRelease);
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+var router = new CommandRouter("player", StateBuilder.Build)
+    .On<RegisterPlayer>(PlayerHandlers.HandleRegister)
+    .On<DepositFunds>(PlayerHandlers.HandleDeposit)
+    .On<ReserveFunds>(PlayerHandlers.HandleReserve)
+    .On<ReleaseFunds>(PlayerHandlers.HandleRelease);
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+auto router = CommandRouter("player", build_state)
+    .on<RegisterPlayer>(handle_register)
+    .on<DepositFunds>(handle_deposit)
+    .on<ReserveFunds>(handle_reserve)
+    .on<ReleaseFunds>(handle_release);
+```
+
+</TabItem>
 </Tabs>
 
 ---
