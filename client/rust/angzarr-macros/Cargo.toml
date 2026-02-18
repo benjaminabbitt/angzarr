@@ -1,0 +1,17 @@
+[package]
+name = "angzarr-macros"
+version = "0.1.0"
+edition = "2021"
+description = "Procedural macros for angzarr OO-style component definitions"
+license = "MIT OR Apache-2.0"
+
+[lib]
+proc-macro = true
+
+# Standalone workspace to allow independent building
+[workspace]
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }

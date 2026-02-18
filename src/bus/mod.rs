@@ -27,6 +27,7 @@ pub mod kafka;
 #[cfg(feature = "lossy")]
 pub mod lossy;
 pub mod mock;
+pub mod offloading;
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod outbox;
 
@@ -43,6 +44,7 @@ pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
 #[cfg(feature = "lossy")]
 pub use lossy::{LossyConfig, LossyEventBus, LossyStats};
 pub use mock::MockEventBus;
+pub use offloading::{OffloadingConfig, OffloadingEventBus};
 #[cfg(feature = "postgres")]
 pub use outbox::{OutboxConfig, PostgresOutboxEventBus, RecoveryTaskHandle};
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
@@ -197,6 +199,21 @@ pub trait EventBus: Send + Sync {
         name: &str,
         domain_filter: Option<&str>,
     ) -> Result<Arc<dyn EventBus>>;
+
+    /// Maximum message size in bytes for this bus.
+    ///
+    /// Returns the hard limit imposed by the underlying transport.
+    /// Implementations should return well-known constants for their transport:
+    /// - SNS/SQS: 256 KB
+    /// - Pub/Sub: 10 MB
+    /// - Kafka: broker-configurable, typically 1 MB default
+    /// - AMQP: broker-configurable, typically 128 MB default
+    /// - Channel/IPC: None (memory-bound only)
+    ///
+    /// Returns `None` if the bus has no practical limit.
+    fn max_message_size(&self) -> Option<usize> {
+        None // Default: no limit
+    }
 }
 
 // ============================================================================
@@ -504,6 +521,31 @@ pub enum EventBusMode {
         /// Queue/group name.
         queue: String,
     },
+}
+
+/// Wrap an event bus with payload offloading.
+///
+/// If a payload store is provided, wraps the bus with `OffloadingEventBus`
+/// for transparent large payload handling. If `None`, returns the bus unchanged.
+///
+/// # Arguments
+///
+/// * `bus` - The event bus to wrap.
+/// * `store` - Optional payload store for offloading. If `None`, no wrapping occurs.
+/// * `threshold` - Optional size threshold to trigger offloading.
+///   If `None`, uses the bus's `max_message_size()`.
+pub fn wrap_with_offloading<S: crate::payload_store::PayloadStore + 'static>(
+    bus: Arc<dyn EventBus>,
+    store: Option<Arc<S>>,
+    threshold: Option<usize>,
+) -> Arc<dyn EventBus> {
+    match store {
+        Some(store) => {
+            let config = OffloadingConfig { store, threshold };
+            OffloadingEventBus::wrap(bus, config) as Arc<dyn EventBus>
+        }
+        None => bus,
+    }
 }
 
 #[cfg(feature = "kafka")]

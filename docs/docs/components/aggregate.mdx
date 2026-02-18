@@ -1,0 +1,381 @@
+---
+sidebar_position: 1
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aggregates
+
+A **command handler** (also called **aggregate**) processes commands for a domain, validates business rules against current state, and emits events. This is the consistency boundary for domain objects.
+
+There is exactly **one aggregate codebase per domain**. The "player" domain has one aggregate that handles all player-related commands (RegisterPlayer, DepositFunds, ReserveFunds, etc.). This single codebase scales horizontally across many processes.
+
+---
+
+## Handler Pattern: guard/validate/compute
+
+All aggregate command handlers follow a three-function pattern that makes business logic **100% unit testable** without mocking:
+
+| Step | Purpose | Pure Function |
+|------|---------|---------------|
+| **guard(state)** | Check state preconditions (aggregate exists, correct phase) | state → Result |
+| **validate(cmd, state)** | Validate command inputs against state | cmd + state → Result |
+| **compute(cmd, state)** | Build the resulting event | cmd + state → Event |
+
+The public `handle_*` function is thin orchestration: unpack protobuf, call guard → validate → compute, pack event.
+
+---
+
+## Example: Player Handler
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from proto.player_pb2 import DepositFunds, FundsDeposited
+from state import PlayerState
+from angzarr_client import errmsg, CommandRejectedError
+
+def guard_registered(state: PlayerState) -> None:
+    if not state.registered:
+        raise CommandRejectedError(errmsg.NOT_REGISTERED)
+
+def validate_deposit(cmd: DepositFunds) -> None:
+    if cmd.amount <= 0:
+        raise CommandRejectedError(errmsg.AMOUNT_POSITIVE)
+
+def compute_deposit(cmd: DepositFunds, state: PlayerState) -> FundsDeposited:
+    return FundsDeposited(
+        amount=cmd.amount,
+        new_bankroll=state.bankroll + cmd.amount,
+    )
+
+def handle_deposit(state: PlayerState, cmd: DepositFunds) -> FundsDeposited:
+    guard_registered(state)
+    validate_deposit(cmd)
+    return compute_deposit(cmd, state)
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+func guardRegistered(state *PlayerState) error {
+    if !state.Registered {
+        return status.Error(codes.FailedPrecondition, errmsg.NotRegistered)
+    }
+    return nil
+}
+
+func validateDeposit(cmd *DepositFunds) error {
+    if cmd.Amount <= 0 {
+        return status.Error(codes.InvalidArgument, errmsg.AmountPositive)
+    }
+    return nil
+}
+
+func computeDeposit(cmd *DepositFunds, state *PlayerState) *FundsDeposited {
+    return &FundsDeposited{
+        Amount:      cmd.Amount,
+        NewBankroll: state.Bankroll + cmd.Amount,
+    }
+}
+
+func HandleDeposit(state *PlayerState, cmd *DepositFunds) (*FundsDeposited, error) {
+    if err := guardRegistered(state); err != nil {
+        return nil, err
+    }
+    if err := validateDeposit(cmd); err != nil {
+        return nil, err
+    }
+    return computeDeposit(cmd, state), nil
+}
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+fn guard_registered(state: &PlayerState) -> Result<(), Status> {
+    if !state.registered {
+        return Err(Status::failed_precondition(errmsg::NOT_REGISTERED));
+    }
+    Ok(())
+}
+
+fn validate_deposit(cmd: &DepositFunds) -> Result<(), Status> {
+    if cmd.amount <= 0 {
+        return Err(Status::invalid_argument(errmsg::AMOUNT_POSITIVE));
+    }
+    Ok(())
+}
+
+fn compute_deposit(cmd: &DepositFunds, state: &PlayerState) -> FundsDeposited {
+    FundsDeposited {
+        amount: cmd.amount,
+        new_bankroll: state.bankroll + cmd.amount,
+    }
+}
+
+pub fn handle_deposit(state: &PlayerState, cmd: &DepositFunds) -> Result<FundsDeposited, Status> {
+    guard_registered(state)?;
+    validate_deposit(cmd)?;
+    Ok(compute_deposit(cmd, state))
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public class DepositHandler {
+    private void guardRegistered(PlayerState state) {
+        if (!state.isRegistered()) {
+            throw new CommandRejectedError(ErrorMsg.NOT_REGISTERED);
+        }
+    }
+
+    private void validateDeposit(DepositFunds cmd) {
+        if (cmd.getAmount() <= 0) {
+            throw new CommandRejectedError(ErrorMsg.AMOUNT_POSITIVE);
+        }
+    }
+
+    private FundsDeposited computeDeposit(DepositFunds cmd, PlayerState state) {
+        return FundsDeposited.newBuilder()
+            .setAmount(cmd.getAmount())
+            .setNewBankroll(state.getBankroll() + cmd.getAmount())
+            .build();
+    }
+
+    public FundsDeposited handle(PlayerState state, DepositFunds cmd) {
+        guardRegistered(state);
+        validateDeposit(cmd);
+        return computeDeposit(cmd, state);
+    }
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+public class DepositHandler
+{
+    private void GuardRegistered(PlayerState state)
+    {
+        if (!state.Registered)
+            throw new CommandRejectedError(ErrorMsg.NotRegistered);
+    }
+
+    private void ValidateDeposit(DepositFunds cmd)
+    {
+        if (cmd.Amount <= 0)
+            throw new CommandRejectedError(ErrorMsg.AmountPositive);
+    }
+
+    private FundsDeposited ComputeDeposit(DepositFunds cmd, PlayerState state)
+    {
+        return new FundsDeposited
+        {
+            Amount = cmd.Amount,
+            NewBankroll = state.Bankroll + cmd.Amount
+        };
+    }
+
+    public FundsDeposited Handle(PlayerState state, DepositFunds cmd)
+    {
+        GuardRegistered(state);
+        ValidateDeposit(cmd);
+        return ComputeDeposit(cmd, state);
+    }
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+void guard_registered(const PlayerState& state) {
+    if (!state.registered()) {
+        throw CommandRejectedError(errmsg::NOT_REGISTERED);
+    }
+}
+
+void validate_deposit(const DepositFunds& cmd) {
+    if (cmd.amount() <= 0) {
+        throw CommandRejectedError(errmsg::AMOUNT_POSITIVE);
+    }
+}
+
+FundsDeposited compute_deposit(const DepositFunds& cmd, const PlayerState& state) {
+    FundsDeposited event;
+    event.set_amount(cmd.amount());
+    event.set_new_bankroll(state.bankroll() + cmd.amount());
+    return event;
+}
+
+FundsDeposited handle_deposit(const PlayerState& state, const DepositFunds& cmd) {
+    guard_registered(state);
+    validate_deposit(cmd);
+    return compute_deposit(cmd, state);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## State Reconstruction
+
+State is rebuilt by applying events in sequence:
+
+```
+Prior Events:
+  [0] PlayerRegistered { username: "Alice", initial_bankroll: 1000 }
+  [1] FundsDeposited { amount: 500, new_bankroll: 1500 }
+  [2] FundsReserved { amount: 200, new_available: 1300, new_reserved: 200 }
+
+Rebuild:
+  state = PlayerState::default()
+  apply(PlayerRegistered) → state.registered = true, state.bankroll = 1000
+  apply(FundsDeposited) → state.bankroll = 1500
+  apply(FundsReserved) → state.reserved = 200, state.available = 1300
+
+Result:
+  PlayerState { registered: true, bankroll: 1500, reserved: 200, available: 1300 }
+```
+
+---
+
+## Unit Testing
+
+Each function is testable in isolation:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+def test_deposit_increases_bankroll():
+    state = PlayerState(registered=True, bankroll=1000)
+    cmd = DepositFunds(amount=500)
+
+    event = compute_deposit(cmd, state)
+
+    assert event.new_bankroll == 1500
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+func TestDepositIncreasesBankroll(t *testing.T) {
+    state := &PlayerState{Registered: true, Bankroll: 1000}
+    cmd := &DepositFunds{Amount: 500}
+
+    event := computeDeposit(cmd, state)
+
+    assert.Equal(t, int32(1500), event.NewBankroll)
+}
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+#[test]
+fn test_deposit_increases_bankroll() {
+    let state = PlayerState { registered: true, bankroll: 1000, ..Default::default() };
+    let cmd = DepositFunds { amount: 500 };
+
+    let event = compute_deposit(&cmd, &state);
+
+    assert_eq!(event.new_bankroll, 1500);
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## CommandRouter
+
+Use the `CommandRouter` to register handlers and dispatch commands:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import CommandRouter
+
+router = CommandRouter("player", build_state)
+    .on("RegisterPlayer", handle_register)
+    .on("DepositFunds", handle_deposit)
+    .on("ReserveFunds", handle_reserve)
+    .on("ReleaseFunds", handle_release)
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+router := angzarr.NewCommandRouter("player", buildState).
+    On("RegisterPlayer", handleRegister).
+    On("DepositFunds", handleDeposit).
+    On("ReserveFunds", handleReserve).
+    On("ReleaseFunds", handleRelease)
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+let router = CommandRouter::new("player", build_state)
+    .on::<RegisterPlayer>(handle_register)
+    .on::<DepositFunds>(handle_deposit)
+    .on::<ReserveFunds>(handle_reserve)
+    .on::<ReleaseFunds>(handle_release);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Event Sequencing
+
+Each event has a `sequence` field. The aggregate computes the next sequence from prior events:
+
+```python
+def next_sequence(event_book: EventBook) -> int:
+    if event_book.pages:
+        return event_book.pages[-1].sequence + 1
+    if event_book.snapshot:
+        return event_book.snapshot.sequence + 1
+    return 0
+```
+
+Events with incorrect sequences are rejected (optimistic concurrency control).
+
+---
+
+## Snapshots
+
+For aggregates with many events, enable snapshots to avoid full replay:
+
+1. Define state as a protobuf message
+2. Return the updated state in `EventBook.snapshot_state`
+3. Angzarr persists snapshots automatically
+
+On subsequent commands, only events after the snapshot are loaded.
+
+---
+
+## Next Steps
+
+- **[Sagas](/components/saga)** — Cross-domain command orchestration
+- **[Projectors](/components/projector)** — Building read models
+- **[Testing](/operations/testing)** — Three-level testing strategy

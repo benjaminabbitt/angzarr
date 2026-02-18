@@ -50,6 +50,7 @@ enum MergeStrategy {
   MERGE_COMMUTATIVE = 0;       // Default: allow if state field mutations don't overlap
   MERGE_STRICT = 1;            // Reject if sequence mismatch (optimistic concurrency)
   MERGE_AGGREGATE_HANDLES = 2; // Aggregate handles its own concurrency
+  MERGE_MANUAL = 3;            // Send to DLQ for manual review on mismatch
 }
 
 // Controls snapshot retention during cleanup
@@ -59,6 +60,31 @@ enum SnapshotRetention {
   RETENTION_TRANSIENT = 2; // Delete when newer snapshot written
 }
 
+// Storage backend type for externally stored payloads (claim check pattern).
+enum PayloadStorageType {
+  PAYLOAD_STORAGE_TYPE_UNSPECIFIED = 0;
+  PAYLOAD_STORAGE_TYPE_FILESYSTEM = 1;
+  PAYLOAD_STORAGE_TYPE_GCS = 2;
+  PAYLOAD_STORAGE_TYPE_S3 = 3;
+}
+
+// Reference to externally stored payload (claim check pattern).
+// Used when event/command payloads exceed message bus size limits.
+message PayloadReference {
+  PayloadStorageType storage_type = 1;
+  // Location URI:
+  // - file:///var/angzarr/payloads/{hash}.bin
+  // - gs://bucket/prefix/{hash}.bin
+  // - s3://bucket/prefix/{hash}.bin
+  string uri = 2;
+  // Content hash for integrity verification and deduplication (SHA-256)
+  bytes content_hash = 3;
+  // Original serialized payload size in bytes
+  uint64 original_size = 4;
+  // Timestamp when payload was stored (for TTL cleanup)
+  google.protobuf.Timestamp stored_at = 5;
+}
+
 message EventPage {
   oneof sequence {
     uint32 num = 1;
@@ -66,6 +92,9 @@ message EventPage {
   }
   google.protobuf.Timestamp created_at = 3;
   google.protobuf.Any event = 4;
+  // If set, the actual event payload is stored externally (claim check pattern).
+  // The `event` field will be empty when this is present.
+  optional PayloadReference external_payload = 10;
 }
 
 // Snapshot of aggregate state at a given sequence number.
@@ -104,6 +133,9 @@ message CommandPage {
   uint32 sequence = 1;
   google.protobuf.Any command = 3;
   MergeStrategy merge_strategy = 4; // How to handle sequence conflicts
+  // If set, the actual command payload is stored externally (claim check pattern).
+  // The `command` field will be empty when this is present.
+  optional PayloadReference external_payload = 10;
 }
 
 message CommandBook {
@@ -229,4 +261,54 @@ message RejectionNotification {
   string issuer_type = 4;                   // "saga" | "process_manager"
   Cover source_aggregate = 5;               // Aggregate that originally triggered the flow
   uint32 source_event_sequence = 6;         // Event sequence that triggered the saga/PM
+}
+
+// ============================================================================
+// Dead Letter Queue (DLQ) Messages
+// ============================================================================
+
+// Sequence mismatch details for DLQ entries.
+// Contains expected vs actual sequence for debugging and replay.
+message SequenceMismatchDetails {
+  uint32 expected_sequence = 1;         // What the command expected
+  uint32 actual_sequence = 2;           // What the aggregate was at
+  MergeStrategy merge_strategy = 3;     // Strategy that triggered DLQ routing
+}
+
+// Event processing failure details for DLQ entries.
+// Contains information about why a saga/projector failed to process events.
+message EventProcessingFailedDetails {
+  string error = 1;                     // Error message from the handler
+  uint32 retry_count = 2;               // Number of retry attempts before DLQ routing
+  bool is_transient = 3;                // Whether the failure is considered transient
+}
+
+// Payload retrieval failure details for DLQ entries.
+// Contains information about why an externally stored payload couldn't be retrieved.
+message PayloadRetrievalFailedDetails {
+  PayloadStorageType storage_type = 1;  // Storage backend type
+  string uri = 2;                       // URI of the payload that couldn't be retrieved
+  bytes content_hash = 3;               // Content hash for identification
+  uint64 original_size = 4;             // Original payload size in bytes
+  string error = 5;                     // Error message from the retrieval attempt
+}
+
+// Dead letter queue entry for failed messages requiring manual intervention.
+// Per-domain topics: angzarr.dlq.{domain}
+message AngzarrDeadLetter {
+  Cover cover = 1;                      // Routing: domain, root, correlation_id
+  oneof payload {
+    CommandBook rejected_command = 2;   // Command that failed
+    EventBook rejected_events = 9;      // Events that failed (saga/projector failures)
+  }
+  string rejection_reason = 3;          // Human-readable reason
+  oneof rejection_details {
+    SequenceMismatchDetails sequence_mismatch = 12;          // Sequence conflict details
+    EventProcessingFailedDetails event_processing_failed = 13; // Handler failure details
+    PayloadRetrievalFailedDetails payload_retrieval_failed = 14; // Payload store failure details
+  }
+  google.protobuf.Timestamp occurred_at = 7;
+  map<string, string> metadata = 8;     // Additional context
+  string source_component = 10;         // Which component sent to DLQ
+  string source_component_type = 11;    // "aggregate" | "saga" | "projector" | "process_manager"
 }

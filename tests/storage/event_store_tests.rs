@@ -18,6 +18,7 @@ pub fn make_event(seq: u32, event_type: &str) -> EventPage {
             type_url: format!("type.example/{}", event_type),
             value: vec![1, 2, 3, seq as u8],
         }),
+        external_payload: None,
     }
 }
 
@@ -193,6 +194,7 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
             type_url: "type.example/TestEvent".to_string(),
             value: vec![10, 20, 30, 40, 50, 100, 200],
         }),
+        external_payload: None,
     };
 
     store

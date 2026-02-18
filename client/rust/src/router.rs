@@ -146,6 +146,13 @@ impl<S> CommandRouter<S> {
         self.handlers.keys().cloned().collect()
     }
 
+    /// Rebuild state from an EventBook using the registered state rebuilder.
+    ///
+    /// This is used by the Replay RPC to compute state from events.
+    pub fn rebuild_state(&self, event_book: &EventBook) -> S {
+        (self.rebuild)(event_book)
+    }
+
     /// Dispatch a contextual command to the appropriate handler.
     ///
     /// Detects Notification and routes to rejection handlers.
@@ -208,8 +215,9 @@ impl<S> CommandRouter<S> {
         use prost::Message;
 
         // Decode the Notification
-        let notification = Notification::decode(command_any.value.as_slice())
-            .map_err(|e| Status::invalid_argument(format!("Failed to decode Notification: {}", e)))?;
+        let notification = Notification::decode(command_any.value.as_slice()).map_err(|e| {
+            Status::invalid_argument(format!("Failed to decode Notification: {}", e))
+        })?;
 
         // Unpack rejection details from payload
         let rejection = notification
@@ -217,7 +225,9 @@ impl<S> CommandRouter<S> {
             .as_ref()
             .map(|p| RejectionNotification::decode(p.value.as_slice()))
             .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Failed to decode RejectionNotification: {}", e)))?
+            .map_err(|e| {
+                Status::invalid_argument(format!("Failed to decode RejectionNotification: {}", e))
+            })?
             .unwrap_or_default();
 
         // Extract domain and command type from rejected_command
@@ -251,7 +261,10 @@ impl<S> CommandRouter<S> {
                 send_to_dead_letter_queue: false,
                 escalate: false,
                 abort: false,
-                reason: format!("Aggregate {} has no custom compensation for {}", self.domain, key),
+                reason: format!(
+                    "Aggregate {} has no custom compensation for {}",
+                    self.domain, key
+                ),
             })),
         })
     }
@@ -470,6 +483,7 @@ pub fn event_page(seq: u32, event: Any) -> EventPage {
         sequence: Some(event_page::Sequence::Num(seq)),
         event: Some(event),
         created_at: Some(crate::now()),
+        external_payload: None,
     }
 }
 
@@ -716,5 +730,169 @@ impl<S> ProcessManagerRouter<S> {
 
         // Execute handler
         handler(trigger, &state, event_any, destinations).map_err(Status::from)
+    }
+}
+
+// ============================================================================
+// StateRouter - fluent state reconstruction
+// ============================================================================
+
+/// Event applier function type for StateRouter.
+///
+/// Takes mutable state reference and event bytes (to be decoded by handler).
+pub type EventApplier<S> = Box<dyn Fn(&mut S, &[u8]) + Send + Sync>;
+
+/// Fluent state reconstruction router.
+///
+/// Provides a builder pattern for registering event appliers with auto-unpacking.
+/// Register once at startup, call with_events() per rebuild.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use angzarr_client::StateRouter;
+/// use prost::Message;
+///
+/// fn apply_registered(state: &mut PlayerState, event: PlayerRegistered) {
+///     state.player_id = format!("player_{}", event.email);
+///     state.display_name = event.display_name;
+///     state.exists = true;
+/// }
+///
+/// fn apply_deposited(state: &mut PlayerState, event: FundsDeposited) {
+///     if let Some(balance) = event.new_balance {
+///         state.bankroll = balance.amount;
+///     }
+/// }
+///
+/// // Build router once
+/// let player_router = StateRouter::<PlayerState>::new()
+///     .on::<PlayerRegistered>("PlayerRegistered", apply_registered)
+///     .on::<FundsDeposited>("FundsDeposited", apply_deposited);
+///
+/// // Use per rebuild
+/// fn rebuild_state(event_book: &EventBook) -> PlayerState {
+///     player_router.with_events(&event_book.pages)
+/// }
+/// ```
+/// Factory function type for creating initial state.
+pub type StateFactory<S> = Box<dyn Fn() -> S + Send + Sync>;
+
+pub struct StateRouter<S: Default> {
+    handlers: Vec<(String, EventApplier<S>)>,
+    factory: Option<StateFactory<S>>,
+}
+
+impl<S: Default + 'static> Default for StateRouter<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S: Default + 'static> StateRouter<S> {
+    /// Create a new StateRouter using S::default() for state creation.
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+            factory: None,
+        }
+    }
+
+    /// Create a StateRouter with a custom state factory.
+    ///
+    /// Use this when your state needs non-default initialization.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// fn new_hand_state() -> HandState {
+    ///     HandState {
+    ///         pots: vec![PotState { pot_type: "main".to_string(), ..Default::default() }],
+    ///         ..Default::default()
+    ///     }
+    /// }
+    ///
+    /// let router = StateRouter::with_factory(new_hand_state)
+    ///     .on::<CardsDealt>("CardsDealt", apply_cards_dealt);
+    /// ```
+    pub fn with_factory(factory: fn() -> S) -> Self {
+        Self {
+            handlers: Vec::new(),
+            factory: Some(Box::new(factory)),
+        }
+    }
+
+    /// Create a new state instance using factory or Default.
+    fn create_state(&self) -> S {
+        match &self.factory {
+            Some(factory) => factory(),
+            None => S::default(),
+        }
+    }
+
+    /// Register an event applier for events with the given type suffix.
+    ///
+    /// The handler receives typed events (auto-decoded from protobuf).
+    ///
+    /// # Type Parameters
+    ///
+    /// - `E`: The protobuf event type (must implement `prost::Message + Default`)
+    ///
+    /// # Arguments
+    ///
+    /// - `suffix`: The type URL suffix to match (e.g., "PlayerRegistered")
+    /// - `handler`: Function that takes `(&mut S, E)` and mutates state
+    pub fn on<E>(mut self, suffix: impl Into<String>, handler: fn(&mut S, E)) -> Self
+    where
+        E: prost::Message + Default + 'static,
+    {
+        let suffix = suffix.into();
+        let boxed: EventApplier<S> = Box::new(move |state, bytes| {
+            if let Ok(event) = E::decode(bytes) {
+                handler(state, event);
+            }
+        });
+        self.handlers.push((suffix, boxed));
+        self
+    }
+
+    /// Create fresh state and apply all events from pages.
+    ///
+    /// This is the terminal operation for standalone usage.
+    pub fn with_events(&self, pages: &[EventPage]) -> S {
+        let mut state = self.create_state();
+        for page in pages {
+            if let Some(event) = &page.event {
+                self.apply_single(&mut state, event);
+            }
+        }
+        state
+    }
+
+    /// Create fresh state and apply all events from an EventBook.
+    pub fn with_event_book(&self, event_book: &EventBook) -> S {
+        self.with_events(&event_book.pages)
+    }
+
+    /// Apply a single event to existing state.
+    pub fn apply_single(&self, state: &mut S, event_any: &Any) {
+        let type_url = &event_any.type_url;
+        for (suffix, handler) in &self.handlers {
+            if type_url.ends_with(suffix) {
+                handler(state, &event_any.value);
+                return;
+            }
+        }
+        // Unknown event type - silently ignore (forward compatibility)
+    }
+
+    /// Convert to a StateRebuilder function for use with CommandRouter.
+    ///
+    /// Returns a function pointer that can be passed to CommandRouter::new().
+    ///
+    /// Note: This requires the StateRouter to be stored in a static variable
+    /// since CommandRouter expects a function pointer.
+    pub fn into_rebuilder(self) -> impl Fn(&EventBook) -> S + Send + Sync {
+        move |event_book| self.with_event_book(event_book)
     }
 }

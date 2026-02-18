@@ -13,7 +13,10 @@ func main() {
 		On("WithdrawFunds", handlers.HandleWithdrawFunds).
 		On("ReserveFunds", handlers.HandleReserveFunds).
 		On("ReleaseFunds", handlers.HandleReleaseFunds).
-		WithRevocationHandler(handlers.HandleRevocation)
+		// Rejection handling auto-delegates to framework when no specific handler registered.
+		// Register specific handlers with OnRejected(domain, command, handler) if custom
+		// compensation is needed.
+		OnRejected("table", "JoinTable", handlers.HandleTableJoinRejected)
 
 	angzarr.RunAggregateServer("player", "50201", router)
 }

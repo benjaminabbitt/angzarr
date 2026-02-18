@@ -1,0 +1,58 @@
+# C++ client library commands
+#
+# Container Overlay Pattern:
+# --------------------------
+# This justfile uses an overlay pattern for container execution:
+#
+# 1. `justfile` (this file) - runs on the host, delegates to container
+# 2. `justfile.container` - mounted over this file inside the container
+#
+# When running outside a devcontainer:
+#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Podman mounts justfile.container as /workspace/client/cpp/justfile
+#
+# When running inside a devcontainer (DEVCONTAINER=true):
+#   - Commands execute directly via `just <target>`
+#   - No container nesting
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+IMAGE := "angzarr-client-cpp-dev"
+
+# Build the devcontainer image
+[private]
+_build-image:
+    podman build -t {{IMAGE}} -f "{{TOP}}/client/cpp/.devcontainer/Containerfile" "{{TOP}}/client/cpp/.devcontainer"
+
+# Run just target in container (or directly if already in devcontainer)
+[private]
+_container +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        podman run --rm \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/client/cpp/justfile.container:/workspace/client/cpp/justfile:ro" \
+            -w /workspace/client/cpp \
+            {{IMAGE}} just {{ARGS}}
+    fi
+
+default:
+    @just --list
+
+proto:
+    just _container proto
+
+configure:
+    just _container configure
+
+build:
+    just _container build
+
+test:
+    just _container test
+
+clean:
+    rm -rf "{{TOP}}/client/cpp/build"

@@ -1,0 +1,33 @@
+# C# poker examples - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+SLN := "/workspace/examples/csharp/Angzarr.Examples.sln"
+
+default:
+    @just --list
+
+restore:
+    dotnet restore {{SLN}}
+
+build: restore
+    dotnet build {{SLN}} --configuration Release --no-restore
+
+build-dev: restore
+    dotnet build {{SLN}} --configuration Debug --no-restore
+
+test-unit: build
+    dotnet test {{SLN}} --configuration Release --no-build --verbosity normal --filter "Category=Unit"
+
+test-acceptance: build
+    dotnet test {{SLN}} --configuration Release --no-build --verbosity normal --filter "Category=Acceptance"
+
+test: build
+    dotnet test {{SLN}} --configuration Release --no-build --verbosity normal
+
+fmt:
+    dotnet format {{SLN}}
+
+lint: build
+    dotnet build {{SLN}} --configuration Release --no-restore /p:TreatWarningsAsErrors=true

@@ -87,13 +87,15 @@ pub use proto_ext::{
 // Re-export router types
 pub use router::{
     event_book_from, event_page, new_event_book, new_event_book_multi, pack_event, CommandHandler,
-    CommandRejectedError, CommandResult, CommandRouter, EventHandler, EventRouter, PrepareHandler,
-    ProcessManagerHandler, ProcessManagerPrepareHandler, ProcessManagerResponse,
-    ProcessManagerRouter, ProcessManagerStateRebuilder, StateRebuilder, UnpackAny,
+    CommandRejectedError, CommandResult, CommandRouter, EventApplier, EventHandler, EventRouter,
+    PrepareHandler, ProcessManagerHandler, ProcessManagerPrepareHandler, ProcessManagerResponse,
+    ProcessManagerRouter, ProcessManagerStateRebuilder, StateRebuilder, StateRouter, UnpackAny,
 };
 
 // Re-export handler types
-pub use handler::{AggregateHandler, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler};
+pub use handler::{
+    AggregateHandler, ProcessManagerGrpcHandler, ProjectorHandler, SagaHandler, StatePacker,
+};
 
 // Re-export server utilities
 pub use server::{

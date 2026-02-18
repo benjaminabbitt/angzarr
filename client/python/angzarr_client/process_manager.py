@@ -4,8 +4,12 @@ Process managers coordinate long-running workflows across multiple aggregates.
 They maintain their own event-sourced state (keyed by correlation_id) and
 react to events from multiple domains.
 
+Two-phase protocol support:
+    1. Prepare: Declare additional destinations needed (via @prepares)
+    2. Handle: Produce commands and process events (via @reacts_to)
+
 Example usage:
-    from angzarr_client import ProcessManager, reacts_to
+    from angzarr_client import ProcessManager, prepares, reacts_to
 
     @dataclass
     class OrderWorkflowState:
@@ -23,8 +27,14 @@ Example usage:
             if event_any.type_url.endswith("OrderCreated"):
                 ...
 
+        @prepares(OrderCreated)
+        def prepare_order(self, event: OrderCreated) -> list[Cover]:
+            return [Cover(domain="inventory", root=...)]
+
         @reacts_to(OrderCreated, input_domain="order")
-        def on_order_created(self, event: OrderCreated) -> ReserveInventory:
+        def on_order_created(
+            self, event: OrderCreated, destinations: list[EventBook]
+        ) -> ReserveInventory:
             return ReserveInventory(...)
 
         @reacts_to(InventoryReserved, input_domain="inventory")
@@ -43,10 +53,10 @@ from google.protobuf.any_pb2 import Any
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
-from .router import Descriptor, TargetDesc, _pack_any, reacts_to, rejected
+from .router import Descriptor, TargetDesc, _pack_any, prepares, reacts_to, rejected
 
 # Re-export decorators
-__all__ = ["ProcessManager", "reacts_to", "rejected"]
+__all__ = ["ProcessManager", "prepares", "reacts_to", "rejected"]
 
 StateT = TypeVar("StateT")
 
@@ -59,12 +69,14 @@ class ProcessManager(Generic[StateT], ABC):
     - Maintain state keyed by correlation_id
     - Produce commands to coordinate workflows
     - Handle rejection/compensation via @rejected handlers
+    - Support two-phase protocol with @prepares for destination declaration
 
     Subclasses must:
     - Set `name` class attribute
     - Implement `_create_empty_state() -> StateT`
     - Implement `_apply_event(state: StateT, event_any: Any) -> None`
     - Decorate event handlers with `@reacts_to(EventType, input_domain="...")`
+    - Optionally decorate prepare handlers with `@prepares(EventType)`
     - Optionally decorate rejection handlers with `@rejected(domain, command)`
 
     Usage:
@@ -77,8 +89,14 @@ class ProcessManager(Generic[StateT], ABC):
             def _apply_event(self, state, event_any):
                 ...
 
+            @prepares(OrderCreated)
+            def prepare_order(self, event: OrderCreated) -> list[Cover]:
+                return [Cover(domain="inventory", root=...)]
+
             @reacts_to(OrderCreated, input_domain="order")
-            def on_order_created(self, event: OrderCreated) -> ReserveInventory:
+            def on_order_created(
+                self, event: OrderCreated, destinations: list[EventBook]
+            ) -> ReserveInventory:
                 ...
 
             @rejected(domain="inventory", command="ReserveInventory")
@@ -88,6 +106,7 @@ class ProcessManager(Generic[StateT], ABC):
 
     name: str
     _dispatch_table: dict[str, tuple[str, type, str, str]] = {}  # suffix -> (method, type, input_domain, output_domain)
+    _prepare_table: dict[str, tuple[str, type]] = {}  # suffix -> (method, type)
     _input_domains: dict[str, list[str]] = {}  # domain -> [event types]
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
 
@@ -103,9 +122,11 @@ class ProcessManager(Generic[StateT], ABC):
             raise TypeError(f"{cls.__name__} must define 'name' class attribute")
 
         cls._dispatch_table = {}
+        cls._prepare_table = {}
         cls._input_domains = {}
         cls._rejection_table = {}
         cls._build_dispatch_table()
+        cls._build_prepare_table()
         cls._build_rejection_table()
 
     @classmethod
@@ -129,6 +150,18 @@ class ProcessManager(Generic[StateT], ABC):
                     if input_domain not in cls._input_domains:
                         cls._input_domains[input_domain] = []
                     cls._input_domains[input_domain].append(suffix)
+
+    @classmethod
+    def _build_prepare_table(cls):
+        """Scan for @prepares methods and build prepare table."""
+        for attr_name in dir(cls):
+            attr = getattr(cls, attr_name, None)
+            if callable(attr) and getattr(attr, "_is_prepare_handler", False):
+                event_type = attr._event_type
+                suffix = event_type.__name__
+                if suffix in cls._prepare_table:
+                    raise TypeError(f"{cls.__name__}: duplicate prepare handler for {suffix}")
+                cls._prepare_table[suffix] = (attr_name, event_type)
 
     @classmethod
     def _build_rejection_table(cls):
@@ -171,11 +204,37 @@ class ProcessManager(Generic[StateT], ABC):
                 self._apply_event(state, page.event)
         return state
 
+    def prepare(self, event_any: Any) -> list[types.Cover]:
+        """Prepare destinations for an event.
+
+        Dispatches to @prepares decorated method if one exists.
+
+        Args:
+            event_any: Packed event as google.protobuf.Any
+
+        Returns:
+            List of Covers identifying destination aggregates.
+        """
+        type_url = event_any.type_url
+
+        for suffix, (method_name, event_type) in self._prepare_table.items():
+            if type_url.endswith(suffix):
+                # Unpack event
+                event = event_type()
+                event_any.Unpack(event)
+
+                # Call prepare handler
+                result = getattr(self, method_name)(event)
+                return result if result else []
+
+        return []
+
     def dispatch(
         self,
         event_any: Any,
         root: bytes = None,
         correlation_id: str = "",
+        destinations: list[types.EventBook] = None,
     ) -> list[types.CommandBook]:
         """Dispatch event to matching handler.
 
@@ -183,6 +242,7 @@ class ProcessManager(Generic[StateT], ABC):
             event_any: Packed event as google.protobuf.Any
             root: Source aggregate root
             correlation_id: Correlation ID for the workflow
+            destinations: Optional list of destination EventBooks
 
         Returns:
             List of CommandBooks to send.
@@ -195,8 +255,16 @@ class ProcessManager(Generic[StateT], ABC):
                 event = event_type()
                 event_any.Unpack(event)
 
-                # Call handler
-                result = getattr(self, method_name)(event)
+                # Check if handler accepts destinations parameter
+                method = getattr(self, method_name)
+                sig = inspect.signature(method)
+                params = list(sig.parameters.keys())
+
+                # Call handler with or without destinations
+                if "destinations" in params:
+                    result = method(event, destinations=destinations or [])
+                else:
+                    result = method(event)
 
                 # Pack result into CommandBooks
                 return self._pack_commands(result, output_domain, root, correlation_id)
@@ -213,6 +281,12 @@ class ProcessManager(Generic[StateT], ABC):
         """Pack command(s) into CommandBooks."""
         if result is None:
             return []
+
+        # Handle pre-packed CommandBooks (advanced usage)
+        if isinstance(result, types.CommandBook):
+            return [result]
+        if isinstance(result, list) and result and isinstance(result[0], types.CommandBook):
+            return result
 
         commands = result if isinstance(result, tuple) else (result,)
         books = []
@@ -252,18 +326,42 @@ class ProcessManager(Generic[StateT], ABC):
         return types.EventBook(pages=pages)
 
     @classmethod
+    def prepare_destinations(
+        cls,
+        trigger: types.EventBook,
+        process_state: types.EventBook,
+    ) -> list[types.Cover]:
+        """Phase 1: Declare additional destinations needed.
+
+        Args:
+            trigger: The triggering event book.
+            process_state: Current process manager state.
+
+        Returns:
+            List of Covers identifying destination aggregates to fetch.
+        """
+        pm = cls(process_state)
+        destinations: list[types.Cover] = []
+
+        for page in trigger.pages:
+            if page.HasField("event"):
+                destinations.extend(pm.prepare(page.event))
+
+        return destinations
+
+    @classmethod
     def handle(
         cls,
         trigger: types.EventBook,
         process_state: types.EventBook,
         destinations: list[types.EventBook] = None,
     ) -> tuple[list[types.CommandBook], types.EventBook]:
-        """Handle a trigger event with current process state.
+        """Phase 2: Handle a trigger event with current process state.
 
         Args:
             trigger: The triggering event book.
             process_state: Current process manager state.
-            destinations: Additional destination states (for prepare phase).
+            destinations: Additional destination states (from prepare phase).
 
         Returns:
             Tuple of (commands to send, new process events).
@@ -275,7 +373,7 @@ class ProcessManager(Generic[StateT], ABC):
         commands = []
         for page in trigger.pages:
             if page.HasField("event"):
-                commands.extend(pm.dispatch(page.event, root, correlation_id))
+                commands.extend(pm.dispatch(page.event, root, correlation_id, destinations))
 
         return commands, pm.process_events()
 

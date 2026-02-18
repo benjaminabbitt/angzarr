@@ -1,0 +1,24 @@
+# Go poker examples - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+build:
+    go build ./...
+
+test-unit:
+    go test -v ./player/agg/handlers/... ./table/agg/handlers/... ./hand/agg/handlers/...
+
+test-acceptance:
+    go test -v ./tests/...
+
+test: test-unit test-acceptance
+
+fmt:
+    gofmt -w .
+
+lint:
+    golangci-lint run

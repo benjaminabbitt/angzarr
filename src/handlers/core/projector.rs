@@ -257,6 +257,7 @@ fn create_projection_event_book(
                 value: projection_bytes,
             }),
             created_at: None,
+            external_payload: None,
         }],
         ..Default::default()
     }

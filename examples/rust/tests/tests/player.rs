@@ -91,6 +91,7 @@ impl PlayerWorld {
             pages: vec![angzarr_client::proto::CommandPage {
                 sequence: self.next_sequence,
                 command: Some(cmd_any),
+                ..Default::default()
             }],
             saga_origin: None,
         }

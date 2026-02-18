@@ -1,0 +1,15 @@
+FROM mcr.microsoft.com/devcontainers/cpp:ubuntu-22.04
+
+# Install just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Install protoc + gRPC
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    libprotobuf-dev \
+    libgrpc++-dev \
+    protobuf-compiler-grpc \
+    libabsl-dev
+
+# Mark as devcontainer for justfile detection
+ENV DEVCONTAINER=true

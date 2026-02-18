@@ -1,0 +1,245 @@
+---
+sidebar_position: 1
+---
+
+# CQRS and Event Sourcing
+
+This guide introduces the patterns underlying Angzarr. If you're already familiar with CQRS/ES, skip to the [Components](/components/aggregate).
+
+## Learning Resources
+
+### Talks
+
+- [CQRS and Event Sourcing](https://www.youtube.com/watch?v=JHGkaShoyNs) — Greg Young's foundational talk (2014)
+- [Event Sourcing You are doing it wrong](https://www.youtube.com/watch?v=GzrZworHpIk) — David Schmitz on common pitfalls (2018)
+- [A Decade of DDD, CQRS, Event Sourcing](https://www.youtube.com/watch?v=LDW0QWie21s) — Greg Young retrospective (2016)
+
+### Articles
+
+- [Event Sourcing pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing) — Microsoft Azure Architecture
+- [CQRS pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs) — Microsoft Azure Architecture
+- [Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) — Martin Fowler
+- [CQRS](https://martinfowler.com/bliki/CQRS.html) — Martin Fowler
+
+---
+
+## Glossary
+
+### Core Concepts
+
+| Term | Definition |
+|------|------------|
+| **Aggregate** | A cluster of domain objects treated as a single unit. Has a root entity that controls access. |
+| **Aggregate Root** | The entry point entity. All external references go through the root. Identified by UUID. |
+| **Command** | A request to change state. Imperative mood: `CreateCustomer`, `ReserveFunds`. May be rejected. |
+| **Event** | An immutable fact that something happened. Past tense: `CustomerCreated`, `FundsReserved`. Cannot be rejected. |
+| **Event Store** | Append-only database of events. The source of truth. Events are never modified or deleted. |
+| **Event Sourcing** | Storing state as a sequence of events. Current state is derived by replaying events. |
+| **CQRS** | Command Query Responsibility Segregation. Separate models for reading and writing. |
+
+### Angzarr Components
+
+| Term | Definition |
+|------|------------|
+| **Domain** | A bounded context representing a business capability (e.g., "player", "table", "hand"). Each domain has exactly one aggregate codebase. |
+| **Projector** | Service that subscribes to events and performs side effects—building read models, writing to databases, streaming to clients. |
+| **Saga** | Service that subscribes to events and emits commands to other aggregates. Orchestrates multi-domain workflows. |
+| **Process Manager** | Stateful saga that tracks workflow state using correlation IDs. |
+| **Snapshot** | Cached aggregate state at a point in time. Optimization to avoid replaying all events. |
+
+---
+
+## Event Sourcing Explained
+
+### Traditional State Storage
+
+```
+┌─────────────────────────────────────┐
+│ players table                       │
+├─────────────────────────────────────┤
+│ id: "player-123"                    │
+│ username: "Alice"                   │
+│ bankroll: 1500                      │
+│ updated_at: 2024-01-15 10:30:00     │
+└─────────────────────────────────────┘
+
+Problem: We only know current state.
+- When did Alice register?
+- How did she accumulate 1500?
+- What was her bankroll before the last change?
+```
+
+### Event Sourced Storage
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ events table                                                │
+├──────┬───────────────────────────┬──────────────────────────┤
+│ seq  │ type                      │ data                     │
+├──────┼───────────────────────────┼──────────────────────────┤
+│ 0    │ PlayerRegistered          │ {username: "Alice", ...} │
+│ 1    │ FundsDeposited            │ {amount: 1000, ...}      │
+│ 2    │ FundsReserved             │ {amount: 500, ...}       │
+│ 3    │ FundsReleased             │ {amount: 500, ...}       │
+│ 4    │ FundsDeposited            │ {amount: 500, ...}       │
+└──────┴───────────────────────────┴──────────────────────────┘
+
+Current state: replay events 0-4 → bankroll = 1000 - 500 + 500 + 500 = 1500
+
+Benefits:
+- Complete audit trail
+- Time travel (state at any point)
+- Debug by replaying
+- Never lose information
+```
+
+### State Reconstruction
+
+```python
+def rebuild_state(events):
+    state = empty_state()
+    for event in events:
+        state = apply(state, event)
+    return state
+```
+
+With snapshots (optimization):
+
+```python
+def rebuild_state(events, snapshot):
+    if snapshot:
+        state = snapshot.state
+        events = events[snapshot.sequence + 1:]
+    else:
+        state = empty_state()
+
+    for event in events:
+        state = apply(state, event)
+    return state
+```
+
+### Idempotent State Reconstruction
+
+**Critical**: Events must contain absolute state values (facts), not deltas (changes).
+
+**Wrong (deltas):**
+```python
+# BAD: FundsReserved { amount: 500 }  # Delta: "reserve 500 more"
+def apply(state, event):
+    state.reserved += event.amount  # Double-apply = wrong state
+```
+
+**Correct (facts):**
+```python
+# GOOD: FundsReserved { amount: 500, new_reserved: 500, new_available: 500 }
+def apply(state, event):
+    state.reserved = event.new_reserved  # Idempotent
+    state.available = event.new_available
+```
+
+---
+
+## CQRS Explained
+
+CQRS separates the write model (commands/events) from read models (projections):
+
+```
+               Write Side                    Read Side
+          ┌─────────────────┐          ┌─────────────────┐
+Commands ─┤ Command Handler ├─ Events ─┤   Projectors    │
+          └─────────────────┘          └─────────────────┘
+                  │                            │
+                  ▼                            ▼
+           Event Store                  Read Models
+                                    (Redis, Elasticsearch,
+                                     Postgres views, etc.)
+```
+
+**Why separate?**
+
+- Write model optimized for consistency (validate, sequence events)
+- Read models optimized for specific query patterns
+- Scale reads independently from writes
+- Each projection can use the best storage for its purpose
+
+---
+
+## Command Flow in Angzarr
+
+```
+1. Client sends Command
+       │
+       ▼
+2. Angzarr loads prior events for aggregate
+       │
+       ▼
+3. Handler receives: Command + Prior events
+       │
+       ▼
+4. Handler rebuilds current state from events
+       │
+       ▼
+5. Handler validates command against state
+       │
+       ├── Invalid → Return error (command rejected)
+       │
+       ▼
+6. Handler returns new events
+       │
+       ▼
+7. Angzarr persists events to Event Store
+       │
+       ▼
+8. Angzarr publishes events
+       │
+       ├──────────────┐
+       ▼              ▼
+   Projectors      Sagas
+```
+
+---
+
+## Example: Player Bankroll
+
+### Commands (Requests)
+
+```
+RegisterPlayer { username: "Alice", initial_bankroll: 1000 }
+DepositFunds { amount: 500 }
+ReserveFunds { amount: 200, table_id: "table-1" }
+```
+
+### Events (Facts)
+
+```
+PlayerRegistered { username: "Alice", initial_bankroll: 1000 }
+FundsDeposited { amount: 500, new_bankroll: 1500 }
+FundsReserved { amount: 200, new_available: 1300, new_reserved: 200 }
+```
+
+### State (Derived)
+
+```
+PlayerState {
+    username: "Alice",
+    bankroll: 1500,      # Total funds
+    reserved: 200,       # Locked for tables
+    available: 1300,     # bankroll - reserved
+}
+```
+
+### Validation Rules
+
+| Command | Precondition | Validation |
+|---------|--------------|------------|
+| RegisterPlayer | Player must not exist | Username required |
+| DepositFunds | Player must exist | Amount > 0 |
+| ReserveFunds | Player must exist | Amount > 0, available >= amount |
+
+---
+
+## Next Steps
+
+- [Aggregates](/components/aggregate) — Command handling and event emission
+- [Sagas](/components/saga) — Cross-domain workflows
+- [Why Poker](/examples/why-poker) — Why the poker domain exercises every pattern

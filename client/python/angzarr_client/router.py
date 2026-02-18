@@ -225,6 +225,50 @@ def reacts_to(event_type: type, *, input_domain: str = None, output_domain: str 
 
 
 # ============================================================================
+# @prepares decorator for saga destination declaration
+# ============================================================================
+
+
+def prepares(event_type: type):
+    """Decorator for saga prepare handler methods.
+
+    Registers the method as a prepare handler for the given event type.
+    The method is called during the Prepare phase to declare which
+    destination aggregates need to be fetched before execution.
+
+    The decorated method should return a list of Covers identifying
+    the destination aggregates.
+
+    Args:
+        event_type: The protobuf event class to handle.
+
+    Example:
+        @prepares(HandStarted)
+        def prepare_hand(self, event: HandStarted) -> list[Cover]:
+            return [Cover(domain="hand", root=UUID(value=event.hand_root))]
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match event_type.
+    """
+
+    def decorator(method: Callable) -> Callable:
+        # Validate at decoration time (event is at index 1 after self)
+        validate_command_handler(
+            method, event_type, cmd_param_index=1, decorator_name="prepares"
+        )
+
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            return method(self, *args, **kwargs)
+
+        wrapper._is_prepare_handler = True
+        wrapper._event_type = event_type
+        return wrapper
+
+    return decorator
+
+
+# ============================================================================
 # @rejected decorator for compensation handlers
 # ============================================================================
 
@@ -427,12 +471,26 @@ class CommandRouter(Generic[S]):
     The rejection handler signature:
         handler(notification: Notification, state: S) -> EventBook
 
-    Example::
+    Two construction patterns:
+
+    1. Traditional (with rebuild function)::
 
         router = (CommandRouter("cart", rebuild_state)
             .on("CreateCart", handle_create_cart)
-            .on("AddItem", handle_add_item)
-            .on_rejected("payment", "ProcessPayment", handle_payment_rejected))
+            .on("AddItem", handle_add_item))
+
+    2. Fluent (with StateRouter composition)::
+
+        router = (CommandRouter("cart")
+            .with_state(
+                StateRouter(CartState)
+                .on(CartCreated, apply_created)
+                .on(ItemAdded, apply_item_added)
+            )
+            .on("CreateCart", handle_create_cart)
+            .on("AddItem", handle_add_item))
+
+    Example::
 
         # In Handle():
         response = router.dispatch(request)
@@ -442,12 +500,53 @@ class CommandRouter(Generic[S]):
     """
 
     def __init__(
-        self, domain: str, rebuild: Callable[[types.EventBook | None], S]
+        self, domain: str, rebuild: Callable[[types.EventBook | None], S] = None
     ) -> None:
         self.domain = domain
         self._rebuild = rebuild
+        self._state_router = None  # StateRouter for fluent composition
         self._handlers: list[tuple[str, Callable]] = []
         self._rejection_handlers: dict[str, Callable] = {}  # "domain/command" -> handler
+
+    def with_state(self, state_router) -> "CommandRouter[S]":
+        """Compose a StateRouter for state reconstruction.
+
+        Alternative to passing rebuild function to constructor.
+        The StateRouter handles event-to-state application with auto-unpacking.
+
+        Args:
+            state_router: StateRouter instance configured with event handlers.
+
+        Returns:
+            Self for chaining.
+
+        Example::
+
+            router = (CommandRouter("player")
+                .with_state(
+                    StateRouter(PlayerState)
+                    .on(PlayerRegistered, apply_registered)
+                    .on(FundsDeposited, apply_deposited)
+                )
+                .on(RegisterPlayer, handle_register))
+        """
+        self._state_router = state_router
+        return self
+
+    def _get_state(self, event_book: types.EventBook | None) -> S:
+        """Rebuild state using configured method.
+
+        Uses StateRouter if composed, otherwise falls back to rebuild function.
+        """
+        if self._state_router is not None:
+            return self._state_router.with_event_book(event_book)
+        elif self._rebuild is not None:
+            return self._rebuild(event_book)
+        else:
+            raise ValueError(
+                "CommandRouter requires either rebuild function in constructor "
+                "or StateRouter via .with_state()"
+            )
 
     def on(self, suffix_or_handler, handler: Callable = None) -> CommandRouter[S]:
         """Register a handler for a command type_url suffix.
@@ -532,7 +631,7 @@ class CommandRouter(Generic[S]):
         command_book = cmd.command
         prior_events = cmd.events if cmd.HasField("events") else None
 
-        state = self._rebuild(prior_events)
+        state = self._get_state(prior_events)
         seq = next_sequence(prior_events)
 
         if not command_book.pages:

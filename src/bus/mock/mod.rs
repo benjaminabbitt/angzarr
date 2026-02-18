@@ -82,6 +82,7 @@ mod tests {
                         value: vec![],
                     }),
                     created_at: None,
+                    external_payload: None,
                 })
                 .collect(),
             snapshot: None,

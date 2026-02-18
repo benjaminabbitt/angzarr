@@ -88,6 +88,7 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
                     value: payload,
                 }),
                 merge_strategy: crate::proto::MergeStrategy::MergeCommutative as i32,
+                external_payload: None,
             }],
             saga_origin: None,
         })
@@ -610,6 +611,7 @@ mod tests {
                 value: msg.encode_to_vec(),
             }),
             created_at: None,
+            external_payload: None,
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
@@ -632,6 +634,7 @@ mod tests {
                 value: msg.encode_to_vec(),
             }),
             created_at: None,
+            external_payload: None,
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Timestamp");
@@ -646,6 +649,7 @@ mod tests {
             sequence: Some(Sequence::Num(1)),
             event: None,
             created_at: None,
+            external_payload: None,
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
@@ -663,6 +667,7 @@ mod tests {
                 value: vec![0xFF, 0xFF, 0xFF], // garbage
             }),
             created_at: None,
+            external_payload: None,
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");

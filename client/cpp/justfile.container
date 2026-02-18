@@ -1,0 +1,19 @@
+# C++ client library - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+proto:
+    cd /workspace/client/cpp && cmake -B build && cmake --build build --target angzarr-client
+
+configure:
+    cd /workspace/client/cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+build:
+    cd /workspace/client/cpp && cmake --build build
+
+test:
+    cd /workspace/client/cpp && ctest --test-dir build --output-on-failure

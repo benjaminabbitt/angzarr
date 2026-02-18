@@ -617,6 +617,7 @@ mod integration_tests {
             pages: vec![EventPage {
                 sequence: Some(Sequence::Num(0)),
                 created_at: None,
+                external_payload: None,
                 event: Some(Any {
                     type_url: "type.googleapis.com/test.TestEvent".to_string(),
                     value: vec![1, 2, 3],

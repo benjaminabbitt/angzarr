@@ -34,6 +34,7 @@ fn make_test_command() -> CommandBook {
                 value: vec![],
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: Some(make_saga_origin()),
     }
@@ -72,20 +73,20 @@ fn test_compensation_context_from_non_saga_command() {
 }
 
 #[test]
-fn test_build_revoke_command() {
+fn test_build_rejection_notification() {
     let context = make_context();
-    let revoke = build_revoke_command(&context);
+    let notification = build_rejection_notification(&context);
 
-    assert_eq!(revoke.saga_name, "test_saga");
-    assert_eq!(revoke.triggering_event_sequence, 5);
-    assert_eq!(revoke.rejection_reason, "Customer not found");
-    assert!(revoke.rejected_command.is_some());
+    assert_eq!(notification.issuer_name, "test_saga");
+    assert_eq!(notification.source_event_sequence, 5);
+    assert_eq!(notification.rejection_reason, "Customer not found");
+    assert!(notification.rejected_command.is_some());
 }
 
 #[test]
-fn test_build_revoke_command_book() {
+fn test_build_notification_command_book() {
     let context = make_context();
-    let command_book = build_revoke_command_book(&context).unwrap();
+    let command_book = build_notification_command_book(&context).unwrap();
 
     assert!(command_book.cover.is_some());
     let cover = command_book.cover.unwrap();
@@ -94,11 +95,11 @@ fn test_build_revoke_command_book() {
 }
 
 #[test]
-fn test_build_revoke_command_book_missing_aggregate() {
+fn test_build_notification_command_book_missing_aggregate() {
     let mut context = make_context();
     context.saga_origin.triggering_aggregate = None;
 
-    let result = build_revoke_command_book(&context);
+    let result = build_notification_command_book(&context);
     assert!(matches!(
         result,
         Err(CompensationError::MissingTriggeringAggregate)
@@ -146,6 +147,7 @@ fn test_handle_business_response_with_events() {
             pages: vec![EventPage {
                 sequence: Some(crate::proto::event_page::Sequence::Num(6)),
                 created_at: None,
+                external_payload: None,
                 event: Some(prost_types::Any {
                     type_url: "test.Compensated".to_string(),
                     value: vec![],

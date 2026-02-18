@@ -55,6 +55,7 @@ from .router import (
     command_handler,
     event_handler,
     validate_command_handler,
+    prepares,
     reacts_to,
     projects,
     rejected,
@@ -101,8 +102,8 @@ from .identity import (
     to_proto_bytes,
 )
 from .event_packing import pack_event, pack_events, new_event_book, new_event_book_multi
-from .state_builder import StateBuilder, StateApplier, SnapshotLoader, StateFactory
-from .aggregate import Aggregate, handles
+from .state_builder import StateBuilder, StateRouter, StateApplier, SnapshotLoader, StateFactory
+from .aggregate import Aggregate, handles, applies
 from .saga import Saga
 from .process_manager import ProcessManager
 from .projector import Projector
@@ -170,6 +171,7 @@ __all__ = [
     "router_next_sequence",
     "command_handler",
     "event_handler",
+    "prepares",
     "reacts_to",
     "projects",
     "rejected",
@@ -219,12 +221,14 @@ __all__ = [
     "new_event_book_multi",
     # State builder
     "StateBuilder",
+    "StateRouter",
     "StateApplier",
     "SnapshotLoader",
     "StateFactory",
     # Component base classes
     "Aggregate",
     "handles",
+    "applies",
     "Saga",
     "ProcessManager",
     "Projector",

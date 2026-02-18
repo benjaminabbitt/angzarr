@@ -19,6 +19,7 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
                 value: vec![],
             }),
             created_at: None,
+            external_payload: None,
         }],
         snapshot: None,
         ..Default::default()

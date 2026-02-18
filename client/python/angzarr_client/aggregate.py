@@ -1,28 +1,37 @@
-"""Base aggregate class and @handles decorator for rich domain models.
+"""Base aggregate class and decorators for rich domain models.
 
 This module provides the framework for implementing event-sourced aggregates
 using the rich domain model pattern. Business logic lives as methods on the
-aggregate class, with the @handles decorator registering command handlers
-and capturing emitted events.
+aggregate class, with decorators registering handlers:
+
+- @handles: Register command handlers that emit events
+- @applies: Register event appliers that mutate state
 
 Example usage:
-    from angzarr_client import Aggregate, handles
+    from angzarr_client import Aggregate, handles, applies
 
-    class Player(Aggregate[_PlayerState]):
+    class Player(Aggregate[PlayerState]):
         domain = "player"
+
+        @applies(PlayerRegistered)
+        def apply_registered(self, state: PlayerState, event: PlayerRegistered):
+            state.player_id = f"player_{event.email}"
+            state.display_name = event.display_name
+            state.status = "active"
+
+        @applies(FundsDeposited)
+        def apply_deposited(self, state: PlayerState, event: FundsDeposited):
+            if event.new_balance:
+                state.bankroll = event.new_balance.amount
 
         @handles(RegisterPlayer)
         def register(self, cmd: RegisterPlayer) -> PlayerRegistered:
             if self.exists:
                 raise CommandRejectedError("Player already exists")
-            return PlayerRegistered(name=cmd.name, ...)
+            return PlayerRegistered(email=cmd.email, ...)
 
-        def _create_empty_state(self) -> _PlayerState:
-            return _PlayerState()
-
-        def _apply_event(self, state, event_any):
-            # Apply event to state
-            ...
+        def _create_empty_state(self) -> PlayerState:
+            return PlayerState()
 """
 
 from __future__ import annotations
@@ -82,6 +91,43 @@ def handles(command_type: type):
     return decorator
 
 
+def applies(event_type: type):
+    """Decorator for event applier methods on Aggregate subclasses.
+
+    Registers the method as an applier for the given event type.
+    The base class discovers these methods and generates _apply_event().
+
+    The decorated method mutates state in place based on the event.
+
+    Example:
+        @applies(PlayerRegistered)
+        def apply_registered(self, state: PlayerState, event: PlayerRegistered):
+            state.player_id = f"player_{event.email}"
+            state.display_name = event.display_name
+            state.status = "active"
+
+    Args:
+        event_type: The protobuf event class this method handles.
+
+    Raises:
+        TypeError: If type hint is missing or doesn't match event_type.
+    """
+
+    def decorator(method: Callable) -> Callable:
+        # Validate at decoration time (event is at index 2 after self, state)
+        validate_command_handler(method, event_type, cmd_param_index=2, decorator_name="applies")
+
+        @wraps(method)
+        def wrapper(self, state, event):
+            return method(self, state, event)
+
+        wrapper._is_applier = True
+        wrapper._event_type = event_type
+        return wrapper
+
+    return decorator
+
+
 StateT = TypeVar("StateT")
 
 
@@ -89,34 +135,37 @@ class Aggregate(Generic[StateT], ABC):
     """Base class for event-sourced aggregates.
 
     Provides:
+    - Event application via @applies decorated methods
     - Command dispatch via @handles decorated methods
     - Rejection dispatch via @rejected decorated methods
     - Event book management (storage and retrieval)
     - State caching with lazy rebuild
     - Event recording via _apply_and_record()
-    - Clearing consumed events on rebuild
 
     Subclasses must:
     - Set `domain` class attribute
     - Implement `_create_empty_state() -> StateT`
-    - Implement `_apply_event(state: StateT, event_any: Any) -> None`
+    - Decorate event appliers with `@applies(EventType)`
     - Decorate command handlers with `@handles(CommandType)`
     - Optionally decorate rejection handlers with `@rejected(domain, command)`
 
     Usage:
-        class Player(Aggregate[_PlayerState]):
+        class Player(Aggregate[PlayerState]):
             domain = "player"
 
-            def _create_empty_state(self) -> _PlayerState:
-                return _PlayerState()
+            def _create_empty_state(self) -> PlayerState:
+                return PlayerState()
 
-            def _apply_event(self, state: _PlayerState, event_any: Any) -> None:
-                type_url = event_any.type_url
-                if type_url.endswith("PlayerRegistered"):
-                    event = PlayerRegistered()
-                    event_any.Unpack(event)
-                    state.player_id = event.player_id
-                    # ... apply fields
+            @applies(PlayerRegistered)
+            def apply_registered(self, state: PlayerState, event: PlayerRegistered):
+                state.player_id = f"player_{event.email}"
+                state.display_name = event.display_name
+                state.status = "active"
+
+            @applies(FundsDeposited)
+            def apply_deposited(self, state: PlayerState, event: FundsDeposited):
+                if event.new_balance:
+                    state.bankroll = event.new_balance.amount
 
             @handles(RegisterPlayer)
             def register(self, cmd: RegisterPlayer) -> PlayerRegistered:
@@ -124,13 +173,14 @@ class Aggregate(Generic[StateT], ABC):
                 return PlayerRegistered(...)
 
             @rejected(domain="payment", command="ProcessPayment")
-            def handle_payment_rejected(self, revoke_cmd) -> FundsReleased:
+            def handle_payment_rejected(self, notification) -> FundsReleased:
                 return FundsReleased(amount=self.state.reserved_amount)
     """
 
     domain: str
     _dispatch_table: dict[str, tuple[str, type]] = {}
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
+    _applier_table: dict[str, tuple[str, type]] = {}  # suffix -> (method_name, event_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -145,6 +195,7 @@ class Aggregate(Generic[StateT], ABC):
 
         cls._dispatch_table = cls._build_dispatch_table()
         cls._rejection_table = cls._build_rejection_table()
+        cls._applier_table = cls._build_applier_table()
 
     @classmethod
     def _build_dispatch_table(cls) -> dict[str, tuple[str, type]]:
@@ -181,6 +232,26 @@ class Aggregate(Generic[StateT], ABC):
                         f"{cls.__name__}: duplicate rejection handler for {key}"
                     )
                 table[key] = name
+        return table
+
+    @classmethod
+    def _build_applier_table(cls) -> dict[str, tuple[str, type]]:
+        """Scan for @applies methods and build applier dispatch table.
+
+        Returns:
+            Dict mapping event type suffix to (method_name, event_type).
+        """
+        table = {}
+        for name in dir(cls):
+            attr = getattr(cls, name, None)
+            if callable(attr) and getattr(attr, "_is_applier", False):
+                event_type = attr._event_type
+                suffix = event_type.__name__
+                if suffix in table:
+                    raise TypeError(
+                        f"{cls.__name__}: duplicate applier for {suffix}"
+                    )
+                table[suffix] = (name, event_type)
         return table
 
     def __init__(self, event_book: types.EventBook = None):
@@ -408,7 +479,29 @@ class Aggregate(Generic[StateT], ABC):
         """Create an empty state instance. Must be implemented by subclasses."""
         ...
 
-    @abstractmethod
     def _apply_event(self, state: StateT, event_any: Any) -> None:
-        """Apply a single event to state. Must be implemented by subclasses."""
-        ...
+        """Apply a single event to state.
+
+        If @applies decorated methods exist, dispatches to them automatically.
+        Otherwise, subclasses must override this method.
+
+        Args:
+            state: Current state to mutate.
+            event_any: Packed event as google.protobuf.Any.
+        """
+        if not self._applier_table:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must either define @applies methods "
+                "or override _apply_event()"
+            )
+
+        type_url = event_any.type_url
+        for suffix, (method_name, event_type) in self._applier_table.items():
+            if type_url.endswith(suffix):
+                event = event_type()
+                event_any.Unpack(event)
+                getattr(self, method_name)(state, event)
+                return
+
+        # Unknown event type - silently ignore (forward compatibility)
+        # Alternatively, could log a warning here

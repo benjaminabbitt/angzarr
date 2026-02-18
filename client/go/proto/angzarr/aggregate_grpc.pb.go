@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AggregateService_GetDescriptor_FullMethodName = "/angzarr.AggregateService/GetDescriptor"
 	AggregateService_Handle_FullMethodName        = "/angzarr.AggregateService/Handle"
+	AggregateService_Replay_FullMethodName        = "/angzarr.AggregateService/Replay"
 )
 
 // AggregateServiceClient is the client API for AggregateService service.
@@ -35,6 +36,9 @@ type AggregateServiceClient interface {
 	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
 	// Process command and return business response (events or revocation request)
 	Handle(ctx context.Context, in *ContextualCommand, opts ...grpc.CallOption) (*BusinessResponse, error)
+	// Replay events to compute state (for conflict detection)
+	// Optional: only needed if aggregate supports MERGE_COMMUTATIVE
+	Replay(ctx context.Context, in *ReplayRequest, opts ...grpc.CallOption) (*ReplayResponse, error)
 }
 
 type aggregateServiceClient struct {
@@ -65,6 +69,16 @@ func (c *aggregateServiceClient) Handle(ctx context.Context, in *ContextualComma
 	return out, nil
 }
 
+func (c *aggregateServiceClient) Replay(ctx context.Context, in *ReplayRequest, opts ...grpc.CallOption) (*ReplayResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReplayResponse)
+	err := c.cc.Invoke(ctx, AggregateService_Replay_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AggregateServiceServer is the server API for AggregateService service.
 // All implementations must embed UnimplementedAggregateServiceServer
 // for forward compatibility.
@@ -77,6 +91,9 @@ type AggregateServiceServer interface {
 	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
 	// Process command and return business response (events or revocation request)
 	Handle(context.Context, *ContextualCommand) (*BusinessResponse, error)
+	// Replay events to compute state (for conflict detection)
+	// Optional: only needed if aggregate supports MERGE_COMMUTATIVE
+	Replay(context.Context, *ReplayRequest) (*ReplayResponse, error)
 	mustEmbedUnimplementedAggregateServiceServer()
 }
 
@@ -92,6 +109,9 @@ func (UnimplementedAggregateServiceServer) GetDescriptor(context.Context, *GetDe
 }
 func (UnimplementedAggregateServiceServer) Handle(context.Context, *ContextualCommand) (*BusinessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handle not implemented")
+}
+func (UnimplementedAggregateServiceServer) Replay(context.Context, *ReplayRequest) (*ReplayResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Replay not implemented")
 }
 func (UnimplementedAggregateServiceServer) mustEmbedUnimplementedAggregateServiceServer() {}
 func (UnimplementedAggregateServiceServer) testEmbeddedByValue()                          {}
@@ -150,6 +170,24 @@ func _AggregateService_Handle_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AggregateService_Replay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AggregateServiceServer).Replay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AggregateService_Replay_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AggregateServiceServer).Replay(ctx, req.(*ReplayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AggregateService_ServiceDesc is the grpc.ServiceDesc for AggregateService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -164,6 +202,10 @@ var AggregateService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Handle",
 			Handler:    _AggregateService_Handle_Handler,
+		},
+		{
+			MethodName: "Replay",
+			Handler:    _AggregateService_Replay_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

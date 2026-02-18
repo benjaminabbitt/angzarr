@@ -1,6 +1,7 @@
 /target
 **/target/
 Cargo.lock
+.cargo-container/
 *.swp
 *.swo
 .DS_Store
@@ -29,6 +30,17 @@ __pycache__/
 *.so
 *.h
 !build/**/*.h
+
+# C++ build artifacts
+examples/cpp/build/
+
+# C# build artifacts
+**/obj/
+**/bin/
+
+# Java build artifacts
+**/build/
+.gradle/
 
 # Generated proto files
 /generated/

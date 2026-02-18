@@ -31,7 +31,7 @@ pub fn build_registration_commands(
         .map(|descriptor| {
             let root_uuid = component_name_to_uuid(&descriptor.name);
             let cmd = RegisterComponent {
-                descriptor: Some(descriptor.clone()),
+                component: Some(descriptor.clone()),
                 pod_id: pod_id.to_string(),
             };
 
@@ -54,6 +54,7 @@ pub fn build_registration_commands(
                         value: buf,
                     }),
                     merge_strategy: MergeStrategy::MergeCommutative as i32,
+                    external_payload: None,
                 }],
                 saga_origin: None,
             }

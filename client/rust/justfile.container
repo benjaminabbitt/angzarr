@@ -1,0 +1,28 @@
+# Rust client library - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+build:
+    cargo build -p angzarr-client --release
+
+test:
+    cargo test -p angzarr-client --lib
+
+test-verbose:
+    cargo test -p angzarr-client --lib -- --nocapture
+
+mutate:
+    cargo mutants --jobs 4
+
+mutate-dry:
+    cargo mutants --list
+
+publish-dry:
+    cargo publish --dry-run
+
+publish:
+    cargo publish

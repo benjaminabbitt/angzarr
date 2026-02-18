@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use prost_types::Any;
 use tonic::{Request, Response, Status};
 
 use crate::proto::{
@@ -12,16 +13,25 @@ use crate::proto::{
     projector_service_server::ProjectorService, saga_service_server::SagaService, BusinessResponse,
     ComponentDescriptor, ContextualCommand, EventBook, GetDescriptorRequest,
     ProcessManagerHandleRequest, ProcessManagerHandleResponse, ProcessManagerPrepareRequest,
-    ProcessManagerPrepareResponse, Projection, SagaExecuteRequest, SagaPrepareRequest,
-    SagaPrepareResponse, SagaResponse, Target,
+    ProcessManagerPrepareResponse, Projection, ReplayRequest, ReplayResponse, SagaExecuteRequest,
+    SagaPrepareRequest, SagaPrepareResponse, SagaResponse, Target,
 };
 use crate::router::{CommandRouter, EventRouter, ProcessManagerRouter};
+
+/// Function type for packing state into protobuf Any.
+///
+/// Used by Replay RPC to return state as a serializable message.
+pub type StatePacker<S> = fn(&S) -> Result<Any, Status>;
 
 /// gRPC aggregate service implementation.
 ///
 /// Wraps a `CommandRouter` to handle aggregate commands.
+/// Optionally supports Replay RPC for MERGE_COMMUTATIVE conflict detection.
 pub struct AggregateHandler<S: Send + Sync + 'static> {
     router: Arc<CommandRouter<S>>,
+    /// Optional state packer for Replay RPC support.
+    /// When set, enables computing state from events for commutative merge detection.
+    state_packer: Option<StatePacker<S>>,
 }
 
 impl<S: Send + Sync + 'static> AggregateHandler<S> {
@@ -29,7 +39,35 @@ impl<S: Send + Sync + 'static> AggregateHandler<S> {
     pub fn new(router: CommandRouter<S>) -> Self {
         Self {
             router: Arc::new(router),
+            state_packer: None,
         }
+    }
+
+    /// Enable Replay RPC support by providing a state packer.
+    ///
+    /// The state packer converts the aggregate's internal state to a protobuf `Any`
+    /// message. This is required for MERGE_COMMUTATIVE strategy, which uses Replay
+    /// to compute state diffs for conflict detection.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// fn pack_player_state(state: &PlayerState) -> Result<Any, Status> {
+    ///     let proto_state = state.to_proto();
+    ///     let mut buf = Vec::new();
+    ///     proto_state.encode(&mut buf).map_err(|e| Status::internal(e.to_string()))?;
+    ///     Ok(Any {
+    ///         type_url: "type.googleapis.com/examples.PlayerState".to_string(),
+    ///         value: buf,
+    ///     })
+    /// }
+    ///
+    /// let handler = AggregateHandler::new(router)
+    ///     .with_replay(pack_player_state);
+    /// ```
+    pub fn with_replay(mut self, packer: StatePacker<S>) -> Self {
+        self.state_packer = Some(packer);
+        self
     }
 
     /// Get the underlying router.
@@ -62,6 +100,45 @@ impl<S: Send + Sync + 'static> AggregateService for AggregateHandler<S> {
         let cmd = request.into_inner();
         let response = self.router.dispatch(&cmd)?;
         Ok(Response::new(response))
+    }
+
+    async fn replay(
+        &self,
+        request: Request<ReplayRequest>,
+    ) -> Result<Response<ReplayResponse>, Status> {
+        // Replay is optional - only needed for MERGE_COMMUTATIVE conflict detection.
+        let packer = self.state_packer.ok_or_else(|| {
+            Status::unimplemented(
+                "Replay not implemented. Call with_replay() to enable for MERGE_COMMUTATIVE strategy.",
+            )
+        })?;
+
+        let req = request.into_inner();
+
+        // Build EventBook from ReplayRequest
+        let event_book = build_event_book_for_replay(&req);
+
+        // Rebuild state using the router's state rebuilder
+        let state = self.router.rebuild_state(&event_book);
+
+        // Pack state to Any
+        let state_any = packer(&state)?;
+
+        Ok(Response::new(ReplayResponse {
+            state: Some(state_any),
+        }))
+    }
+}
+
+/// Build an EventBook from a ReplayRequest for state reconstruction.
+fn build_event_book_for_replay(req: &ReplayRequest) -> EventBook {
+    // Convert ReplayRequest.events (Vec<EventPage>) to EventBook
+    // Include base_snapshot if provided
+    EventBook {
+        cover: None,
+        pages: req.events.clone(),
+        snapshot: req.base_snapshot.clone(),
+        next_sequence: 0,
     }
 }
 

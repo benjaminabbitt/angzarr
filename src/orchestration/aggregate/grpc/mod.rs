@@ -12,7 +12,10 @@ use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
-use crate::proto::{EventBook, Projection, Snapshot, SnapshotRetention, SyncEventBook};
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
+use crate::proto::{
+    CommandBook, EventBook, MergeStrategy, Projection, Snapshot, SnapshotRetention, SyncEventBook,
+};
 use crate::proto_ext::{correlated_request, CoverExt, EventPageExt};
 use crate::repository::EventBookRepository;
 use crate::services::upcaster::Upcaster;
@@ -33,6 +36,10 @@ pub struct GrpcAggregateContext {
     /// When Some, call projectors synchronously with this mode.
     /// When None, only publish to event bus (async mode).
     sync_mode: Option<crate::proto::SyncMode>,
+    /// DLQ publisher for MERGE_MANUAL sequence mismatches.
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+    /// Component name for DLQ metadata.
+    component_name: String,
 }
 
 impl GrpcAggregateContext {
@@ -55,6 +62,8 @@ impl GrpcAggregateContext {
             upcaster: None,
             snapshot_write_enabled: true,
             sync_mode: None,
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
+            component_name: "aggregate".to_string(),
         }
     }
 
@@ -80,6 +89,8 @@ impl GrpcAggregateContext {
             upcaster: None,
             snapshot_write_enabled,
             sync_mode: None,
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
+            component_name: "aggregate".to_string(),
         }
     }
 
@@ -95,6 +106,18 @@ impl GrpcAggregateContext {
     /// When None (default), only publishes to event bus.
     pub fn with_sync_mode(mut self, mode: crate::proto::SyncMode) -> Self {
         self.sync_mode = Some(mode);
+        self
+    }
+
+    /// Set the DLQ publisher for MERGE_MANUAL handling.
+    pub fn with_dlq_publisher(mut self, publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        self.dlq_publisher = publisher;
+        self
+    }
+
+    /// Set the component name for DLQ metadata.
+    pub fn with_component_name(mut self, name: impl Into<String>) -> Self {
+        self.component_name = name.into();
         self
     }
 
@@ -220,9 +243,12 @@ impl AggregateContext for GrpcAggregateContext {
                 .put(edition, &events_to_persist)
                 .await
                 .map_err(|e| match e {
-                    StorageError::SequenceConflict { expected, actual } => Status::aborted(
-                        format!("Sequence conflict: expected {}, got {}", expected, actual),
-                    ),
+                    StorageError::SequenceConflict { expected, actual } => {
+                        Status::failed_precondition(format!(
+                            "Sequence conflict: expected {}, got {}",
+                            expected, actual
+                        ))
+                    }
                     _ => Status::internal(format!("Failed to persist events: {e}")),
                 })?;
         }
@@ -363,5 +389,31 @@ impl AggregateContext for GrpcAggregateContext {
             events.pages = upcasted_pages;
         }
         Ok(events)
+    }
+
+    async fn send_to_dlq(
+        &self,
+        command: &CommandBook,
+        expected_sequence: u32,
+        actual_sequence: u32,
+        domain: &str,
+    ) {
+        let dead_letter = AngzarrDeadLetter::from_sequence_mismatch(
+            command,
+            expected_sequence,
+            actual_sequence,
+            MergeStrategy::MergeManual,
+            &self.component_name,
+        );
+
+        if let Err(e) = self.dlq_publisher.publish(dead_letter).await {
+            tracing::error!(
+                domain = %domain,
+                expected = expected_sequence,
+                actual = actual_sequence,
+                error = %e,
+                "Failed to publish to DLQ"
+            );
+        }
     }
 }

@@ -17,6 +17,7 @@ async fn test_mock_event_store_add_and_get() {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     }];
 
     store
@@ -41,6 +42,7 @@ async fn test_mock_event_store_get_by_correlation() {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     };
 
     let event2 = EventPage {
@@ -50,6 +52,7 @@ async fn test_mock_event_store_get_by_correlation() {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     };
 
     // Add events with same correlation_id across different domains
@@ -87,6 +90,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
                 seconds: 1704067200, // 2024-01-01T00:00:00Z
                 nanos: 0,
             }),
+            external_payload: None,
         },
         EventPage {
             sequence: Some(crate::proto::event_page::Sequence::Num(1)),
@@ -98,6 +102,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
                 seconds: 1704153600, // 2024-01-02T00:00:00Z
                 nanos: 0,
             }),
+            external_payload: None,
         },
         EventPage {
             sequence: Some(crate::proto::event_page::Sequence::Num(2)),
@@ -109,6 +114,7 @@ async fn test_get_until_timestamp_filters_by_created_at() {
                 seconds: 1704240000, // 2024-01-03T00:00:00Z
                 nanos: 0,
             }),
+            external_payload: None,
         },
     ];
     store.add("orders", "test", root, events, "").await.unwrap();
@@ -154,6 +160,7 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     }];
     store.add("orders", "test", root, events, "").await.unwrap();
 

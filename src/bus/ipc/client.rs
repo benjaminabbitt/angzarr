@@ -534,6 +534,7 @@ mod tests {
                 sequence: Some(event_page::Sequence::Num(5)),
                 event: None,
                 created_at: None,
+                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()
@@ -551,16 +552,19 @@ mod tests {
                     sequence: Some(event_page::Sequence::Num(2)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
                 EventPage {
                     sequence: Some(event_page::Sequence::Num(7)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
                 EventPage {
                     sequence: Some(event_page::Sequence::Num(4)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
             ],
             snapshot: None,

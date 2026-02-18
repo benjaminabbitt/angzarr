@@ -3,12 +3,10 @@ package handlers
 
 import (
 	"encoding/hex"
-	"strings"
 
+	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // PlayerState represents the current state of a player aggregate.
@@ -46,12 +44,70 @@ func (s PlayerState) IsAI() bool {
 	return s.PlayerType == examples.PlayerType_AI
 }
 
+// Event applier functions for StateRouter
+
+func applyRegistered(state *PlayerState, event *examples.PlayerRegistered) {
+	state.PlayerID = "player_" + event.Email
+	state.DisplayName = event.DisplayName
+	state.Email = event.Email
+	state.PlayerType = event.PlayerType
+	state.AIModelID = event.AiModelId
+	state.Status = "active"
+	state.Bankroll = 0
+	state.ReservedFunds = 0
+}
+
+func applyDeposited(state *PlayerState, event *examples.FundsDeposited) {
+	if event.NewBalance != nil {
+		state.Bankroll = event.NewBalance.Amount
+	}
+}
+
+func applyWithdrawn(state *PlayerState, event *examples.FundsWithdrawn) {
+	if event.NewBalance != nil {
+		state.Bankroll = event.NewBalance.Amount
+	}
+}
+
+func applyReserved(state *PlayerState, event *examples.FundsReserved) {
+	if event.NewReservedBalance != nil {
+		state.ReservedFunds = event.NewReservedBalance.Amount
+	}
+	if event.TableRoot != nil && event.Amount != nil {
+		tableKey := hex.EncodeToString(event.TableRoot)
+		state.TableReservations[tableKey] = event.Amount.Amount
+	}
+}
+
+func applyReleased(state *PlayerState, event *examples.FundsReleased) {
+	if event.NewReservedBalance != nil {
+		state.ReservedFunds = event.NewReservedBalance.Amount
+	}
+	if event.TableRoot != nil {
+		tableKey := hex.EncodeToString(event.TableRoot)
+		delete(state.TableReservations, tableKey)
+	}
+}
+
+func applyTransferred(state *PlayerState, event *examples.FundsTransferred) {
+	if event.NewBalance != nil {
+		state.Bankroll = event.NewBalance.Amount
+	}
+}
+
+// stateRouter is the fluent state reconstruction router.
+var stateRouter = angzarr.NewStateRouter(NewPlayerState).
+	On(applyRegistered).
+	On(applyDeposited).
+	On(applyWithdrawn).
+	On(applyReserved).
+	On(applyReleased).
+	On(applyTransferred)
+
 // RebuildState rebuilds player state from event history.
 func RebuildState(eventBook *pb.EventBook) PlayerState {
-	state := NewPlayerState()
-
 	if eventBook == nil {
-		return state
+		return NewPlayerState()
 	}
 
 	// Start from snapshot if available
@@ -59,19 +115,19 @@ func RebuildState(eventBook *pb.EventBook) PlayerState {
 		if eventBook.Snapshot.State.MessageIs(&examples.PlayerState{}) {
 			var snapshot examples.PlayerState
 			if err := eventBook.Snapshot.State.UnmarshalTo(&snapshot); err == nil {
-				state = applySnapshot(&snapshot)
+				state := applySnapshot(&snapshot)
+				// Apply events since snapshot
+				for _, page := range eventBook.Pages {
+					if page.Event != nil {
+						stateRouter.ApplySingle(&state, page.Event)
+					}
+				}
+				return state
 			}
 		}
 	}
 
-	// Apply events since snapshot
-	for _, page := range eventBook.Pages {
-		if page.Event != nil {
-			applyEvent(&state, page.Event)
-		}
-	}
-
-	return state
+	return stateRouter.WithEventBook(eventBook)
 }
 
 func applySnapshot(snapshot *examples.PlayerState) PlayerState {
@@ -99,72 +155,5 @@ func applySnapshot(snapshot *examples.PlayerState) PlayerState {
 		ReservedFunds:     reservedFunds,
 		TableReservations: reservations,
 		Status:            snapshot.Status,
-	}
-}
-
-func applyEvent(state *PlayerState, eventAny *anypb.Any) {
-	typeURL := eventAny.TypeUrl
-
-	switch {
-	case strings.HasSuffix(typeURL, "PlayerRegistered"):
-		var event examples.PlayerRegistered
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.PlayerID = "player_" + event.Email
-			state.DisplayName = event.DisplayName
-			state.Email = event.Email
-			state.PlayerType = event.PlayerType
-			state.AIModelID = event.AiModelId
-			state.Status = "active"
-			state.Bankroll = 0
-			state.ReservedFunds = 0
-		}
-
-	case strings.HasSuffix(typeURL, "FundsDeposited"):
-		var event examples.FundsDeposited
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			if event.NewBalance != nil {
-				state.Bankroll = event.NewBalance.Amount
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "FundsWithdrawn"):
-		var event examples.FundsWithdrawn
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			if event.NewBalance != nil {
-				state.Bankroll = event.NewBalance.Amount
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "FundsReserved"):
-		var event examples.FundsReserved
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			if event.NewReservedBalance != nil {
-				state.ReservedFunds = event.NewReservedBalance.Amount
-			}
-			if event.TableRoot != nil && event.Amount != nil {
-				tableKey := hex.EncodeToString(event.TableRoot)
-				state.TableReservations[tableKey] = event.Amount.Amount
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "FundsReleased"):
-		var event examples.FundsReleased
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			if event.NewReservedBalance != nil {
-				state.ReservedFunds = event.NewReservedBalance.Amount
-			}
-			if event.TableRoot != nil {
-				tableKey := hex.EncodeToString(event.TableRoot)
-				delete(state.TableReservations, tableKey)
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "FundsTransferred"):
-		var event examples.FundsTransferred
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			if event.NewBalance != nil {
-				state.Bankroll = event.NewBalance.Amount
-			}
-		}
 	}
 }

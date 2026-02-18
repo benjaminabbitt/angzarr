@@ -11,7 +11,7 @@ use tonic::Status;
 
 use crate::orchestration::aggregate::ClientLogic;
 use crate::proto::business_response::Result as BusinessResult;
-use crate::proto::{BusinessResponse, ContextualCommand, Notification};
+use crate::proto::{BusinessResponse, ContextualCommand, EventBook, Notification};
 
 use super::traits::AggregateHandler;
 
@@ -46,8 +46,8 @@ impl ClientLogic for AggregateHandlerAdapter {
             if let Some(page) = command_book.pages.first() {
                 if let Some(ref command_any) = page.command {
                     if command_any.type_url.ends_with(NOTIFICATION_SUFFIX) {
-                        let notification =
-                            Notification::decode(command_any.value.as_slice()).map_err(|e| {
+                        let notification = Notification::decode(command_any.value.as_slice())
+                            .map_err(|e| {
                                 Status::invalid_argument(format!(
                                     "Failed to decode Notification: {}",
                                     e
@@ -64,5 +64,9 @@ impl ClientLogic for AggregateHandlerAdapter {
         Ok(BusinessResponse {
             result: Some(BusinessResult::Events(events)),
         })
+    }
+
+    async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {
+        self.handler.replay(events).await
     }
 }

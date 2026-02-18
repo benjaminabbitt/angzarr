@@ -185,6 +185,7 @@ mod tests {
         let events = vec![EventPage {
             sequence: Some(crate::proto::event_page::Sequence::Num(1)),
             created_at: None,
+            external_payload: None,
             event: None,
         }];
 
@@ -300,6 +301,7 @@ mod grpc_tests {
                 type_url: type_url.to_string(),
                 value,
             }),
+            external_payload: None,
         }
     }
 

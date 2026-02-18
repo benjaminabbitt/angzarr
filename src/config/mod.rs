@@ -94,6 +94,7 @@ pub const OTEL_SERVICE_NAME_ENV_VAR: &str = "OTEL_SERVICE_NAME";
 use serde::Deserialize;
 
 use crate::bus::MessagingConfig;
+use crate::payload_store::PayloadOffloadConfig;
 use crate::services::UpcasterConfig;
 use crate::storage::StorageConfig;
 use crate::transport::TransportConfig;
@@ -128,6 +129,8 @@ pub struct Config {
     pub upcaster: UpcasterConfig,
     /// Resource limits for message processing and queries.
     pub limits: ResourceLimits,
+    /// Payload offloading configuration for oversized messages.
+    pub payload_offload: PayloadOffloadConfig,
 }
 
 impl Config {

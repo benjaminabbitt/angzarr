@@ -73,6 +73,106 @@ func (SyncMode) EnumDescriptor() ([]byte, []int) {
 	return file_angzarr_types_proto_rawDescGZIP(), []int{0}
 }
 
+// Controls how concurrent commands to the same aggregate are handled
+type MergeStrategy int32
+
+const (
+	MergeStrategy_MERGE_COMMUTATIVE       MergeStrategy = 0 // Default: allow if state field mutations don't overlap
+	MergeStrategy_MERGE_STRICT            MergeStrategy = 1 // Reject if sequence mismatch (optimistic concurrency)
+	MergeStrategy_MERGE_AGGREGATE_HANDLES MergeStrategy = 2 // Aggregate handles its own concurrency
+)
+
+// Enum value maps for MergeStrategy.
+var (
+	MergeStrategy_name = map[int32]string{
+		0: "MERGE_COMMUTATIVE",
+		1: "MERGE_STRICT",
+		2: "MERGE_AGGREGATE_HANDLES",
+	}
+	MergeStrategy_value = map[string]int32{
+		"MERGE_COMMUTATIVE":       0,
+		"MERGE_STRICT":            1,
+		"MERGE_AGGREGATE_HANDLES": 2,
+	}
+)
+
+func (x MergeStrategy) Enum() *MergeStrategy {
+	p := new(MergeStrategy)
+	*p = x
+	return p
+}
+
+func (x MergeStrategy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MergeStrategy) Descriptor() protoreflect.EnumDescriptor {
+	return file_angzarr_types_proto_enumTypes[1].Descriptor()
+}
+
+func (MergeStrategy) Type() protoreflect.EnumType {
+	return &file_angzarr_types_proto_enumTypes[1]
+}
+
+func (x MergeStrategy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MergeStrategy.Descriptor instead.
+func (MergeStrategy) EnumDescriptor() ([]byte, []int) {
+	return file_angzarr_types_proto_rawDescGZIP(), []int{1}
+}
+
+// Controls snapshot retention during cleanup
+type SnapshotRetention int32
+
+const (
+	SnapshotRetention_RETENTION_DEFAULT   SnapshotRetention = 0 // Persist every 16 events, treated as TRANSIENT otherwise
+	SnapshotRetention_RETENTION_PERSIST   SnapshotRetention = 1 // Keep indefinitely (business milestone)
+	SnapshotRetention_RETENTION_TRANSIENT SnapshotRetention = 2 // Delete when newer snapshot written
+)
+
+// Enum value maps for SnapshotRetention.
+var (
+	SnapshotRetention_name = map[int32]string{
+		0: "RETENTION_DEFAULT",
+		1: "RETENTION_PERSIST",
+		2: "RETENTION_TRANSIENT",
+	}
+	SnapshotRetention_value = map[string]int32{
+		"RETENTION_DEFAULT":   0,
+		"RETENTION_PERSIST":   1,
+		"RETENTION_TRANSIENT": 2,
+	}
+)
+
+func (x SnapshotRetention) Enum() *SnapshotRetention {
+	p := new(SnapshotRetention)
+	*p = x
+	return p
+}
+
+func (x SnapshotRetention) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SnapshotRetention) Descriptor() protoreflect.EnumDescriptor {
+	return file_angzarr_types_proto_enumTypes[2].Descriptor()
+}
+
+func (SnapshotRetention) Type() protoreflect.EnumType {
+	return &file_angzarr_types_proto_enumTypes[2]
+}
+
+func (x SnapshotRetention) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SnapshotRetention.Descriptor instead.
+func (SnapshotRetention) EnumDescriptor() ([]byte, []int) {
+	return file_angzarr_types_proto_rawDescGZIP(), []int{2}
+}
+
 type UUID struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Value         []byte                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
@@ -401,6 +501,7 @@ type Snapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Sequence      uint32                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	State         *anypb.Any             `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	Retention     SnapshotRetention      `protobuf:"varint,4,opt,name=retention,proto3,enum=angzarr.SnapshotRetention" json:"retention,omitempty"` // Controls cleanup behavior
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -447,6 +548,13 @@ func (x *Snapshot) GetState() *anypb.Any {
 		return x.State
 	}
 	return nil
+}
+
+func (x *Snapshot) GetRetention() SnapshotRetention {
+	if x != nil {
+		return x.Retention
+	}
+	return SnapshotRetention_RETENTION_DEFAULT
 }
 
 type EventBook struct {
@@ -644,8 +752,9 @@ type CommandPage struct {
 	// Expected sequence number for this command's events.
 	// Must match the aggregate's current next sequence (i.e., events.len()).
 	// For new aggregates, use 0.
-	Sequence      uint32     `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Command       *anypb.Any `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
+	Sequence      uint32        `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Command       *anypb.Any    `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
+	MergeStrategy MergeStrategy `protobuf:"varint,4,opt,name=merge_strategy,json=mergeStrategy,proto3,enum=angzarr.MergeStrategy" json:"merge_strategy,omitempty"` // How to handle sequence conflicts
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -692,6 +801,13 @@ func (x *CommandPage) GetCommand() *anypb.Any {
 		return x.Command
 	}
 	return nil
+}
+
+func (x *CommandPage) GetMergeStrategy() MergeStrategy {
+	if x != nil {
+		return x.MergeStrategy
+	}
+	return MergeStrategy_MERGE_COMMUTATIVE
 }
 
 type CommandBook struct {
@@ -1515,6 +1631,163 @@ func (x *SagaCommandOrigin) GetTriggeringEventSequence() uint32 {
 	return 0
 }
 
+// Base notification message for transient system signals.
+// Contains routing info via Cover but no persistence semantics.
+// Type discrimination via payload.type_url (standard Any behavior).
+type Notification struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cover         *Cover                 `protobuf:"bytes,1,opt,name=cover,proto3" json:"cover,omitempty"`                                                                                 // Routing: domain, root, correlation_id
+	Payload       *anypb.Any             `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`                                                                             // Type-specific content (RejectionNotification, etc.)
+	SentAt        *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=sent_at,json=sentAt,proto3" json:"sent_at,omitempty"`                                                                 // When notification was created
+	Metadata      map[string]string      `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional key-value metadata
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Notification) Reset() {
+	*x = Notification{}
+	mi := &file_angzarr_types_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Notification) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Notification) ProtoMessage() {}
+
+func (x *Notification) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_types_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Notification.ProtoReflect.Descriptor instead.
+func (*Notification) Descriptor() ([]byte, []int) {
+	return file_angzarr_types_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *Notification) GetCover() *Cover {
+	if x != nil {
+		return x.Cover
+	}
+	return nil
+}
+
+func (x *Notification) GetPayload() *anypb.Any {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *Notification) GetSentAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SentAt
+	}
+	return nil
+}
+
+func (x *Notification) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+// Notification payload for command rejection scenarios.
+// Embedded in Notification.payload when a saga/PM command is rejected.
+type RejectionNotification struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	RejectedCommand     *CommandBook           `protobuf:"bytes,1,opt,name=rejected_command,json=rejectedCommand,proto3" json:"rejected_command,omitempty"`                // The command that was rejected (full context)
+	RejectionReason     string                 `protobuf:"bytes,2,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`                // Why: "insufficient_funds", "out_of_stock", etc.
+	IssuerName          string                 `protobuf:"bytes,3,opt,name=issuer_name,json=issuerName,proto3" json:"issuer_name,omitempty"`                               // Saga/PM name that issued the command
+	IssuerType          string                 `protobuf:"bytes,4,opt,name=issuer_type,json=issuerType,proto3" json:"issuer_type,omitempty"`                               // "saga" | "process_manager"
+	SourceAggregate     *Cover                 `protobuf:"bytes,5,opt,name=source_aggregate,json=sourceAggregate,proto3" json:"source_aggregate,omitempty"`                // Aggregate that originally triggered the flow
+	SourceEventSequence uint32                 `protobuf:"varint,6,opt,name=source_event_sequence,json=sourceEventSequence,proto3" json:"source_event_sequence,omitempty"` // Event sequence that triggered the saga/PM
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RejectionNotification) Reset() {
+	*x = RejectionNotification{}
+	mi := &file_angzarr_types_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RejectionNotification) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RejectionNotification) ProtoMessage() {}
+
+func (x *RejectionNotification) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_types_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RejectionNotification.ProtoReflect.Descriptor instead.
+func (*RejectionNotification) Descriptor() ([]byte, []int) {
+	return file_angzarr_types_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *RejectionNotification) GetRejectedCommand() *CommandBook {
+	if x != nil {
+		return x.RejectedCommand
+	}
+	return nil
+}
+
+func (x *RejectionNotification) GetRejectionReason() string {
+	if x != nil {
+		return x.RejectionReason
+	}
+	return ""
+}
+
+func (x *RejectionNotification) GetIssuerName() string {
+	if x != nil {
+		return x.IssuerName
+	}
+	return ""
+}
+
+func (x *RejectionNotification) GetIssuerType() string {
+	if x != nil {
+		return x.IssuerType
+	}
+	return ""
+}
+
+func (x *RejectionNotification) GetSourceAggregate() *Cover {
+	if x != nil {
+		return x.SourceAggregate
+	}
+	return nil
+}
+
+func (x *RejectionNotification) GetSourceEventSequence() uint32 {
+	if x != nil {
+		return x.SourceEventSequence
+	}
+	return 0
+}
+
 var File_angzarr_types_proto protoreflect.FileDescriptor
 
 const file_angzarr_types_proto_rawDesc = "" +
@@ -1540,10 +1813,11 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12*\n" +
 	"\x05event\x18\x04 \x01(\v2\x14.google.protobuf.AnyR\x05eventB\n" +
 	"\n" +
-	"\bsequence\"R\n" +
+	"\bsequence\"\x8c\x01\n" +
 	"\bSnapshot\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\rR\bsequence\x12*\n" +
-	"\x05state\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\x05state\"\xaf\x01\n" +
+	"\x05state\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\x05state\x128\n" +
+	"\tretention\x18\x04 \x01(\x0e2\x1a.angzarr.SnapshotRetentionR\tretention\"\xaf\x01\n" +
 	"\tEventBook\x12$\n" +
 	"\x05cover\x18\x01 \x01(\v2\x0e.angzarr.CoverR\x05cover\x12-\n" +
 	"\bsnapshot\x18\x02 \x01(\v2\x11.angzarr.SnapshotR\bsnapshot\x12(\n" +
@@ -1559,10 +1833,11 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"\bsequence\x18\x03 \x01(\rR\bsequence\x124\n" +
 	"\n" +
 	"projection\x18\x04 \x01(\v2\x14.google.protobuf.AnyR\n" +
-	"projection\"Y\n" +
+	"projection\"\x98\x01\n" +
 	"\vCommandPage\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\rR\bsequence\x12.\n" +
-	"\acommand\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\acommand\"\x9c\x01\n" +
+	"\acommand\x18\x03 \x01(\v2\x14.google.protobuf.AnyR\acommand\x12=\n" +
+	"\x0emerge_strategy\x18\x04 \x01(\x0e2\x16.angzarr.MergeStrategyR\rmergeStrategy\"\x9c\x01\n" +
 	"\vCommandBook\x12$\n" +
 	"\x05cover\x18\x01 \x01(\v2\x0e.angzarr.CoverR\x05cover\x12*\n" +
 	"\x05pages\x18\x02 \x03(\v2\x14.angzarr.CommandPageR\x05pages\x12;\n" +
@@ -1610,11 +1885,36 @@ const file_angzarr_types_proto_rawDesc = "" +
 	"\x11SagaCommandOrigin\x12\x1b\n" +
 	"\tsaga_name\x18\x01 \x01(\tR\bsagaName\x12A\n" +
 	"\x14triggering_aggregate\x18\x02 \x01(\v2\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n" +
-	"\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence*R\n" +
+	"\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence\"\x97\x02\n" +
+	"\fNotification\x12$\n" +
+	"\x05cover\x18\x01 \x01(\v2\x0e.angzarr.CoverR\x05cover\x12.\n" +
+	"\apayload\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\apayload\x123\n" +
+	"\asent_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAt\x12?\n" +
+	"\bmetadata\x18\x04 \x03(\v2#.angzarr.Notification.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb4\x02\n" +
+	"\x15RejectionNotification\x12?\n" +
+	"\x10rejected_command\x18\x01 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\x12)\n" +
+	"\x10rejection_reason\x18\x02 \x01(\tR\x0frejectionReason\x12\x1f\n" +
+	"\vissuer_name\x18\x03 \x01(\tR\n" +
+	"issuerName\x12\x1f\n" +
+	"\vissuer_type\x18\x04 \x01(\tR\n" +
+	"issuerType\x129\n" +
+	"\x10source_aggregate\x18\x05 \x01(\v2\x0e.angzarr.CoverR\x0fsourceAggregate\x122\n" +
+	"\x15source_event_sequence\x18\x06 \x01(\rR\x13sourceEventSequence*R\n" +
 	"\bSyncMode\x12\x19\n" +
 	"\x15SYNC_MODE_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10SYNC_MODE_SIMPLE\x10\x01\x12\x15\n" +
-	"\x11SYNC_MODE_CASCADE\x10\x02B\x90\x01\n" +
+	"\x11SYNC_MODE_CASCADE\x10\x02*U\n" +
+	"\rMergeStrategy\x12\x15\n" +
+	"\x11MERGE_COMMUTATIVE\x10\x00\x12\x10\n" +
+	"\fMERGE_STRICT\x10\x01\x12\x1b\n" +
+	"\x17MERGE_AGGREGATE_HANDLES\x10\x02*Z\n" +
+	"\x11SnapshotRetention\x12\x15\n" +
+	"\x11RETENTION_DEFAULT\x10\x00\x12\x15\n" +
+	"\x11RETENTION_PERSIST\x10\x01\x12\x17\n" +
+	"\x13RETENTION_TRANSIENT\x10\x02B\x90\x01\n" +
 	"\vcom.angzarrB\n" +
 	"TypesProtoP\x01Z9github.com/benjaminabbitt/angzarr/client/go/proto/angzarr\xa2\x02\x03AXX\xaa\x02\aAngzarr\xca\x02\aAngzarr\xe2\x02\x13Angzarr\\GPBMetadata\xea\x02\aAngzarrb\x06proto3"
 
@@ -1630,74 +1930,87 @@ func file_angzarr_types_proto_rawDescGZIP() []byte {
 	return file_angzarr_types_proto_rawDescData
 }
 
-var file_angzarr_types_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_angzarr_types_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_angzarr_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_angzarr_types_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_angzarr_types_proto_goTypes = []any{
 	(SyncMode)(0),                 // 0: angzarr.SyncMode
-	(*UUID)(nil),                  // 1: angzarr.UUID
-	(*Cover)(nil),                 // 2: angzarr.Cover
-	(*Edition)(nil),               // 3: angzarr.Edition
-	(*DomainDivergence)(nil),      // 4: angzarr.DomainDivergence
-	(*EventPage)(nil),             // 5: angzarr.EventPage
-	(*Snapshot)(nil),              // 6: angzarr.Snapshot
-	(*EventBook)(nil),             // 7: angzarr.EventBook
-	(*SyncEventBook)(nil),         // 8: angzarr.SyncEventBook
-	(*Projection)(nil),            // 9: angzarr.Projection
-	(*CommandPage)(nil),           // 10: angzarr.CommandPage
-	(*CommandBook)(nil),           // 11: angzarr.CommandBook
-	(*SyncCommandBook)(nil),       // 12: angzarr.SyncCommandBook
-	(*ContextualCommand)(nil),     // 13: angzarr.ContextualCommand
-	(*SyncContextualCommand)(nil), // 14: angzarr.SyncContextualCommand
-	(*SequenceRange)(nil),         // 15: angzarr.SequenceRange
-	(*SequenceSet)(nil),           // 16: angzarr.SequenceSet
-	(*TemporalQuery)(nil),         // 17: angzarr.TemporalQuery
-	(*Query)(nil),                 // 18: angzarr.Query
-	(*AggregateRoot)(nil),         // 19: angzarr.AggregateRoot
-	(*EventStreamFilter)(nil),     // 20: angzarr.EventStreamFilter
-	(*Target)(nil),                // 21: angzarr.Target
-	(*ComponentDescriptor)(nil),   // 22: angzarr.ComponentDescriptor
-	(*GetDescriptorRequest)(nil),  // 23: angzarr.GetDescriptorRequest
-	(*SagaCommandOrigin)(nil),     // 24: angzarr.SagaCommandOrigin
-	(*timestamppb.Timestamp)(nil), // 25: google.protobuf.Timestamp
-	(*anypb.Any)(nil),             // 26: google.protobuf.Any
+	(MergeStrategy)(0),            // 1: angzarr.MergeStrategy
+	(SnapshotRetention)(0),        // 2: angzarr.SnapshotRetention
+	(*UUID)(nil),                  // 3: angzarr.UUID
+	(*Cover)(nil),                 // 4: angzarr.Cover
+	(*Edition)(nil),               // 5: angzarr.Edition
+	(*DomainDivergence)(nil),      // 6: angzarr.DomainDivergence
+	(*EventPage)(nil),             // 7: angzarr.EventPage
+	(*Snapshot)(nil),              // 8: angzarr.Snapshot
+	(*EventBook)(nil),             // 9: angzarr.EventBook
+	(*SyncEventBook)(nil),         // 10: angzarr.SyncEventBook
+	(*Projection)(nil),            // 11: angzarr.Projection
+	(*CommandPage)(nil),           // 12: angzarr.CommandPage
+	(*CommandBook)(nil),           // 13: angzarr.CommandBook
+	(*SyncCommandBook)(nil),       // 14: angzarr.SyncCommandBook
+	(*ContextualCommand)(nil),     // 15: angzarr.ContextualCommand
+	(*SyncContextualCommand)(nil), // 16: angzarr.SyncContextualCommand
+	(*SequenceRange)(nil),         // 17: angzarr.SequenceRange
+	(*SequenceSet)(nil),           // 18: angzarr.SequenceSet
+	(*TemporalQuery)(nil),         // 19: angzarr.TemporalQuery
+	(*Query)(nil),                 // 20: angzarr.Query
+	(*AggregateRoot)(nil),         // 21: angzarr.AggregateRoot
+	(*EventStreamFilter)(nil),     // 22: angzarr.EventStreamFilter
+	(*Target)(nil),                // 23: angzarr.Target
+	(*ComponentDescriptor)(nil),   // 24: angzarr.ComponentDescriptor
+	(*GetDescriptorRequest)(nil),  // 25: angzarr.GetDescriptorRequest
+	(*SagaCommandOrigin)(nil),     // 26: angzarr.SagaCommandOrigin
+	(*Notification)(nil),          // 27: angzarr.Notification
+	(*RejectionNotification)(nil), // 28: angzarr.RejectionNotification
+	nil,                           // 29: angzarr.Notification.MetadataEntry
+	(*timestamppb.Timestamp)(nil), // 30: google.protobuf.Timestamp
+	(*anypb.Any)(nil),             // 31: google.protobuf.Any
 }
 var file_angzarr_types_proto_depIdxs = []int32{
-	1,  // 0: angzarr.Cover.root:type_name -> angzarr.UUID
-	3,  // 1: angzarr.Cover.edition:type_name -> angzarr.Edition
-	4,  // 2: angzarr.Edition.divergences:type_name -> angzarr.DomainDivergence
-	25, // 3: angzarr.EventPage.created_at:type_name -> google.protobuf.Timestamp
-	26, // 4: angzarr.EventPage.event:type_name -> google.protobuf.Any
-	26, // 5: angzarr.Snapshot.state:type_name -> google.protobuf.Any
-	2,  // 6: angzarr.EventBook.cover:type_name -> angzarr.Cover
-	6,  // 7: angzarr.EventBook.snapshot:type_name -> angzarr.Snapshot
-	5,  // 8: angzarr.EventBook.pages:type_name -> angzarr.EventPage
-	7,  // 9: angzarr.SyncEventBook.events:type_name -> angzarr.EventBook
-	0,  // 10: angzarr.SyncEventBook.sync_mode:type_name -> angzarr.SyncMode
-	2,  // 11: angzarr.Projection.cover:type_name -> angzarr.Cover
-	26, // 12: angzarr.Projection.projection:type_name -> google.protobuf.Any
-	26, // 13: angzarr.CommandPage.command:type_name -> google.protobuf.Any
-	2,  // 14: angzarr.CommandBook.cover:type_name -> angzarr.Cover
-	10, // 15: angzarr.CommandBook.pages:type_name -> angzarr.CommandPage
-	24, // 16: angzarr.CommandBook.saga_origin:type_name -> angzarr.SagaCommandOrigin
-	11, // 17: angzarr.SyncCommandBook.command:type_name -> angzarr.CommandBook
-	0,  // 18: angzarr.SyncCommandBook.sync_mode:type_name -> angzarr.SyncMode
-	7,  // 19: angzarr.ContextualCommand.events:type_name -> angzarr.EventBook
-	11, // 20: angzarr.ContextualCommand.command:type_name -> angzarr.CommandBook
-	13, // 21: angzarr.SyncContextualCommand.command:type_name -> angzarr.ContextualCommand
-	0,  // 22: angzarr.SyncContextualCommand.sync_mode:type_name -> angzarr.SyncMode
-	25, // 23: angzarr.TemporalQuery.as_of_time:type_name -> google.protobuf.Timestamp
-	2,  // 24: angzarr.Query.cover:type_name -> angzarr.Cover
-	15, // 25: angzarr.Query.range:type_name -> angzarr.SequenceRange
-	16, // 26: angzarr.Query.sequences:type_name -> angzarr.SequenceSet
-	17, // 27: angzarr.Query.temporal:type_name -> angzarr.TemporalQuery
-	1,  // 28: angzarr.AggregateRoot.root:type_name -> angzarr.UUID
-	21, // 29: angzarr.ComponentDescriptor.inputs:type_name -> angzarr.Target
-	2,  // 30: angzarr.SagaCommandOrigin.triggering_aggregate:type_name -> angzarr.Cover
-	31, // [31:31] is the sub-list for method output_type
-	31, // [31:31] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	3,  // 0: angzarr.Cover.root:type_name -> angzarr.UUID
+	5,  // 1: angzarr.Cover.edition:type_name -> angzarr.Edition
+	6,  // 2: angzarr.Edition.divergences:type_name -> angzarr.DomainDivergence
+	30, // 3: angzarr.EventPage.created_at:type_name -> google.protobuf.Timestamp
+	31, // 4: angzarr.EventPage.event:type_name -> google.protobuf.Any
+	31, // 5: angzarr.Snapshot.state:type_name -> google.protobuf.Any
+	2,  // 6: angzarr.Snapshot.retention:type_name -> angzarr.SnapshotRetention
+	4,  // 7: angzarr.EventBook.cover:type_name -> angzarr.Cover
+	8,  // 8: angzarr.EventBook.snapshot:type_name -> angzarr.Snapshot
+	7,  // 9: angzarr.EventBook.pages:type_name -> angzarr.EventPage
+	9,  // 10: angzarr.SyncEventBook.events:type_name -> angzarr.EventBook
+	0,  // 11: angzarr.SyncEventBook.sync_mode:type_name -> angzarr.SyncMode
+	4,  // 12: angzarr.Projection.cover:type_name -> angzarr.Cover
+	31, // 13: angzarr.Projection.projection:type_name -> google.protobuf.Any
+	31, // 14: angzarr.CommandPage.command:type_name -> google.protobuf.Any
+	1,  // 15: angzarr.CommandPage.merge_strategy:type_name -> angzarr.MergeStrategy
+	4,  // 16: angzarr.CommandBook.cover:type_name -> angzarr.Cover
+	12, // 17: angzarr.CommandBook.pages:type_name -> angzarr.CommandPage
+	26, // 18: angzarr.CommandBook.saga_origin:type_name -> angzarr.SagaCommandOrigin
+	13, // 19: angzarr.SyncCommandBook.command:type_name -> angzarr.CommandBook
+	0,  // 20: angzarr.SyncCommandBook.sync_mode:type_name -> angzarr.SyncMode
+	9,  // 21: angzarr.ContextualCommand.events:type_name -> angzarr.EventBook
+	13, // 22: angzarr.ContextualCommand.command:type_name -> angzarr.CommandBook
+	15, // 23: angzarr.SyncContextualCommand.command:type_name -> angzarr.ContextualCommand
+	0,  // 24: angzarr.SyncContextualCommand.sync_mode:type_name -> angzarr.SyncMode
+	30, // 25: angzarr.TemporalQuery.as_of_time:type_name -> google.protobuf.Timestamp
+	4,  // 26: angzarr.Query.cover:type_name -> angzarr.Cover
+	17, // 27: angzarr.Query.range:type_name -> angzarr.SequenceRange
+	18, // 28: angzarr.Query.sequences:type_name -> angzarr.SequenceSet
+	19, // 29: angzarr.Query.temporal:type_name -> angzarr.TemporalQuery
+	3,  // 30: angzarr.AggregateRoot.root:type_name -> angzarr.UUID
+	23, // 31: angzarr.ComponentDescriptor.inputs:type_name -> angzarr.Target
+	4,  // 32: angzarr.SagaCommandOrigin.triggering_aggregate:type_name -> angzarr.Cover
+	4,  // 33: angzarr.Notification.cover:type_name -> angzarr.Cover
+	31, // 34: angzarr.Notification.payload:type_name -> google.protobuf.Any
+	30, // 35: angzarr.Notification.sent_at:type_name -> google.protobuf.Timestamp
+	29, // 36: angzarr.Notification.metadata:type_name -> angzarr.Notification.MetadataEntry
+	13, // 37: angzarr.RejectionNotification.rejected_command:type_name -> angzarr.CommandBook
+	4,  // 38: angzarr.RejectionNotification.source_aggregate:type_name -> angzarr.Cover
+	39, // [39:39] is the sub-list for method output_type
+	39, // [39:39] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_types_proto_init() }
@@ -1724,8 +2037,8 @@ func file_angzarr_types_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_types_proto_rawDesc), len(file_angzarr_types_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   24,
+			NumEnums:      3,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

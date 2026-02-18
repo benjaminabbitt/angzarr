@@ -5,6 +5,8 @@ Keep the standalone mode as close to distributed mode as possible, excepting tha
 
 Focus on readability.  The primary costs are developer and AI time.  Optimizing for understanding, minimizing foot-guns, and reducing cognitive load is the primary goal.  Secondary is performance, but that's a secondary goal that can be figured out and optimized for in the future.
 
+Plan *everything* and run it by me prior to executing.  If it requires any meaningful decisions, ask. 
+
 ### Enums
 ese enum names, not integer representations, in code
 

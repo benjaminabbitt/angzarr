@@ -1,13 +1,16 @@
 //! Hand aggregate state.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use angzarr_client::proto::examples::{
-    BettingPhase, Card, GameVariant, HandState as ProtoHandState,
+    ActionTaken, ActionType, BettingPhase, BettingRoundComplete, BlindPosted, Card, CardsDealt,
+    CommunityCardsDealt, DrawCompleted, GameVariant, HandComplete, HandState as ProtoHandState,
+    PotAwarded, ShowdownStarted,
 };
 use angzarr_client::proto::EventBook;
+use angzarr_client::StateRouter;
 use angzarr_client::UnpackAny;
-use prost::Message;
 
 /// Player's state in the hand.
 #[derive(Debug, Clone, Default)]
@@ -97,33 +100,212 @@ impl HandState {
     }
 }
 
-/// Rebuild hand state from event history.
-pub fn rebuild_state(event_book: &EventBook) -> HandState {
-    let mut state = HandState {
+// Event applier functions for StateRouter
+
+fn apply_cards_dealt(state: &mut HandState, event: CardsDealt) {
+    state.hand_id = format!("{}_{}", hex::encode(&state.table_root), event.hand_number);
+    state.table_root = event.table_root;
+    state.hand_number = event.hand_number;
+    state.game_variant = GameVariant::try_from(event.game_variant).unwrap_or_default();
+    state.dealer_position = event.dealer_position;
+    state.remaining_deck = event.remaining_deck;
+    state.current_phase = BettingPhase::Preflop;
+    state.status = "betting".to_string();
+
+    // Initialize players from PlayerInHand messages
+    for p in &event.players {
+        let key = hex::encode(&p.player_root);
+        state.players.insert(
+            key,
+            PlayerHandState {
+                player_root: p.player_root.clone(),
+                position: p.position,
+                stack: p.stack,
+                ..Default::default()
+            },
+        );
+    }
+
+    // Apply hole cards
+    for pc in &event.player_cards {
+        let key = hex::encode(&pc.player_root);
+        if let Some(player) = state.players.get_mut(&key) {
+            player.hole_cards = pc.cards.clone();
+        }
+    }
+}
+
+fn apply_blind_posted(state: &mut HandState, event: BlindPosted) {
+    let key = hex::encode(&event.player_root);
+    if let Some(player) = state.players.get_mut(&key) {
+        player.stack = event.player_stack;
+        player.bet_this_round += event.amount;
+        player.total_invested += event.amount;
+    }
+    if let Some(pot) = state.pots.first_mut() {
+        pot.amount = event.pot_total;
+    }
+    if event.amount > state.current_bet {
+        state.current_bet = event.amount;
+    }
+    // Track min_raise as the big blind (highest blind posted)
+    if event.amount > state.min_raise {
+        state.min_raise = event.amount;
+    }
+}
+
+fn apply_action_taken(state: &mut HandState, event: ActionTaken) {
+    let key = hex::encode(&event.player_root);
+    if let Some(player) = state.players.get_mut(&key) {
+        player.stack = event.player_stack;
+        player.has_acted = true;
+
+        match ActionType::try_from(event.action).unwrap_or_default() {
+            ActionType::Fold => {
+                player.has_folded = true;
+            }
+            ActionType::AllIn => {
+                player.is_all_in = true;
+                player.bet_this_round += event.amount;
+                player.total_invested += event.amount;
+            }
+            ActionType::Bet | ActionType::Raise | ActionType::Call => {
+                player.bet_this_round += event.amount;
+                player.total_invested += event.amount;
+            }
+            _ => {}
+        }
+    }
+    if let Some(pot) = state.pots.first_mut() {
+        pot.amount = event.pot_total;
+    }
+    state.current_bet = event.amount_to_call;
+}
+
+fn apply_betting_round_complete(state: &mut HandState, event: BettingRoundComplete) {
+    // Reset for next round
+    for player in state.players.values_mut() {
+        player.bet_this_round = 0;
+        player.has_acted = false;
+    }
+    state.current_bet = 0;
+
+    // Update stacks from snapshot
+    for snap in &event.stacks {
+        let key = hex::encode(&snap.player_root);
+        if let Some(player) = state.players.get_mut(&key) {
+            player.stack = snap.stack;
+            player.is_all_in = snap.is_all_in;
+            player.has_folded = snap.has_folded;
+        }
+    }
+
+    // For Five Card Draw, transition to Draw phase after preflop
+    if state.game_variant == GameVariant::FiveCardDraw {
+        let completed = BettingPhase::try_from(event.completed_phase).unwrap_or_default();
+        if completed == BettingPhase::Preflop {
+            state.current_phase = BettingPhase::Draw;
+        }
+    }
+}
+
+fn apply_community_cards_dealt(state: &mut HandState, event: CommunityCardsDealt) {
+    // Remove dealt cards from deck
+    let cards_dealt = event.cards.len();
+    if state.remaining_deck.len() >= cards_dealt {
+        state.remaining_deck = state.remaining_deck[cards_dealt..].to_vec();
+    }
+    state.community_cards = event.all_community_cards;
+    state.current_phase = BettingPhase::try_from(event.phase).unwrap_or_default();
+    // Reset betting state for new round
+    for player in state.players.values_mut() {
+        player.bet_this_round = 0;
+        player.has_acted = false;
+    }
+    state.current_bet = 0;
+}
+
+fn apply_draw_completed(state: &mut HandState, event: DrawCompleted) {
+    // Update player's hole cards
+    let key = hex::encode(&event.player_root);
+    if let Some(player) = state.players.get_mut(&key) {
+        player.hole_cards = event.new_cards;
+    }
+    // Remove drawn cards from deck
+    let cards_drawn = event.cards_drawn as usize;
+    if state.remaining_deck.len() >= cards_drawn {
+        state.remaining_deck = state.remaining_deck[cards_drawn..].to_vec();
+    }
+}
+
+fn apply_showdown_started(state: &mut HandState, _event: ShowdownStarted) {
+    state.status = "showdown".to_string();
+}
+
+fn apply_pot_awarded(state: &mut HandState, event: PotAwarded) {
+    for winner in &event.winners {
+        let key = hex::encode(&winner.player_root);
+        if let Some(player) = state.players.get_mut(&key) {
+            player.stack += winner.amount;
+        }
+    }
+}
+
+fn apply_hand_complete(state: &mut HandState, event: HandComplete) {
+    state.status = "complete".to_string();
+    // Update final stacks
+    for snap in &event.final_stacks {
+        let key = hex::encode(&snap.player_root);
+        if let Some(player) = state.players.get_mut(&key) {
+            player.stack = snap.stack;
+        }
+    }
+}
+
+/// Default state factory for StateRouter.
+fn new_hand_state() -> HandState {
+    HandState {
         pots: vec![PotState {
             pot_type: "main".to_string(),
             ..Default::default()
         }],
         ..Default::default()
-    };
+    }
+}
 
+/// StateRouter for fluent state reconstruction.
+static STATE_ROUTER: LazyLock<StateRouter<HandState>> = LazyLock::new(|| {
+    StateRouter::with_factory(new_hand_state)
+        .on::<CardsDealt>("CardsDealt", apply_cards_dealt)
+        .on::<BlindPosted>("BlindPosted", apply_blind_posted)
+        .on::<ActionTaken>("ActionTaken", apply_action_taken)
+        .on::<BettingRoundComplete>("BettingRoundComplete", apply_betting_round_complete)
+        .on::<CommunityCardsDealt>("CommunityCardsDealt", apply_community_cards_dealt)
+        .on::<DrawCompleted>("DrawCompleted", apply_draw_completed)
+        .on::<ShowdownStarted>("ShowdownStarted", apply_showdown_started)
+        .on::<PotAwarded>("PotAwarded", apply_pot_awarded)
+        .on::<HandComplete>("HandComplete", apply_hand_complete)
+});
+
+/// Rebuild hand state from event history.
+pub fn rebuild_state(event_book: &EventBook) -> HandState {
     // Start from snapshot if available
     if let Some(snapshot) = &event_book.snapshot {
         if let Some(snapshot_any) = &snapshot.state {
             if let Ok(proto_state) = snapshot_any.unpack::<ProtoHandState>() {
-                state = apply_snapshot(&proto_state);
+                let mut state = apply_snapshot(&proto_state);
+                // Apply events since snapshot
+                for page in &event_book.pages {
+                    if let Some(event) = &page.event {
+                        STATE_ROUTER.apply_single(&mut state, event);
+                    }
+                }
+                return state;
             }
         }
     }
 
-    // Apply events since snapshot
-    for page in &event_book.pages {
-        if let Some(event) = &page.event {
-            apply_event(&mut state, event);
-        }
-    }
-
-    state
+    STATE_ROUTER.with_event_book(event_book)
 }
 
 fn apply_snapshot(snapshot: &ProtoHandState) -> HandState {
@@ -173,171 +355,5 @@ fn apply_snapshot(snapshot: &ProtoHandState) -> HandState {
         small_blind_position: snapshot.small_blind_position,
         big_blind_position: snapshot.big_blind_position,
         status: snapshot.status.clone(),
-    }
-}
-
-fn apply_event(state: &mut HandState, event_any: &prost_types::Any) {
-    use angzarr_client::proto::examples::*;
-
-    let type_url = &event_any.type_url;
-
-    if type_url.ends_with(".CardsDealt") {
-        if let Ok(event) = CardsDealt::decode(event_any.value.as_slice()) {
-            state.hand_id = format!("{}_{}", hex::encode(&state.table_root), event.hand_number);
-            state.table_root = event.table_root;
-            state.hand_number = event.hand_number;
-            state.game_variant = GameVariant::try_from(event.game_variant).unwrap_or_default();
-            state.dealer_position = event.dealer_position;
-            state.remaining_deck = event.remaining_deck;
-            state.current_phase = BettingPhase::Preflop;
-            state.status = "betting".to_string();
-
-            // Initialize players from PlayerInHand messages
-            for p in &event.players {
-                let key = hex::encode(&p.player_root);
-                state.players.insert(
-                    key,
-                    self::PlayerHandState {
-                        player_root: p.player_root.clone(),
-                        position: p.position,
-                        stack: p.stack,
-                        ..Default::default()
-                    },
-                );
-            }
-
-            // Apply hole cards
-            for pc in &event.player_cards {
-                let key = hex::encode(&pc.player_root);
-                if let Some(player) = state.players.get_mut(&key) {
-                    player.hole_cards = pc.cards.clone();
-                }
-            }
-        }
-    } else if type_url.ends_with("BlindPosted") {
-        if let Ok(event) = BlindPosted::decode(event_any.value.as_slice()) {
-            let key = hex::encode(&event.player_root);
-            if let Some(player) = state.players.get_mut(&key) {
-                player.stack = event.player_stack;
-                player.bet_this_round += event.amount;
-                player.total_invested += event.amount;
-            }
-            if let Some(pot) = state.pots.first_mut() {
-                pot.amount = event.pot_total;
-            }
-            if event.amount > state.current_bet {
-                state.current_bet = event.amount;
-            }
-            // Track min_raise as the big blind (highest blind posted)
-            if event.amount > state.min_raise {
-                state.min_raise = event.amount;
-            }
-        }
-    } else if type_url.ends_with("ActionTaken") {
-        if let Ok(event) = ActionTaken::decode(event_any.value.as_slice()) {
-            let key = hex::encode(&event.player_root);
-            if let Some(player) = state.players.get_mut(&key) {
-                player.stack = event.player_stack;
-                player.has_acted = true;
-
-                match ActionType::try_from(event.action).unwrap_or_default() {
-                    ActionType::Fold => {
-                        player.has_folded = true;
-                    }
-                    ActionType::AllIn => {
-                        player.is_all_in = true;
-                        player.bet_this_round += event.amount;
-                        player.total_invested += event.amount;
-                    }
-                    ActionType::Bet | ActionType::Raise | ActionType::Call => {
-                        player.bet_this_round += event.amount;
-                        player.total_invested += event.amount;
-                    }
-                    _ => {}
-                }
-            }
-            if let Some(pot) = state.pots.first_mut() {
-                pot.amount = event.pot_total;
-            }
-            state.current_bet = event.amount_to_call;
-        }
-    } else if type_url.ends_with("BettingRoundComplete") {
-        if let Ok(event) = BettingRoundComplete::decode(event_any.value.as_slice()) {
-            // Reset for next round
-            for player in state.players.values_mut() {
-                player.bet_this_round = 0;
-                player.has_acted = false;
-            }
-            state.current_bet = 0;
-
-            // Update stacks from snapshot
-            for snap in &event.stacks {
-                let key = hex::encode(&snap.player_root);
-                if let Some(player) = state.players.get_mut(&key) {
-                    player.stack = snap.stack;
-                    player.is_all_in = snap.is_all_in;
-                    player.has_folded = snap.has_folded;
-                }
-            }
-
-            // For Five Card Draw, transition to Draw phase after preflop
-            if state.game_variant == GameVariant::FiveCardDraw {
-                let completed = BettingPhase::try_from(event.completed_phase).unwrap_or_default();
-                if completed == BettingPhase::Preflop {
-                    state.current_phase = BettingPhase::Draw;
-                }
-            }
-        }
-    } else if type_url.ends_with("CommunityCardsDealt") {
-        if let Ok(event) = CommunityCardsDealt::decode(event_any.value.as_slice()) {
-            // Remove dealt cards from deck
-            let cards_dealt = event.cards.len();
-            if state.remaining_deck.len() >= cards_dealt {
-                state.remaining_deck = state.remaining_deck[cards_dealt..].to_vec();
-            }
-            state.community_cards = event.all_community_cards;
-            state.current_phase = BettingPhase::try_from(event.phase).unwrap_or_default();
-            // Reset betting state for new round
-            for player in state.players.values_mut() {
-                player.bet_this_round = 0;
-                player.has_acted = false;
-            }
-            state.current_bet = 0;
-        }
-    } else if type_url.ends_with("DrawCompleted") {
-        if let Ok(event) = DrawCompleted::decode(event_any.value.as_slice()) {
-            // Update player's hole cards
-            let key = hex::encode(&event.player_root);
-            if let Some(player) = state.players.get_mut(&key) {
-                player.hole_cards = event.new_cards;
-            }
-            // Remove drawn cards from deck
-            let cards_drawn = event.cards_drawn as usize;
-            if state.remaining_deck.len() >= cards_drawn {
-                state.remaining_deck = state.remaining_deck[cards_drawn..].to_vec();
-            }
-        }
-    } else if type_url.ends_with("ShowdownStarted") {
-        state.status = "showdown".to_string();
-    } else if type_url.ends_with("PotAwarded") {
-        if let Ok(event) = PotAwarded::decode(event_any.value.as_slice()) {
-            for winner in &event.winners {
-                let key = hex::encode(&winner.player_root);
-                if let Some(player) = state.players.get_mut(&key) {
-                    player.stack += winner.amount;
-                }
-            }
-        }
-    } else if type_url.ends_with("HandComplete") {
-        if let Ok(event) = HandComplete::decode(event_any.value.as_slice()) {
-            state.status = "complete".to_string();
-            // Update final stacks
-            for snap in &event.final_stacks {
-                let key = hex::encode(&snap.player_root);
-                if let Some(player) = state.players.get_mut(&key) {
-                    player.stack = snap.stack;
-                }
-            }
-        }
     }
 }

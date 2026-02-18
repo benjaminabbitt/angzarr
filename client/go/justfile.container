@@ -1,0 +1,25 @@
+# Go client library - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+proto:
+    cd /workspace/proto && buf generate --template buf.gen.go.yaml
+
+build:
+    go build ./...
+
+test:
+    go test -v ./...
+
+coverage:
+    go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
+
+mutate:
+    go install github.com/go-gremlins/gremlins/cmd/gremlins@latest && gremlins unleash --timeout-coefficient 10 --exclude-files="proto/" .
+
+mutate-dry:
+    go install github.com/go-gremlins/gremlins/cmd/gremlins@latest && gremlins unleash --dry-run --exclude-files="proto/" .

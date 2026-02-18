@@ -501,7 +501,7 @@ mod sqlite_tests {
             .enumerate()
             .map(|(i, d)| {
                 let registered = ComponentRegistered {
-                    descriptor: Some(d.clone()),
+                    component: Some(d.clone()),
                     ..Default::default()
                 };
                 EventPage {
@@ -511,6 +511,7 @@ mod sqlite_tests {
                         value: registered.encode_to_vec(),
                     }),
                     created_at: None,
+                    external_payload: None,
                 }
             })
             .collect();

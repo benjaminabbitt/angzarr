@@ -62,14 +62,6 @@ message SagaRetryRequest {
   uint32 attempt = 5;
 }
 
-// Command sent to original aggregate when saga command is rejected
-message RevokeEventCommand {
-  uint32 triggering_event_sequence = 1; // Which event triggered the failed saga flow
-  string saga_name = 2;                  // Saga that issued the rejected command
-  string rejection_reason = 3;           // Why the command was rejected
-  CommandBook rejected_command = 4;      // The command that was rejected
-}
-
 // System event when compensation fails/requested
 message SagaCompensationFailed {
   Cover triggering_aggregate = 1;

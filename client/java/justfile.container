@@ -1,0 +1,22 @@
+# Java client library - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+proto:
+    cd /workspace/client/java && ./gradlew :proto:generateProto
+
+build:
+    cd /workspace/client/java && ./gradlew build
+
+test:
+    cd /workspace/client/java && ./gradlew test
+
+coverage:
+    cd /workspace/client/java && ./gradlew jacocoTestReport
+
+publish:
+    cd /workspace/client/java && ./gradlew publish

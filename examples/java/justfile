@@ -1,0 +1,83 @@
+# Java poker examples
+#
+# Container Overlay Pattern:
+# --------------------------
+# This justfile uses an overlay pattern for container execution:
+#
+# 1. `justfile` (this file) - runs on the host, delegates to container
+# 2. `justfile.container` - mounted over this file inside the container
+#
+# When running outside a devcontainer:
+#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Podman mounts justfile.container as /workspace/examples/java/justfile
+#   - `just build` on host → podman runs → `just build` in container → gradlew
+#
+# When running inside a devcontainer (DEVCONTAINER=true):
+#   - Commands execute directly via `just <target>`
+#   - No container nesting
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+IMAGE := "angzarr-java-dev"
+
+# Build the devcontainer image
+[private]
+_build-image:
+    podman build -t {{IMAGE}} -f "{{TOP}}/examples/java/.devcontainer/Containerfile" "{{TOP}}/examples/java/.devcontainer"
+
+# Run just target in container (or directly if already in devcontainer)
+[private]
+_container +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        podman run --rm \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/examples/java/justfile.container:/workspace/examples/java/justfile:ro" \
+            -w /workspace/examples/java \
+            {{IMAGE}} just {{ARGS}}
+    fi
+
+default:
+    @just --list
+
+build:
+    just _container build
+
+build-dev:
+    just _container build-dev
+
+test-unit:
+    just _container test-unit
+
+test-acceptance:
+    just _container test-acceptance
+
+test:
+    just _container test
+
+fmt:
+    just _container fmt
+
+lint:
+    just _container lint
+
+deps:
+    just _container deps
+
+wrapper-update:
+    just _container wrapper-update
+
+# Run poker in standalone mode (host - needs Rust)
+run: build
+    mkdir -p "{{TOP}}/examples/java/data"
+    cd "{{TOP}}" && cargo run \
+        --bin angzarr-standalone \
+        --features standalone,sqlite \
+        -- --config examples/java/standalone.yaml
+
+clean:
+    just _container "./gradlew clean" || true
+    rm -rf "{{TOP}}/examples/java/data"

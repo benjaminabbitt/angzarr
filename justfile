@@ -1,13 +1,48 @@
 # Angzarr development commands
+#
+# Container Overlay Pattern:
+# --------------------------
+# This justfile uses an overlay pattern for container execution:
+#
+# 1. `justfile` (this file) - runs on the host, delegates to container
+# 2. `justfile.container` - mounted over this file inside the container
+#
+# When running outside a devcontainer:
+#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Podman mounts justfile.container as /workspace/justfile
+#
+# When running inside a devcontainer (DEVCONTAINER=true):
+#   - Commands execute directly via `just <target>`
+#   - No container nesting
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
-export RUSTC_WRAPPER := `command -v sccache || true`
+IMAGE := "angzarr-dev"
 
 mod client "client/justfile"
 mod examples "examples/justfile"
 mod tofu "deploy/tofu/justfile"
+
+# Build the devcontainer image
+[private]
+_build-image:
+    podman build -t {{IMAGE}} -f "{{TOP}}/.devcontainer/Containerfile" "{{TOP}}/.devcontainer"
+
+# Run just target in container (or directly if already in devcontainer)
+[private]
+_container +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        podman run --rm \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
+            -w /workspace \
+            -e CARGO_HOME=/workspace/.cargo-container \
+            {{IMAGE}} just {{ARGS}}
+    fi
 
 default:
     @just --list
@@ -26,84 +61,37 @@ buf-lint:
 buf-push:
     cd "{{TOP}}/proto" && buf push
 
-# Generate Go client protos from buf
-buf-gen-go:
-    cd "{{TOP}}/proto" && buf generate --template buf.gen.go.yaml
-
-# Generate Python client protos from buf
-buf-gen-python:
-    cd "{{TOP}}/proto" && buf generate --template buf.gen.python.yaml
-    # Fix imports: protoc generates `from angzarr import` but package is angzarr_client.proto.angzarr
-    find "{{TOP}}/client/python/angzarr_client/proto" -name "*.py" -exec \
-        sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \;
-    # Fix imports: protoc generates `from examples import` but package is angzarr_client.proto.examples
-    find "{{TOP}}/client/python/angzarr_client/proto/examples" -name "*.py" -exec \
-        sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
-
-# === Proto Generation (Legacy Podman) ===
-
-# Build the proto generation container
-proto-container:
-    podman build -t angzarr-proto:latest "{{TOP}}/build/proto/"
-
-# Generate proto files for a language (rust, python, go)
-proto LANG: proto-container
-    #!/usr/bin/env bash
-    set -euo pipefail
-    podman run --rm \
-        -v "{{TOP}}/proto:/workspace/proto:ro" \
-        -v "{{TOP}}/generated:/workspace/generated" \
-        angzarr-proto:latest --{{LANG}}
-    if [ "{{LANG}}" = "rust" ]; then
-        cp "{{TOP}}/generated/rust/examples/examples.rs" \
-           "{{TOP}}/examples/rust/common/src/proto/examples.rs"
-    fi
-
-# Generate all proto files
-proto-all: proto-container
-    podman run --rm \
-        -v "{{TOP}}/proto:/workspace/proto:ro" \
-        -v "{{TOP}}/generated:/workspace/generated" \
-        angzarr-proto:latest --all
-    cp "{{TOP}}/generated/rust/examples/examples.rs" \
-       "{{TOP}}/examples/rust/common/src/proto/examples.rs"
-
-# Clean generated proto files
-proto-clean:
-    rm -rf "{{TOP}}/generated"
-
 # === Build ===
 
-# Build the project (debug, includes proto generation)
+# Build the project (debug)
 build:
-    just proto rust
-    cargo build
+    just _container build
 
 # Build release binaries
 build-release:
-    cargo build --release
+    just _container build-release
 
 # Check code compiles
 check:
-    cargo check
+    just _container check
 
 # Format code
 fmt:
-    cargo fmt
+    just _container fmt
 
 # Lint code
 lint:
-    cargo clippy -- -D warnings
+    just _container lint
 
 # Run unit tests
 test:
-    cargo test --lib
+    just _container test
 
 # Clean build artifacts
 clean:
-    cargo clean
+    just _container clean
 
-# Watch and check on save
+# Watch and check on save (host only - requires bacon)
 watch:
     bacon
 
@@ -191,16 +179,6 @@ deploy: _cluster-ready
 dev: _cluster-ready
     cd "{{TOP}}/examples/rust" && skaffold dev
 
-# Fresh deploy: regenerate protos, bust caches, rebuild
-fresh-deploy: _cluster-ready
-    just proto rust
-    rm -f ~/.skaffold/cache
-    cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold run --cache-artifacts=false --force
-    @echo "Waiting for services..."
-    @uv run "{{TOP}}/scripts/wait-for-grpc-health.py" --timeout 180 --interval 5 \
-        localhost:9084 || true
-    @kubectl get pods -n angzarr
-
 # Nuke deploy: tear down existing deployment, bust all caches, rebuild and redeploy from scratch
 nuke-deploy: _cluster-ready
     #!/usr/bin/env bash
@@ -211,9 +189,6 @@ nuke-deploy: _cluster-ready
 
     echo "=== Busting caches ==="
     rm -f ~/.skaffold/cache
-
-    echo "=== Regenerating protos (skipped if container build fails) ==="
-    just proto rust || echo "Proto generation skipped (existing files used)"
 
     echo "=== Building and deploying (no cache) ==="
     cd "{{TOP}}/examples/rust" && BUILDAH_LAYERS=false skaffold run --cache-artifacts=false --force

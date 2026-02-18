@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/upcaster.proto",
                 "proto/angzarr/meta.proto",
                 // Example protos (poker)
-                "proto/examples/types.proto",
+                "proto/examples/poker_types.proto",
                 "proto/examples/player.proto",
                 "proto/examples/table.proto",
                 "proto/examples/hand.proto",

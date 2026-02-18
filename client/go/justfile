@@ -1,36 +1,69 @@
 # Go client library commands
+#
+# Container Overlay Pattern:
+# --------------------------
+# This justfile uses an overlay pattern for container execution:
+#
+# 1. `justfile` (this file) - runs on the host, delegates to container
+# 2. `justfile.container` - mounted over this file inside the container
+#
+# When running outside a devcontainer:
+#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Podman mounts justfile.container as /workspace/client/go/justfile
+#
+# When running inside a devcontainer (DEVCONTAINER=true):
+#   - Commands execute directly via `just <target>`
+#   - No container nesting
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
+IMAGE := "angzarr-client-go-dev"
+
+# Build the devcontainer image
+[private]
+_build-image:
+    podman build -t {{IMAGE}} -f "{{TOP}}/client/go/.devcontainer/Containerfile" "{{TOP}}/client/go/.devcontainer"
+
+# Run just target in container (or directly if already in devcontainer)
+[private]
+_container +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        podman run --rm \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/client/go/justfile.container:/workspace/client/go/justfile:ro" \
+            -w /workspace/client/go \
+            {{IMAGE}} just {{ARGS}}
+    fi
 
 default:
     @just --list
 
-# Build Go client
+proto:
+    just _container proto
+
 build:
-    cd "{{TOP}}/client/go" && go build ./...
+    just _container build
 
-# Run unit tests
 test:
-    cd "{{TOP}}/client/go" && go test -v ./...
+    just _container test
 
-# Run tests with coverage report
 coverage:
-    cd "{{TOP}}/client/go" && go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
+    just _container coverage
 
-# Show coverage in browser
+# Show coverage in browser (host only)
 coverage-html:
-    cd "{{TOP}}/client/go" && go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
+    just _container coverage
+    go tool cover -html="{{TOP}}/client/go/coverage.out"
 
-# Run mutation testing with gremlins
 mutate:
-    cd "{{TOP}}/client/go" && gremlins unleash --timeout-coefficient 10 --exclude-files="proto/" .
+    just _container mutate
 
-# Dry run mutation testing (show what would be mutated)
 mutate-dry:
-    cd "{{TOP}}/client/go" && gremlins unleash --dry-run --exclude-files="proto/" .
+    just _container mutate-dry
 
-# Clean build artifacts
 clean:
     rm -f "{{TOP}}/client/go/coverage.out"

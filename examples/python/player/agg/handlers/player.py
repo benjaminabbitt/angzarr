@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 import logging
 
-from angzarr_client import Aggregate, handles, now
+from angzarr_client import Aggregate, handles, applies, now
 from angzarr_client.compensation import (
     CompensationContext,
     delegate_to_framework,
@@ -40,56 +40,54 @@ class Player(Aggregate[_PlayerState]):
     def _create_empty_state(self) -> _PlayerState:
         return _PlayerState()
 
-    def _apply_event(self, state: _PlayerState, event_any) -> None:
-        """Apply a single event to state."""
-        type_url = event_any.type_url
+    # --- Event appliers ---
 
-        if type_url.endswith("PlayerRegistered"):
-            event = player_proto.PlayerRegistered()
-            event_any.Unpack(event)
-            state.player_id = f"player_{event.email}"
-            state.display_name = event.display_name
-            state.email = event.email
-            state.player_type = event.player_type
-            state.ai_model_id = event.ai_model_id
-            state.status = "active"
-            state.bankroll = 0
-            state.reserved_funds = 0
+    @applies(player_proto.PlayerRegistered)
+    def apply_registered(self, state: _PlayerState, event: player_proto.PlayerRegistered):
+        """Apply PlayerRegistered event to state."""
+        state.player_id = f"player_{event.email}"
+        state.display_name = event.display_name
+        state.email = event.email
+        state.player_type = event.player_type
+        state.ai_model_id = event.ai_model_id
+        state.status = "active"
+        state.bankroll = 0
+        state.reserved_funds = 0
 
-        elif type_url.endswith("FundsDeposited"):
-            event = player_proto.FundsDeposited()
-            event_any.Unpack(event)
-            if event.new_balance:
-                state.bankroll = event.new_balance.amount
+    @applies(player_proto.FundsDeposited)
+    def apply_deposited(self, state: _PlayerState, event: player_proto.FundsDeposited):
+        """Apply FundsDeposited event to state."""
+        if event.new_balance:
+            state.bankroll = event.new_balance.amount
 
-        elif type_url.endswith("FundsWithdrawn"):
-            event = player_proto.FundsWithdrawn()
-            event_any.Unpack(event)
-            if event.new_balance:
-                state.bankroll = event.new_balance.amount
+    @applies(player_proto.FundsWithdrawn)
+    def apply_withdrawn(self, state: _PlayerState, event: player_proto.FundsWithdrawn):
+        """Apply FundsWithdrawn event to state."""
+        if event.new_balance:
+            state.bankroll = event.new_balance.amount
 
-        elif type_url.endswith("FundsReserved"):
-            event = player_proto.FundsReserved()
-            event_any.Unpack(event)
-            if event.new_reserved_balance:
-                state.reserved_funds = event.new_reserved_balance.amount
-            table_key = event.table_root.hex()
-            if event.amount:
-                state.table_reservations[table_key] = event.amount.amount
+    @applies(player_proto.FundsReserved)
+    def apply_reserved(self, state: _PlayerState, event: player_proto.FundsReserved):
+        """Apply FundsReserved event to state."""
+        if event.new_reserved_balance:
+            state.reserved_funds = event.new_reserved_balance.amount
+        table_key = event.table_root.hex()
+        if event.amount:
+            state.table_reservations[table_key] = event.amount.amount
 
-        elif type_url.endswith("FundsReleased"):
-            event = player_proto.FundsReleased()
-            event_any.Unpack(event)
-            if event.new_reserved_balance:
-                state.reserved_funds = event.new_reserved_balance.amount
-            table_key = event.table_root.hex()
-            state.table_reservations.pop(table_key, None)
+    @applies(player_proto.FundsReleased)
+    def apply_released(self, state: _PlayerState, event: player_proto.FundsReleased):
+        """Apply FundsReleased event to state."""
+        if event.new_reserved_balance:
+            state.reserved_funds = event.new_reserved_balance.amount
+        table_key = event.table_root.hex()
+        state.table_reservations.pop(table_key, None)
 
-        elif type_url.endswith("FundsTransferred"):
-            event = player_proto.FundsTransferred()
-            event_any.Unpack(event)
-            if event.new_balance:
-                state.bankroll = event.new_balance.amount
+    @applies(player_proto.FundsTransferred)
+    def apply_transferred(self, state: _PlayerState, event: player_proto.FundsTransferred):
+        """Apply FundsTransferred event to state."""
+        if event.new_balance:
+            state.bankroll = event.new_balance.amount
 
     # --- State accessors ---
 

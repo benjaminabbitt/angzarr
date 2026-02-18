@@ -56,6 +56,7 @@ pub fn make_event_page(seq: u32) -> EventPage {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     }
 }
 
@@ -68,6 +69,7 @@ pub fn make_event_page_typed(seq: u32, type_url: &str) -> EventPage {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     }
 }
 
@@ -112,6 +114,7 @@ pub fn make_command_book_with_sequence(domain: &str, root: Uuid, sequence: u32) 
                 value: vec![],
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -137,6 +140,7 @@ pub fn make_command_book_correlated(with_correlation: bool) -> CommandBook {
                 value: vec![],
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }

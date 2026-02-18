@@ -1,0 +1,271 @@
+---
+sidebar_position: 4
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Process Managers
+
+A **process manager** coordinates multi-domain workflows with state tracking. Unlike stateless sagas, process managers maintain their own event stream keyed by correlation ID, enabling complex orchestration patterns.
+
+---
+
+## When to Use Process Managers
+
+| Use Case | Saga | Process Manager |
+|----------|------|-----------------|
+| Single event → single command | ✓ | |
+| Fan-out to multiple domains | ✓ | |
+| Multi-step workflow with state | | ✓ |
+| Events from multiple domains | | ✓ |
+| State machine transitions | | ✓ |
+| Timeouts and retries | | ✓ |
+
+---
+
+## Example: Hand Flow PM
+
+The HandFlowPM orchestrates poker hand phases across table and hand domains:
+
+```
+Table                    HandFlowPM                   Hand
+  │                          │                          │
+  │── HandStarted ─────────► │                          │
+  │                          │── DealCards ───────────► │
+  │                          │ ◄───── CardsDealt ────── │
+  │                          │                          │
+  │                          │── [Phase transitions] ─► │
+  │                          │                          │
+  │                          │ ◄───── HandComplete ──── │
+  │ ◄──── EndHand ────────── │                          │
+```
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import ProcessManager
+from dataclasses import dataclass
+from enum import Enum
+
+class HandPhase(Enum):
+    AWAITING_DEAL = "awaiting_deal"
+    DEALING = "dealing"
+    BLINDS = "blinds"
+    BETTING = "betting"
+    COMPLETE = "complete"
+
+@dataclass
+class HandFlowState:
+    hand_id: str = ""
+    phase: HandPhase = HandPhase.AWAITING_DEAL
+    player_count: int = 0
+
+class HandFlowPM(ProcessManager):
+    def handle_hand_started(self, event: HandStarted, state: HandFlowState):
+        # Transition: AWAITING_DEAL → DEALING
+        state.hand_id = event.hand_id
+        state.phase = HandPhase.DEALING
+        state.player_count = event.player_count
+
+        # Emit command to hand domain
+        return [DealCards(
+            hand_id=event.hand_id,
+            player_count=event.player_count,
+        )]
+
+    def handle_cards_dealt(self, event: CardsDealt, state: HandFlowState):
+        # Transition: DEALING → BLINDS
+        state.phase = HandPhase.BLINDS
+        return [PostBlinds(hand_id=state.hand_id)]
+
+    def handle_hand_complete(self, event: HandComplete, state: HandFlowState):
+        # Transition: * → COMPLETE
+        state.phase = HandPhase.COMPLETE
+
+        # Signal table domain
+        return [EndHand(
+            hand_id=state.hand_id,
+            winner_id=event.winner_id,
+        )]
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+#[derive(Default)]
+pub struct HandFlowState {
+    hand_id: String,
+    phase: HandPhase,
+    player_count: u32,
+}
+
+#[derive(Default, PartialEq)]
+pub enum HandPhase {
+    #[default]
+    AwaitingDeal,
+    Dealing,
+    Blinds,
+    Betting,
+    Complete,
+}
+
+impl HandFlowPM {
+    pub fn handle_hand_started(
+        &self,
+        event: &HandStarted,
+        state: &mut HandFlowState,
+    ) -> Vec<CommandBook> {
+        state.hand_id = event.hand_id.clone();
+        state.phase = HandPhase::Dealing;
+        state.player_count = event.player_count;
+
+        vec![build_command("hand", DealCards {
+            hand_id: event.hand_id.clone(),
+            player_count: event.player_count,
+        })]
+    }
+
+    pub fn handle_cards_dealt(
+        &self,
+        event: &CardsDealt,
+        state: &mut HandFlowState,
+    ) -> Vec<CommandBook> {
+        state.phase = HandPhase::Blinds;
+        vec![build_command("hand", PostBlinds {
+            hand_id: state.hand_id.clone(),
+        })]
+    }
+
+    pub fn handle_hand_complete(
+        &self,
+        event: &HandComplete,
+        state: &mut HandFlowState,
+    ) -> Vec<CommandBook> {
+        state.phase = HandPhase::Complete;
+        vec![build_command("table", EndHand {
+            hand_id: state.hand_id.clone(),
+            winner_id: event.winner_id.clone(),
+        })]
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Correlation ID
+
+Process managers use the **correlation ID** as their aggregate root:
+
+```protobuf
+message Cover {
+  string domain = 2;
+  UUID root = 1;
+  string correlation_id = 3;  // PM's identity
+}
+```
+
+All events in a workflow share the same correlation ID, allowing the PM to:
+- Receive events from multiple domains
+- Maintain workflow state across events
+- Track progress through the state machine
+
+---
+
+## State Persistence
+
+PM state is stored as events in the PM's own event stream:
+
+```
+PM Event Stream (correlation_id = "hand-abc-123"):
+  [0] WorkflowStarted { hand_id: "...", phase: "awaiting_deal" }
+  [1] PhaseTransitioned { from: "awaiting_deal", to: "dealing" }
+  [2] PhaseTransitioned { from: "dealing", to: "blinds" }
+  [3] WorkflowCompleted { winner_id: "..." }
+```
+
+On restart, the PM rebuilds state by replaying its own events.
+
+---
+
+## Rejection Handling
+
+When a PM-issued command is rejected, the PM receives a Notification before the source aggregate:
+
+```
+1. PM issues DealCards → Hand rejects (invalid_player_count)
+       │
+       ▼
+2. PM receives Notification first
+   - Can update workflow state (mark step failed)
+   - Can decide to retry or abort
+       │
+       ▼
+3. Source aggregate receives Notification
+   - Emits compensation events
+```
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+@rejected("hand", "DealCards")
+def handle_deal_rejected(self, state: HandFlowState, notification: Notification):
+    # Update workflow state
+    return WorkflowFailed(
+        hand_id=state.hand_id,
+        reason=f"Deal failed: {notification.rejection_reason}",
+        step="deal_cards",
+    )
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Timeouts
+
+PMs can schedule timeouts for player actions:
+
+```python
+def handle_action_required(self, event: ActionRequired, state: HandFlowState):
+    # Schedule timeout
+    return [ScheduleTimeout(
+        correlation_id=state.correlation_id,
+        seconds=30,
+        timeout_event=PlayerTimedOut(player_id=event.player_id),
+    )]
+
+def handle_player_timed_out(self, event: PlayerTimedOut, state: HandFlowState):
+    # Auto-fold on timeout
+    return [Fold(hand_id=state.hand_id, player_id=event.player_id)]
+```
+
+---
+
+## PM vs Saga
+
+| Aspect | Saga | Process Manager |
+|--------|------|-----------------|
+| **State** | Stateless | Stateful (own event stream) |
+| **Identity** | None | correlation_id |
+| **Input domains** | Single | Multiple |
+| **Persistence** | No | Yes (workflow events) |
+| **Timeouts** | No | Yes |
+| **Complexity** | Low | Higher |
+
+**Rule of thumb**: Start with sagas. Upgrade to PM when you need state tracking or multi-domain input.
+
+---
+
+## Next Steps
+
+- **[Sagas](/components/saga)** — Simpler stateless coordination
+- **[Why Poker](/examples/why-poker#5-process-manager-orchestration)** — PM patterns in poker
+- **[Testing](/operations/testing)** — Testing PMs with Gherkin

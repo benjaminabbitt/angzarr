@@ -12,9 +12,10 @@ use uuid::Uuid;
 
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
+use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
 use crate::proto::{
-    event_page, Cover, Edition, EventBook, EventPage, Projection, Snapshot, SyncEventBook,
-    Uuid as ProtoUuid,
+    event_page, CommandBook, Cover, Edition, EventBook, EventPage, MergeStrategy, Projection,
+    Snapshot, SyncEventBook, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{calculate_set_next_seq, CoverExt};
 use crate::standalone::DomainStorage;
@@ -68,6 +69,9 @@ pub struct LocalAggregateContext {
     discovery: Option<Arc<dyn ServiceDiscovery>>,
     event_bus: Arc<dyn EventBus>,
     snapshot_write_enabled: bool,
+    dlq_publisher: Arc<dyn DeadLetterPublisher>,
+    /// Component name for DLQ metadata.
+    component_name: String,
 }
 
 impl LocalAggregateContext {
@@ -82,6 +86,8 @@ impl LocalAggregateContext {
             discovery: Some(discovery),
             event_bus,
             snapshot_write_enabled: true,
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
+            component_name: "aggregate".to_string(),
         }
     }
 
@@ -92,12 +98,26 @@ impl LocalAggregateContext {
             discovery: None,
             event_bus,
             snapshot_write_enabled: true,
+            dlq_publisher: Arc::new(NoopDeadLetterPublisher),
+            component_name: "aggregate".to_string(),
         }
     }
 
     /// Disable snapshot writing.
     pub fn with_snapshot_write_disabled(mut self) -> Self {
         self.snapshot_write_enabled = false;
+        self
+    }
+
+    /// Set the DLQ publisher for MERGE_MANUAL handling.
+    pub fn with_dlq_publisher(mut self, publisher: Arc<dyn DeadLetterPublisher>) -> Self {
+        self.dlq_publisher = publisher;
+        self
+    }
+
+    /// Set the component name for DLQ metadata.
+    pub fn with_component_name(mut self, name: impl Into<String>) -> Self {
+        self.component_name = name.into();
         self
     }
 
@@ -276,7 +296,7 @@ impl AggregateContext for LocalAggregateContext {
             let first_event_seq = extract_sequence(new_pages.first());
 
             if first_event_seq != next_sequence {
-                return Err(Status::aborted(format!(
+                return Err(Status::failed_precondition(format!(
                     "Sequence conflict: expected {}, got {}",
                     next_sequence, first_event_seq
                 )));
@@ -287,9 +307,12 @@ impl AggregateContext for LocalAggregateContext {
                 .add(domain, edition, root, new_pages.clone(), correlation_id)
                 .await
                 .map_err(|e| match e {
-                    StorageError::SequenceConflict { expected, actual } => Status::aborted(
-                        format!("Sequence conflict: expected {}, got {}", expected, actual),
-                    ),
+                    StorageError::SequenceConflict { expected, actual } => {
+                        Status::failed_precondition(format!(
+                            "Sequence conflict: expected {}, got {}",
+                            expected, actual
+                        ))
+                    }
                     _ => Status::internal(format!("Failed to persist events: {e}")),
                 })?;
         }
@@ -400,4 +423,30 @@ impl AggregateContext for LocalAggregateContext {
 
     // Uses default pre_validate_sequence (no-op) — load-first strategy
     // Uses default transform_events (identity) — no upcasting in local mode
+
+    async fn send_to_dlq(
+        &self,
+        command: &CommandBook,
+        expected_sequence: u32,
+        actual_sequence: u32,
+        domain: &str,
+    ) {
+        let dead_letter = AngzarrDeadLetter::from_sequence_mismatch(
+            command,
+            expected_sequence,
+            actual_sequence,
+            MergeStrategy::MergeManual,
+            &self.component_name,
+        );
+
+        if let Err(e) = self.dlq_publisher.publish(dead_letter).await {
+            tracing::error!(
+                domain = %domain,
+                expected = expected_sequence,
+                actual = actual_sequence,
+                error = %e,
+                "Failed to publish to DLQ"
+            );
+        }
+    }
 }

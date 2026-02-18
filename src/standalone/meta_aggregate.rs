@@ -81,15 +81,15 @@ impl AggregateHandler for MetaAggregateHandler {
                     .map_err(|e| Status::invalid_argument(format!("decode error: {e}")))?;
 
                 // Validate component descriptor
-                if let Some(ref descriptor) = cmd.descriptor {
-                    validation::validate_component_name(&descriptor.name)?;
-                    for input in &descriptor.inputs {
+                if let Some(ref component) = cmd.component {
+                    validation::validate_component_name(&component.name)?;
+                    for input in &component.inputs {
                         validation::validate_domain(&input.domain)?;
                     }
                 }
 
                 let event = ComponentRegistered {
-                    descriptor: cmd.descriptor,
+                    component: cmd.component,
                     pod_id: cmd.pod_id,
                     registered_at: Some(Timestamp {
                         seconds: now.as_secs() as i64,
@@ -112,6 +112,7 @@ impl AggregateHandler for MetaAggregateHandler {
                         type_url: COMPONENT_REGISTERED_TYPE_URL.to_string(),
                         value: buf,
                     }),
+                    external_payload: None,
                 })
             })
             .collect::<Result<Vec<_>, Status>>()?;
@@ -143,7 +144,7 @@ mod tests {
         };
 
         let cmd = RegisterComponent {
-            descriptor: Some(descriptor),
+            component: Some(descriptor),
             pod_id: pod_id.to_string(),
         };
 
@@ -189,7 +190,7 @@ mod tests {
         assert_eq!(event.type_url, COMPONENT_REGISTERED_TYPE_URL);
 
         let registered = ComponentRegistered::decode(&event.value[..]).unwrap();
-        assert_eq!(registered.descriptor.unwrap().name, "order");
+        assert_eq!(registered.component.unwrap().name, "order");
         assert_eq!(registered.pod_id, "pod-123");
         assert!(registered.registered_at.is_some());
     }

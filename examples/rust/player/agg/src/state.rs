@@ -1,11 +1,15 @@
 //! Player aggregate state.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use angzarr_client::proto::examples::{PlayerState as ProtoPlayerState, PlayerType};
+use angzarr_client::proto::examples::{
+    FundsDeposited, FundsReleased, FundsReserved, FundsTransferred, FundsWithdrawn,
+    PlayerRegistered, PlayerState as ProtoPlayerState, PlayerType,
+};
 use angzarr_client::proto::EventBook;
+use angzarr_client::StateRouter;
 use angzarr_client::UnpackAny;
-use prost::Message;
 
 /// Player aggregate state rebuilt from events.
 #[derive(Debug, Default, Clone)]
@@ -38,27 +42,85 @@ impl PlayerState {
     }
 }
 
+// Event applier functions for StateRouter
+
+fn apply_registered(state: &mut PlayerState, event: PlayerRegistered) {
+    state.player_id = format!("player_{}", event.email);
+    state.display_name = event.display_name;
+    state.email = event.email;
+    state.player_type = PlayerType::try_from(event.player_type).unwrap_or_default();
+    state.ai_model_id = event.ai_model_id;
+    state.status = "active".to_string();
+    state.bankroll = 0;
+    state.reserved_funds = 0;
+}
+
+fn apply_deposited(state: &mut PlayerState, event: FundsDeposited) {
+    if let Some(balance) = event.new_balance {
+        state.bankroll = balance.amount;
+    }
+}
+
+fn apply_withdrawn(state: &mut PlayerState, event: FundsWithdrawn) {
+    if let Some(balance) = event.new_balance {
+        state.bankroll = balance.amount;
+    }
+}
+
+fn apply_reserved(state: &mut PlayerState, event: FundsReserved) {
+    if let Some(balance) = event.new_reserved_balance {
+        state.reserved_funds = balance.amount;
+    }
+    if let (Some(amount), table_root) = (event.amount, event.table_root) {
+        let table_key = hex::encode(&table_root);
+        state.table_reservations.insert(table_key, amount.amount);
+    }
+}
+
+fn apply_released(state: &mut PlayerState, event: FundsReleased) {
+    if let Some(balance) = event.new_reserved_balance {
+        state.reserved_funds = balance.amount;
+    }
+    let table_key = hex::encode(&event.table_root);
+    state.table_reservations.remove(&table_key);
+}
+
+fn apply_transferred(state: &mut PlayerState, event: FundsTransferred) {
+    if let Some(balance) = event.new_balance {
+        state.bankroll = balance.amount;
+    }
+}
+
+/// StateRouter for fluent state reconstruction.
+static STATE_ROUTER: LazyLock<StateRouter<PlayerState>> = LazyLock::new(|| {
+    StateRouter::new()
+        .on::<PlayerRegistered>("PlayerRegistered", apply_registered)
+        .on::<FundsDeposited>("FundsDeposited", apply_deposited)
+        .on::<FundsWithdrawn>("FundsWithdrawn", apply_withdrawn)
+        .on::<FundsReserved>("FundsReserved", apply_reserved)
+        .on::<FundsReleased>("FundsReleased", apply_released)
+        .on::<FundsTransferred>("FundsTransferred", apply_transferred)
+});
+
 /// Rebuild player state from event history.
 pub fn rebuild_state(event_book: &EventBook) -> PlayerState {
-    let mut state = PlayerState::default();
-
     // Start from snapshot if available
     if let Some(snapshot) = &event_book.snapshot {
         if let Some(snapshot_any) = &snapshot.state {
             if let Ok(proto_state) = snapshot_any.unpack::<ProtoPlayerState>() {
-                state = apply_snapshot(&proto_state);
+                let mut state = apply_snapshot(&proto_state);
+                // Apply events since snapshot
+                for page in &event_book.pages {
+                    if let Some(event) = &page.event {
+                        STATE_ROUTER.apply_single(&mut state, event);
+                    }
+                }
+                return state;
             }
         }
     }
 
-    // Apply events since snapshot
-    for page in &event_book.pages {
-        if let Some(event) = &page.event {
-            apply_event(&mut state, event);
-        }
-    }
-
-    state
+    STATE_ROUTER.with_event_book(event_book)
 }
 
 fn apply_snapshot(snapshot: &ProtoPlayerState) -> PlayerState {
@@ -79,60 +141,5 @@ fn apply_snapshot(snapshot: &ProtoPlayerState) -> PlayerState {
         reserved_funds,
         table_reservations: snapshot.table_reservations.clone(),
         status: snapshot.status.clone(),
-    }
-}
-
-fn apply_event(state: &mut PlayerState, event_any: &prost_types::Any) {
-    use angzarr_client::proto::examples::*;
-
-    let type_url = &event_any.type_url;
-
-    if type_url.ends_with("PlayerRegistered") {
-        if let Ok(event) = PlayerRegistered::decode(event_any.value.as_slice()) {
-            state.player_id = format!("player_{}", event.email);
-            state.display_name = event.display_name;
-            state.email = event.email;
-            state.player_type = PlayerType::try_from(event.player_type).unwrap_or_default();
-            state.ai_model_id = event.ai_model_id;
-            state.status = "active".to_string();
-            state.bankroll = 0;
-            state.reserved_funds = 0;
-        }
-    } else if type_url.ends_with("FundsDeposited") {
-        if let Ok(event) = FundsDeposited::decode(event_any.value.as_slice()) {
-            if let Some(balance) = event.new_balance {
-                state.bankroll = balance.amount;
-            }
-        }
-    } else if type_url.ends_with("FundsWithdrawn") {
-        if let Ok(event) = FundsWithdrawn::decode(event_any.value.as_slice()) {
-            if let Some(balance) = event.new_balance {
-                state.bankroll = balance.amount;
-            }
-        }
-    } else if type_url.ends_with("FundsReserved") {
-        if let Ok(event) = FundsReserved::decode(event_any.value.as_slice()) {
-            if let Some(balance) = event.new_reserved_balance {
-                state.reserved_funds = balance.amount;
-            }
-            if let (Some(amount), table_root) = (event.amount, event.table_root) {
-                let table_key = hex::encode(&table_root);
-                state.table_reservations.insert(table_key, amount.amount);
-            }
-        }
-    } else if type_url.ends_with("FundsReleased") {
-        if let Ok(event) = FundsReleased::decode(event_any.value.as_slice()) {
-            if let Some(balance) = event.new_reserved_balance {
-                state.reserved_funds = balance.amount;
-            }
-            let table_key = hex::encode(&event.table_root);
-            state.table_reservations.remove(&table_key);
-        }
-    } else if type_url.ends_with("FundsTransferred") {
-        if let Ok(event) = FundsTransferred::decode(event_any.value.as_slice()) {
-            if let Some(balance) = event.new_balance {
-                state.bankroll = balance.amount;
-            }
-        }
     }
 }

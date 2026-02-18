@@ -192,13 +192,7 @@ async fn handle_command_rejection(
                 error = %e,
                 "Failed to build notification, emitting fallback event"
             );
-            emit_fallback_event(
-                &context,
-                "Failed to build notification",
-                publisher,
-                config,
-            )
-            .await;
+            emit_fallback_event(&context, "Failed to build notification", publisher, config).await;
             return;
         }
     };

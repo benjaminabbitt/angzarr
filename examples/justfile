@@ -3,10 +3,15 @@
 # Multi-language examples demonstrating full CQRS/ES architecture.
 #
 # Usage:
-#   just examples python test       # Test Python examples
-#   just examples go test           # Test Go examples
-#   just examples rust test         # Test Rust examples
-#   just examples test-all          # Test all languages
+#   just examples python test        # Test Python examples
+#   just examples go test            # Test Go examples
+#   just examples rust test          # Test Rust examples
+#   just examples cpp test           # Test C++ examples
+#   just examples csharp test        # Test C# examples
+#   just examples java test          # Test Java examples
+#   just examples test               # Test all languages
+#   just examples test-unit          # Unit tests for all languages
+#   just examples test-acceptance    # Acceptance tests for all languages
 
 set shell := ["bash", "-c"]
 
@@ -16,18 +21,53 @@ TOP := `git rev-parse --show-toplevel`
 mod python "python/justfile"
 mod rust "rust/justfile"
 mod go "go/justfile"
+mod cpp "cpp/justfile"
+mod csharp "csharp/justfile"
+mod java "java/justfile"
 
 # Show available commands
 default:
     @just --list
 
-# Run tests for all example languages
-test-all:
-    @echo "=== Testing Python examples ==="
-    just python test || true
+# Run unit tests for all languages
+test-unit:
+    @echo "=== Unit Testing Python ==="
+    just python test-unit || true
     @echo ""
-    @echo "=== Testing Go examples ==="
-    just go test || true
+    @echo "=== Unit Testing Go ==="
+    just go test-unit || true
     @echo ""
-    @echo "=== Testing Rust examples ==="
-    just rust test || true
+    @echo "=== Unit Testing Rust ==="
+    just rust test-unit || true
+    @echo ""
+    @echo "=== Unit Testing C++ ==="
+    just cpp test-unit || true
+    @echo ""
+    @echo "=== Unit Testing C# ==="
+    just csharp test-unit || true
+    @echo ""
+    @echo "=== Unit Testing Java ==="
+    just java test-unit || true
+
+# Run acceptance tests for all languages
+test-acceptance:
+    @echo "=== Acceptance Testing Python ==="
+    just python test-acceptance || true
+    @echo ""
+    @echo "=== Acceptance Testing Go ==="
+    just go test-acceptance || true
+    @echo ""
+    @echo "=== Acceptance Testing Rust ==="
+    just rust test-acceptance || true
+    @echo ""
+    @echo "=== Acceptance Testing C++ ==="
+    just cpp test-acceptance || true
+    @echo ""
+    @echo "=== Acceptance Testing C# ==="
+    just csharp test-acceptance || true
+    @echo ""
+    @echo "=== Acceptance Testing Java ==="
+    just java test-acceptance || true
+
+# Run all tests for all languages
+test: test-unit test-acceptance

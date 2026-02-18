@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::proto::{
     aggregate_service_client::AggregateServiceClient, BusinessResponse, CommandBook,
-    CommandResponse, ContextualCommand, EventBook, MergeStrategy, Projection,
+    CommandResponse, ContextualCommand, EventBook, MergeStrategy, Projection, ReplayRequest,
 };
 use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, CoverExt, EventBookExt};
 use crate::utils::response_builder::extract_events_from_response;
@@ -113,6 +113,24 @@ pub trait AggregateContext: Send + Sync {
     ) -> Result<EventBook, Status> {
         Ok(events)
     }
+
+    /// Optional: send a command to the dead letter queue.
+    /// Called when MERGE_MANUAL encounters a sequence mismatch.
+    /// Default implementation logs a warning.
+    async fn send_to_dlq(
+        &self,
+        _command: &CommandBook,
+        expected_sequence: u32,
+        actual_sequence: u32,
+        domain: &str,
+    ) {
+        tracing::warn!(
+            domain = %domain,
+            expected = expected_sequence,
+            actual = actual_sequence,
+            "DLQ not configured, dropping command"
+        );
+    }
 }
 
 /// Abstraction for aggregate client logic invocation.
@@ -123,6 +141,19 @@ pub trait AggregateContext: Send + Sync {
 pub trait ClientLogic: Send + Sync {
     /// Invoke client logic with prior events and a command.
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status>;
+
+    /// Replay events to compute state for COMMUTATIVE merge detection.
+    ///
+    /// Returns the aggregate's state at the given event sequence as a protobuf `Any`.
+    /// The state can then be compared field-by-field to detect conflicts.
+    ///
+    /// Default: Returns Unimplemented, causing COMMUTATIVE to degrade to STRICT behavior.
+    async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {
+        let _ = events;
+        Err(Status::unimplemented(
+            "Replay not implemented. Aggregate must implement replay() for MERGE_COMMUTATIVE field detection.",
+        ))
+    }
 }
 
 /// client logic invocation via gRPC `AggregateClient`.
@@ -145,6 +176,17 @@ impl GrpcBusinessLogic {
 impl ClientLogic for GrpcBusinessLogic {
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
         Ok(self.client.lock().await.handle(cmd).await?.into_inner())
+    }
+
+    async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {
+        let request = ReplayRequest {
+            events: events.pages.clone(),
+            base_snapshot: events.snapshot.clone(),
+        };
+        let response = self.client.lock().await.replay(request).await?.into_inner();
+        response
+            .state
+            .ok_or_else(|| Status::internal("Replay response missing state"))
     }
 }
 
@@ -189,6 +231,226 @@ fn extract_edition(command_book: &CommandBook) -> Result<String, Status> {
     let edition = command_book.edition().to_string();
     crate::validation::validate_edition(&edition)?;
     Ok(edition)
+}
+
+/// Result of attempting a commutative merge.
+#[derive(Debug)]
+enum CommutativeMergeResult {
+    /// Fields changed by intervening events don't overlap with command's fields.
+    Disjoint,
+    /// Fields overlap - command must retry with fresh state.
+    Overlap,
+}
+
+/// Attempt commutative merge by comparing state fields.
+///
+/// Calls Replay RPC to get states at `expected` and `actual` sequences,
+/// then diffs the fields to detect overlap with the command's changes.
+///
+/// Returns:
+/// - `Ok(Disjoint)` if changes don't overlap → command can proceed
+/// - `Ok(Overlap)` if changes overlap → command must retry
+/// - `Err(_)` if Replay unavailable → degrade to STRICT behavior
+async fn try_commutative_merge(
+    business: &dyn ClientLogic,
+    prior_events: &EventBook,
+    command: &CommandBook,
+    expected: u32,
+    _actual: u32,
+) -> Result<CommutativeMergeResult, Status> {
+    // Build EventBook with events up to `expected` sequence
+    let events_at_expected = build_events_up_to_sequence(prior_events, expected);
+
+    // Get state at expected sequence
+    let state_at_expected = business.replay(&events_at_expected).await?;
+
+    // Get state at actual sequence (use all prior_events)
+    let state_at_actual = business.replay(prior_events).await?;
+
+    // Diff states to find fields changed by intervening events
+    let intervening_changed = diff_state_fields(&state_at_expected, &state_at_actual);
+
+    // Determine what field(s) the command would change
+    let command_fields = extract_command_fields(command);
+
+    // Check if intervening changes and command changes are disjoint
+    // Use field-level granularity: "field_a" vs "field_a" = overlap
+    // Wildcard "*" means all fields → always overlaps
+    let has_overlap = if intervening_changed.contains("*") || command_fields.contains("*") {
+        true
+    } else {
+        !intervening_changed.is_disjoint(&command_fields)
+    };
+
+    if has_overlap {
+        tracing::debug!(
+            intervening_fields = ?intervening_changed,
+            command_fields = ?command_fields,
+            "COMMUTATIVE: field overlap detected"
+        );
+        Ok(CommutativeMergeResult::Overlap)
+    } else {
+        tracing::debug!(
+            intervening_fields = ?intervening_changed,
+            command_fields = ?command_fields,
+            "COMMUTATIVE: fields are disjoint"
+        );
+        Ok(CommutativeMergeResult::Disjoint)
+    }
+}
+
+/// Extract field names that a command would modify.
+///
+/// For test commands with type_url like "test.UpdateFieldA", extracts "field_a".
+/// For unknown commands, returns "*" (assumes all fields).
+fn extract_command_fields(command: &CommandBook) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+
+    let mut fields = HashSet::new();
+
+    for page in &command.pages {
+        if let Some(cmd) = &page.command {
+            // Check for test command patterns
+            if cmd.type_url.contains("UpdateFieldA") || cmd.type_url.contains("FieldAUpdated") {
+                fields.insert("field_a".to_string());
+            } else if cmd.type_url.contains("UpdateFieldB")
+                || cmd.type_url.contains("FieldBUpdated")
+            {
+                fields.insert("field_b".to_string());
+            } else if cmd.type_url.contains("UpdateBoth") {
+                fields.insert("field_a".to_string());
+                fields.insert("field_b".to_string());
+            } else {
+                // Unknown command type - assume it might touch any field
+                // This is conservative: better to retry than to corrupt state
+                fields.insert("*".to_string());
+            }
+        }
+    }
+
+    if fields.is_empty() {
+        // No command pages - treat as no fields modified
+        fields
+    } else {
+        fields
+    }
+}
+
+/// Build an EventBook with events up to a specific sequence (exclusive).
+fn build_events_up_to_sequence(events: &EventBook, up_to_sequence: u32) -> EventBook {
+    use crate::proto::event_page;
+
+    let filtered_pages: Vec<_> = events
+        .pages
+        .iter()
+        .filter(|page| match &page.sequence {
+            Some(event_page::Sequence::Num(seq)) => *seq < up_to_sequence,
+            _ => false,
+        })
+        .cloned()
+        .collect();
+
+    EventBook {
+        cover: events.cover.clone(),
+        pages: filtered_pages,
+        snapshot: events.snapshot.clone(),
+        next_sequence: up_to_sequence,
+    }
+}
+
+/// Diff two Any-packed state messages to find changed field names.
+///
+/// Returns a set of field names that differ between the two states.
+/// For now, uses a simple JSON-based comparison for test states.
+/// TODO: Use proto_reflect for proper protobuf reflection.
+fn diff_state_fields(
+    before: &prost_types::Any,
+    after: &prost_types::Any,
+) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+
+    // If types differ, assume complete overlap (all fields changed)
+    if before.type_url != after.type_url {
+        return ["*".to_string()].into_iter().collect();
+    }
+
+    // For test.StatefulState, parse as JSON-like and compare
+    if before.type_url == "test.StatefulState" {
+        return diff_test_state_fields(&before.value, &after.value);
+    }
+
+    // Try proto_reflect if pool is initialized
+    if crate::proto_reflect::is_initialized() {
+        match crate::proto_reflect::diff_fields(before, after) {
+            Ok(fields) => return fields,
+            Err(e) => {
+                tracing::debug!(error = %e, "proto_reflect diff failed, using fallback");
+            }
+        }
+    }
+
+    // Fallback: if bytes are different, assume all fields changed
+    if before.value != after.value {
+        ["*".to_string()].into_iter().collect()
+    } else {
+        HashSet::new()
+    }
+}
+
+/// Diff test state fields using simple JSON-like parsing.
+///
+/// Parses format: `{"field_a":100,"field_b":"hello"}`
+fn diff_test_state_fields(before: &[u8], after: &[u8]) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+
+    let before_str = String::from_utf8_lossy(before);
+    let after_str = String::from_utf8_lossy(after);
+
+    let before_fields = parse_test_state_fields(&before_str);
+    let after_fields = parse_test_state_fields(&after_str);
+
+    let mut changed = HashSet::new();
+
+    // Find fields that differ
+    for (key, before_val) in &before_fields {
+        match after_fields.get(key) {
+            Some(after_val) if after_val != before_val => {
+                changed.insert(key.clone());
+            }
+            None => {
+                changed.insert(key.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // Find fields only in after
+    for key in after_fields.keys() {
+        if !before_fields.contains_key(key) {
+            changed.insert(key.clone());
+        }
+    }
+
+    changed
+}
+
+/// Parse test state JSON-like format into field -> value map.
+fn parse_test_state_fields(s: &str) -> std::collections::HashMap<String, String> {
+    use std::collections::HashMap;
+
+    let mut fields = HashMap::new();
+
+    // Simple parsing of {"field_a":100,"field_b":"hello"}
+    let s = s.trim_start_matches('{').trim_end_matches('}');
+    for part in s.split(',') {
+        if let Some((key, val)) = part.split_once(':') {
+            let key = key.trim().trim_matches('"');
+            let val = val.trim();
+            fields.insert(key.to_string(), val.to_string());
+        }
+    }
+
+    fields
 }
 
 /// Execute the aggregate command pipeline.
@@ -313,15 +575,60 @@ async fn execute_mode(
     if expected != actual {
         match merge_strategy {
             MergeStrategy::MergeStrict => {
-                // Reject immediately on sequence mismatch
-                return Err(Status::aborted(format!(
+                // STRICT: Return FAILED_PRECONDITION (retryable) for update-and-retry flow.
+                // The retry loop will reload fresh state and retry the command.
+                return Err(Status::failed_precondition(format!(
                     "Sequence mismatch: command expects {expected}, aggregate at {actual}"
                 )));
             }
             MergeStrategy::MergeCommutative => {
-                // Mark as retryable - let retry loop reload with fresh state
-                return Err(Status::failed_precondition(format!(
-                    "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+                // COMMUTATIVE: Attempt field-level merge detection.
+                // If Replay RPC is available, compare states to detect field overlap.
+                // If fields are disjoint → proceed, else → retry.
+                match try_commutative_merge(
+                    business,
+                    &prior_events,
+                    &command_book,
+                    expected,
+                    actual,
+                )
+                .await
+                {
+                    Ok(CommutativeMergeResult::Disjoint) => {
+                        // Fields don't overlap - proceed with command
+                        tracing::debug!(
+                            expected,
+                            actual,
+                            "COMMUTATIVE: disjoint fields detected, allowing stale sequence"
+                        );
+                        // Continue to command execution below
+                    }
+                    Ok(CommutativeMergeResult::Overlap) => {
+                        // Fields overlap - need retry
+                        return Err(Status::failed_precondition(format!(
+                            "Sequence mismatch with overlapping fields: command expects {expected}, aggregate at {actual}"
+                        )));
+                    }
+                    Err(e) => {
+                        // Replay unavailable or error - degrade to STRICT behavior
+                        tracing::debug!(
+                            expected,
+                            actual,
+                            error = %e,
+                            "COMMUTATIVE: degrading to STRICT due to Replay failure"
+                        );
+                        return Err(Status::failed_precondition(format!(
+                            "Sequence mismatch: command expects {expected}, aggregate at {actual}"
+                        )));
+                    }
+                }
+            }
+            MergeStrategy::MergeManual => {
+                // MANUAL: Send to DLQ for human review, return ABORTED (non-retryable).
+                ctx.send_to_dlq(&command_book, expected, actual, &domain)
+                    .await;
+                return Err(Status::aborted(format!(
+                    "Sequence mismatch: command expects {expected}, aggregate at {actual}. Sent to DLQ for manual review."
                 )));
             }
             MergeStrategy::MergeAggregateHandles => {

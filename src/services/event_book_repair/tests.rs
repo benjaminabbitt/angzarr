@@ -145,6 +145,7 @@ mod grpc_integration {
                 type_url: format!("type.googleapis.com/{}", event_type),
                 value: vec![1, 2, 3, sequence as u8],
             }),
+            external_payload: None,
         }
     }
 

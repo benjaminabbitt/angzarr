@@ -358,6 +358,14 @@ impl RuntimeBuilder {
     pub async fn build(mut self) -> Result<Runtime, Box<dyn std::error::Error>> {
         use tracing::warn;
 
+        // Initialize proto reflection for COMMUTATIVE merge field detection
+        if let Err(e) = crate::proto_reflect::init_from_embedded() {
+            // Already initialized is OK (e.g., multiple runtimes in tests)
+            if !matches!(e, crate::proto_reflect::ReflectError::AlreadyInitialized) {
+                warn!(error = %e, "Failed to initialize proto reflection - COMMUTATIVE merge will degrade to STRICT");
+            }
+        }
+
         // Check for problematic snapshot configuration
         if !self.storage.snapshots_enable.write {
             warn!(

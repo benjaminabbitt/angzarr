@@ -1,0 +1,35 @@
+# C++ poker examples - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+BUILD_DIR := "/workspace/examples/cpp/build"
+
+default:
+    @just --list
+
+configure:
+    cmake -B {{BUILD_DIR}} -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+configure-dev:
+    cmake -B {{BUILD_DIR}} -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+build: configure
+    cmake --build {{BUILD_DIR}} --parallel
+
+build-dev: configure-dev
+    cmake --build {{BUILD_DIR}} --parallel
+
+test-unit: build
+    cd {{BUILD_DIR}} && ctest --output-on-failure -L unit
+
+test-acceptance: build
+    cd {{BUILD_DIR}} && ctest --output-on-failure -L acceptance
+
+test: test-unit test-acceptance
+
+fmt:
+    find . \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) -not -path '*/build/*' -exec clang-format -i {} +
+
+lint:
+    find . \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' \) -not -path '*/build/*' -exec clang-tidy {} -- -I{{BUILD_DIR}}/generated +

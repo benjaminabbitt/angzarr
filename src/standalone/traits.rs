@@ -50,6 +50,37 @@ pub trait AggregateHandler: Send + Sync + 'static {
     /// Handle a contextual command and return new events.
     async fn handle(&self, command: ContextualCommand) -> Result<EventBook, Status>;
 
+    /// Replay events to compute state for COMMUTATIVE merge detection.
+    ///
+    /// Called by the coordinator when COMMUTATIVE strategy encounters a sequence
+    /// mismatch. The coordinator compares states at different sequences to detect
+    /// whether changes overlap (conflict) or are disjoint (commutative).
+    ///
+    /// Return the aggregate's internal state packed as a protobuf `Any` message.
+    /// The state message should have fields that can be diffed for overlap detection.
+    ///
+    /// Default: Returns Unimplemented, causing COMMUTATIVE to degrade to STRICT behavior.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// async fn replay(&self, events: &EventBook) -> Result<prost_types::Any, Status> {
+    ///     let state = rebuild_state_from_events(events);
+    ///     let proto_state = state.to_proto();
+    ///     let mut buf = Vec::new();
+    ///     proto_state.encode(&mut buf).unwrap();
+    ///     Ok(prost_types::Any {
+    ///         type_url: "type.googleapis.com/examples.MyState".to_string(),
+    ///         value: buf,
+    ///     })
+    /// }
+    /// ```
+    async fn replay(&self, _events: &EventBook) -> Result<prost_types::Any, Status> {
+        Err(Status::unimplemented(
+            "Replay not implemented. Override replay() to enable MERGE_COMMUTATIVE field detection.",
+        ))
+    }
+
     /// Handle a rejection notification.
     ///
     /// Called when a saga/PM command is rejected and compensation is needed.
@@ -92,10 +123,7 @@ pub trait AggregateHandler: Send + Sync + 'static {
             result: Some(crate::proto::business_response::Result::Revocation(
                 RevocationResponse {
                     emit_system_revocation: true,
-                    reason: format!(
-                        "Aggregate has no custom compensation for {}",
-                        issuer_name
-                    ),
+                    reason: format!("Aggregate has no custom compensation for {}", issuer_name),
                     ..Default::default()
                 },
             )),

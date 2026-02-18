@@ -1,54 +1,90 @@
 # Rust poker examples
+#
+# Container Overlay Pattern:
+# --------------------------
+# This justfile uses an overlay pattern for container execution:
+#
+# 1. `justfile` (this file) - runs on the host, delegates to container
+# 2. `justfile.container` - mounted over this file inside the container
+#
+# When running outside a devcontainer:
+#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Podman mounts justfile.container as /workspace/examples/rust/justfile
+#
+# When running inside a devcontainer (DEVCONTAINER=true):
+#   - Commands execute directly via `just <target>`
+#   - No container nesting
 
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
+IMAGE := "angzarr-examples-rust-dev"
+
+# Build the devcontainer image
+[private]
+_build-image:
+    podman build -t {{IMAGE}} -f "{{TOP}}/examples/rust/.devcontainer/Containerfile" "{{TOP}}/examples/rust/.devcontainer"
+
+# Run just target in container (or directly if already in devcontainer)
+[private]
+_container +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        podman run --rm \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/examples/rust/justfile.container:/workspace/examples/rust/justfile:ro" \
+            -w /workspace/examples/rust \
+            -e CARGO_HOME=/workspace/.cargo-container \
+            {{IMAGE}} just {{ARGS}}
+    fi
 
 # Default: list available commands
+[no-exit-message]
 default:
     @just --list
 
 # Build all poker aggregates (release)
 build:
-    cargo build --release
+    just _container build
 
 # Build all poker aggregates (debug)
 build-dev:
-    cargo build
+    just _container build-dev
 
-# Run poker in standalone mode (player:50001, table:50002, hand:50003)
-run: build
-    mkdir -p "{{TOP}}/examples/rust/data"
-    cd "{{TOP}}" && cargo run \
-        --bin angzarr-standalone \
-        --features standalone,sqlite \
-        -- --config examples/rust/standalone.yaml
+# Run unit tests
+test-unit:
+    just _container test-unit
 
-# Run poker in standalone mode (debug build)
-run-dev: build-dev
-    mkdir -p "{{TOP}}/examples/rust/data"
-    cargo run --manifest-path "{{TOP}}/Cargo.toml" \
-        --bin angzarr-standalone \
-        --features standalone,sqlite \
-        -- --config "{{TOP}}/examples/rust/standalone.yaml"
+# Run acceptance/BDD tests
+test-acceptance:
+    just _container test-acceptance
 
-# Run tests
+# Run all tests (unit + acceptance)
 test:
-    cargo test
+    just _container test
 
 # Check code compiles
 check:
-    cargo check
+    just _container check
 
 # Format code
 fmt:
-    cargo fmt
+    just _container fmt
 
 # Lint code
 lint:
-    cargo clippy -- -D warnings
+    just _container lint
 
 # Clean build artifacts
 clean:
-    cargo clean
-    rm -rf data/
+    just _container clean
+
+# Run poker in standalone mode (player:50001, table:50002, hand:50003)
+run:
+    just _container run
+
+# Run poker in standalone mode (debug build)
+run-dev:
+    just _container run-dev

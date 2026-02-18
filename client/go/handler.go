@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // CommandRejectedError indicates a command was rejected due to business rule violation.
@@ -25,6 +26,10 @@ func NewCommandRejectedError(msg string) error {
 	return CommandRejectedError{Message: msg}
 }
 
+// StatePacker converts aggregate state to protobuf Any for Replay RPC.
+// Used by MERGE_COMMUTATIVE strategy for conflict detection.
+type StatePacker[S any] func(state S) (*anypb.Any, error)
+
 // AggregateHandler wraps a CommandRouter for the gRPC Aggregate service.
 //
 // Maps domain errors to gRPC status codes:
@@ -32,12 +37,32 @@ func NewCommandRejectedError(msg string) error {
 //   - Other errors -> INVALID_ARGUMENT
 type AggregateHandler[S any] struct {
 	pb.UnimplementedAggregateServiceServer
-	router *CommandRouter[S]
+	router      *CommandRouter[S]
+	statePacker StatePacker[S]
 }
 
 // NewAggregateHandler creates a new aggregate handler with the given router.
 func NewAggregateHandler[S any](router *CommandRouter[S]) *AggregateHandler[S] {
 	return &AggregateHandler[S]{router: router}
+}
+
+// WithReplay enables Replay RPC support by providing a state packer.
+//
+// The state packer converts the aggregate's internal state to a protobuf Any
+// message. This is required for MERGE_COMMUTATIVE strategy, which uses Replay
+// to compute state diffs for conflict detection.
+//
+// Example:
+//
+//	func packPlayerState(state PlayerState) (*anypb.Any, error) {
+//	    protoState := state.ToProto()
+//	    return anypb.New(protoState)
+//	}
+//
+//	handler := NewAggregateHandler(router).WithReplay(packPlayerState)
+func (h *AggregateHandler[S]) WithReplay(packer StatePacker[S]) *AggregateHandler[S] {
+	h.statePacker = packer
+	return h
 }
 
 // GetDescriptor returns the component descriptor for service discovery.
@@ -65,6 +90,34 @@ func (h *AggregateHandler[S]) dispatch(req *pb.ContextualCommand) (*pb.BusinessR
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return resp, nil
+}
+
+// Replay computes state from events for MERGE_COMMUTATIVE conflict detection.
+//
+// Only available if WithReplay was called with a state packer.
+// Returns UNIMPLEMENTED if no state packer is configured.
+func (h *AggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayRequest) (*pb.ReplayResponse, error) {
+	if h.statePacker == nil {
+		return nil, status.Error(codes.Unimplemented,
+			"Replay not implemented. Call WithReplay() to enable for MERGE_COMMUTATIVE strategy.")
+	}
+
+	// Build EventBook from ReplayRequest
+	eventBook := &pb.EventBook{
+		Pages:    req.Events,
+		Snapshot: req.BaseSnapshot,
+	}
+
+	// Rebuild state using the router's state rebuilder
+	state := h.router.RebuildState(eventBook)
+
+	// Pack state to Any
+	stateAny, err := h.statePacker(state)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &pb.ReplayResponse{State: stateAny}, nil
 }
 
 // Descriptor returns the router's component descriptor.

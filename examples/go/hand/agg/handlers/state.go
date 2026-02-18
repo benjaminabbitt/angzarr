@@ -3,12 +3,10 @@ package handlers
 
 import (
 	"encoding/hex"
-	"strings"
 
+	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // HandState represents the current state of a hand aggregate.
@@ -115,12 +113,160 @@ func (s HandState) TotalPot() int64 {
 	return total
 }
 
+// Event applier functions for StateRouter
+
+func applyCardsDealt(state *HandState, event *examples.CardsDealt) {
+	state.HandID = hex.EncodeToString(state.TableRoot) + "_" + string(rune(event.HandNumber))
+	state.TableRoot = event.TableRoot
+	state.HandNumber = event.HandNumber
+	state.GameVariant = event.GameVariant
+	state.DealerPosition = event.DealerPosition
+	state.RemainingDeck = event.RemainingDeck
+	state.CurrentPhase = examples.BettingPhase_PREFLOP
+	state.Status = "betting"
+
+	// Initialize players
+	for _, p := range event.Players {
+		key := hex.EncodeToString(p.PlayerRoot)
+		state.Players[key] = &PlayerHandState{
+			PlayerRoot: p.PlayerRoot,
+			Position:   p.Position,
+			Stack:      p.Stack,
+		}
+	}
+
+	// Apply hole cards
+	for _, pc := range event.PlayerCards {
+		key := hex.EncodeToString(pc.PlayerRoot)
+		if player := state.Players[key]; player != nil {
+			player.HoleCards = pc.Cards
+		}
+	}
+}
+
+func applyBlindPosted(state *HandState, event *examples.BlindPosted) {
+	key := hex.EncodeToString(event.PlayerRoot)
+	if player := state.Players[key]; player != nil {
+		player.Stack = event.PlayerStack
+		player.BetThisRound += event.Amount
+		player.TotalInvested += event.Amount
+	}
+	state.Pots[0].Amount = event.PotTotal
+	if event.Amount > state.CurrentBet {
+		state.CurrentBet = event.Amount
+	}
+}
+
+func applyActionTaken(state *HandState, event *examples.ActionTaken) {
+	key := hex.EncodeToString(event.PlayerRoot)
+	if player := state.Players[key]; player != nil {
+		player.Stack = event.PlayerStack
+		player.HasActed = true
+
+		switch event.Action {
+		case examples.ActionType_FOLD:
+			player.HasFolded = true
+		case examples.ActionType_ALL_IN:
+			player.IsAllIn = true
+			player.BetThisRound += event.Amount
+			player.TotalInvested += event.Amount
+		case examples.ActionType_BET, examples.ActionType_RAISE, examples.ActionType_CALL:
+			player.BetThisRound += event.Amount
+			player.TotalInvested += event.Amount
+		}
+	}
+	state.Pots[0].Amount = event.PotTotal
+	state.CurrentBet = event.AmountToCall
+}
+
+func applyBettingRoundComplete(state *HandState, event *examples.BettingRoundComplete) {
+	// Reset for next round
+	for _, p := range state.Players {
+		p.BetThisRound = 0
+		p.HasActed = false
+	}
+	state.CurrentBet = 0
+
+	// Update stacks from snapshot
+	for _, snap := range event.Stacks {
+		key := hex.EncodeToString(snap.PlayerRoot)
+		if player := state.Players[key]; player != nil {
+			player.Stack = snap.Stack
+			player.IsAllIn = snap.IsAllIn
+			player.HasFolded = snap.HasFolded
+		}
+	}
+}
+
+func applyCommunityCardsDealt(state *HandState, event *examples.CommunityCardsDealt) {
+	state.CommunityCards = event.AllCommunityCards
+	state.CurrentPhase = event.Phase
+}
+
+func applyDrawCompleted(state *HandState, event *examples.DrawCompleted) {
+	key := hex.EncodeToString(event.PlayerRoot)
+	if player := state.Players[key]; player != nil {
+		// Replace discarded cards with new cards
+		if len(event.NewCards) > 0 {
+			player.HoleCards = append(player.HoleCards[:len(player.HoleCards)-int(event.CardsDiscarded)], event.NewCards...)
+		}
+	}
+	// Update remaining deck
+	if int(event.CardsDrawn) <= len(state.RemainingDeck) {
+		state.RemainingDeck = state.RemainingDeck[event.CardsDrawn:]
+	}
+}
+
+func applyShowdownStarted(state *HandState, _ *examples.ShowdownStarted) {
+	state.Status = "showdown"
+}
+
+func applyCardsRevealed(state *HandState, _ *examples.CardsRevealed) {
+	// Cards revealed during showdown - could store revealed hands
+}
+
+func applyCardsMucked(state *HandState, _ *examples.CardsMucked) {
+	// Player mucked - could mark as mucked
+}
+
+func applyPotAwarded(state *HandState, event *examples.PotAwarded) {
+	for _, winner := range event.Winners {
+		key := hex.EncodeToString(winner.PlayerRoot)
+		if player := state.Players[key]; player != nil {
+			player.Stack += winner.Amount
+		}
+	}
+}
+
+func applyHandComplete(state *HandState, event *examples.HandComplete) {
+	state.Status = "complete"
+	// Update final stacks
+	for _, snap := range event.FinalStacks {
+		key := hex.EncodeToString(snap.PlayerRoot)
+		if player := state.Players[key]; player != nil {
+			player.Stack = snap.Stack
+		}
+	}
+}
+
+// stateRouter is the fluent state reconstruction router.
+var stateRouter = angzarr.NewStateRouter(NewHandState).
+	On(applyCardsDealt).
+	On(applyBlindPosted).
+	On(applyActionTaken).
+	On(applyBettingRoundComplete).
+	On(applyCommunityCardsDealt).
+	On(applyDrawCompleted).
+	On(applyShowdownStarted).
+	On(applyCardsRevealed).
+	On(applyCardsMucked).
+	On(applyPotAwarded).
+	On(applyHandComplete)
+
 // RebuildState rebuilds hand state from event history.
 func RebuildState(eventBook *pb.EventBook) HandState {
-	state := NewHandState()
-
 	if eventBook == nil {
-		return state
+		return NewHandState()
 	}
 
 	// Start from snapshot if available
@@ -128,19 +274,19 @@ func RebuildState(eventBook *pb.EventBook) HandState {
 		if eventBook.Snapshot.State.MessageIs(&examples.HandState{}) {
 			var snapshot examples.HandState
 			if err := eventBook.Snapshot.State.UnmarshalTo(&snapshot); err == nil {
-				state = applySnapshot(&snapshot)
+				state := applySnapshot(&snapshot)
+				// Apply events since snapshot
+				for _, page := range eventBook.Pages {
+					if page.Event != nil {
+						stateRouter.ApplySingle(&state, page.Event)
+					}
+				}
+				return state
 			}
 		}
 	}
 
-	// Apply events since snapshot
-	for _, page := range eventBook.Pages {
-		if page.Event != nil {
-			applyEvent(&state, page.Event)
-		}
-	}
-
-	return state
+	return stateRouter.WithEventBook(eventBook)
 }
 
 func applySnapshot(snapshot *examples.HandState) HandState {
@@ -189,161 +335,5 @@ func applySnapshot(snapshot *examples.HandState) HandState {
 		SmallBlindPosition: snapshot.SmallBlindPosition,
 		BigBlindPosition:   snapshot.BigBlindPosition,
 		Status:             snapshot.Status,
-	}
-}
-
-func applyEvent(state *HandState, eventAny *anypb.Any) {
-	typeURL := eventAny.TypeUrl
-
-	switch {
-	case strings.HasSuffix(typeURL, ".CardsDealt"):
-		var event examples.CardsDealt
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.HandID = hex.EncodeToString(state.TableRoot) + "_" + string(rune(event.HandNumber))
-			state.TableRoot = event.TableRoot
-			state.HandNumber = event.HandNumber
-			state.GameVariant = event.GameVariant
-			state.DealerPosition = event.DealerPosition
-			state.RemainingDeck = event.RemainingDeck
-			state.CurrentPhase = examples.BettingPhase_PREFLOP
-			state.Status = "betting"
-
-			// Initialize players
-			for _, p := range event.Players {
-				key := hex.EncodeToString(p.PlayerRoot)
-				state.Players[key] = &PlayerHandState{
-					PlayerRoot: p.PlayerRoot,
-					Position:   p.Position,
-					Stack:      p.Stack,
-				}
-			}
-
-			// Apply hole cards
-			for _, pc := range event.PlayerCards {
-				key := hex.EncodeToString(pc.PlayerRoot)
-				if player := state.Players[key]; player != nil {
-					player.HoleCards = pc.Cards
-				}
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "BlindPosted"):
-		var event examples.BlindPosted
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			key := hex.EncodeToString(event.PlayerRoot)
-			if player := state.Players[key]; player != nil {
-				player.Stack = event.PlayerStack
-				player.BetThisRound += event.Amount
-				player.TotalInvested += event.Amount
-			}
-			state.Pots[0].Amount = event.PotTotal
-			if event.Amount > state.CurrentBet {
-				state.CurrentBet = event.Amount
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "ActionTaken"):
-		var event examples.ActionTaken
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			key := hex.EncodeToString(event.PlayerRoot)
-			if player := state.Players[key]; player != nil {
-				player.Stack = event.PlayerStack
-				player.HasActed = true
-
-				switch event.Action {
-				case examples.ActionType_FOLD:
-					player.HasFolded = true
-				case examples.ActionType_ALL_IN:
-					player.IsAllIn = true
-					player.BetThisRound += event.Amount
-					player.TotalInvested += event.Amount
-				case examples.ActionType_BET, examples.ActionType_RAISE, examples.ActionType_CALL:
-					player.BetThisRound += event.Amount
-					player.TotalInvested += event.Amount
-				}
-			}
-			state.Pots[0].Amount = event.PotTotal
-			state.CurrentBet = event.AmountToCall
-		}
-
-	case strings.HasSuffix(typeURL, "BettingRoundComplete"):
-		var event examples.BettingRoundComplete
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			// Reset for next round
-			for _, p := range state.Players {
-				p.BetThisRound = 0
-				p.HasActed = false
-			}
-			state.CurrentBet = 0
-
-			// Update stacks from snapshot
-			for _, snap := range event.Stacks {
-				key := hex.EncodeToString(snap.PlayerRoot)
-				if player := state.Players[key]; player != nil {
-					player.Stack = snap.Stack
-					player.IsAllIn = snap.IsAllIn
-					player.HasFolded = snap.HasFolded
-				}
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "CommunityCardsDealt"):
-		var event examples.CommunityCardsDealt
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.CommunityCards = event.AllCommunityCards
-			state.CurrentPhase = event.Phase
-		}
-
-	case strings.HasSuffix(typeURL, "DrawCompleted"):
-		var event examples.DrawCompleted
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			key := hex.EncodeToString(event.PlayerRoot)
-			if player := state.Players[key]; player != nil {
-				// Replace discarded cards with new cards
-				// The event contains the new cards; we need to update hole cards
-				// For simplicity, just append new cards (in real impl would replace specific indices)
-				if len(event.NewCards) > 0 {
-					// Create new hole cards array keeping non-discarded and adding new
-					player.HoleCards = append(player.HoleCards[:len(player.HoleCards)-int(event.CardsDiscarded)], event.NewCards...)
-				}
-			}
-			// Update remaining deck
-			if int(event.CardsDrawn) <= len(state.RemainingDeck) {
-				state.RemainingDeck = state.RemainingDeck[event.CardsDrawn:]
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "ShowdownStarted"):
-		state.Status = "showdown"
-
-	case strings.HasSuffix(typeURL, "CardsRevealed"):
-		// Cards revealed during showdown - could store revealed hands
-
-	case strings.HasSuffix(typeURL, "CardsMucked"):
-		// Player mucked - could mark as mucked
-
-	case strings.HasSuffix(typeURL, "PotAwarded"):
-		var event examples.PotAwarded
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			for _, winner := range event.Winners {
-				key := hex.EncodeToString(winner.PlayerRoot)
-				if player := state.Players[key]; player != nil {
-					player.Stack += winner.Amount
-				}
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "HandComplete"):
-		var event examples.HandComplete
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.Status = "complete"
-			// Update final stacks
-			for _, snap := range event.FinalStacks {
-				key := hex.EncodeToString(snap.PlayerRoot)
-				if player := state.Players[key]; player != nil {
-					player.Stack = snap.Stack
-				}
-			}
-		}
 	}
 }

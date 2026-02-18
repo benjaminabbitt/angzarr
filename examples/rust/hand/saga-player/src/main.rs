@@ -90,6 +90,7 @@ fn handle_pot_awarded(
                 pages: vec![CommandPage {
                     sequence: dest_seq,
                     command: Some(command_any),
+                    ..Default::default()
                 }],
                 saga_origin: None,
             }

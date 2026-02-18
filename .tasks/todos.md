@@ -2,7 +2,6 @@
 
 ## In Progress
 
-- [ ] build dev container for angzaar
 
 ## To Do
 

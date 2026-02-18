@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Rerun if proto files or migration files change
     println!("cargo:rerun-if-changed=proto/angzarr/types.proto");
@@ -10,13 +12,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/stream.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/upcaster.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/meta.proto");
-    println!("cargo:rerun-if-changed=proto/examples/types.proto");
+    println!("cargo:rerun-if-changed=proto/examples/poker_types.proto");
     println!("cargo:rerun-if-changed=proto/examples/player.proto");
     println!("cargo:rerun-if-changed=proto/examples/table.proto");
     println!("cargo:rerun-if-changed=proto/examples/hand.proto");
     println!("cargo:rerun-if-changed=proto/examples/ai_sidecar.proto");
 
+    // Generate descriptor.bin for proto reflection (used by COMMUTATIVE merge)
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let descriptor_path = out_dir.join("descriptor.bin");
+
     tonic_build::configure()
+        .file_descriptor_set_path(&descriptor_path)
         .build_server(true)
         .build_client(true)
         .type_attribute(
@@ -43,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/stream.proto",
                 "proto/angzarr/upcaster.proto",
                 "proto/angzarr/meta.proto",
-                "proto/examples/types.proto",
+                "proto/examples/poker_types.proto",
                 "proto/examples/player.proto",
                 "proto/examples/table.proto",
                 "proto/examples/hand.proto",

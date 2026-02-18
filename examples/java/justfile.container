@@ -1,0 +1,34 @@
+# Java poker examples - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+build:
+    ./gradlew build -x test
+
+build-dev:
+    ./gradlew build -x test --info
+
+test-unit:
+    ./gradlew test --tests "*Test"
+
+test-acceptance:
+    ./gradlew test --tests "*IT" --tests "*AcceptanceTest"
+
+test:
+    ./gradlew test
+
+fmt:
+    ./gradlew spotlessApply || echo "Spotless not configured, skipping format"
+
+lint:
+    ./gradlew check -x test
+
+deps:
+    ./gradlew dependencies --configuration compileClasspath
+
+wrapper-update:
+    ./gradlew wrapper --gradle-version latest

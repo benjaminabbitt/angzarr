@@ -452,6 +452,7 @@ mod tests {
                     value: vec![0u8; size],
                 }),
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
+                external_payload: None,
             }
         }
 

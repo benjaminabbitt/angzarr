@@ -1,83 +1,73 @@
-# Poker engine justfile
+# Python poker examples
+#
+# Container Overlay Pattern:
+# --------------------------
+# This justfile uses an overlay pattern for container execution:
+#
+# 1. `justfile` (this file) - runs on the host, delegates to container
+# 2. `justfile.container` - mounted over this file inside the container
+#
+# When running outside a devcontainer:
+#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Podman mounts justfile.container as /workspace/examples/python/justfile
+#   - `just test` on host → podman runs → `just test` in container → pytest
+#
+# When running inside a devcontainer (DEVCONTAINER=true):
+#   - Commands execute directly via `just <target>`
+#   - No container nesting
+
+set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
+IMAGE := "angzarr-python-dev"
 
-# Default: list available commands
+# Build the devcontainer image
+[private]
+_build-image:
+    podman build -t {{IMAGE}} -f "{{TOP}}/examples/python/.devcontainer/Containerfile" "{{TOP}}/examples/python/.devcontainer"
+
+# Run just target in container (or directly if already in devcontainer)
+[private]
+_container +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        podman run --rm \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/examples/python/justfile.container:/workspace/examples/python/justfile:ro" \
+            -w /workspace/examples/python \
+            {{IMAGE}} just {{ARGS}}
+    fi
+
 default:
     @just --list
 
-# Generate Python protobuf files from proto definitions
-proto:
-    uv run python -m grpc_tools.protoc \
-        -I{{TOP}}/proto \
-        -I{{TOP}}/../angzarr/proto \
-        --python_out={{TOP}}/agg-player/proto \
-        --grpc_python_out={{TOP}}/agg-player/proto \
-        {{TOP}}/proto/poker/*.proto
-    uv run python -m grpc_tools.protoc \
-        -I{{TOP}}/proto \
-        -I{{TOP}}/../angzarr/proto \
-        --python_out={{TOP}}/agg-table/proto \
-        --grpc_python_out={{TOP}}/agg-table/proto \
-        {{TOP}}/proto/poker/*.proto
-    uv run python -m grpc_tools.protoc \
-        -I{{TOP}}/proto \
-        -I{{TOP}}/../angzarr/proto \
-        --python_out={{TOP}}/agg-hand/proto \
-        --grpc_python_out={{TOP}}/agg-hand/proto \
-        {{TOP}}/proto/poker/*.proto
-    uv run python -m grpc_tools.protoc \
-        -I{{TOP}}/proto \
-        -I{{TOP}}/../angzarr/proto \
-        --python_out={{TOP}}/prj-output/proto \
-        --grpc_python_out={{TOP}}/prj-output/proto \
-        {{TOP}}/proto/poker/*.proto
-    # Fix imports in generated files - rewrite poker -> proto.poker
-    for f in {{TOP}}/agg-*/proto/poker/*_pb2*.py {{TOP}}/prj-*/proto/poker/*_pb2*.py; do \
-        sed -i 's/from poker import/from proto.poker import/g' "$$f" 2>/dev/null || true; \
-        sed -i 's/import poker\b/import proto.poker/g' "$$f" 2>/dev/null || true; \
-    done
-    @echo "Proto files generated"
-
-# Run unit tests
-test:
-    uv run pytest -v
-
-# Run BDD/Gherkin tests
-test-bdd:
-    cd "{{TOP}}/examples/python" && uv run behave features/
-
-# Run all tests (unit + BDD)
-test-all: test test-bdd
-
-# Run player aggregate server
-run-player:
-    cd agg-player && uv run python main.py
-
-# Run table aggregate server
-run-table:
-    cd agg-table && uv run python main.py
-
-# Run hand aggregate server
-run-hand:
-    cd agg-hand && uv run python main.py
-
-# Run output projector
-run-output:
-    cd prj-output && uv run python main.py
-
-# Install dependencies
 install:
-    uv sync
+    just _container install
 
-# Format code
+test-unit:
+    just _container test-unit
+
+test-acceptance:
+    just _container test-acceptance
+
+test: test-unit test-acceptance
+
 fmt:
-    uv run black .
+    just _container fmt
 
-# Lint code
 lint:
-    uv run ruff check .
+    just _container lint
 
-# Type check
 typecheck:
-    uv run mypy . --ignore-missing-imports
+    just _container typecheck
+
+run-player:
+    just _container run-player
+
+run-table:
+    just _container run-table
+
+run-hand:
+    just _container run-hand

@@ -11,6 +11,7 @@ fn make_event_page(sequence: u32) -> EventPage {
             value: vec![],
         }),
         created_at: None,
+        external_payload: None,
     }
 }
 

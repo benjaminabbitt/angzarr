@@ -18,15 +18,15 @@ import "google/protobuf/timestamp.proto";
 // Could use: Notification { payload: ComponentRegistrationNotification }
 
 // Command to register a component in the topology registry.
-// Root UUID is derived from descriptor.name for idempotent registration.
+// Root UUID is derived from component.name for idempotent registration.
 message RegisterComponent {
-  ComponentDescriptor descriptor = 1;
+  ComponentDescriptor component = 1;
   string pod_id = 2;  // K8s pod name or hostname for standalone
 }
 
 // Event emitted when a component registers or re-registers.
 message ComponentRegistered {
-  ComponentDescriptor descriptor = 1;
+  ComponentDescriptor component = 1;
   string pod_id = 2;
   google.protobuf.Timestamp registered_at = 3;
 }

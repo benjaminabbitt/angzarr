@@ -1,11 +1,15 @@
 //! Table aggregate state.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use angzarr_client::proto::examples::{GameVariant, TableState as ProtoTableState};
+use angzarr_client::proto::examples::{
+    ChipsAdded, GameVariant, HandEnded, HandStarted, PlayerJoined, PlayerLeft, PlayerSatIn,
+    PlayerSatOut, TableCreated, TableState as ProtoTableState,
+};
 use angzarr_client::proto::EventBook;
+use angzarr_client::StateRouter;
 use angzarr_client::UnpackAny;
-use prost::Message;
 
 /// Seat state at the table.
 #[derive(Debug, Clone)]
@@ -75,27 +79,117 @@ impl TableState {
     }
 }
 
+// Event applier functions for StateRouter
+
+fn apply_table_created(state: &mut TableState, event: TableCreated) {
+    state.table_id = format!("table_{}", event.table_name);
+    state.table_name = event.table_name;
+    state.game_variant = GameVariant::try_from(event.game_variant).unwrap_or_default();
+    state.small_blind = event.small_blind;
+    state.big_blind = event.big_blind;
+    state.min_buy_in = event.min_buy_in;
+    state.max_buy_in = event.max_buy_in;
+    state.max_players = event.max_players;
+    state.action_timeout_seconds = event.action_timeout_seconds;
+    state.dealer_position = 0;
+    state.hand_count = 0;
+    state.status = "waiting".to_string();
+}
+
+fn apply_player_joined(state: &mut TableState, event: PlayerJoined) {
+    state.seats.insert(
+        event.seat_position,
+        SeatState {
+            position: event.seat_position,
+            player_root: event.player_root,
+            stack: event.stack,
+            is_active: true,
+            is_sitting_out: false,
+        },
+    );
+}
+
+fn apply_player_left(state: &mut TableState, event: PlayerLeft) {
+    state.seats.remove(&event.seat_position);
+}
+
+fn apply_player_sat_out(state: &mut TableState, event: PlayerSatOut) {
+    if let Some(pos) = state.find_seat_by_player(&event.player_root) {
+        if let Some(seat) = state.seats.get_mut(&pos) {
+            seat.is_sitting_out = true;
+        }
+    }
+}
+
+fn apply_player_sat_in(state: &mut TableState, event: PlayerSatIn) {
+    if let Some(pos) = state.find_seat_by_player(&event.player_root) {
+        if let Some(seat) = state.seats.get_mut(&pos) {
+            seat.is_sitting_out = false;
+        }
+    }
+}
+
+fn apply_hand_started(state: &mut TableState, event: HandStarted) {
+    state.current_hand_root = event.hand_root;
+    state.hand_count = event.hand_number;
+    state.dealer_position = event.dealer_position;
+    state.status = "in_hand".to_string();
+}
+
+fn apply_hand_ended(state: &mut TableState, event: HandEnded) {
+    state.current_hand_root.clear();
+    state.status = "waiting".to_string();
+    // Apply stack changes
+    for (player_hex, delta) in &event.stack_changes {
+        for seat in state.seats.values_mut() {
+            if hex::encode(&seat.player_root) == *player_hex {
+                seat.stack += delta;
+                break;
+            }
+        }
+    }
+}
+
+fn apply_chips_added(state: &mut TableState, event: ChipsAdded) {
+    if let Some(pos) = state.find_seat_by_player(&event.player_root) {
+        if let Some(seat) = state.seats.get_mut(&pos) {
+            seat.stack = event.new_stack;
+        }
+    }
+}
+
+/// StateRouter for fluent state reconstruction.
+static STATE_ROUTER: LazyLock<StateRouter<TableState>> = LazyLock::new(|| {
+    StateRouter::new()
+        .on::<TableCreated>("TableCreated", apply_table_created)
+        .on::<PlayerJoined>("PlayerJoined", apply_player_joined)
+        .on::<PlayerLeft>("PlayerLeft", apply_player_left)
+        .on::<PlayerSatOut>("PlayerSatOut", apply_player_sat_out)
+        .on::<PlayerSatIn>("PlayerSatIn", apply_player_sat_in)
+        .on::<HandStarted>("HandStarted", apply_hand_started)
+        .on::<HandEnded>("HandEnded", apply_hand_ended)
+        .on::<ChipsAdded>("ChipsAdded", apply_chips_added)
+});
+
 /// Rebuild table state from event history.
 pub fn rebuild_state(event_book: &EventBook) -> TableState {
-    let mut state = TableState::default();
-
     // Start from snapshot if available
     if let Some(snapshot) = &event_book.snapshot {
         if let Some(snapshot_any) = &snapshot.state {
             if let Ok(proto_state) = snapshot_any.unpack::<ProtoTableState>() {
-                state = apply_snapshot(&proto_state);
+                let mut state = apply_snapshot(&proto_state);
+                // Apply events since snapshot
+                for page in &event_book.pages {
+                    if let Some(event) = &page.event {
+                        STATE_ROUTER.apply_single(&mut state, event);
+                    }
+                }
+                return state;
             }
         }
     }
 
-    // Apply events since snapshot
-    for page in &event_book.pages {
-        if let Some(event) = &page.event {
-            apply_event(&mut state, event);
-        }
-    }
-
-    state
+    STATE_ROUTER.with_event_book(event_book)
 }
 
 fn apply_snapshot(snapshot: &ProtoTableState) -> TableState {
@@ -129,90 +223,5 @@ fn apply_snapshot(snapshot: &ProtoTableState) -> TableState {
         hand_count: snapshot.hand_count,
         current_hand_root: snapshot.current_hand_root.clone(),
         status: snapshot.status.clone(),
-    }
-}
-
-fn apply_event(state: &mut TableState, event_any: &prost_types::Any) {
-    use angzarr_client::proto::examples::*;
-
-    let type_url = &event_any.type_url;
-
-    if type_url.ends_with("TableCreated") {
-        if let Ok(event) = TableCreated::decode(event_any.value.as_slice()) {
-            state.table_id = format!("table_{}", event.table_name);
-            state.table_name = event.table_name;
-            state.game_variant = GameVariant::try_from(event.game_variant).unwrap_or_default();
-            state.small_blind = event.small_blind;
-            state.big_blind = event.big_blind;
-            state.min_buy_in = event.min_buy_in;
-            state.max_buy_in = event.max_buy_in;
-            state.max_players = event.max_players;
-            state.action_timeout_seconds = event.action_timeout_seconds;
-            state.dealer_position = 0;
-            state.hand_count = 0;
-            state.status = "waiting".to_string();
-        }
-    } else if type_url.ends_with("PlayerJoined") {
-        if let Ok(event) = PlayerJoined::decode(event_any.value.as_slice()) {
-            state.seats.insert(
-                event.seat_position,
-                SeatState {
-                    position: event.seat_position,
-                    player_root: event.player_root,
-                    stack: event.stack,
-                    is_active: true,
-                    is_sitting_out: false,
-                },
-            );
-        }
-    } else if type_url.ends_with("PlayerLeft") {
-        if let Ok(event) = PlayerLeft::decode(event_any.value.as_slice()) {
-            state.seats.remove(&event.seat_position);
-        }
-    } else if type_url.ends_with("PlayerSatOut") {
-        if let Ok(event) = PlayerSatOut::decode(event_any.value.as_slice()) {
-            if let Some(pos) = state.find_seat_by_player(&event.player_root) {
-                if let Some(seat) = state.seats.get_mut(&pos) {
-                    seat.is_sitting_out = true;
-                }
-            }
-        }
-    } else if type_url.ends_with("PlayerSatIn") {
-        if let Ok(event) = PlayerSatIn::decode(event_any.value.as_slice()) {
-            if let Some(pos) = state.find_seat_by_player(&event.player_root) {
-                if let Some(seat) = state.seats.get_mut(&pos) {
-                    seat.is_sitting_out = false;
-                }
-            }
-        }
-    } else if type_url.ends_with("HandStarted") {
-        if let Ok(event) = HandStarted::decode(event_any.value.as_slice()) {
-            state.current_hand_root = event.hand_root;
-            state.hand_count = event.hand_number;
-            state.dealer_position = event.dealer_position;
-            state.status = "in_hand".to_string();
-        }
-    } else if type_url.ends_with("HandEnded") {
-        if let Ok(event) = HandEnded::decode(event_any.value.as_slice()) {
-            state.current_hand_root.clear();
-            state.status = "waiting".to_string();
-            // Apply stack changes
-            for (player_hex, delta) in &event.stack_changes {
-                for seat in state.seats.values_mut() {
-                    if hex::encode(&seat.player_root) == *player_hex {
-                        seat.stack += delta;
-                        break;
-                    }
-                }
-            }
-        }
-    } else if type_url.ends_with("ChipsAdded") {
-        if let Ok(event) = ChipsAdded::decode(event_any.value.as_slice()) {
-            if let Some(pos) = state.find_seat_by_player(&event.player_root) {
-                if let Some(seat) = state.seats.get_mut(&pos) {
-                    seat.stack = event.new_stack;
-                }
-            }
-        }
     }
 }

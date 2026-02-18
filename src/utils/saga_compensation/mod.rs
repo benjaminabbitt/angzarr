@@ -137,6 +137,7 @@ pub fn build_notification_command_book(context: &CompensationContext) -> Result<
                 value: notification.encode_to_vec(),
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None, // Notifications don't have their own saga origin
     })
@@ -188,6 +189,7 @@ pub fn build_compensation_failed_event_book(
                 type_url: "type.angzarr/angzarr.SagaCompensationFailed".to_string(),
                 value: event.encode_to_vec(),
             }),
+            external_payload: None,
         }],
         snapshot: None,
         ..Default::default()

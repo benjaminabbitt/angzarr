@@ -173,6 +173,7 @@ impl TimeoutScheduler {
                 type_url: "type.googleapis.com/angzarr.ProcessTimeout".to_string(),
                 value: prost::Message::encode_to_vec(&timeout_event),
             }),
+            external_payload: None,
         };
 
         // Create EventBook for the timeout domain

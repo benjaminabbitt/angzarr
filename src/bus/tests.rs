@@ -22,6 +22,7 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
                     type_url: format!("type.googleapis.com/example.{}", et),
                     value: vec![],
                 }),
+                external_payload: None,
             })
             .collect(),
         snapshot: None,
@@ -122,4 +123,64 @@ fn test_any_target_matches_none() {
         },
     ];
     assert!(!any_target_matches(&book, &targets));
+}
+
+// ============================================================================
+// wrap_with_offloading tests
+// ============================================================================
+
+mod offloading_wrapper {
+    use super::*;
+    use crate::payload_store::FilesystemPayloadStore;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_wrap_with_offloading_none_store_returns_original() {
+        let mock_bus = Arc::new(MockEventBus::new());
+        let bus: Arc<dyn EventBus> = mock_bus.clone();
+
+        let wrapped = wrap_with_offloading::<FilesystemPayloadStore>(bus.clone(), None, None);
+
+        // Should return the same bus (not wrapped)
+        // We can verify by checking max_message_size behavior
+        assert_eq!(wrapped.max_message_size(), bus.max_message_size());
+    }
+
+    #[tokio::test]
+    async fn test_wrap_with_offloading_with_store() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = Arc::new(FilesystemPayloadStore::new(temp_dir.path()).await.unwrap());
+
+        let mock_bus = Arc::new(MockEventBus::new());
+        let bus: Arc<dyn EventBus> = mock_bus.clone();
+
+        let wrapped = wrap_with_offloading(bus, Some(store), Some(1024));
+
+        // Should work - we can publish through the wrapped bus
+        let book = make_event_book("test", &["TestEvent"]);
+        let result = wrapped.publish(Arc::new(book)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_wrap_with_offloading_uses_threshold() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = Arc::new(FilesystemPayloadStore::new(temp_dir.path()).await.unwrap());
+
+        let mock_bus = Arc::new(MockEventBus::new());
+        let bus: Arc<dyn EventBus> = mock_bus.clone();
+
+        let threshold = 100;
+        let wrapped = wrap_with_offloading(bus, Some(store), Some(threshold));
+
+        // Create a small event book that won't be offloaded
+        let small_book = make_event_book("test", &["SmallEvent"]);
+        wrapped.publish(Arc::new(small_book)).await.unwrap();
+
+        // Check the published book - should still have inline event
+        let published = mock_bus.take_published().await;
+        assert_eq!(published.len(), 1);
+        assert!(published[0].pages[0].event.is_some());
+        assert!(published[0].pages[0].external_payload.is_none());
+    }
 }

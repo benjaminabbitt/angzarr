@@ -1,0 +1,339 @@
+---
+sidebar_position: 3
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Saga Examples
+
+Cross-domain coordination examples from the poker domain.
+
+---
+
+## Saga: Table → Player
+
+When a hand completes and a player wins, the **hand-player saga** translates the hand domain's `PotAwarded` event into a player domain `DepositFunds` command.
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import Saga, CommandBook
+from proto.hand_pb2 import PotAwarded
+from proto.player_pb2 import DepositFunds
+
+class HandPlayerSaga(Saga):
+    """Translates hand events into player commands."""
+
+    def handle_pot_awarded(
+        self,
+        event: PotAwarded,
+        source_book: EventBook,
+        destination_book: EventBook,
+    ) -> list[CommandBook]:
+        # Build deposit command for the winner
+        cmd = DepositFunds(
+            player_id=event.winner_id,
+            amount=event.amount,
+            source="hand_winnings",
+            hand_id=event.hand_id,
+        )
+
+        # Create command book targeting player domain
+        return [CommandBook(
+            domain="player",
+            root=event.winner_id,
+            sequence=destination_book.next_sequence(),
+            command=cmd,
+        )]
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+package saga
+
+import (
+    "context"
+    pb "examples/proto"
+    "github.com/angzarr/client"
+)
+
+type HandPlayerSaga struct{}
+
+func (s *HandPlayerSaga) HandlePotAwarded(
+    ctx context.Context,
+    event *pb.PotAwarded,
+    sourceBook *client.EventBook,
+    destBook *client.EventBook,
+) ([]*client.CommandBook, error) {
+    cmd := &pb.DepositFunds{
+        PlayerId: event.WinnerId,
+        Amount:   event.Amount,
+        Source:   "hand_winnings",
+        HandId:   event.HandId,
+    }
+
+    return []*client.CommandBook{{
+        Domain:   "player",
+        Root:     event.WinnerId,
+        Sequence: destBook.NextSequence(),
+        Command:  cmd,
+    }}, nil
+}
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+use angzarr_client::{Saga, CommandBook, EventBook};
+use proto::{PotAwarded, DepositFunds};
+
+pub struct HandPlayerSaga;
+
+impl Saga for HandPlayerSaga {
+    fn handle_pot_awarded(
+        &self,
+        event: &PotAwarded,
+        _source_book: &EventBook,
+        dest_book: &EventBook,
+    ) -> Vec<CommandBook> {
+        let cmd = DepositFunds {
+            player_id: event.winner_id.clone(),
+            amount: event.amount,
+            source: "hand_winnings".into(),
+            hand_id: event.hand_id.clone(),
+        };
+
+        vec![CommandBook {
+            domain: "player".into(),
+            root: event.winner_id.clone(),
+            sequence: dest_book.next_sequence(),
+            command: Box::new(cmd),
+        }]
+    }
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+package dev.angzarr.examples.saga;
+
+import dev.angzarr.client.Saga;
+import dev.angzarr.client.CommandBook;
+import dev.angzarr.client.EventBook;
+import dev.angzarr.examples.proto.PotAwarded;
+import dev.angzarr.examples.proto.DepositFunds;
+import java.util.List;
+
+public class HandPlayerSaga implements Saga {
+
+    public List<CommandBook> handlePotAwarded(
+            PotAwarded event,
+            EventBook sourceBook,
+            EventBook destBook) {
+
+        var cmd = DepositFunds.newBuilder()
+            .setPlayerId(event.getWinnerId())
+            .setAmount(event.getAmount())
+            .setSource("hand_winnings")
+            .setHandId(event.getHandId())
+            .build();
+
+        return List.of(CommandBook.builder()
+            .domain("player")
+            .root(event.getWinnerId())
+            .sequence(destBook.nextSequence())
+            .command(cmd)
+            .build());
+    }
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+using Angzarr.Client;
+using Angzarr.Examples.Proto;
+
+namespace Angzarr.Examples.Saga;
+
+public class HandPlayerSaga : Saga
+{
+    public List<CommandBook> HandlePotAwarded(
+        PotAwarded evt,
+        EventBook sourceBook,
+        EventBook destBook)
+    {
+        var cmd = new DepositFunds
+        {
+            PlayerId = evt.WinnerId,
+            Amount = evt.Amount,
+            Source = "hand_winnings",
+            HandId = evt.HandId
+        };
+
+        return new List<CommandBook>
+        {
+            new CommandBook
+            {
+                Domain = "player",
+                Root = evt.WinnerId,
+                Sequence = destBook.NextSequence(),
+                Command = cmd
+            }
+        };
+    }
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+#include "angzarr/saga.hpp"
+#include "proto/hand.pb.h"
+#include "proto/player.pb.h"
+
+class HandPlayerSaga : public angzarr::Saga {
+public:
+    std::vector<angzarr::CommandBook> handle_pot_awarded(
+        const PotAwarded& event,
+        const angzarr::EventBook& source_book,
+        const angzarr::EventBook& dest_book) {
+
+        DepositFunds cmd;
+        cmd.set_player_id(event.winner_id());
+        cmd.set_amount(event.amount());
+        cmd.set_source("hand_winnings");
+        cmd.set_hand_id(event.hand_id());
+
+        return {angzarr::CommandBook{
+            .domain = "player",
+            .root = event.winner_id(),
+            .sequence = dest_book.next_sequence(),
+            .command = cmd
+        }};
+    }
+};
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Saga: Compensation
+
+When a saga-issued command is rejected, the source aggregate receives a **Notification** and must emit compensation events.
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import Aggregate, Notification
+from proto.player_pb2 import FundsReleased
+
+class PlayerAggregate(Aggregate):
+    """Player aggregate with compensation handling."""
+
+    def handle_notification(
+        self,
+        notification: Notification,
+        state: PlayerState,
+    ) -> list[Event]:
+        # Check if this was a JoinTable rejection
+        if notification.rejected_command_type == "JoinTable":
+            # Find the reservation for this table
+            reservation = state.get_reservation(notification.correlation_id)
+            if reservation:
+                return [FundsReleased(
+                    amount=reservation.amount,
+                    table_id=reservation.table_id,
+                    reason=notification.rejection_reason,
+                    new_available=state.available() + reservation.amount,
+                    new_reserved=state.reserved - reservation.amount,
+                )]
+        return []
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+impl PlayerAggregate {
+    pub fn handle_notification(
+        &self,
+        notification: &Notification,
+        state: &PlayerState,
+    ) -> Vec<Box<dyn Event>> {
+        // Check if this was a JoinTable rejection
+        if notification.rejected_command_type == "JoinTable" {
+            if let Some(reservation) = state.get_reservation(&notification.correlation_id) {
+                return vec![Box::new(FundsReleased {
+                    amount: reservation.amount,
+                    table_id: reservation.table_id.clone(),
+                    reason: notification.rejection_reason.clone(),
+                    new_available: state.available() + reservation.amount,
+                    new_reserved: state.reserved - reservation.amount,
+                })];
+            }
+        }
+        vec![]
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Saga Principles
+
+1. **Stateless** — Each event processed independently
+2. **Minimal logic** — Just translate fields between domains
+3. **Single source** — Events from one domain only
+4. **Single target** — Commands to one domain only
+5. **Use destination state** — Set sequence from destination's next_sequence()
+
+---
+
+## Saga Router Registration
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import EventRouter
+
+router = EventRouter("saga-hand-player", source_domain="hand")
+router.sends("player", "DepositFunds")
+router.on("PotAwarded", saga.handle_pot_awarded)
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+let router = EventRouter::new("saga-hand-player", "hand")
+    .sends("player", "DepositFunds")
+    .on::<PotAwarded>(|event, src, dst| saga.handle_pot_awarded(event, src, dst));
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Next Steps
+
+- **[Aggregates](/examples/aggregates)** — Handler examples
+- **[Process Managers](/components/process-manager)** — Multi-domain orchestration
+- **[Testing](/operations/testing)** — Saga testing with Gherkin

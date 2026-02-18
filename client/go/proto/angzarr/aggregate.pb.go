@@ -9,6 +9,7 @@ package angzarr
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	anypb "google.golang.org/protobuf/types/known/anypb"
 	_ "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
@@ -22,6 +23,104 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Request to replay events and compute resulting state
+type ReplayRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BaseSnapshot  *Snapshot              `protobuf:"bytes,1,opt,name=base_snapshot,json=baseSnapshot,proto3" json:"base_snapshot,omitempty"` // Starting state (empty = initial state)
+	Events        []*EventPage           `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`                                 // Events to apply in order
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplayRequest) Reset() {
+	*x = ReplayRequest{}
+	mi := &file_angzarr_aggregate_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayRequest) ProtoMessage() {}
+
+func (x *ReplayRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_aggregate_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayRequest.ProtoReflect.Descriptor instead.
+func (*ReplayRequest) Descriptor() ([]byte, []int) {
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ReplayRequest) GetBaseSnapshot() *Snapshot {
+	if x != nil {
+		return x.BaseSnapshot
+	}
+	return nil
+}
+
+func (x *ReplayRequest) GetEvents() []*EventPage {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+// Response with computed state after replay
+type ReplayResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         *anypb.Any             `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"` // Resulting state
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplayResponse) Reset() {
+	*x = ReplayResponse{}
+	mi := &file_angzarr_aggregate_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayResponse) ProtoMessage() {}
+
+func (x *ReplayResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_angzarr_aggregate_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayResponse.ProtoReflect.Descriptor instead.
+func (*ReplayResponse) Descriptor() ([]byte, []int) {
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ReplayResponse) GetState() *anypb.Any {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
 // Response from entity - aggregate events + sync projector results
 type CommandResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -33,7 +132,7 @@ type CommandResponse struct {
 
 func (x *CommandResponse) Reset() {
 	*x = CommandResponse{}
-	mi := &file_angzarr_aggregate_proto_msgTypes[0]
+	mi := &file_angzarr_aggregate_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +144,7 @@ func (x *CommandResponse) String() string {
 func (*CommandResponse) ProtoMessage() {}
 
 func (x *CommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_aggregate_proto_msgTypes[0]
+	mi := &file_angzarr_aggregate_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +157,7 @@ func (x *CommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResponse.ProtoReflect.Descriptor instead.
 func (*CommandResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{0}
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CommandResponse) GetEvents() *EventBook {
@@ -89,7 +188,7 @@ type RevocationResponse struct {
 
 func (x *RevocationResponse) Reset() {
 	*x = RevocationResponse{}
-	mi := &file_angzarr_aggregate_proto_msgTypes[1]
+	mi := &file_angzarr_aggregate_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -101,7 +200,7 @@ func (x *RevocationResponse) String() string {
 func (*RevocationResponse) ProtoMessage() {}
 
 func (x *RevocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_aggregate_proto_msgTypes[1]
+	mi := &file_angzarr_aggregate_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -114,7 +213,7 @@ func (x *RevocationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevocationResponse.ProtoReflect.Descriptor instead.
 func (*RevocationResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{1}
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RevocationResponse) GetEmitSystemRevocation() bool {
@@ -166,7 +265,7 @@ type BusinessResponse struct {
 
 func (x *BusinessResponse) Reset() {
 	*x = BusinessResponse{}
-	mi := &file_angzarr_aggregate_proto_msgTypes[2]
+	mi := &file_angzarr_aggregate_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -178,7 +277,7 @@ func (x *BusinessResponse) String() string {
 func (*BusinessResponse) ProtoMessage() {}
 
 func (x *BusinessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_aggregate_proto_msgTypes[2]
+	mi := &file_angzarr_aggregate_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -191,7 +290,7 @@ func (x *BusinessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BusinessResponse.ProtoReflect.Descriptor instead.
 func (*BusinessResponse) Descriptor() ([]byte, []int) {
-	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{2}
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *BusinessResponse) GetResult() isBusinessResponse_Result {
@@ -246,7 +345,7 @@ type SpeculateAggregateRequest struct {
 
 func (x *SpeculateAggregateRequest) Reset() {
 	*x = SpeculateAggregateRequest{}
-	mi := &file_angzarr_aggregate_proto_msgTypes[3]
+	mi := &file_angzarr_aggregate_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -258,7 +357,7 @@ func (x *SpeculateAggregateRequest) String() string {
 func (*SpeculateAggregateRequest) ProtoMessage() {}
 
 func (x *SpeculateAggregateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_aggregate_proto_msgTypes[3]
+	mi := &file_angzarr_aggregate_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -271,7 +370,7 @@ func (x *SpeculateAggregateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpeculateAggregateRequest.ProtoReflect.Descriptor instead.
 func (*SpeculateAggregateRequest) Descriptor() ([]byte, []int) {
-	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{3}
+	return file_angzarr_aggregate_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SpeculateAggregateRequest) GetCommand() *CommandBook {
@@ -292,7 +391,12 @@ var File_angzarr_aggregate_proto protoreflect.FileDescriptor
 
 const file_angzarr_aggregate_proto_rawDesc = "" +
 	"\n" +
-	"\x17angzarr/aggregate.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"t\n" +
+	"\x17angzarr/aggregate.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x19google/protobuf/any.proto\x1a\x1bgoogle/protobuf/empty.proto\"s\n" +
+	"\rReplayRequest\x126\n" +
+	"\rbase_snapshot\x18\x01 \x01(\v2\x11.angzarr.SnapshotR\fbaseSnapshot\x12*\n" +
+	"\x06events\x18\x02 \x03(\v2\x12.angzarr.EventPageR\x06events\"<\n" +
+	"\x0eReplayResponse\x12*\n" +
+	"\x05state\x18\x01 \x01(\v2\x14.google.protobuf.AnyR\x05state\"t\n" +
 	"\x0fCommandResponse\x12*\n" +
 	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06events\x125\n" +
 	"\vprojections\x18\x02 \x03(\v2\x13.angzarr.ProjectionR\vprojections\"\xce\x01\n" +
@@ -310,10 +414,11 @@ const file_angzarr_aggregate_proto_rawDesc = "" +
 	"\x06result\"\x87\x01\n" +
 	"\x19SpeculateAggregateRequest\x12.\n" +
 	"\acommand\x18\x01 \x01(\v2\x14.angzarr.CommandBookR\acommand\x12:\n" +
-	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\xa1\x01\n" +
+	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\xdc\x01\n" +
 	"\x10AggregateService\x12L\n" +
 	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n" +
-	"\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse2\xf0\x01\n" +
+	"\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse\x129\n" +
+	"\x06Replay\x12\x16.angzarr.ReplayRequest\x1a\x17.angzarr.ReplayResponse2\xf0\x01\n" +
 	"\x1bAggregateCoordinatorService\x128\n" +
 	"\x06Handle\x12\x14.angzarr.CommandBook\x1a\x18.angzarr.CommandResponse\x12@\n" +
 	"\n" +
@@ -333,43 +438,53 @@ func file_angzarr_aggregate_proto_rawDescGZIP() []byte {
 	return file_angzarr_aggregate_proto_rawDescData
 }
 
-var file_angzarr_aggregate_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_angzarr_aggregate_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_angzarr_aggregate_proto_goTypes = []any{
-	(*CommandResponse)(nil),           // 0: angzarr.CommandResponse
-	(*RevocationResponse)(nil),        // 1: angzarr.RevocationResponse
-	(*BusinessResponse)(nil),          // 2: angzarr.BusinessResponse
-	(*SpeculateAggregateRequest)(nil), // 3: angzarr.SpeculateAggregateRequest
-	(*EventBook)(nil),                 // 4: angzarr.EventBook
-	(*Projection)(nil),                // 5: angzarr.Projection
-	(*CommandBook)(nil),               // 6: angzarr.CommandBook
-	(*TemporalQuery)(nil),             // 7: angzarr.TemporalQuery
-	(*GetDescriptorRequest)(nil),      // 8: angzarr.GetDescriptorRequest
-	(*ContextualCommand)(nil),         // 9: angzarr.ContextualCommand
-	(*SyncCommandBook)(nil),           // 10: angzarr.SyncCommandBook
-	(*ComponentDescriptor)(nil),       // 11: angzarr.ComponentDescriptor
+	(*ReplayRequest)(nil),             // 0: angzarr.ReplayRequest
+	(*ReplayResponse)(nil),            // 1: angzarr.ReplayResponse
+	(*CommandResponse)(nil),           // 2: angzarr.CommandResponse
+	(*RevocationResponse)(nil),        // 3: angzarr.RevocationResponse
+	(*BusinessResponse)(nil),          // 4: angzarr.BusinessResponse
+	(*SpeculateAggregateRequest)(nil), // 5: angzarr.SpeculateAggregateRequest
+	(*Snapshot)(nil),                  // 6: angzarr.Snapshot
+	(*EventPage)(nil),                 // 7: angzarr.EventPage
+	(*anypb.Any)(nil),                 // 8: google.protobuf.Any
+	(*EventBook)(nil),                 // 9: angzarr.EventBook
+	(*Projection)(nil),                // 10: angzarr.Projection
+	(*CommandBook)(nil),               // 11: angzarr.CommandBook
+	(*TemporalQuery)(nil),             // 12: angzarr.TemporalQuery
+	(*GetDescriptorRequest)(nil),      // 13: angzarr.GetDescriptorRequest
+	(*ContextualCommand)(nil),         // 14: angzarr.ContextualCommand
+	(*SyncCommandBook)(nil),           // 15: angzarr.SyncCommandBook
+	(*ComponentDescriptor)(nil),       // 16: angzarr.ComponentDescriptor
 }
 var file_angzarr_aggregate_proto_depIdxs = []int32{
-	4,  // 0: angzarr.CommandResponse.events:type_name -> angzarr.EventBook
-	5,  // 1: angzarr.CommandResponse.projections:type_name -> angzarr.Projection
-	4,  // 2: angzarr.BusinessResponse.events:type_name -> angzarr.EventBook
-	1,  // 3: angzarr.BusinessResponse.revocation:type_name -> angzarr.RevocationResponse
-	6,  // 4: angzarr.SpeculateAggregateRequest.command:type_name -> angzarr.CommandBook
-	7,  // 5: angzarr.SpeculateAggregateRequest.point_in_time:type_name -> angzarr.TemporalQuery
-	8,  // 6: angzarr.AggregateService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	9,  // 7: angzarr.AggregateService.Handle:input_type -> angzarr.ContextualCommand
-	6,  // 8: angzarr.AggregateCoordinatorService.Handle:input_type -> angzarr.CommandBook
-	10, // 9: angzarr.AggregateCoordinatorService.HandleSync:input_type -> angzarr.SyncCommandBook
-	3,  // 10: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:input_type -> angzarr.SpeculateAggregateRequest
-	11, // 11: angzarr.AggregateService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	2,  // 12: angzarr.AggregateService.Handle:output_type -> angzarr.BusinessResponse
-	0,  // 13: angzarr.AggregateCoordinatorService.Handle:output_type -> angzarr.CommandResponse
-	0,  // 14: angzarr.AggregateCoordinatorService.HandleSync:output_type -> angzarr.CommandResponse
-	0,  // 15: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:output_type -> angzarr.CommandResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	6,  // 0: angzarr.ReplayRequest.base_snapshot:type_name -> angzarr.Snapshot
+	7,  // 1: angzarr.ReplayRequest.events:type_name -> angzarr.EventPage
+	8,  // 2: angzarr.ReplayResponse.state:type_name -> google.protobuf.Any
+	9,  // 3: angzarr.CommandResponse.events:type_name -> angzarr.EventBook
+	10, // 4: angzarr.CommandResponse.projections:type_name -> angzarr.Projection
+	9,  // 5: angzarr.BusinessResponse.events:type_name -> angzarr.EventBook
+	3,  // 6: angzarr.BusinessResponse.revocation:type_name -> angzarr.RevocationResponse
+	11, // 7: angzarr.SpeculateAggregateRequest.command:type_name -> angzarr.CommandBook
+	12, // 8: angzarr.SpeculateAggregateRequest.point_in_time:type_name -> angzarr.TemporalQuery
+	13, // 9: angzarr.AggregateService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
+	14, // 10: angzarr.AggregateService.Handle:input_type -> angzarr.ContextualCommand
+	0,  // 11: angzarr.AggregateService.Replay:input_type -> angzarr.ReplayRequest
+	11, // 12: angzarr.AggregateCoordinatorService.Handle:input_type -> angzarr.CommandBook
+	15, // 13: angzarr.AggregateCoordinatorService.HandleSync:input_type -> angzarr.SyncCommandBook
+	5,  // 14: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:input_type -> angzarr.SpeculateAggregateRequest
+	16, // 15: angzarr.AggregateService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
+	4,  // 16: angzarr.AggregateService.Handle:output_type -> angzarr.BusinessResponse
+	1,  // 17: angzarr.AggregateService.Replay:output_type -> angzarr.ReplayResponse
+	2,  // 18: angzarr.AggregateCoordinatorService.Handle:output_type -> angzarr.CommandResponse
+	2,  // 19: angzarr.AggregateCoordinatorService.HandleSync:output_type -> angzarr.CommandResponse
+	2,  // 20: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:output_type -> angzarr.CommandResponse
+	15, // [15:21] is the sub-list for method output_type
+	9,  // [9:15] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_aggregate_proto_init() }
@@ -378,7 +493,7 @@ func file_angzarr_aggregate_proto_init() {
 		return
 	}
 	file_angzarr_types_proto_init()
-	file_angzarr_aggregate_proto_msgTypes[2].OneofWrappers = []any{
+	file_angzarr_aggregate_proto_msgTypes[4].OneofWrappers = []any{
 		(*BusinessResponse_Events)(nil),
 		(*BusinessResponse_Revocation)(nil),
 	}
@@ -388,7 +503,7 @@ func file_angzarr_aggregate_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_aggregate_proto_rawDesc), len(file_angzarr_aggregate_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

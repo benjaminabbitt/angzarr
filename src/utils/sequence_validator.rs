@@ -110,7 +110,7 @@ pub fn handle_storage_error(
 ) -> StorageErrorOutcome {
     match error {
         StorageError::SequenceConflict { expected, actual } => {
-            StorageErrorOutcome::Abort(Status::aborted(format!(
+            StorageErrorOutcome::Abort(Status::failed_precondition(format!(
                 "Sequence conflict: expected {}, got {}",
                 expected, actual
             )))
@@ -167,7 +167,8 @@ mod tests {
         let outcome = handle_storage_error(error, "test", root);
         match outcome {
             StorageErrorOutcome::Abort(status) => {
-                assert_eq!(status.code(), tonic::Code::Aborted);
+                // Sequence conflicts are retryable (FAILED_PRECONDITION)
+                assert_eq!(status.code(), tonic::Code::FailedPrecondition);
                 assert!(status.message().contains("Sequence conflict"));
             }
         }

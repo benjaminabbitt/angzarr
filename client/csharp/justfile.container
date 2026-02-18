@@ -1,0 +1,25 @@
+# C# client library - container version
+# This file is mounted as 'justfile' inside the container
+
+set shell := ["bash", "-c"]
+
+default:
+    @just --list
+
+proto:
+    cd /workspace/client/csharp/Angzarr.Client && dotnet build
+
+build:
+    cd /workspace/client/csharp/Angzarr.Client && dotnet build
+
+test:
+    cd /workspace/client/csharp && dotnet test
+
+coverage:
+    cd /workspace/client/csharp && dotnet test --collect:"XPlat Code Coverage"
+
+pack:
+    cd /workspace/client/csharp/Angzarr.Client && dotnet pack
+
+publish:
+    cd /workspace/client/csharp/Angzarr.Client && dotnet nuget push bin/Release/*.nupkg --source https://api.nuget.org/v3/index.json

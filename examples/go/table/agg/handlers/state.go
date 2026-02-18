@@ -3,12 +3,10 @@ package handlers
 
 import (
 	"encoding/hex"
-	"strings"
 
+	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // TableState represents the current state of a table aggregate.
@@ -87,12 +85,94 @@ func (s TableState) NextAvailableSeat() int32 {
 	return -1
 }
 
+// Event applier functions for StateRouter
+
+func applyTableCreated(state *TableState, event *examples.TableCreated) {
+	state.TableID = "table_" + event.TableName
+	state.TableName = event.TableName
+	state.GameVariant = event.GameVariant
+	state.SmallBlind = event.SmallBlind
+	state.BigBlind = event.BigBlind
+	state.MinBuyIn = event.MinBuyIn
+	state.MaxBuyIn = event.MaxBuyIn
+	state.MaxPlayers = event.MaxPlayers
+	state.ActionTimeoutSeconds = event.ActionTimeoutSeconds
+	state.DealerPosition = 0
+	state.HandCount = 0
+	state.Status = "waiting"
+}
+
+func applyPlayerJoined(state *TableState, event *examples.PlayerJoined) {
+	state.Seats[event.SeatPosition] = &SeatState{
+		Position:     event.SeatPosition,
+		PlayerRoot:   event.PlayerRoot,
+		Stack:        event.Stack,
+		IsActive:     true,
+		IsSittingOut: false,
+	}
+}
+
+func applyPlayerLeft(state *TableState, event *examples.PlayerLeft) {
+	delete(state.Seats, event.SeatPosition)
+}
+
+func applyPlayerSatOut(state *TableState, event *examples.PlayerSatOut) {
+	pos := state.FindSeatByPlayer(event.PlayerRoot)
+	if pos >= 0 {
+		state.Seats[pos].IsSittingOut = true
+	}
+}
+
+func applyPlayerSatIn(state *TableState, event *examples.PlayerSatIn) {
+	pos := state.FindSeatByPlayer(event.PlayerRoot)
+	if pos >= 0 {
+		state.Seats[pos].IsSittingOut = false
+	}
+}
+
+func applyHandStarted(state *TableState, event *examples.HandStarted) {
+	state.CurrentHandRoot = event.HandRoot
+	state.HandCount = event.HandNumber
+	state.DealerPosition = event.DealerPosition
+	state.Status = "in_hand"
+}
+
+func applyHandEnded(state *TableState, event *examples.HandEnded) {
+	state.CurrentHandRoot = nil
+	state.Status = "waiting"
+	// Apply stack changes
+	for playerHex, delta := range event.StackChanges {
+		for _, seat := range state.Seats {
+			if hex.EncodeToString(seat.PlayerRoot) == playerHex {
+				seat.Stack += delta
+				break
+			}
+		}
+	}
+}
+
+func applyChipsAdded(state *TableState, event *examples.ChipsAdded) {
+	pos := state.FindSeatByPlayer(event.PlayerRoot)
+	if pos >= 0 {
+		state.Seats[pos].Stack = event.NewStack
+	}
+}
+
+// stateRouter is the fluent state reconstruction router.
+var stateRouter = angzarr.NewStateRouter(NewTableState).
+	On(applyTableCreated).
+	On(applyPlayerJoined).
+	On(applyPlayerLeft).
+	On(applyPlayerSatOut).
+	On(applyPlayerSatIn).
+	On(applyHandStarted).
+	On(applyHandEnded).
+	On(applyChipsAdded)
+
 // RebuildState rebuilds table state from event history.
 func RebuildState(eventBook *pb.EventBook) TableState {
-	state := NewTableState()
-
 	if eventBook == nil {
-		return state
+		return NewTableState()
 	}
 
 	// Start from snapshot if available
@@ -100,19 +180,19 @@ func RebuildState(eventBook *pb.EventBook) TableState {
 		if eventBook.Snapshot.State.MessageIs(&examples.TableState{}) {
 			var snapshot examples.TableState
 			if err := eventBook.Snapshot.State.UnmarshalTo(&snapshot); err == nil {
-				state = applySnapshot(&snapshot)
+				state := applySnapshot(&snapshot)
+				// Apply events since snapshot
+				for _, page := range eventBook.Pages {
+					if page.Event != nil {
+						stateRouter.ApplySingle(&state, page.Event)
+					}
+				}
+				return state
 			}
 		}
 	}
 
-	// Apply events since snapshot
-	for _, page := range eventBook.Pages {
-		if page.Event != nil {
-			applyEvent(&state, page.Event)
-		}
-	}
-
-	return state
+	return stateRouter.WithEventBook(eventBook)
 }
 
 func applySnapshot(snapshot *examples.TableState) TableState {
@@ -146,98 +226,5 @@ func applySnapshot(snapshot *examples.TableState) TableState {
 		HandCount:            snapshot.HandCount,
 		CurrentHandRoot:      snapshot.CurrentHandRoot,
 		Status:               snapshot.Status,
-	}
-}
-
-func applyEvent(state *TableState, eventAny *anypb.Any) {
-	typeURL := eventAny.TypeUrl
-
-	switch {
-	case strings.HasSuffix(typeURL, "TableCreated"):
-		var event examples.TableCreated
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.TableID = "table_" + event.TableName
-			state.TableName = event.TableName
-			state.GameVariant = event.GameVariant
-			state.SmallBlind = event.SmallBlind
-			state.BigBlind = event.BigBlind
-			state.MinBuyIn = event.MinBuyIn
-			state.MaxBuyIn = event.MaxBuyIn
-			state.MaxPlayers = event.MaxPlayers
-			state.ActionTimeoutSeconds = event.ActionTimeoutSeconds
-			state.DealerPosition = 0
-			state.HandCount = 0
-			state.Status = "waiting"
-		}
-
-	case strings.HasSuffix(typeURL, "PlayerJoined"):
-		var event examples.PlayerJoined
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.Seats[event.SeatPosition] = &SeatState{
-				Position:     event.SeatPosition,
-				PlayerRoot:   event.PlayerRoot,
-				Stack:        event.Stack,
-				IsActive:     true,
-				IsSittingOut: false,
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "PlayerLeft"):
-		var event examples.PlayerLeft
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			delete(state.Seats, event.SeatPosition)
-		}
-
-	case strings.HasSuffix(typeURL, "PlayerSatOut"):
-		var event examples.PlayerSatOut
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			pos := state.FindSeatByPlayer(event.PlayerRoot)
-			if pos >= 0 {
-				state.Seats[pos].IsSittingOut = true
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "PlayerSatIn"):
-		var event examples.PlayerSatIn
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			pos := state.FindSeatByPlayer(event.PlayerRoot)
-			if pos >= 0 {
-				state.Seats[pos].IsSittingOut = false
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "HandStarted"):
-		var event examples.HandStarted
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.CurrentHandRoot = event.HandRoot
-			state.HandCount = event.HandNumber
-			state.DealerPosition = event.DealerPosition
-			state.Status = "in_hand"
-		}
-
-	case strings.HasSuffix(typeURL, "HandEnded"):
-		var event examples.HandEnded
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			state.CurrentHandRoot = nil
-			state.Status = "waiting"
-			// Apply stack changes
-			for playerHex, delta := range event.StackChanges {
-				for _, seat := range state.Seats {
-					if hex.EncodeToString(seat.PlayerRoot) == playerHex {
-						seat.Stack += delta
-						break
-					}
-				}
-			}
-		}
-
-	case strings.HasSuffix(typeURL, "ChipsAdded"):
-		var event examples.ChipsAdded
-		if err := proto.Unmarshal(eventAny.Value, &event); err == nil {
-			pos := state.FindSeatByPlayer(event.PlayerRoot)
-			if pos >= 0 {
-				state.Seats[pos].Stack = event.NewStack
-			}
-		}
 	}
 }

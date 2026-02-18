@@ -12,7 +12,9 @@ use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
-use crate::proto::{CommandBook, CommandResponse, Edition, EventBook, Notification, RejectionNotification};
+use crate::proto::{
+    CommandBook, CommandResponse, Edition, EventBook, Notification, RejectionNotification,
+};
 use crate::proto_ext::{CoverExt, EditionExt};
 use crate::standalone::DomainStorage;
 use crate::standalone::ProcessManagerHandler;

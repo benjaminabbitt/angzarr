@@ -91,6 +91,7 @@ fn handle_hand_ended(
                 pages: vec![CommandPage {
                     sequence: dest_seq,
                     command: Some(command_any),
+                    ..Default::default()
                 }],
                 saga_origin: None,
             })

@@ -6,6 +6,7 @@ fn make_event_with_sequence(seq: Option<u32>) -> EventPage {
         sequence: seq.map(Sequence::Num),
         event: None,
         created_at: None,
+        external_payload: None,
     }
 }
 
@@ -14,6 +15,7 @@ fn make_event_with_force() -> EventPage {
         sequence: Some(Sequence::Force(true)),
         event: None,
         created_at: None,
+        external_payload: None,
     }
 }
 
@@ -67,6 +69,7 @@ fn test_parse_timestamp_present() {
             seconds: 1704067200, // 2024-01-01 00:00:00 UTC
             nanos: 0,
         }),
+        external_payload: None,
     };
     let result = parse_timestamp(&event).unwrap();
     assert!(result.starts_with("2024-01-01"));
@@ -78,6 +81,7 @@ fn test_parse_timestamp_missing_uses_now() {
         sequence: None,
         event: None,
         created_at: None,
+        external_payload: None,
     };
     let result = parse_timestamp(&event).unwrap();
     // Should be a valid RFC3339 timestamp
@@ -93,6 +97,7 @@ fn test_parse_timestamp_invalid() {
             seconds: i64::MAX,
             nanos: i32::MAX,
         }),
+        external_payload: None,
     };
     let result = parse_timestamp(&event);
     assert!(matches!(result, Err(StorageError::InvalidTimestamp { .. })));

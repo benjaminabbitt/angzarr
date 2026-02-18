@@ -1,0 +1,199 @@
+---
+sidebar_position: 3
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Projectors
+
+A **projector** subscribes to events and performs side effects—typically building read models, writing to databases, or streaming to external systems. Projectors transform the event stream into query-optimized views.
+
+Unlike aggregates and sagas, projectors are **read-only** from the event sourcing perspective. They observe events but never emit commands back to aggregates.
+
+---
+
+## Common Use Cases
+
+| Projector | Events | Output |
+|-----------|--------|--------|
+| Search indexer | Product events | Elasticsearch updates |
+| Dashboard stream | All domain events | WebSocket push |
+| Analytics ETL | Transaction events | Data warehouse |
+| Cache warmer | Player events | Redis cache |
+| Output renderer | Poker events | Console text |
+
+---
+
+## Example: Output Projector
+
+Transforms poker events into human-readable text:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import Projector
+
+class OutputProjector(Projector):
+    def __init__(self):
+        self.player_names: dict[str, str] = {}
+
+    def handle_player_registered(self, event: PlayerRegistered):
+        self.player_names[event.player_id] = event.username
+        print(f"[Player] {event.username} registered")
+
+    def handle_funds_deposited(self, event: FundsDeposited):
+        name = self.player_names.get(event.player_id, event.player_id)
+        print(f"[Player] {name} deposited ${event.amount / 100:.2f}")
+
+    def handle_cards_dealt(self, event: CardsDealt):
+        for player in event.players:
+            name = self.player_names.get(player.player_id, player.player_id)
+            cards = format_cards(player.hole_cards)
+            print(f"[Hand] {name} dealt {cards}")
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+type OutputProjector struct {
+    playerNames map[string]string
+}
+
+func (p *OutputProjector) HandlePlayerRegistered(event *PlayerRegistered) {
+    p.playerNames[event.PlayerId] = event.Username
+    fmt.Printf("[Player] %s registered\n", event.Username)
+}
+
+func (p *OutputProjector) HandleFundsDeposited(event *FundsDeposited) {
+    name := p.playerNames[event.PlayerId]
+    if name == "" {
+        name = event.PlayerId
+    }
+    fmt.Printf("[Player] %s deposited $%.2f\n", name, float64(event.Amount)/100)
+}
+
+func (p *OutputProjector) HandleCardsDealt(event *CardsDealt) {
+    for _, player := range event.Players {
+        name := p.playerNames[player.PlayerId]
+        cards := formatCards(player.HoleCards)
+        fmt.Printf("[Hand] %s dealt %s\n", name, cards)
+    }
+}
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+pub struct OutputProjector {
+    player_names: HashMap<String, String>,
+}
+
+impl OutputProjector {
+    pub fn handle_player_registered(&mut self, event: &PlayerRegistered) {
+        self.player_names.insert(event.player_id.clone(), event.username.clone());
+        println!("[Player] {} registered", event.username);
+    }
+
+    pub fn handle_funds_deposited(&mut self, event: &FundsDeposited) {
+        let name = self.player_names.get(&event.player_id)
+            .map(|s| s.as_str())
+            .unwrap_or(&event.player_id);
+        println!("[Player] {} deposited ${:.2}", name, event.amount as f64 / 100.0);
+    }
+
+    pub fn handle_cards_dealt(&mut self, event: &CardsDealt) {
+        for player in &event.players {
+            let name = self.player_names.get(&player.player_id)
+                .map(|s| s.as_str())
+                .unwrap_or(&player.player_id);
+            let cards = format_cards(&player.hole_cards);
+            println!("[Hand] {} dealt {}", name, cards);
+        }
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## StateRouter
+
+Use the `StateRouter` to register event handlers:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import StateRouter
+
+router = StateRouter("prj-output")
+    .subscribes("player", ["PlayerRegistered", "FundsDeposited"])
+    .subscribes("hand", ["CardsDealt", "ActionTaken", "PotAwarded"])
+    .on("PlayerRegistered", handle_player_registered)
+    .on("FundsDeposited", handle_funds_deposited)
+    .on("CardsDealt", handle_cards_dealt)
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+let router = StateRouter::new("prj-output")
+    .subscribes("player", &["PlayerRegistered", "FundsDeposited"])
+    .subscribes("hand", &["CardsDealt", "ActionTaken", "PotAwarded"])
+    .on::<PlayerRegistered>(handle_player_registered)
+    .on::<FundsDeposited>(handle_funds_deposited)
+    .on::<CardsDealt>(handle_cards_dealt);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Multi-Domain Projectors
+
+Projectors can subscribe to events from multiple domains:
+
+```python
+router = StateRouter("prj-output")
+    .subscribes("player", ["PlayerRegistered", "FundsDeposited"])
+    .subscribes("table", ["PlayerJoined", "HandStarted"])
+    .subscribes("hand", ["CardsDealt", "ActionTaken"])
+```
+
+This is safe for projectors because they only observe—unlike sagas which must handle the complexity of multi-domain command generation.
+
+---
+
+## Synchronous vs Asynchronous
+
+| Mode | Use Case | Behavior |
+|------|----------|----------|
+| **Async** (default) | Analytics, search indexing | Fire-and-forget |
+| **Sync** | Read-after-write | Command waits for projector |
+
+Synchronous projections enable CQRS patterns where commands must return updated read models.
+
+---
+
+## Position Tracking
+
+Projectors track their position in the event stream to enable:
+- **Catch-up**: Resume from last processed event after restart
+- **Replay**: Rebuild read models from scratch
+
+The framework manages position tracking automatically.
+
+---
+
+## Next Steps
+
+- **[Process Managers](/components/process-manager)** — Stateful multi-domain coordination
+- **[Testing](/operations/testing)** — Testing projectors with Gherkin

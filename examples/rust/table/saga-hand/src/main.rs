@@ -79,6 +79,7 @@ fn handle_hand_started(
         pages: vec![CommandPage {
             sequence: dest_seq,
             command: Some(command_any),
+            ..Default::default()
         }],
         saga_origin: None,
     }))

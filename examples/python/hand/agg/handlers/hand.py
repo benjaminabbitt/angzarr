@@ -176,6 +176,23 @@ class Hand(Aggregate[_HandState]):
         elif "ShowdownStarted" in type_url:
             state.status = "showdown"
 
+        elif "DrawCompleted" in type_url:
+            event = hand_proto.DrawCompleted()
+            event_any.Unpack(event)
+            for player in state.players.values():
+                if player.player_root == event.player_root:
+                    # Remove discarded cards and add new ones
+                    new_cards = [(c.suit, c.rank) for c in event.new_cards]
+                    # For simplicity, replace the specified number of cards
+                    if event.cards_discarded > 0:
+                        player.hole_cards = player.hole_cards[event.cards_discarded:]
+                    player.hole_cards.extend(new_cards)
+                    # Remove dealt cards from deck
+                    for card in new_cards:
+                        if card in state.remaining_deck:
+                            state.remaining_deck.remove(card)
+                    break
+
         elif "PotAwarded" in type_url:
             event = hand_proto.PotAwarded()
             event_any.Unpack(event)
@@ -442,6 +459,52 @@ class Hand(Aggregate[_HandState]):
             event.cards.append(poker_types.Card(suit=suit, rank=rank))
         for suit, rank in all_community:
             event.all_community_cards.append(poker_types.Card(suit=suit, rank=rank))
+
+        return event
+
+    @handles(hand_proto.RequestDraw)
+    def draw(self, cmd: hand_proto.RequestDraw) -> hand_proto.DrawCompleted:
+        """Handle draw request for Five Card Draw."""
+        if not self.exists:
+            raise CommandRejectedError("Hand not dealt")
+        if self.status == "complete":
+            raise CommandRejectedError("Hand is complete")
+        if not cmd.player_root:
+            raise CommandRejectedError("player_root is required")
+
+        player = self.get_player(cmd.player_root)
+        if not player:
+            raise CommandRejectedError("Player not in hand")
+        if player.has_folded:
+            raise CommandRejectedError("Player has folded")
+
+        state = self._get_state()
+        if state.game_variant != poker_types.FIVE_CARD_DRAW:
+            raise CommandRejectedError("Draw not supported in this game variant")
+
+        # Validate indices
+        indices = list(cmd.card_indices)
+        if len(indices) > 5:
+            raise CommandRejectedError("Cannot discard more than 5 cards")
+        for idx in indices:
+            if idx < 0 or idx >= len(player.hole_cards):
+                raise CommandRejectedError(f"Invalid card index: {idx}")
+
+        # Draw new cards from deck
+        cards_to_draw = len(indices)
+        if len(state.remaining_deck) < cards_to_draw:
+            raise CommandRejectedError("Not enough cards in deck")
+
+        new_cards = state.remaining_deck[:cards_to_draw]
+
+        event = hand_proto.DrawCompleted(
+            player_root=cmd.player_root,
+            cards_discarded=len(indices),
+            cards_drawn=cards_to_draw,
+            drawn_at=now(),
+        )
+        for suit, rank in new_cards:
+            event.new_cards.append(poker_types.Card(suit=suit, rank=rank))
 
         return event
 

@@ -37,7 +37,9 @@ pub use uuid::{ProtoUuidExt, UuidExt};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{CommandBook, Cover, Edition, EventBook, Uuid as ProtoUuid};
+    use crate::proto::{
+        CommandBook, Cover, Edition, EventBook, MergeStrategy, SnapshotRetention, Uuid as ProtoUuid,
+    };
 
     fn make_cover(domain: &str, correlation_id: &str, root: Option<::uuid::Uuid>) -> Cover {
         Cover {
@@ -149,6 +151,7 @@ mod tests {
             sequence: Some(Sequence::Num(42)),
             event: None,
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.sequence_num(), 42);
     }
@@ -162,6 +165,7 @@ mod tests {
             sequence: Some(Sequence::Force(true)),
             event: None,
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.sequence_num(), 0);
     }
@@ -174,6 +178,7 @@ mod tests {
             sequence: None,
             event: None,
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.sequence_num(), 0);
     }
@@ -190,6 +195,7 @@ mod tests {
                 value: vec![],
             }),
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.type_url(), Some("type.googleapis.com/test.Event"));
     }
@@ -202,6 +208,7 @@ mod tests {
             sequence: None,
             event: None,
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.type_url(), None);
     }
@@ -218,6 +225,7 @@ mod tests {
                 value: vec![1, 2, 3],
             }),
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.payload(), Some(&[1u8, 2, 3][..]));
     }
@@ -230,6 +238,7 @@ mod tests {
             sequence: None,
             event: None,
             created_at: None,
+            external_payload: None,
         };
         assert_eq!(page.payload(), None);
     }
@@ -251,6 +260,7 @@ mod tests {
                 value: msg.encode_to_vec(),
             }),
             created_at: None,
+            external_payload: None,
         };
         let decoded: Option<prost_types::Duration> = page.decode("Duration");
         assert!(decoded.is_some());
@@ -274,6 +284,7 @@ mod tests {
                 value: msg.encode_to_vec(),
             }),
             created_at: None,
+            external_payload: None,
         };
         let decoded: Option<prost_types::Duration> = page.decode("Timestamp");
         assert!(decoded.is_none());
@@ -287,6 +298,8 @@ mod tests {
         let page = CommandPage {
             sequence: 77,
             command: None,
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         };
         assert_eq!(page.sequence_num(), 77);
     }
@@ -301,6 +314,8 @@ mod tests {
                 type_url: "type.googleapis.com/test.Command".to_string(),
                 value: vec![],
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         };
         assert_eq!(page.type_url(), Some("type.googleapis.com/test.Command"));
     }
@@ -312,6 +327,8 @@ mod tests {
         let page = CommandPage {
             sequence: 1,
             command: None,
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         };
         assert_eq!(page.type_url(), None);
     }
@@ -326,6 +343,8 @@ mod tests {
                 type_url: "test".to_string(),
                 value: vec![4, 5, 6],
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         };
         assert_eq!(page.payload(), Some(&[4u8, 5, 6][..]));
     }
@@ -345,6 +364,8 @@ mod tests {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: msg.encode_to_vec(),
             }),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         };
         let decoded: Option<prost_types::Duration> = page.decode("Duration");
         assert!(decoded.is_some());
@@ -399,11 +420,13 @@ mod tests {
                     sequence: Some(Sequence::Num(1)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
                 EventPage {
                     sequence: Some(Sequence::Num(2)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
             ],
             snapshot: None,
@@ -425,11 +448,13 @@ mod tests {
                     sequence: Some(Sequence::Num(1)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
                 EventPage {
                     sequence: Some(Sequence::Num(2)),
                     event: None,
                     created_at: None,
+                    external_payload: None,
                 },
             ],
             snapshot: None,
@@ -450,11 +475,13 @@ mod tests {
                 sequence: Some(Sequence::Num(5)),
                 event: None,
                 created_at: None,
+                external_payload: None,
             },
             EventPage {
                 sequence: Some(Sequence::Num(6)),
                 event: None,
                 created_at: None,
+                external_payload: None,
             },
         ];
         assert_eq!(calculate_next_sequence(&pages, None), 7);
@@ -468,6 +495,7 @@ mod tests {
         let snapshot = Snapshot {
             sequence: 10,
             state: None,
+            retention: SnapshotRetention::RetentionDefault as i32,
         };
         assert_eq!(calculate_next_sequence(&pages, Some(&snapshot)), 11);
     }
@@ -489,6 +517,7 @@ mod tests {
                 sequence: Some(Sequence::Num(10)),
                 event: None,
                 created_at: None,
+                external_payload: None,
             }],
             snapshot: None,
             next_sequence: 0,
@@ -507,6 +536,8 @@ mod tests {
             pages: vec![CommandPage {
                 sequence: 25,
                 command: None,
+                merge_strategy: MergeStrategy::MergeCommutative as i32,
+                external_payload: None,
             }],
             saga_origin: None,
         };
@@ -532,6 +563,8 @@ mod tests {
             pages: vec![CommandPage {
                 sequence: 1,
                 command: None,
+                merge_strategy: MergeStrategy::MergeCommutative as i32,
+                external_payload: None,
             }],
             saga_origin: None,
         };

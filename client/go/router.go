@@ -7,9 +7,11 @@ package angzarr
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -220,6 +222,13 @@ func (r *CommandRouter[S]) Types() []string {
 	return types
 }
 
+// RebuildState reconstructs state from an EventBook using the registered rebuilder.
+//
+// This is used by the Replay RPC to compute state from events.
+func (r *CommandRouter[S]) RebuildState(events *pb.EventBook) S {
+	return r.rebuild(events)
+}
+
 // EventHandler handles an event and returns commands for other aggregates.
 // Parameters:
 //   - source: The source EventBook
@@ -400,4 +409,168 @@ func (r *EventRouter) OutputTypes(domain string) []string {
 		}
 	}
 	return nil
+}
+
+// ============================================================================
+// StateRouter - fluent state reconstruction
+// ============================================================================
+
+// StateFactory creates a new zero-value state instance.
+type StateFactory[S any] func() S
+
+// EventApplier applies an event to state.
+// The handler receives raw bytes and is responsible for unmarshaling.
+type EventApplier[S any] func(state *S, value []byte)
+
+// stateRegistration holds a suffix and its handler.
+type stateRegistration[S any] struct {
+	suffix  string
+	applier EventApplier[S]
+}
+
+// StateRouter provides fluent state reconstruction from events.
+//
+// Register once at startup, call WithEvents() per rebuild.
+// Creates fresh state on each WithEvents() call.
+//
+// Example:
+//
+//	func applyRegistered(state *PlayerState, event *examples.PlayerRegistered) {
+//	    state.PlayerID = "player_" + event.Email
+//	    state.DisplayName = event.DisplayName
+//	}
+//
+//	func applyDeposited(state *PlayerState, event *examples.FundsDeposited) {
+//	    if event.NewBalance != nil {
+//	        state.Bankroll = event.NewBalance.Amount
+//	    }
+//	}
+//
+//	var playerRouter = NewStateRouter(NewPlayerState).
+//	    On(applyRegistered).
+//	    On(applyDeposited)
+//
+//	func RebuildState(eventBook *pb.EventBook) PlayerState {
+//	    return playerRouter.WithEvents(eventBook.Pages)
+//	}
+type StateRouter[S any] struct {
+	factory  StateFactory[S]
+	handlers []stateRegistration[S]
+}
+
+// NewStateRouter creates a new StateRouter with the given state factory.
+//
+// The factory is called on each WithEvents() to create a fresh state instance.
+func NewStateRouter[S any](factory StateFactory[S]) *StateRouter[S] {
+	return &StateRouter[S]{
+		factory:  factory,
+		handlers: make([]stateRegistration[S], 0),
+	}
+}
+
+// On registers an event applier handler.
+//
+// The handler function must have signature: func(*S, *EventType)
+// The event type is derived via reflection from the handler.
+//
+// Example:
+//
+//	router.On(applyRegistered)  // applyRegistered is func(*PlayerState, *PlayerRegistered)
+func (r *StateRouter[S]) On(handler any) *StateRouter[S] {
+	// Use reflection to extract proto type from handler signature
+	suffix, applier := makeEventApplier[S](handler)
+	r.handlers = append(r.handlers, stateRegistration[S]{
+		suffix:  suffix,
+		applier: applier,
+	})
+	return r
+}
+
+// WithEvents creates fresh state and applies all events.
+//
+// This is the terminal operation for rebuilding state.
+func (r *StateRouter[S]) WithEvents(pages []*pb.EventPage) S {
+	state := r.factory()
+	for _, page := range pages {
+		if page.Event != nil {
+			r.ApplySingle(&state, page.Event)
+		}
+	}
+	return state
+}
+
+// WithEventBook creates fresh state from an EventBook.
+func (r *StateRouter[S]) WithEventBook(eventBook *pb.EventBook) S {
+	if eventBook == nil {
+		return r.factory()
+	}
+	return r.WithEvents(eventBook.Pages)
+}
+
+// ApplySingle applies a single event to existing state.
+func (r *StateRouter[S]) ApplySingle(state *S, eventAny *anypb.Any) {
+	typeURL := eventAny.TypeUrl
+	for _, reg := range r.handlers {
+		if strings.HasSuffix(typeURL, reg.suffix) {
+			reg.applier(state, eventAny.Value)
+			return
+		}
+	}
+	// Unknown event type - silently ignore (forward compatibility)
+}
+
+// ToRebuilder converts the StateRouter to a StateRebuilder function.
+//
+// This allows using StateRouter with CommandRouter:
+//
+//	playerRouter := NewStateRouter(NewPlayerState).On(...)
+//	cmdRouter := NewCommandRouter("player", playerRouter.ToRebuilder())
+func (r *StateRouter[S]) ToRebuilder() StateRebuilder[S] {
+	return func(events *pb.EventBook) S {
+		return r.WithEventBook(events)
+	}
+}
+
+// makeEventApplier uses reflection to create an EventApplier from a typed handler.
+//
+// The handler must have signature: func(*S, *EventType) where EventType is a proto.Message.
+// Returns the event type suffix and an applier function.
+func makeEventApplier[S any](handler any) (string, EventApplier[S]) {
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+
+	if handlerType.Kind() != reflect.Func {
+		panic("handler must be a function")
+	}
+	if handlerType.NumIn() != 2 {
+		panic("handler must have exactly 2 parameters (state *S, event *EventType)")
+	}
+
+	// Get the event type (second parameter)
+	eventPtrType := handlerType.In(1)
+	if eventPtrType.Kind() != reflect.Ptr {
+		panic("event parameter must be a pointer")
+	}
+	eventType := eventPtrType.Elem()
+
+	// Get the type name for suffix matching
+	suffix := eventType.Name()
+
+	// Create the applier function
+	applier := func(state *S, value []byte) {
+		// Create a new instance of the event type
+		eventPtr := reflect.New(eventType)
+		event := eventPtr.Interface().(proto.Message)
+
+		// Unmarshal the event
+		if err := proto.Unmarshal(value, event); err != nil {
+			return // Silently ignore unmarshal errors
+		}
+
+		// Call the handler with state and event
+		stateValue := reflect.ValueOf(state)
+		handlerValue.Call([]reflect.Value{stateValue, eventPtr})
+	}
+
+	return suffix, applier
 }

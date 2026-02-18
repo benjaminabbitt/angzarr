@@ -48,11 +48,13 @@ pub fn connection_backoff() -> ExponentialBuilder {
 /// Non-retryable:
 /// - All other codes: Business rejections, network errors, server errors, etc.
 ///
-/// Note: Both Aborted and FailedPrecondition are retryable, but retry handlers
-/// should always fetch fresh state (not use cached) since the client's view
-/// of the aggregate may be stale.
+/// Note: FAILED_PRECONDITION is retryable (sequence mismatch with STRICT/COMMUTATIVE).
+/// ABORTED is NOT retryable (used for DLQ routing with MERGE_MANUAL).
+///
+/// Retry handlers should always fetch fresh state (not use cached) since
+/// the client's view of the aggregate may be stale.
 pub fn is_retryable_status(status: &Status) -> bool {
-    matches!(status.code(), Code::Aborted | Code::FailedPrecondition)
+    matches!(status.code(), Code::FailedPrecondition)
 }
 
 /// The outcome of a single attempt of a retryable operation.
@@ -153,14 +155,14 @@ mod tests {
 
     #[test]
     fn test_is_retryable_status() {
-        // Storage-level conflicts (concurrent write race) are retryable
-        assert!(is_retryable_status(&Status::aborted(
-            "Storage sequence conflict"
-        )));
-
-        // Sequence mismatch (stale client) is retryable - client fetches fresh state
+        // Sequence mismatch (STRICT/COMMUTATIVE) is retryable - client fetches fresh state
         assert!(is_retryable_status(&Status::failed_precondition(
             "Sequence mismatch: command expects 0, aggregate at 5"
+        )));
+
+        // ABORTED (DLQ routing with MERGE_MANUAL) is NOT retryable
+        assert!(!is_retryable_status(&Status::aborted(
+            "Sent to DLQ for manual review"
         )));
 
         // Other errors are NOT retryable

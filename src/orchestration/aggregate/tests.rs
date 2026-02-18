@@ -29,6 +29,7 @@ fn make_command_book_with_strategy(
                 value: vec![],
             }),
             merge_strategy: strategy as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -45,6 +46,7 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
                 value: vec![],
             }),
             created_at: None,
+            external_payload: None,
         }]
     } else {
         vec![]

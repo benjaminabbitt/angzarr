@@ -1,0 +1,225 @@
+---
+sidebar_position: 1
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Patterns Reference
+
+Common CQRS and Event Sourcing patterns used in angzarr.
+
+---
+
+## Pattern Catalog
+
+| Category | Patterns |
+|----------|----------|
+| [Delivery](#delivery-patterns) | Outbox, Idempotent Consumer |
+| [Schema Evolution](#schema-evolution) | Upcasting |
+| [Coordination](#coordination-patterns) | Correlation ID, Merge Strategy, Sync Mode |
+| [Query](#query-patterns) | Temporal Query |
+
+---
+
+## Delivery Patterns
+
+### Outbox Pattern
+
+> **You probably don't need this.** Modern managed messaging (Kafka, SQS, Pub/Sub) already guarantees delivery. Only consider outbox if your messaging layer lacks durability.
+
+The outbox pattern ensures atomicity between database writes and event publishing:
+
+```
+1. Events persisted to event store  }
+2. Events written to outbox table   }  ← Single transaction
+3. Background process polls outbox
+4. Events published to message bus
+5. Outbox entries marked published
+```
+
+**When to use:**
+- In-memory or non-durable message transport
+- Regulatory requirement for local audit trail
+
+**Skip when using:**
+- Kafka with `acks=all`
+- AWS SQS/SNS
+- GCP Pub/Sub
+- RabbitMQ with persistent queues
+
+### Idempotent Consumer
+
+Consumers must tolerate duplicate events. Design for natural idempotency:
+
+| Operation | Idempotent? | Fix |
+|-----------|-------------|-----|
+| `INSERT` | No | Use `INSERT ... ON CONFLICT DO NOTHING` |
+| `UPDATE SET x = x + 1` | No | Use absolute: `UPDATE SET x = $value` |
+| `UPDATE SET x = $value` | Yes | Already idempotent |
+| `DELETE WHERE id = $1` | Yes | Already idempotent |
+
+Event sourcing helps: events contain absolute state (`new_balance: 150`), not deltas (`add: 50`).
+
+---
+
+## Schema Evolution
+
+### Upcasting
+
+Transform old event versions to current version when reading:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+class PlayerRegisteredV1ToV2Upcaster:
+    def can_upcast(self, event_type: str, version: int) -> bool:
+        return event_type == "PlayerRegistered" and version == 1
+
+    def upcast(self, event: dict) -> dict:
+        # V1 had "name", V2 split into "first_name" and "last_name"
+        name_parts = event["name"].split(" ", 1)
+        return {
+            "first_name": name_parts[0],
+            "last_name": name_parts[1] if len(name_parts) > 1 else "",
+            "email": event["email"],
+        }
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+impl Upcaster for PlayerRegisteredV1ToV2 {
+    fn can_upcast(&self, event_type: &str, version: u32) -> bool {
+        event_type == "PlayerRegistered" && version == 1
+    }
+
+    fn upcast(&self, event: Value) -> Value {
+        let name = event["name"].as_str().unwrap_or("");
+        let parts: Vec<&str> = name.splitn(2, ' ').collect();
+        json!({
+            "first_name": parts.get(0).unwrap_or(&""),
+            "last_name": parts.get(1).unwrap_or(&""),
+            "email": event["email"],
+        })
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+**Key points:**
+- Stored events remain unchanged
+- Transformation happens on read
+- Enables gradual schema migration
+
+---
+
+## Coordination Patterns
+
+### Correlation ID
+
+Links related events across aggregates:
+
+```protobuf
+message Cover {
+  string domain = 2;
+  UUID root = 1;
+  string correlation_id = 3;  // Links related events
+}
+```
+
+**Propagation rules:**
+- Client provides correlation_id on initial command (if cross-domain tracking needed)
+- Framework does NOT auto-generate—if not provided, stays empty
+- Once set, propagates through sagas and process managers
+
+### Merge Strategy
+
+Controls concurrency handling for optimistic locking:
+
+| Strategy | Use Case | Behavior |
+|----------|----------|----------|
+| **STRICT** | Financial operations | Reject on sequence conflict |
+| **COMMUTATIVE** | Counters, metrics | Retry automatically on conflict |
+| **AGGREGATE_HANDLES** | Visit tracking | Let aggregate resolve conflicts |
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+# STRICT: Must see current balance
+@merge_strategy(MergeStrategy.STRICT)
+def handle_reserve_funds(state, cmd):
+    if cmd.amount > state.available():
+        raise CommandRejectedError("insufficient_funds")
+    return FundsReserved(amount=cmd.amount)
+
+# COMMUTATIVE: Safe to retry
+@merge_strategy(MergeStrategy.COMMUTATIVE)
+def handle_add_points(state, cmd):
+    return PointsAdded(points=cmd.points)
+```
+
+</TabItem>
+</Tabs>
+
+### Sync Mode
+
+Controls command processing timing:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **SYNC** | Wait for result | User-facing operations |
+| **ASYNC** | Fire and forget | Background tasks |
+| **HYBRID** | Wait with timeout | Balanced approach |
+
+---
+
+## Query Patterns
+
+### Temporal Query
+
+Reconstruct state at any point in history:
+
+```python
+# Get player balance as of yesterday
+events = event_store.get_events(
+    domain="player",
+    root=player_id,
+    up_to_timestamp=yesterday,
+)
+state = build_state(events)
+print(f"Balance at {yesterday}: {state.bankroll}")
+```
+
+**Enabled by:**
+- Immutable event stream
+- Events contain absolute state
+- No destructive updates
+
+---
+
+## Component Coordination
+
+### Saga vs Process Manager
+
+| Aspect | Saga | Process Manager |
+|--------|------|-----------------|
+| **State** | Stateless | Own event stream |
+| **Input** | Single domain | Multiple domains |
+| **Identity** | None | correlation_id |
+| **Timeouts** | No | Yes |
+
+**Rule of thumb:** Start with sagas. Upgrade to PM when you need state or multi-domain input.
+
+---
+
+## Next Steps
+
+- **[Aggregates](/components/aggregate)** — Command handling
+- **[Sagas](/components/saga)** — Cross-domain coordination
+- **[Process Managers](/components/process-manager)** — Stateful orchestration

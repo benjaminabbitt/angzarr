@@ -345,75 +345,6 @@ func (x *SagaRetryRequest) GetAttempt() uint32 {
 	return 0
 }
 
-// Command sent to original aggregate when saga command is rejected
-type RevokeEventCommand struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	TriggeringEventSequence uint32                 `protobuf:"varint,1,opt,name=triggering_event_sequence,json=triggeringEventSequence,proto3" json:"triggering_event_sequence,omitempty"` // Which event triggered the failed saga flow
-	SagaName                string                 `protobuf:"bytes,2,opt,name=saga_name,json=sagaName,proto3" json:"saga_name,omitempty"`                                                 // Saga that issued the rejected command
-	RejectionReason         string                 `protobuf:"bytes,3,opt,name=rejection_reason,json=rejectionReason,proto3" json:"rejection_reason,omitempty"`                            // Why the command was rejected
-	RejectedCommand         *CommandBook           `protobuf:"bytes,4,opt,name=rejected_command,json=rejectedCommand,proto3" json:"rejected_command,omitempty"`                            // The command that was rejected
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
-}
-
-func (x *RevokeEventCommand) Reset() {
-	*x = RevokeEventCommand{}
-	mi := &file_angzarr_saga_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RevokeEventCommand) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RevokeEventCommand) ProtoMessage() {}
-
-func (x *RevokeEventCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_saga_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RevokeEventCommand.ProtoReflect.Descriptor instead.
-func (*RevokeEventCommand) Descriptor() ([]byte, []int) {
-	return file_angzarr_saga_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *RevokeEventCommand) GetTriggeringEventSequence() uint32 {
-	if x != nil {
-		return x.TriggeringEventSequence
-	}
-	return 0
-}
-
-func (x *RevokeEventCommand) GetSagaName() string {
-	if x != nil {
-		return x.SagaName
-	}
-	return ""
-}
-
-func (x *RevokeEventCommand) GetRejectionReason() string {
-	if x != nil {
-		return x.RejectionReason
-	}
-	return ""
-}
-
-func (x *RevokeEventCommand) GetRejectedCommand() *CommandBook {
-	if x != nil {
-		return x.RejectedCommand
-	}
-	return nil
-}
-
 // System event when compensation fails/requested
 type SagaCompensationFailed struct {
 	state                     protoimpl.MessageState `protogen:"open.v1"`
@@ -430,7 +361,7 @@ type SagaCompensationFailed struct {
 
 func (x *SagaCompensationFailed) Reset() {
 	*x = SagaCompensationFailed{}
-	mi := &file_angzarr_saga_proto_msgTypes[7]
+	mi := &file_angzarr_saga_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -442,7 +373,7 @@ func (x *SagaCompensationFailed) String() string {
 func (*SagaCompensationFailed) ProtoMessage() {}
 
 func (x *SagaCompensationFailed) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_saga_proto_msgTypes[7]
+	mi := &file_angzarr_saga_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -455,7 +386,7 @@ func (x *SagaCompensationFailed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SagaCompensationFailed.ProtoReflect.Descriptor instead.
 func (*SagaCompensationFailed) Descriptor() ([]byte, []int) {
-	return file_angzarr_saga_proto_rawDescGZIP(), []int{7}
+	return file_angzarr_saga_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SagaCompensationFailed) GetTriggeringAggregate() *Cover {
@@ -530,12 +461,7 @@ const file_angzarr_saga_proto_rawDesc = "" +
 	"\fdestinations\x18\x02 \x03(\v2\x12.angzarr.EventBookR\fdestinations\x12?\n" +
 	"\x10rejected_command\x18\x03 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\x12)\n" +
 	"\x10rejection_reason\x18\x04 \x01(\tR\x0frejectionReason\x12\x18\n" +
-	"\aattempt\x18\x05 \x01(\rR\aattempt\"\xd9\x01\n" +
-	"\x12RevokeEventCommand\x12:\n" +
-	"\x19triggering_event_sequence\x18\x01 \x01(\rR\x17triggeringEventSequence\x12\x1b\n" +
-	"\tsaga_name\x18\x02 \x01(\tR\bsagaName\x12)\n" +
-	"\x10rejection_reason\x18\x03 \x01(\tR\x0frejectionReason\x12?\n" +
-	"\x10rejected_command\x18\x04 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\"\x9d\x03\n" +
+	"\aattempt\x18\x05 \x01(\rR\aattempt\"\x9d\x03\n" +
 	"\x16SagaCompensationFailed\x12A\n" +
 	"\x14triggering_aggregate\x18\x01 \x01(\v2\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n" +
 	"\x19triggering_event_sequence\x18\x02 \x01(\rR\x17triggeringEventSequence\x12\x1b\n" +
@@ -566,7 +492,7 @@ func file_angzarr_saga_proto_rawDescGZIP() []byte {
 	return file_angzarr_saga_proto_rawDescData
 }
 
-var file_angzarr_saga_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_angzarr_saga_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_angzarr_saga_proto_goTypes = []any{
 	(*SpeculateSagaRequest)(nil),   // 0: angzarr.SpeculateSagaRequest
 	(*SagaResponse)(nil),           // 1: angzarr.SagaResponse
@@ -574,47 +500,45 @@ var file_angzarr_saga_proto_goTypes = []any{
 	(*SagaPrepareResponse)(nil),    // 3: angzarr.SagaPrepareResponse
 	(*SagaExecuteRequest)(nil),     // 4: angzarr.SagaExecuteRequest
 	(*SagaRetryRequest)(nil),       // 5: angzarr.SagaRetryRequest
-	(*RevokeEventCommand)(nil),     // 6: angzarr.RevokeEventCommand
-	(*SagaCompensationFailed)(nil), // 7: angzarr.SagaCompensationFailed
-	(*TemporalQuery)(nil),          // 8: angzarr.TemporalQuery
-	(*CommandBook)(nil),            // 9: angzarr.CommandBook
-	(*EventBook)(nil),              // 10: angzarr.EventBook
-	(*Cover)(nil),                  // 11: angzarr.Cover
-	(*timestamppb.Timestamp)(nil),  // 12: google.protobuf.Timestamp
-	(*GetDescriptorRequest)(nil),   // 13: angzarr.GetDescriptorRequest
-	(*ComponentDescriptor)(nil),    // 14: angzarr.ComponentDescriptor
+	(*SagaCompensationFailed)(nil), // 6: angzarr.SagaCompensationFailed
+	(*TemporalQuery)(nil),          // 7: angzarr.TemporalQuery
+	(*CommandBook)(nil),            // 8: angzarr.CommandBook
+	(*EventBook)(nil),              // 9: angzarr.EventBook
+	(*Cover)(nil),                  // 10: angzarr.Cover
+	(*timestamppb.Timestamp)(nil),  // 11: google.protobuf.Timestamp
+	(*GetDescriptorRequest)(nil),   // 12: angzarr.GetDescriptorRequest
+	(*ComponentDescriptor)(nil),    // 13: angzarr.ComponentDescriptor
 }
 var file_angzarr_saga_proto_depIdxs = []int32{
 	4,  // 0: angzarr.SpeculateSagaRequest.request:type_name -> angzarr.SagaExecuteRequest
-	8,  // 1: angzarr.SpeculateSagaRequest.point_in_time:type_name -> angzarr.TemporalQuery
-	9,  // 2: angzarr.SagaResponse.commands:type_name -> angzarr.CommandBook
-	10, // 3: angzarr.SagaResponse.events:type_name -> angzarr.EventBook
-	10, // 4: angzarr.SagaPrepareRequest.source:type_name -> angzarr.EventBook
-	11, // 5: angzarr.SagaPrepareResponse.destinations:type_name -> angzarr.Cover
-	10, // 6: angzarr.SagaExecuteRequest.source:type_name -> angzarr.EventBook
-	10, // 7: angzarr.SagaExecuteRequest.destinations:type_name -> angzarr.EventBook
-	10, // 8: angzarr.SagaRetryRequest.source:type_name -> angzarr.EventBook
-	10, // 9: angzarr.SagaRetryRequest.destinations:type_name -> angzarr.EventBook
-	9,  // 10: angzarr.SagaRetryRequest.rejected_command:type_name -> angzarr.CommandBook
-	9,  // 11: angzarr.RevokeEventCommand.rejected_command:type_name -> angzarr.CommandBook
-	11, // 12: angzarr.SagaCompensationFailed.triggering_aggregate:type_name -> angzarr.Cover
-	9,  // 13: angzarr.SagaCompensationFailed.rejected_command:type_name -> angzarr.CommandBook
-	12, // 14: angzarr.SagaCompensationFailed.occurred_at:type_name -> google.protobuf.Timestamp
-	13, // 15: angzarr.SagaService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	2,  // 16: angzarr.SagaService.Prepare:input_type -> angzarr.SagaPrepareRequest
-	4,  // 17: angzarr.SagaService.Execute:input_type -> angzarr.SagaExecuteRequest
-	4,  // 18: angzarr.SagaCoordinatorService.Execute:input_type -> angzarr.SagaExecuteRequest
-	0,  // 19: angzarr.SagaCoordinatorService.ExecuteSpeculative:input_type -> angzarr.SpeculateSagaRequest
-	14, // 20: angzarr.SagaService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	3,  // 21: angzarr.SagaService.Prepare:output_type -> angzarr.SagaPrepareResponse
-	1,  // 22: angzarr.SagaService.Execute:output_type -> angzarr.SagaResponse
-	1,  // 23: angzarr.SagaCoordinatorService.Execute:output_type -> angzarr.SagaResponse
-	1,  // 24: angzarr.SagaCoordinatorService.ExecuteSpeculative:output_type -> angzarr.SagaResponse
-	20, // [20:25] is the sub-list for method output_type
-	15, // [15:20] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	7,  // 1: angzarr.SpeculateSagaRequest.point_in_time:type_name -> angzarr.TemporalQuery
+	8,  // 2: angzarr.SagaResponse.commands:type_name -> angzarr.CommandBook
+	9,  // 3: angzarr.SagaResponse.events:type_name -> angzarr.EventBook
+	9,  // 4: angzarr.SagaPrepareRequest.source:type_name -> angzarr.EventBook
+	10, // 5: angzarr.SagaPrepareResponse.destinations:type_name -> angzarr.Cover
+	9,  // 6: angzarr.SagaExecuteRequest.source:type_name -> angzarr.EventBook
+	9,  // 7: angzarr.SagaExecuteRequest.destinations:type_name -> angzarr.EventBook
+	9,  // 8: angzarr.SagaRetryRequest.source:type_name -> angzarr.EventBook
+	9,  // 9: angzarr.SagaRetryRequest.destinations:type_name -> angzarr.EventBook
+	8,  // 10: angzarr.SagaRetryRequest.rejected_command:type_name -> angzarr.CommandBook
+	10, // 11: angzarr.SagaCompensationFailed.triggering_aggregate:type_name -> angzarr.Cover
+	8,  // 12: angzarr.SagaCompensationFailed.rejected_command:type_name -> angzarr.CommandBook
+	11, // 13: angzarr.SagaCompensationFailed.occurred_at:type_name -> google.protobuf.Timestamp
+	12, // 14: angzarr.SagaService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
+	2,  // 15: angzarr.SagaService.Prepare:input_type -> angzarr.SagaPrepareRequest
+	4,  // 16: angzarr.SagaService.Execute:input_type -> angzarr.SagaExecuteRequest
+	4,  // 17: angzarr.SagaCoordinatorService.Execute:input_type -> angzarr.SagaExecuteRequest
+	0,  // 18: angzarr.SagaCoordinatorService.ExecuteSpeculative:input_type -> angzarr.SpeculateSagaRequest
+	13, // 19: angzarr.SagaService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
+	3,  // 20: angzarr.SagaService.Prepare:output_type -> angzarr.SagaPrepareResponse
+	1,  // 21: angzarr.SagaService.Execute:output_type -> angzarr.SagaResponse
+	1,  // 22: angzarr.SagaCoordinatorService.Execute:output_type -> angzarr.SagaResponse
+	1,  // 23: angzarr.SagaCoordinatorService.ExecuteSpeculative:output_type -> angzarr.SagaResponse
+	19, // [19:24] is the sub-list for method output_type
+	14, // [14:19] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_saga_proto_init() }
@@ -629,7 +553,7 @@ func file_angzarr_saga_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_saga_proto_rawDesc), len(file_angzarr_saga_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

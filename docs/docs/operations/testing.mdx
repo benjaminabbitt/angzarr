@@ -1,0 +1,477 @@
+---
+sidebar_position: 1
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Testing
+
+Angzarr uses a three-level testing strategy. Each level has distinct scope and infrastructure requirements.
+
+---
+
+## Three Levels of Testing
+
+```
+                    ┌─────────────────────┐
+                    │   Acceptance Tests   │  Full stack, business behavior
+                    │      (Gherkin)       │  Real infrastructure
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              │        Integration Tests        │  Framework internals
+              │     (Angzarr plumbing only)     │  Testcontainers
+              └────────────────┬────────────────┘
+                               │
+    ┌──────────────────────────┴──────────────────────────┐
+    │                    Unit Tests                        │  Pure functions
+    │              (guard/validate/compute)                │  No I/O
+    └──────────────────────────────────────────────────────┘
+```
+
+---
+
+## Unit Tests
+
+No external dependencies. Tests interact only with the system under test — no I/O, no concurrency, no infrastructure.
+
+The **guard/validate/compute** pattern makes business logic 100% unit testable:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+# test_player.py
+from player.handlers import guard_registered, validate_deposit, compute_deposit
+from player.state import PlayerState
+from proto.player_pb2 import DepositFunds
+
+def test_guard_rejects_unregistered_player():
+    state = PlayerState(registered=False)
+
+    with pytest.raises(CommandRejectedError):
+        guard_registered(state)
+
+def test_validate_rejects_non_positive_amount():
+    cmd = DepositFunds(amount=0)
+
+    with pytest.raises(CommandRejectedError):
+        validate_deposit(cmd)
+
+def test_compute_deposit_increases_bankroll():
+    state = PlayerState(registered=True, bankroll=1000)
+    cmd = DepositFunds(amount=500)
+
+    event = compute_deposit(cmd, state)
+
+    assert event.new_bankroll == 1500
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+// player_test.go
+func TestGuardRejectsUnregisteredPlayer(t *testing.T) {
+    state := &PlayerState{Registered: false}
+
+    err := guardRegistered(state)
+
+    assert.Error(t, err)
+}
+
+func TestValidateRejectsNonPositiveAmount(t *testing.T) {
+    cmd := &DepositFunds{Amount: 0}
+
+    err := validateDeposit(cmd)
+
+    assert.Error(t, err)
+}
+
+func TestComputeDepositIncreasesBankroll(t *testing.T) {
+    state := &PlayerState{Registered: true, Bankroll: 1000}
+    cmd := &DepositFunds{Amount: 500}
+
+    event := computeDeposit(cmd, state)
+
+    assert.Equal(t, int32(1500), event.NewBankroll)
+}
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+// player_test.rs
+#[test]
+fn test_guard_rejects_unregistered_player() {
+    let state = PlayerState { registered: false, ..Default::default() };
+
+    let result = guard_registered(&state);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_validate_rejects_non_positive_amount() {
+    let cmd = DepositFunds { amount: 0 };
+
+    let result = validate_deposit(&cmd);
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_compute_deposit_increases_bankroll() {
+    let state = PlayerState { registered: true, bankroll: 1000, ..Default::default() };
+    let cmd = DepositFunds { amount: 500 };
+
+    let event = compute_deposit(&cmd, &state);
+
+    assert_eq!(event.new_bankroll, 1500);
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// PlayerTest.java
+@Test
+void guardRejectsUnregisteredPlayer() {
+    var state = new PlayerState(false, 0);
+
+    assertThrows(CommandRejectedError.class, () ->
+        guardRegistered(state));
+}
+
+@Test
+void validateRejectsNonPositiveAmount() {
+    var cmd = DepositFunds.newBuilder().setAmount(0).build();
+
+    assertThrows(CommandRejectedError.class, () ->
+        validateDeposit(cmd));
+}
+
+@Test
+void computeDepositIncreasesBankroll() {
+    var state = new PlayerState(true, 1000);
+    var cmd = DepositFunds.newBuilder().setAmount(500).build();
+
+    var event = computeDeposit(cmd, state);
+
+    assertEquals(1500, event.getNewBankroll());
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+// PlayerTests.cs
+[Fact]
+public void GuardRejectsUnregisteredPlayer()
+{
+    var state = new PlayerState { Registered = false };
+
+    Assert.Throws<CommandRejectedError>(() =>
+        GuardRegistered(state));
+}
+
+[Fact]
+public void ValidateRejectsNonPositiveAmount()
+{
+    var cmd = new DepositFunds { Amount = 0 };
+
+    Assert.Throws<CommandRejectedError>(() =>
+        ValidateDeposit(cmd));
+}
+
+[Fact]
+public void ComputeDepositIncreasesBankroll()
+{
+    var state = new PlayerState { Registered = true, Bankroll = 1000 };
+    var cmd = new DepositFunds { Amount = 500 };
+
+    var @event = ComputeDeposit(cmd, state);
+
+    Assert.Equal(1500, @event.NewBankroll);
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+// player_test.cpp
+TEST(PlayerTest, GuardRejectsUnregisteredPlayer) {
+    PlayerState state;
+    state.set_registered(false);
+
+    EXPECT_THROW(guard_registered(state), CommandRejectedError);
+}
+
+TEST(PlayerTest, ValidateRejectsNonPositiveAmount) {
+    DepositFunds cmd;
+    cmd.set_amount(0);
+
+    EXPECT_THROW(validate_deposit(cmd), CommandRejectedError);
+}
+
+TEST(PlayerTest, ComputeDepositIncreasesBankroll) {
+    PlayerState state;
+    state.set_registered(true);
+    state.set_bankroll(1000);
+
+    DepositFunds cmd;
+    cmd.set_amount(500);
+
+    auto event = compute_deposit(cmd, state);
+
+    EXPECT_EQ(1500, event.new_bankroll());
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Integration Tests
+
+Test Angzarr **framework internals** using synthetic aggregates. Prove the plumbing works.
+
+**What they cover:**
+- Event persistence and sequence numbering
+- gRPC transport
+- Event bus pub/sub delivery
+- Saga activation and routing
+- Snapshot/recovery
+
+**Location:** `tests/standalone_integration/`
+
+Uses testcontainers for real databases:
+
+```rust
+#[tokio::test]
+async fn test_event_persistence() {
+    let (_container, url) = start_postgres().await;
+    let pool = connect_and_migrate(&url).await;
+    let store = PostgresEventStore::new(pool);
+
+    // Test with synthetic aggregate
+    let events = store.add_events(&event_book).await.unwrap();
+    assert_eq!(events.len(), 1);
+}
+```
+
+---
+
+## Acceptance Tests (Gherkin)
+
+Test **business behavior** through the full stack. Written in Gherkin, describing what the system does from a business perspective.
+
+**Location:** `examples/*/tests/`
+
+### Shared Feature Files
+
+The **same Gherkin scenarios** validate all language implementations:
+
+```
+examples/
+├── features/                    # Shared Gherkin (canonical source)
+│   ├── player.feature
+│   ├── table.feature
+│   ├── hand.feature
+│   └── compensation.feature
+├── python/features/             # Symlinks to ../features/
+├── go/features/                 # Symlinks to ../features/
+├── rust/tests/features/         # Symlinks
+├── java/tests/.../features/     # Symlinks
+├── csharp/Tests/Features/       # Symlinks
+└── cpp/tests/features/          # Symlinks
+```
+
+### Example Feature: Player Reserve Funds
+
+```gherkin
+@player @aggregate
+Feature: Player Aggregate
+  The Player aggregate manages bankroll and fund reservations.
+
+  @funds @reservation
+  Scenario: Reserve funds for table buy-in
+    Given a registered player "Alice" with bankroll 1000
+    When Alice reserves 500 for table "Main-1"
+    Then Alice's available balance is 500
+    And Alice's reserved balance is 500
+    And FundsReserved is emitted with:
+      | amount   | 500     |
+      | table_id | Main-1  |
+
+  @funds @compensation
+  Scenario: Release funds when table join fails
+    Given Alice has reserved 500 for table "Main-1"
+    And JoinTable was rejected with reason "table_full"
+    When Alice receives the Notification
+    Then FundsReleased is emitted with amount 500
+    And Alice's available balance is restored to 1000
+```
+
+### Running Tests by Language
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```bash
+# Python uses behave
+cd examples/python
+behave features/
+
+# Run specific tags
+behave features/ --tags=@player
+behave features/ --tags=@compensation
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```bash
+# Go uses godog
+cd examples/go
+go test -v ./... --godog.tags=@player
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```bash
+# Rust uses cucumber-rs
+cd examples/rust
+cargo test --test acceptance -- --tags @player
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```bash
+# Java uses Cucumber-JVM
+cd examples/java
+./gradlew test --tests '*Cucumber*' -Dcucumber.filter.tags=@player
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```bash
+# C# uses SpecFlow
+cd examples/csharp
+dotnet test --filter Category=player
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```bash
+# C++ uses cucumber-cpp
+cd examples/cpp
+ctest --output-on-failure -R player
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Testcontainers
+
+Storage backend tests use [testcontainers](https://rust.testcontainers.org/) to provision real databases:
+
+```rust
+async fn start_postgres() -> (ContainerAsync<GenericImage>, String) {
+    let image = GenericImage::new("postgres", "16")
+        .with_exposed_port(5432.tcp())
+        .with_wait_for(WaitFor::message_on_stdout(
+            "database system is ready",
+        ));
+
+    let container = image
+        .with_env_var("POSTGRES_USER", "testuser")
+        .with_env_var("POSTGRES_PASSWORD", "testpass")
+        .with_env_var("POSTGRES_DB", "testdb")
+        .start()
+        .await
+        .expect("Failed to start container");
+
+    let host_port = container.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://testuser:testpass@localhost:{}/testdb", host_port);
+
+    (container, url)
+}
+```
+
+**Benefits:**
+- Zero setup — tests start containers automatically
+- Isolation — each test gets fresh state
+- Realistic — tests run against real databases
+
+---
+
+## Interface Contract Tests
+
+Verify all storage implementations behave identically. Written in Gherkin:
+
+```bash
+# Run against SQLite (fast, no containers)
+just test-interfaces
+
+# Run against PostgreSQL (testcontainers)
+just test-interfaces-postgres
+
+# Run against Redis (testcontainers)
+just test-interfaces-redis
+```
+
+---
+
+## Running Tests
+
+### Using just (recommended)
+
+```bash
+# Unit tests
+just test
+
+# Integration tests
+just integration
+
+# Acceptance tests
+just acceptance
+
+# Interface contract tests
+just test-interfaces
+just test-interfaces-all
+```
+
+### Direct commands
+
+```bash
+# Unit tests
+cargo test --lib
+
+# Storage integration tests
+cargo test --test storage_postgres --features postgres
+cargo test --test storage_redis --features redis
+
+# Acceptance tests
+cargo test --test acceptance
+```
+
+---
+
+## Next Steps
+
+- **[Cucumber](/tooling/cucumber)** — Gherkin test framework details
+- **[Testcontainers](/tooling/testcontainers)** — Container-based testing
+- **[Why Poker](/examples/why-poker)** — Why poker exercises testing patterns

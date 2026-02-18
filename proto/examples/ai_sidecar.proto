@@ -1,7 +1,12 @@
 syntax = "proto3";
 package examples;
+option go_package = "github.com/angzarr/angzarr/proto/examples";
+option java_package = "dev.angzarr.examples";
+option java_multiple_files = true;
+option csharp_namespace = "Angzarr.Examples";
+option ruby_package = "Angzarr::Examples";
 
-import "examples/types.proto";
+import "examples/poker_types.proto";
 
 // =============================================================================
 // AI Sidecar Service - gRPC interface for PyTorch model inference

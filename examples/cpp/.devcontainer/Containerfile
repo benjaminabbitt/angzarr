@@ -1,0 +1,7 @@
+FROM mcr.microsoft.com/devcontainers/cpp:1-bookworm
+
+# Install just
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Mark as devcontainer for justfile detection
+ENV DEVCONTAINER=true

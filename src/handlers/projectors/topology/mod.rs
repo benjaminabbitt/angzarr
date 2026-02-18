@@ -197,7 +197,7 @@ impl TopologyProjector {
                         if e.type_url == COMPONENT_REGISTERED_TYPE_URL {
                             ComponentRegistered::decode(e.value.as_slice())
                                 .ok()
-                                .and_then(|r| r.descriptor)
+                                .and_then(|r| r.component)
                         } else {
                             None
                         }
