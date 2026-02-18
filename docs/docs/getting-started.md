@@ -314,7 +314,6 @@ Standalone mode uses:
 | **SQLite** | `sqlite` | Standalone dev, testing |
 | **PostgreSQL** | `postgres` | Production |
 | **Redis** | `redis` | High-throughput |
-| **EventStoreDB** | `eventstoredb` | Event-native storage |
 
 ```yaml
 storage:

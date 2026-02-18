@@ -136,16 +136,13 @@ variable "scaling" {
 variable "storage" {
   description = "Event storage configuration"
   type = object({
-    type = string # mongodb, postgres, eventstoredb
+    type = string # mongodb, postgres
     mongodb = optional(object({
       uri      = string
       database = optional(string, "angzarr")
     }), null)
     postgres = optional(object({
       uri = string
-    }), null)
-    eventstoredb = optional(object({
-      connection_string = string
     }), null)
   })
 }

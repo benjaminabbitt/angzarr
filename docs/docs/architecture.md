@@ -188,7 +188,6 @@ Events are correlated via `correlation_id` on `Cover`, allowing clients to track
 | SQLite | Tested | Local development, standalone mode |
 | PostgreSQL | Tested | Production |
 | Redis | Tested | High-throughput scenarios |
-| EventStoreDB | Implemented | Event-native storage |
 | immudb | Implemented | Immutable audit requirements |
 
 ### Message Bus Backends
