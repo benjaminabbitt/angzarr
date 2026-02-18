@@ -37,15 +37,30 @@ Every saga follows this pattern:
 5. **Return** commands (which Angzarr dispatches)
 
 ```mermaid
-flowchart TB
-    Input[EventBook from player domain<br/>FundsReserved]
-    Filter[1. Filter: FundsReserved events]
-    Extract[2. Extract: player_id, table_id, amount]
-    Build[3. Build: JoinTable command]
-    Output[CommandBook targeting table/JoinTable]
+flowchart LR
+    subgraph DomainA[Player Domain]
+        Input[EventBook<br/>FundsReserved]
+    end
 
-    Input --> Filter --> Extract --> Build --> Output
+    subgraph Saga[Saga Processing]
+        Filter[1. Filter events]
+        Extract[2. Extract data]
+        Build[3. Build command]
+        Filter --> Extract --> Build
+    end
+
+    subgraph DomainB[Table Domain]
+        Output[CommandBook<br/>JoinTable]
+    end
+
+    Input --> Filter
+    Build --> Output
+
+    style DomainB stroke-dasharray: 5 5
+    style Output stroke-dasharray: 5 5
 ```
+
+*The dashed domain represents any target domain—sagas always bridge from one domain to another.*
 
 ---
 

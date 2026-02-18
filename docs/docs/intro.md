@@ -126,6 +126,8 @@ flowchart LR
     style AGG2 stroke-dasharray: 5 5
 ```
 
+*The dashed Domain B represents any additional domain(s)—sagas bridge events from one domain to commands in another. Real systems have multiple domains, each with its own aggregate.*
+
 Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.
 
 ---
