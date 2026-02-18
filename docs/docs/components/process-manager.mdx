@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 ---
 
 import Tabs from '@theme/Tabs';
@@ -220,7 +220,7 @@ public class HandFlowState {
 }
 
 public class HandFlowPM extends ProcessManager<HandFlowState> {
-    @ReactsTo
+    @ReactsTo(HandStarted.class)
     public List<CommandBook> handleHandStarted(HandStarted event, HandFlowState state) {
         state.setHandId(event.getHandId());
         state.setPhase(HandPhase.DEALING);
@@ -232,7 +232,7 @@ public class HandFlowPM extends ProcessManager<HandFlowState> {
             .build()));
     }
 
-    @ReactsTo
+    @ReactsTo(CardsDealt.class)
     public List<CommandBook> handleCardsDealt(CardsDealt event, HandFlowState state) {
         state.setPhase(HandPhase.BLINDS);
         return List.of(buildCommand("hand", PostBlinds.newBuilder()
@@ -240,7 +240,7 @@ public class HandFlowPM extends ProcessManager<HandFlowState> {
             .build()));
     }
 
-    @ReactsTo
+    @ReactsTo(HandComplete.class)
     public List<CommandBook> handleHandComplete(HandComplete event, HandFlowState state) {
         state.setPhase(HandPhase.COMPLETE);
         return List.of(buildCommand("table", EndHand.newBuilder()
@@ -266,7 +266,7 @@ public class HandFlowState
 
 public class HandFlowPM : ProcessManager<HandFlowState>
 {
-    [ReactsTo]
+    [ReactsTo(typeof(HandStarted))]
     public IEnumerable<CommandBook> HandleHandStarted(HandStarted evt, HandFlowState state)
     {
         state.HandId = evt.HandId;
@@ -280,14 +280,14 @@ public class HandFlowPM : ProcessManager<HandFlowState>
         });
     }
 
-    [ReactsTo]
+    [ReactsTo(typeof(CardsDealt))]
     public IEnumerable<CommandBook> HandleCardsDealt(CardsDealt evt, HandFlowState state)
     {
         state.Phase = HandPhase.Blinds;
         yield return BuildCommand("hand", new PostBlinds { HandId = state.HandId });
     }
 
-    [ReactsTo]
+    [ReactsTo(typeof(HandComplete))]
     public IEnumerable<CommandBook> HandleHandComplete(HandComplete evt, HandFlowState state)
     {
         state.Phase = HandPhase.Complete;

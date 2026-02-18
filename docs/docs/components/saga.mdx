@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 import Tabs from '@theme/Tabs';
@@ -150,7 +150,7 @@ let router = EventRouter::new("saga-table-player", "player")
 
 ```java
 public class TablePlayerSaga {
-    @ReactsTo(event = "FundsReserved")
+    @ReactsTo(FundsReserved.class)
     public List<CommandBook> handleFundsReserved(FundsReserved event, SagaContext context) {
         var cmd = JoinTable.newBuilder()
             .setPlayerId(event.getPlayerId())
@@ -177,7 +177,7 @@ public class TablePlayerSaga {
 ```csharp
 public class TablePlayerSaga
 {
-    [ReactsTo("FundsReserved")]
+    [ReactsTo(typeof(FundsReserved))]
     public IEnumerable<CommandBook> HandleFundsReserved(
         FundsReserved @event, SagaContext context)
     {
@@ -283,7 +283,73 @@ fn handle_join_rejected(
 ```
 
 </TabItem>
+<TabItem value="go" label="Go">
+
+```go
+func handleJoinRejected(state *PlayerState, notification *Notification) (*FundsReleased, error) {
+    return &FundsReleased{
+        Amount:       state.ReservedAmount,
+        Reason:       fmt.Sprintf("Join failed: %s", notification.RejectionReason),
+        NewAvailable: state.Bankroll,
+        NewReserved:  0,
+    }, nil
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@Rejected(domain = "table", command = "JoinTable")
+public FundsReleased handleJoinRejected(PlayerState state, Notification notification) {
+    return FundsReleased.newBuilder()
+        .setAmount(state.getReservedAmount())
+        .setReason("Join failed: " + notification.getRejectionReason())
+        .setNewAvailable(state.getBankroll())
+        .setNewReserved(0)
+        .build();
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+[Rejected("table", "JoinTable")]
+public FundsReleased HandleJoinRejected(PlayerState state, Notification notification)
+{
+    return new FundsReleased
+    {
+        Amount = state.ReservedAmount,
+        Reason = $"Join failed: {notification.RejectionReason}",
+        NewAvailable = state.Bankroll,
+        NewReserved = 0
+    };
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+FundsReleased handle_join_rejected(
+    const PlayerState& state, const Notification& notification) {
+
+    FundsReleased event;
+    event.set_amount(state.reserved_amount());
+    event.set_reason("Join failed: " + notification.rejection_reason());
+    event.set_new_available(state.bankroll());
+    event.set_new_reserved(0);
+    return event;
+}
+```
+
+</TabItem>
 </Tabs>
+
+:::tip Advanced Compensation
+For complex scenarios (DLQ routing, escalation webhooks, RevocationResponse flags), see **[Error Recovery](/operations/error-recovery#saga-compensation)**.
+:::
 
 ---
 
@@ -317,19 +383,9 @@ CQRS/ES architectures **cannot provide distributed ACID transactions**. Instead:
 
 ---
 
-## Saga vs Projector
-
-| Aspect | Projector | Saga |
-|--------|-----------|------|
-| **Output** | Read models | Commands |
-| **Side effects** | Database writes | Modifies other aggregates |
-| **Coupling** | To events only | To events and target aggregates |
-| **Failure impact** | Query returns stale data | Workflow incomplete |
-
----
-
 ## Next Steps
 
 - **[Projectors](/components/projector)** — Building read models
 - **[Process Managers](/components/process-manager)** — Stateful multi-domain coordination
+- **[Error Recovery](/operations/error-recovery)** — DLQ, retry, compensation details
 - **[Compensation Flow](/examples/why-poker#2-saga-compensation)** — Detailed compensation patterns

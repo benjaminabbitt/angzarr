@@ -136,7 +136,7 @@ def apply(state, event, sequence):
 ```python
 # FundsReserved { amount: 500, new_reserved: 500, new_available: 500 }
 def apply(state, event):
-    state.reserved = event.new_reserved  # Naturally idempotent
+    state.reserved = event.new_reserved  # Idempotent by design
     state.available = event.new_available
 ```
 
@@ -145,7 +145,7 @@ def apply(state, event):
 | Approach | Pros | Cons |
 |----------|------|------|
 | **Deltas** | Smaller events, clearer intent | Requires sequence tracking |
-| **Absolute values** | Naturally idempotent, self-describing | Larger events, computed at write time |
+| **Absolute values** | Idempotent by design, self-describing | Larger events, computed at write time |
 
 ⍼ Angzarr's sequence numbers ensure events are never applied twice, making deltas safe. Choose based on your domain's needs.
 

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 import Tabs from '@theme/Tabs';
@@ -115,6 +115,104 @@ impl OutputProjector {
         }
     }
 }
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public class OutputProjector {
+    private final Map<String, String> playerNames = new HashMap<>();
+
+    @Projects(PlayerRegistered.class)
+    public void handlePlayerRegistered(PlayerRegistered event) {
+        playerNames.put(event.getPlayerId(), event.getUsername());
+        System.out.printf("[Player] %s registered%n", event.getUsername());
+    }
+
+    @Projects(FundsDeposited.class)
+    public void handleFundsDeposited(FundsDeposited event) {
+        String name = playerNames.getOrDefault(event.getPlayerId(), event.getPlayerId());
+        System.out.printf("[Player] %s deposited $%.2f%n", name, event.getAmount() / 100.0);
+    }
+
+    @Projects(CardsDealt.class)
+    public void handleCardsDealt(CardsDealt event) {
+        for (PlayerCards player : event.getPlayersList()) {
+            String name = playerNames.getOrDefault(player.getPlayerId(), player.getPlayerId());
+            String cards = formatCards(player.getHoleCardsList());
+            System.out.printf("[Hand] %s dealt %s%n", name, cards);
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+public class OutputProjector
+{
+    private readonly Dictionary<string, string> _playerNames = new();
+
+    [Projects(typeof(PlayerRegistered))]
+    public void HandlePlayerRegistered(PlayerRegistered @event)
+    {
+        _playerNames[@event.PlayerId] = @event.Username;
+        Console.WriteLine($"[Player] {@event.Username} registered");
+    }
+
+    [Projects(typeof(FundsDeposited))]
+    public void HandleFundsDeposited(FundsDeposited @event)
+    {
+        var name = _playerNames.GetValueOrDefault(@event.PlayerId, @event.PlayerId);
+        Console.WriteLine($"[Player] {name} deposited ${@event.Amount / 100.0:F2}");
+    }
+
+    [Projects(typeof(CardsDealt))]
+    public void HandleCardsDealt(CardsDealt @event)
+    {
+        foreach (var player in @event.Players)
+        {
+            var name = _playerNames.GetValueOrDefault(player.PlayerId, player.PlayerId);
+            var cards = FormatCards(player.HoleCards);
+            Console.WriteLine($"[Hand] {name} dealt {cards}");
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+class OutputProjector {
+public:
+    void handle_player_registered(const PlayerRegistered& event) {
+        player_names_[event.player_id()] = event.username();
+        std::cout << "[Player] " << event.username() << " registered\n";
+    }
+
+    void handle_funds_deposited(const FundsDeposited& event) {
+        auto it = player_names_.find(event.player_id());
+        std::string name = (it != player_names_.end()) ? it->second : event.player_id();
+        std::cout << "[Player] " << name << " deposited $"
+                  << std::fixed << std::setprecision(2)
+                  << (event.amount() / 100.0) << "\n";
+    }
+
+    void handle_cards_dealt(const CardsDealt& event) {
+        for (const auto& player : event.players()) {
+            auto it = player_names_.find(player.player_id());
+            std::string name = (it != player_names_.end()) ? it->second : player.player_id();
+            std::string cards = format_cards(player.hole_cards());
+            std::cout << "[Hand] " << name << " dealt " << cards << "\n";
+        }
+    }
+
+private:
+    std::unordered_map<std::string, std::string> player_names_;
+};
 ```
 
 </TabItem>

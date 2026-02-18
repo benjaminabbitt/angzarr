@@ -87,6 +87,10 @@ BusinessCoordinator ─────► Your Aggregate ────► Events
               │                           │
               ▼                           ▼
         Your Saga                   Your Projector
+              │                           │
+              ▼                           ▼
+      Commands to                   Read Model
+      Other Aggregates        (Postgres, Redis, ES, etc.)
 ```
 
 ---

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 import Tabs from '@theme/Tabs';
@@ -293,6 +293,58 @@ fn test_deposit_increases_bankroll() {
     let event = compute_deposit(&cmd, &state);
 
     assert_eq!(event.new_bankroll, 1500);
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@Test
+void testDepositIncreasesBankroll() {
+    PlayerState state = new PlayerState();
+    state.registered = true;
+    state.bankroll = 1000;
+
+    DepositFunds cmd = DepositFunds.newBuilder().setAmount(500).build();
+
+    FundsDeposited event = computeDeposit(cmd, state);
+
+    assertEquals(1500, event.getNewBankroll());
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+[Fact]
+public void TestDepositIncreasesBankroll()
+{
+    var state = new PlayerState { Registered = true, Bankroll = 1000 };
+    var cmd = new DepositFunds { Amount = 500 };
+
+    var @event = ComputeDeposit(cmd, state);
+
+    Assert.Equal(1500, @event.NewBankroll);
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+TEST(DepositTest, IncreasesBankroll) {
+    PlayerState state;
+    state.registered = true;
+    state.bankroll = 1000;
+
+    DepositFunds cmd;
+    cmd.set_amount(500);
+
+    FundsDeposited event = compute_deposit(cmd, state);
+
+    EXPECT_EQ(event.new_bankroll(), 1500);
 }
 ```
 

@@ -116,7 +116,7 @@ Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code h
 
 If you're evaluating Angzarr for your organization:
 
-- **[PITCH.md](https://github.com/angzarr/angzarr/blob/main/PITCH.md)** — Complete architectural pitch (standalone document)
+- **[PITCH.md](https://github.com/benjaminabbitt/angzarr/blob/main/PITCH.md)** — Complete architectural pitch (standalone document)
 - **[Architecture](./architecture)** — Core concepts: book metaphor, coordinators, sync modes
 - **[Why Poker](./examples/why-poker)** — Why our example domain exercises every pattern
 
@@ -138,12 +138,12 @@ Ready to build:
 
 | Language | Package | Example |
 |----------|---------|---------|
-| Python | `angzarr-client` | [examples/python/](https://github.com/angzarr/angzarr/tree/main/examples/python) |
-| Go | `github.com/angzarr/client-go` | [examples/go/](https://github.com/angzarr/angzarr/tree/main/examples/go) |
-| Rust | `angzarr-client` | [examples/rust/](https://github.com/angzarr/angzarr/tree/main/examples/rust) |
-| Java | `dev.angzarr:client` | [examples/java/](https://github.com/angzarr/angzarr/tree/main/examples/java) |
-| C# | `Angzarr.Client` | [examples/csharp/](https://github.com/angzarr/angzarr/tree/main/examples/csharp) |
-| C++ | header-only | [examples/cpp/](https://github.com/angzarr/angzarr/tree/main/examples/cpp) |
+| Python | `angzarr-client` | [examples/python/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/python) |
+| Go | `github.com/benjaminabbitt/angzarr/client` | [examples/go/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/go) |
+| Rust | `angzarr-client` | [examples/rust/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/rust) |
+| Java | `dev.angzarr:client` | [examples/java/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/java) |
+| C# | `Angzarr.Client` | [examples/csharp/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/csharp) |
+| C++ | header-only | [examples/cpp/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/cpp) |
 
 All implementations share the same Gherkin specifications, ensuring identical behavior across languages.
 
@@ -151,45 +151,193 @@ All implementations share the same Gherkin specifications, ensuring identical be
 
 ## Quick Example
 
-A complete aggregate handler in ~50 lines:
+The same handler across all six languages. Each follows the **guard → validate → compute** pattern:
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+<TabItem value="python" label="Python" default>
 
 ```python
-from angzarr_client import CommandRouter, errmsg
-from proto.player_pb2 import RegisterPlayer, DepositFunds, PlayerRegistered, FundsDeposited
-from state import PlayerState, build_state
+# examples/python/player/agg/handlers/player.py
+@handles(player_proto.DepositFunds)
+def deposit(self, cmd: player_proto.DepositFunds) -> player_proto.FundsDeposited:
+    # Guard
+    if not self.exists:
+        raise CommandRejectedError("Player does not exist")
 
-def handle_register(state: PlayerState, cmd: RegisterPlayer) -> PlayerRegistered:
-    # GUARD: check state preconditions
-    if state.registered:
-        raise CommandRejectedError(errmsg.ALREADY_REGISTERED)
+    # Validate
+    amount = cmd.amount.amount if cmd.amount else 0
+    if amount <= 0:
+        raise CommandRejectedError("amount must be positive")
 
-    # VALIDATE: check command inputs
-    if not cmd.username:
-        raise CommandRejectedError(errmsg.USERNAME_REQUIRED)
-
-    # COMPUTE: produce event
-    return PlayerRegistered(
-        username=cmd.username,
-        initial_bankroll=cmd.initial_bankroll,
-    )
-
-def handle_deposit(state: PlayerState, cmd: DepositFunds) -> FundsDeposited:
-    if not state.registered:
-        raise CommandRejectedError(errmsg.NOT_REGISTERED)
-    if cmd.amount <= 0:
-        raise CommandRejectedError(errmsg.AMOUNT_POSITIVE)
-
-    return FundsDeposited(
+    # Compute
+    new_balance = self.bankroll + amount
+    return player_proto.FundsDeposited(
         amount=cmd.amount,
-        new_bankroll=state.bankroll + cmd.amount,
+        new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
+        deposited_at=now(),
     )
-
-router = CommandRouter("player", build_state)
-    .on("RegisterPlayer", handle_register)
-    .on("DepositFunds", handle_deposit)
 ```
 
-No database code. No message bus code. Just business logic.
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+// examples/rust/player/agg/src/handlers/deposit.rs
+fn guard(state: &PlayerState) -> CommandResult<()> {
+    if !state.exists() {
+        return Err(CommandRejectedError::new("Player does not exist"));
+    }
+    Ok(())
+}
+
+fn validate(cmd: &DepositFunds) -> CommandResult<i64> {
+    let amount = cmd.amount.as_ref().map(|c| c.amount).unwrap_or(0);
+    if amount <= 0 {
+        return Err(CommandRejectedError::new("amount must be positive"));
+    }
+    Ok(amount)
+}
+
+fn compute(cmd: &DepositFunds, state: &PlayerState, amount: i64) -> FundsDeposited {
+    let new_balance = state.bankroll + amount;
+    FundsDeposited {
+        amount: cmd.amount.clone(),
+        new_balance: Some(Currency { amount: new_balance, currency_code: "CHIPS".into() }),
+        deposited_at: Some(angzarr_client::now()),
+    }
+}
+```
+
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/handlers/deposit.rs)
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+// examples/go/player/agg/handlers/deposit.go
+func guardDepositFunds(state PlayerState) error {
+    if !state.Exists() {
+        return angzarr.NewCommandRejectedError("Player does not exist")
+    }
+    return nil
+}
+
+func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
+    amount := int64(0)
+    if cmd.Amount != nil {
+        amount = cmd.Amount.Amount
+    }
+    if amount <= 0 {
+        return 0, angzarr.NewCommandRejectedError("amount must be positive")
+    }
+    return amount, nil
+}
+
+func computeFundsDeposited(cmd *examples.DepositFunds, state PlayerState, amount int64) *examples.FundsDeposited {
+    newBalance := state.Bankroll + amount
+    return &examples.FundsDeposited{
+        Amount:     cmd.Amount,
+        NewBalance: &examples.Currency{Amount: newBalance, CurrencyCode: "CHIPS"},
+    }
+}
+```
+
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/deposit.go)
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// examples/java/player/agg/src/main/java/.../handlers/DepositHandler.java
+public static FundsDeposited handle(DepositFunds cmd, PlayerState state) {
+    // Guard
+    if (!state.exists()) {
+        throw Errors.CommandRejectedError.preconditionFailed("Player does not exist");
+    }
+
+    // Validate
+    long amount = cmd.hasAmount() ? cmd.getAmount().getAmount() : 0;
+    if (amount <= 0) {
+        throw Errors.CommandRejectedError.invalidArgument("amount must be positive");
+    }
+
+    // Compute
+    long newBalance = state.getBankroll() + amount;
+    return FundsDeposited.newBuilder()
+        .setAmount(cmd.getAmount())
+        .setNewBalance(Currency.newBuilder().setAmount(newBalance).setCurrencyCode("CHIPS"))
+        .build();
+}
+```
+
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/DepositHandler.java)
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+// examples/csharp/Player/Agg/Handlers/DepositHandler.cs
+public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)
+{
+    // Guard
+    if (!state.Exists)
+        throw CommandRejectedError.PreconditionFailed("Player does not exist");
+
+    // Validate
+    var amount = cmd.Amount?.Amount ?? 0;
+    if (amount <= 0)
+        throw CommandRejectedError.InvalidArgument("amount must be positive");
+
+    // Compute
+    var newBalance = state.Bankroll + amount;
+    return new FundsDeposited
+    {
+        Amount = cmd.Amount,
+        NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
+    };
+}
+```
+
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Handlers/DepositHandler.cs)
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+// examples/cpp/player/agg/handlers/deposit_handler.cpp
+examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd, const PlayerState& state) {
+    // Guard
+    if (!state.exists()) {
+        throw angzarr::CommandRejectedError::precondition_failed("Player does not exist");
+    }
+
+    // Validate
+    int64_t amount = cmd.has_amount() ? cmd.amount().amount() : 0;
+    if (amount <= 0) {
+        throw angzarr::CommandRejectedError::invalid_argument("amount must be positive");
+    }
+
+    // Compute
+    int64_t new_balance = state.bankroll + amount;
+    examples::FundsDeposited event;
+    event.mutable_amount()->CopyFrom(cmd.amount());
+    event.mutable_new_balance()->set_amount(new_balance);
+    event.mutable_new_balance()->set_currency_code("CHIPS");
+    return event;
+}
+```
+
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/cpp/player/agg/handlers/deposit_handler.cpp)
+
+</TabItem>
+</Tabs>
+
+**No database code. No message bus code. Just business logic.**
 
 ---
 

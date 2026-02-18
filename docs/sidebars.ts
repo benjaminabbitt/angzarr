@@ -62,6 +62,8 @@ const sidebars: SidebarsConfig = {
         'operations/testing',
         'operations/observability',
         'operations/infrastructure',
+        'operations/error-recovery',
+        'operations/payload-offloading',
       ],
     },
     {

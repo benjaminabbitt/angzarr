@@ -7,7 +7,23 @@ import TabItem from '@theme/TabItem';
 
 # Aggregate Examples
 
-Complete handler examples from the poker domain in all six languages.
+Real handler examples from the poker domain. All code is from the actual [examples/](https://github.com/benjaminabbitt/angzarr/tree/main/examples) directory.
+
+⍼ Angzarr supports two implementation styles:
+
+| Style | Description | Best For |
+|-------|-------------|----------|
+| **OO (Object-Oriented)** | Aggregate class with `@handles`/`[Handles]` decorators | Rich domain models, encapsulation |
+| **Imperative** | Pure `guard()`/`validate()`/`compute()` functions | Simple handlers, easy testing |
+
+| Language | OO | Imperative |
+|----------|:--:|:----------:|
+| Python | ✓ | — |
+| C# | ✓ | ✓ |
+| Rust | ✓ | ✓ |
+| Java | ✓ | ✓ |
+| Go | — | ✓ |
+| C++ | — | ✓ |
 
 ---
 
@@ -16,316 +32,404 @@ Complete handler examples from the poker domain in all six languages.
 The Player aggregate demonstrates the **two-phase reservation pattern**. Funds are reserved before joining a table, then released if the join fails.
 
 <Tabs groupId="language">
-<TabItem value="python" label="Python" default>
+<TabItem value="python-oo" label="Python OO" default>
+
+**[`examples/python/player/agg/handlers/player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)**
 
 ```python
-from dataclasses import dataclass
-from proto.player_pb2 import ReserveFunds, FundsReserved
-from angzarr_client import CommandRejectedError
+class Player(Aggregate[_PlayerState]):
+    """Player aggregate with event sourcing."""
 
-@dataclass
-class PlayerState:
-    registered: bool = False
-    bankroll: int = 0
-    reserved: int = 0
+    domain = "player"
 
-    def available(self) -> int:
-        return self.bankroll - self.reserved
+    @handles(player_proto.ReserveFunds)
+    def reserve(self, cmd: player_proto.ReserveFunds) -> player_proto.FundsReserved:
+        """Reserve funds for a table buy-in."""
+        if not self.exists:
+            raise CommandRejectedError("Player does not exist")
 
-def guard_registered(state: PlayerState) -> None:
-    if not state.registered:
-        raise CommandRejectedError("player_not_registered")
+        amount = cmd.amount.amount if cmd.amount else 0
+        if amount <= 0:
+            raise CommandRejectedError("amount must be positive")
 
-def validate_reserve(cmd: ReserveFunds, state: PlayerState) -> None:
-    if cmd.amount <= 0:
-        raise CommandRejectedError("amount_must_be_positive")
-    if cmd.amount > state.available():
-        raise CommandRejectedError("insufficient_funds")
+        table_key = cmd.table_root.hex()
+        if table_key in self.table_reservations:
+            raise CommandRejectedError("Funds already reserved for this table")
 
-def compute_reserve(cmd: ReserveFunds, state: PlayerState) -> FundsReserved:
-    new_reserved = state.reserved + cmd.amount
-    return FundsReserved(
-        amount=cmd.amount,
-        table_id=cmd.table_id,
-        new_available=state.available() - cmd.amount,
-        new_reserved=new_reserved,
-    )
+        if amount > self.available_balance:
+            raise CommandRejectedError("Insufficient funds")
 
-def handle_reserve_funds(state: PlayerState, cmd: ReserveFunds) -> FundsReserved:
-    guard_registered(state)
-    validate_reserve(cmd, state)
-    return compute_reserve(cmd, state)
+        new_reserved = self.reserved_funds + amount
+        new_available = self.bankroll - new_reserved
+        return player_proto.FundsReserved(
+            amount=cmd.amount,
+            table_root=cmd.table_root,
+            new_available_balance=poker_types.Currency(
+                amount=new_available, currency_code="CHIPS"
+            ),
+            new_reserved_balance=poker_types.Currency(
+                amount=new_reserved, currency_code="CHIPS"
+            ),
+            reserved_at=now(),
+        )
+```
+
+</TabItem>
+<TabItem value="csharp-oo" label="C# OO">
+
+**[`examples/csharp/Player/Agg/Player.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Player.cs)**
+
+```csharp
+public class PlayerAggregate : Aggregate<PlayerState>
+{
+    public const string Domain = "player";
+
+    [Handles(typeof(ReserveFunds))]
+    public FundsReserved HandleReserve(ReserveFunds cmd)
+    {
+        if (!Exists)
+            throw CommandRejectedError.PreconditionFailed("Player does not exist");
+
+        var amount = cmd.Amount?.Amount ?? 0;
+        if (amount <= 0)
+            throw CommandRejectedError.InvalidArgument("amount must be positive");
+
+        var tableKey = Convert.ToHexString(cmd.TableRoot.ToByteArray()).ToLowerInvariant();
+        if (TableReservations.ContainsKey(tableKey))
+            throw CommandRejectedError.PreconditionFailed("Funds already reserved for this table");
+        if (amount > AvailableBalance)
+            throw CommandRejectedError.PreconditionFailed("Insufficient funds");
+
+        var newReserved = ReservedFunds + amount;
+        var newAvailable = Bankroll - newReserved;
+        return new FundsReserved
+        {
+            Amount = cmd.Amount,
+            TableRoot = cmd.TableRoot,
+            NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
+            NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
+            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+        };
+    }
+}
+```
+
+</TabItem>
+<TabItem value="csharp-imp" label="C# Imperative">
+
+**[`examples/csharp/Player/Agg/Handlers/ReserveHandler.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Handlers/ReserveHandler.cs)**
+
+```csharp
+public static class ReserveHandler
+{
+    public static FundsReserved Handle(ReserveFunds cmd, PlayerState state)
+    {
+        // Guard
+        if (!state.Exists)
+            throw CommandRejectedError.PreconditionFailed("Player does not exist");
+
+        // Validate
+        var amount = cmd.Amount?.Amount ?? 0;
+        if (amount <= 0)
+            throw CommandRejectedError.InvalidArgument("amount must be positive");
+
+        var tableKey = Convert.ToHexString(cmd.TableRoot.ToByteArray()).ToLowerInvariant();
+        if (state.TableReservations.ContainsKey(tableKey))
+            throw CommandRejectedError.PreconditionFailed("Funds already reserved for this table");
+        if (amount > state.AvailableBalance)
+            throw CommandRejectedError.PreconditionFailed("Insufficient funds");
+
+        // Compute
+        var newReserved = state.ReservedFunds + amount;
+        var newAvailable = state.Bankroll - newReserved;
+        return new FundsReserved
+        {
+            Amount = cmd.Amount,
+            TableRoot = cmd.TableRoot,
+            NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
+            NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
+            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+        };
+    }
+}
+```
+
+</TabItem>
+<TabItem value="rust-oo" label="Rust OO">
+
+**[`examples/rust/player/agg-oo/src/main.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg-oo/src/main.rs)**
+
+```rust
+pub struct PlayerAggregate;
+
+#[aggregate(domain = "player")]
+impl PlayerAggregate {
+    /// Handle DepositFunds command.
+    #[handles(DepositFunds)]
+    pub fn deposit(
+        &self,
+        _cb: &CommandBook,
+        cmd: DepositFunds,
+        state: &PlayerState,
+        seq: u32,
+    ) -> CommandResult<EventBook> {
+        if !state.exists {
+            return Err("player does not exist".into());
+        }
+
+        let event = FundsDeposited { amount: cmd.amount };
+
+        Ok(EventBook {
+            pages: vec![EventPage {
+                sequence: seq,
+                event: Some(Any {
+                    type_url: "type.googleapis.com/examples.FundsDeposited".into(),
+                    value: prost::Message::encode_to_vec(&event),
+                }),
+            }],
+            ..Default::default()
+        })
+    }
+}
+```
+
+</TabItem>
+<TabItem value="rust-imp" label="Rust Imperative">
+
+**[`examples/rust/player/agg/src/handlers/reserve.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/handlers/reserve.rs)**
+
+```rust
+fn guard(state: &PlayerState) -> CommandResult<()> {
+    if !state.exists() {
+        return Err(CommandRejectedError::new("Player does not exist"));
+    }
+    Ok(())
+}
+
+fn validate(cmd: &ReserveFunds, state: &PlayerState) -> CommandResult<i64> {
+    let amount = cmd.amount.as_ref().map(|c| c.amount).unwrap_or(0);
+    if amount <= 0 {
+        return Err(CommandRejectedError::new("amount must be positive"));
+    }
+    if amount > state.available_balance() {
+        return Err(CommandRejectedError::new("Insufficient funds"));
+    }
+
+    let table_key = hex::encode(&cmd.table_root);
+    if state.table_reservations.contains_key(&table_key) {
+        return Err(CommandRejectedError::new("Funds already reserved for this table"));
+    }
+
+    Ok(amount)
+}
+
+fn compute(cmd: &ReserveFunds, state: &PlayerState, amount: i64) -> FundsReserved {
+    let new_reserved = state.reserved_funds + amount;
+    let new_available = state.bankroll - new_reserved;
+
+    FundsReserved {
+        amount: cmd.amount.clone(),
+        table_root: cmd.table_root.clone(),
+        new_available_balance: Some(Currency {
+            amount: new_available,
+            currency_code: "CHIPS".to_string(),
+        }),
+        new_reserved_balance: Some(Currency {
+            amount: new_reserved,
+            currency_code: "CHIPS".to_string(),
+        }),
+        reserved_at: Some(angzarr_client::now()),
+    }
+}
+
+pub fn handle_reserve_funds(
+    command_book: &CommandBook,
+    command_any: &Any,
+    state: &PlayerState,
+    seq: u32,
+) -> CommandResult<EventBook> {
+    let cmd: ReserveFunds = command_any.unpack()?;
+
+    guard(state)?;
+    let amount = validate(&cmd, state)?;
+    let event = compute(&cmd, state, amount);
+
+    Ok(new_event_book(command_book, seq, pack_event(&event, "examples.FundsReserved")))
+}
+```
+
+</TabItem>
+<TabItem value="java-oo" label="Java OO">
+
+**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
+
+```java
+public class Player extends Aggregate<PlayerState> {
+
+    public static final String DOMAIN = "player";
+
+    @Override
+    public String getDomain() {
+        return DOMAIN;
+    }
+
+    @Handles(ReserveFunds.class)
+    public FundsReserved reserve(ReserveFunds cmd) {
+        // Guard
+        if (!exists()) {
+            throw Errors.CommandRejectedError.preconditionFailed("Player does not exist");
+        }
+
+        // Validate
+        long amount = cmd.hasAmount() ? cmd.getAmount().getAmount() : 0;
+        if (amount <= 0) {
+            throw Errors.CommandRejectedError.invalidArgument("amount must be positive");
+        }
+
+        String tableKey = bytesToHex(cmd.getTableRoot().toByteArray());
+        if (getState().hasReservationFor(tableKey)) {
+            throw Errors.CommandRejectedError.preconditionFailed("Funds already reserved for this table");
+        }
+
+        if (amount > getAvailableBalance()) {
+            throw Errors.CommandRejectedError.preconditionFailed("Insufficient funds");
+        }
+
+        // Compute
+        long newReserved = getReservedFunds() + amount;
+        long newAvailable = getBankroll() - newReserved;
+        return FundsReserved.newBuilder()
+            .setAmount(cmd.getAmount())
+            .setTableRoot(cmd.getTableRoot())
+            .setNewAvailableBalance(Currency.newBuilder()
+                .setAmount(newAvailable)
+                .setCurrencyCode("CHIPS"))
+            .setNewReservedBalance(Currency.newBuilder()
+                .setAmount(newReserved)
+                .setCurrencyCode("CHIPS"))
+            .setReservedAt(now())
+            .build();
+    }
+}
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
+**[`examples/go/player/agg/handlers/reserve.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/reserve.go)**
+
+Go uses the imperative pattern (no OO aggregate base class):
+
 ```go
-package handlers
-
-import (
-    "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
-    pb "examples/proto"
-)
-
-type PlayerState struct {
-    Registered bool
-    Bankroll   int32
-    Reserved   int32
-}
-
-func (s *PlayerState) Available() int32 {
-    return s.Bankroll - s.Reserved
-}
-
-func guardRegistered(state *PlayerState) error {
-    if !state.Registered {
-        return status.Error(codes.FailedPrecondition, "player_not_registered")
+func guardReserveFunds(state PlayerState) error {
+    if !state.Exists() {
+        return angzarr.NewCommandRejectedError("Player does not exist")
     }
     return nil
 }
 
-func validateReserve(cmd *pb.ReserveFunds, state *PlayerState) error {
-    if cmd.Amount <= 0 {
-        return status.Error(codes.InvalidArgument, "amount_must_be_positive")
+func validateReserveFunds(cmd *examples.ReserveFunds, state PlayerState) (int64, error) {
+    amount := int64(0)
+    if cmd.Amount != nil {
+        amount = cmd.Amount.Amount
     }
-    if cmd.Amount > state.Available() {
-        return status.Error(codes.FailedPrecondition, "insufficient_funds")
+    if amount <= 0 {
+        return 0, angzarr.NewCommandRejectedError("amount must be positive")
     }
-    return nil
+    if amount > state.AvailableBalance() {
+        return 0, angzarr.NewCommandRejectedError("Insufficient funds")
+    }
+
+    tableKey := hex.EncodeToString(cmd.TableRoot)
+    if _, exists := state.TableReservations[tableKey]; exists {
+        return 0, angzarr.NewCommandRejectedError("Funds already reserved for this table")
+    }
+
+    return amount, nil
 }
 
-func computeReserve(cmd *pb.ReserveFunds, state *PlayerState) *pb.FundsReserved {
-    newReserved := state.Reserved + cmd.Amount
-    return &pb.FundsReserved{
-        Amount:       cmd.Amount,
-        TableId:      cmd.TableId,
-        NewAvailable: state.Available() - cmd.Amount,
-        NewReserved:  newReserved,
+func computeFundsReserved(cmd *examples.ReserveFunds, state PlayerState, amount int64) *examples.FundsReserved {
+    newReserved := state.ReservedFunds + amount
+    newAvailable := state.Bankroll - newReserved
+    return &examples.FundsReserved{
+        Amount:              cmd.Amount,
+        TableRoot:           cmd.TableRoot,
+        NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
+        NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
+        ReservedAt:          timestamppb.New(time.Now()),
     }
 }
 
-func HandleReserveFunds(state *PlayerState, cmd *pb.ReserveFunds) (*pb.FundsReserved, error) {
-    if err := guardRegistered(state); err != nil {
+func HandleReserveFunds(
+    commandBook *pb.CommandBook,
+    commandAny *anypb.Any,
+    state PlayerState,
+    seq uint32,
+) (*pb.EventBook, error) {
+    var cmd examples.ReserveFunds
+    if err := proto.Unmarshal(commandAny.Value, &cmd); err != nil {
         return nil, err
     }
-    if err := validateReserve(cmd, state); err != nil {
+
+    if err := guardReserveFunds(state); err != nil {
         return nil, err
     }
-    return computeReserve(cmd, state), nil
+    amount, err := validateReserveFunds(&cmd, state)
+    if err != nil {
+        return nil, err
+    }
+
+    event := computeFundsReserved(&cmd, state, amount)
+    eventAny, _ := anypb.New(event)
+
+    return angzarr.NewEventBook(commandBook.Cover, seq, eventAny), nil
 }
 ```
 
 </TabItem>
-<TabItem value="rust" label="Rust">
+<TabItem value="java-imp" label="Java Imperative">
 
-```rust
-use tonic::Status;
-use proto::{ReserveFunds, FundsReserved};
-
-#[derive(Default)]
-pub struct PlayerState {
-    pub registered: bool,
-    pub bankroll: i32,
-    pub reserved: i32,
-}
-
-impl PlayerState {
-    pub fn available(&self) -> i32 {
-        self.bankroll - self.reserved
-    }
-}
-
-fn guard_registered(state: &PlayerState) -> Result<(), Status> {
-    if !state.registered {
-        return Err(Status::failed_precondition("player_not_registered"));
-    }
-    Ok(())
-}
-
-fn validate_reserve(cmd: &ReserveFunds, state: &PlayerState) -> Result<(), Status> {
-    if cmd.amount <= 0 {
-        return Err(Status::invalid_argument("amount_must_be_positive"));
-    }
-    if cmd.amount > state.available() {
-        return Err(Status::failed_precondition("insufficient_funds"));
-    }
-    Ok(())
-}
-
-fn compute_reserve(cmd: &ReserveFunds, state: &PlayerState) -> FundsReserved {
-    let new_reserved = state.reserved + cmd.amount;
-    FundsReserved {
-        amount: cmd.amount,
-        table_id: cmd.table_id.clone(),
-        new_available: state.available() - cmd.amount,
-        new_reserved,
-    }
-}
-
-pub fn handle_reserve_funds(
-    state: &PlayerState,
-    cmd: &ReserveFunds,
-) -> Result<FundsReserved, Status> {
-    guard_registered(state)?;
-    validate_reserve(cmd, state)?;
-    Ok(compute_reserve(cmd, state))
-}
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
+**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/ReserveHandler.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/ReserveHandler.java)**
 
 ```java
-package dev.angzarr.examples.player;
+public final class ReserveHandler {
 
-import dev.angzarr.client.CommandRejectedError;
-import dev.angzarr.examples.proto.ReserveFunds;
-import dev.angzarr.examples.proto.FundsReserved;
-
-public class PlayerHandlers {
-    public static class PlayerState {
-        public boolean registered;
-        public int bankroll;
-        public int reserved;
-
-        public int available() {
-            return bankroll - reserved;
+    public static FundsReserved handle(ReserveFunds cmd, PlayerState state) {
+        // Guard
+        if (!state.exists()) {
+            throw Errors.CommandRejectedError.preconditionFailed("Player does not exist");
         }
-    }
 
-    public static void guardRegistered(PlayerState state) {
-        if (!state.registered) {
-            throw new CommandRejectedError("player_not_registered");
+        // Validate
+        long amount = cmd.hasAmount() ? cmd.getAmount().getAmount() : 0;
+        if (amount <= 0) {
+            throw Errors.CommandRejectedError.invalidArgument("amount must be positive");
         }
-    }
 
-    public static void validateReserve(ReserveFunds cmd, PlayerState state) {
-        if (cmd.getAmount() <= 0) {
-            throw new CommandRejectedError("amount_must_be_positive");
+        String tableKey = bytesToHex(cmd.getTableRoot().toByteArray());
+        if (state.hasReservationFor(tableKey)) {
+            throw Errors.CommandRejectedError.preconditionFailed("Funds already reserved for this table");
         }
-        if (cmd.getAmount() > state.available()) {
-            throw new CommandRejectedError("insufficient_funds");
-        }
-    }
 
-    public static FundsReserved computeReserve(ReserveFunds cmd, PlayerState state) {
-        int newReserved = state.reserved + cmd.getAmount();
+        if (amount > state.getAvailableBalance()) {
+            throw Errors.CommandRejectedError.preconditionFailed("Insufficient funds");
+        }
+
+        // Compute
+        long newReserved = state.getReservedFunds() + amount;
+        long newAvailable = state.getBankroll() - newReserved;
         return FundsReserved.newBuilder()
             .setAmount(cmd.getAmount())
-            .setTableId(cmd.getTableId())
-            .setNewAvailable(state.available() - cmd.getAmount())
-            .setNewReserved(newReserved)
+            .setTableRoot(cmd.getTableRoot())
+            .setNewAvailableBalance(Currency.newBuilder()
+                .setAmount(newAvailable)
+                .setCurrencyCode("CHIPS"))
+            .setNewReservedBalance(Currency.newBuilder()
+                .setAmount(newReserved)
+                .setCurrencyCode("CHIPS"))
+            .setReservedAt(now())
             .build();
     }
-
-    public static FundsReserved handleReserveFunds(PlayerState state, ReserveFunds cmd) {
-        guardRegistered(state);
-        validateReserve(cmd, state);
-        return computeReserve(cmd, state);
-    }
-}
-```
-
-</TabItem>
-<TabItem value="csharp" label="C#">
-
-```csharp
-using Angzarr.Client;
-using Angzarr.Examples.Proto;
-
-namespace Angzarr.Examples.Player;
-
-public class PlayerState
-{
-    public bool Registered { get; set; }
-    public int Bankroll { get; set; }
-    public int Reserved { get; set; }
-
-    public int Available => Bankroll - Reserved;
-}
-
-public static class PlayerHandlers
-{
-    public static void GuardRegistered(PlayerState state)
-    {
-        if (!state.Registered)
-            throw new CommandRejectedError("player_not_registered");
-    }
-
-    public static void ValidateReserve(ReserveFunds cmd, PlayerState state)
-    {
-        if (cmd.Amount <= 0)
-            throw new CommandRejectedError("amount_must_be_positive");
-        if (cmd.Amount > state.Available)
-            throw new CommandRejectedError("insufficient_funds");
-    }
-
-    public static FundsReserved ComputeReserve(ReserveFunds cmd, PlayerState state)
-    {
-        var newReserved = state.Reserved + cmd.Amount;
-        return new FundsReserved
-        {
-            Amount = cmd.Amount,
-            TableId = cmd.TableId,
-            NewAvailable = state.Available - cmd.Amount,
-            NewReserved = newReserved
-        };
-    }
-
-    public static FundsReserved HandleReserveFunds(PlayerState state, ReserveFunds cmd)
-    {
-        GuardRegistered(state);
-        ValidateReserve(cmd, state);
-        return ComputeReserve(cmd, state);
-    }
-}
-```
-
-</TabItem>
-<TabItem value="cpp" label="C++">
-
-```cpp
-#include "proto/player.pb.h"
-#include "angzarr/errors.hpp"
-
-struct PlayerState {
-    bool registered = false;
-    int bankroll = 0;
-    int reserved = 0;
-
-    int available() const { return bankroll - reserved; }
-};
-
-void guard_registered(const PlayerState& state) {
-    if (!state.registered) {
-        throw angzarr::CommandRejectedError("player_not_registered");
-    }
-}
-
-void validate_reserve(const ReserveFunds& cmd, const PlayerState& state) {
-    if (cmd.amount() <= 0) {
-        throw angzarr::CommandRejectedError("amount_must_be_positive");
-    }
-    if (cmd.amount() > state.available()) {
-        throw angzarr::CommandRejectedError("insufficient_funds");
-    }
-}
-
-FundsReserved compute_reserve(const ReserveFunds& cmd, const PlayerState& state) {
-    FundsReserved event;
-    event.set_amount(cmd.amount());
-    event.set_table_id(cmd.table_id());
-    event.set_new_available(state.available() - cmd.amount());
-    event.set_new_reserved(state.reserved + cmd.amount());
-    return event;
-}
-
-FundsReserved handle_reserve_funds(const PlayerState& state, const ReserveFunds& cmd) {
-    guard_registered(state);
-    validate_reserve(cmd, state);
-    return compute_reserve(cmd, state);
 }
 ```
 
@@ -336,70 +440,331 @@ FundsReserved handle_reserve_funds(const PlayerState& state, const ReserveFunds&
 
 ## State Building
 
-After events are persisted, state must be rebuilt by applying events:
+State is rebuilt by applying events. ⍼ Angzarr provides two patterns:
+
+| Pattern | Description | Best For |
+|---------|-------------|----------|
+| **OO with `@applies`** | Decorators on aggregate class methods | Rich domain models |
+| **StateRouter** | Fluent builder with typed event handlers | Clean separation, easy testing |
 
 <Tabs groupId="language">
-<TabItem value="python" label="Python" default>
+<TabItem value="python-oo" label="Python OO" default>
+
+**[`examples/python/player/agg/handlers/player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)**
 
 ```python
-def apply_event(state: PlayerState, event_any: Any) -> PlayerState:
-    if event_any.Is(PlayerRegistered.DESCRIPTOR):
-        event = PlayerRegistered()
-        event_any.Unpack(event)
-        state.registered = True
-        state.bankroll = event.initial_bankroll
+class Player(Aggregate[_PlayerState]):
+    """Player aggregate with event sourcing."""
 
-    elif event_any.Is(FundsDeposited.DESCRIPTOR):
-        event = FundsDeposited()
-        event_any.Unpack(event)
-        state.bankroll = event.new_bankroll
+    # --- Event appliers ---
 
-    elif event_any.Is(FundsReserved.DESCRIPTOR):
-        event = FundsReserved()
-        event_any.Unpack(event)
-        state.reserved = event.new_reserved
+    @applies(player_proto.PlayerRegistered)
+    def apply_registered(self, state: _PlayerState, event: player_proto.PlayerRegistered):
+        state.player_id = f"player_{event.email}"
+        state.display_name = event.display_name
+        state.email = event.email
+        state.player_type = event.player_type
+        state.status = "active"
+        state.bankroll = 0
+        state.reserved_funds = 0
 
-    elif event_any.Is(FundsReleased.DESCRIPTOR):
-        event = FundsReleased()
-        event_any.Unpack(event)
-        state.reserved = event.new_reserved
+    @applies(player_proto.FundsDeposited)
+    def apply_deposited(self, state: _PlayerState, event: player_proto.FundsDeposited):
+        if event.new_balance:
+            state.bankroll = event.new_balance.amount
 
-    return state
+    @applies(player_proto.FundsReserved)
+    def apply_reserved(self, state: _PlayerState, event: player_proto.FundsReserved):
+        if event.new_reserved_balance:
+            state.reserved_funds = event.new_reserved_balance.amount
+        table_key = event.table_root.hex()
+        if event.amount:
+            state.table_reservations[table_key] = event.amount.amount
 
-def build_state(events: list[Any]) -> PlayerState:
-    state = PlayerState()
-    for event in events:
-        state = apply_event(state, event)
-    return state
+    @applies(player_proto.FundsReleased)
+    def apply_released(self, state: _PlayerState, event: player_proto.FundsReleased):
+        if event.new_reserved_balance:
+            state.reserved_funds = event.new_reserved_balance.amount
+        table_key = event.table_root.hex()
+        state.table_reservations.pop(table_key, None)
 ```
 
 </TabItem>
-<TabItem value="rust" label="Rust">
+<TabItem value="csharp-router" label="C# StateRouter">
+
+**[`examples/csharp/Player/Agg/PlayerState.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/PlayerState.cs)**
+
+```csharp
+public class PlayerState
+{
+    public string PlayerId { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public long Bankroll { get; set; }
+    public long ReservedFunds { get; set; }
+    public Dictionary<string, long> TableReservations { get; } = new();
+
+    public bool Exists => !string.IsNullOrEmpty(PlayerId);
+    public long AvailableBalance => Bankroll - ReservedFunds;
+
+    /// <summary>
+    /// StateRouter for fluent state reconstruction.
+    /// </summary>
+    public static readonly StateRouter<PlayerState> Router = new StateRouter<PlayerState>()
+        .On<PlayerRegistered>((state, evt) =>
+        {
+            state.PlayerId = $"player_{evt.Email}";
+            state.DisplayName = evt.DisplayName;
+            state.Status = "active";
+            state.Bankroll = 0;
+            state.ReservedFunds = 0;
+        })
+        .On<FundsDeposited>((state, evt) =>
+        {
+            if (evt.NewBalance != null)
+                state.Bankroll = evt.NewBalance.Amount;
+        })
+        .On<FundsReserved>((state, evt) =>
+        {
+            if (evt.NewReservedBalance != null)
+                state.ReservedFunds = evt.NewReservedBalance.Amount;
+            var tableKey = Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant();
+            if (evt.Amount != null)
+                state.TableReservations[tableKey] = evt.Amount.Amount;
+        })
+        .On<FundsReleased>((state, evt) =>
+        {
+            if (evt.NewReservedBalance != null)
+                state.ReservedFunds = evt.NewReservedBalance.Amount;
+            var tableKey = Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant();
+            state.TableReservations.Remove(tableKey);
+        });
+
+    public static PlayerState FromEventBook(EventBook eventBook)
+        => Router.WithEventBook(eventBook);
+}
+```
+
+</TabItem>
+<TabItem value="rust-router" label="Rust StateRouter">
+
+**[`examples/rust/player/agg/src/state.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/state.rs)**
 
 ```rust
-use prost_types::Any;
+// Event applier functions for StateRouter
+fn apply_registered(state: &mut PlayerState, event: PlayerRegistered) {
+    state.player_id = format!("player_{}", event.email);
+    state.display_name = event.display_name;
+    state.email = event.email;
+    state.status = "active".to_string();
+    state.bankroll = 0;
+    state.reserved_funds = 0;
+}
 
-impl PlayerState {
-    pub fn apply(&mut self, event_any: &Any) -> Result<(), Status> {
-        if let Ok(event) = event_any.to_msg::<PlayerRegistered>() {
-            self.registered = true;
-            self.bankroll = event.initial_bankroll;
-        } else if let Ok(event) = event_any.to_msg::<FundsDeposited>() {
-            self.bankroll = event.new_bankroll;
-        } else if let Ok(event) = event_any.to_msg::<FundsReserved>() {
-            self.reserved = event.new_reserved;
-        } else if let Ok(event) = event_any.to_msg::<FundsReleased>() {
-            self.reserved = event.new_reserved;
-        }
-        Ok(())
+fn apply_deposited(state: &mut PlayerState, event: FundsDeposited) {
+    if let Some(balance) = event.new_balance {
+        state.bankroll = balance.amount;
+    }
+}
+
+fn apply_reserved(state: &mut PlayerState, event: FundsReserved) {
+    if let Some(balance) = event.new_reserved_balance {
+        state.reserved_funds = balance.amount;
+    }
+    if let (Some(amount), table_root) = (event.amount, event.table_root) {
+        let table_key = hex::encode(&table_root);
+        state.table_reservations.insert(table_key, amount.amount);
+    }
+}
+
+fn apply_released(state: &mut PlayerState, event: FundsReleased) {
+    if let Some(balance) = event.new_reserved_balance {
+        state.reserved_funds = balance.amount;
+    }
+    let table_key = hex::encode(&event.table_root);
+    state.table_reservations.remove(&table_key);
+}
+
+/// StateRouter for fluent state reconstruction.
+static STATE_ROUTER: LazyLock<StateRouter<PlayerState>> = LazyLock::new(|| {
+    StateRouter::new()
+        .on::<PlayerRegistered>("PlayerRegistered", apply_registered)
+        .on::<FundsDeposited>("FundsDeposited", apply_deposited)
+        .on::<FundsReserved>("FundsReserved", apply_reserved)
+        .on::<FundsReleased>("FundsReleased", apply_released)
+});
+
+/// Rebuild player state from event history.
+pub fn rebuild_state(event_book: &EventBook) -> PlayerState {
+    STATE_ROUTER.with_event_book(event_book)
+}
+```
+
+</TabItem>
+<TabItem value="java-oo" label="Java OO">
+
+**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
+
+```java
+public class Player extends Aggregate<PlayerState> {
+
+    // --- Event appliers ---
+
+    @Applies(PlayerRegistered.class)
+    public void applyRegistered(PlayerState state, PlayerRegistered event) {
+        state.setPlayerId("player_" + event.getEmail());
+        state.setDisplayName(event.getDisplayName());
+        state.setEmail(event.getEmail());
+        state.setStatus("active");
+        state.setBankroll(0);
+        state.setReservedFunds(0);
     }
 
-    pub fn build_from_events(events: &[Any]) -> Result<Self, Status> {
-        let mut state = PlayerState::default();
-        for event in events {
-            state.apply(event)?;
+    @Applies(FundsDeposited.class)
+    public void applyDeposited(PlayerState state, FundsDeposited event) {
+        if (event.hasNewBalance()) {
+            state.setBankroll(event.getNewBalance().getAmount());
         }
-        Ok(state)
+    }
+
+    @Applies(FundsReserved.class)
+    public void applyReserved(PlayerState state, FundsReserved event) {
+        if (event.hasNewReservedBalance()) {
+            state.setReservedFunds(event.getNewReservedBalance().getAmount());
+        }
+        String tableKey = bytesToHex(event.getTableRoot().toByteArray());
+        if (event.hasAmount()) {
+            state.getTableReservations().put(tableKey, event.getAmount().getAmount());
+        }
+    }
+
+    @Applies(FundsReleased.class)
+    public void applyReleased(PlayerState state, FundsReleased event) {
+        if (event.hasNewReservedBalance()) {
+            state.setReservedFunds(event.getNewReservedBalance().getAmount());
+        }
+        String tableKey = bytesToHex(event.getTableRoot().toByteArray());
+        state.getTableReservations().remove(tableKey);
+    }
+}
+```
+
+</TabItem>
+<TabItem value="go-router" label="Go StateRouter">
+
+**[`examples/go/player/agg/handlers/state.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/state.go)**
+
+```go
+// Event applier functions for StateRouter
+func applyRegistered(state *PlayerState, event *examples.PlayerRegistered) {
+    state.PlayerID = "player_" + event.Email
+    state.DisplayName = event.DisplayName
+    state.Email = event.Email
+    state.Status = "active"
+    state.Bankroll = 0
+    state.ReservedFunds = 0
+}
+
+func applyDeposited(state *PlayerState, event *examples.FundsDeposited) {
+    if event.NewBalance != nil {
+        state.Bankroll = event.NewBalance.Amount
+    }
+}
+
+func applyReserved(state *PlayerState, event *examples.FundsReserved) {
+    if event.NewReservedBalance != nil {
+        state.ReservedFunds = event.NewReservedBalance.Amount
+    }
+    if event.TableRoot != nil && event.Amount != nil {
+        tableKey := hex.EncodeToString(event.TableRoot)
+        state.TableReservations[tableKey] = event.Amount.Amount
+    }
+}
+
+func applyReleased(state *PlayerState, event *examples.FundsReleased) {
+    if event.NewReservedBalance != nil {
+        state.ReservedFunds = event.NewReservedBalance.Amount
+    }
+    if event.TableRoot != nil {
+        tableKey := hex.EncodeToString(event.TableRoot)
+        delete(state.TableReservations, tableKey)
+    }
+}
+
+// stateRouter is the fluent state reconstruction router.
+var stateRouter = angzarr.NewStateRouter(NewPlayerState).
+    On(applyRegistered).
+    On(applyDeposited).
+    On(applyReserved).
+    On(applyReleased)
+
+// RebuildState rebuilds player state from event history.
+func RebuildState(eventBook *pb.EventBook) PlayerState {
+    return stateRouter.WithEventBook(eventBook)
+}
+```
+
+</TabItem>
+<TabItem value="java-imp" label="Java StateBuilder">
+
+**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/StateBuilder.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/handlers/StateBuilder.java)**
+
+```java
+public final class StateBuilder {
+
+    /**
+     * Build state from event book by replaying all events.
+     */
+    public static PlayerState fromEventBook(EventBook eventBook) {
+        PlayerState state = new PlayerState();
+        if (eventBook == null) {
+            return state;
+        }
+
+        for (EventPage page : eventBook.getPagesList()) {
+            applyEvent(state, page.getEvent());
+        }
+        return state;
+    }
+
+    public static void applyEvent(PlayerState state, Any eventAny) {
+        String typeUrl = eventAny.getTypeUrl();
+
+        try {
+            if (typeUrl.endsWith("PlayerRegistered")) {
+                PlayerRegistered event = eventAny.unpack(PlayerRegistered.class);
+                state.setPlayerId("player_" + event.getEmail());
+                state.setDisplayName(event.getDisplayName());
+                state.setStatus("active");
+                state.setBankroll(0);
+                state.setReservedFunds(0);
+
+            } else if (typeUrl.endsWith("FundsDeposited")) {
+                FundsDeposited event = eventAny.unpack(FundsDeposited.class);
+                if (event.hasNewBalance()) {
+                    state.setBankroll(event.getNewBalance().getAmount());
+                }
+
+            } else if (typeUrl.endsWith("FundsReserved")) {
+                FundsReserved event = eventAny.unpack(FundsReserved.class);
+                if (event.hasNewReservedBalance()) {
+                    state.setReservedFunds(event.getNewReservedBalance().getAmount());
+                }
+                String tableKey = bytesToHex(event.getTableRoot().toByteArray());
+                if (event.hasAmount()) {
+                    state.getTableReservations().put(tableKey, event.getAmount().getAmount());
+                }
+
+            } else if (typeUrl.endsWith("FundsReleased")) {
+                FundsReleased event = eventAny.unpack(FundsReleased.class);
+                if (event.hasNewReservedBalance()) {
+                    state.setReservedFunds(event.getNewReservedBalance().getAmount());
+                }
+                String tableKey = bytesToHex(event.getTableRoot().toByteArray());
+                state.getTableReservations().remove(tableKey);
+            }
+        } catch (InvalidProtocolBufferException e) {
+            throw new RuntimeException("Failed to unpack event: " + typeUrl, e);
+        }
     }
 }
 ```
@@ -411,62 +776,134 @@ impl PlayerState {
 
 ## Testing
 
-Unit tests call guard/validate/compute directly:
+⍼ Angzarr uses **Gherkin feature files as living specifications**. The same feature files run against all language implementations, guaranteeing identical business behavior.
+
+**[`examples/features/unit/player.feature`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/features/unit/player.feature)**
+
+```gherkin
+Feature: Player aggregate logic
+  The Player aggregate manages a player's bankroll and table reservations.
+
+  Scenario: Register a new human player
+    Given no prior events for the player aggregate
+    When I handle a RegisterPlayer command with name "Alice" and email "alice@example.com"
+    Then the result is a PlayerRegistered event
+    And the player event has display_name "Alice"
+    And the player event has player_type "HUMAN"
+
+  Scenario: Cannot register player twice
+    Given a PlayerRegistered event for "Alice"
+    When I handle a RegisterPlayer command with name "Alice2" and email "alice@example.com"
+    Then the command fails with status "FAILED_PRECONDITION"
+    And the error message contains "already exists"
+
+  Scenario: Reserve funds for table buy-in
+    Given a PlayerRegistered event for "Alice"
+    And a FundsDeposited event with amount 1000
+    When I handle a ReserveFunds command with amount 500 for table "Main-1"
+    Then the result is a FundsReserved event
+    And the player event has amount 500
+    And the player event has new_available_balance 500
+```
 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
+**[`examples/python/tests/unit/test_player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/tests/unit/test_player.py)**
+
 ```python
-def test_reserve_increases_reserved_balance():
-    state = PlayerState(registered=True, bankroll=1000, reserved=0)
-    cmd = ReserveFunds(amount=500, table_id="table-1")
+from pytest_bdd import scenarios, given, when, then, parsers
 
-    event = compute_reserve(cmd, state)
+# Load scenarios from shared feature file
+scenarios("../../../features/unit/player.feature")
 
-    assert event.amount == 500
-    assert event.new_available == 500
-    assert event.new_reserved == 500
+@given(parsers.parse('a PlayerRegistered event for "{name}"'))
+def player_registered_event(ctx, name):
+    """Add a PlayerRegistered event."""
+    event = player.PlayerRegistered(
+        display_name=name,
+        email=f"{name.lower()}@example.com",
+        player_type=poker_types.HUMAN,
+        registered_at=make_timestamp(),
+    )
+    ctx.add_event(event)
 
-def test_reserve_rejects_insufficient_funds():
-    state = PlayerState(registered=True, bankroll=100, reserved=0)
-    cmd = ReserveFunds(amount=500, table_id="table-1")
+@when(parsers.parse('I handle a RegisterPlayer command with name "{name}" and email "{email}"'))
+def handle_register_player_cmd(ctx, name, email):
+    """Handle RegisterPlayer command."""
+    cmd = player.RegisterPlayer(display_name=name, email=email, player_type=poker_types.HUMAN)
+    _handle_command(ctx, cmd, handle_register_player)
 
-    with pytest.raises(CommandRejectedError) as exc:
-        validate_reserve(cmd, state)
-
-    assert "insufficient_funds" in str(exc.value)
+@then("the result is a PlayerRegistered event")
+def result_is_player_registered(ctx):
+    """Verify result is PlayerRegistered event."""
+    assert ctx.result is not None
+    assert ctx.result.pages[0].event.type_url.endswith("PlayerRegistered")
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
+**[`examples/rust/tests/tests/player.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/tests/tests/player.rs)**
+
 ```rust
-#[test]
-fn test_reserve_increases_reserved_balance() {
-    let state = PlayerState { registered: true, bankroll: 1000, reserved: 0 };
-    let cmd = ReserveFunds { amount: 500, table_id: "table-1".into() };
+use cucumber::{given, then, when, World};
 
-    let event = compute_reserve(&cmd, &state);
-
-    assert_eq!(event.amount, 500);
-    assert_eq!(event.new_available, 500);
-    assert_eq!(event.new_reserved, 500);
+#[derive(Debug, Default, World)]
+pub struct PlayerWorld {
+    events: Vec<EventPage>,
+    last_event_book: Option<EventBook>,
+    last_error: Option<String>,
 }
 
-#[test]
-fn test_reserve_rejects_insufficient_funds() {
-    let state = PlayerState { registered: true, bankroll: 100, reserved: 0 };
-    let cmd = ReserveFunds { amount: 500, table_id: "table-1".into() };
+#[given(expr = "a PlayerRegistered event for {string}")]
+fn player_registered_event(world: &mut PlayerWorld, name: String) {
+    let event = PlayerRegistered {
+        display_name: name.clone(),
+        email: format!("{}@example.com", name.to_lowercase()),
+        player_type: PlayerType::Human as i32,
+        registered_at: Some(angzarr_client::now()),
+    };
+    world.add_event(pack_event(&event, "examples.PlayerRegistered"));
+}
 
-    let result = validate_reserve(&cmd, &state);
+#[when(expr = "I handle a RegisterPlayer command with name {string} and email {string}")]
+fn handle_register_player_cmd(world: &mut PlayerWorld, name: String, email: String) {
+    let cmd = RegisterPlayer { display_name: name, email, player_type: PlayerType::Human as i32 };
+    let state = world.rebuild_state();
+    match handle_register_player(&cmd_book, &cmd_any, &state, world.next_sequence) {
+        Ok(event_book) => world.last_event_book = Some(event_book),
+        Err(e) => world.last_error = Some(e.to_string()),
+    }
+}
 
-    assert!(result.is_err());
-    assert!(result.unwrap_err().message().contains("insufficient_funds"));
+#[then("the result is a PlayerRegistered event")]
+fn result_is_player_registered(world: &mut PlayerWorld) {
+    let event = world.get_last_event().expect("No event found");
+    assert!(event.type_url.ends_with("PlayerRegistered"));
+}
+
+#[tokio::main]
+async fn main() {
+    PlayerWorld::run("../../features/unit/player.feature").await;
 }
 ```
 
 </TabItem>
 </Tabs>
+
+**Run tests:**
+
+```bash
+# Python - pytest-bdd
+cd examples/python && pytest tests/unit/test_player.py
+
+# Rust - cucumber-rs
+cd examples/rust/tests && cargo test --test player
+
+# Go - godog
+cd examples/go && go test -v ./... --godog.tags=@player
+```
 
 ---
 

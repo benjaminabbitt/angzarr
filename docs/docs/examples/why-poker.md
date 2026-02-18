@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Why Poker
 
-Poker was chosen as the example domain for ⍼ Angzarr because it naturally exercises **every event sourcing and CQRS pattern** the framework supports—while being immediately understandable.
+Poker was chosen as the example domain for ⍼ Angzarr because it exercises **every event sourcing and CQRS pattern** the framework supports—while being immediately understandable.
 
 ---
 
@@ -22,7 +22,7 @@ A poker application isn't artificially complex—it's exactly as complex as real
 
 ⍼ Angzarr emerged from recognizing recurring patterns across industries. Based on experience working in:
 
-- **Airlines**: Flight booking, seat inventory, loyalty point accrual—all event-sourced naturally. A single booking triggers reservation holds, payment authorization, seat assignment, and loyalty updates. Bursty during booking windows, quiet between.
+- **Airlines**: Flight booking, seat inventory, loyalty point accrual—all event-sourced. A single booking triggers reservation holds, payment authorization, seat assignment, and loyalty updates. Bursty during booking windows, quiet between.
 
 - **Billing systems**: Invoice generation, payment processing, dunning workflows. Few event types (InvoiceCreated, PaymentReceived, PaymentFailed, DunningEscalated), but generated in monthly billing cycles—massive bursts followed by trickle processing.
 
@@ -46,7 +46,7 @@ Domains that benefit most from ⍼ Angzarr share these traits:
 
 ## Domain Boundaries
 
-Poker naturally decomposes into three bounded contexts:
+Poker decomposes cleanly into three bounded contexts:
 
 | Domain | Responsibility | Key Events |
 |--------|---------------|------------|
@@ -159,7 +159,7 @@ The author is developing a board game with ⍼ Angzarr—but primarily because *
 
 ## Summary
 
-Every feature file in ⍼ Angzarr's test suite uses poker examples not because poker is special, but because it naturally requires every pattern the framework provides. Understanding the poker domain means understanding:
+Every feature file in ⍼ Angzarr's test suite uses poker examples not because poker is special, but because it requires every pattern the framework provides. Understanding the poker domain means understanding:
 
 - How aggregates maintain consistency boundaries
 - How sagas translate between domains
