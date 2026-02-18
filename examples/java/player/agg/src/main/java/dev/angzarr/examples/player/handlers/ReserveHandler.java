@@ -11,6 +11,7 @@ import dev.angzarr.examples.ReserveFunds;
 
 import java.time.Instant;
 
+// docs:start:reserve_funds_imp
 /**
  * Functional handler for ReserveFunds command.
  */
@@ -71,3 +72,4 @@ public final class ReserveHandler {
             .build();
     }
 }
+// docs:end:reserve_funds_imp

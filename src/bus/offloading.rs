@@ -92,6 +92,8 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
         }
 
         // Need to offload - process each page
+        use crate::proto::event_page::Payload;
+
         let mut new_pages = Vec::with_capacity(book.pages.len());
 
         for page in &book.pages {
@@ -100,7 +102,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
             // Only offload pages that are large
             if page_size > threshold / 2 {
                 // Offload if page is >50% of threshold
-                if let Some(ref event) = page.event {
+                if let Some(Payload::Event(ref event)) = page.payload {
                     let payload_bytes = event.encode_to_vec();
 
                     match self.store.put(&payload_bytes).await {
@@ -114,8 +116,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
                             new_pages.push(EventPage {
                                 sequence: page.sequence,
                                 created_at: page.created_at,
-                                event: None, // Clear inline payload
-                                external_payload: Some(reference),
+                                payload: Some(Payload::External(reference)),
                             });
                             continue;
                         }
@@ -140,11 +141,13 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
 
     /// Resolve external payload references in an event book.
     pub async fn resolve_payloads(&self, book: &EventBook) -> Result<EventBook> {
+        use crate::proto::event_page::Payload;
+
         let mut new_pages = Vec::with_capacity(book.pages.len());
         let mut had_errors = false;
 
         for page in &book.pages {
-            if let Some(ref reference) = page.external_payload {
+            if let Some(Payload::External(ref reference)) = page.payload {
                 // Fetch the payload
                 match self.store.get(reference).await {
                     Ok(payload_bytes) => {
@@ -154,8 +157,7 @@ impl<S: PayloadStore + 'static> OffloadingEventBus<S> {
                                 new_pages.push(EventPage {
                                     sequence: page.sequence,
                                     created_at: page.created_at,
-                                    event: Some(event),
-                                    external_payload: None, // Clear reference
+                                    payload: Some(Payload::Event(event)),
                                 });
                                 continue;
                             }
@@ -246,7 +248,7 @@ mod tests {
     use super::*;
     use crate::bus::MockEventBus;
     use crate::payload_store::FilesystemPayloadStore;
-    use crate::proto::event_page::Sequence;
+    use crate::proto::event_page;
     use tempfile::TempDir;
 
     async fn create_test_store() -> (Arc<FilesystemPayloadStore>, TempDir) {
@@ -259,13 +261,12 @@ mod tests {
         EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(0)),
+                sequence: 0,
                 created_at: None,
-                event: Some(prost_types::Any {
+                payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: "test.Event".to_string(),
                     value: vec![0u8; payload_size],
-                }),
-                external_payload: None,
+                })),
             }],
             snapshot: None,
             next_sequence: 1,
@@ -286,8 +287,10 @@ mod tests {
         // Should have been published without offloading
         let published = mock_bus.take_published().await;
         assert_eq!(published.len(), 1);
-        assert!(published[0].pages[0].external_payload.is_none());
-        assert!(published[0].pages[0].event.is_some());
+        assert!(matches!(
+            &published[0].pages[0].payload,
+            Some(event_page::Payload::Event(_))
+        ));
     }
 
     #[tokio::test]
@@ -304,8 +307,10 @@ mod tests {
         // Should have been offloaded
         let published = mock_bus.take_published().await;
         assert_eq!(published.len(), 1);
-        assert!(published[0].pages[0].external_payload.is_some());
-        assert!(published[0].pages[0].event.is_none());
+        assert!(matches!(
+            &published[0].pages[0].payload,
+            Some(event_page::Payload::External(_))
+        ));
     }
 
     #[tokio::test]
@@ -328,12 +333,14 @@ mod tests {
         let resolved = bus.resolve_payloads(offloaded).await.unwrap();
 
         // Should have event restored
-        assert!(resolved.pages[0].event.is_some());
-        assert!(resolved.pages[0].external_payload.is_none());
-
-        // Event content should match original
-        let original_event = original.pages[0].event.as_ref().unwrap();
-        let resolved_event = resolved.pages[0].event.as_ref().unwrap();
+        let resolved_event = match &resolved.pages[0].payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected resolved event payload"),
+        };
+        let original_event = match &original.pages[0].payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected original event payload"),
+        };
         assert_eq!(original_event.type_url, resolved_event.type_url);
         assert_eq!(original_event.value.len(), resolved_event.value.len());
     }
@@ -352,6 +359,9 @@ mod tests {
         // Should pass through since inner bus has no limit
         let published = mock_bus.take_published().await;
         assert_eq!(published.len(), 1);
-        assert!(published[0].pages[0].external_payload.is_none());
+        assert!(matches!(
+            &published[0].pages[0].payload,
+            Some(event_page::Payload::Event(_))
+        ));
     }
 }

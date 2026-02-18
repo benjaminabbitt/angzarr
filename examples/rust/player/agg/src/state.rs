@@ -47,6 +47,7 @@ impl PlayerState {
 
 // Event applier functions for StateRouter
 
+// docs:start:state_router
 fn apply_registered(state: &mut PlayerState, event: PlayerRegistered) {
     state.player_id = format!("player_{}", event.email);
     state.display_name = event.display_name;
@@ -104,6 +105,7 @@ static STATE_ROUTER: LazyLock<StateRouter<PlayerState>> = LazyLock::new(|| {
         .on::<FundsReleased>("FundsReleased", apply_released)
         .on::<FundsTransferred>("FundsTransferred", apply_transferred)
 });
+// docs:end:state_router
 
 /// Rebuild player state from event history.
 pub fn rebuild_state(event_book: &EventBook) -> PlayerState {

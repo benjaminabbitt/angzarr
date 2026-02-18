@@ -100,16 +100,7 @@ impl EventStore for MockEventStore {
         from: u32,
     ) -> Result<Vec<EventPage>> {
         let events = self.get(domain, edition, root).await?;
-        Ok(events
-            .into_iter()
-            .filter(|e| {
-                if let Some(crate::proto::event_page::Sequence::Num(seq)) = e.sequence {
-                    seq >= from
-                } else {
-                    false
-                }
-            })
-            .collect())
+        Ok(events.into_iter().filter(|e| e.sequence >= from).collect())
     }
 
     async fn get_from_to(
@@ -123,13 +114,7 @@ impl EventStore for MockEventStore {
         let events = self.get(domain, edition, root).await?;
         Ok(events
             .into_iter()
-            .filter(|e| {
-                if let Some(crate::proto::event_page::Sequence::Num(seq)) = e.sequence {
-                    seq >= from && seq < to
-                } else {
-                    false
-                }
-            })
+            .filter(|e| e.sequence >= from && e.sequence < to)
             .collect())
     }
 
@@ -181,13 +166,7 @@ impl EventStore for MockEventStore {
 
         // Helper to get max sequence from events
         fn max_sequence(events: &[EventPage]) -> Option<u32> {
-            events
-                .iter()
-                .filter_map(|e| match e.sequence {
-                    Some(crate::proto::event_page::Sequence::Num(n)) => Some(n),
-                    _ => None,
-                })
-                .max()
+            events.iter().map(|e| e.sequence).max()
         }
 
         // For non-default editions with implicit divergence, we need composite logic:

@@ -31,6 +31,7 @@ public class PlayerState
     /// <summary>
     /// StateRouter for fluent state reconstruction.
     /// </summary>
+    // docs:start:state_router
     public static readonly StateRouter<PlayerState> Router = new StateRouter<PlayerState>()
         .On<PlayerRegistered>((state, evt) =>
         {
@@ -85,6 +86,7 @@ public class PlayerState
                 state.Bankroll = evt.NewBalance.Amount;
             }
         });
+    // docs:end:state_router
 
     /// <summary>
     /// Build state from an EventBook by applying all events.

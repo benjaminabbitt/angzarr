@@ -1,51 +1,53 @@
 package handlers
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	examples "github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// docs:start:rejected_handler
 
 // HandleTableJoinRejected handles compensation when a table join fails.
 //
 // Called when a saga/PM command targeting the table aggregate's JoinTable
-// command is rejected. This typically means funds were reserved but the
-// table join failed, so we need to release the reserved funds.
-//
-// Currently delegates to framework (emits SagaCompensationFailed).
-// In a real implementation, this would emit FundsReleased events.
+// command is rejected. This releases the funds that were reserved for the
+// failed table join.
 func HandleTableJoinRejected(notification *pb.Notification, state PlayerState) *pb.BusinessResponse {
 	ctx := angzarr.NewCompensationContext(notification)
 
-	log.Printf("Player compensation for table join rejection: issuer=%s reason=%s seq=%d",
-		ctx.IssuerName, ctx.RejectionReason, ctx.SourceEventSequence)
+	log.Printf("Player compensation for JoinTable rejection: reason=%s",
+		ctx.RejectionReason)
 
-	// Example: Auto-release funds for the failed table join
-	// In a real implementation, we would:
-	// 1. Extract which table's funds to release from the rejected command
-	// 2. Emit a FundsReleased event for that amount
-	//
-	// var events []*anypb.Any
-	// for tableKey, amount := range state.TableReservations {
-	//     tableRoot, _ := hex.DecodeString(tableKey)
-	//     event := &examples.FundsReleased{
-	//         TableRoot: tableRoot,
-	//         Amount:    &examples.Currency{Amount: amount, CurrencyCode: "CHIPS"},
-	//         ReleasedAt: timestamppb.Now(),
-	//     }
-	//     eventAny, _ := anypb.New(event)
-	//     events = append(events, eventAny)
-	// }
-	// if len(events) > 0 {
-	//     return angzarr.EmitCompensationEvents(&pb.EventBook{
-	//         Pages: makePages(events),
-	//     })
-	// }
+	// Extract table_root from the rejected command
+	var tableRoot []byte
+	if ctx.RejectedCommand != nil && ctx.RejectedCommand.Cover != nil && ctx.RejectedCommand.Cover.Root != nil {
+		tableRoot = ctx.RejectedCommand.Cover.Root.Value
+	}
 
-	// Default: delegate to framework
-	return angzarr.DelegateToFramework(
-		fmt.Sprintf("Player aggregate: delegating table join rejection to framework (%s)", ctx.RejectionReason),
-	)
+	// Release the funds that were reserved for this table
+	tableKey := hex.EncodeToString(tableRoot)
+	reservedAmount := state.TableReservations[tableKey]
+	newReserved := state.ReservedFunds - reservedAmount
+	newAvailable := state.Bankroll - newReserved
+
+	event := &examples.FundsReleased{
+		Amount:       &examples.Currency{Amount: reservedAmount, CurrencyCode: "CHIPS"},
+		TableRoot:    tableRoot,
+		Reason:       fmt.Sprintf("Join failed: %s", ctx.RejectionReason),
+		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
+		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
+		ReleasedAt:   timestamppb.Now(),
+	}
+
+	eventAny, _ := anypb.New(event)
+	return angzarr.EmitCompensationEvents(angzarr.NewEventBookFromNotification(notification, eventAny))
 }
+
+// docs:end:rejected_handler

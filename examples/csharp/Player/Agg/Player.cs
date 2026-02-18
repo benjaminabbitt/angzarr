@@ -5,6 +5,7 @@ using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
+using Angzarr.Client.Compensation;
 using Angzarr.Examples;
 
 namespace Player.Agg;
@@ -161,6 +162,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
         };
     }
 
+    // docs:start:reserve_funds_oo
     [Handles(typeof(ReserveFunds))]
     public FundsReserved HandleReserve(ReserveFunds cmd)
     {
@@ -188,6 +190,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
             ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow)
         };
     }
+    // docs:end:reserve_funds_oo
 
     [Handles(typeof(ReleaseFunds))]
     public FundsReleased HandleRelease(ReleaseFunds cmd)
@@ -232,12 +235,35 @@ public class PlayerAggregate : Aggregate<PlayerState>
     }
     // docs:end:annotation_handlers
 
-    // --- Rejection handler ---
+    // --- Saga/PM Compensation ---
+    // docs:start:rejected_handler
 
     [Rejected("table", "JoinTable")]
-    public IMessage? HandleTableJoinRejected(Notification notification)
+    public FundsReleased HandleTableJoinRejected(Notification notification)
     {
-        // Default: delegate to framework
-        return null;
+        var ctx = CompensationContext.From(notification);
+
+        Console.WriteLine($"Player compensation for JoinTable rejection: reason={ctx.RejectionReason}");
+
+        // Extract table_root from the rejected command
+        var tableRoot = ctx.RejectedCommand?.Cover?.Root?.Value ?? ByteString.Empty;
+
+        // Release the funds that were reserved for this table
+        var tableKey = Convert.ToHexString(tableRoot.ToByteArray()).ToLowerInvariant();
+        TableReservations.TryGetValue(tableKey, out var reservedAmount);
+        var newReserved = ReservedFunds - reservedAmount;
+        var newAvailable = Bankroll - newReserved;
+
+        return new FundsReleased
+        {
+            Amount = new Currency { Amount = reservedAmount, CurrencyCode = "CHIPS" },
+            TableRoot = tableRoot,
+            Reason = $"Join failed: {ctx.RejectionReason}",
+            NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
+            NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
+            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+        };
     }
+
+    // docs:end:rejected_handler
 }

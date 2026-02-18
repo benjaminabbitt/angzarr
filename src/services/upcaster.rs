@@ -184,10 +184,9 @@ mod tests {
         let upcaster = Upcaster::disabled();
 
         let events = vec![EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(1)),
+            sequence: 1,
             created_at: None,
-            external_payload: None,
-            event: None,
+            payload: None,
         }];
 
         let result = upcaster.upcast("test", events.clone()).await.unwrap();
@@ -205,7 +204,7 @@ mod tests {
 #[cfg(test)]
 mod grpc_tests {
     use super::*;
-    use crate::proto::event_page::Sequence;
+    use crate::proto::event_page;
     use crate::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
     use crate::proto::{UpcastRequest, UpcastResponse};
     use std::net::SocketAddr;
@@ -254,7 +253,7 @@ mod grpc_tests {
                 .events
                 .into_iter()
                 .map(|mut page| {
-                    if let Some(ref mut event) = page.event {
+                    if let Some(event_page::Payload::Event(ref mut event)) = page.payload {
                         // Simulate V1 -> V2 transformation
                         if event.type_url.ends_with("V1") {
                             event.type_url = event.type_url.replace("V1", "V2");
@@ -296,13 +295,12 @@ mod grpc_tests {
 
     fn make_test_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: Some(Sequence::Num(seq)),
+            sequence: seq,
             created_at: None,
-            event: Some(prost_types::Any {
+            payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: type_url.to_string(),
                 value,
-            }),
-            external_payload: None,
+            })),
         }
     }
 
@@ -325,11 +323,17 @@ mod grpc_tests {
         assert_eq!(result.len(), 2);
 
         // Verify V1 -> V2 transformation
-        let event0 = result[0].event.as_ref().unwrap();
+        let event0 = match &result[0].payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected event payload"),
+        };
         assert_eq!(event0.type_url, "example.OrderCreatedV2");
         assert_eq!(event0.value, vec![1, 2, 3, 0xFF]); // Migration marker added
 
-        let event1 = result[1].event.as_ref().unwrap();
+        let event1 = match &result[1].payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected event payload"),
+        };
         assert_eq!(event1.type_url, "example.OrderUpdatedV2");
         assert_eq!(event1.value, vec![4, 5, 6, 0xFF]);
     }
@@ -347,7 +351,10 @@ mod grpc_tests {
         let result = upcaster.upcast("order", events).await.unwrap();
 
         assert_eq!(result.len(), 1);
-        let event = result[0].event.as_ref().unwrap();
+        let event = match &result[0].payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected event payload"),
+        };
         assert_eq!(event.type_url, "example.OrderCreated"); // Unchanged
         assert_eq!(event.value, vec![1, 2, 0xFF]); // But value still gets marker
     }
@@ -367,9 +374,9 @@ mod grpc_tests {
         let result = upcaster.upcast("test", events).await.unwrap();
 
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].sequence, Some(Sequence::Num(5)));
-        assert_eq!(result[1].sequence, Some(Sequence::Num(6)));
-        assert_eq!(result[2].sequence, Some(Sequence::Num(7)));
+        assert_eq!(result[0].sequence, 5);
+        assert_eq!(result[1].sequence, 6);
+        assert_eq!(result[2].sequence, 7);
     }
 
     #[tokio::test]
@@ -423,9 +430,10 @@ mod grpc_tests {
         let result = upcaster.upcast("test", events).await.unwrap();
 
         assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0].event.as_ref().unwrap().type_url,
-            "example.EventV2"
-        );
+        let event = match &result[0].payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected event payload"),
+        };
+        assert_eq!(event.type_url, "example.EventV2");
     }
 }

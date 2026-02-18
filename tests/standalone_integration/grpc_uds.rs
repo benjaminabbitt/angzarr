@@ -5,7 +5,7 @@ use angzarr::proto::aggregate_coordinator_service_client::AggregateCoordinatorSe
 use angzarr::proto::aggregate_coordinator_service_server::{
     AggregateCoordinatorService, AggregateCoordinatorServiceServer,
 };
-use angzarr::proto::{CommandResponse, SyncCommandBook};
+use angzarr::proto::{command_page, event_page, CommandResponse, SyncCommandBook};
 use angzarr::transport::{connect_to_address, prepare_uds_socket};
 use tokio::net::UnixListener;
 use tokio_stream::wrappers::UnixListenerStream;
@@ -35,13 +35,19 @@ impl AggregateCoordinatorService for MockAggregateService {
         let cmd = request.into_inner();
 
         // Echo command as event
+        let event = cmd.pages.first().and_then(|p| {
+            if let Some(command_page::Payload::Command(c)) = &p.payload {
+                Some(c.clone())
+            } else {
+                None
+            }
+        });
         let events = EventBook {
             cover: cmd.cover,
             pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(0)),
-                event: cmd.pages.first().and_then(|p| p.command.clone()),
+                sequence: 0,
+                payload: event.map(event_page::Payload::Event),
                 created_at: None,
-                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()
@@ -62,13 +68,19 @@ impl AggregateCoordinatorService for MockAggregateService {
 
         self.call_count.fetch_add(1, Ordering::SeqCst);
 
+        let event = cmd.pages.first().and_then(|p| {
+            if let Some(command_page::Payload::Command(c)) = &p.payload {
+                Some(c.clone())
+            } else {
+                None
+            }
+        });
         let events = EventBook {
             cover: cmd.cover,
             pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(0)),
-                event: cmd.pages.first().and_then(|p| p.command.clone()),
+                sequence: 0,
+                payload: event.map(event_page::Payload::Event),
                 created_at: None,
-                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()

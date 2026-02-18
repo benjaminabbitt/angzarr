@@ -2,12 +2,15 @@
 //      Update documentation when making changes to handler patterns.
 package dev.angzarr.examples.player;
 
+import dev.angzarr.Angzarr;
 import dev.angzarr.client.Aggregate;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Applies;
 import dev.angzarr.client.annotations.Handles;
 import dev.angzarr.client.annotations.Rejected;
+import dev.angzarr.client.compensation.CompensationContext;
 import dev.angzarr.examples.player.state.PlayerState;
+import java.util.logging.Logger;
 import dev.angzarr.examples.Currency;
 import dev.angzarr.examples.DepositFunds;
 import dev.angzarr.examples.FundsDeposited;
@@ -28,6 +31,7 @@ import dev.angzarr.examples.WithdrawFunds;
  */
 public class Player extends Aggregate<PlayerState> {
 
+    private static final Logger logger = Logger.getLogger(Player.class.getName());
     public static final String DOMAIN = "player";
 
     @Override
@@ -42,6 +46,7 @@ public class Player extends Aggregate<PlayerState> {
 
     // --- Event appliers ---
 
+    // docs:start:state_appliers_oo
     @Applies(PlayerRegistered.class)
     public void applyRegistered(PlayerState state, PlayerRegistered event) {
         state.setPlayerId("player_" + event.getEmail());
@@ -87,6 +92,7 @@ public class Player extends Aggregate<PlayerState> {
         String tableKey = bytesToHex(event.getTableRoot().toByteArray());
         state.getTableReservations().remove(tableKey);
     }
+    // docs:end:state_appliers_oo
 
     // --- State accessors ---
 
@@ -209,6 +215,7 @@ public class Player extends Aggregate<PlayerState> {
             .build();
     }
 
+    // docs:start:reserve_funds_oo
     @Handles(ReserveFunds.class)
     public FundsReserved reserve(ReserveFunds cmd) {
         // Guard
@@ -246,6 +253,7 @@ public class Player extends Aggregate<PlayerState> {
             .setReservedAt(now())
             .build();
     }
+    // docs:end:reserve_funds_oo
 
     @Handles(ReleaseFunds.class)
     public FundsReleased release(ReleaseFunds cmd) {
@@ -279,6 +287,47 @@ public class Player extends Aggregate<PlayerState> {
             .build();
     }
     // docs:end:annotation_handlers
+
+    // --- Saga/PM Compensation ---
+    // docs:start:rejected_handler
+
+    @Rejected(domain = "table", command = "JoinTable")
+    public FundsReleased handleJoinRejected(Angzarr.Notification notification) {
+        var ctx = CompensationContext.from(notification);
+
+        logger.warning("Player compensation for JoinTable rejection: reason=" + ctx.getRejectionReason());
+
+        // Extract table_root from the rejected command
+        byte[] tableRoot = new byte[0];
+        if (ctx.getRejectedCommand() != null
+            && ctx.getRejectedCommand().getCover() != null
+            && ctx.getRejectedCommand().getCover().hasRoot()) {
+            tableRoot = ctx.getRejectedCommand().getCover().getRoot().getValue().toByteArray();
+        }
+
+        // Release the funds that were reserved for this table
+        String tableKey = bytesToHex(tableRoot);
+        long reservedAmount = getState().getReservationForTable(tableKey);
+        long newReserved = getReservedFunds() - reservedAmount;
+        long newAvailable = getBankroll() - newReserved;
+
+        return FundsReleased.newBuilder()
+            .setAmount(Currency.newBuilder()
+                .setAmount(reservedAmount)
+                .setCurrencyCode("CHIPS"))
+            .setTableRoot(com.google.protobuf.ByteString.copyFrom(tableRoot))
+            .setReason("Join failed: " + ctx.getRejectionReason())
+            .setNewAvailableBalance(Currency.newBuilder()
+                .setAmount(newAvailable)
+                .setCurrencyCode("CHIPS"))
+            .setNewReservedBalance(Currency.newBuilder()
+                .setAmount(newReserved)
+                .setCurrencyCode("CHIPS"))
+            .setReleasedAt(now())
+            .build();
+    }
+
+    // docs:end:rejected_handler
 
     // --- Utility methods ---
 

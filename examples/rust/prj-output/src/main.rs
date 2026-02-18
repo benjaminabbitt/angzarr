@@ -46,6 +46,7 @@ fn get_sequence(page: &angzarr_client::proto::EventPage) -> u32 {
     }
 }
 
+// docs:start:projector_functional
 fn handle_events(events: &EventBook) -> Result<Projection, Status> {
     let cover = events.cover.as_ref();
     let domain = cover.map(|c| c.domain.as_str()).unwrap_or("");
@@ -86,6 +87,7 @@ fn handle_events(events: &EventBook) -> Result<Projection, Status> {
         projection: None,
     })
 }
+// docs:end:projector_functional
 
 fn format_event(domain: &str, root_id: &str, type_name: &str, data: &[u8]) -> String {
     match type_name {

@@ -21,6 +21,7 @@ constexpr int DEFAULT_PORT = 50490;
 const char* DEFAULT_LOG_FILE = "hand_log.txt";
 constexpr const char* PROJECTOR_NAME = "output";
 
+// docs:start:projector_functional
 /// gRPC service implementation for output projector.
 class OutputProjectorService final : public angzarr::ProjectorService::Service {
 public:
@@ -206,6 +207,7 @@ private:
     std::ofstream log_file_;
     bool show_timestamps_;
 };
+// docs:end:projector_functional
 
 } // anonymous namespace
 

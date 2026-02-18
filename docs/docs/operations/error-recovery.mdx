@@ -354,89 +354,46 @@ message RejectionNotification {
 
 ### Handling Rejections
 
-The source aggregate can respond in several ways:
+The source aggregate registers rejection handlers using `@rejected` decorators. The framework dispatches based on the rejected command's domain and type — no if/else chains needed.
 
 <Tabs groupId="language">
-<TabItem value="python" label="Python (OO)" default>
+<TabItem value="python" label="Python" default>
 
-```python
-# In Player aggregate
-class Player(Aggregate):
-    @handles(Notification)
-    def handle_notification(self, state: PlayerState, notification: Notification) -> Any:
-        # Unpack the notification payload
-        if notification.payload.Is(RejectionNotification.DESCRIPTOR):
-            rejection = RejectionNotification()
-            notification.payload.Unpack(rejection)
-            return self.handle_rejection(state, rejection)
-        return None  # Unknown notification type
+**[`examples/python/player/agg/handlers/player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)**
 
-    def handle_rejection(self, state: PlayerState, rejection: RejectionNotification) -> Any:
-        # Check what was rejected
-        if rejection.rejected_command.pages[0].command.Is(ReserveFunds.DESCRIPTOR):
-            # Table join failed — release the reserved funds
-            return FundsReleased(
-                amount=self._extract_reserve_amount(rejection),
-                reason=f"Join failed: {rejection.rejection_reason}",
-            )
-
-        # Unknown rejection — escalate
-        return RevocationResponse(
-            emit_system_revocation=True,
-            send_to_dead_letter_queue=True,
-            reason=f"Unhandled rejection: {rejection.rejection_reason}",
-        )
+```python file=examples/python/player/agg/handlers/player.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-// In Player aggregate handler
-fn handle_notification(
-    state: &PlayerState,
-    notification: &Notification,
-) -> Result<BusinessResponse, Status> {
-    // Unpack notification payload
-    let payload = notification.payload.as_ref()
-        .ok_or_else(|| Status::invalid_argument("Missing payload"))?;
+**[`examples/rust/player/agg/src/handlers/rejected.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/handlers/rejected.rs)**
 
-    if payload.type_url.ends_with("RejectionNotification") {
-        let rejection: RejectionNotification = payload.unpack()?;
-        return handle_rejection(state, &rejection);
-    }
+```rust file=examples/rust/player/agg/src/handlers/rejected.rs start=docs:start:rejected_handler end=docs:end:rejected_handler
+```
 
-    // Unknown notification type
-    Ok(BusinessResponse::default())
-}
+</TabItem>
+<TabItem value="go" label="Go">
 
-fn handle_rejection(
-    state: &PlayerState,
-    rejection: &RejectionNotification,
-) -> Result<BusinessResponse, Status> {
-    let cmd_any = rejection.rejected_command.as_ref()
-        .and_then(|c| c.pages.first())
-        .and_then(|p| p.command.as_ref());
+**[`examples/go/player/agg/handlers/revocation.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/revocation.go)**
 
-    if let Some(any) = cmd_any {
-        if any.type_url.ends_with("ReserveFunds") {
-            // Release reserved funds
-            let event = FundsReleased {
-                amount: extract_reserve_amount(rejection),
-                reason: format!("Join failed: {}", rejection.rejection_reason),
-            };
-            return Ok(BusinessResponse::with_events(vec![event]));
-        }
-    }
+```go file=examples/go/player/agg/handlers/revocation.go start=docs:start:rejected_handler end=docs:end:rejected_handler
+```
 
-    // Unknown rejection — escalate
-    Ok(BusinessResponse::with_revocation(RevocationResponse {
-        emit_system_revocation: true,
-        send_to_dead_letter_queue: true,
-        reason: format!("Unhandled rejection: {}", rejection.rejection_reason),
-        ..Default::default()
-    }))
-}
+</TabItem>
+<TabItem value="java" label="Java">
+
+**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:rejected_handler end=docs:end:rejected_handler
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+**[`examples/csharp/Player/Agg/Player.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Player.cs)**
+
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>

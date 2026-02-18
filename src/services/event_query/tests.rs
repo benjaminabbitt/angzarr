@@ -55,13 +55,12 @@ async fn test_get_event_book_with_data() {
     let root = uuid::Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence: Some(event_page::Sequence::Num(0)),
-        event: Some(Any {
+        sequence: 0,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }];
     event_store
         .add("orders", DEFAULT_EDITION, root, events, "")
@@ -139,13 +138,12 @@ async fn test_get_event_book_with_range() {
     // Add multiple events
     for i in 0..5 {
         let events = vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(i)),
-            event: Some(Any {
+            sequence: i,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("test.Event{}", i),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }];
         event_store
             .add("orders", DEFAULT_EDITION, root, events, "")
@@ -210,13 +208,12 @@ async fn test_get_events_with_data() {
 
     // First add some events via the store directly
     let events = vec![EventPage {
-        sequence: Some(event_page::Sequence::Num(0)),
-        event: Some(Any {
+        sequence: 0,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }];
     event_store
         .add("orders", DEFAULT_EDITION, root, events, "")
@@ -360,13 +357,12 @@ async fn test_get_event_book_by_correlation_id() {
 
     // Add events with correlation ID
     let events = vec![EventPage {
-        sequence: Some(event_page::Sequence::Num(0)),
-        event: Some(Any {
+        sequence: 0,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }];
     event_store
         .add("orders", DEFAULT_EDITION, root, events, correlation_id)
@@ -423,13 +419,12 @@ async fn test_get_events_by_correlation_id_multiple_aggregates() {
         ("inventory", uuid::Uuid::new_v4()),
     ] {
         let events = vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(0)),
-            event: Some(Any {
+            sequence: 0,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("{}.Event", domain),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }];
         event_store
             .add(domain, DEFAULT_EDITION, root, events, correlation_id)
@@ -463,40 +458,37 @@ async fn test_get_event_book_temporal_by_time() {
 
     let events = vec![
         EventPage {
-            sequence: Some(event_page::Sequence::Num(0)),
-            event: Some(Any {
+            sequence: 0,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event0".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: Some(Timestamp {
                 seconds: 1704067200, // 2024-01-01T00:00:00Z
                 nanos: 0,
             }),
-            external_payload: None,
         },
         EventPage {
-            sequence: Some(event_page::Sequence::Num(1)),
-            event: Some(Any {
+            sequence: 1,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event1".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: Some(Timestamp {
                 seconds: 1704153600, // 2024-01-02T00:00:00Z
                 nanos: 0,
             }),
-            external_payload: None,
         },
         EventPage {
-            sequence: Some(event_page::Sequence::Num(2)),
-            event: Some(Any {
+            sequence: 2,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event2".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: Some(Timestamp {
                 seconds: 1704240000, // 2024-01-03T00:00:00Z
                 nanos: 0,
             }),
-            external_payload: None,
         },
     ];
     event_store
@@ -537,13 +529,12 @@ async fn test_get_event_book_temporal_by_sequence() {
 
     for i in 0..5 {
         let events = vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(i)),
-            event: Some(Any {
+            sequence: i,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: format!("test.Event{}", i),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }];
         event_store
             .add("orders", DEFAULT_EDITION, root, events, "")
@@ -606,13 +597,12 @@ async fn test_get_event_book_returns_all_events_despite_snapshot() {
 
     // Add an event at sequence 0
     let events = vec![EventPage {
-        sequence: Some(event_page::Sequence::Num(0)),
-        event: Some(Any {
+        sequence: 0,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: "test.CustomerCreated".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }];
     event_store
         .add("customer", DEFAULT_EDITION, root, events, "")

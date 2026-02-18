@@ -32,187 +32,37 @@ Transforms poker events into human-readable text:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-from angzarr_client import Projector
-
-class OutputProjector(Projector):
-    def __init__(self):
-        self.player_names: dict[str, str] = {}
-
-    def handle_player_registered(self, event: PlayerRegistered):
-        self.player_names[event.player_id] = event.username
-        print(f"[Player] {event.username} registered")
-
-    def handle_funds_deposited(self, event: FundsDeposited):
-        name = self.player_names.get(event.player_id, event.player_id)
-        print(f"[Player] {name} deposited ${event.amount / 100:.2f}")
-
-    def handle_cards_dealt(self, event: CardsDealt):
-        for player in event.players:
-            name = self.player_names.get(player.player_id, player.player_id)
-            cards = format_cards(player.hole_cards)
-            print(f"[Hand] {name} dealt {cards}")
+```python file=examples/python/prj-output/output_projector_doc.py start=docs:start:projector_oo end=docs:end:projector_oo
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-type OutputProjector struct {
-    playerNames map[string]string
-}
-
-func (p *OutputProjector) HandlePlayerRegistered(event *PlayerRegistered) {
-    p.playerNames[event.PlayerId] = event.Username
-    fmt.Printf("[Player] %s registered\n", event.Username)
-}
-
-func (p *OutputProjector) HandleFundsDeposited(event *FundsDeposited) {
-    name := p.playerNames[event.PlayerId]
-    if name == "" {
-        name = event.PlayerId
-    }
-    fmt.Printf("[Player] %s deposited $%.2f\n", name, float64(event.Amount)/100)
-}
-
-func (p *OutputProjector) HandleCardsDealt(event *CardsDealt) {
-    for _, player := range event.Players {
-        name := p.playerNames[player.PlayerId]
-        cards := formatCards(player.HoleCards)
-        fmt.Printf("[Hand] %s dealt %s\n", name, cards)
-    }
-}
+```go file=examples/go/prj-output/output_projector_doc.go start=docs:start:projector_oo end=docs:end:projector_oo
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-pub struct OutputProjector {
-    player_names: HashMap<String, String>,
-}
-
-impl OutputProjector {
-    pub fn handle_player_registered(&mut self, event: &PlayerRegistered) {
-        self.player_names.insert(event.player_id.clone(), event.username.clone());
-        println!("[Player] {} registered", event.username);
-    }
-
-    pub fn handle_funds_deposited(&mut self, event: &FundsDeposited) {
-        let name = self.player_names.get(&event.player_id)
-            .map(|s| s.as_str())
-            .unwrap_or(&event.player_id);
-        println!("[Player] {} deposited ${:.2}", name, event.amount as f64 / 100.0);
-    }
-
-    pub fn handle_cards_dealt(&mut self, event: &CardsDealt) {
-        for player in &event.players {
-            let name = self.player_names.get(&player.player_id)
-                .map(|s| s.as_str())
-                .unwrap_or(&player.player_id);
-            let cards = format_cards(&player.hole_cards);
-            println!("[Hand] {} dealt {}", name, cards);
-        }
-    }
-}
+```rust file=examples/rust/prj-output/src/output_projector_doc.rs start=docs:start:projector_oo end=docs:end:projector_oo
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-public class OutputProjector {
-    private final Map<String, String> playerNames = new HashMap<>();
-
-    @Projects(PlayerRegistered.class)
-    public void handlePlayerRegistered(PlayerRegistered event) {
-        playerNames.put(event.getPlayerId(), event.getUsername());
-        System.out.printf("[Player] %s registered%n", event.getUsername());
-    }
-
-    @Projects(FundsDeposited.class)
-    public void handleFundsDeposited(FundsDeposited event) {
-        String name = playerNames.getOrDefault(event.getPlayerId(), event.getPlayerId());
-        System.out.printf("[Player] %s deposited $%.2f%n", name, event.getAmount() / 100.0);
-    }
-
-    @Projects(CardsDealt.class)
-    public void handleCardsDealt(CardsDealt event) {
-        for (PlayerCards player : event.getPlayersList()) {
-            String name = playerNames.getOrDefault(player.getPlayerId(), player.getPlayerId());
-            String cards = formatCards(player.getHoleCardsList());
-            System.out.printf("[Hand] %s dealt %s%n", name, cards);
-        }
-    }
-}
+```java file=examples/java/prj-output/src/main/java/dev/angzarr/examples/prjoutput/OutputProjectorDoc.java start=docs:start:projector_oo end=docs:end:projector_oo
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-public class OutputProjector
-{
-    private readonly Dictionary<string, string> _playerNames = new();
-
-    [Projects(typeof(PlayerRegistered))]
-    public void HandlePlayerRegistered(PlayerRegistered @event)
-    {
-        _playerNames[@event.PlayerId] = @event.Username;
-        Console.WriteLine($"[Player] {@event.Username} registered");
-    }
-
-    [Projects(typeof(FundsDeposited))]
-    public void HandleFundsDeposited(FundsDeposited @event)
-    {
-        var name = _playerNames.GetValueOrDefault(@event.PlayerId, @event.PlayerId);
-        Console.WriteLine($"[Player] {name} deposited ${@event.Amount / 100.0:F2}");
-    }
-
-    [Projects(typeof(CardsDealt))]
-    public void HandleCardsDealt(CardsDealt @event)
-    {
-        foreach (var player in @event.Players)
-        {
-            var name = _playerNames.GetValueOrDefault(player.PlayerId, player.PlayerId);
-            var cards = FormatCards(player.HoleCards);
-            Console.WriteLine($"[Hand] {name} dealt {cards}");
-        }
-    }
-}
+```csharp file=examples/csharp/Prj/Output/OutputProjector.cs start=docs:start:projector_oo end=docs:end:projector_oo
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-class OutputProjector {
-public:
-    void handle_player_registered(const PlayerRegistered& event) {
-        player_names_[event.player_id()] = event.username();
-        std::cout << "[Player] " << event.username() << " registered\n";
-    }
-
-    void handle_funds_deposited(const FundsDeposited& event) {
-        auto it = player_names_.find(event.player_id());
-        std::string name = (it != player_names_.end()) ? it->second : event.player_id();
-        std::cout << "[Player] " << name << " deposited $"
-                  << std::fixed << std::setprecision(2)
-                  << (event.amount() / 100.0) << "\n";
-    }
-
-    void handle_cards_dealt(const CardsDealt& event) {
-        for (const auto& player : event.players()) {
-            auto it = player_names_.find(player.player_id());
-            std::string name = (it != player_names_.end()) ? it->second : player.player_id();
-            std::string cards = format_cards(player.hole_cards());
-            std::cout << "[Hand] " << name << " dealt " << cards << "\n";
-        }
-    }
-
-private:
-    std::unordered_map<std::string, std::string> player_names_;
-};
+```cpp file=examples/cpp/prj-output/src/output_projector_doc.cpp start=docs:start:projector_oo end=docs:end:projector_oo
 ```
 
 </TabItem>
@@ -227,27 +77,37 @@ Use the `StateRouter` to register event handlers:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-from angzarr_client import StateRouter
+```python file=examples/python/prj-output/output_projector_doc.py start=docs:start:state_router end=docs:end:state_router
+```
 
-router = StateRouter("prj-output")
-    .subscribes("player", ["PlayerRegistered", "FundsDeposited"])
-    .subscribes("hand", ["CardsDealt", "ActionTaken", "PotAwarded"])
-    .on("PlayerRegistered", handle_player_registered)
-    .on("FundsDeposited", handle_funds_deposited)
-    .on("CardsDealt", handle_cards_dealt)
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/prj-output/output_projector_doc.go start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-let router = StateRouter::new("prj-output")
-    .subscribes("player", &["PlayerRegistered", "FundsDeposited"])
-    .subscribes("hand", &["CardsDealt", "ActionTaken", "PotAwarded"])
-    .on::<PlayerRegistered>(handle_player_registered)
-    .on::<FundsDeposited>(handle_funds_deposited)
-    .on::<CardsDealt>(handle_cards_dealt);
+```rust file=examples/rust/prj-output/src/output_projector_doc.rs start=docs:start:state_router end=docs:end:state_router
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/prj-output/src/main/java/dev/angzarr/examples/prjoutput/OutputStateRouter.java start=docs:start:state_router end=docs:end:state_router
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Prj/Output/OutputProjector.cs start=docs:start:state_router end=docs:end:state_router
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/prj-output/src/output_projector_doc.cpp start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>

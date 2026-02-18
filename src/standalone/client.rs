@@ -511,9 +511,13 @@ impl CommandBuilder {
 
     /// Build the command book without sending.
     pub fn build(self) -> CommandBook {
-        let command = self.command_data.map(|data| prost_types::Any {
-            type_url: self.command_type.unwrap_or_default(),
-            value: data,
+        use crate::proto::command_page;
+
+        let payload = self.command_data.map(|data| {
+            command_page::Payload::Command(prost_types::Any {
+                type_url: self.command_type.unwrap_or_default(),
+                value: data,
+            })
         });
 
         CommandBook {
@@ -530,9 +534,8 @@ impl CommandBuilder {
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence.unwrap_or(0),
-                command,
+                payload,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
-                external_payload: None,
             }],
             saga_origin: None,
         }
@@ -575,6 +578,7 @@ impl CommandBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto::command_page;
 
     #[test]
     fn test_command_builder_build() {
@@ -593,12 +597,11 @@ mod tests {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                command: Some(prost_types::Any {
+                payload: Some(command_page::Payload::Command(prost_types::Any {
                     type_url: "CreateOrder".to_string(),
                     value: vec![1, 2, 3],
-                }),
+                })),
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
-                external_payload: None,
             }],
             saga_origin: None,
         };

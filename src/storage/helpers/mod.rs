@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::proto::event_page::Sequence;
 use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 
 use super::{Result, StorageError};
@@ -65,29 +64,20 @@ pub fn assemble_event_books(
 
 /// Resolve the sequence number for an event.
 ///
-/// Returns the explicit sequence if provided (validating it's >= base_sequence),
-/// or auto-assigns the next sequence number.
+/// Validates that the sequence is >= base_sequence.
 pub fn resolve_sequence(
     event: &EventPage,
     base_sequence: u32,
-    auto_sequence: &mut u32,
+    _auto_sequence: &mut u32,
 ) -> Result<u32> {
-    match &event.sequence {
-        Some(Sequence::Num(n)) => {
-            if *n < base_sequence {
-                return Err(StorageError::SequenceConflict {
-                    expected: base_sequence,
-                    actual: *n,
-                });
-            }
-            Ok(*n)
-        }
-        Some(Sequence::Force(_)) | None => {
-            let seq = *auto_sequence;
-            *auto_sequence += 1;
-            Ok(seq)
-        }
+    let seq = event.sequence;
+    if seq < base_sequence {
+        return Err(StorageError::SequenceConflict {
+            expected: base_sequence,
+            actual: seq,
+        });
     }
+    Ok(seq)
 }
 
 /// Parse event timestamp to RFC3339 string, defaulting to now.
@@ -107,13 +97,8 @@ pub fn parse_timestamp(event: &EventPage) -> Result<String> {
 }
 
 /// Extract the sequence number from an EventPage.
-///
-/// Returns the explicit sequence if set, otherwise 0.
 pub fn event_sequence(event: &EventPage) -> u32 {
-    match &event.sequence {
-        Some(Sequence::Num(n)) => *n,
-        _ => 0,
-    }
+    event.sequence
 }
 
 /// Convert a protobuf Timestamp to RFC3339 string.

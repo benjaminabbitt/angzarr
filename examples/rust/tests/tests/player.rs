@@ -3,6 +3,7 @@
 //! DOC: This file is referenced in docs/docs/examples/aggregates.mdx
 //!      Update documentation when making changes to test patterns.
 
+// docs:start:bdd_imports
 use agg_player::{
     handle_deposit_funds, handle_register_player, handle_release_funds, handle_reserve_funds,
     handle_withdraw_funds, rebuild_state, PlayerState,
@@ -16,6 +17,7 @@ use angzarr_client::{pack_event, UnpackAny};
 use cucumber::{given, then, when, World};
 use prost_types::Any;
 use sha2::{Digest, Sha256};
+// docs:end:bdd_imports
 
 /// Helper to create a deterministic UUID from a string.
 fn uuid_for(name: &str) -> Vec<u8> {
@@ -41,6 +43,7 @@ fn pack_command<M: prost::Message>(msg: &M, type_name: &str) -> Any {
     }
 }
 
+// docs:start:world_struct
 /// Test context for player scenarios.
 #[derive(Debug, Default, World)]
 #[world(init = Self::new)]
@@ -53,6 +56,7 @@ pub struct PlayerWorld {
     last_event_book: Option<EventBook>,
     last_state: Option<PlayerState>,
 }
+// docs:end:world_struct
 
 impl PlayerWorld {
     fn new() -> Self {
@@ -123,6 +127,7 @@ impl PlayerWorld {
 
 // --- Given Step Definitions ---
 
+// docs:start:given_step
 #[given("no prior events for the player aggregate")]
 fn no_prior_events(world: &mut PlayerWorld) {
     world.events.clear();
@@ -140,6 +145,7 @@ fn player_registered_event(world: &mut PlayerWorld, name: String) {
     };
     world.add_event(pack_event(&event, "examples.PlayerRegistered"));
 }
+// docs:end:given_step
 
 #[given(expr = "a FundsDeposited event with amount {int}")]
 fn funds_deposited_event(world: &mut PlayerWorld, amount: i64) {
@@ -172,6 +178,7 @@ fn funds_reserved_event(world: &mut PlayerWorld, amount: i64, table_name: String
 
 // --- When Step Definitions ---
 
+// docs:start:when_step
 #[when(expr = "I handle a RegisterPlayer command with name {string} and email {string}")]
 fn handle_register_player_cmd(world: &mut PlayerWorld, name: String, email: String) {
     let cmd = RegisterPlayer {
@@ -196,6 +203,7 @@ fn handle_register_player_cmd(world: &mut PlayerWorld, name: String, email: Stri
         }
     }
 }
+// docs:end:when_step
 
 #[when(expr = "I handle a RegisterPlayer command with name {string} and email {string} as AI")]
 fn handle_register_player_ai_cmd(world: &mut PlayerWorld, name: String, email: String) {
@@ -318,6 +326,7 @@ fn rebuild_player_state(world: &mut PlayerWorld) {
 
 // --- Then Step Definitions ---
 
+// docs:start:then_step
 #[then("the result is a PlayerRegistered event")]
 fn result_is_player_registered(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
@@ -327,6 +336,7 @@ fn result_is_player_registered(world: &mut PlayerWorld) {
         event.type_url
     );
 }
+// docs:end:then_step
 
 #[then("the result is a FundsDeposited event")]
 fn result_is_funds_deposited(world: &mut PlayerWorld) {
@@ -531,7 +541,9 @@ fn player_state_has_available_balance(world: &mut PlayerWorld, expected: i64) {
     );
 }
 
+// docs:start:main
 #[tokio::main]
 async fn main() {
     PlayerWorld::run("../../features/unit/player.feature").await;
 }
+// docs:end:main

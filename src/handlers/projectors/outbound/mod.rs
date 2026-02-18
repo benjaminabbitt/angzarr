@@ -161,8 +161,12 @@ impl OutboundService {
         }
 
         // Convert to CloudEvents SDK events
-        let envelopes =
-            convert_proto_events(&response.events, projection, source_events, self.content_type)?;
+        let envelopes = convert_proto_events(
+            &response.events,
+            projection,
+            source_events,
+            self.content_type,
+        )?;
 
         // Publish to sinks
         for sink in &self.sinks {
@@ -416,7 +420,10 @@ fn wrap_eventbook_as_cloudevent(
     // Get event type from page
     let page = book.pages.first();
     let event_type = page
-        .and_then(|p| p.event.as_ref())
+        .and_then(|p| match &p.payload {
+            Some(crate::proto::event_page::Payload::Event(e)) => Some(e),
+            _ => None,
+        })
         .map(|e| {
             e.type_url
                 .rsplit('/')
@@ -427,13 +434,7 @@ fn wrap_eventbook_as_cloudevent(
         .unwrap_or_else(|| "unknown".to_string());
 
     // Get sequence from page
-    let sequence = page
-        .and_then(|p| p.sequence.as_ref())
-        .and_then(|s| match s {
-            crate::proto::event_page::Sequence::Num(n) => Some(*n),
-            crate::proto::event_page::Sequence::Force(_) => Some(0),
-        })
-        .unwrap_or(sequence_offset as u32);
+    let sequence = page.map(|p| p.sequence).unwrap_or(sequence_offset as u32);
 
     // Get timestamp from page
     let time = page

@@ -288,13 +288,9 @@ impl EventService {
         let correlation_id = &cover.correlation_id;
 
         for page in &book.pages {
-            let sequence = match &page.sequence {
-                Some(crate::proto::event_page::Sequence::Num(n)) => *n,
-                Some(crate::proto::event_page::Sequence::Force(_)) => continue,
-                None => continue,
-            };
+            let sequence = page.sequence;
 
-            let Some(event) = &page.event else {
+            let Some(crate::proto::event_page::Payload::Event(event)) = &page.payload else {
                 continue;
             };
 

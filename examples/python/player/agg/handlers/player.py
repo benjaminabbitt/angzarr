@@ -7,10 +7,11 @@ DOC: This file is referenced in docs/docs/examples/aggregates.mdx
 from dataclasses import dataclass, field
 import logging
 
-from angzarr_client import Aggregate, handles, applies, now
+from angzarr_client import Aggregate, handles, applies, now, rejected
 from angzarr_client.compensation import (
     CompensationContext,
     delegate_to_framework,
+    emit_compensation_events,
 )
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
@@ -46,6 +47,7 @@ class Player(Aggregate[_PlayerState]):
 
     # --- Event appliers ---
 
+    # docs:start:state_appliers_oo
     @applies(player_proto.PlayerRegistered)
     def apply_registered(self, state: _PlayerState, event: player_proto.PlayerRegistered):
         """Apply PlayerRegistered event to state."""
@@ -92,6 +94,7 @@ class Player(Aggregate[_PlayerState]):
         """Apply FundsTransferred event to state."""
         if event.new_balance:
             state.bankroll = event.new_balance.amount
+    # docs:end:state_appliers_oo
 
     # --- State accessors ---
 
@@ -223,6 +226,7 @@ class Player(Aggregate[_PlayerState]):
             withdrawn_at=now(),
         )
 
+    # docs:start:reserve_funds_oo
     @handles(player_proto.ReserveFunds)
     def reserve(self, cmd: player_proto.ReserveFunds) -> player_proto.FundsReserved:
         """Reserve funds for a table buy-in."""
@@ -253,6 +257,7 @@ class Player(Aggregate[_PlayerState]):
             ),
             reserved_at=now(),
         )
+    # docs:end:reserve_funds_oo
 
     @handles(player_proto.ReleaseFunds)
     def release(self, cmd: player_proto.ReleaseFunds) -> player_proto.FundsReleased:
@@ -281,38 +286,45 @@ class Player(Aggregate[_PlayerState]):
     # docs:end:annotation_handlers
 
     # --- Saga/PM Compensation ---
+    # docs:start:rejected_handler
 
-    def handle_revocation(self, notification: types.Notification) -> aggregate.BusinessResponse:
-        """Handle rejection for player-related saga/PM failures.
+    @rejected(domain="table", command="JoinTable")
+    def handle_join_rejected(
+        self, notification: types.Notification
+    ) -> player_proto.FundsReleased:
+        """Release reserved funds when table join fails.
 
-        Called when a saga/PM command targeting another aggregate is rejected.
-        For example, if ReserveFunds succeeded but the subsequent table join failed,
-        this method handles compensation.
-
-        Uses CompensationContext helpers for cleaner code.
+        Called when the JoinTable command (issued by saga-player-table after
+        FundsReserved) is rejected by the Table aggregate.
         """
         ctx = CompensationContext.from_notification(notification)
 
         logger.warning(
-            "Player compensation: issuer=%s reason=%s seq=%d",
-            ctx.issuer_name,
+            "Player compensation for JoinTable rejection: reason=%s",
             ctx.rejection_reason,
-            ctx.source_event_sequence,
         )
 
-        # Example: Auto-release funds if a table join saga failed
-        # if "table" in ctx.issuer_name.lower():
-        #     # Extract table_root from rejected command
-        #     table_root = ...
-        #     event = player_proto.FundsReleased(
-        #         table_root=table_root,
-        #         amount=self.table_reservations.get(table_root.hex(), 0),
-        #         released_at=now(),
-        #     )
-        #     self._apply_and_record(event)
-        #     return emit_compensation_events(self.event_book())
+        # Extract table_root from the rejected command
+        table_root = b""
+        if ctx.rejected_command and ctx.rejected_command.cover:
+            table_root = ctx.rejected_command.cover.root.value
 
-        # Default: delegate to framework
-        return delegate_to_framework(
-            reason=f"Player aggregate: no custom compensation for {ctx.issuer_name}"
+        # Release the funds that were reserved for this table
+        reserved_amount = self.table_reservations.get(table_root.hex(), 0)
+        new_reserved = self.reserved_funds - reserved_amount
+        new_available = self.bankroll - new_reserved
+
+        return player_proto.FundsReleased(
+            amount=poker_types.Currency(amount=reserved_amount, currency_code="CHIPS"),
+            table_root=table_root,
+            reason=f"Join failed: {ctx.rejection_reason}",
+            new_available_balance=poker_types.Currency(
+                amount=new_available, currency_code="CHIPS"
+            ),
+            new_reserved_balance=poker_types.Currency(
+                amount=new_reserved, currency_code="CHIPS"
+            ),
+            released_at=now(),
         )
+
+    # docs:end:rejected_handler

@@ -22,7 +22,7 @@ use super::broker::SubscriberInfo;
 use super::checkpoint::{Checkpoint, CheckpointConfig};
 use super::{DEFAULT_BASE_PATH, SUBSCRIBER_PIPE_PREFIX};
 use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
-use crate::proto::{event_page, EventBook};
+use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
 
 /// Env var name for subscriber list (set by orchestrator).
@@ -459,13 +459,7 @@ impl EventBus for IpcEventBus {
 
 /// Extract the highest sequence number from an EventBook's pages.
 fn max_page_sequence(book: &EventBook) -> Option<u32> {
-    book.pages
-        .iter()
-        .filter_map(|p| match p.sequence {
-            Some(event_page::Sequence::Num(n)) => Some(n),
-            _ => None,
-        })
-        .max()
+    book.pages.iter().map(|p| p.sequence).max()
 }
 
 #[cfg(test)]
@@ -531,10 +525,9 @@ mod tests {
         let book = EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(5)),
-                event: None,
+                sequence: 5,
+                payload: None,
                 created_at: None,
-                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()
@@ -549,22 +542,19 @@ mod tests {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence: Some(event_page::Sequence::Num(2)),
-                    event: None,
+                    sequence: 2,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
                 EventPage {
-                    sequence: Some(event_page::Sequence::Num(7)),
-                    event: None,
+                    sequence: 7,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
                 EventPage {
-                    sequence: Some(event_page::Sequence::Num(4)),
-                    event: None,
+                    sequence: 4,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
             ],
             snapshot: None,

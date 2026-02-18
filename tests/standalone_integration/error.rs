@@ -1,6 +1,7 @@
 //! Error handling and recovery integration tests.
 
 use crate::common::*;
+use angzarr::proto::{command_page, event_page};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 // ============================================================================
@@ -35,7 +36,7 @@ impl AggregateHandler for ConditionalFailAggregate {
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command = ctx.command.as_ref().unwrap();
         if let Some(page) = command.pages.first() {
-            if let Some(cmd) = &page.command {
+            if let Some(command_page::Payload::Command(cmd)) = &page.payload {
                 if cmd.type_url.contains(&self.fail_on) {
                     return Err(Status::invalid_argument(format!(
                         "Rejected command: {}",
@@ -79,7 +80,7 @@ impl AggregateHandler for SelectiveFailAggregate {
 
         // Check if command matches fail pattern
         if let Some(page) = command_book.pages.first() {
-            if let Some(cmd) = &page.command {
+            if let Some(command_page::Payload::Command(cmd)) = &page.payload {
                 let data = String::from_utf8_lossy(&cmd.value);
                 if data.contains(&self.fail_pattern) {
                     return Err(Status::internal("Simulated failure"));
@@ -94,19 +95,21 @@ impl AggregateHandler for SelectiveFailAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .and_then(|p| match &p.sequence {
-                Some(event_page::Sequence::Num(n)) => Some(n + 1),
-                _ => None,
-            })
+            .map(|p| p.sequence + 1)
             .unwrap_or(0);
+
+        let event = if let Some(command_page::Payload::Command(c)) = &command_book.pages[0].payload {
+            Some(c.clone())
+        } else {
+            None
+        };
 
         Ok(EventBook {
             cover,
             pages: vec![EventPage {
-                sequence: Some(event_page::Sequence::Num(next_seq)),
-                event: command_book.pages[0].command.clone(),
+                sequence: next_seq,
+                payload: event.map(event_page::Payload::Event),
                 created_at: None,
-                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()
@@ -120,10 +123,7 @@ fn get_seq(response: &angzarr::proto::CommandResponse) -> u32 {
         .events
         .as_ref()
         .and_then(|e| e.pages.last())
-        .and_then(|p| match &p.sequence {
-            Some(event_page::Sequence::Num(n)) => Some(*n),
-            _ => None,
-        })
+        .map(|p| p.sequence)
         .unwrap_or(0)
 }
 
@@ -194,10 +194,10 @@ async fn test_conditional_failure_isolates_to_single_command() {
 
     // First command succeeds
     let mut cmd1 = create_test_command("orders", root1, b"good", 0);
-    cmd1.pages[0].command = Some(prost_types::Any {
+    cmd1.pages[0].payload = Some(command_page::Payload::Command(prost_types::Any {
         type_url: "GoodCommand".to_string(),
         value: vec![],
-    });
+    }));
     client
         .execute(cmd1)
         .await
@@ -205,19 +205,19 @@ async fn test_conditional_failure_isolates_to_single_command() {
 
     // Second command fails
     let mut cmd2 = create_test_command("orders", root2, b"bad", 0);
-    cmd2.pages[0].command = Some(prost_types::Any {
+    cmd2.pages[0].payload = Some(command_page::Payload::Command(prost_types::Any {
         type_url: "BadCommand".to_string(),
         value: vec![],
-    });
+    }));
     let result2 = client.execute(cmd2).await;
     assert!(result2.is_err(), "Bad command should fail");
 
     // Third command succeeds
     let mut cmd3 = create_test_command("orders", root1, b"good-again", 1);
-    cmd3.pages[0].command = Some(prost_types::Any {
+    cmd3.pages[0].payload = Some(command_page::Payload::Command(prost_types::Any {
         type_url: "AnotherGoodCommand".to_string(),
         value: vec![],
-    });
+    }));
     client
         .execute(cmd3)
         .await

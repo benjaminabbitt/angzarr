@@ -122,6 +122,7 @@ fn test_extract_identity_missing_root() {
 mod grpc_integration {
     use super::*;
     use crate::orchestration::aggregate::DEFAULT_EDITION;
+    use crate::proto::event_page;
     use crate::proto::event_query_service_server::EventQueryServiceServer;
     use crate::proto::Snapshot;
     use crate::services::EventQueryService;
@@ -136,16 +137,15 @@ mod grpc_integration {
 
     fn test_event(sequence: u32, event_type: &str) -> EventPage {
         EventPage {
-            sequence: Some(Sequence::Num(sequence)),
+            sequence,
             created_at: Some(Timestamp {
                 seconds: 1704067200 + sequence as i64,
                 nanos: 0,
             }),
-            event: Some(prost_types::Any {
+            payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: format!("type.googleapis.com/{}", event_type),
                 value: vec![1, 2, 3, sequence as u8],
-            }),
-            external_payload: None,
+            })),
         }
     }
 
@@ -215,8 +215,8 @@ mod grpc_integration {
 
         assert!(is_complete(&repaired));
         assert_eq!(repaired.pages.len(), 5);
-        assert_eq!(repaired.pages[0].sequence, Some(Sequence::Num(0)));
-        assert_eq!(repaired.pages[4].sequence, Some(Sequence::Num(4)));
+        assert_eq!(repaired.pages[0].sequence, 0);
+        assert_eq!(repaired.pages[4].sequence, 4);
     }
 
     #[tokio::test]
@@ -238,7 +238,7 @@ mod grpc_integration {
         let result = repairer.repair(complete_book.clone()).await.unwrap();
 
         assert_eq!(result.pages.len(), 2);
-        assert_eq!(result.pages[0].sequence, Some(Sequence::Num(0)));
+        assert_eq!(result.pages[0].sequence, 0);
     }
 
     #[tokio::test]
@@ -291,7 +291,7 @@ mod grpc_integration {
         assert!(repaired.snapshot.is_some());
         assert_eq!(repaired.snapshot.as_ref().unwrap().sequence, 5);
         assert_eq!(repaired.pages.len(), 4); // Events 6,7,8,9 (after snapshot at 5)
-        assert_eq!(repaired.pages[0].sequence, Some(Sequence::Num(6)));
+        assert_eq!(repaired.pages[0].sequence, 6);
     }
 
     #[tokio::test]

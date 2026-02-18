@@ -42,6 +42,7 @@ EVENT_TYPES = {
 }
 
 
+# docs:start:projector_functional
 class OutputProjector:
     """
     Projector that subscribes to events from all domains and outputs text.
@@ -107,3 +108,4 @@ class OutputProjector:
         """
         for event_book in event_stream:
             self.handle_event_book(event_book)
+# docs:end:projector_functional

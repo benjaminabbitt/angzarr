@@ -7,6 +7,7 @@ using Angzarr.Examples;
 
 namespace Player.Agg.Handlers;
 
+// docs:start:reserve_funds_imp
 /// <summary>
 /// Handler for ReserveFunds command.
 /// </summary>
@@ -42,3 +43,4 @@ public static class ReserveHandler
         };
     }
 }
+// docs:end:reserve_funds_imp

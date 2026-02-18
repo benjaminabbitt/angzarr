@@ -233,7 +233,7 @@ pub fn validate_command_book(book: &CommandBook, limits: &ResourceLimits) -> Res
 
     // Check each page payload size
     for (i, page) in book.pages.iter().enumerate() {
-        if let Some(ref command) = page.command {
+        if let Some(crate::proto::command_page::Payload::Command(ref command)) = page.payload {
             if command.value.len() > limits.max_payload_bytes {
                 return Err(Status::invalid_argument(format!(
                     "{} at page {} (max: {} bytes, got: {} bytes)",
@@ -428,7 +428,7 @@ mod tests {
 
     mod resource_limits_validation {
         use super::*;
-        use crate::proto::{CommandPage, Cover, MergeStrategy};
+        use crate::proto::{command_page, CommandPage, Cover, MergeStrategy};
         use prost_types::Any;
 
         fn make_command_book(pages: Vec<CommandPage>) -> CommandBook {
@@ -447,12 +447,11 @@ mod tests {
         fn make_page_with_payload(size: usize) -> CommandPage {
             CommandPage {
                 sequence: 0,
-                command: Some(Any {
+                payload: Some(command_page::Payload::Command(Any {
                     type_url: "test/Command".to_string(),
                     value: vec![0u8; size],
-                }),
+                })),
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
-                external_payload: None,
             }
         }
 

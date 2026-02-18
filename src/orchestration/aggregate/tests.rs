@@ -1,5 +1,7 @@
 use super::*;
-use crate::proto::{event_page, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid};
+use crate::proto::{
+    command_page, event_page, CommandPage, Cover, MergeStrategy, Uuid as ProtoUuid,
+};
 use crate::proto_ext::{calculate_set_next_seq, CommandBookExt, EventBookExt};
 use prost_types::Any;
 
@@ -24,12 +26,11 @@ fn make_command_book_with_strategy(
         }),
         pages: vec![CommandPage {
             sequence,
-            command: Some(Any {
+            payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
-            }),
+            })),
             merge_strategy: strategy as i32,
-            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -40,13 +41,12 @@ fn make_event_book(domain: &str, root: Uuid, last_sequence: Option<u32>) -> Even
 
     let pages = if let Some(seq) = last_sequence {
         vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(seq)),
-            event: Some(Any {
+            sequence: seq,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.Event".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }]
     } else {
         vec![]

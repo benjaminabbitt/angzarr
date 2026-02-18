@@ -18,7 +18,8 @@ async fn main() {
         .on("DepositFunds", handlers::handle_deposit_funds)
         .on("WithdrawFunds", handlers::handle_withdraw_funds)
         .on("ReserveFunds", handlers::handle_reserve_funds)
-        .on("ReleaseFunds", handlers::handle_release_funds);
+        .on("ReleaseFunds", handlers::handle_release_funds)
+        .on_rejected("table", "JoinTable", handlers::handle_join_rejected);
     // docs:end:command_router
 
     run_aggregate_server("player", 50001, router)

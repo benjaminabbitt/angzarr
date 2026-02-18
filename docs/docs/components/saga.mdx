@@ -154,90 +154,42 @@ When a table starts a hand, issue a DealCards command to the hand domain:
 
 When one event should trigger commands to **multiple different aggregates**, return multiple `CommandBook` entries — one per target aggregate root. This is the [splitter pattern](https://eda-visuals.boyney.io/visuals/splitter-pattern).
 
-**Example:** A batch order event creates reservations across multiple inventory SKUs:
+**Example:** When a table settles, distribute payouts to multiple players:
 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-def handle_batch_order(event: BatchOrderPlaced, context: SagaContext) -> list[CommandBook]:
-    """Split one event into commands for multiple inventory aggregates."""
-    commands = []
-
-    for item in event.items:
-        cmd = ReserveStock(
-            order_id=event.order_id,
-            quantity=item.quantity,
-        )
-
-        target_seq = context.get_sequence("inventory", item.sku_id)
-
-        commands.append(CommandBook(
-            cover=Cover(domain="inventory", root=item.sku_id),
-            pages=[CommandPage(sequence=target_seq, command=pack_any(cmd))],
-        ))
-
-    return commands  # One CommandBook per SKU
-```
-
-</TabItem>
-<TabItem value="rust" label="Rust">
-
-```rust
-fn handle_batch_order(event: &BatchOrderPlaced, context: &SagaContext) -> Vec<CommandBook> {
-    // Split one event into commands for multiple inventory aggregates
-    event.items.iter().map(|item| {
-        let cmd = ReserveStock {
-            order_id: event.order_id.clone(),
-            quantity: item.quantity,
-        };
-
-        let target_seq = context.get_sequence("inventory", &item.sku_id);
-
-        CommandBook {
-            cover: Some(Cover {
-                domain: "inventory".into(),
-                root: Some(item.sku_id.clone()),
-                ..Default::default()
-            }),
-            pages: vec![CommandPage {
-                sequence: target_seq,
-                command: Some(prost_types::Any::pack(&cmd)),
-                ..Default::default()
-            }],
-            ..Default::default()
-        }
-    }).collect()
-}
+```python file=examples/python/table/saga-hand/splitter_example.py start=docs:start:saga_splitter end=docs:end:saga_splitter
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-func handleBatchOrder(event *BatchOrderPlaced, ctx *SagaContext) ([]*CommandBook, error) {
-    // Split one event into commands for multiple inventory aggregates
-    var commands []*CommandBook
+```go file=examples/go/table/saga-hand/splitter_example.go start=docs:start:saga_splitter end=docs:end:saga_splitter
+```
 
-    for _, item := range event.Items {
-        cmd := &ReserveStock{
-            OrderId:  event.OrderId,
-            Quantity: item.Quantity,
-        }
+</TabItem>
+<TabItem value="rust" label="Rust">
 
-        targetSeq := ctx.GetSequence("inventory", item.SkuId)
+```rust file=examples/rust/table/saga-hand/src/splitter_example.rs start=docs:start:saga_splitter end=docs:end:saga_splitter
+```
 
-        commands = append(commands, &CommandBook{
-            Cover: &Cover{Domain: "inventory", Root: item.SkuId},
-            Pages: []*CommandPage{{
-                Sequence: targetSeq,
-                Command:  packAny(cmd),
-            }},
-        })
-    }
+</TabItem>
+<TabItem value="java" label="Java">
 
-    return commands, nil
-}
+```java file=examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/SplitterExample.java start=docs:start:saga_splitter end=docs:end:saga_splitter
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Table/SagaHand/SplitterExample.cs start=docs:start:saga_splitter end=docs:end:saga_splitter
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/table/saga-hand/src/splitter_example.cpp start=docs:start:saga_splitter end=docs:end:saga_splitter
 ```
 
 </TabItem>

@@ -251,13 +251,12 @@ fn create_projection_event_book(
         cover,
         snapshot: None,
         pages: vec![crate::proto::EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(projection.sequence)),
-            event: Some(Any {
+            sequence: projection.sequence,
+            payload: Some(crate::proto::event_page::Payload::Event(Any {
                 type_url: PROJECTION_TYPE_URL.to_string(),
                 value: projection_bytes,
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }],
         ..Default::default()
     }

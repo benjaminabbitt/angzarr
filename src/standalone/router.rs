@@ -277,12 +277,13 @@ pub fn create_command_book(
         }),
         pages: vec![crate::proto::CommandPage {
             sequence: 0,
-            command: Some(prost_types::Any {
-                type_url: command_type.to_string(),
-                value: command_data,
-            }),
+            payload: Some(crate::proto::command_page::Payload::Command(
+                prost_types::Any {
+                    type_url: command_type.to_string(),
+                    value: command_data,
+                },
+            )),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         saga_origin: None,
     }

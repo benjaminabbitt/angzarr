@@ -174,10 +174,10 @@ impl<S: 'static> CommandRouter<S> {
             .first()
             .ok_or_else(|| Status::invalid_argument("Missing command page"))?;
 
-        let command_any = command_page
-            .command
-            .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Missing command"))?;
+        let command_any = match &command_page.payload {
+            Some(crate::proto::command_page::Payload::Command(c)) => c,
+            _ => return Err(Status::invalid_argument("Missing command")),
+        };
 
         let event_book = cmd
             .events
@@ -289,7 +289,10 @@ fn extract_rejection_key(rejection: &RejectionNotification) -> (String, String) 
         let cmd_suffix = rejected
             .pages
             .first()
-            .and_then(|p| p.command.as_ref())
+            .and_then(|p| match &p.payload {
+                Some(crate::proto::command_page::Payload::Command(c)) => Some(c),
+                _ => None,
+            })
             .map(|c| {
                 c.type_url
                     .rsplit('/')

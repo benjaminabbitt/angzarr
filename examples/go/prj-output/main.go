@@ -48,6 +48,7 @@ func getSequence(page *pb.EventPage) uint32 {
 	return 0
 }
 
+// docs:start:projector_functional
 func handleEvents(events *pb.EventBook) (*pb.Projection, error) {
 	if events == nil || events.Cover == nil {
 		return &pb.Projection{}, nil
@@ -77,6 +78,8 @@ func handleEvents(events *pb.EventBook) (*pb.Projection, error) {
 		Sequence:  seq,
 	}, nil
 }
+
+// docs:end:projector_functional
 
 func formatEvent(domain, rootID, typeName string, data []byte) string {
 	switch typeName {

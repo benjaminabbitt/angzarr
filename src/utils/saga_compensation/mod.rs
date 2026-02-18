@@ -135,12 +135,13 @@ pub fn build_notification_command_book(context: &CompensationContext) -> Result<
         cover: Some(cover),
         pages: vec![crate::proto::CommandPage {
             sequence: 0,
-            command: Some(prost_types::Any {
-                type_url: "type.googleapis.com/angzarr.Notification".to_string(),
-                value: notification.encode_to_vec(),
-            }),
+            payload: Some(crate::proto::command_page::Payload::Command(
+                prost_types::Any {
+                    type_url: "type.googleapis.com/angzarr.Notification".to_string(),
+                    value: notification.encode_to_vec(),
+                },
+            )),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         saga_origin: None, // Notifications don't have their own saga origin
     })
@@ -186,13 +187,12 @@ pub fn build_compensation_failed_event_book(
             edition: None,
         }),
         pages: vec![EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(0)),
+            sequence: 0,
             created_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-            event: Some(prost_types::Any {
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "type.angzarr/angzarr.SagaCompensationFailed".to_string(),
                 value: event.encode_to_vec(),
-            }),
-            external_payload: None,
+            })),
         }],
         snapshot: None,
         ..Default::default()

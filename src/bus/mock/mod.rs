@@ -76,13 +76,12 @@ mod tests {
             }),
             pages: (0..event_count)
                 .map(|i| EventPage {
-                    sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
-                    event: Some(prost_types::Any {
+                    sequence: i as u32,
+                    payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                         type_url: format!("test.Event{}", i),
                         value: vec![],
-                    }),
+                    })),
                     created_at: None,
-                    external_payload: None,
                 })
                 .collect(),
             snapshot: None,

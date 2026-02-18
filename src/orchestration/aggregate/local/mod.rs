@@ -14,8 +14,8 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::dlq::{AngzarrDeadLetter, DeadLetterPublisher, NoopDeadLetterPublisher};
 use crate::proto::{
-    event_page, CommandBook, Cover, Edition, EventBook, EventPage, MergeStrategy, Projection,
-    Snapshot, SyncEventBook, Uuid as ProtoUuid,
+    CommandBook, Cover, Edition, EventBook, EventPage, MergeStrategy, Projection, Snapshot,
+    SyncEventBook, Uuid as ProtoUuid,
 };
 use crate::proto_ext::{calculate_set_next_seq, CoverExt};
 use crate::standalone::DomainStorage;
@@ -53,11 +53,7 @@ fn build_event_book(
 
 /// Extract sequence number from an EventPage.
 fn extract_sequence(page: Option<&crate::proto::EventPage>) -> u32 {
-    page.and_then(|p| match &p.sequence {
-        Some(event_page::Sequence::Num(n)) => Some(*n),
-        _ => None,
-    })
-    .unwrap_or(0)
+    page.map(|p| p.sequence).unwrap_or(0)
 }
 
 /// Local aggregate context using in-process storage with optional service discovery.

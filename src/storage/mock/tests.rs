@@ -11,13 +11,12 @@ async fn test_mock_event_store_add_and_get() {
     let root = Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-        event: Some(prost_types::Any {
+        sequence: 0,
+        payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }];
 
     store
@@ -36,23 +35,21 @@ async fn test_mock_event_store_get_by_correlation() {
     let root2 = Uuid::new_v4();
 
     let event1 = EventPage {
-        sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-        event: Some(prost_types::Any {
+        sequence: 0,
+        payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "orders.Created".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     };
 
     let event2 = EventPage {
-        sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-        event: Some(prost_types::Any {
+        sequence: 0,
+        payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "payment.Confirmed".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     };
 
     // Add events with same correlation_id across different domains
@@ -81,40 +78,37 @@ async fn test_get_until_timestamp_filters_by_created_at() {
 
     let events = vec![
         EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-            event: Some(prost_types::Any {
+            sequence: 0,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event0".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: Some(prost_types::Timestamp {
                 seconds: 1704067200, // 2024-01-01T00:00:00Z
                 nanos: 0,
             }),
-            external_payload: None,
         },
         EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event1".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: Some(prost_types::Timestamp {
                 seconds: 1704153600, // 2024-01-02T00:00:00Z
                 nanos: 0,
             }),
-            external_payload: None,
         },
         EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(2)),
-            event: Some(prost_types::Any {
+            sequence: 2,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event2".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: Some(prost_types::Timestamp {
                 seconds: 1704240000, // 2024-01-03T00:00:00Z
                 nanos: 0,
             }),
-            external_payload: None,
         },
     ];
     store.add("orders", "test", root, events, "").await.unwrap();
@@ -154,13 +148,12 @@ async fn test_get_until_timestamp_excludes_events_without_timestamp() {
     let root = Uuid::new_v4();
 
     let events = vec![EventPage {
-        sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-        event: Some(prost_types::Any {
+        sequence: 0,
+        payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
             type_url: "test.Event".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }];
     store.add("orders", "test", root, events, "").await.unwrap();
 

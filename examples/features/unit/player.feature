@@ -1,8 +1,10 @@
 # DOC: This file is referenced in docs/docs/examples/aggregates.mdx
 #      Update documentation when making changes to player feature scenarios.
 
+# docs:start:feature_overview
 Feature: Player aggregate logic
   The Player aggregate manages a player's bankroll and table reservations.
+# docs:end:feature_overview
   It's the source of truth for how much money a player has and where it's allocated.
 
   Why this aggregate exists:
@@ -38,6 +40,7 @@ Feature: Player aggregate logic
   # Players must register before participating. Registration captures identity
   # and distinguishes human players from AI bots (for fair play tracking).
 
+  # docs:start:registration_scenarios
   Scenario: Register a new human player
     Given no prior events for the player aggregate
     When I handle a RegisterPlayer command with name "Alice" and email "alice@example.com"
@@ -45,17 +48,18 @@ Feature: Player aggregate logic
     And the player event has display_name "Alice"
     And the player event has player_type "HUMAN"
 
-  Scenario: Register an AI player
-    Given no prior events for the player aggregate
-    When I handle a RegisterPlayer command with name "Bot1" and email "bot1@example.com" as AI
-    Then the result is a PlayerRegistered event
-    And the player event has player_type "AI"
-
   Scenario: Cannot register player twice
     Given a PlayerRegistered event for "Alice"
     When I handle a RegisterPlayer command with name "Alice2" and email "alice@example.com"
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "already exists"
+  # docs:end:registration_scenarios
+
+  Scenario: Register an AI player
+    Given no prior events for the player aggregate
+    When I handle a RegisterPlayer command with name "Bot1" and email "bot1@example.com" as AI
+    Then the result is a PlayerRegistered event
+    And the player event has player_type "AI"
 
   # ==========================================================================
   # Deposits - Adding Funds to Bankroll
@@ -128,6 +132,7 @@ Feature: Player aggregate logic
   # This two-phase pattern (reserve → release) enables saga compensation:
   # if the table join fails, the reservation is released atomically.
 
+  # docs:start:reservation_scenario
   Scenario: Reserve funds for table buy-in
     Given a PlayerRegistered event for "Alice"
     And a FundsDeposited event with amount 1000
@@ -135,6 +140,7 @@ Feature: Player aggregate logic
     Then the result is a FundsReserved event
     And the player event has amount 500
     And the player event has new_available_balance 500
+  # docs:end:reservation_scenario
 
   Scenario: Cannot reserve more than available
     Given a PlayerRegistered event for "Alice"

@@ -8,7 +8,7 @@ use tonic::Status;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::proto::{event_page, EventBook, Snapshot, SnapshotRetention};
+use crate::proto::{EventBook, Snapshot, SnapshotRetention};
 use crate::storage::SnapshotStore;
 
 /// Computes the snapshot sequence from the last event in an EventBook.
@@ -16,14 +16,7 @@ use crate::storage::SnapshotStore;
 /// The snapshot sequence is the sequence number of the last event used
 /// to create this snapshot (not incremented).
 pub fn compute_snapshot_sequence(event_book: &EventBook) -> u32 {
-    event_book
-        .pages
-        .last()
-        .and_then(|p| match &p.sequence {
-            Some(event_page::Sequence::Num(n)) => Some(*n),
-            _ => None,
-        })
-        .unwrap_or(0)
+    event_book.pages.last().map(|p| p.sequence).unwrap_or(0)
 }
 
 /// Persists a snapshot if the EventBook contains new events and a snapshot with state.

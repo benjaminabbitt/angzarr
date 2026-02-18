@@ -3,7 +3,7 @@
 Projectors consume events and produce projections (read model updates).
 They are stateless event consumers that build query-optimized views.
 
-Example usage:
+Example usage (single domain):
     from angzarr_client import Projector, projects
 
     class InventoryStockProjector(Projector):
@@ -17,6 +17,18 @@ Example usage:
             data_any = Any()
             data_any.Pack(data)
             return Projection(projector=self.name, projection=data_any)
+
+Example usage (multi-domain):
+    from angzarr_client import Projector, projects
+
+    class OutputProjector(Projector):
+        name = "output"
+        input_domains = ["player", "table", "hand"]
+
+        @projects(PlayerRegistered)
+        def project_registered(self, event: PlayerRegistered) -> Projection:
+            write_log(f"PLAYER registered: {event.display_name}")
+            return Projection(projector=self.name)
 """
 
 from __future__ import annotations
@@ -43,10 +55,10 @@ class Projector(ABC):
 
     Subclasses must:
     - Set `name` class attribute (e.g., "projector-inventory-stock")
-    - Set `input_domain` class attribute (domain to listen to)
+    - Set `input_domain` (single domain) OR `input_domains` (list of domains)
     - Decorate event handlers with `@projects(EventType)`
 
-    Usage:
+    Usage (single domain):
         class InventoryStockProjector(Projector):
             name = "projector-inventory-stock"
             input_domain = "inventory"
@@ -58,10 +70,20 @@ class Projector(ABC):
                 data_any = Any()
                 data_any.Pack(data)
                 return Projection(projector=self.name, projection=data_any)
+
+    Usage (multi-domain):
+        class OutputProjector(Projector):
+            name = "output"
+            input_domains = ["player", "table", "hand"]
+
+            @projects(PlayerRegistered)
+            def project_registered(self, event: PlayerRegistered) -> Projection:
+                ...
     """
 
     name: str
-    input_domain: str
+    input_domain: str = None
+    input_domains: list[str] = None
     _dispatch_table: dict[str, tuple[str, type]] = {}
 
     def __init_subclass__(cls, **kwargs):
@@ -74,8 +96,14 @@ class Projector(ABC):
         # Validate required class attributes
         if not getattr(cls, "name", None):
             raise TypeError(f"{cls.__name__} must define 'name' class attribute")
-        if not getattr(cls, "input_domain", None):
-            raise TypeError(f"{cls.__name__} must define 'input_domain' class attribute")
+
+        # Require either input_domain or input_domains
+        has_single = getattr(cls, "input_domain", None) is not None
+        has_multi = getattr(cls, "input_domains", None) is not None
+        if not has_single and not has_multi:
+            raise TypeError(
+                f"{cls.__name__} must define 'input_domain' or 'input_domains' class attribute"
+            )
 
         cls._dispatch_table = cls._build_dispatch_table()
 
@@ -144,8 +172,12 @@ class Projector(ABC):
     @classmethod
     def descriptor(cls) -> Descriptor:
         """Build component descriptor for topology discovery."""
+        # Get list of domains (support both single and multi-domain)
+        domains = cls.input_domains if cls.input_domains else [cls.input_domain]
+        types_list = list(cls._dispatch_table.keys())
+
         return Descriptor(
             name=cls.name,
             component_type="projector",
-            inputs=[TargetDesc(domain=cls.input_domain, types=list(cls._dispatch_table.keys()))],
+            inputs=[TargetDesc(domain=d, types=types_list) for d in domains],
         )

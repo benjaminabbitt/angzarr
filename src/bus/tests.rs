@@ -1,5 +1,5 @@
 use super::*;
-use crate::proto::{event_page::Sequence, Cover, EventPage, Target, Uuid as ProtoUuid};
+use crate::proto::{event_page, Cover, EventPage, Target, Uuid as ProtoUuid};
 use prost_types::Any;
 
 fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
@@ -16,13 +16,12 @@ fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {
             .iter()
             .enumerate()
             .map(|(i, et)| EventPage {
-                sequence: Some(Sequence::Num(i as u32)),
+                sequence: i as u32,
                 created_at: None,
-                event: Some(Any {
+                payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("type.googleapis.com/example.{}", et),
                     value: vec![],
-                }),
-                external_payload: None,
+                })),
             })
             .collect(),
         snapshot: None,
@@ -180,7 +179,9 @@ mod offloading_wrapper {
         // Check the published book - should still have inline event
         let published = mock_bus.take_published().await;
         assert_eq!(published.len(), 1);
-        assert!(published[0].pages[0].event.is_some());
-        assert!(published[0].pages[0].external_payload.is_none());
+        assert!(matches!(
+            &published[0].pages[0].payload,
+            Some(event_page::Payload::Event(_))
+        ));
     }
 }

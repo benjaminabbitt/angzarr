@@ -13,13 +13,12 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
             edition: None,
         }),
         pages: vec![EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-            event: Some(prost_types::Any {
+            sequence: 0,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }],
         snapshot: None,
         ..Default::default()

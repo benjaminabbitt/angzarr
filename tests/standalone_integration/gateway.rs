@@ -53,10 +53,7 @@ async fn test_execute_returns_events_with_sequence() {
 
     // Verify sequence is set
     let first_page = &events.pages[0];
-    match &first_page.sequence {
-        Some(event_page::Sequence::Num(n)) => assert_eq!(*n, 0, "First event should be seq 0"),
-        _ => panic!("Expected sequence number"),
-    }
+    assert_eq!(first_page.sequence, 0, "First event should be seq 0");
 }
 
 /// Test query-like access to events after command.
@@ -85,7 +82,7 @@ async fn test_query_events_after_command() {
         .expect("Query failed");
 
     assert_eq!(events.len(), 1, "Should have one event");
-    assert!(events[0].event.is_some(), "Event should have payload");
+    assert!(events[0].payload.is_some(), "Event should have payload");
 }
 
 /// Test query with bounds (from/to sequence).
@@ -180,19 +177,15 @@ async fn test_list_registered_domains() {
 
     let router = runtime.router();
     let domains = router.domains();
-    // 3 user domains + 1 auto-registered _angzarr meta domain
+    // 3 user-registered domains
     assert_eq!(
         domains.len(),
-        4,
-        "Should have 4 domains (3 user + _angzarr)"
+        3,
+        "Should have 3 domains"
     );
     assert!(domains.contains(&"orders"), "Should contain orders");
     assert!(domains.contains(&"products"), "Should contain products");
     assert!(domains.contains(&"customers"), "Should contain customers");
-    assert!(
-        domains.contains(&"_angzarr"),
-        "Should contain _angzarr meta domain"
-    );
 }
 
 /// Test list aggregate roots in domain.

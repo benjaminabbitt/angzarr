@@ -1,6 +1,6 @@
 use super::*;
 use crate::config::DEFAULT_SAGA_FALLBACK_DOMAIN;
-use crate::proto::{CommandPage, MergeStrategy};
+use crate::proto::{command_page, event_page, CommandPage, MergeStrategy};
 
 fn make_saga_origin() -> SagaCommandOrigin {
     SagaCommandOrigin {
@@ -29,12 +29,11 @@ fn make_test_command() -> CommandBook {
         }),
         pages: vec![CommandPage {
             sequence: 0,
-            command: Some(prost_types::Any {
+            payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: "test.AddPoints".to_string(),
                 value: vec![],
-            }),
+            })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         saga_origin: Some(make_saga_origin()),
     }
@@ -145,13 +144,12 @@ fn test_handle_business_response_with_events() {
                 edition: None,
             }),
             pages: vec![EventPage {
-                sequence: Some(crate::proto::event_page::Sequence::Num(6)),
+                sequence: 6,
                 created_at: None,
-                external_payload: None,
-                event: Some(prost_types::Any {
+                payload: Some(event_page::Payload::Event(prost_types::Any {
                     type_url: "test.Compensated".to_string(),
                     value: vec![],
-                }),
+                })),
             }],
             snapshot: None,
             ..Default::default()

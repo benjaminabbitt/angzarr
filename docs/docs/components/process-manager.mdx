@@ -64,310 +64,83 @@ sequenceDiagram
     PM->>T: EndHand
 ```
 
+### State Definition
+
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-from angzarr_client import ProcessManager
-from dataclasses import dataclass
-from enum import Enum
-
-class HandPhase(Enum):
-    AWAITING_DEAL = "awaiting_deal"
-    DEALING = "dealing"
-    BLINDS = "blinds"
-    BETTING = "betting"
-    COMPLETE = "complete"
-
-@dataclass
-class HandFlowState:
-    hand_id: str = ""
-    phase: HandPhase = HandPhase.AWAITING_DEAL
-    player_count: int = 0
-
-class HandFlowPM(ProcessManager):
-    def handle_hand_started(self, event: HandStarted, state: HandFlowState):
-        # Transition: AWAITING_DEAL → DEALING
-        state.hand_id = event.hand_id
-        state.phase = HandPhase.DEALING
-        state.player_count = event.player_count
-
-        # Emit command to hand domain
-        return [DealCards(
-            hand_id=event.hand_id,
-            player_count=event.player_count,
-        )]
-
-    def handle_cards_dealt(self, event: CardsDealt, state: HandFlowState):
-        # Transition: DEALING → BLINDS
-        state.phase = HandPhase.BLINDS
-        return [PostBlinds(hand_id=state.hand_id)]
-
-    def handle_hand_complete(self, event: HandComplete, state: HandFlowState):
-        # Transition: * → COMPLETE
-        state.phase = HandPhase.COMPLETE
-
-        # Signal table domain
-        return [EndHand(
-            hand_id=state.hand_id,
-            winner_id=event.winner_id,
-        )]
+```python file=examples/python/pmg-hand-flow/hand_flow_pm.py start=docs:start:pm_state end=docs:end:pm_state
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-type HandPhase int
-
-const (
-    AwaitingDeal HandPhase = iota
-    Dealing
-    Blinds
-    Betting
-    Complete
-)
-
-type HandFlowState struct {
-    HandID      string
-    Phase       HandPhase
-    PlayerCount int32
-}
-
-func (pm *HandFlowPM) HandleHandStarted(event *HandStarted, state *HandFlowState) []*CommandBook {
-    state.HandID = event.HandId
-    state.Phase = Dealing
-    state.PlayerCount = event.PlayerCount
-
-    return []*CommandBook{
-        BuildCommand("hand", &DealCards{
-            HandId:      event.HandId,
-            PlayerCount: event.PlayerCount,
-        }),
-    }
-}
-
-func (pm *HandFlowPM) HandleCardsDealt(event *CardsDealt, state *HandFlowState) []*CommandBook {
-    state.Phase = Blinds
-    return []*CommandBook{
-        BuildCommand("hand", &PostBlinds{HandId: state.HandID}),
-    }
-}
-
-func (pm *HandFlowPM) HandleHandComplete(event *HandComplete, state *HandFlowState) []*CommandBook {
-    state.Phase = Complete
-    return []*CommandBook{
-        BuildCommand("table", &EndHand{
-            HandId:   state.HandID,
-            WinnerId: event.WinnerId,
-        }),
-    }
-}
+```go file=examples/go/pmg-hand-flow/main.go start=docs:start:pm_state end=docs:end:pm_state
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-#[derive(Default)]
-pub struct HandFlowState {
-    hand_id: String,
-    phase: HandPhase,
-    player_count: u32,
-}
-
-#[derive(Default, PartialEq)]
-pub enum HandPhase {
-    #[default]
-    AwaitingDeal,
-    Dealing,
-    Blinds,
-    Betting,
-    Complete,
-}
-
-impl HandFlowPM {
-    pub fn handle_hand_started(
-        &self,
-        event: &HandStarted,
-        state: &mut HandFlowState,
-    ) -> Vec<CommandBook> {
-        state.hand_id = event.hand_id.clone();
-        state.phase = HandPhase::Dealing;
-        state.player_count = event.player_count;
-
-        vec![build_command("hand", DealCards {
-            hand_id: event.hand_id.clone(),
-            player_count: event.player_count,
-        })]
-    }
-
-    pub fn handle_cards_dealt(
-        &self,
-        event: &CardsDealt,
-        state: &mut HandFlowState,
-    ) -> Vec<CommandBook> {
-        state.phase = HandPhase::Blinds;
-        vec![build_command("hand", PostBlinds {
-            hand_id: state.hand_id.clone(),
-        })]
-    }
-
-    pub fn handle_hand_complete(
-        &self,
-        event: &HandComplete,
-        state: &mut HandFlowState,
-    ) -> Vec<CommandBook> {
-        state.phase = HandPhase::Complete;
-        vec![build_command("table", EndHand {
-            hand_id: state.hand_id.clone(),
-            winner_id: event.winner_id.clone(),
-        })]
-    }
-}
+```rust file=examples/rust/pmg-hand-flow/src/main.rs start=docs:start:pm_state end=docs:end:pm_state
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-public enum HandPhase {
-    AWAITING_DEAL, DEALING, BLINDS, BETTING, COMPLETE
-}
-
-public class HandFlowState {
-    private String handId = "";
-    private HandPhase phase = HandPhase.AWAITING_DEAL;
-    private int playerCount = 0;
-    // getters and setters
-}
-
-public class HandFlowPM extends ProcessManager<HandFlowState> {
-    @ReactsTo(HandStarted.class)
-    public List<CommandBook> handleHandStarted(HandStarted event, HandFlowState state) {
-        state.setHandId(event.getHandId());
-        state.setPhase(HandPhase.DEALING);
-        state.setPlayerCount(event.getPlayerCount());
-
-        return List.of(buildCommand("hand", DealCards.newBuilder()
-            .setHandId(event.getHandId())
-            .setPlayerCount(event.getPlayerCount())
-            .build()));
-    }
-
-    @ReactsTo(CardsDealt.class)
-    public List<CommandBook> handleCardsDealt(CardsDealt event, HandFlowState state) {
-        state.setPhase(HandPhase.BLINDS);
-        return List.of(buildCommand("hand", PostBlinds.newBuilder()
-            .setHandId(state.getHandId())
-            .build()));
-    }
-
-    @ReactsTo(HandComplete.class)
-    public List<CommandBook> handleHandComplete(HandComplete event, HandFlowState state) {
-        state.setPhase(HandPhase.COMPLETE);
-        return List.of(buildCommand("table", EndHand.newBuilder()
-            .setHandId(state.getHandId())
-            .setWinnerId(event.getWinnerId())
-            .build()));
-    }
-}
+```java file=examples/java/pmg-hand-flow/src/main/java/dev/angzarr/examples/pmghandflow/HandFlowPM.java start=docs:start:pm_state end=docs:end:pm_state
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-public enum HandPhase { AwaitingDeal, Dealing, Blinds, Betting, Complete }
-
-public class HandFlowState
-{
-    public string HandId { get; set; } = "";
-    public HandPhase Phase { get; set; } = HandPhase.AwaitingDeal;
-    public int PlayerCount { get; set; } = 0;
-}
-
-public class HandFlowPM : ProcessManager<HandFlowState>
-{
-    [ReactsTo(typeof(HandStarted))]
-    public IEnumerable<CommandBook> HandleHandStarted(HandStarted evt, HandFlowState state)
-    {
-        state.HandId = evt.HandId;
-        state.Phase = HandPhase.Dealing;
-        state.PlayerCount = evt.PlayerCount;
-
-        yield return BuildCommand("hand", new DealCards
-        {
-            HandId = evt.HandId,
-            PlayerCount = evt.PlayerCount
-        });
-    }
-
-    [ReactsTo(typeof(CardsDealt))]
-    public IEnumerable<CommandBook> HandleCardsDealt(CardsDealt evt, HandFlowState state)
-    {
-        state.Phase = HandPhase.Blinds;
-        yield return BuildCommand("hand", new PostBlinds { HandId = state.HandId });
-    }
-
-    [ReactsTo(typeof(HandComplete))]
-    public IEnumerable<CommandBook> HandleHandComplete(HandComplete evt, HandFlowState state)
-    {
-        state.Phase = HandPhase.Complete;
-        yield return BuildCommand("table", new EndHand
-        {
-            HandId = state.HandId,
-            WinnerId = evt.WinnerId
-        });
-    }
-}
+```csharp file=examples/csharp/Pmg/HandFlow/HandFlowPM.cs start=docs:start:pm_state end=docs:end:pm_state
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-enum class HandPhase { AwaitingDeal, Dealing, Blinds, Betting, Complete };
+```cpp file=examples/cpp/pmg-hand-flow/src/hand_flow_pm.cpp start=docs:start:pm_state end=docs:end:pm_state
+```
 
-struct HandFlowState {
-    std::string hand_id;
-    HandPhase phase = HandPhase::AwaitingDeal;
-    int32_t player_count = 0;
-};
+</TabItem>
+</Tabs>
 
-class HandFlowPM : public ProcessManager<HandFlowState> {
-public:
-    std::vector<CommandBook> handle_hand_started(
-        const HandStarted& event, HandFlowState& state) {
-        state.hand_id = event.hand_id();
-        state.phase = HandPhase::Dealing;
-        state.player_count = event.player_count();
+### Handler Implementation
 
-        DealCards cmd;
-        cmd.set_hand_id(event.hand_id());
-        cmd.set_player_count(event.player_count());
-        return {build_command("hand", cmd)};
-    }
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
 
-    std::vector<CommandBook> handle_cards_dealt(
-        const CardsDealt& event, HandFlowState& state) {
-        state.phase = HandPhase::Blinds;
+```python file=examples/python/pmg-hand-flow/hand_flow_pm.py start=docs:start:pm_handler end=docs:end:pm_handler
+```
 
-        PostBlinds cmd;
-        cmd.set_hand_id(state.hand_id);
-        return {build_command("hand", cmd)};
-    }
+</TabItem>
+<TabItem value="go" label="Go">
 
-    std::vector<CommandBook> handle_hand_complete(
-        const HandComplete& event, HandFlowState& state) {
-        state.phase = HandPhase::Complete;
+```go file=examples/go/pmg-hand-flow/main.go start=docs:start:pm_handler end=docs:end:pm_handler
+```
 
-        EndHand cmd;
-        cmd.set_hand_id(state.hand_id);
-        cmd.set_winner_id(event.winner_id());
-        return {build_command("table", cmd)};
-    }
-};
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/pmg-hand-flow/src/main.rs start=docs:start:pm_handler end=docs:end:pm_handler
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/pmg-hand-flow/src/main/java/dev/angzarr/examples/pmghandflow/HandFlowPM.java start=docs:start:pm_handler end=docs:end:pm_handler
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Pmg/HandFlow/HandFlowPM.cs start=docs:start:pm_handler end=docs:end:pm_handler
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/pmg-hand-flow/src/hand_flow_pm.cpp start=docs:start:pm_handler end=docs:end:pm_handler
 ```
 
 </TabItem>

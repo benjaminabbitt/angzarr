@@ -166,16 +166,15 @@ impl TimeoutScheduler {
 
         // Wrap in EventPage
         let event_page = EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Force(true)),
+            sequence: 0, // Sequence 0 for timeout events
             created_at: Some(Timestamp {
                 seconds: chrono::Utc::now().timestamp(),
                 nanos: chrono::Utc::now().timestamp_subsec_nanos() as i32,
             }),
-            event: Some(prost_types::Any {
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/angzarr.ProcessTimeout".to_string(),
                 value: prost::Message::encode_to_vec(&timeout_event),
-            }),
-            external_payload: None,
+            })),
         };
 
         // Create EventBook for the timeout domain

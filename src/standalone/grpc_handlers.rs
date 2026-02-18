@@ -46,7 +46,9 @@ impl ClientLogic for AggregateHandlerAdapter {
         // Check for rejection notifications
         if let Some(ref command_book) = cmd.command {
             if let Some(page) = command_book.pages.first() {
-                if let Some(ref command_any) = page.command {
+                if let Some(crate::proto::command_page::Payload::Command(ref command_any)) =
+                    page.payload
+                {
                     if command_any.type_url.ends_with(NOTIFICATION_SUFFIX) {
                         let notification = Notification::decode(command_any.value.as_slice())
                             .map_err(|e| {
@@ -109,10 +111,10 @@ impl ClientLogic for ProcessManagerHandlerAdapter {
             .pages
             .first()
             .ok_or_else(|| Status::invalid_argument("Empty command pages"))?;
-        let command_any = page
-            .command
-            .as_ref()
-            .ok_or_else(|| Status::invalid_argument("Missing command payload"))?;
+        let command_any = match &page.payload {
+            Some(crate::proto::command_page::Payload::Command(c)) => c,
+            _ => return Err(Status::invalid_argument("Missing command payload")),
+        };
 
         if !command_any.type_url.ends_with(NOTIFICATION_SUFFIX) {
             return Err(Status::invalid_argument(

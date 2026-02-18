@@ -4,9 +4,10 @@
 
 use crate::common::*;
 use angzarr::handlers::projectors::{
-    CloudEventEnvelope, CloudEventsCoordinator, CloudEventsSink, SinkError,
+    CloudEventEnvelope, CloudEventsCoordinator, CloudEventsSink, ContentType, SinkError,
 };
 use angzarr::proto::{CloudEvent, CloudEventsResponse, Projection};
+use cloudevents::event::{AttributesReader, ExtensionValue};
 use prost::Message;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
@@ -36,7 +37,11 @@ impl RecordingSink {
 
 #[async_trait]
 impl CloudEventsSink for RecordingSink {
-    async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+    async fn publish(
+        &self,
+        events: Vec<CloudEventEnvelope>,
+        _format: ContentType,
+    ) -> Result<(), SinkError> {
         self.publish_count.fetch_add(1, Ordering::SeqCst);
         let mut stored = self.events.lock().await;
         stored.extend(events);
@@ -164,14 +169,17 @@ async fn test_coordinator_converts_event_fields() {
     assert_eq!(events.len(), 1);
 
     let envelope = &events[0];
-    assert_eq!(envelope.id, "custom-id-123");
-    assert_eq!(envelope.event_type, "com.example.order.created");
-    assert_eq!(envelope.source, "custom-source");
-    assert_eq!(envelope.subject, Some("custom-subject".to_string()));
-    assert_eq!(envelope.specversion, "1.0");
+    assert_eq!(envelope.id(), "custom-id-123");
+    assert_eq!(envelope.ty(), "com.example.order.created");
+    assert_eq!(envelope.source().to_string(), "custom-source");
+    assert_eq!(envelope.subject(), Some("custom-subject"));
     assert_eq!(
-        envelope.extensions.get("priority"),
-        Some(&"high".to_string())
+        envelope.specversion(),
+        cloudevents::event::SpecVersion::V10
+    );
+    assert_eq!(
+        envelope.extension("priority"),
+        Some(&ExtensionValue::String("high".to_string()))
     );
 }
 
@@ -203,15 +211,15 @@ async fn test_coordinator_uses_defaults_when_not_overridden() {
     let root_hex = hex::encode(root.as_bytes());
 
     // Default id: {domain}:{root_id}:{sequence}
-    assert_eq!(envelope.id, format!("orders:{}:1", root_hex));
+    assert_eq!(envelope.id(), format!("orders:{}:1", root_hex));
     // Default source: angzarr/{domain}
-    assert_eq!(envelope.source, "angzarr/orders");
+    assert_eq!(envelope.source().to_string(), "angzarr/orders");
     // Default subject: aggregate root ID
-    assert_eq!(envelope.subject, Some(root_hex));
+    assert_eq!(envelope.subject(), Some(root_hex.as_str()));
     // Correlation ID added as extension
     assert_eq!(
-        envelope.extensions.get("correlationid"),
-        Some(&"corr-123".to_string())
+        envelope.extension("correlationid"),
+        Some(&ExtensionValue::String("corr-123".to_string()))
     );
 }
 
@@ -254,9 +262,9 @@ async fn test_coordinator_handles_multiple_events() {
 
     let published = sink.get_events().await;
     assert_eq!(published.len(), 3);
-    assert_eq!(published[0].event_type, "order.created");
-    assert_eq!(published[1].event_type, "order.paid");
-    assert_eq!(published[2].event_type, "order.shipped");
+    assert_eq!(published[0].ty(), "order.created");
+    assert_eq!(published[1].ty(), "order.paid");
+    assert_eq!(published[2].ty(), "order.shipped");
 }
 
 #[tokio::test]
@@ -292,7 +300,11 @@ impl FailingSink {
 
 #[async_trait]
 impl CloudEventsSink for FailingSink {
-    async fn publish(&self, _events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+    async fn publish(
+        &self,
+        _events: Vec<CloudEventEnvelope>,
+        _format: ContentType,
+    ) -> Result<(), SinkError> {
         Err(SinkError::Unavailable(self.error_message.clone()))
     }
 

@@ -84,10 +84,12 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
             pages: vec![CommandPage {
                 sequence: self.sequence,
                 merge_strategy: crate::proto::MergeStrategy::MergeCommutative as i32,
-                payload: Some(crate::proto::command_page::Payload::Command(prost_types::Any {
-                    type_url,
-                    value: payload,
-                })),
+                payload: Some(crate::proto::command_page::Payload::Command(
+                    prost_types::Any {
+                        type_url,
+                        value: payload,
+                    },
+                )),
             }],
             saga_origin: None,
         })

@@ -10,6 +10,7 @@ use prost_types::Any;
 
 use crate::state::PlayerState;
 
+// docs:start:reserve_funds_imp
 fn guard(state: &PlayerState) -> CommandResult<()> {
     if !state.exists() {
         return Err(CommandRejectedError::new("Player does not exist"));
@@ -71,3 +72,4 @@ pub fn handle_reserve_funds(
 
     Ok(new_event_book(command_book, seq, event_any))
 }
+// docs:end:reserve_funds_imp

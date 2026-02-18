@@ -1,17 +1,16 @@
 use super::*;
-use crate::proto::{Cover, EventPage, SnapshotRetention, Uuid as ProtoUuid};
+use crate::proto::{event_page, Cover, EventPage, SnapshotRetention, Uuid as ProtoUuid};
 use crate::storage::mock::MockSnapshotStore;
 use prost_types::Any;
 
 fn make_event_page(sequence: u32) -> EventPage {
     EventPage {
-        sequence: Some(event_page::Sequence::Num(sequence)),
-        event: Some(Any {
+        sequence,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: "test.Event".to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }
 }
 

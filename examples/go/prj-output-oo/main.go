@@ -43,6 +43,7 @@ func writeLog(msg string) {
 	}
 }
 
+// docs:start:projector_oo
 // OutputProjector writes game events to a log file.
 type OutputProjector struct {
 	angzarr.ProjectorBase
@@ -133,6 +134,8 @@ func (p *OutputProjector) projectHandComplete(event *examples.HandComplete) *pb.
 	writeLog(fmt.Sprintf("HAND #%d complete", event.HandNumber))
 	return nil
 }
+
+// docs:end:projector_oo
 
 func main() {
 	// Clear log file at startup

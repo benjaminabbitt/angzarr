@@ -171,9 +171,7 @@ async fn test_sequential_commands_same_aggregate() {
 
     // Verify sequences are 0-4
     for (i, event) in events.iter().enumerate() {
-        if let Some(event_page::Sequence::Num(seq)) = &event.sequence {
-            assert_eq!(*seq as usize, i, "Event {} should have sequence {}", i, i);
-        }
+        assert_eq!(event.sequence as usize, i, "Event {} should have sequence {}", i, i);
     }
 }
 
@@ -275,9 +273,7 @@ async fn test_sequential_commands_different_aggregates() {
             .await
             .unwrap();
         assert_eq!(events.len(), 1);
-        if let Some(event_page::Sequence::Num(seq)) = &events[0].sequence {
-            assert_eq!(*seq, 0, "First event should be sequence 0");
-        }
+        assert_eq!(events[0].sequence, 0, "First event should be sequence 0");
     }
 }
 
@@ -321,9 +317,6 @@ fn extract_seq(response: &angzarr::proto::CommandResponse) -> u32 {
         .events
         .as_ref()
         .and_then(|e| e.pages.first())
-        .and_then(|p| match &p.sequence {
-            Some(event_page::Sequence::Num(n)) => Some(*n),
-            _ => None,
-        })
+        .map(|p| p.sequence)
         .unwrap_or(0)
 }

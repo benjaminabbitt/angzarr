@@ -12,13 +12,12 @@ use angzarr::storage::EventStore;
 /// Create a test event with given sequence and type.
 pub fn make_event(seq: u32, event_type: &str) -> EventPage {
     EventPage {
-        sequence: Some(event_page::Sequence::Num(seq)),
+        sequence: seq,
         created_at: None,
-        event: Some(Any {
+        payload: Some(event_page::Payload::Event(Any {
             type_url: format!("type.example/{}", event_type),
             value: vec![1, 2, 3, seq as u8],
-        }),
-        external_payload: None,
+        })),
     }
 }
 
@@ -105,9 +104,11 @@ pub async fn test_add_sequential_batches<S: EventStore>(store: &S) {
 
     // Verify sequence continuity
     for (i, event) in events.iter().enumerate() {
-        if let Some(event_page::Sequence::Num(seq)) = event.sequence {
-            assert_eq!(seq, i as u32, "sequence {} should match index", i);
-        }
+        assert_eq!(
+            event.sequence, i as u32,
+            "sequence {} should match index",
+            i
+        );
     }
 }
 
@@ -166,9 +167,7 @@ pub async fn test_get_all_events<S: EventStore>(store: &S) {
 
     // Verify order
     for (i, event) in events.iter().enumerate() {
-        if let Some(event_page::Sequence::Num(seq)) = event.sequence {
-            assert_eq!(seq, i as u32, "events should be ordered");
-        }
+        assert_eq!(event.sequence, i as u32, "events should be ordered");
     }
 }
 
@@ -188,13 +187,12 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
     let root = Uuid::new_v4();
 
     let original = EventPage {
-        sequence: Some(event_page::Sequence::Num(0)),
+        sequence: 0,
         created_at: None,
-        event: Some(Any {
+        payload: Some(event_page::Payload::Event(Any {
             type_url: "type.example/TestEvent".to_string(),
             value: vec![10, 20, 30, 40, 50, 100, 200],
-        }),
-        external_payload: None,
+        })),
     };
 
     store
@@ -209,9 +207,12 @@ pub async fn test_get_preserves_event_data<S: EventStore>(store: &S) {
     assert_eq!(events.len(), 1);
 
     let event = &events[0];
-    let payload = event.event.as_ref().expect("event should have payload");
-    assert_eq!(payload.type_url, "type.example/TestEvent");
-    assert_eq!(payload.value, vec![10, 20, 30, 40, 50, 100, 200]);
+    if let Some(event_page::Payload::Event(payload)) = &event.payload {
+        assert_eq!(payload.type_url, "type.example/TestEvent");
+        assert_eq!(payload.value, vec![10, 20, 30, 40, 50, 100, 200]);
+    } else {
+        panic!("event should have Event payload");
+    }
 }
 
 // =============================================================================
@@ -248,10 +249,7 @@ pub async fn test_get_from_middle<S: EventStore>(store: &S) {
         .await
         .expect("get_from should succeed");
     assert_eq!(events.len(), 5, "should return events 5-9");
-
-    if let Some(event_page::Sequence::Num(seq)) = events[0].sequence {
-        assert_eq!(seq, 5, "first event should be sequence 5");
-    }
+    assert_eq!(events[0].sequence, 5, "first event should be sequence 5");
 }
 
 pub async fn test_get_from_end<S: EventStore>(store: &S) {
@@ -321,13 +319,8 @@ pub async fn test_get_from_to_partial<S: EventStore>(store: &S) {
         .await
         .expect("get_from_to should succeed");
     assert_eq!(events.len(), 4, "should return 4 events");
-
-    if let Some(event_page::Sequence::Num(seq)) = events[0].sequence {
-        assert_eq!(seq, 3, "first should be 3");
-    }
-    if let Some(event_page::Sequence::Num(seq)) = events[3].sequence {
-        assert_eq!(seq, 6, "last should be 6");
-    }
+    assert_eq!(events[0].sequence, 3, "first should be 3");
+    assert_eq!(events[3].sequence, 6, "last should be 6");
 }
 
 pub async fn test_get_from_to_single<S: EventStore>(store: &S) {
@@ -344,10 +337,7 @@ pub async fn test_get_from_to_single<S: EventStore>(store: &S) {
         .await
         .expect("get_from_to should succeed");
     assert_eq!(events.len(), 1, "should return single event");
-
-    if let Some(event_page::Sequence::Num(seq)) = events[0].sequence {
-        assert_eq!(seq, 2);
-    }
+    assert_eq!(events[0].sequence, 2);
 }
 
 pub async fn test_get_from_to_empty<S: EventStore>(store: &S) {
@@ -603,9 +593,7 @@ pub async fn test_large_batch<S: EventStore>(store: &S) {
     assert_eq!(events.len(), 100);
 
     for (i, event) in events.iter().enumerate() {
-        if let Some(event_page::Sequence::Num(seq)) = event.sequence {
-            assert_eq!(seq, i as u32);
-        }
+        assert_eq!(event.sequence, i as u32);
     }
 }
 

@@ -4,6 +4,7 @@
 // and run them against the Go implementation of the player aggregate.
 package tests
 
+// docs:start:bdd_imports
 import (
 	"context"
 	"errors"
@@ -24,6 +25,9 @@ import (
 	"github.com/benjaminabbitt/angzarr/examples/go/player/agg/handlers"
 )
 
+// docs:end:bdd_imports
+
+// docs:start:world_struct
 // testContext holds the state for a single scenario.
 type testContext struct {
 	domain        string
@@ -35,6 +39,8 @@ type testContext struct {
 	lastErrorMsg  string
 	lastState     handlers.PlayerState
 }
+
+// docs:end:world_struct
 
 // Test UUID namespace for deterministic UUIDs.
 var testUUIDNamespace = uuid.MustParse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
@@ -110,6 +116,7 @@ func (c *testContext) getLastEvent() (*anypb.Any, error) {
 
 // --- Step Definitions ---
 
+// docs:start:given_step
 func noPriorEventsForThePlayerAggregate(ctx context.Context) error {
 	tc := ctx.Value("testContext").(*testContext)
 	tc.events = make([]*pb.EventPage, 0)
@@ -128,6 +135,8 @@ func aPlayerRegisteredEventFor(ctx context.Context, name string) error {
 	}
 	return tc.addEvent(event)
 }
+
+// docs:end:given_step
 
 func aFundsDepositedEventWithAmount(ctx context.Context, amount int64) error {
 	tc := ctx.Value("testContext").(*testContext)
@@ -160,6 +169,7 @@ func aFundsReservedEventWithAmountForTable(ctx context.Context, amount int64, ta
 	return tc.addEvent(event)
 }
 
+// docs:start:when_step
 func iHandleARegisterPlayerCommand(ctx context.Context, name, email string) error {
 	tc := ctx.Value("testContext").(*testContext)
 
@@ -188,6 +198,8 @@ func iHandleARegisterPlayerCommand(ctx context.Context, name, email string) erro
 
 	return nil
 }
+
+// docs:end:when_step
 
 func iHandleARegisterPlayerCommandAsAI(ctx context.Context, name, email string) error {
 	tc := ctx.Value("testContext").(*testContext)
@@ -335,6 +347,7 @@ func iRebuildThePlayerState(ctx context.Context) error {
 
 // --- Then Steps ---
 
+// docs:start:then_step
 func theResultIsAPlayerRegisteredEvent(ctx context.Context) error {
 	tc := ctx.Value("testContext").(*testContext)
 	eventAny, err := tc.getLastEvent()
@@ -346,6 +359,8 @@ func theResultIsAPlayerRegisteredEvent(ctx context.Context) error {
 	}
 	return nil
 }
+
+// docs:end:then_step
 
 func theResultIsAFundsDepositedEvent(ctx context.Context) error {
 	tc := ctx.Value("testContext").(*testContext)
@@ -647,6 +662,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the player state has available_balance (\d+)$`, thePlayerStateHasAvailableBalance)
 }
 
+// docs:start:main
 func TestFeatures(t *testing.T) {
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
@@ -661,3 +677,5 @@ func TestFeatures(t *testing.T) {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
 }
+
+// docs:end:main

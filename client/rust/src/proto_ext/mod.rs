@@ -261,25 +261,24 @@ mod tests {
 
         let page = CommandPage {
             sequence: 77,
-            command: None,
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
+            payload: None,
         };
         assert_eq!(page.sequence_num(), 77);
     }
 
     #[test]
     fn test_command_page_type_url() {
+        use crate::proto::command_page::Payload;
         use crate::proto::CommandPage;
 
         let page = CommandPage {
             sequence: 1,
-            command: Some(prost_types::Any {
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            payload: Some(Payload::Command(prost_types::Any {
                 type_url: "type.googleapis.com/test.Command".to_string(),
                 value: vec![],
-            }),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
+            })),
         };
         assert_eq!(page.type_url(), Some("type.googleapis.com/test.Command"));
     }
@@ -290,31 +289,31 @@ mod tests {
 
         let page = CommandPage {
             sequence: 1,
-            command: None,
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
+            payload: None,
         };
         assert_eq!(page.type_url(), None);
     }
 
     #[test]
     fn test_command_page_payload() {
+        use crate::proto::command_page::Payload;
         use crate::proto::CommandPage;
 
         let page = CommandPage {
             sequence: 1,
-            command: Some(prost_types::Any {
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            payload: Some(Payload::Command(prost_types::Any {
                 type_url: "test".to_string(),
                 value: vec![4, 5, 6],
-            }),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
+            })),
         };
         assert_eq!(page.payload(), Some(&[4u8, 5, 6][..]));
     }
 
     #[test]
     fn test_command_page_decode() {
+        use crate::proto::command_page::Payload;
         use crate::proto::CommandPage;
         use prost::Message;
 
@@ -324,12 +323,11 @@ mod tests {
         };
         let page = CommandPage {
             sequence: 1,
-            command: Some(prost_types::Any {
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
+            payload: Some(Payload::Command(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: msg.encode_to_vec(),
-            }),
-            merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
+            })),
         };
         let decoded: Option<prost_types::Duration> = page.decode("Duration");
         assert!(decoded.is_some());
@@ -374,23 +372,20 @@ mod tests {
 
     #[test]
     fn test_event_book_last_page() {
-        use crate::proto::event_page::Sequence;
         use crate::proto::EventPage;
 
         let book = EventBook {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence: Some(Sequence::Num(1)),
-                    event: None,
+                    sequence: 1,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
                 EventPage {
-                    sequence: Some(Sequence::Num(2)),
-                    event: None,
+                    sequence: 2,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
             ],
             snapshot: None,
@@ -402,23 +397,20 @@ mod tests {
 
     #[test]
     fn test_event_book_first_page() {
-        use crate::proto::event_page::Sequence;
         use crate::proto::EventPage;
 
         let book = EventBook {
             cover: None,
             pages: vec![
                 EventPage {
-                    sequence: Some(Sequence::Num(1)),
-                    event: None,
+                    sequence: 1,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
                 EventPage {
-                    sequence: Some(Sequence::Num(2)),
-                    event: None,
+                    sequence: 2,
+                    payload: None,
                     created_at: None,
-                    external_payload: None,
                 },
             ],
             snapshot: None,
@@ -431,21 +423,18 @@ mod tests {
     // calculate_next_sequence tests
     #[test]
     fn test_calculate_next_sequence_from_pages() {
-        use crate::proto::event_page::Sequence;
         use crate::proto::EventPage;
 
         let pages = vec![
             EventPage {
-                sequence: Some(Sequence::Num(5)),
-                event: None,
+                sequence: 5,
+                payload: None,
                 created_at: None,
-                external_payload: None,
             },
             EventPage {
-                sequence: Some(Sequence::Num(6)),
-                event: None,
+                sequence: 6,
+                payload: None,
                 created_at: None,
-                external_payload: None,
             },
         ];
         assert_eq!(calculate_next_sequence(&pages, None), 7);
@@ -472,16 +461,14 @@ mod tests {
 
     #[test]
     fn test_calculate_set_next_seq() {
-        use crate::proto::event_page::Sequence;
         use crate::proto::EventPage;
 
         let mut book = EventBook {
             cover: None,
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(10)),
-                event: None,
+                sequence: 10,
+                payload: None,
                 created_at: None,
-                external_payload: None,
             }],
             snapshot: None,
             next_sequence: 0,
@@ -499,9 +486,8 @@ mod tests {
             cover: None,
             pages: vec![CommandPage {
                 sequence: 25,
-                command: None,
+                payload: None,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
-                external_payload: None,
             }],
             saga_origin: None,
         };
@@ -526,9 +512,8 @@ mod tests {
             cover: None,
             pages: vec![CommandPage {
                 sequence: 1,
-                command: None,
+                payload: None,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
-                external_payload: None,
             }],
             saga_origin: None,
         };

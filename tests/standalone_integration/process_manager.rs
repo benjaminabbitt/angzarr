@@ -5,7 +5,7 @@ use crate::common::*;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-use angzarr::proto::{event_page::Sequence, ComponentDescriptor, Target};
+use angzarr::proto::{command_page, event_page, ComponentDescriptor, Target};
 use angzarr::standalone::{ProcessManagerConfig, ProcessManagerHandler};
 
 // ============================================================================
@@ -86,10 +86,7 @@ impl ProcessManagerHandler for StateTrackingPM {
         // Determine next sequence from existing state
         let next_seq = process_state
             .and_then(|s| s.pages.last())
-            .and_then(|p| match &p.sequence {
-                Some(Sequence::Num(n)) => Some(n + 1),
-                _ => None,
-            })
+            .map(|p| p.sequence + 1)
             .unwrap_or(0);
 
         // Derive PM root from correlation_id
@@ -108,13 +105,12 @@ impl ProcessManagerHandler for StateTrackingPM {
                 edition: None,
             }),
             pages: vec![EventPage {
-                sequence: Some(Sequence::Num(next_seq)),
+                sequence: next_seq,
                 created_at: None,
-                event: Some(Any {
+                payload: Some(event_page::Payload::Event(Any {
                     type_url: "pm.Invoked".to_string(),
                     value: vec![next_seq as u8],
-                }),
-                external_payload: None,
+                })),
             }],
             snapshot: None,
             ..Default::default()
@@ -178,10 +174,10 @@ async fn test_pm_state_loads_across_invocations() {
     if let Some(ref mut cover) = cmd1.cover {
         cover.correlation_id = correlation_id.to_string();
     }
-    cmd1.pages[0].command = Some(Any {
+    cmd1.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-1".to_vec(),
-    });
+    }));
 
     client.execute(cmd1).await.expect("First command failed");
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -199,10 +195,10 @@ async fn test_pm_state_loads_across_invocations() {
     if let Some(ref mut cover) = cmd2.cover {
         cover.correlation_id = correlation_id.to_string();
     }
-    cmd2.pages[0].command = Some(Any {
+    cmd2.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-2".to_vec(),
-    });
+    }));
 
     client.execute(cmd2).await.expect("Second command failed");
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -265,10 +261,10 @@ async fn test_pm_state_isolated_by_correlation_id() {
     if let Some(ref mut cover) = cmd1.cover {
         cover.correlation_id = "correlation-A".to_string();
     }
-    cmd1.pages[0].command = Some(Any {
+    cmd1.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-1".to_vec(),
-    });
+    }));
 
     client.execute(cmd1).await.expect("Command A failed");
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -278,10 +274,10 @@ async fn test_pm_state_isolated_by_correlation_id() {
     if let Some(ref mut cover) = cmd2.cover {
         cover.correlation_id = "correlation-B".to_string();
     }
-    cmd2.pages[0].command = Some(Any {
+    cmd2.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-2".to_vec(),
-    });
+    }));
 
     client.execute(cmd2).await.expect("Command B failed");
     tokio::time::sleep(Duration::from_millis(200)).await;

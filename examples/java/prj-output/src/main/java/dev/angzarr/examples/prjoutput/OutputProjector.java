@@ -22,6 +22,7 @@ import java.util.function.Consumer;
  * <p>Subscribes to events from player, table, and hand domains
  * and writes formatted game logs.
  */
+// docs:start:projector_functional
 public class OutputProjector {
 
     private static final Map<String, Class<?>> EVENT_TYPES = new HashMap<>();
@@ -167,3 +168,4 @@ public class OutputProjector {
         return new OutputProjector(System.out::println, showTimestamps);
     }
 }
+// docs:end:projector_functional

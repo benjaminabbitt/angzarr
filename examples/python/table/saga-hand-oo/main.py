@@ -37,6 +37,7 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
+# docs:start:saga_oo
 class TableHandSaga(Saga):
     """Saga that translates HandStarted events to DealCards commands.
 
@@ -106,6 +107,7 @@ class TableHandSaga(Saga):
                 )
             ],
         )
+# docs:end:saga_oo
 
 
 if __name__ == "__main__":

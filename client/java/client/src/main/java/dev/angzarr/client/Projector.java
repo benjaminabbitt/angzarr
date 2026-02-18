@@ -12,7 +12,7 @@ import java.util.function.Function;
 /**
  * Projection result from a projector handler.
  */
-class Projection {
+public class Projection {
     private final String key;
     private final String value;
     private final boolean isDelete;
@@ -47,7 +47,7 @@ class Projection {
 /**
  * Base class for projectors using annotation-based handler registration.
  *
- * <p>Usage:
+ * <p>Usage (single domain):
  * <pre>{@code
  * public class StockProjector extends Projector {
  *     public StockProjector() {
@@ -60,15 +60,42 @@ class Projection {
  *     }
  * }
  * }</pre>
+ *
+ * <p>Usage (multi-domain):
+ * <pre>{@code
+ * public class OutputProjector extends Projector {
+ *     public OutputProjector() {
+ *         super("output", List.of("player", "table", "hand"));
+ *     }
+ *
+ *     @Projects(PlayerRegistered.class)
+ *     public Projection projectRegistered(PlayerRegistered event) {
+ *         writeLog("PLAYER registered: " + event.getDisplayName());
+ *         return Projection.upsert("log", "...");
+ *     }
+ * }
+ * }</pre>
  */
 public abstract class Projector {
     private final String name;
-    private final String inputDomain;
+    private final List<String> inputDomains;
     private final Map<String, Function<Any, Projection>> handlers = new HashMap<>();
 
+    /**
+     * Constructor for single-domain projectors.
+     */
     protected Projector(String name, String inputDomain) {
         this.name = name;
-        this.inputDomain = inputDomain;
+        this.inputDomains = List.of(inputDomain);
+        buildDispatchTable();
+    }
+
+    /**
+     * Constructor for multi-domain projectors.
+     */
+    protected Projector(String name, List<String> inputDomains) {
+        this.name = name;
+        this.inputDomains = inputDomains;
         buildDispatchTable();
     }
 
@@ -76,8 +103,18 @@ public abstract class Projector {
         return name;
     }
 
+    /**
+     * Get the input domain (first domain for multi-domain projectors).
+     */
     public String getInputDomain() {
-        return inputDomain;
+        return inputDomains.isEmpty() ? "" : inputDomains.get(0);
+    }
+
+    /**
+     * Get all input domains.
+     */
+    public List<String> getInputDomains() {
+        return inputDomains;
     }
 
     /**
@@ -103,10 +140,14 @@ public abstract class Projector {
      */
     public Descriptor getDescriptor() {
         List<String> types = new ArrayList<>(handlers.keySet());
+        List<TargetDesc> inputs = new ArrayList<>();
+        for (String domain : inputDomains) {
+            inputs.add(new TargetDesc(domain, types));
+        }
         return new Descriptor(
             name,
             ComponentTypes.PROJECTOR,
-            List.of(new TargetDesc(inputDomain, types))
+            inputs
         );
     }
 

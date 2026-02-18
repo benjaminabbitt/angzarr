@@ -80,6 +80,8 @@ pub fn build_command_book_at_sequence(
     type_url: &str,
     sequence: u32,
 ) -> CommandBook {
+    use angzarr::proto::{command_page, MergeStrategy};
+
     let correlation_id = Uuid::new_v4().to_string();
     CommandBook {
         cover: Some(Cover {
@@ -92,23 +94,19 @@ pub fn build_command_book_at_sequence(
         }),
         pages: vec![CommandPage {
             sequence,
-            command: Some(prost_types::Any {
+            payload: Some(command_page::Payload::Command(prost_types::Any {
                 type_url: format!("type.googleapis.com/{}", type_url),
                 value: command.encode_to_vec(),
-            }),
+            })),
+            merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
     }
 }
 
 /// Extracts the sequence number from an event page.
-/// Returns 0 for Force sequences (which indicate "use next available").
 pub fn extract_sequence(page: &angzarr::proto::EventPage) -> u32 {
-    match &page.sequence {
-        Some(angzarr::proto::event_page::Sequence::Num(n)) => *n,
-        Some(angzarr::proto::event_page::Sequence::Force(_)) => 0,
-        None => 0,
-    }
+    page.sequence
 }
 
 /// Builds a Query for retrieving events from an aggregate.

@@ -122,12 +122,9 @@ impl LogService {
             .unwrap_or_else(|| "unknown".to_string());
 
         for page in &book.pages {
-            let sequence = match &page.sequence {
-                Some(crate::proto::event_page::Sequence::Num(n)) => *n,
-                _ => 0,
-            };
+            let sequence = page.sequence;
 
-            let Some(event) = &page.event else {
+            let Some(crate::proto::event_page::Payload::Event(event)) = &page.payload else {
                 continue;
             };
 

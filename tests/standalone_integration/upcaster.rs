@@ -4,7 +4,7 @@
 //! The upcaster is implemented by the client binary (same server as aggregate logic).
 
 use crate::common::*;
-use angzarr::proto::event_page::Sequence;
+use angzarr::proto::event_page;
 use angzarr::proto::upcaster_service_server::{UpcasterService, UpcasterServiceServer};
 use angzarr::proto::{EventPage, UpcastRequest, UpcastResponse};
 use angzarr::services::upcaster::Upcaster;
@@ -56,7 +56,7 @@ impl UpcasterService for TestUpcasterService {
             .events
             .into_iter()
             .map(|mut page| {
-                if let Some(ref mut event) = page.event {
+                if let Some(event_page::Payload::Event(ref mut event)) = page.payload {
                     // Transform OrderCreatedV1 -> OrderCreatedV2
                     if event.type_url.contains("OrderCreatedV1") {
                         event.type_url = event.type_url.replace("V1", "V2");
@@ -111,13 +111,12 @@ async fn start_upcaster_service() -> (String, Arc<TestUpcasterService>) {
 
 fn make_v1_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
     EventPage {
-        sequence: Some(Sequence::Num(seq)),
+        sequence: seq,
         created_at: None,
-        event: Some(prost_types::Any {
+        payload: Some(event_page::Payload::Event(prost_types::Any {
             type_url: type_url.to_string(),
             value,
-        }),
-        external_payload: None,
+        })),
     }
 }
 
@@ -147,17 +146,26 @@ async fn test_upcaster_integration_transforms_v1_to_v2() {
     assert_eq!(result.len(), 3);
 
     // Event 0: OrderCreatedV1 -> OrderCreatedV2 with USD suffix
-    let event0 = result[0].event.as_ref().unwrap();
+    let event0 = match &result[0].payload {
+        Some(event_page::Payload::Event(e)) => e,
+        _ => panic!("Expected event payload"),
+    };
     assert_eq!(event0.type_url, "example.OrderCreatedV2");
     assert_eq!(event0.value, vec![1, 2, 3, b'U', b'S', b'D']);
 
     // Event 1: Already current, unchanged type
-    let event1 = result[1].event.as_ref().unwrap();
+    let event1 = match &result[1].payload {
+        Some(event_page::Payload::Event(e)) => e,
+        _ => panic!("Expected event payload"),
+    };
     assert_eq!(event1.type_url, "example.OrderUpdated");
     assert_eq!(event1.value, vec![4, 5, 6]);
 
     // Event 2: CustomerCreatedV1 -> CustomerCreatedV2
-    let event2 = result[2].event.as_ref().unwrap();
+    let event2 = match &result[2].payload {
+        Some(event_page::Payload::Event(e)) => e,
+        _ => panic!("Expected event payload"),
+    };
     assert_eq!(event2.type_url, "example.CustomerCreatedV2");
 
     // Verify service was called and tracked transformations
@@ -182,9 +190,9 @@ async fn test_upcaster_integration_preserves_ordering() {
     let result = upcaster.upcast("order", stored_events).await.unwrap();
 
     assert_eq!(result.len(), 3);
-    assert_eq!(result[0].sequence, Some(Sequence::Num(10)));
-    assert_eq!(result[1].sequence, Some(Sequence::Num(15)));
-    assert_eq!(result[2].sequence, Some(Sequence::Num(20)));
+    assert_eq!(result[0].sequence, 10);
+    assert_eq!(result[1].sequence, 15);
+    assert_eq!(result[2].sequence, 20);
 }
 
 /// Test multiple sequential upcast calls (simulating multiple aggregate loads).
@@ -234,16 +242,15 @@ async fn test_upcaster_integration_events_without_payload() {
     let upcaster = Upcaster::from_address(&addr).await.unwrap();
 
     let events = vec![EventPage {
-        sequence: Some(Sequence::Num(0)),
+        sequence: 0,
         created_at: None,
-        event: None, // No payload
-        external_payload: None,
+        payload: None, // No payload
     }];
 
     let result = upcaster.upcast("order", events).await.unwrap();
 
     assert_eq!(result.len(), 1);
-    assert!(result[0].event.is_none());
+    assert!(result[0].payload.is_none());
 }
 
 /// Test that upcaster handles large batches correctly.
@@ -266,8 +273,11 @@ async fn test_upcaster_integration_large_batch() {
 
     // Verify all were transformed
     for (i, page) in result.iter().enumerate() {
-        let event = page.event.as_ref().unwrap();
+        let event = match &page.payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => panic!("Expected event payload"),
+        };
         assert_eq!(event.type_url, "example.OrderCreatedV2");
-        assert_eq!(page.sequence, Some(Sequence::Num(i as u32)));
+        assert_eq!(page.sequence, i as u32);
     }
 }

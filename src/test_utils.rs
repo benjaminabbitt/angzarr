@@ -4,7 +4,7 @@
 //! Provides reusable constructors for proto types that appear across many test modules.
 
 use crate::proto::{
-    event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
+    command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
     Uuid as ProtoUuid,
 };
 use prost_types::Any;
@@ -50,26 +50,24 @@ pub fn make_cover_full(domain: &str, root: Uuid, correlation_id: &str) -> Cover 
 /// Create an `EventPage` with a sequence number and a test type_url.
 pub fn make_event_page(seq: u32) -> EventPage {
     EventPage {
-        sequence: Some(event_page::Sequence::Num(seq)),
-        event: Some(Any {
+        sequence: seq,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: format!("test.Event{}", seq),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }
 }
 
 /// Create an `EventPage` with a specific type_url.
 pub fn make_event_page_typed(seq: u32, type_url: &str) -> EventPage {
     EventPage {
-        sequence: Some(event_page::Sequence::Num(seq)),
-        event: Some(Any {
+        sequence: seq,
+        payload: Some(event_page::Payload::Event(Any {
             type_url: type_url.to_string(),
             value: vec![],
-        }),
+        })),
         created_at: None,
-        external_payload: None,
     }
 }
 
@@ -109,12 +107,11 @@ pub fn make_command_book_with_sequence(domain: &str, root: Uuid, sequence: u32) 
         cover: Some(make_cover_with_root(domain, root)),
         pages: vec![CommandPage {
             sequence,
-            command: Some(Any {
+            payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
-            }),
+            })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -135,12 +132,11 @@ pub fn make_command_book_correlated(with_correlation: bool) -> CommandBook {
         }),
         pages: vec![CommandPage {
             sequence: 0,
-            command: Some(Any {
+            payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.Command".to_string(),
                 value: vec![],
-            }),
+            })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         saga_origin: None,
     }

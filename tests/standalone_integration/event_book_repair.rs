@@ -34,13 +34,12 @@ async fn start_event_query_server(
 
 fn test_event(sequence: u32, event_type: &str) -> EventPage {
     EventPage {
-        sequence: Some(event_page::Sequence::Num(sequence)),
+        sequence,
         created_at: None,
-        event: Some(Any {
+        payload: Some(event_page::Payload::Event(Any {
             type_url: format!("type.googleapis.com/{}", event_type),
             value: vec![sequence as u8],
-        }),
-        external_payload: None,
+        })),
     }
 }
 
@@ -97,9 +96,7 @@ async fn test_repairer_fetches_missing_history() {
 
     // Verify sequence order
     for (i, page) in repaired.pages.iter().enumerate() {
-        if let Some(event_page::Sequence::Num(seq)) = &page.sequence {
-            assert_eq!(*seq as usize, i, "Event {} should have sequence {}", i, i);
-        }
+        assert_eq!(page.sequence as usize, i, "Event {} should have sequence {}", i, i);
     }
 }
 

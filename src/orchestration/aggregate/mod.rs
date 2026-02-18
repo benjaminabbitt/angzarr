@@ -309,7 +309,7 @@ fn extract_command_fields(command: &CommandBook) -> std::collections::HashSet<St
     let mut fields = HashSet::new();
 
     for page in &command.pages {
-        if let Some(cmd) = &page.command {
+        if let Some(crate::proto::command_page::Payload::Command(cmd)) = &page.payload {
             // Check for test command patterns
             if cmd.type_url.contains("UpdateFieldA") || cmd.type_url.contains("FieldAUpdated") {
                 fields.insert("field_a".to_string());
@@ -338,15 +338,10 @@ fn extract_command_fields(command: &CommandBook) -> std::collections::HashSet<St
 
 /// Build an EventBook with events up to a specific sequence (exclusive).
 fn build_events_up_to_sequence(events: &EventBook, up_to_sequence: u32) -> EventBook {
-    use crate::proto::event_page;
-
     let filtered_pages: Vec<_> = events
         .pages
         .iter()
-        .filter(|page| match &page.sequence {
-            Some(event_page::Sequence::Num(seq)) => *seq < up_to_sequence,
-            _ => false,
-        })
+        .filter(|page| page.sequence < up_to_sequence)
         .cloned()
         .collect();
 

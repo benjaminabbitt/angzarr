@@ -26,7 +26,7 @@ When a table starts a hand, the **table-hand saga** translates the table domain'
 |----------|:--:|:----------:|
 | Python | ✓ | ✓ |
 | Java | ✓ | ✓ |
-| C# | ✓ | ✓ |
+| C# | — | ✓ |
 | Rust | — | ✓ |
 | Go | — | ✓ |
 | C++ | — | ✓ |
@@ -36,64 +36,7 @@ When a table starts a hand, the **table-hand saga** translates the table domain'
 
 **[`examples/python/table/saga-hand-oo/main.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/table/saga-hand-oo/main.py)**
 
-```python
-from angzarr_client import Saga, prepares, reacts_to, next_sequence
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import hand_pb2 as hand
-
-class TableHandSaga(Saga):
-    """Saga that translates HandStarted events to DealCards commands."""
-
-    name = "saga-table-hand"
-    input_domain = "table"
-    output_domain = "hand"
-
-    @prepares(table.HandStarted)
-    def prepare_hand_started(self, event: table.HandStarted) -> list[types.Cover]:
-        """Declare the hand aggregate as destination."""
-        return [
-            types.Cover(
-                domain="hand",
-                root=types.UUID(value=event.hand_root),
-            )
-        ]
-
-    @reacts_to(table.HandStarted)
-    def handle_hand_started(
-        self,
-        event: table.HandStarted,
-        destinations: list[types.EventBook],
-    ) -> types.CommandBook:
-        """Translate HandStarted -> DealCards."""
-        dest_seq = next_sequence(destinations[0]) if destinations else 0
-
-        # Convert SeatSnapshot to PlayerInHand
-        players = [
-            hand.PlayerInHand(
-                player_root=seat.player_root,
-                position=seat.position,
-                stack=seat.stack,
-            )
-            for seat in event.active_players
-        ]
-
-        # Build DealCards command
-        deal_cards = hand.DealCards(
-            table_root=event.hand_root,
-            hand_number=event.hand_number,
-            game_variant=event.game_variant,
-            dealer_position=event.dealer_position,
-            small_blind=event.small_blind,
-            big_blind=event.big_blind,
-        )
-        deal_cards.players.extend(players)
-
-        # Return CommandBook with proper sequencing
-        return types.CommandBook(
-            cover=types.Cover(domain="hand", root=types.UUID(value=event.hand_root)),
-            pages=[types.CommandPage(sequence=dest_seq, command=Any.pack(deal_cards))],
-        )
+```python file=examples/python/table/saga-hand-oo/main.py start=docs:start:saga_oo end=docs:end:saga_oo
 ```
 
 </TabItem>
@@ -101,150 +44,17 @@ class TableHandSaga(Saga):
 
 **[`examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/TableHandSaga.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/TableHandSaga.java)**
 
-```java
-package dev.angzarr.examples.table.sagahand;
-
-import com.google.protobuf.Any;
-import dev.angzarr.*;
-import dev.angzarr.client.Saga;
-import dev.angzarr.client.annotations.Prepares;
-import dev.angzarr.client.annotations.ReactsTo;
-import dev.angzarr.examples.*;
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * Saga: Table -> Hand (OO Pattern)
- *
- * Reacts to HandStarted events from Table domain.
- * Sends DealCards commands to Hand domain.
- */
-public class TableHandSaga extends Saga {
-
-    @Override
-    public String getName() {
-        return "saga-table-hand";
-    }
-
-    @Override
-    public String getInputDomain() {
-        return "table";
-    }
-
-    @Override
-    public String getOutputDomain() {
-        return "hand";
-    }
-
-    @Prepares(HandStarted.class)
-    public List<Cover> prepareHandStarted(HandStarted event) {
-        return List.of(
-            Cover.newBuilder()
-                .setDomain("hand")
-                .setRoot(UUID.newBuilder().setValue(event.getHandRoot()))
-                .build()
-        );
-    }
-
-    @ReactsTo(HandStarted.class)
-    public CommandBook handleHandStarted(HandStarted event, List<EventBook> destinations) {
-        int destSeq = Saga.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
-
-        // Convert SeatSnapshot to PlayerInHand
-        List<PlayerInHand> players = new ArrayList<>();
-        for (SeatSnapshot seat : event.getActivePlayersList()) {
-            players.add(PlayerInHand.newBuilder()
-                .setPlayerRoot(seat.getPlayerRoot())
-                .setPosition(seat.getPosition())
-                .setStack(seat.getStack())
-                .build());
-        }
-
-        // Build DealCards command
-        DealCards dealCards = DealCards.newBuilder()
-            .setTableRoot(event.getHandRoot())
-            .setHandNumber(event.getHandNumber())
-            .setGameVariant(event.getGameVariant())
-            .setDealerPosition(event.getDealerPosition())
-            .setSmallBlind(event.getSmallBlind())
-            .setBigBlind(event.getBigBlind())
-            .addAllPlayers(players)
-            .build();
-
-        return CommandBook.newBuilder()
-            .setCover(Cover.newBuilder()
-                .setDomain("hand")
-                .setRoot(UUID.newBuilder().setValue(event.getHandRoot())))
-            .addPages(CommandPage.newBuilder()
-                .setSequence(destSeq)
-                .setCommand(Any.pack(dealCards, "type.googleapis.com/")))
-            .build();
-    }
-}
+```java file=examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/TableHandSaga.java start=docs:start:saga_oo end=docs:end:saga_oo
 ```
 
 </TabItem>
-<TabItem value="csharp-oo" label="C# OO">
+<TabItem value="csharp" label="C#">
 
 **[`examples/csharp/Table/SagaHand/TableHandSaga.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Table/SagaHand/TableHandSaga.cs)**
 
-```csharp
-using Angzarr.Client;
-using Angzarr.Client.Annotations;
-using Angzarr.Examples.Proto;
-using Google.Protobuf.WellKnownTypes;
+C# uses the functional pattern with EventRouter:
 
-namespace Angzarr.Examples.Table.SagaHand;
-
-/// <summary>
-/// Saga: Table -> Hand (OO Pattern)
-/// Reacts to HandStarted events, sends DealCards commands.
-/// </summary>
-public class TableHandSaga : Saga
-{
-    public override string Name => "saga-table-hand";
-    public override string InputDomain => "table";
-    public override string OutputDomain => "hand";
-
-    [Prepares(typeof(HandStarted))]
-    public List<Cover> PrepareHandStarted(HandStarted evt)
-    {
-        return new List<Cover>
-        {
-            new Cover { Domain = "hand", Root = new UUID { Value = evt.HandRoot } }
-        };
-    }
-
-    [ReactsTo(typeof(HandStarted))]
-    public CommandBook HandleHandStarted(HandStarted evt, List<EventBook> destinations)
-    {
-        var destSeq = Saga.NextSequence(destinations.FirstOrDefault());
-
-        var players = evt.ActivePlayers.Select(seat => new PlayerInHand
-        {
-            PlayerRoot = seat.PlayerRoot,
-            Position = seat.Position,
-            Stack = seat.Stack
-        }).ToList();
-
-        var dealCards = new DealCards
-        {
-            TableRoot = evt.HandRoot,
-            HandNumber = evt.HandNumber,
-            GameVariant = evt.GameVariant,
-            DealerPosition = evt.DealerPosition,
-            SmallBlind = evt.SmallBlind,
-            BigBlind = evt.BigBlind
-        };
-        dealCards.Players.AddRange(players);
-
-        return new CommandBook
-        {
-            Cover = new Cover { Domain = "hand", Root = new UUID { Value = evt.HandRoot } },
-            Pages = { new CommandPage { Sequence = destSeq, Command = Any.Pack(dealCards) } }
-        };
-    }
-}
+```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -254,56 +64,7 @@ public class TableHandSaga : Saga
 
 Go uses the functional pattern with EventRouter:
 
-```go
-package main
-
-import (
-    "github.com/angzarr/client"
-    pb "github.com/angzarr/examples/proto"
-)
-
-func handleHandStarted(
-    event *pb.HandStarted,
-    sourceBook *client.EventBook,
-    destBooks []*client.EventBook,
-) ([]*client.CommandBook, error) {
-    destSeq := uint32(0)
-    if len(destBooks) > 0 {
-        destSeq = client.NextSequence(destBooks[0])
-    }
-
-    // Convert SeatSnapshot to PlayerInHand
-    players := make([]*pb.PlayerInHand, 0, len(event.ActivePlayers))
-    for _, seat := range event.ActivePlayers {
-        players = append(players, &pb.PlayerInHand{
-            PlayerRoot: seat.PlayerRoot,
-            Position:   seat.Position,
-            Stack:      seat.Stack,
-        })
-    }
-
-    dealCards := &pb.DealCards{
-        TableRoot:      event.HandRoot,
-        HandNumber:     event.HandNumber,
-        GameVariant:    event.GameVariant,
-        DealerPosition: event.DealerPosition,
-        SmallBlind:     event.SmallBlind,
-        BigBlind:       event.BigBlind,
-        Players:        players,
-    }
-
-    return []*client.CommandBook{
-        client.NewCommandBook("hand", event.HandRoot, destSeq, dealCards),
-    }, nil
-}
-
-func main() {
-    router := client.NewEventRouter("saga-table-hand", "table").
-        Sends("hand", "DealCards").
-        On("HandStarted", handleHandStarted)
-
-    client.RunSagaServer(router)
-}
+```go file=examples/go/table/saga-hand/main.go start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -313,47 +74,7 @@ func main() {
 
 Rust uses the functional pattern with EventRouter:
 
-```rust
-use angzarr_client::{EventRouter, CommandBook, next_sequence};
-use proto::{HandStarted, DealCards, PlayerInHand};
-
-fn handle_hand_started(
-    event: &HandStarted,
-    _source_book: &EventBook,
-    dest_books: &[EventBook],
-) -> Vec<CommandBook> {
-    let dest_seq = dest_books.first().map(next_sequence).unwrap_or(0);
-
-    let players: Vec<PlayerInHand> = event.active_players
-        .iter()
-        .map(|seat| PlayerInHand {
-            player_root: seat.player_root.clone(),
-            position: seat.position,
-            stack: seat.stack,
-        })
-        .collect();
-
-    let deal_cards = DealCards {
-        table_root: event.hand_root.clone(),
-        hand_number: event.hand_number,
-        game_variant: event.game_variant,
-        dealer_position: event.dealer_position,
-        small_blind: event.small_blind,
-        big_blind: event.big_blind,
-        players,
-    };
-
-    vec![CommandBook::new("hand", &event.hand_root, dest_seq, deal_cards)]
-}
-
-#[tokio::main]
-async fn main() {
-    let router = EventRouter::new("saga-table-hand", "table")
-        .sends("hand", "DealCards")
-        .on::<HandStarted>(handle_hand_started);
-
-    angzarr_client::run_saga_server(router).await;
-}
+```rust file=examples/rust/table/saga-hand/src/main.rs start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -363,69 +84,7 @@ async fn main() {
 
 C++ uses the functional pattern with EventRouter:
 
-```cpp
-#include "table_hand_saga.hpp"
-
-namespace table {
-namespace saga {
-
-angzarr::EventRouter create_table_hand_router() {
-    return angzarr::EventRouter("saga-table-hand", "table")
-        .sends("hand", "DealCards")
-        .prepare<examples::HandStarted>(prepare_hand_started)
-        .on<examples::HandStarted>(handle_hand_started);
-}
-
-std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& event) {
-    std::vector<angzarr::Cover> covers;
-    angzarr::Cover cover;
-    cover.set_domain("hand");
-    cover.mutable_root()->set_value(event.hand_root());
-    covers.push_back(cover);
-    return covers;
-}
-
-angzarr::CommandBook handle_hand_started(
-    const examples::HandStarted& event,
-    const std::vector<angzarr::EventBook>& destinations) {
-
-    int dest_seq = destinations.empty() ? 0 : destinations[0].next_sequence();
-
-    // Build DealCards command from HandStarted event
-    examples::DealCards deal_cards;
-    deal_cards.set_table_root(event.hand_root());
-    deal_cards.set_hand_number(event.hand_number());
-    deal_cards.set_game_variant(event.game_variant());
-    deal_cards.set_dealer_position(event.dealer_position());
-    deal_cards.set_small_blind(event.small_blind());
-    deal_cards.set_big_blind(event.big_blind());
-
-    // Add players from active players
-    for (const auto& seat : event.active_players()) {
-        auto* player = deal_cards.add_players();
-        player->set_player_root(seat.player_root());
-        player->set_position(seat.position());
-        player->set_stack(seat.stack());
-    }
-
-    // Pack command
-    google::protobuf::Any cmd_any;
-    cmd_any.PackFrom(deal_cards, "type.googleapis.com/");
-
-    // Build command book
-    angzarr::CommandBook cmd_book;
-    cmd_book.mutable_cover()->set_domain("hand");
-    cmd_book.mutable_cover()->mutable_root()->set_value(event.hand_root());
-
-    auto* page = cmd_book.add_pages();
-    page->set_sequence(dest_seq);
-    page->mutable_command()->CopyFrom(cmd_any);
-
-    return cmd_book;
-}
-
-} // namespace saga
-} // namespace table
+```cpp file=examples/cpp/table/saga-hand/src/table_hand_saga.cpp start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
@@ -435,63 +94,46 @@ angzarr::CommandBook handle_hand_started(
 
 ## Saga: Compensation
 
-When a saga-issued command is rejected, the source aggregate receives a **Notification** and must emit compensation events.
+When a saga-issued command is rejected, the source aggregate receives a **Notification** and must emit compensation events. Use `@rejected` decorators to register handlers — no if/else chains needed.
 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-from angzarr_client import Aggregate, Notification
-from proto.player_pb2 import FundsReleased
+**[`examples/python/player/agg/handlers/player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)**
 
-class PlayerAggregate(Aggregate):
-    """Player aggregate with compensation handling."""
-
-    def handle_notification(
-        self,
-        notification: Notification,
-        state: PlayerState,
-    ) -> list[Event]:
-        # Check if this was a JoinTable rejection
-        if notification.rejected_command_type == "JoinTable":
-            # Find the reservation for this table
-            reservation = state.get_reservation(notification.correlation_id)
-            if reservation:
-                return [FundsReleased(
-                    amount=reservation.amount,
-                    table_id=reservation.table_id,
-                    reason=notification.rejection_reason,
-                    new_available=state.available() + reservation.amount,
-                    new_reserved=state.reserved - reservation.amount,
-                )]
-        return []
+```python file=examples/python/player/agg/handlers/player.py start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-impl PlayerAggregate {
-    pub fn handle_notification(
-        &self,
-        notification: &Notification,
-        state: &PlayerState,
-    ) -> Vec<Box<dyn Event>> {
-        // Check if this was a JoinTable rejection
-        if notification.rejected_command_type == "JoinTable" {
-            if let Some(reservation) = state.get_reservation(&notification.correlation_id) {
-                return vec![Box::new(FundsReleased {
-                    amount: reservation.amount,
-                    table_id: reservation.table_id.clone(),
-                    reason: notification.rejection_reason.clone(),
-                    new_available: state.available() + reservation.amount,
-                    new_reserved: state.reserved - reservation.amount,
-                })];
-            }
-        }
-        vec![]
-    }
-}
+**[`examples/rust/player/agg/src/handlers/rejected.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/player/agg/src/handlers/rejected.rs)**
+
+```rust file=examples/rust/player/agg/src/handlers/rejected.rs start=docs:start:rejected_handler end=docs:end:rejected_handler
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+**[`examples/go/player/agg/handlers/revocation.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/player/agg/handlers/revocation.go)**
+
+```go file=examples/go/player/agg/handlers/revocation.go start=docs:start:rejected_handler end=docs:end:rejected_handler
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+**[`examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java)**
+
+```java file=examples/java/player/agg/src/main/java/dev/angzarr/examples/player/Player.java start=docs:start:rejected_handler end=docs:end:rejected_handler
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+**[`examples/csharp/Player/Agg/Player.cs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/csharp/Player/Agg/Player.cs)**
+
+```csharp file=examples/csharp/Player/Agg/Player.cs start=docs:start:rejected_handler end=docs:end:rejected_handler
 ```
 
 </TabItem>
@@ -511,7 +153,7 @@ impl PlayerAggregate {
 
 ## Running Sagas
 
-### OO Pattern (Java/Python/C#)
+### OO Pattern (Java/Python)
 
 OO sagas use annotation-based routing. The framework discovers `@Prepares` and `@ReactsTo` methods via reflection:
 
@@ -536,42 +178,34 @@ if __name__ == "__main__":
 ```
 
 </TabItem>
-<TabItem value="csharp" label="C#">
-
-```csharp
-var handler = new SagaHandler(new TableHandSaga());
-SagaServer.Run("saga-table-hand", "50411", handler);
-```
-
-</TabItem>
 </Tabs>
 
-### Functional Pattern (Go/Rust/C++)
+### Functional Pattern (C#/Go/Rust/C++)
 
 Functional sagas use explicit router registration:
 
 <Tabs groupId="language">
-<TabItem value="go" label="Go" default>
+<TabItem value="csharp" label="C#" default>
 
-```go
-router := client.NewEventRouter("saga-table-hand", "table").
-    Sends("hand", "DealCards").
-    Prepare("HandStarted", prepareHandStarted).
-    On("HandStarted", handleHandStarted)
+```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:event_router end=docs:end:event_router
+```
 
-client.RunSagaServer(router)
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/table/saga-hand/main.go start=docs:start:event_router end=docs:end:event_router
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-let router = EventRouter::new("saga-table-hand", "table")
-    .sends("hand", "DealCards")
-    .prepare::<HandStarted>(prepare_hand_started)
-    .on::<HandStarted>(handle_hand_started);
+```rust file=examples/rust/table/saga-hand/src/main.rs start=docs:start:event_router end=docs:end:event_router
+```
 
-angzarr_client::run_saga_server(router).await;
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/table/saga-hand/src/table_hand_saga.cpp start=docs:start:event_router end=docs:end:event_router
 ```
 
 </TabItem>

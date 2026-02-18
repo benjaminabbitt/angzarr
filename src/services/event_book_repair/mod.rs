@@ -8,7 +8,6 @@ use tonic::transport::Channel;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::proto::event_page::Sequence;
 use crate::proto::{
     event_query_service_client::EventQueryServiceClient, EventBook, Query, Uuid as ProtoUuid,
 };
@@ -68,12 +67,7 @@ pub fn is_complete(book: &EventBook) -> bool {
 
     // Check if first event is sequence 0
     if let Some(first_page) = book.pages.first() {
-        if let Some(ref seq) = first_page.sequence {
-            match seq {
-                Sequence::Num(n) => return *n == 0,
-                Sequence::Force(_) => return true, // Force sequence is always valid
-            }
-        }
+        return first_page.sequence == 0;
     }
 
     false

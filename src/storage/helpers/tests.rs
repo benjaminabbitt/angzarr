@@ -1,36 +1,25 @@
 use super::*;
 use prost_types::Timestamp;
 
-fn make_event_with_sequence(seq: Option<u32>) -> EventPage {
+fn make_event_with_sequence(seq: u32) -> EventPage {
     EventPage {
-        sequence: seq.map(Sequence::Num),
-        event: None,
+        sequence: seq,
+        payload: None,
         created_at: None,
-        external_payload: None,
-    }
-}
-
-fn make_event_with_force() -> EventPage {
-    EventPage {
-        sequence: Some(Sequence::Force(true)),
-        event: None,
-        created_at: None,
-        external_payload: None,
     }
 }
 
 #[test]
 fn test_resolve_sequence_explicit_valid() {
-    let event = make_event_with_sequence(Some(5));
+    let event = make_event_with_sequence(5);
     let mut auto = 3;
     let result = resolve_sequence(&event, 3, &mut auto).unwrap();
     assert_eq!(result, 5);
-    assert_eq!(auto, 3); // unchanged
 }
 
 #[test]
 fn test_resolve_sequence_explicit_conflict() {
-    let event = make_event_with_sequence(Some(2));
+    let event = make_event_with_sequence(2);
     let mut auto = 5;
     let result = resolve_sequence(&event, 5, &mut auto);
     assert!(matches!(
@@ -43,33 +32,22 @@ fn test_resolve_sequence_explicit_conflict() {
 }
 
 #[test]
-fn test_resolve_sequence_auto() {
-    let event = make_event_with_sequence(None);
-    let mut auto = 7;
-    let result = resolve_sequence(&event, 5, &mut auto).unwrap();
-    assert_eq!(result, 7);
-    assert_eq!(auto, 8); // incremented
-}
-
-#[test]
-fn test_resolve_sequence_force() {
-    let event = make_event_with_force();
-    let mut auto = 3;
+fn test_resolve_sequence_zero() {
+    let event = make_event_with_sequence(0);
+    let mut auto = 0;
     let result = resolve_sequence(&event, 0, &mut auto).unwrap();
-    assert_eq!(result, 3);
-    assert_eq!(auto, 4);
+    assert_eq!(result, 0);
 }
 
 #[test]
 fn test_parse_timestamp_present() {
     let event = EventPage {
-        sequence: None,
-        event: None,
+        sequence: 0,
+        payload: None,
         created_at: Some(Timestamp {
             seconds: 1704067200, // 2024-01-01 00:00:00 UTC
             nanos: 0,
         }),
-        external_payload: None,
     };
     let result = parse_timestamp(&event).unwrap();
     assert!(result.starts_with("2024-01-01"));
@@ -78,10 +56,9 @@ fn test_parse_timestamp_present() {
 #[test]
 fn test_parse_timestamp_missing_uses_now() {
     let event = EventPage {
-        sequence: None,
-        event: None,
+        sequence: 0,
+        payload: None,
         created_at: None,
-        external_payload: None,
     };
     let result = parse_timestamp(&event).unwrap();
     // Should be a valid RFC3339 timestamp
@@ -91,14 +68,19 @@ fn test_parse_timestamp_missing_uses_now() {
 #[test]
 fn test_parse_timestamp_invalid() {
     let event = EventPage {
-        sequence: None,
-        event: None,
+        sequence: 0,
+        payload: None,
         created_at: Some(Timestamp {
             seconds: i64::MAX,
             nanos: i32::MAX,
         }),
-        external_payload: None,
     };
     let result = parse_timestamp(&event);
     assert!(matches!(result, Err(StorageError::InvalidTimestamp { .. })));
+}
+
+#[test]
+fn test_event_sequence() {
+    let event = make_event_with_sequence(42);
+    assert_eq!(event_sequence(&event), 42);
 }

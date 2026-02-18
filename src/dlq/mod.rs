@@ -1223,7 +1223,7 @@ pub async fn create_publisher_async(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{CommandPage, Uuid as ProtoUuid};
+    use crate::proto::{command_page, CommandPage, Uuid as ProtoUuid};
     use uuid::Uuid;
 
     fn make_test_command(domain: &str, root: Uuid) -> CommandBook {
@@ -1238,12 +1238,11 @@ mod tests {
             }),
             pages: vec![CommandPage {
                 sequence: 0,
-                command: Some(prost_types::Any {
+                payload: Some(command_page::Payload::Command(prost_types::Any {
                     type_url: "test.Command".to_string(),
                     value: vec![1, 2, 3],
-                }),
+                })),
                 merge_strategy: MergeStrategy::MergeManual as i32,
-                external_payload: None,
             }],
             saga_origin: None,
         }

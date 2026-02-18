@@ -4,12 +4,14 @@ DOC: This file is referenced in docs/docs/examples/aggregates.mdx
      Update documentation when making changes to test patterns.
 """
 
+# docs:start:bdd_imports
 import sys
 from pathlib import Path
 
 import pytest
 from pytest_bdd import scenarios, given, when, then, parsers
 from google.protobuf.any_pb2 import Any as ProtoAny
+# docs:end:bdd_imports
 
 # Add paths
 root = Path(__file__).parent.parent.parent
@@ -42,8 +44,10 @@ from tests.conftest import (
     ScenarioContext, make_cover, make_command_book, make_timestamp, pack_event
 )
 
+# docs:start:scenarios_loader
 # Load scenarios from feature file
 scenarios("../../../features/unit/player.feature")
+# docs:end:scenarios_loader
 
 
 # --- Fixtures ---
@@ -93,6 +97,7 @@ def no_prior_events(ctx):
     ctx.events = []
 
 
+# docs:start:given_step
 @given(parsers.parse('a PlayerRegistered event for "{name}"'))
 def player_registered_event(ctx, name):
     """Add a PlayerRegistered event."""
@@ -103,6 +108,7 @@ def player_registered_event(ctx, name):
         registered_at=make_timestamp(),
     )
     ctx.add_event(event)
+# docs:end:given_step
 
 
 @given(parsers.parse("a FundsDeposited event with amount {amount:d}"))
@@ -157,6 +163,7 @@ def funds_reserved_event(ctx, amount, table_id):
 
 # --- When steps ---
 
+# docs:start:when_step
 @when(parsers.parse('I handle a RegisterPlayer command with name "{name}" and email "{email}"'))
 def handle_register_player_cmd(ctx, name, email):
     """Handle RegisterPlayer command."""
@@ -166,6 +173,7 @@ def handle_register_player_cmd(ctx, name, email):
         player_type=poker_types.HUMAN,
     )
     _handle_command(ctx, cmd, handle_register_player)
+# docs:end:when_step
 
 
 @when(parsers.parse('I handle a RegisterPlayer command with name "{name}" and email "{email}" as AI'))
@@ -224,6 +232,7 @@ def rebuild_player_state(ctx):
 
 # --- Then steps ---
 
+# docs:start:then_step
 @then("the result is a PlayerRegistered event")
 def result_is_player_registered(ctx):
     """Verify result is PlayerRegistered event."""
@@ -231,6 +240,7 @@ def result_is_player_registered(ctx):
     assert len(ctx.result.pages) == 1
     event_any = ctx.result.pages[0].event
     assert event_any.type_url.endswith("PlayerRegistered")
+# docs:end:then_step
 
 
 @then("the result is a FundsDeposited event")

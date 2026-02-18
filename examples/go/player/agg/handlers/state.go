@@ -49,6 +49,7 @@ func (s PlayerState) IsAI() bool {
 
 // Event applier functions for StateRouter
 
+// docs:start:state_router
 func applyRegistered(state *PlayerState, event *examples.PlayerRegistered) {
 	state.PlayerID = "player_" + event.Email
 	state.DisplayName = event.DisplayName
@@ -106,6 +107,8 @@ var stateRouter = angzarr.NewStateRouter(NewPlayerState).
 	On(applyReserved).
 	On(applyReleased).
 	On(applyTransferred)
+
+// docs:end:state_router
 
 // RebuildState rebuilds player state from event history.
 func RebuildState(eventBook *pb.EventBook) PlayerState {

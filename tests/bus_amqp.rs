@@ -14,7 +14,7 @@ use angzarr::bus::{BusError, EventBus, EventHandler};
 use angzarr::dlq::{
     AngzarrDeadLetter, DeadLetterPayload, DlqConfig, EventProcessingFailedDetails, RejectionDetails,
 };
-use angzarr::proto::{event_page::Sequence, CommandBook, Cover, EventBook, EventPage, Uuid};
+use angzarr::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
 use prost_types::Any;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
@@ -68,13 +68,12 @@ fn make_test_book(domain: &str) -> EventBook {
             edition: None,
         }),
         pages: vec![EventPage {
-            sequence: Some(Sequence::Num(0)),
+            sequence: 0,
             created_at: None,
-            external_payload: None,
-            event: Some(Any {
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: "type.googleapis.com/test.TestEvent".to_string(),
                 value: vec![1, 2, 3],
-            }),
+            })),
         }],
         snapshot: None,
         ..Default::default()

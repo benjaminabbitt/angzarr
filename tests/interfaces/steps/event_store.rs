@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use angzarr::proto::{event_page::Sequence, EventPage};
+use angzarr::proto::{event_page, EventPage};
 use angzarr::storage::EventStore;
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -59,13 +59,12 @@ impl EventStoreWorld {
 
     fn make_event_page(&self, seq: u32, type_url: &str, payload: Vec<u8>) -> EventPage {
         EventPage {
-            sequence: Some(Sequence::Num(seq)),
+            sequence: seq,
             created_at: None,
-            external_payload: None,
-            event: Some(Any {
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: type_url.to_string(),
                 value: payload,
-            }),
+            })),
         }
     }
 
@@ -410,42 +409,30 @@ async fn then_aggregate_has_events(world: &mut EventStoreWorld, count: u32) {
 #[then(expr = "the first event should have sequence {int}")]
 fn then_first_event_sequence(world: &mut EventStoreWorld, seq: u32) {
     let event = world.last_events.first().expect("No events found");
-    let actual_seq = match &event.sequence {
-        Some(Sequence::Num(n)) => *n,
-        _ => panic!("Event has no sequence"),
-    };
     assert_eq!(
-        actual_seq, seq,
+        event.sequence, seq,
         "Expected sequence {}, got {}",
-        seq, actual_seq
+        seq, event.sequence
     );
 }
 
 #[then(expr = "the last event should have sequence {int}")]
 fn then_last_event_sequence(world: &mut EventStoreWorld, seq: u32) {
     let event = world.last_events.last().expect("No events found");
-    let actual_seq = match &event.sequence {
-        Some(Sequence::Num(n)) => *n,
-        _ => panic!("Event has no sequence"),
-    };
     assert_eq!(
-        actual_seq, seq,
+        event.sequence, seq,
         "Expected sequence {}, got {}",
-        seq, actual_seq
+        seq, event.sequence
     );
 }
 
 #[then("events should have consecutive sequences starting from 0")]
 fn then_consecutive_sequences_from_zero(world: &mut EventStoreWorld) {
     for (i, event) in world.last_events.iter().enumerate() {
-        let actual_seq = match &event.sequence {
-            Some(Sequence::Num(n)) => *n,
-            _ => panic!("Event has no sequence"),
-        };
         assert_eq!(
-            actual_seq, i as u32,
+            event.sequence, i as u32,
             "Expected sequence {}, got {}",
-            i, actual_seq
+            i, event.sequence
         );
     }
 }
@@ -480,10 +467,7 @@ fn then_receive_events(world: &mut EventStoreWorld, count: u32) {
 fn then_events_ordered(world: &mut EventStoreWorld) {
     let mut prev_seq: Option<u32> = None;
     for event in &world.last_events {
-        let seq = match &event.sequence {
-            Some(Sequence::Num(n)) => *n,
-            _ => panic!("Event has no sequence"),
-        };
+        let seq = event.sequence;
         if let Some(prev) = prev_seq {
             assert!(seq > prev, "Events not ordered: {} after {}", seq, prev);
         }
@@ -494,12 +478,10 @@ fn then_events_ordered(world: &mut EventStoreWorld) {
 #[then(expr = "the first event should have type {string}")]
 fn then_first_event_type(world: &mut EventStoreWorld, expected_type: String) {
     let event = world.last_events.first().expect("No events found");
-    let type_url = event
-        .event
-        .as_ref()
-        .expect("No event data")
-        .type_url
-        .clone();
+    let type_url = match &event.payload {
+        Some(event_page::Payload::Event(e)) => e.type_url.clone(),
+        _ => panic!("No event data"),
+    };
     assert!(
         type_url.contains(&expected_type),
         "Expected type containing '{}', got '{}'",
@@ -511,7 +493,10 @@ fn then_first_event_type(world: &mut EventStoreWorld, expected_type: String) {
 #[then(expr = "the first event should have payload {string}")]
 fn then_first_event_payload(world: &mut EventStoreWorld, expected_payload: String) {
     let event = world.last_events.first().expect("No events found");
-    let payload = &event.event.as_ref().expect("No event data").value;
+    let payload = match &event.payload {
+        Some(event_page::Payload::Event(e)) => &e.value,
+        _ => panic!("No event data"),
+    };
     let payload_str = String::from_utf8_lossy(payload);
     assert_eq!(
         payload_str, expected_payload,

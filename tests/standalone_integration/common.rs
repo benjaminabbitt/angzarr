@@ -14,8 +14,8 @@ pub use angzarr::bus::ipc::{IpcBroker, IpcBrokerConfig, IpcConfig, IpcEventBus};
 pub use angzarr::bus::{EventBus, EventHandler};
 pub use angzarr::orchestration::aggregate::DEFAULT_EDITION;
 pub use angzarr::proto::{
-    event_page, CommandBook, CommandPage, ContextualCommand, Cover, EventBook, EventPage,
-    Projection, SagaResponse, Uuid as ProtoUuid,
+    command_page, event_page, CommandBook, CommandPage, ContextualCommand, Cover, EventBook,
+    EventPage, MergeStrategy, Projection, SagaResponse, Uuid as ProtoUuid,
 };
 pub use angzarr::standalone::{
     AggregateHandler, ProjectionMode, ProjectorConfig, ProjectorHandler, RuntimeBuilder,
@@ -59,10 +59,7 @@ impl AggregateHandler for EchoAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .and_then(|p| match &p.sequence {
-                Some(event_page::Sequence::Num(n)) => Some(n + 1),
-                _ => None,
-            })
+            .map(|p| p.sequence + 1)
             .unwrap_or(0);
 
         // Echo command as event
@@ -70,11 +67,16 @@ impl AggregateHandler for EchoAggregate {
             .pages
             .iter()
             .enumerate()
-            .map(|(i, cmd_page)| EventPage {
-                sequence: Some(event_page::Sequence::Num(next_seq + i as u32)),
-                event: cmd_page.command.clone(),
-                created_at: None,
-                external_payload: None,
+            .map(|(i, cmd_page)| {
+                let event = match &cmd_page.payload {
+                    Some(command_page::Payload::Command(c)) => Some(c.clone()),
+                    _ => None,
+                };
+                EventPage {
+                    sequence: next_seq + i as u32,
+                    payload: event.map(event_page::Payload::Event),
+                    created_at: None,
+                }
             })
             .collect();
 
@@ -122,21 +124,17 @@ impl AggregateHandler for MultiEventAggregate {
             .events
             .as_ref()
             .and_then(|e| e.pages.last())
-            .and_then(|p| match &p.sequence {
-                Some(event_page::Sequence::Num(n)) => Some(n + 1),
-                _ => None,
-            })
+            .map(|p| p.sequence + 1)
             .unwrap_or(0);
 
         let pages: Vec<EventPage> = (0..self.events_per_command)
             .map(|i| EventPage {
-                sequence: Some(event_page::Sequence::Num(next_seq + i)),
-                event: Some(Any {
+                sequence: next_seq + i,
+                payload: Some(event_page::Payload::Event(Any {
                     type_url: format!("test.Event{}", i),
                     value: vec![i as u8],
-                }),
+                })),
                 created_at: None,
-                external_payload: None,
             })
             .collect();
 
@@ -196,7 +194,6 @@ impl EventHandler for RecordingHandler {
 }
 
 pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32) -> CommandBook {
-    use angzarr::proto::MergeStrategy;
     CommandBook {
         cover: Some(Cover {
             domain: domain.to_string(),
@@ -208,12 +205,11 @@ pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32)
         }),
         pages: vec![CommandPage {
             sequence,
-            command: Some(Any {
+            payload: Some(command_page::Payload::Command(Any {
                 type_url: "test.TestCommand".to_string(),
                 value: data.to_vec(),
-            }),
+            })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -230,13 +226,12 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
             edition: None,
         }),
         pages: vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(sequence)),
-            event: Some(Any {
+            sequence,
+            payload: Some(event_page::Payload::Event(Any {
                 type_url: "test.TestEvent".to_string(),
                 value: vec![1, 2, 3],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }],
         snapshot: None,
         ..Default::default()

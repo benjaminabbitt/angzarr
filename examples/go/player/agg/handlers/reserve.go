@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// docs:start:reserve_funds_imp
 func guardReserveFunds(state PlayerState) error {
 	if !state.Exists() {
 		return angzarr.NewCommandRejectedError("Player does not exist")
@@ -82,3 +83,5 @@ func HandleReserveFunds(
 
 	return angzarr.NewEventBook(commandBook.Cover, seq, eventAny), nil
 }
+
+// docs:end:reserve_funds_imp

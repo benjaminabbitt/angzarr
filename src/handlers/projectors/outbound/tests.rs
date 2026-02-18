@@ -15,13 +15,12 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
             edition: None,
         }),
         pages: vec![EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-            event: Some(prost_types::Any {
+            sequence: 0,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/test.Event".to_string(),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         }],
         snapshot: None,
         ..Default::default()
@@ -31,13 +30,12 @@ fn make_test_event_book(correlation_id: &str) -> EventBook {
 fn make_multi_page_event_book(correlation_id: &str, page_count: usize) -> EventBook {
     let pages = (0..page_count)
         .map(|i| EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(i as u32)),
-            event: Some(prost_types::Any {
+            sequence: i as u32,
+            payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
                 type_url: format!("type.googleapis.com/test.Event{}", i),
                 value: vec![],
-            }),
+            })),
             created_at: None,
-            external_payload: None,
         })
         .collect();
 
@@ -213,7 +211,7 @@ async fn test_wrap_eventbook_as_cloudevent() {
 
     // Verify CloudEvent attributes
     assert!(event.id().starts_with("test:"));
-    assert_eq!(event.ty(), "angzarr.Event");
+    assert_eq!(event.ty(), "angzarr.test.Event"); // Prefixed with "angzarr."
     assert_eq!(event.source().to_string(), "angzarr/test");
     assert!(event.data().is_some());
 

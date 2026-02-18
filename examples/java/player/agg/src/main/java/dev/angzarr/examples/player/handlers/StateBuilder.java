@@ -18,6 +18,7 @@ import dev.angzarr.examples.PlayerRegistered;
  *
  * <p>Used by CommandRouter for state reconstruction.
  */
+// docs:start:state_builder
 public final class StateBuilder {
 
     private StateBuilder() {}
@@ -98,3 +99,4 @@ public final class StateBuilder {
         return sb.toString();
     }
 }
+// docs:end:state_builder

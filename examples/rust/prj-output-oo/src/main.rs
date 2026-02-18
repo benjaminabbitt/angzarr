@@ -49,6 +49,7 @@ fn truncate_id(id: &[u8]) -> String {
     }
 }
 
+// docs:start:projector_oo
 /// Output projector using OO-style annotations.
 pub struct OutputProjector;
 
@@ -180,6 +181,7 @@ impl OutputProjector {
         }
     }
 }
+// docs:end:projector_oo
 
 #[tokio::main]
 async fn main() {

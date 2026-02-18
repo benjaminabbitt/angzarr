@@ -5,7 +5,7 @@ use crate::common::*;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-use angzarr::proto::MergeStrategy;
+use angzarr::proto::{command_page, event_page, MergeStrategy};
 use async_trait::async_trait;
 use prost_types::Any;
 use tonic::Status;
@@ -58,7 +58,7 @@ impl SagaHandler for FulfillmentSaga {
             .unwrap_or_default();
 
         for page in &source.pages {
-            if let Some(event) = &page.event {
+            if let Some(event_page::Payload::Event(event)) = &page.payload {
                 if event.type_url.contains("OrderPlaced") {
                     let cmd = CommandBook {
                         cover: Some(Cover {
@@ -69,12 +69,11 @@ impl SagaHandler for FulfillmentSaga {
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
-                            command: Some(Any {
+                            payload: Some(command_page::Payload::Command(Any {
                                 type_url: "inventory.ReserveStock".to_string(),
                                 value: event.value.clone(),
-                            }),
+                            })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
-                            external_payload: None,
                         }],
                         ..Default::default()
                     };
@@ -145,7 +144,7 @@ impl SagaHandler for OrdersToInventorySaga {
         let mut commands = Vec::new();
 
         for page in &source.pages {
-            if let Some(event) = &page.event {
+            if let Some(event_page::Payload::Event(event)) = &page.payload {
                 if event.type_url.contains("OrderPlaced") {
                     commands.push(CommandBook {
                         cover: Some(Cover {
@@ -156,12 +155,11 @@ impl SagaHandler for OrdersToInventorySaga {
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
-                            command: Some(Any {
+                            payload: Some(command_page::Payload::Command(Any {
                                 type_url: "inventory.ReserveStock".to_string(),
                                 value: event.value.clone(),
-                            }),
+                            })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
-                            external_payload: None,
                         }],
                         ..Default::default()
                     });
@@ -209,7 +207,7 @@ impl SagaHandler for InventoryToShippingSaga {
         let mut commands = Vec::new();
 
         for page in &source.pages {
-            if let Some(event) = &page.event {
+            if let Some(event_page::Payload::Event(event)) = &page.payload {
                 if event.type_url.contains("ReserveStock") {
                     commands.push(CommandBook {
                         cover: Some(Cover {
@@ -220,12 +218,11 @@ impl SagaHandler for InventoryToShippingSaga {
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
-                            command: Some(Any {
+                            payload: Some(command_page::Payload::Command(Any {
                                 type_url: "shipping.CreateShipment".to_string(),
                                 value: event.value.clone(),
-                            }),
+                            })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
-                            external_payload: None,
                         }],
                         ..Default::default()
                     });
@@ -314,10 +311,10 @@ async fn test_saga_receives_events_and_produces_commands() {
     // Execute command that triggers saga
     let root = Uuid::new_v4();
     let mut command = create_test_command("orders", root, b"order-data", 0);
-    command.pages[0].command = Some(Any {
+    command.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-data".to_vec(),
-    });
+    }));
 
     client.execute(command).await.expect("Command failed");
 
@@ -380,10 +377,10 @@ async fn test_saga_domain_filtering() {
 
     // Execute orders command
     let mut orders_cmd = create_test_command("orders", Uuid::new_v4(), b"order", 0);
-    orders_cmd.pages[0].command = Some(Any {
+    orders_cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order".to_vec(),
-    });
+    }));
     client
         .execute(orders_cmd)
         .await
@@ -403,10 +400,10 @@ async fn test_saga_domain_filtering() {
 
     // Execute products command
     let mut products_cmd = create_test_command("products", Uuid::new_v4(), b"product", 0);
-    products_cmd.pages[0].command = Some(Any {
+    products_cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "products.ProductCreated".to_string(),
         value: b"product".to_vec(),
-    });
+    }));
     client
         .execute(products_cmd)
         .await
@@ -457,10 +454,10 @@ async fn test_saga_correlation_id_propagates() {
     if let Some(ref mut cover) = command.cover {
         cover.correlation_id = correlation_id.to_string();
     }
-    command.pages[0].command = Some(Any {
+    command.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order".to_vec(),
-    });
+    }));
 
     client.execute(command).await.expect("Command failed");
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -516,10 +513,10 @@ async fn test_saga_rejects_command_to_wrong_output_domain() {
 
     // Execute command that triggers saga
     let mut cmd = create_test_command("orders", Uuid::new_v4(), b"order", 0);
-    cmd.pages[0].command = Some(Any {
+    cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order".to_vec(),
-    });
+    }));
     client.execute(cmd).await.expect("Command failed");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -568,10 +565,10 @@ async fn test_saga_only_receives_events_from_input_domain() {
 
     // Execute command on "products" domain (saga should NOT be triggered)
     let mut products_cmd = create_test_command("products", Uuid::new_v4(), b"product", 0);
-    products_cmd.pages[0].command = Some(Any {
+    products_cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "products.OrderPlaced".to_string(), // Even with matching event type
         value: b"product".to_vec(),
-    });
+    }));
     client
         .execute(products_cmd)
         .await
@@ -587,10 +584,10 @@ async fn test_saga_only_receives_events_from_input_domain() {
 
     // Now execute on "orders" domain
     let mut orders_cmd = create_test_command("orders", Uuid::new_v4(), b"order", 0);
-    orders_cmd.pages[0].command = Some(Any {
+    orders_cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order".to_vec(),
-    });
+    }));
     client
         .execute(orders_cmd)
         .await
@@ -639,10 +636,7 @@ async fn test_two_phase_saga_fetches_destinations() {
 
             // Check if this is an OrderPlaced event
             let has_order_placed = source.pages.iter().any(|p| {
-                p.event
-                    .as_ref()
-                    .map(|e| e.type_url.contains("OrderPlaced"))
-                    .unwrap_or(false)
+                matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("OrderPlaced"))
             });
 
             if has_order_placed {
@@ -688,7 +682,9 @@ async fn test_two_phase_saga_fetches_destinations() {
                     !dest.pages.is_empty(),
                     "Destination should have events from the inventory aggregate we created"
                 );
-                let first_event = dest.pages[0].event.as_ref().expect("Should have event");
+                let event_page::Payload::Event(first_event) = dest.pages[0].payload.as_ref().expect("Should have payload") else {
+                    panic!("Expected event payload");
+                };
                 assert!(
                     first_event.type_url.contains("CreateProduct"),
                     "Fetched inventory should contain the CreateProduct event we stored"
@@ -697,10 +693,7 @@ async fn test_two_phase_saga_fetches_destinations() {
 
             // Generate reservation command based on inventory state
             let has_order_placed = source.pages.iter().any(|p| {
-                p.event
-                    .as_ref()
-                    .map(|e| e.type_url.contains("OrderPlaced"))
-                    .unwrap_or(false)
+                matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("OrderPlaced"))
             });
 
             if has_order_placed {
@@ -719,12 +712,11 @@ async fn test_two_phase_saga_fetches_destinations() {
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
-                            command: Some(Any {
+                            payload: Some(command_page::Payload::Command(Any {
                                 type_url: "inventory.Reserve".to_string(),
                                 value: b"reserve".to_vec(),
-                            }),
+                            })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
-                            external_payload: None,
                         }],
                         ..Default::default()
                     }],
@@ -772,12 +764,11 @@ async fn test_two_phase_saga_fetches_destinations() {
         }),
         pages: vec![CommandPage {
             sequence: 0,
-            command: Some(Any {
+            payload: Some(command_page::Payload::Command(Any {
                 type_url: "inventory.CreateProduct".to_string(),
                 value: b"product-data".to_vec(),
-            }),
+            })),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
-            external_payload: None,
         }],
         ..Default::default()
     };
@@ -789,10 +780,10 @@ async fn test_two_phase_saga_fetches_destinations() {
 
     // Now execute an order (triggers saga)
     let mut order_cmd = create_test_command("orders", Uuid::new_v4(), b"order-data", 0);
-    order_cmd.pages[0].command = Some(Any {
+    order_cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-data".to_vec(),
-    });
+    }));
     client.execute(order_cmd).await.expect("Order failed");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -853,10 +844,7 @@ async fn test_two_phase_saga_no_destinations_needed() {
 
             // Produce command based only on source events
             let has_order = source.pages.iter().any(|p| {
-                p.event
-                    .as_ref()
-                    .map(|e| e.type_url.contains("OrderPlaced"))
-                    .unwrap_or(false)
+                matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("OrderPlaced"))
             });
 
             if has_order {
@@ -875,12 +863,11 @@ async fn test_two_phase_saga_no_destinations_needed() {
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
-                            command: Some(Any {
+                            payload: Some(command_page::Payload::Command(Any {
                                 type_url: "shipping.CreateShipment".to_string(),
                                 value: b"ship".to_vec(),
-                            }),
+                            })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
-                            external_payload: None,
                         }],
                         ..Default::default()
                     }],
@@ -914,10 +901,10 @@ async fn test_two_phase_saga_no_destinations_needed() {
 
     let client = runtime.command_client();
     let mut cmd = create_test_command("orders", Uuid::new_v4(), b"order", 0);
-    cmd.pages[0].command = Some(Any {
+    cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order".to_vec(),
-    });
+    }));
     client.execute(cmd).await.expect("Command failed");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -961,10 +948,7 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
 
             // Only act on "SpecialEvent", ignore everything else
             let has_special = source.pages.iter().any(|p| {
-                p.event
-                    .as_ref()
-                    .map(|e| e.type_url.contains("SpecialEvent"))
-                    .unwrap_or(false)
+                matches!(&p.payload, Some(event_page::Payload::Event(e)) if e.type_url.contains("SpecialEvent"))
             });
 
             if has_special {
@@ -983,12 +967,11 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
                         }),
                         pages: vec![CommandPage {
                             sequence: 0,
-                            command: Some(Any {
+                            payload: Some(command_page::Payload::Command(Any {
                                 type_url: "target.DoSomething".to_string(),
                                 value: b"data".to_vec(),
-                            }),
+                            })),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
-                            external_payload: None,
                         }],
                         ..Default::default()
                     }],
@@ -1030,10 +1013,10 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
 
     // Execute a non-special event
     let mut cmd = create_test_command("orders", Uuid::new_v4(), b"regular", 0);
-    cmd.pages[0].command = Some(Any {
+    cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.RegularEvent".to_string(), // NOT "SpecialEvent"
         value: b"regular".to_vec(),
-    });
+    }));
     client.execute(cmd).await.expect("Command failed");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -1106,10 +1089,10 @@ async fn test_saga_cascade_with_external_event_bus() {
 
     let root = Uuid::new_v4();
     let mut cmd = create_test_command("orders", root, b"order-data", 0);
-    cmd.pages[0].command = Some(Any {
+    cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-123".to_vec(),
-    });
+    }));
 
     client.execute(cmd).await.expect("Initial command failed");
     tokio::time::sleep(Duration::from_millis(800)).await;
@@ -1200,10 +1183,10 @@ async fn test_saga_chains_across_three_domains() {
     // Trigger the chain: OrderPlaced -> ReserveStock -> CreateShipment
     let root = Uuid::new_v4();
     let mut cmd = create_test_command("orders", root, b"order-data", 0);
-    cmd.pages[0].command = Some(Any {
+    cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
         type_url: "orders.OrderPlaced".to_string(),
         value: b"order-123".to_vec(),
-    });
+    }));
     if let Some(ref mut cover) = cmd.cover {
         cover.correlation_id = "e2e-test-correlation".to_string();
     }
@@ -1314,10 +1297,10 @@ async fn test_multiple_saga_chains_sequential() {
     for i in 0..3 {
         let root = Uuid::new_v4();
         let mut cmd = create_test_command("orders", root, format!("order-{}", i).as_bytes(), 0);
-        cmd.pages[0].command = Some(Any {
+        cmd.pages[0].payload = Some(command_page::Payload::Command(Any {
             type_url: "orders.OrderPlaced".to_string(),
             value: format!("order-{}", i).into_bytes(),
-        });
+        }));
         if let Some(ref mut cover) = cmd.cover {
             cover.correlation_id = format!("sequential-{}", i);
         }
