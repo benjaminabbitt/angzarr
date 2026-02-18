@@ -63,6 +63,23 @@ impl SnapshotStore for RedisSnapshotStore {
         }
     }
 
+    async fn get_at_seq(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        seq: u32,
+    ) -> Result<Option<Snapshot>> {
+        // Redis only keeps one snapshot per aggregate.
+        // Return it if its sequence <= requested seq.
+        let snapshot = self.get(domain, edition, root).await?;
+
+        match snapshot {
+            Some(s) if s.sequence <= seq => Ok(Some(s)),
+            _ => Ok(None),
+        }
+    }
+
     async fn put(&self, domain: &str, edition: &str, root: Uuid, snapshot: Snapshot) -> Result<()> {
         let key = self.snapshot_key(domain, edition, root);
         let mut conn = self.conn.clone();

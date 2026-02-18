@@ -495,6 +495,7 @@ impl EventStore for RedisEventStore {
             pages.sort_by_key(Self::get_sequence);
 
             if !pages.is_empty() {
+                let next_seq = pages.last().map(Self::get_sequence).unwrap_or(0) + 1;
                 books.push(EventBook {
                     cover: Some(Cover {
                         domain,
@@ -509,6 +510,7 @@ impl EventStore for RedisEventStore {
                     }),
                     pages,
                     snapshot: None,
+                    next_sequence: next_seq,
                 });
             }
         }

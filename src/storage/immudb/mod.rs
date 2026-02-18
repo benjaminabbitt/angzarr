@@ -94,15 +94,20 @@ pub mod schema {
     ///
     /// Note: In immudb, indexes must be created at table creation time
     /// (tables must be empty when indexes are added).
+    ///
+    /// Root is stored as VARCHAR (UUID string) rather than BLOB because
+    /// the implementation uses `root.to_string()` for storage.
+    // immudb has a 256 byte limit for indexed columns
+    // Keep VARCHAR sizes conservative to stay within limits
     pub const CREATE_EVENTS_TABLE: &str = r#"
         CREATE TABLE IF NOT EXISTS events (
-            domain         VARCHAR[128] NOT NULL,
-            edition        VARCHAR[64] NOT NULL,
-            root           BLOB[16] NOT NULL,
+            domain         VARCHAR(64) NOT NULL,
+            edition        VARCHAR(32) NOT NULL,
+            root           VARCHAR(36) NOT NULL,
             sequence       INTEGER NOT NULL,
             created_at     TIMESTAMP NOT NULL,
             event_data     BLOB NOT NULL,
-            correlation_id VARCHAR[256],
+            correlation_id VARCHAR(128),
             PRIMARY KEY (domain, edition, root, sequence)
         )
     "#;

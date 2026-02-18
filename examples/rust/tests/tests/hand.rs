@@ -1372,6 +1372,6 @@ async fn main() {
                 .summarized()
                 .assert_normalized(),
         )
-        .run("../../../examples/features/unit/hand.feature")
+        .run("../../features/unit/hand.feature")
         .await;
 }

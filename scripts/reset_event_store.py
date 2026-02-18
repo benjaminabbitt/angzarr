@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reset the event store and message queues before acceptance tests.
 
-Drops the angzarr MongoDB database and purges RabbitMQ queues so tests
+Truncates the angzarr PostgreSQL tables and purges RabbitMQ queues so tests
 start with a clean slate. Uses kubectl to read credentials from k8s
 secrets and execute commands inside pods.
 
@@ -58,21 +58,34 @@ def get_pod(namespace: str, label: str) -> str:
     return result.stdout
 
 
-def drop_database(namespace: str, database: str) -> bool:
-    """Drop the MongoDB database via kubectl exec."""
+def truncate_database(namespace: str, database: str) -> bool:
+    """Truncate PostgreSQL tables via kubectl exec."""
     try:
-        root_password = get_secret_value(namespace, f"{namespace}-db-mongodb", "mongodb-root-password")
+        password = get_secret_value(namespace, f"{namespace}-db-postgresql", "password")
     except RuntimeError:
-        print(f"  No MongoDB secret found in {namespace}, skipping", file=sys.stderr)
+        print(f"  No PostgreSQL secret found in {namespace}, skipping", file=sys.stderr)
         return True
 
     try:
-        pod = get_pod(namespace, "app.kubernetes.io/name=mongodb")
+        pod = get_pod(namespace, "app.kubernetes.io/name=postgresql")
     except RuntimeError:
-        print(f"  No MongoDB pod found in {namespace}, skipping", file=sys.stderr)
+        print(f"  No PostgreSQL pod found in {namespace}, skipping", file=sys.stderr)
         return True
 
-    uri = f"mongodb://root:{root_password}@localhost:27017/{database}?authSource=admin"
+    # Truncate all angzarr tables
+    truncate_sql = """
+    DO $$
+    DECLARE
+        tbl TEXT;
+    BEGIN
+        FOR tbl IN
+            SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public'
+        LOOP
+            EXECUTE 'TRUNCATE TABLE ' || quote_ident(tbl) || ' CASCADE';
+        END LOOP;
+    END $$;
+    """
 
     result = subprocess.run(
         [
@@ -82,18 +95,18 @@ def drop_database(namespace: str, database: str) -> bool:
             namespace,
             pod,
             "--",
-            "mongosh",
-            uri,
-            "--eval",
-            "db.dropDatabase()",
-            "--quiet",
+            "psql",
+            "-U", "angzarr",
+            "-d", database,
+            "-c", truncate_sql,
         ],
         capture_output=True,
         text=True,
+        env={"PGPASSWORD": password, **dict(__import__("os").environ)},
     )
 
     if result.returncode != 0:
-        print(f"  Failed to drop database: {result.stderr}", file=sys.stderr)
+        print(f"  Failed to truncate database: {result.stderr}", file=sys.stderr)
         return False
 
     return True
@@ -182,13 +195,13 @@ def main() -> int:
     parser.add_argument(
         "--database",
         default="angzarr",
-        help="MongoDB database name (default: angzarr)",
+        help="PostgreSQL database name (default: angzarr)",
     )
     args = parser.parse_args()
 
     print(f"Resetting event store ({args.database})...")
 
-    if not drop_database(args.namespace, args.database):
+    if not truncate_database(args.namespace, args.database):
         return 1
 
     print("  Event store reset complete")

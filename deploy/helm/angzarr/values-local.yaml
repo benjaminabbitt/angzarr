@@ -1,5 +1,5 @@
 # Local development values for angzarr
-# Uses MongoDB + RabbitMQ with example applications
+# Uses PostgreSQL + RabbitMQ with example applications
 
 replicaCount: 1
 
@@ -16,12 +16,11 @@ resources:
     memory: "256Mi"
     cpu: "250m"
 
-# MongoDB storage (shared across all aggregates)
+# PostgreSQL storage (shared across all aggregates)
 storage:
-  type: mongodb
-  mongodb:
-    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
-    database: "angzarr"
+  type: postgres
+  postgres:
+    uri: "postgres://angzarr:angzarr@angzarr-postgresql:5432/angzarr"
 
 # AMQP for event bus
 amqp:
@@ -44,32 +43,29 @@ rabbitmq:
       memory: "256Mi"
       cpu: "250m"
 
-# MongoDB subchart
-mongodb:
+# PostgreSQL subchart
+postgresql:
   enabled: true
   auth:
-    rootUsername: "root"
-    rootPassword: "rootpassword"
-    usernames: ["angzarr"]
-    passwords: ["angzarr"]
-    databases: ["angzarr"]
-  # NodePort for external test access (mongodb_debug.rs expects port 30017)
-  service:
-    type: NodePort
-    nodePorts:
-      mongodb: 30017
-  persistence:
-    size: 2Gi
-  # Recreate strategy avoids mongod.lock conflicts during rolling updates
-  updateStrategy:
-    type: Recreate
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
+    postgresPassword: "postgres"
+    username: "angzarr"
+    password: "angzarr"
+    database: "angzarr"
+  # NodePort for external test access
+  primary:
+    service:
+      type: NodePort
+      nodePorts:
+        postgresql: 30432
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
 
 # Example applications - each gets angzarr as sidecar
 applications:

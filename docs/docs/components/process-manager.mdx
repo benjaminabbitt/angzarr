@@ -92,6 +92,57 @@ class HandFlowPM(ProcessManager):
 ```
 
 </TabItem>
+<TabItem value="go" label="Go">
+
+```go
+type HandPhase int
+
+const (
+    AwaitingDeal HandPhase = iota
+    Dealing
+    Blinds
+    Betting
+    Complete
+)
+
+type HandFlowState struct {
+    HandID      string
+    Phase       HandPhase
+    PlayerCount int32
+}
+
+func (pm *HandFlowPM) HandleHandStarted(event *HandStarted, state *HandFlowState) []*CommandBook {
+    state.HandID = event.HandId
+    state.Phase = Dealing
+    state.PlayerCount = event.PlayerCount
+
+    return []*CommandBook{
+        BuildCommand("hand", &DealCards{
+            HandId:      event.HandId,
+            PlayerCount: event.PlayerCount,
+        }),
+    }
+}
+
+func (pm *HandFlowPM) HandleCardsDealt(event *CardsDealt, state *HandFlowState) []*CommandBook {
+    state.Phase = Blinds
+    return []*CommandBook{
+        BuildCommand("hand", &PostBlinds{HandId: state.HandID}),
+    }
+}
+
+func (pm *HandFlowPM) HandleHandComplete(event *HandComplete, state *HandFlowState) []*CommandBook {
+    state.Phase = Complete
+    return []*CommandBook{
+        BuildCommand("table", &EndHand{
+            HandId:   state.HandID,
+            WinnerId: event.WinnerId,
+        }),
+    }
+}
+```
+
+</TabItem>
 <TabItem value="rust" label="Rust">
 
 ```rust
@@ -151,6 +202,149 @@ impl HandFlowPM {
         })]
     }
 }
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public enum HandPhase {
+    AWAITING_DEAL, DEALING, BLINDS, BETTING, COMPLETE
+}
+
+public class HandFlowState {
+    private String handId = "";
+    private HandPhase phase = HandPhase.AWAITING_DEAL;
+    private int playerCount = 0;
+    // getters and setters
+}
+
+public class HandFlowPM extends ProcessManager<HandFlowState> {
+    @ReactsTo
+    public List<CommandBook> handleHandStarted(HandStarted event, HandFlowState state) {
+        state.setHandId(event.getHandId());
+        state.setPhase(HandPhase.DEALING);
+        state.setPlayerCount(event.getPlayerCount());
+
+        return List.of(buildCommand("hand", DealCards.newBuilder()
+            .setHandId(event.getHandId())
+            .setPlayerCount(event.getPlayerCount())
+            .build()));
+    }
+
+    @ReactsTo
+    public List<CommandBook> handleCardsDealt(CardsDealt event, HandFlowState state) {
+        state.setPhase(HandPhase.BLINDS);
+        return List.of(buildCommand("hand", PostBlinds.newBuilder()
+            .setHandId(state.getHandId())
+            .build()));
+    }
+
+    @ReactsTo
+    public List<CommandBook> handleHandComplete(HandComplete event, HandFlowState state) {
+        state.setPhase(HandPhase.COMPLETE);
+        return List.of(buildCommand("table", EndHand.newBuilder()
+            .setHandId(state.getHandId())
+            .setWinnerId(event.getWinnerId())
+            .build()));
+    }
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+public enum HandPhase { AwaitingDeal, Dealing, Blinds, Betting, Complete }
+
+public class HandFlowState
+{
+    public string HandId { get; set; } = "";
+    public HandPhase Phase { get; set; } = HandPhase.AwaitingDeal;
+    public int PlayerCount { get; set; } = 0;
+}
+
+public class HandFlowPM : ProcessManager<HandFlowState>
+{
+    [ReactsTo]
+    public IEnumerable<CommandBook> HandleHandStarted(HandStarted evt, HandFlowState state)
+    {
+        state.HandId = evt.HandId;
+        state.Phase = HandPhase.Dealing;
+        state.PlayerCount = evt.PlayerCount;
+
+        yield return BuildCommand("hand", new DealCards
+        {
+            HandId = evt.HandId,
+            PlayerCount = evt.PlayerCount
+        });
+    }
+
+    [ReactsTo]
+    public IEnumerable<CommandBook> HandleCardsDealt(CardsDealt evt, HandFlowState state)
+    {
+        state.Phase = HandPhase.Blinds;
+        yield return BuildCommand("hand", new PostBlinds { HandId = state.HandId });
+    }
+
+    [ReactsTo]
+    public IEnumerable<CommandBook> HandleHandComplete(HandComplete evt, HandFlowState state)
+    {
+        state.Phase = HandPhase.Complete;
+        yield return BuildCommand("table", new EndHand
+        {
+            HandId = state.HandId,
+            WinnerId = evt.WinnerId
+        });
+    }
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+enum class HandPhase { AwaitingDeal, Dealing, Blinds, Betting, Complete };
+
+struct HandFlowState {
+    std::string hand_id;
+    HandPhase phase = HandPhase::AwaitingDeal;
+    int32_t player_count = 0;
+};
+
+class HandFlowPM : public ProcessManager<HandFlowState> {
+public:
+    std::vector<CommandBook> handle_hand_started(
+        const HandStarted& event, HandFlowState& state) {
+        state.hand_id = event.hand_id();
+        state.phase = HandPhase::Dealing;
+        state.player_count = event.player_count();
+
+        DealCards cmd;
+        cmd.set_hand_id(event.hand_id());
+        cmd.set_player_count(event.player_count());
+        return {build_command("hand", cmd)};
+    }
+
+    std::vector<CommandBook> handle_cards_dealt(
+        const CardsDealt& event, HandFlowState& state) {
+        state.phase = HandPhase::Blinds;
+
+        PostBlinds cmd;
+        cmd.set_hand_id(state.hand_id);
+        return {build_command("hand", cmd)};
+    }
+
+    std::vector<CommandBook> handle_hand_complete(
+        const HandComplete& event, HandFlowState& state) {
+        state.phase = HandPhase::Complete;
+
+        EndHand cmd;
+        cmd.set_hand_id(state.hand_id);
+        cmd.set_winner_id(event.winner_id());
+        return {build_command("table", cmd)};
+    }
+};
 ```
 
 </TabItem>

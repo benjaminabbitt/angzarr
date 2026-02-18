@@ -30,6 +30,10 @@ pub mod mock;
 pub mod offloading;
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod outbox;
+#[cfg(feature = "pubsub")]
+pub mod pubsub;
+#[cfg(feature = "sns-sqs")]
+pub mod sns_sqs;
 
 // Re-exports
 #[cfg(feature = "amqp")]
@@ -49,6 +53,10 @@ pub use offloading::{OffloadingConfig, OffloadingEventBus};
 pub use outbox::{OutboxConfig, PostgresOutboxEventBus, RecoveryTaskHandle};
 #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 pub use outbox::{OutboxConfig, RecoveryTaskHandle, SqliteOutboxEventBus};
+#[cfg(feature = "pubsub")]
+pub use pubsub::{PubSubConfig, PubSubEventBus};
+#[cfg(feature = "sns-sqs")]
+pub use sns_sqs::{SnsSqsConfig, SnsSqsEventBus};
 
 // ============================================================================
 // Traits
@@ -147,6 +155,33 @@ pub fn target_matches(book: &EventBook, target: &Target) -> bool {
 /// Returns true if at least one target matches the event book.
 pub fn any_target_matches(book: &EventBook, targets: &[Target]) -> bool {
     targets.iter().any(|t| target_matches(book, t))
+}
+
+/// Check if a domain matches any of the given domain patterns.
+///
+/// Supports hierarchical matching:
+/// - Empty patterns list matches all domains
+/// - Exact match: "orders" matches "orders"
+/// - Hierarchical prefix: "game.*" matches "game.player", "game.table", etc.
+/// - Wildcard: "*" matches any domain
+///
+/// Used for subscribe-side filtering when the message bus doesn't support
+/// hierarchical topic matching natively (e.g., Pub/Sub, SNS/SQS).
+pub fn domain_matches_any(domain: &str, patterns: &[String]) -> bool {
+    // Empty patterns means match all
+    if patterns.is_empty() {
+        return true;
+    }
+
+    patterns.iter().any(|pattern| {
+        if pattern == "*" {
+            true
+        } else if let Some(prefix) = pattern.strip_suffix(".*") {
+            domain.starts_with(prefix) && domain.len() > prefix.len()
+        } else {
+            domain == pattern
+        }
+    })
 }
 
 /// Interface for event delivery to projectors/sagas.

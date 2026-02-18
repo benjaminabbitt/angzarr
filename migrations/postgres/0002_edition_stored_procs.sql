@@ -14,12 +14,12 @@
 CREATE OR REPLACE FUNCTION get_edition_events(
     p_domain TEXT,
     p_edition TEXT,
-    p_root UUID,
+    p_root TEXT,
     p_explicit_divergence INT DEFAULT NULL
 ) RETURNS TABLE (
     domain TEXT,
     edition TEXT,
-    root UUID,
+    root TEXT,
     sequence INT,
     created_at TEXT,
     event_data BYTEA,
@@ -62,13 +62,13 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_edition_events_from(
     p_domain TEXT,
     p_edition TEXT,
-    p_root UUID,
+    p_root TEXT,
     p_from_seq INT,
     p_explicit_divergence INT DEFAULT NULL
 ) RETURNS TABLE (
     domain TEXT,
     edition TEXT,
-    root UUID,
+    root TEXT,
     sequence INT,
     created_at TEXT,
     event_data BYTEA,

@@ -19,16 +19,17 @@ use sea_query::PostgresQueryBuilder;
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
 
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 use sea_query::SqliteQueryBuilder;
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 use sqlx::SqlitePool;
 
 // Type aliases for database-agnostic code
+// Postgres takes priority if both features are enabled
 #[cfg(feature = "postgres")]
 pub type Pool = PgPool;
 
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 pub type Pool = SqlitePool;
 
 /// Build schema SQL using the appropriate backend.
@@ -37,7 +38,7 @@ fn build_schema<T: sea_query::SchemaStatementBuilder>(stmt: T) -> String {
     stmt.to_string(PostgresQueryBuilder)
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 fn build_schema<T: sea_query::SchemaStatementBuilder>(stmt: T) -> String {
     stmt.to_string(SqliteQueryBuilder)
 }
@@ -48,7 +49,7 @@ fn build_query<T: sea_query::QueryStatementWriter>(stmt: T) -> String {
     stmt.to_string(PostgresQueryBuilder)
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 fn build_query<T: sea_query::QueryStatementWriter>(stmt: T) -> String {
     stmt.to_string(SqliteQueryBuilder)
 }
@@ -440,7 +441,7 @@ pub async fn connect_pool(database_url: &str) -> Result<Pool, sqlx::Error> {
     sqlx::postgres::PgPool::connect(database_url).await
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 pub async fn connect_pool(database_url: &str) -> Result<Pool, sqlx::Error> {
     let options = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(database_url.trim_start_matches("sqlite:"))
@@ -513,13 +514,27 @@ mod tests {
         let stmt = record.build_insert().expect("should build insert");
         let sql = build_query(stmt);
 
-        // Sea-query escapes single quotes by doubling them, making injection impossible.
-        // The text "DROP TABLE" still appears as a literal string value, but it cannot
-        // execute because the surrounding quotes prevent SQL statement termination.
-        assert!(sql.contains("''"), "single quotes should be escaped");
-        assert!(
-            sql.contains("test''; DROP TABLE"),
-            "injection payload should be safely escaped within string literal"
-        );
+        // Sea-query escapes special characters appropriately for each backend:
+        // - PostgreSQL: uses E'...\'..' syntax (backslash escaping)
+        // - SQLite: uses '..''...' syntax (doubled quotes)
+        // Either way, the injection payload cannot execute because it's safely escaped.
+        #[cfg(feature = "postgres")]
+        {
+            assert!(
+                sql.contains(r"E'test\'; DROP TABLE"),
+                "PostgreSQL should use backslash escape: {sql}"
+            );
+        }
+        #[cfg(feature = "sqlite")]
+        {
+            assert!(
+                sql.contains("''"),
+                "SQLite should double single quotes: {sql}"
+            );
+            assert!(
+                sql.contains("test''; DROP TABLE"),
+                "injection payload should be safely escaped: {sql}"
+            );
+        }
     }
 }

@@ -78,15 +78,11 @@ applicationResources:
     cpu: "100m"
 
 # Storage configuration
-# MongoDB for aggregates (event store)
-# PostgreSQL for projectors (read models)
+# PostgreSQL for event store and read models
 storage:
-  type: mongodb
-  mongodb:
-    uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
-    database: "angzarr"
+  type: postgres
   postgres:
-    uri: "postgres://angzarr:angzarr-dev@angzarr-db-pg-postgresql:5432/angzarr"
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
 
 # Messaging configuration
 messaging:
@@ -110,16 +106,11 @@ externalSecrets:
 # See examples/rust/skaffold.yaml for automated deployment.
 #
 # Required:
-#   helm install angzarr-db ./deploy/helm/angzarr-db-mongodb -n angzarr \
-#     --set mongodb.auth.rootPassword=angzarr-root-dev \
-#     --set mongodb.auth.passwords[0]=angzarr-dev
+#   helm install angzarr-db ./deploy/helm/angzarr-db-postgres -n angzarr \
+#     --set postgresql.auth.password=angzarr-dev
 #
 #   helm install angzarr-mq ./deploy/helm/angzarr-mq-rabbitmq -n angzarr \
 #     --set rabbitmq.auth.password=angzarr-dev
-#
-# Optional (for projector read models):
-#   helm install angzarr-db-pg ./deploy/helm/angzarr-db-postgres -n angzarr \
-#     --set postgresql.auth.password=angzarr-dev
 # =============================================================================
 
 # =============================================================================

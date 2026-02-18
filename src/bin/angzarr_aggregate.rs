@@ -43,7 +43,9 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::{error, info, warn};
 
-use angzarr::bus::{AmqpEventBus, EventBus, IpcEventBus, MessagingType, MockEventBus};
+#[cfg(feature = "amqp")]
+use angzarr::bus::AmqpEventBus;
+use angzarr::bus::{EventBus, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::{Config, DISCOVERY_ENV_VAR, DISCOVERY_STATIC};
 use angzarr::discovery::{K8sServiceDiscovery, ServiceDiscovery};
 use angzarr::proto::{
@@ -111,6 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let event_bus: Arc<dyn EventBus> = match &config.messaging {
+        #[cfg(feature = "amqp")]
         Some(messaging) if messaging.messaging_type == MessagingType::Amqp => {
             info!(
                 "Connecting to AMQP for event publishing: {}",

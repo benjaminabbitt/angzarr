@@ -1,7 +1,41 @@
 Feature: Projector logic
-  Tests output projector for rendering poker events as text.
+  The OutputProjector transforms domain events into human-readable text.
+  It's a read-model builder that enables observability without coupling
+  the game logic to any specific output format.
 
-  # --- Player event rendering ---
+  Why projectors matter:
+  - Aggregates focus on business rules, not presentation
+  - The same events can drive multiple projectors (text, JSON, WebSocket)
+  - Projectors can be deployed/updated independently of aggregates
+
+  Patterns enabled by projectors:
+  - Read model denormalization: Combine data from multiple event types into
+    query-optimized views. Same pattern applies to search indexes, dashboards.
+  - Event stream formatting: Transform events for external systems (logs, APIs,
+    WebSockets). Same pattern applies to audit logs, analytics pipelines.
+  - Stateful context building: Track cross-event state (player names) for
+    enriched output. Same pattern applies to session tracking, entity resolution.
+  - Multi-domain subscription: Single projector consumes player, table, AND hand
+    events. Same pattern applies to unified dashboards, cross-cutting analytics.
+
+  Why poker exercises projector patterns well:
+  - Multiple event types: PlayerRegistered, TableCreated, CardsDealt, ActionTaken,
+    CommunityCardsDealt, PotAwarded - each needs different formatting
+  - Cross-event context: Player names from registration used when formatting
+    ActionTaken events - requires stateful tracking
+  - High-frequency updates: 20+ events per hand means projector sees rapid flow
+  - Domain variety: Events from player, table, and hand domains all flow through
+
+  What this projector demonstrates:
+  - Stateful context (player names) built from registration events
+  - Event-specific formatting (cards, blinds, actions)
+  - Graceful handling of unknown events
+
+  # ==========================================================================
+  # Player Event Rendering
+  # ==========================================================================
+  # Player events establish context (names, balances) used throughout
+  # the game display. Projectors often need to track cross-event state.
 
   Scenario: Render PlayerRegistered event
     Given an OutputProjector
@@ -28,7 +62,11 @@ Feature: Projector logic
     When the projector handles the event
     Then the output contains "Reserved $200"
 
-  # --- Table event rendering ---
+  # ==========================================================================
+  # Table Event Rendering
+  # ==========================================================================
+  # Table events describe the game structure: table creation, player seating,
+  # and hand lifecycle. These set up the context for hand-level events.
 
   Scenario: Render TableCreated event
     Given an OutputProjector
@@ -74,7 +112,11 @@ Feature: Projector logic
     When the projector handles the event
     Then the output contains "Alice wins $100"
 
-  # --- Hand event rendering ---
+  # ==========================================================================
+  # Hand Event Rendering
+  # ==========================================================================
+  # Hand events are the most frequent and detailed. Each betting action,
+  # community card, and showdown reveal needs clear, consistent formatting.
 
   Scenario: Render CardsDealt event
     Given an OutputProjector with player name "Alice"
@@ -169,7 +211,11 @@ Feature: Projector logic
     Then the output contains "Alice timed out"
     And the output contains "auto folds"
 
-  # --- Card formatting scenarios ---
+  # ==========================================================================
+  # Card Formatting
+  # ==========================================================================
+  # Cards are represented as protobuf messages (suit + rank integers).
+  # The projector converts these to standard notation: "As" = Ace of Spades.
 
   Scenario: Format card with all suits
     Given an OutputProjector
@@ -191,7 +237,12 @@ Feature: Projector logic
     And rank 13 displays as "K"
     And rank 14 displays as "A"
 
-  # --- Player name scenarios ---
+  # ==========================================================================
+  # Player Name Resolution
+  # ==========================================================================
+  # Events reference players by root ID (e.g., "player-abc123"). The projector
+  # maintains a name cache built from PlayerRegistered events. This separation
+  # keeps event payloads small while enabling friendly display names.
 
   Scenario: Use registered player names
     Given an OutputProjector
@@ -204,7 +255,11 @@ Feature: Projector logic
     When an event references unknown "player-xyz789"
     Then the output uses "Player_xyz789" prefix
 
-  # --- Timestamp scenarios ---
+  # ==========================================================================
+  # Timestamp Display
+  # ==========================================================================
+  # Timestamps are useful for debugging but can clutter normal output.
+  # The projector supports toggling timestamp display via configuration.
 
   Scenario: Include timestamps when enabled
     Given an OutputProjector with show_timestamps enabled
@@ -218,7 +273,11 @@ Feature: Projector logic
     When the projector handles the event
     Then the output does not start with "[14:"
 
-  # --- Event book scenarios ---
+  # ==========================================================================
+  # Event Book Processing
+  # ==========================================================================
+  # Commands often produce multiple events. The projector must handle batches
+  # correctly and gracefully degrade when encountering unknown event types.
 
   Scenario: Handle multiple events in event book
     Given an OutputProjector

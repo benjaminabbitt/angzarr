@@ -24,7 +24,7 @@ use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
 
 use super::client::CommandClient;
-use super::grpc_handlers::AggregateHandlerAdapter;
+use super::grpc_handlers::{AggregateHandlerAdapter, ProcessManagerHandlerAdapter};
 use super::router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 use super::server::ServerInfo;
 use super::speculative::SpeculativeExecutor;
@@ -177,6 +177,17 @@ impl Runtime {
         let mut business: HashMap<String, Arc<dyn ClientLogic>> = HashMap::new();
         for (domain, handler) in aggregates {
             business.insert(domain, Arc::new(AggregateHandlerAdapter::new(handler)));
+        }
+
+        // Register PM domains as command handlers (PMs are aggregates)
+        // This allows Notification commands to route to PMs for compensation
+        for (_, (handler, config)) in &process_managers {
+            if !business.contains_key(&config.domain) {
+                business.insert(
+                    config.domain.clone(),
+                    Arc::new(ProcessManagerHandlerAdapter::new(handler.clone())),
+                );
+            }
         }
 
         let servers = Vec::new();

@@ -73,3 +73,9 @@ examples/go/*/proto/
 
 
 .scm/sessions/
+
+# Docusaurus
+docs/node_modules/
+docs/build/
+docs/.docusaurus/
+.docs-backup/

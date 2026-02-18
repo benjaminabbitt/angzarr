@@ -1,10 +1,46 @@
 Feature: Process manager logic
-  Tests hand flow process manager for orchestrating poker hand lifecycle.
+  The HandFlowPM orchestrates a poker hand's state machine: dealing, blind
+  posting, betting rounds, community cards, and showdown. Unlike sagas,
+  process managers are STATEFUL - they maintain their own event stream to
+  track workflow progress.
 
-  # --- Hand initialization scenarios ---
+  Why a process manager (not just sagas):
+  - Hand flow requires sequencing: blinds before betting, flop before turn
+  - State machine transitions need memory (current phase, who has acted)
+  - Timeouts require knowing the current action player
+  - Multiple events across domains must be correlated
+
+  Patterns enabled by process managers:
+  - Cross-domain correlation: Events from table AND hand domains drive one
+    workflow. Same pattern applies to order+payment+shipping coordination.
+  - Long-running workflows: A hand may last minutes with many events. PM state
+    survives restarts. Same pattern applies to approval chains, onboarding flows.
+  - Timeout orchestration: PM schedules timeouts, handles expiration. Same
+    pattern applies to payment timeouts, SLA enforcement, auction endings.
+  - Compensation coordination: When downstream fails, PM updates workflow state
+    before source aggregate compensates. Same pattern for distributed sagas.
+
+  Why poker exercises PM patterns well:
+  - Multi-domain events: HandStarted (table) + CardsDealt (hand) + actions (hand)
+  - Complex state machine: DEALING→BLINDS→BETTING→FLOP→BETTING→TURN→... with
+    clear phase transitions and invalid paths
+  - Timeouts are critical: players have N seconds to act or auto-fold/check
+  - Action tracking: who has acted, who needs to act, who has folded
+
+  The HandFlowPM:
+  - Receives events from table and hand domains
+  - Maintains workflow state (phase, betting state, player status)
+  - Emits commands to advance the hand (PostBlind, DealCommunityCards, AwardPot)
+  - Handles timeouts with sensible defaults (auto-fold/check)
+
+  # ==========================================================================
+  # Hand Initialization
+  # ==========================================================================
+  # When a table starts a hand, the PM creates a HandProcess to track the
+  # workflow. This process state persists across all phases of the hand.
 
   Scenario: Process manager initializes hand from HandStarted
-    Given a HandProcessManager
+    Given a HandFlowPM
     And a HandStarted event with:
       | hand_number | game_variant   | dealer_position | small_blind | big_blind |
       | 1           | TEXAS_HOLDEM   | 0               | 5           | 10        |
@@ -17,7 +53,11 @@ Feature: Process manager logic
     And the process has 2 players
     And the process has dealer_position 0
 
-  # --- Blind posting scenarios ---
+  # ==========================================================================
+  # Blind Posting Phase
+  # ==========================================================================
+  # After cards are dealt, the PM drives blind posting: small blind first,
+  # then big blind. Once both are posted, betting can begin.
 
   Scenario: Process manager transitions to blind posting after cards dealt
     Given an active hand process in phase DEALING
@@ -41,7 +81,12 @@ Feature: Process manager logic
     Then the process transitions to phase BETTING
     And action_on is set to UTG position
 
-  # --- Betting round scenarios ---
+  # ==========================================================================
+  # Betting Round Management
+  # ==========================================================================
+  # The PM tracks who has acted, current bet, and when the round is complete.
+  # A round ends when all active players have acted and matched the current bet.
+  # Raises reset the "has acted" state for other players.
 
   Scenario: Process manager advances action after player acts
     Given an active hand process in phase BETTING
@@ -91,7 +136,12 @@ Feature: Process manager logic
     Then the process transitions to phase SHOWDOWN
     And an AwardPot command is sent
 
-  # --- All-in and early endings ---
+  # ==========================================================================
+  # All-in and Early Endings
+  # ==========================================================================
+  # Hands can end early if all but one player folds. All-in players are
+  # tracked separately since they can't take further actions but remain
+  # eligible for pot awards.
 
   Scenario: Process manager awards pot to last player standing
     Given an active hand process with 2 players
@@ -107,7 +157,12 @@ Feature: Process manager logic
     Then the player is marked as is_all_in
     And the player is not included in active players for betting
 
-  # --- Timeout handling scenarios ---
+  # ==========================================================================
+  # Timeout Handling
+  # ==========================================================================
+  # Players who don't act within the time limit are auto-acted: fold if
+  # facing a bet, check if no bet. This prevents hands from stalling
+  # indefinitely.
 
   Scenario: Process manager auto-folds on timeout when facing bet
     Given an active hand process in phase BETTING
@@ -122,7 +177,11 @@ Feature: Process manager logic
     When the action times out
     Then the process manager sends PlayerAction with CHECK
 
-  # --- Draw game scenarios ---
+  # ==========================================================================
+  # Draw Game Phases
+  # ==========================================================================
+  # Draw games have an additional phase between betting rounds where players
+  # discard and draw new cards. The PM tracks draw completion.
 
   Scenario: Process manager handles Five Card Draw phase transition
     Given an active hand process with game_variant FIVE_CARD_DRAW
@@ -139,7 +198,11 @@ Feature: Process manager logic
     Then the process transitions to phase BETTING
     And betting_phase is set to DRAW
 
-  # --- Community cards scenarios ---
+  # ==========================================================================
+  # Community Card Dealing
+  # ==========================================================================
+  # When community cards are dealt, the PM resets betting state for the new
+  # round: bet amounts reset to zero, action moves to first player after dealer.
 
   Scenario: Process manager resets betting state for new round
     Given an active hand process in phase BETTING
@@ -150,7 +213,11 @@ Feature: Process manager logic
     And current_bet is reset to 0
     And action_on is set to first player after dealer
 
-  # --- State management scenarios ---
+  # ==========================================================================
+  # State Management
+  # ==========================================================================
+  # The PM maintains accurate pot totals and player stacks throughout the
+  # hand. These scenarios verify state updates are correct.
 
   Scenario: Process manager tracks pot total correctly
     Given an active hand process

@@ -31,8 +31,6 @@ pub mod helpers;
 #[cfg(feature = "immudb")]
 pub mod immudb;
 pub mod mock;
-#[cfg(feature = "mongodb")]
-pub mod mongodb;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 #[cfg(feature = "redis")]
@@ -44,16 +42,14 @@ pub mod sqlite;
 
 // Re-exports
 #[cfg(feature = "bigtable")]
-pub use bigtable::{BigtableEventStore, BigtablePositionStore, BigtableSnapshotStore};
+pub use bigtable::{
+    BigtableConfig, BigtableEventStore, BigtablePositionStore, BigtableSnapshotStore,
+};
 #[cfg(feature = "dynamo")]
-pub use dynamo::{DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
+pub use dynamo::{DynamoConfig, DynamoEventStore, DynamoPositionStore, DynamoSnapshotStore};
 #[cfg(feature = "immudb")]
 pub use immudb::ImmudbEventStore;
 pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
-#[cfg(all(feature = "mongodb", feature = "topology"))]
-pub use mongodb::MongoTopologyStore;
-#[cfg(feature = "mongodb")]
-pub use mongodb::{MongoEventStore, MongoPositionStore, MongoSnapshotStore};
 #[cfg(all(feature = "postgres", feature = "topology"))]
 pub use postgres::PostgresTopologyStore;
 #[cfg(feature = "postgres")]
@@ -108,10 +104,6 @@ pub enum StorageError {
     #[error("Root UUID missing from Cover")]
     MissingRoot,
 
-    #[cfg(feature = "mongodb")]
-    #[error("MongoDB error: {0}")]
-    Mongo(#[from] ::mongodb::error::Error),
-
     #[cfg(feature = "redis")]
     #[error("Redis error: {0}")]
     Redis(#[from] ::redis::RedisError),
@@ -129,10 +121,11 @@ pub enum StorageError {
 #[serde(rename_all = "lowercase")]
 pub enum StorageType {
     #[default]
-    Mongodb,
     Postgres,
     Sqlite,
     Redis,
+    Bigtable,
+    Dynamo,
 }
 
 /// Storage configuration (discriminated union).
@@ -142,14 +135,18 @@ pub struct StorageConfig {
     /// Storage type discriminator.
     #[serde(rename = "type")]
     pub storage_type: StorageType,
-    /// MongoDB-specific configuration.
-    pub mongodb: MongodbConfig,
     /// PostgreSQL-specific configuration.
     pub postgres: PostgresConfig,
     /// SQLite-specific configuration.
     pub sqlite: SqliteConfig,
     /// Redis-specific configuration.
     pub redis: RedisConfig,
+    /// Bigtable-specific configuration.
+    #[cfg(feature = "bigtable")]
+    pub bigtable: bigtable::BigtableConfig,
+    /// DynamoDB-specific configuration.
+    #[cfg(feature = "dynamo")]
+    pub dynamo: dynamo::DynamoConfig,
     /// Snapshot enable/disable flags for debugging and troubleshooting.
     pub snapshots_enable: SnapshotsEnableConfig,
 }
@@ -157,31 +154,15 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            storage_type: StorageType::Mongodb,
-            mongodb: MongodbConfig::default(),
+            storage_type: StorageType::Postgres,
             postgres: PostgresConfig::default(),
             sqlite: SqliteConfig::default(),
             redis: RedisConfig::default(),
+            #[cfg(feature = "bigtable")]
+            bigtable: bigtable::BigtableConfig::default(),
+            #[cfg(feature = "dynamo")]
+            dynamo: dynamo::DynamoConfig::default(),
             snapshots_enable: SnapshotsEnableConfig::default(),
-        }
-    }
-}
-
-/// MongoDB-specific configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct MongodbConfig {
-    /// MongoDB connection URI.
-    pub uri: String,
-    /// Database name.
-    pub database: String,
-}
-
-impl Default for MongodbConfig {
-    fn default() -> Self {
-        Self {
-            uri: "mongodb://localhost:27017".to_string(),
-            database: "angzarr".to_string(),
         }
     }
 }
@@ -275,8 +256,7 @@ impl Default for SnapshotsEnableConfig {
 /// the configured storage type.
 ///
 /// Requires the corresponding feature to be enabled:
-/// - MongoDB: `--features mongodb` (included in default)
-/// - PostgreSQL: `--features postgres`
+/// - PostgreSQL: `--features postgres` (included in default)
 /// - SQLite: `--features sqlite`
 /// - Redis: `--features redis`
 pub async fn init_storage(
@@ -284,29 +264,6 @@ pub async fn init_storage(
 ) -> std::result::Result<(Arc<dyn EventStore>, Arc<dyn SnapshotStore>), Box<dyn std::error::Error>>
 {
     match config.storage_type {
-        StorageType::Mongodb => {
-            #[cfg(feature = "mongodb")]
-            {
-                info!(
-                    "Storage: mongodb at {} (db: {})",
-                    config.mongodb.uri, config.mongodb.database
-                );
-
-                let client = ::mongodb::Client::with_uri_str(&config.mongodb.uri).await?;
-
-                let event_store =
-                    Arc::new(MongoEventStore::new(&client, &config.mongodb.database).await?);
-                let snapshot_store =
-                    Arc::new(MongoSnapshotStore::new(&client, &config.mongodb.database).await?);
-
-                Ok((event_store, snapshot_store))
-            }
-
-            #[cfg(not(feature = "mongodb"))]
-            {
-                Err("MongoDB support requires the 'mongodb' feature. Rebuild with --features mongodb".into())
-            }
-        }
         StorageType::Postgres => {
             #[cfg(feature = "postgres")]
             {
@@ -387,6 +344,84 @@ pub async fn init_storage(
                 )
             }
         }
+        StorageType::Bigtable => {
+            #[cfg(feature = "bigtable")]
+            {
+                info!(
+                    "Storage: bigtable project={} instance={}",
+                    config.bigtable.project_id, config.bigtable.instance_id
+                );
+
+                let emulator_host = config.bigtable.emulator_host.as_deref();
+
+                let event_store = Arc::new(
+                    BigtableEventStore::new(
+                        &config.bigtable.project_id,
+                        &config.bigtable.instance_id,
+                        &config.bigtable.events_table,
+                        emulator_host,
+                    )
+                    .await?,
+                );
+
+                let snapshot_store = Arc::new(
+                    BigtableSnapshotStore::new(
+                        &config.bigtable.project_id,
+                        &config.bigtable.instance_id,
+                        &config.bigtable.snapshots_table,
+                        emulator_host,
+                    )
+                    .await?,
+                );
+
+                Ok((event_store, snapshot_store))
+            }
+
+            #[cfg(not(feature = "bigtable"))]
+            {
+                Err(
+                    "Bigtable support requires the 'bigtable' feature. Rebuild with --features bigtable"
+                        .into(),
+                )
+            }
+        }
+        StorageType::Dynamo => {
+            #[cfg(feature = "dynamo")]
+            {
+                info!(
+                    "Storage: dynamodb tables={}/{}/{}",
+                    config.dynamo.events_table,
+                    config.dynamo.snapshots_table,
+                    config.dynamo.positions_table
+                );
+
+                let event_store = Arc::new(
+                    DynamoEventStore::new(
+                        &config.dynamo.events_table,
+                        config.dynamo.endpoint_url.as_deref(),
+                    )
+                    .await?,
+                );
+
+                let snapshot_store = Arc::new(
+                    DynamoSnapshotStore::new(
+                        &config.dynamo.snapshots_table,
+                        config.dynamo.endpoint_url.as_deref(),
+                    )
+                    .await?,
+                );
+
+                Ok((event_store, snapshot_store))
+            }
+
+            #[cfg(not(feature = "dynamo"))]
+            {
+                Err(
+                    "DynamoDB support requires the 'dynamo' feature. Rebuild with --features dynamo"
+                        .into(),
+                )
+            }
+        }
     }
 }
 
@@ -397,30 +432,13 @@ pub async fn init_storage(
 /// not per-domain.
 ///
 /// Requires the corresponding feature to be enabled:
-/// - MongoDB: `--features mongodb`
-/// - PostgreSQL: `--features postgres`
+/// - PostgreSQL: `--features postgres` (included in default)
 /// - SQLite: `--features sqlite`
+/// - Redis: `--features redis`
 pub async fn init_position_store(
     config: &StorageConfig,
 ) -> std::result::Result<Arc<dyn PositionStore>, Box<dyn std::error::Error>> {
     match config.storage_type {
-        StorageType::Mongodb => {
-            #[cfg(feature = "mongodb")]
-            {
-                info!(
-                    "PositionStore: mongodb at {} (db: {})",
-                    config.mongodb.uri, config.mongodb.database
-                );
-                let client = ::mongodb::Client::with_uri_str(&config.mongodb.uri).await?;
-                Ok(Arc::new(
-                    MongoPositionStore::new(&client, &config.mongodb.database).await?,
-                ))
-            }
-            #[cfg(not(feature = "mongodb"))]
-            {
-                Err("MongoDB position store requires the 'mongodb' feature".into())
-            }
-        }
         StorageType::Postgres => {
             #[cfg(feature = "postgres")]
             {
@@ -475,6 +493,48 @@ pub async fn init_position_store(
                 Err("Redis position store requires the 'redis' feature".into())
             }
         }
+        StorageType::Bigtable => {
+            #[cfg(feature = "bigtable")]
+            {
+                info!(
+                    "PositionStore: bigtable project={} instance={}",
+                    config.bigtable.project_id, config.bigtable.instance_id
+                );
+                Ok(Arc::new(
+                    BigtablePositionStore::new(
+                        &config.bigtable.project_id,
+                        &config.bigtable.instance_id,
+                        &config.bigtable.positions_table,
+                        config.bigtable.emulator_host.as_deref(),
+                    )
+                    .await?,
+                ))
+            }
+            #[cfg(not(feature = "bigtable"))]
+            {
+                Err("Bigtable position store requires the 'bigtable' feature".into())
+            }
+        }
+        StorageType::Dynamo => {
+            #[cfg(feature = "dynamo")]
+            {
+                info!(
+                    "PositionStore: dynamodb table={}",
+                    config.dynamo.positions_table
+                );
+                Ok(Arc::new(
+                    DynamoPositionStore::new(
+                        &config.dynamo.positions_table,
+                        config.dynamo.endpoint_url.as_deref(),
+                    )
+                    .await?,
+                ))
+            }
+            #[cfg(not(feature = "dynamo"))]
+            {
+                Err("DynamoDB position store requires the 'dynamo' feature".into())
+            }
+        }
     }
 }
 
@@ -485,9 +545,8 @@ mod tests {
     #[test]
     fn test_storage_config_default() {
         let storage = StorageConfig::default();
-        assert_eq!(storage.storage_type, StorageType::Mongodb);
-        assert_eq!(storage.mongodb.uri, "mongodb://localhost:27017");
-        assert_eq!(storage.mongodb.database, "angzarr");
+        assert_eq!(storage.storage_type, StorageType::Postgres);
+        assert_eq!(storage.postgres.uri, "postgres://localhost:5432/angzarr");
         assert!(storage.snapshots_enable.read);
         assert!(storage.snapshots_enable.write);
     }

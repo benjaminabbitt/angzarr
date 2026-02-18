@@ -1,7 +1,38 @@
 Feature: Saga logic
-  Tests saga behavior for cross-domain event coordination.
+  Sagas translate events from one domain into commands for another. They're
+  stateless domain bridges that enable loose coupling between aggregates.
+  Each saga handles one direction: table→hand or hand→player.
 
-  # --- TableSyncSaga scenarios ---
+  Why sagas exist:
+  - Aggregates shouldn't know about each other directly
+  - Domain translation logic has a clear home
+  - Saga failures can be compensated independently
+  - Adding new sagas extends functionality without changing aggregates
+
+  Patterns enabled by sagas:
+  - Domain decoupling: Table doesn't import Hand types; saga translates. Same
+    pattern applies to order→fulfillment, payment→ledger, user→notification.
+  - Event-driven choreography: Events trigger sagas; sagas emit commands. No
+    central orchestrator needed. Same pattern applies to microservice integration.
+  - Fan-out reactions: One event can trigger multiple sagas targeting different
+    domains. PotAwarded triggers both player balance updates AND table state updates.
+
+  Why poker exercises saga patterns well:
+  - Clear domain boundaries: player (money), table (seating), hand (gameplay)
+  - Obvious translations: HandStarted→DealCards, PotAwarded→DepositFunds
+  - Multi-target fan-out: HandComplete triggers hand-player-saga AND hand-table-saga
+  - Compensation scenarios: JoinTable rejection requires FundsReleased via saga
+
+  The poker example sagas:
+  - table-hand-saga: table events → hand commands (HandStarted → DealCards)
+  - hand-player-saga: hand events → player commands (PotAwarded → DepositFunds)
+  - hand-table-saga: hand events → table commands (HandComplete → EndHand)
+
+  # ==========================================================================
+  # TableSyncSaga - Table to Hand Bridge
+  # ==========================================================================
+  # When a table starts a hand, the saga translates this into commands for
+  # the hand aggregate. When a hand completes, it signals the table to end.
 
   Scenario: Table sync saga routes HandStarted to DealCards
     Given a TableSyncSaga
@@ -31,7 +62,11 @@ Feature: Saga logic
     And the command has 1 result
     And the result has winner "player-1" with amount 100
 
-  # --- HandResultsSaga scenarios ---
+  # ==========================================================================
+  # HandResultsSaga - Hand to Player Bridge
+  # ==========================================================================
+  # When a hand ends or pots are awarded, players' bankrolls need updating.
+  # This saga emits DepositFunds/ReleaseFunds commands to the player domain.
 
   Scenario: Hand results saga routes HandEnded to ReleaseFunds
     Given a HandResultsSaga
@@ -59,7 +94,11 @@ Feature: Saga logic
     And the first command has amount 60 for "player-1"
     And the second command has amount 40 for "player-2"
 
-  # --- SagaRouter scenarios ---
+  # ==========================================================================
+  # SagaRouter Infrastructure
+  # ==========================================================================
+  # The SagaRouter dispatches events to matching saga handlers. Multiple
+  # sagas can be registered; only those matching the event type are invoked.
 
   Scenario: Saga router dispatches to matching sagas only
     Given a SagaRouter with TableSyncSaga and HandResultsSaga

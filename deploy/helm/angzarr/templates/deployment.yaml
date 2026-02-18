@@ -47,17 +47,17 @@ spec:
       securityContext:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       initContainers:
-        {{- if eq $.Values.storage.type "mongodb" }}
-        # Wait for MongoDB (deployed by Terraform)
-        - name: wait-for-mongodb
+        {{- if eq $.Values.storage.type "postgres" }}
+        # Wait for PostgreSQL
+        - name: wait-for-postgres
           image: busybox:1.36
           command:
             - sh
             - -c
             - |
-              echo "Waiting for MongoDB..."
-              until nc -z angzarr-db-mongodb 27017 2>/dev/null; do sleep 2; done
-              echo "MongoDB is ready"
+              echo "Waiting for PostgreSQL..."
+              until nc -z angzarr-db-postgresql 5432 2>/dev/null; do sleep 2; done
+              echo "PostgreSQL is ready"
         {{- end }}
         {{- if $.Values.amqp.enabled }}
         # Wait for RabbitMQ (deployed by Terraform)
@@ -165,26 +165,19 @@ spec:
             - name: ANGZARR__TARGET__DOMAIN
               value: {{ .domain | quote }}
             # Storage configuration - from secret if provided, else inline
-            {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
+            {{- if eq $.Values.storage.type "postgres" }}
+            {{- if $.Values.storage.postgres.existingSecret }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
+                  name: {{ $.Values.storage.postgres.existingSecret }}
                   key: uri
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
-                  key: database
-            {{- else if eq $.Values.storage.type "mongodb" }}
-            - name: ANGZARR__STORAGE__TYPE
-              value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
-              value: {{ $.Values.storage.mongodb.uri | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              value: {{ $.Values.storage.mongodb.database | quote }}
+            {{- else }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
+              value: {{ $.Values.storage.postgres.uri | quote }}
+            {{- end }}
             {{- end }}
             # AMQP configuration
             {{- if $.Values.amqp.enabled }}
@@ -386,26 +379,19 @@ spec:
             - name: ANGZARR__TARGET__DOMAIN
               value: {{ .domain | quote }}
             # Storage configuration - from secret if provided
-            {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
+            {{- if eq $.Values.storage.type "postgres" }}
+            {{- if $.Values.storage.postgres.existingSecret }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
+                  name: {{ $.Values.storage.postgres.existingSecret }}
                   key: uri
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
-                  key: database
             {{- else }}
-            - name: ANGZARR__STORAGE__TYPE
-              value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
-              value: {{ $.Values.storage.mongodb.uri | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              value: {{ $.Values.storage.mongodb.database | quote }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
+              value: {{ $.Values.storage.postgres.uri | quote }}
+            {{- end }}
             {{- end }}
             # Messaging configuration
             {{- if $.Values.amqp.enabled }}
@@ -593,26 +579,19 @@ spec:
             - name: ANGZARR_STATIC_ENDPOINTS
               value: "{{ range $i, $app := $.Values.applications.business }}{{ if $i }},{{ end }}{{ $app.domain }}={{ include "angzarr.fullname" $ }}-{{ $app.name }}:{{ $.Values.service.aggregatePort }}{{ end }}"
             # Storage configuration - from secret if provided
-            {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
+            {{- if eq $.Values.storage.type "postgres" }}
+            {{- if $.Values.storage.postgres.existingSecret }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
+                  name: {{ $.Values.storage.postgres.existingSecret }}
                   key: uri
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
-                  key: database
             {{- else }}
-            - name: ANGZARR__STORAGE__TYPE
-              value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
-              value: {{ $.Values.storage.mongodb.uri | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              value: {{ $.Values.storage.mongodb.database | quote }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
+              value: {{ $.Values.storage.postgres.uri | quote }}
+            {{- end }}
             {{- end }}
             # Messaging configuration
             {{- if $.Values.amqp.enabled }}
@@ -769,26 +748,19 @@ spec:
             - name: ANGZARR_STATIC_ENDPOINTS
               value: "{{ range $i, $app := $.Values.applications.business }}{{ if $i }},{{ end }}{{ $app.domain }}={{ include "angzarr.fullname" $ }}-{{ $app.name }}:{{ $.Values.service.aggregatePort }}{{ end }}"
             # Storage configuration
-            {{- if $.Values.storage.existingSecret }}
             - name: ANGZARR__STORAGE__TYPE
               value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
+            {{- if eq $.Values.storage.type "postgres" }}
+            {{- if $.Values.storage.postgres.existingSecret }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
+                  name: {{ $.Values.storage.postgres.existingSecret }}
                   key: uri
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $.Values.storage.existingSecret }}
-                  key: database
             {{- else }}
-            - name: ANGZARR__STORAGE__TYPE
-              value: {{ $.Values.storage.type | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__URI
-              value: {{ $.Values.storage.mongodb.uri | quote }}
-            - name: ANGZARR__STORAGE__MONGODB__DATABASE
-              value: {{ $.Values.storage.mongodb.database | quote }}
+            - name: ANGZARR__STORAGE__POSTGRES__URI
+              value: {{ $.Values.storage.postgres.uri | quote }}
+            {{- end }}
             {{- end }}
             # Messaging configuration
             {{- if $.Values.amqp.enabled }}

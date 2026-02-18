@@ -1,7 +1,37 @@
 @compensation
 Feature: Compensation Flow - Components Handle Notification
-  Aggregates and Process Managers handle Notification via @rejected
-  decorated methods or on_rejected() fluent API to emit compensation events.
+  When a Notification arrives (indicating a downstream command was rejected),
+  the source component must compensate - typically by emitting events that
+  undo the partial work that triggered the failed command.
+
+  Why components handle their own compensation:
+  - Business logic knows what to undo (release reserved funds, cancel pending action)
+  - Compensation may vary by rejection reason (retry vs cancel vs escalate)
+  - Framework can't know domain-specific rollback semantics
+
+  Patterns enabled by component compensation handling:
+  - Domain-specific rollback: Only the aggregate knows how to undo its operations.
+    FundsReserved→FundsReleased. Same pattern applies to inventory→release.
+  - Reason-based branching: Different rejection reasons may need different
+    compensation. "table_full" might retry; "banned_player" might not.
+  - State-aware compensation: Handler can access current state to calculate
+    correct compensation amount. Same pattern applies to partial refunds.
+
+  Why poker exercises compensation handling well:
+  - Clear undo semantics: FundsReserved has exactly one undo: FundsReleased
+  - Amount tracking: Handler must release the exact reserved amount
+  - Multiple rejection reasons: table_full, insufficient_buy_in, player_banned
+  - PM + aggregate chain: PM updates workflow state, then aggregate compensates
+
+  Two patterns for handling:
+  - @rejected decorator (OO): method annotated with domain/command it handles
+  - on_rejected() fluent API: functional style for simpler aggregates
+
+  If no handler matches, the framework emits a generic revocation event,
+  which may be insufficient for complex business compensation.
+
+  Poker example: Player reserves $500 for table buy-in → JoinTable rejected (table full)
+  → Player receives Notification → Player emits FundsReleased to restore available balance
 
   Background:
     Given the angzarr framework is initialized
@@ -9,168 +39,194 @@ Feature: Compensation Flow - Components Handle Notification
   # ============================================================================
   # Aggregate @rejected decorator - OO pattern
   # ============================================================================
+  # The @rejected decorator routes Notifications to the right handler based
+  # on which domain/command was rejected. The handler emits compensation events.
 
   @handle @aggregate @oo
-  Scenario: Aggregate @rejected handler dispatches by domain and command
-    Given a Player aggregate with:
-      | reserved_amount | 100 |
-    And a @rejected handler for domain "payment" command "ProcessPayment"
-    When the aggregate receives a Notification for:
-      | domain  | payment        |
-      | command | ProcessPayment |
-    Then the @rejected handler is invoked
-    And the handler receives the Notification
-    And the handler can access aggregate state
+  Scenario: Rejection routes to handler matching domain and command
+    # Player reserved $500 for table buy-in. table-player-saga issued JoinTable.
+    # Table aggregate rejected (table full). Player must release the $500.
+    # The @rejected handler for "table/JoinTable" is invoked.
+    Given Player has reserved_amount 500 (funds set aside for table buy-in)
+    And a @rejected handler registered for domain "table" command "JoinTable"
+    When Player receives Notification for table/JoinTable rejection
+    Then the matching @rejected handler is invoked
+    And receives the Notification (with rejection reason, failed command)
+    And can access current aggregate state (to calculate compensation)
 
   @handle @aggregate @oo
-  Scenario: Aggregate @rejected handler emits compensation event
-    Given a Player aggregate with:
-      | player_root     | player-123 |
-      | reserved_amount | 100        |
-    And a @rejected handler that returns FundsReleased
-    When the aggregate handles a payment rejection
-    Then a FundsReleased event is emitted with:
-      | player_root | player-123                  |
-      | amount      | 100                         |
-      | reason      | Payment failed: card_declined |
+  Scenario: Handler emits events to compensate for the failed operation
+    # The handler's job: emit events that undo the partial work.
+    # FundsReserved set aside $500 → JoinTable failed → FundsReleased gives it back.
+    Given Player with reserved_amount 500
+    And a @rejected handler that returns FundsReleased event
+    When the handler processes a table rejection (reason: table_full)
+    Then FundsReleased is emitted with:
+      | amount | 500                        | # release what was reserved
+      | reason | Join failed: table_full    | # audit trail
+    # Player's available balance is restored
 
   @handle @aggregate @oo
-  Scenario: Aggregate @rejected handler auto-applies returned events
-    Given a Player aggregate with reserved_amount 100
-    And a @rejected handler returning FundsReleased
-    When the aggregate handles the rejection
-    Then the FundsReleased event is applied to state
-    And the aggregate reserved_amount becomes 0
-    And the event is added to the event book
+  Scenario: Compensation events are applied and persisted atomically
+    # Events returned by @rejected handlers are both applied to state
+    # AND persisted - same as events from regular command handlers.
+    Given Player with reserved_amount 100
+    When @rejected handler returns FundsReleased
+    Then state.reserved_amount becomes 0 (event applied)
+    And FundsReleased is added to the event book (persisted)
+    # State and events are consistent
 
   @handle @aggregate @oo
-  Scenario: Multiple @rejected handlers dispatch to correct one
-    Given a Player aggregate with handlers:
-      | domain    | command          | handler                    |
-      | payment   | ProcessPayment   | handle_payment_rejected    |
-      | inventory | ReserveItem      | handle_inventory_rejected  |
-    When a rejection arrives for domain "inventory" command "ReserveItem"
-    Then handle_inventory_rejected is called
-    And handle_payment_rejected is not called
+  Scenario: Multiple handlers route to the correct one by domain/command
+    # An aggregate may participate in multiple workflows, each potentially failing.
+    # Table join failure needs different compensation than hand start failure.
+    Given Player has @rejected handlers for:
+      | domain | command   | handler                 |
+      | table  | JoinTable | handle_join_rejected    | # release reserved buy-in
+      | hand   | PostBlind | handle_blind_rejected   | # restore stack
+    When a rejection arrives for table/JoinTable
+    Then handle_join_rejected is called (correct handler)
+    And handle_blind_rejected is NOT called (wrong domain)
 
   @handle @aggregate @oo
-  Scenario: No matching @rejected handler delegates to framework
-    Given a Player aggregate with no @rejected handlers
-    When the aggregate receives a Notification
-    Then the response has emit_system_revocation true
-    And the reason indicates no custom compensation
+  Scenario: Missing handler delegates compensation to framework
+    # If no custom handler exists, the framework emits a generic revocation.
+    # This may be insufficient for business needs but prevents silent failures.
+    Given Player has no @rejected handlers configured
+    When Player receives a Notification
+    Then response.emit_system_revocation = true
+    And reason indicates "no custom compensation handler"
+    # Developer should add a handler for proper business compensation
 
   # ============================================================================
   # Process Manager @rejected decorator - OO pattern
   # ============================================================================
+  # PMs receive Notifications BEFORE the source aggregate. This lets them
+  # update workflow state (mark step failed, decide retry) before compensation.
 
   @handle @pm @oo
-  Scenario: PM @rejected handler dispatches by domain and command
-    Given an OrderWorkflowPM with:
-      | order_id | order-123          |
-      | step     | awaiting_inventory |
-    And a @rejected handler for domain "inventory" command "ReserveInventory"
-    When the PM receives a Notification for:
-      | domain  | inventory         |
-      | command | ReserveInventory  |
-    Then the @rejected handler is invoked
-    And the handler receives the Notification
-    And the handler can access PM state
+  Scenario: PM rejection routes to handler matching the failed command
+    # HandFlowPM tracks: Table → Hand → Player balance updates
+    # If Hand fails to deal, the PM must record which step failed.
+    Given HandFlowPM at step "awaiting_deal" for hand-123
+    And a @rejected handler for domain "hand" command "DealCards"
+    When PM receives Notification for hand/DealCards rejection
+    Then the matching @rejected handler is invoked
+    And receives the Notification (with rejection details)
+    And can access PM state (current step, hand_id, history)
 
   @handle @pm @oo
-  Scenario: PM @rejected handler emits PM domain events
-    Given an OrderWorkflowPM with order_id "order-123"
-    And a @rejected handler that returns WorkflowFailed
-    When the PM handles an inventory rejection
-    Then a WorkflowFailed event is recorded in PM state with:
-      | order_id | order-123                            |
-      | reason   | Inventory reservation failed: out_of_stock |
-      | step     | inventory_reservation                |
+  Scenario: PM handler emits workflow events (not aggregate events)
+    # PMs have their own event stream tracking workflow progress.
+    # On failure, emit WorkflowFailed or StepFailed - not domain events.
+    Given HandFlowPM tracking hand-123
+    And @rejected handler returning WorkflowFailed
+    When PM handles hand rejection (invalid_player_count)
+    Then WorkflowFailed is recorded in PM's event stream:
+      | hand_id | hand-123                                 |
+      | reason  | Deal failed: invalid_player_count        |
+      | step    | deal_cards                               |
+    # This records WHY the workflow failed for debugging/reporting
 
   @handle @pm @oo
-  Scenario: PM @rejected handler can trigger aggregate compensation
-    Given an OrderWorkflowPM handling rejection
-    When the PM @rejected handler completes
-    Then the PM events are persisted
-    And the framework continues to route to source aggregate
+  Scenario: After PM handles rejection, framework routes to source aggregate
+    # PM updates workflow state, then the chain continues.
+    # Source aggregate still needs to emit its compensation events.
+    Given HandFlowPM handles a rejection
+    When PM @rejected handler completes
+    Then PM events are persisted (workflow state updated)
+    And framework routes Notification to source aggregate next
+    # PM recorded failure; now aggregate compensates
 
   @handle @pm @oo
-  Scenario: No matching PM @rejected handler delegates to framework
-    Given an OrderWorkflowPM with no @rejected handlers
-    When the PM receives a Notification
-    Then the PM returns no process events
-    And emit_system_revocation is true
+  Scenario: PM without handler delegates to framework
+    # If PM has no custom handler, framework handles it generically.
+    # PM state won't be updated, which may leave workflow in inconsistent state.
+    Given HandFlowPM with no @rejected handlers
+    When PM receives a Notification
+    Then PM returns no process events (state unchanged)
+    And emit_system_revocation = true
+    # Developer should add handler to update workflow state properly
 
   # ============================================================================
   # CommandRouter.on_rejected() - Fluent pattern
   # ============================================================================
+  # Alternative to @rejected decorator. Same routing logic, functional style.
+  # Useful for simpler aggregates or when decorators feel heavyweight.
 
   @handle @aggregate @fluent
-  Scenario: Fluent router on_rejected dispatches to handler
-    Given a CommandRouter for domain "player" with:
-      | on          | RegisterPlayer    | handle_register |
-      | on_rejected | payment/ProcessPayment | handle_payment_rejected |
-    When a Notification arrives with:
-      | rejected_domain  | payment        |
-      | rejected_command | ProcessPayment |
-    Then handle_payment_rejected is called with:
-      | notification | the Notification       |
-      | state        | rebuilt player state   |
+  Scenario: Fluent API routes rejections to registered handlers
+    # Same routing as @rejected, but configured via method chaining.
+    Given CommandRouter for "player" domain configured with:
+      | on          | RegisterPlayer    | handle_register      |
+      | on_rejected | table/JoinTable   | handle_join_rejected |
+    When Notification arrives for table/JoinTable rejection
+    Then handle_join_rejected receives:
+      | notification | the Notification details |
+      | state        | current player state     |
+    # Handler can inspect state to decide compensation
 
   @handle @aggregate @fluent
-  Scenario: Fluent router on_rejected returns EventBook
-    Given a CommandRouter with on_rejected handler
-    And the handler returns an EventBook with FundsReleased
-    When dispatch processes the Notification
-    Then the BusinessResponse contains the EventBook
-    And the EventBook has one FundsReleased event
+  Scenario: Fluent handler returns EventBook with compensation events
+    # Handler builds an EventBook containing compensation events.
+    # Framework persists and applies them.
+    Given CommandRouter with on_rejected handler
+    And handler builds EventBook containing FundsReleased
+    When router dispatches the Notification
+    Then BusinessResponse contains the EventBook
+    And FundsReleased will be persisted and applied
 
   @handle @aggregate @fluent
-  Scenario: Fluent router no matching on_rejected delegates to framework
-    Given a CommandRouter with no on_rejected handlers
-    When dispatch processes a Notification
-    Then the BusinessResponse has revocation
-    And emit_system_revocation is true
-    And reason contains "no custom compensation"
+  Scenario: No matching fluent handler delegates to framework
+    # Same as OO pattern - missing handler triggers generic revocation.
+    Given CommandRouter with no on_rejected handlers
+    When router dispatches a Notification
+    Then BusinessResponse has emit_system_revocation = true
+    And reason: "no custom compensation handler"
 
   @handle @aggregate @fluent
   Scenario: Multiple on_rejected handlers in fluent chain
-    Given a CommandRouter configured as:
+    # Chain multiple handlers for different failure scenarios.
+    Given CommandRouter configured as:
       """
-      router = CommandRouter("player", rebuild)
+      CommandRouter("player", rebuild)
         .on("RegisterPlayer", handle_register)
-        .on_rejected("payment", "ProcessPayment", handle_payment)
-        .on_rejected("inventory", "ReserveItem", handle_inventory)
+        .on_rejected("table", "JoinTable", handle_join)
+        .on_rejected("hand", "PostBlind", handle_blind)
       """
-    When a rejection arrives for "inventory/ReserveItem"
-    Then handle_inventory is called
-    And handle_payment is not called
+    When rejection arrives for table/JoinTable
+    Then handle_join is called (matches)
+    And handle_blind is NOT called (different domain/command)
 
   # ============================================================================
   # Dispatch key extraction
   # ============================================================================
+  # The router must extract domain/command from the Notification to find
+  # the right handler. This tests the key extraction logic.
 
   @handle @dispatch
-  Scenario: Dispatch key extracted from rejected_command.cover.domain
-    Given a Notification with rejected_command:
-      | cover.domain | payment |
-    When the router extracts the dispatch key
-    Then the domain part is "payment"
+  Scenario: Domain extracted from rejected command's cover
+    # The cover.domain identifies which bounded context rejected.
+    Given Notification with rejected_command.cover.domain = "table"
+    When router extracts dispatch key
+    Then domain part = "table"
 
   @handle @dispatch
-  Scenario: Dispatch key extracted from rejected_command type_url
-    Given a Notification with rejected_command:
-      | type_url | type.googleapis.com/myapp.ProcessPayment |
-    When the router extracts the dispatch key
-    Then the command part is "ProcessPayment"
+  Scenario: Command type extracted from type_url
+    # type_url is "type.googleapis.com/package.CommandName"
+    # We extract just the CommandName part.
+    Given Notification with rejected_command.type_url = "type.googleapis.com/examples.JoinTable"
+    When router extracts dispatch key
+    Then command part = "JoinTable"
 
   @handle @dispatch
-  Scenario: Full dispatch key is domain/command
-    Given a Notification with:
-      | cover.domain | payment                                  |
-      | type_url     | type.googleapis.com/myapp.ProcessPayment |
-    When the router builds the dispatch key
-    Then the key is "payment/ProcessPayment"
+  Scenario: Full dispatch key combines domain and command
+    # Handlers register for "domain/command" pairs.
+    # The router builds this key from the Notification.
+    Given Notification with domain "table" and command "JoinTable"
+    When router builds dispatch key
+    Then key = "table/JoinTable"
+    # This key matches handler registered for table/JoinTable
 
   # ============================================================================
   # Compensation event recording
@@ -210,13 +266,13 @@ Feature: Compensation Flow - Components Handle Notification
 
   @handle @state
   Scenario: PM state is rebuilt before rejection handling
-    Given an OrderWorkflowPM with prior events:
-      | event             | data                |
-      | WorkflowStarted   | order_id: order-123 |
-      | InventoryRequested| quantity: 5         |
+    Given a HandFlowPM with prior events:
+      | event           | data               |
+      | WorkflowStarted | hand_id: hand-123  |
+      | DealRequested   | player_count: 3    |
     When a rejection handler accesses state
-    Then order_id is "order-123"
-    And step is "awaiting_inventory"
+    Then hand_id is "hand-123"
+    And step is "awaiting_deal"
 
   # ============================================================================
   # Edge cases and error handling
@@ -259,8 +315,8 @@ Feature: Compensation Flow - Components Handle Notification
 
   @handle @retry
   Scenario: PM updates step after compensation
-    Given an OrderWorkflowPM in step "awaiting_inventory"
+    Given a HandFlowPM in step "awaiting_deal"
     And a @rejected handler that emits StepRolledBack
     When compensation completes
-    Then the PM step changes to "inventory_failed"
+    Then the PM step changes to "deal_failed"
     And the PM can transition to a recovery path

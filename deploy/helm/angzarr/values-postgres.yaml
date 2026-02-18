@@ -1,15 +1,11 @@
 # PostgreSQL storage values for angzarr
-# Uses PostgreSQL instead of MongoDB for event storage
+# This is now the default storage backend
 
 # PostgreSQL storage
 storage:
   type: postgres
   postgres:
     uri: "postgres://angzarr:angzarr@angzarr-postgresql:5432/angzarr"
-
-# Disable MongoDB (default), enable PostgreSQL
-mongodb:
-  enabled: false
 
 postgresql:
   enabled: true

@@ -1,5 +1,5 @@
 # EventStoreDB storage values for angzarr
-# Uses EventStoreDB instead of MongoDB for event storage
+# Uses EventStoreDB instead of PostgreSQL for event storage
 #
 # NOTE: EventStoreDB is deployed separately using the local chart:
 #   helm install eventstore ../eventstore -n <namespace>
@@ -10,7 +10,3 @@ storage:
   eventstoredb:
     # Service name follows pattern: <release-name>-eventstore
     connectionString: "esdb://eventstore:2113?tls=false"
-
-# Disable MongoDB (default)
-mongodb:
-  enabled: false

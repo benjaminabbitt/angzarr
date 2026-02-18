@@ -32,9 +32,9 @@ use std::time::Duration;
 use backon::Retryable;
 use tracing::{info, warn};
 
-use angzarr::bus::{
-    AmqpConfig, AmqpEventBus, EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus,
-};
+#[cfg(feature = "amqp")]
+use angzarr::bus::{AmqpConfig, AmqpEventBus};
+use angzarr::bus::{EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
@@ -63,6 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize event bus (publisher) for PM state events
     let event_bus: Arc<dyn EventBus> = match messaging.messaging_type {
+        #[cfg(feature = "amqp")]
         MessagingType::Amqp => {
             let amqp_config = AmqpConfig::publisher(&messaging.amqp.url);
             Arc::new(AmqpEventBus::new(amqp_config).await?)

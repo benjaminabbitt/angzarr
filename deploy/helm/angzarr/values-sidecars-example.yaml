@@ -13,27 +13,23 @@ amqp:
   enabled: true
   url: "amqp://guest:guest@rabbitmq:5672"
 
-# MongoDB for event storage (shared across aggregates)
+# PostgreSQL for event storage (shared across aggregates)
 storage:
-  type: mongodb
-  mongodb:
-    uri: "mongodb://angzarr:angzarr@mongodb:27017"
-    database: "angzarr"
+  type: postgres
+  postgres:
+    uri: "postgres://angzarr:angzarr@postgresql:5432/angzarr"
 
-# MongoDB subchart
-mongodb:
+# PostgreSQL subchart
+postgresql:
   enabled: true
   auth:
-    rootUsername: "root"
-    rootPassword: ""  # Set via --set
-    usernames: ["angzarr"]
-    passwords: [""]  # Set via --set
-    databases: ["angzarr"]
-  persistence:
-    size: 10Gi
-  # Recreate strategy avoids mongod.lock conflicts during rolling updates
-  updateStrategy:
-    type: Recreate
+    postgresPassword: ""  # Set via --set
+    username: "angzarr"
+    password: ""  # Set via --set
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 10Gi
 
 # RabbitMQ subchart
 rabbitmq:

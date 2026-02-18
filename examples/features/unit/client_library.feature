@@ -1,8 +1,37 @@
 Feature: Client Library Parity
-  Tests core client library patterns that must be consistent across all language implementations.
-  These tests ensure Rust, Go, and Python client libraries provide equivalent functionality.
+  The angzarr client libraries (Rust, Go, Python, C#, Java, C++) must provide
+  identical abstractions so business logic is portable across languages. Teams
+  can choose their preferred language without learning different patterns.
 
-  # --- CommandRouter Pattern ---
+  Why parity matters:
+  - A developer moving between language implementations sees familiar abstractions
+  - Documentation written for one language applies to all
+  - Integration tests can verify behavior across all implementations
+
+  Patterns enabled by client library parity:
+  - Polyglot microservices: Player aggregate in Go, hand aggregate in Rust,
+    projectors in Python - all interoperate via identical wire protocols
+  - Team autonomy: Each team picks their language; framework behavior is consistent
+  - Unified testing: Same Gherkin scenarios verify all language implementations
+
+  Why poker exercises client library patterns well:
+  - Multiple aggregates: player, table, hand - each could be a different language
+  - Cross-language sagas: Go saga consuming Rust events, emitting Python commands
+  - Same business rules: "insufficient funds" rejection works identically everywhere
+  - Shared proto types: Card, Suit, Rank, Action - all languages deserialize same
+
+  Core abstractions that must be consistent:
+  - CommandRouter: dispatches commands to handlers, rebuilds state
+  - EventRouter: dispatches events to saga handlers, prepares destinations
+  - ComponentDescriptor: auto-derives input/output types from registrations
+  - Error patterns: rejection reasons, retryable vs fatal errors
+
+  # ==========================================================================
+  # CommandRouter Pattern
+  # ==========================================================================
+  # The CommandRouter is the entry point for aggregate business logic.
+  # It receives commands, rebuilds state from prior events, and dispatches
+  # to the registered handler. The same pattern in every language.
 
   Scenario: CommandRouter registers handlers by type suffix
     Given a CommandRouter for "test" domain
@@ -37,7 +66,12 @@ Feature: Client Library Parity
     Then the state rebuilder was called with 3 events
     And the handler received the rebuilt state
 
-  # --- EventRouter Pattern ---
+  # ==========================================================================
+  # EventRouter Pattern
+  # ==========================================================================
+  # The EventRouter is the entry point for saga business logic. It receives
+  # events, optionally prepares destinations, and dispatches to handlers that
+  # emit commands targeting other domains.
 
   Scenario: EventRouter registers handlers by type suffix
     Given an EventRouter for "saga-test" subscribing to "source" domain
@@ -79,7 +113,13 @@ Feature: Client Library Parity
     Then 2 CommandBooks are returned
     And each command targets a different player root
 
-  # --- ComponentDescriptor Auto-Derivation ---
+  # ==========================================================================
+  # ComponentDescriptor Auto-Derivation
+  # ==========================================================================
+  # Component descriptors tell the framework what events/commands a component
+  # handles. Rather than manual configuration, they're auto-derived from
+  # router registrations. Register a handler for "HandStarted" and the
+  # descriptor automatically includes it in input types.
 
   Scenario: CommandRouter descriptor includes registered types
     Given a CommandRouter for "player" domain
@@ -100,7 +140,12 @@ Feature: Client Library Parity
     And the descriptor outputs include "hand" domain
     And the output types include "DealCards"
 
-  # --- Handler Wrapper Pattern ---
+  # ==========================================================================
+  # Handler Wrapper Pattern
+  # ==========================================================================
+  # gRPC services (AggregateHandler, SagaHandler) are thin wrappers around
+  # the business-logic routers. This separation enables testing routers
+  # directly without gRPC infrastructure.
 
   Scenario: AggregateHandler wraps CommandRouter
     Given an AggregateHandler with a CommandRouter
@@ -127,7 +172,12 @@ Feature: Client Library Parity
     And the response has projector "test"
     And the response has sequence 5
 
-  # --- Server Runner Pattern ---
+  # ==========================================================================
+  # Server Runner Pattern
+  # ==========================================================================
+  # Server configuration comes from environment variables, supporting both
+  # Unix Domain Sockets (for sidecar deployments) and TCP (for standalone).
+  # All languages read the same env vars and produce compatible servers.
 
   Scenario: Server runner configures from environment
     Given environment variable UDS_BASE_PATH="/tmp/test"
@@ -143,7 +193,12 @@ Feature: Client Library Parity
     Then the transport type is "tcp"
     And the address is "0.0.0.0:50001"
 
-  # --- Proto Helper Pattern ---
+  # ==========================================================================
+  # Proto Helper Pattern
+  # ==========================================================================
+  # Common operations on protobuf messages (next_sequence, type URL matching)
+  # are provided as extension methods or helper functions. These smooth over
+  # language differences in protobuf APIs.
 
   Scenario: EventBook next_sequence returns page count
     Given an EventBook with 5 event pages
@@ -164,7 +219,12 @@ Feature: Client Library Parity
     And type URL ends with "examples.RegisterPlayer"
     And type URL does not end with "DepositFunds"
 
-  # --- Error Handling Pattern ---
+  # ==========================================================================
+  # Error Handling Pattern
+  # ==========================================================================
+  # Business rejections (FAILED_PRECONDITION) carry rejection reasons.
+  # All languages provide CommandRejectedError (or equivalent) that converts
+  # to the appropriate gRPC status code.
 
   Scenario: CommandRejectedError has reason
     Given a CommandRejectedError with reason "Insufficient funds"
@@ -177,7 +237,12 @@ Feature: Client Library Parity
     Then the response is an error
     And the error reason is "Player not found"
 
-  # --- Sequence Validation Pattern ---
+  # ==========================================================================
+  # Sequence Validation Pattern
+  # ==========================================================================
+  # Commands and events must have correct sequences for optimistic concurrency.
+  # Client libraries provide helpers to extract next_sequence from EventBooks
+  # and stamp it onto outgoing CommandBooks.
 
   Scenario: Command sequence from destination state
     Given a destination EventBook with next_sequence 7
@@ -189,7 +254,12 @@ Feature: Client Library Parity
     When I create an EventPage for sequence 3
     Then the event page has sequence 3
 
-  # --- Process Manager Pattern ---
+  # ==========================================================================
+  # Process Manager Pattern
+  # ==========================================================================
+  # Process managers are aggregates that coordinate cross-domain workflows.
+  # They maintain their own event stream (process_state) distinct from the
+  # events they consume (trigger). The router rebuilds PM state before dispatch.
 
   Scenario: ProcessManagerRouter registers handlers
     Given a ProcessManagerRouter for "pm-test" with domain "pm-domain"

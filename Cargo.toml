@@ -60,43 +60,59 @@ description = "Schema-first CQRS/ES framework for polyglot client logic"
 license = "AGPL-3.0-only"
 
 [features]
-# Default features - common production setup
-default = ["amqp", "mongodb"]
+# Default: works out of box for local development
+default = ["standalone"]
 
-# Messaging backends
+# =============================================================================
+# Deployment Profiles (opinionated stacks)
+# =============================================================================
+# standalone: Local dev, no external deps
+standalone = ["sqlite", "channel", "topology"]
+# k8s: Generic Kubernetes with Postgres + RabbitMQ
+k8s = ["postgres", "amqp", "topology", "otel"]
+# gcp-cloudrun: GCP serverless with Cloud SQL + Pub/Sub + GCS
+gcp-cloudrun = ["postgres", "pubsub", "gcs", "topology", "otel"]
+# gcp-k8s: GCP Kubernetes with Bigtable + Pub/Sub + GCS
+gcp-k8s = ["bigtable", "pubsub", "gcs", "topology", "otel"]
+# aws-k8s: AWS Kubernetes with DynamoDB + SNS/SQS + S3
+aws-k8s = ["dynamo", "sns-sqs", "s3", "topology", "otel"]
+
+# =============================================================================
+# Messaging Backends
+# =============================================================================
 amqp = ["dep:lapin", "dep:deadpool-lapin"]
 kafka = ["dep:rdkafka"]
 pubsub = ["dep:google-cloud-pubsub", "dep:google-cloud-auth", "dep:google-cloud-googleapis"]
 sns-sqs = ["dep:aws-sdk-sns", "dep:aws-sdk-sqs", "dep:aws-config"]
 channel = []  # In-memory event bus, no external deps
 
-# Storage backends
-mongodb = ["dep:mongodb"]
+# =============================================================================
+# Storage Backends
+# =============================================================================
 postgres = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/postgres", "sqlx/migrate", "sqlx/uuid", "sea-query-binder/sqlx-postgres"]
 sqlite = ["dep:sqlx", "dep:sea-query", "dep:sea-query-binder", "sqlx/sqlite", "sqlx/migrate", "sea-query-binder/sqlx-sqlite"]
 redis = ["dep:redis"]
 immudb = ["dep:sqlx", "dep:sea-query", "sqlx/postgres", "sqlx/uuid"]  # Uses pgsql wire protocol
-bigtable = []    # placeholder, no deps yet
-dynamo = []      # placeholder, no deps yet
+bigtable = ["dep:bigtable_rs"]
+dynamo = ["dep:aws-sdk-dynamodb", "dep:aws-config"]
 
-# Payload store backends (for claim check pattern)
+# =============================================================================
+# Payload Store Backends (claim check pattern)
+# =============================================================================
 gcs = ["dep:google-cloud-storage", "dep:google-cloud-auth"]
 s3 = ["dep:aws-sdk-s3", "dep:aws-config"]
 
-# OpenTelemetry observability
+# =============================================================================
+# Observability & Utilities
+# =============================================================================
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-opentelemetry"]
-
-# Topology visualization projector (Grafana Node Graph)
 topology = ["dep:axum"]
-
-# Testing utilities
 lossy = ["dep:rand"]
 
-# Convenience
-standalone = ["sqlite", "channel", "topology"]
-
-# All features for development
-full = ["amqp", "kafka", "pubsub", "sns-sqs", "channel", "mongodb", "postgres", "sqlite", "redis", "immudb", "bigtable", "dynamo", "gcs", "s3", "lossy", "otel", "topology"]
+# =============================================================================
+# All Features (for CI/development)
+# =============================================================================
+full = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb", "lossy"]
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)
@@ -162,9 +178,6 @@ base64 = "0.22"
 lapin = { version = "2", optional = true }
 deadpool-lapin = { version = "0.12", optional = true }
 
-# MongoDB (optional)
-mongodb = { version = "3", optional = true }
-
 # Redis (optional)
 redis = { version = "0.27", features = ["aio", "connection-manager", "tokio-comp"], optional = true }
 
@@ -184,8 +197,14 @@ aws-config = { version = "1", optional = true }
 # AWS S3 (optional, for payload store)
 aws-sdk-s3 = { version = "1", optional = true }
 
+# AWS DynamoDB (optional, for event store)
+aws-sdk-dynamodb = { version = "1", optional = true }
+
 # Google Cloud Storage (optional, for payload store)
 google-cloud-storage = { version = "0.22", optional = true }
+
+# Google Cloud Bigtable (optional, for event store)
+bigtable_rs = { version = "0.2", optional = true }
 
 # Random (for lossy testing bus)
 rand = { version = "0.9", optional = true }
@@ -257,10 +276,13 @@ tempfile = "3"
 cucumber = "0.21"
 futures = "0.3"
 serial_test = "3"
+testcontainers = "0.23"
+hex = "0.4"
 
 [[test]]
-name = "storage_mongodb"
-required-features = ["mongodb"]
+name = "interfaces"
+path = "tests/interfaces/main.rs"
+harness = false
 
 [[test]]
 name = "storage_redis"
@@ -273,6 +295,10 @@ required-features = ["postgres"]
 [[test]]
 name = "storage_sqlite"
 required-features = ["sqlite"]
+
+[[test]]
+name = "storage_immudb"
+required-features = ["immudb"]
 
 # === Build Profiles ===
 

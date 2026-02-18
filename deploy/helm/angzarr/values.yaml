@@ -96,10 +96,10 @@ ports:
 # Debug access for backing services
 # WARNING: Do not enable in production
 debug:
-  # Enable debug access for MongoDB (external test connections)
-  mongodb:
+  # Enable debug access for PostgreSQL (external test connections)
+  postgresql:
     enabled: false
-    nodePort: 30017
+    nodePort: 30432
   # Enable debug access for RabbitMQ management UI
   rabbitmq:
     enabled: false
@@ -228,28 +228,22 @@ affinity: {}
 
 # Storage configuration for angzarr
 storage:
-  # Options: mongodb, postgres, eventstoredb
-  type: mongodb
-  mongodb:
-    # Connection URI (credentials should be set via --set or secretRef)
-    uri: "mongodb://mongodb:27017"
-    database: "angzarr"
-    # Use existing secret for credentials
-    existingSecret: ""
-    secretKeys:
-      username: "username"
-      password: "password"
+  # Options: postgres, sqlite, redis
+  type: postgres
   postgres:
     # Connection URI (credentials should be set via --set or secretRef)
-    uri: "postgres://postgresql:5432/angzarr"
+    uri: "postgres://angzarr:angzarr@angzarr-db-postgresql:5432/angzarr"
     # Use existing secret for credentials
     existingSecret: ""
     secretKeys:
       username: "username"
       password: "password"
-  eventstoredb:
-    # EventStoreDB connection string
-    connectionString: "esdb://eventstore:2113?tls=false"
+  sqlite:
+    # SQLite database path (for standalone/testing)
+    path: ""
+  redis:
+    # Redis connection URI
+    uri: "redis://angzarr-redis:6379"
 
 # Upcaster configuration
 # Upcaster transforms old event versions to current versions during replay.
@@ -297,9 +291,7 @@ messaging:
 # See docs/infrastructure.md for setup instructions
 #
 # Databases:
-#   helm install angzarr-db ./deploy/helm/angzarr-db-mongodb -n angzarr
 #   helm install angzarr-db ./deploy/helm/angzarr-db-postgres -n angzarr
-#   helm install angzarr-db ./deploy/helm/eventstore -n angzarr
 #
 # Message Buses:
 #   helm install angzarr-mq ./deploy/helm/angzarr-mq-rabbitmq -n angzarr
@@ -426,8 +418,6 @@ externalSecrets:
     # Namespace containing source secrets
     sourceNamespace: "angzarr-secrets"
   # Secret references
-  mongodb:
-    secretName: "angzarr-secrets"
   rabbitmq:
     secretName: "angzarr-secrets"
   postgresql:

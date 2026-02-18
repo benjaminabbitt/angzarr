@@ -1,7 +1,39 @@
 Feature: Player aggregate logic
-  Tests player aggregate behavior for bankroll management and table reservations.
+  The Player aggregate manages a player's bankroll and table reservations.
+  It's the source of truth for how much money a player has and where it's allocated.
 
-  # --- RegisterPlayer scenarios ---
+  Why this aggregate exists:
+  - Players can only sit at tables if they have funds to reserve
+  - Reserved funds are locked until the table session ends
+  - Withdrawals cannot touch reserved funds (preventing mid-game cashout)
+
+  What breaks if this is wrong:
+  - Players could buy into tables they can't afford
+  - Funds could be double-spent across multiple tables
+  - Players could withdraw chips currently in play
+
+  Patterns enabled by this aggregate:
+  - Two-phase reservation: ReserveFunds locks money, ReleaseFunds returns it. This
+    pattern applies anywhere resources must be held pending confirmation (e-commerce
+    inventory holds, ticket reservations, hotel bookings).
+  - Saga compensation: When JoinTable fails, FundsReserved must be undone via
+    FundsReleased. The player aggregate handles the Notification and compensates.
+  - Balance tracking with allocation: Available vs reserved funds. Same pattern
+    applies to inventory (available vs allocated), accounts (balance vs holds).
+
+  Why poker exercises these patterns well:
+  - Fund reservation is explicit: $500 reserved for Table-1 is clearly separate
+    from the $500 available balance - easy to verify in tests
+  - Compensation is visible: A rejected JoinTable must release exactly the reserved
+    amount - the math is obvious and testable
+  - Multiple concurrent reservations: A player at 3 tables has 3 separate holds,
+    exercising the allocation tracking thoroughly
+
+  # ==========================================================================
+  # Player Registration
+  # ==========================================================================
+  # Players must register before participating. Registration captures identity
+  # and distinguishes human players from AI bots (for fair play tracking).
 
   Scenario: Register a new human player
     Given no prior events for the player aggregate
@@ -22,7 +54,12 @@ Feature: Player aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "already exists"
 
-  # --- DepositFunds scenarios ---
+  # ==========================================================================
+  # Deposits - Adding Funds to Bankroll
+  # ==========================================================================
+  # Deposits increase the player's bankroll. The full amount becomes available
+  # for table buy-ins or withdrawals. Deposits are always allowed for registered
+  # players (no upper limit by default).
 
   Scenario: Deposit funds to bankroll
     Given a PlayerRegistered event for "Alice"
@@ -50,7 +87,12 @@ Feature: Player aggregate logic
     Then the command fails with status "INVALID_ARGUMENT"
     And the error message contains "positive"
 
-  # --- WithdrawFunds scenarios ---
+  # ==========================================================================
+  # Withdrawals - Removing Funds from Bankroll
+  # ==========================================================================
+  # Withdrawals remove funds from the player's bankroll. Only AVAILABLE funds
+  # can be withdrawn - reserved funds (chips at tables) are locked until
+  # the player leaves the table. This prevents mid-session cashouts.
 
   Scenario: Withdraw funds from bankroll
     Given a PlayerRegistered event for "Alice"
@@ -75,7 +117,13 @@ Feature: Player aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "insufficient"
 
-  # --- ReserveFunds scenarios ---
+  # ==========================================================================
+  # Fund Reservation - Locking Funds for Table Buy-ins
+  # ==========================================================================
+  # When a player joins a table, funds are RESERVED (not spent). Reserved
+  # funds are locked against withdrawal but still belong to the player.
+  # This two-phase pattern (reserve → release) enables saga compensation:
+  # if the table join fails, the reservation is released atomically.
 
   Scenario: Reserve funds for table buy-in
     Given a PlayerRegistered event for "Alice"
@@ -100,7 +148,12 @@ Feature: Player aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "already reserved for this table"
 
-  # --- ReleaseFunds scenarios ---
+  # ==========================================================================
+  # Fund Release - Returning Reserved Funds
+  # ==========================================================================
+  # When a player leaves a table, their stack (remaining chips) is released
+  # back to available balance. The release amount may differ from reservation
+  # if the player won or lost chips during play.
 
   Scenario: Release reserved funds back to bankroll
     Given a PlayerRegistered event for "Alice"
@@ -118,7 +171,11 @@ Feature: Player aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "No funds reserved"
 
-  # --- State reconstruction scenarios ---
+  # ==========================================================================
+  # State Reconstruction
+  # ==========================================================================
+  # Player state is rebuilt by replaying all events in order. This verifies
+  # that the event sequence correctly captures the full financial history.
 
   Scenario: Rebuild state with deposits and reservations
     Given a PlayerRegistered event for "Alice"

@@ -2,11 +2,18 @@
 //!
 //! Uses sqlx with Postgres driver connecting to immudb's pgsql server.
 //! Queries built with sea_query for type-safe SQL generation.
+//!
+//! # Simple Query Mode
+//!
+//! immudb's pgsql server only supports simple query mode - it does not support
+//! the extended query protocol (prepared statements). All queries must be
+//! executed using `raw_sql()` to avoid Parse/Bind/Execute messages.
 
 use async_trait::async_trait;
+use hex;
 use prost::Message;
-use sea_query::{Expr, Order, PostgresQueryBuilder, Query};
-use sqlx::{PgPool, Row};
+use sea_query::{Asterisk, Expr, Order, PostgresQueryBuilder, Query};
+use sqlx::{Executor, PgPool, Row};
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
@@ -14,6 +21,37 @@ use crate::proto::EventPage;
 use crate::storage::helpers::{assemble_event_books, is_main_timeline};
 use crate::storage::schema::Events;
 use crate::storage::{EventStore, Result, StorageError};
+
+/// Decode a BLOB column from immudb.
+///
+/// immudb returns BLOBs as hex-encoded ASCII strings through the pgsql wire
+/// protocol, not as raw bytes. We need to decode the hex string.
+fn decode_blob_column(row: &sqlx::postgres::PgRow, index: usize) -> Result<Vec<u8>> {
+    use sqlx::Row as _;
+    use sqlx::ValueRef;
+
+    // Get the raw column value
+    let value_ref = row.try_get_raw(index)?;
+
+    // Check if it's null
+    if value_ref.is_null() {
+        return Ok(Vec::new());
+    }
+
+    // immudb returns BLOB as hex-encoded ASCII string bytes
+    let hex_bytes = value_ref.as_bytes().map_err(|e| {
+        StorageError::InvalidTimestampFormat(format!("failed to get raw bytes: {}", e))
+    })?;
+
+    // Convert ASCII bytes to string and decode hex
+    let hex_str = std::str::from_utf8(hex_bytes).map_err(|e| {
+        StorageError::InvalidTimestampFormat(format!("invalid UTF-8 in hex string: {}", e))
+    })?;
+
+    // Decode the hex string to get the original binary data
+    hex::decode(hex_str)
+        .map_err(|e| StorageError::InvalidTimestampFormat(format!("hex decode error: {}", e)))
+}
 
 /// ImmuDB implementation of EventStore via pgsql wire protocol.
 ///
@@ -47,25 +85,29 @@ impl ImmudbEventStore {
     /// Initialize the schema (create tables and indexes).
     ///
     /// Safe to call multiple times - uses IF NOT EXISTS.
+    /// Uses raw_sql for immudb simple query mode compatibility.
     pub async fn init_schema(&self) -> Result<()> {
-        sqlx::query(super::schema::CREATE_EVENTS_TABLE)
-            .execute(&self.pool)
+        self.pool
+            .execute(sqlx::raw_sql(super::schema::CREATE_EVENTS_TABLE))
             .await?;
 
         // Note: immudb requires indexes on empty tables, so these may fail
         // if table already has data. Using IF NOT EXISTS to handle gracefully.
-        let _ = sqlx::query(super::schema::CREATE_CORRELATION_INDEX)
-            .execute(&self.pool)
+        let _ = self
+            .pool
+            .execute(sqlx::raw_sql(super::schema::CREATE_CORRELATION_INDEX))
             .await;
 
-        let _ = sqlx::query(super::schema::CREATE_DOMAIN_ROOT_INDEX)
-            .execute(&self.pool)
+        let _ = self
+            .pool
+            .execute(sqlx::raw_sql(super::schema::CREATE_DOMAIN_ROOT_INDEX))
             .await;
 
         Ok(())
     }
 
     /// Query events for a specific edition.
+    /// Uses raw_sql for immudb simple query mode compatibility.
     async fn query_edition_events(
         &self,
         domain: &str,
@@ -83,11 +125,13 @@ impl ImmudbEventStore {
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
-            let event_data: Vec<u8> = row.get("event_data");
+            // Use index 0 since raw_sql doesn't reliably support column names
+            // immudb returns BLOBs as hex strings through pgsql wire protocol
+            let event_data = decode_blob_column(&row, 0)?;
             let event = EventPage::decode(event_data.as_slice())?;
             events.push(event);
         }
@@ -96,6 +140,7 @@ impl ImmudbEventStore {
     }
 
     /// Get minimum sequence from edition events (implicit divergence point).
+    /// Uses raw_sql for immudb simple query mode compatibility.
     async fn get_edition_min_sequence(
         &self,
         domain: &str,
@@ -110,18 +155,18 @@ impl ImmudbEventStore {
             .and_where(Expr::col(Events::Root).eq(root_str))
             .to_string(PostgresQueryBuilder);
 
-        let row = sqlx::query(&query).fetch_optional(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
-        match row {
-            Some(row) => {
-                let min_seq: Option<i64> = row.get(0);
-                Ok(min_seq.map(|s| s as u32))
-            }
-            None => Ok(None),
+        if rows.is_empty() {
+            return Ok(None);
         }
+
+        let min_seq: Option<i64> = rows[0].get(0);
+        Ok(min_seq.map(|s| s as u32))
     }
 
     /// Query main timeline events up to (but not including) a sequence.
+    /// Uses raw_sql for immudb simple query mode compatibility.
     async fn query_main_events_until(
         &self,
         domain: &str,
@@ -138,11 +183,12 @@ impl ImmudbEventStore {
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
-            let event_data: Vec<u8> = row.get("event_data");
+            // Use index 0 since raw_sql doesn't reliably support column names
+            let event_data = decode_blob_column(&row, 0)?;
             let event = EventPage::decode(event_data.as_slice())?;
             events.push(event);
         }
@@ -202,6 +248,7 @@ impl ImmudbEventStore {
     }
 
     /// Get max sequence number for an aggregate.
+    /// Uses raw_sql for immudb simple query mode compatibility.
     async fn get_max_sequence(
         &self,
         domain: &str,
@@ -216,15 +263,39 @@ impl ImmudbEventStore {
             .and_where(Expr::col(Events::Root).eq(root_str))
             .to_string(PostgresQueryBuilder);
 
-        let row = sqlx::query(&query).fetch_optional(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
-        match row {
-            Some(row) => {
-                let max_seq: Option<i64> = row.get(0);
-                Ok(max_seq.map(|s| s as u32))
-            }
-            None => Ok(None),
+        if rows.is_empty() {
+            return Ok(None);
         }
+
+        // immudb returns 0 instead of NULL for MAX() on empty result sets,
+        // so we need to check if any events actually exist
+        let max_seq: Option<i64> = rows[0].try_get(0).ok().flatten();
+
+        // If we got a value, verify it's not a false 0 from empty result
+        // by checking if the aggregate actually has events
+        if max_seq == Some(0) {
+            // Check if there's actually a sequence 0 event
+            // Note: immudb only supports COUNT(*), not COUNT(column)
+            let count_query = Query::select()
+                .expr(Expr::col(Asterisk).count())
+                .from(Events::Table)
+                .and_where(Expr::col(Events::Edition).eq(edition))
+                .and_where(Expr::col(Events::Domain).eq(domain))
+                .and_where(Expr::col(Events::Root).eq(root_str))
+                .to_string(PostgresQueryBuilder);
+
+            let count_rows = sqlx::raw_sql(&count_query).fetch_all(&self.pool).await?;
+            if !count_rows.is_empty() {
+                let count: i64 = count_rows[0].try_get(0).unwrap_or(0);
+                if count == 0 {
+                    return Ok(None);
+                }
+            }
+        }
+
+        Ok(max_seq.map(|s| s as u32))
     }
 }
 
@@ -263,29 +334,37 @@ impl EventStore for ImmudbEventStore {
             )?;
             let created_at = crate::storage::helpers::parse_timestamp(&event)?;
 
-            let query = Query::insert()
-                .into_table(Events::Table)
-                .columns([
-                    Events::Edition,
-                    Events::Domain,
-                    Events::Root,
-                    Events::Sequence,
-                    Events::CreatedAt,
-                    Events::EventData,
-                    Events::CorrelationId,
-                ])
-                .values_panic([
-                    edition.into(),
-                    domain.into(),
-                    root_str.clone().into(),
-                    sequence.into(),
-                    created_at.into(),
-                    event_data.into(),
-                    correlation_id.into(),
-                ])
-                .to_string(PostgresQueryBuilder);
+            // Format event_data as hex for immudb BLOB type (x'...' format)
+            let event_data_hex = format!("x'{}'", hex::encode(&event_data));
 
-            sqlx::query(&query).execute(&self.pool).await?;
+            // Convert RFC3339 timestamp to simple format for immudb
+            // immudb expects format: YYYY-MM-DD HH:MM:SS (no nanoseconds)
+            let timestamp_simple = created_at
+                .replace('T', " ")
+                .split('+')
+                .next()
+                .unwrap_or(&created_at)
+                .split('.')
+                .next()
+                .unwrap_or(&created_at)
+                .to_string();
+
+            // Build INSERT manually since sea-query doesn't handle immudb BLOB format
+            // Note: immudb requires CAST for string timestamps
+            let query = format!(
+                "INSERT INTO events (edition, domain, root, sequence, created_at, event_data, correlation_id) \
+                 VALUES ('{}', '{}', '{}', {}, CAST('{}' AS TIMESTAMP), {}, '{}')",
+                edition.replace('\'', "''"),
+                domain.replace('\'', "''"),
+                root_str.replace('\'', "''"),
+                sequence,
+                timestamp_simple,
+                event_data_hex,
+                correlation_id.replace('\'', "''")
+            );
+
+            // Use raw_sql for immudb simple query mode compatibility
+            self.pool.execute(sqlx::raw_sql(&query)).await?;
         }
 
         Ok(())
@@ -333,15 +412,15 @@ impl EventStore for ImmudbEventStore {
             .and_where(Expr::col(Events::Domain).eq(domain))
             .and_where(Expr::col(Events::Root).eq(&root_str))
             .and_where(Expr::col(Events::Sequence).gte(from))
-            .and_where(Expr::col(Events::Sequence).lte(to))
+            .and_where(Expr::col(Events::Sequence).lt(to)) // exclusive end [from, to)
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
-            let event_data: Vec<u8> = row.get("event_data");
+            let event_data = decode_blob_column(&row, 0)?; // Use index for raw_sql compatibility
             let event = EventPage::decode(event_data.as_slice())?;
             events.push(event);
         }
@@ -374,11 +453,11 @@ impl EventStore for ImmudbEventStore {
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
-            let event_data: Vec<u8> = row.get("event_data");
+            let event_data = decode_blob_column(&row, 0)?; // Use index for raw_sql compatibility
             let event = EventPage::decode(event_data.as_slice())?;
             events.push(event);
         }
@@ -404,15 +483,16 @@ impl EventStore for ImmudbEventStore {
             .order_by(Events::Sequence, Order::Asc)
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut books_map = std::collections::HashMap::new();
 
         for row in rows {
-            let domain: String = row.get("domain");
-            let edition: String = row.get("edition");
-            let root_str: String = row.get("root");
-            let event_data: Vec<u8> = row.get("event_data");
+            // Columns: Domain(0), Edition(1), Root(2), EventData(3)
+            let domain: String = row.get(0);
+            let edition: String = row.get(1);
+            let root_str: String = row.get(2);
+            let event_data = decode_blob_column(&row, 3)?;
 
             let root = Uuid::parse_str(&root_str)?;
             let event = EventPage::decode(event_data.as_slice())?;
@@ -444,11 +524,11 @@ impl EventStore for ImmudbEventStore {
             .and_where(Expr::col(Events::Domain).eq(domain))
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut roots = Vec::with_capacity(rows.len());
         for row in rows {
-            let root_str: String = row.get("root");
+            let root_str: String = row.get(0); // Root is the only column
             let root = Uuid::parse_str(&root_str)?;
             roots.push(root);
         }
@@ -463,11 +543,11 @@ impl EventStore for ImmudbEventStore {
             .from(Events::Table)
             .to_string(PostgresQueryBuilder);
 
-        let rows = sqlx::query(&query).fetch_all(&self.pool).await?;
+        let rows = sqlx::raw_sql(&query).fetch_all(&self.pool).await?;
 
         let mut domains = Vec::with_capacity(rows.len());
         for row in rows {
-            let domain: String = row.get("domain");
+            let domain: String = row.get(0); // Domain is the only column
             domains.push(domain);
         }
 

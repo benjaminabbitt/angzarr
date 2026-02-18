@@ -101,6 +101,12 @@ Uses `RuntimeBuilder` in-process with real SQLite, real channels, real named pip
 - Location: `tests/standalone_integration/`
 - Scope: Angzarr framework only, not example business domains
 
+Storage backend tests (PostgreSQL, Redis, immudb) use **testcontainers** to automatically provision real databases in Docker containers during test execution. See [docs/testing.md](docs/testing.md) for patterns.
+
+### Writing Documentation
+
+Feature files and READMEs are living documentation. They explain *why*, not *how*. See [docs/documentation-guide.md](docs/documentation-guide.md) for patterns.
+
 ### Acceptance Tests
 
 Test **business behavior** through the full stack. Written in Gherkin, describing what the system does from a business perspective. Exercise real domain logic (cart, order, customer, inventory, fulfillment) through sagas, process managers, and projectors.

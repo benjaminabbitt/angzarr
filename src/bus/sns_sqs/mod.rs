@@ -13,18 +13,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
-use backon::{BackoffBuilder, ExponentialBuilder};
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
+use backon::{BackoffBuilder, ExponentialBuilder};
 use base64::prelude::*;
 use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn, Instrument};
 
-use super::{
-    domain_matches_any, BusError, DeadLetterHandler, DlqConfig, EventBus, EventHandler,
-    FailedMessage, PublishResult, Result,
-};
+use super::{domain_matches_any, BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
 
@@ -36,9 +33,6 @@ const CORRELATION_ID_ATTR: &str = "correlation_id";
 
 /// Message attribute name for aggregate root ID.
 const ROOT_ID_ATTR: &str = "root_id";
-
-/// Message attribute name for retry count.
-const RETRY_COUNT_ATTR: &str = "retry_count";
 
 /// Configuration for AWS SNS/SQS connection.
 #[derive(Clone, Debug)]
@@ -54,8 +48,6 @@ pub struct SnsSqsConfig {
     /// Domains to subscribe to (for consumers).
     /// Empty means all domains (subscribe-side filtering used).
     pub domains: Vec<String>,
-    /// Dead letter queue configuration.
-    pub dlq: DlqConfig,
     /// Visibility timeout in seconds for SQS messages (default: 30).
     pub visibility_timeout_secs: i32,
     /// Max number of messages to receive in one poll (default: 10).
@@ -73,7 +65,6 @@ impl SnsSqsConfig {
             topic_prefix: "angzarr".to_string(),
             subscription_id: None,
             domains: Vec::new(),
-            dlq: DlqConfig::default(),
             visibility_timeout_secs: 30,
             max_messages: 10,
             wait_time_secs: 20,
@@ -88,7 +79,6 @@ impl SnsSqsConfig {
             topic_prefix: "angzarr".to_string(),
             subscription_id: Some(subscription_id.into()),
             domains,
-            dlq: DlqConfig::default(),
             visibility_timeout_secs: 30,
             max_messages: 10,
             wait_time_secs: 20,
@@ -103,7 +93,6 @@ impl SnsSqsConfig {
             topic_prefix: "angzarr".to_string(),
             subscription_id: Some(subscription_id.into()),
             domains: Vec::new(),
-            dlq: DlqConfig::default(),
             visibility_timeout_secs: 30,
             max_messages: 10,
             wait_time_secs: 20,
@@ -128,12 +117,6 @@ impl SnsSqsConfig {
         self
     }
 
-    /// Set custom DLQ configuration.
-    pub fn with_dlq(mut self, dlq: DlqConfig) -> Self {
-        self.dlq = dlq;
-        self
-    }
-
     /// Set visibility timeout in seconds.
     pub fn with_visibility_timeout(mut self, secs: i32) -> Self {
         self.visibility_timeout_secs = secs;
@@ -147,11 +130,6 @@ impl SnsSqsConfig {
         format!("{}-events-{}", self.topic_prefix, sanitized)
     }
 
-    /// Build the DLQ topic name.
-    pub fn dlq_topic(&self) -> String {
-        format!("{}-dlq", self.topic_prefix)
-    }
-
     /// Build the SQS queue name for a domain.
     pub fn queue_for_domain(&self, domain: &str) -> String {
         let sanitized = domain.replace('.', "-");
@@ -160,27 +138,17 @@ impl SnsSqsConfig {
             None => format!("{}-{}", self.topic_prefix, sanitized),
         }
     }
-
-    /// Build the DLQ queue name.
-    pub fn dlq_queue(&self) -> String {
-        match &self.subscription_id {
-            Some(sub_id) => format!("{}-{}-dlq", self.topic_prefix, sub_id),
-            None => format!("{}-dlq", self.topic_prefix),
-        }
-    }
 }
 
 /// AWS SNS/SQS event bus implementation.
 ///
 /// Events are published to SNS topics named `{topic_prefix}-events-{domain}`.
 /// Subscribers use SQS queues with configurable IDs.
-/// Failed messages go to a DLQ queue.
 pub struct SnsSqsEventBus {
     sns: SnsClient,
     sqs: SqsClient,
     config: SnsSqsConfig,
     handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
-    dlq_handlers: Arc<RwLock<Vec<Box<dyn DeadLetterHandler>>>>,
     /// Cache of SNS topic ARNs by domain.
     topic_arns: Arc<RwLock<HashMap<String, String>>>,
     /// Cache of SQS queue URLs by domain.
@@ -194,8 +162,7 @@ impl SnsSqsEventBus {
         let mut aws_config_builder = aws_config::defaults(BehaviorVersion::latest());
 
         if let Some(ref region) = config.region {
-            aws_config_builder =
-                aws_config_builder.region(aws_config::Region::new(region.clone()));
+            aws_config_builder = aws_config_builder.region(aws_config::Region::new(region.clone()));
         }
 
         if let Some(ref endpoint) = config.endpoint_url {
@@ -219,7 +186,6 @@ impl SnsSqsEventBus {
             sqs,
             config,
             handlers: Arc::new(RwLock::new(Vec::new())),
-            dlq_handlers: Arc::new(RwLock::new(Vec::new())),
             topic_arns: Arc::new(RwLock::new(HashMap::new())),
             queue_urls: Arc::new(RwLock::new(HashMap::new())),
         })
@@ -327,7 +293,9 @@ impl SnsSqsEventBus {
             .attributes("RawMessageDelivery", "true")
             .send()
             .await
-            .map_err(|e| BusError::Subscribe(format!("Failed to subscribe queue to topic: {}", e)))?;
+            .map_err(|e| {
+                BusError::Subscribe(format!("Failed to subscribe queue to topic: {}", e))
+            })?;
 
         debug!(queue_arn = %queue_arn, topic_arn = %topic_arn, "Subscribed queue to topic");
         Ok(())
@@ -340,7 +308,7 @@ impl EventBus for SnsSqsEventBus {
     async fn publish(&self, book: Arc<EventBook>) -> Result<PublishResult> {
         let domain = book.domain();
         let root_id = book.root_id_hex().unwrap_or_default();
-        let correlation_id = book.correlation_id.clone();
+        let correlation_id = book.correlation_id().to_string();
 
         let topic_arn = self.get_or_create_topic(domain).await?;
 
@@ -408,129 +376,6 @@ impl EventBus for SnsSqsEventBus {
         Ok(())
     }
 
-    async fn subscribe_dlq(&self, handler: Box<dyn DeadLetterHandler>) -> Result<()> {
-        let mut handlers = self.dlq_handlers.write().await;
-        handlers.push(handler);
-        Ok(())
-    }
-
-    async fn send_to_dlq(&self, message: FailedMessage) -> Result<()> {
-        if !self.config.dlq.enabled {
-            warn!(
-                domain = %message.domain,
-                root_id = %message.root_id,
-                "DLQ disabled, dropping failed message"
-            );
-            return Ok(());
-        }
-
-        let dlq_queue_name = self.config.dlq_queue();
-
-        // Create DLQ queue if needed (idempotent)
-        let result = self
-            .sqs
-            .create_queue()
-            .queue_name(&dlq_queue_name)
-            .send()
-            .await
-            .map_err(|e| BusError::DeadLetterQueue(format!("Failed to create DLQ queue: {}", e)))?;
-
-        let queue_url = result
-            .queue_url()
-            .ok_or_else(|| BusError::DeadLetterQueue("SQS create_queue returned no URL".to_string()))?;
-
-        // Serialize the failed message metadata as JSON
-        let metadata = serde_json::to_string(&message)
-            .map_err(|e| BusError::DeadLetterQueue(format!("Failed to serialize DLQ metadata: {}", e)))?;
-
-        // Build message attributes
-        use aws_sdk_sqs::types::MessageAttributeValue;
-
-        let mut attrs = HashMap::new();
-        attrs.insert(
-            DOMAIN_ATTR.to_string(),
-            MessageAttributeValue::builder()
-                .data_type("String")
-                .string_value(&message.domain)
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-        attrs.insert(
-            CORRELATION_ID_ATTR.to_string(),
-            MessageAttributeValue::builder()
-                .data_type("String")
-                .string_value(&message.correlation_id)
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-        attrs.insert(
-            ROOT_ID_ATTR.to_string(),
-            MessageAttributeValue::builder()
-                .data_type("String")
-                .string_value(&message.root_id)
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-        attrs.insert(
-            "x-angzarr-dlq-metadata".to_string(),
-            MessageAttributeValue::builder()
-                .data_type("String")
-                .string_value(&metadata)
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-        attrs.insert(
-            "x-angzarr-handler".to_string(),
-            MessageAttributeValue::builder()
-                .data_type("String")
-                .string_value(&message.handler_name)
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-        attrs.insert(
-            "x-angzarr-error".to_string(),
-            MessageAttributeValue::builder()
-                .data_type("String")
-                .string_value(&message.error)
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-        attrs.insert(
-            "x-angzarr-attempts".to_string(),
-            MessageAttributeValue::builder()
-                .data_type("Number")
-                .string_value(message.attempt_count.to_string())
-                .build()
-                .map_err(|e| BusError::DeadLetterQueue(format!("Failed to build attribute: {}", e)))?,
-        );
-
-        // Send to DLQ
-        let body = BASE64_STANDARD.encode(&message.payload);
-        self.sqs
-            .send_message()
-            .queue_url(queue_url)
-            .message_body(&body)
-            .set_message_attributes(Some(attrs))
-            .send()
-            .await
-            .map_err(|e| BusError::DeadLetterQueue(format!("Failed to send to DLQ: {}", e)))?;
-
-        info!(
-            domain = %message.domain,
-            root_id = %message.root_id,
-            handler = %message.handler_name,
-            attempts = message.attempt_count,
-            queue = %dlq_queue_name,
-            "Message sent to DLQ queue"
-        );
-
-        Ok(())
-    }
-
-    fn dlq_config(&self) -> DlqConfig {
-        self.config.dlq.clone()
-    }
-
     async fn start_consuming(&self) -> Result<()> {
         let subscription_id = self.config.subscription_id.as_ref().ok_or_else(|| {
             BusError::Subscribe(
@@ -556,7 +401,6 @@ impl EventBus for SnsSqsEventBus {
         }
 
         let handlers = self.handlers.clone();
-        let dlq_handlers = self.dlq_handlers.clone();
         let sqs = self.sqs.clone();
         let config = self.config.clone();
         let queue_urls = self.queue_urls.clone();
@@ -565,9 +409,7 @@ impl EventBus for SnsSqsEventBus {
         // Spawn consumer tasks for each domain's queue
         for domain in domains {
             let handlers = handlers.clone();
-            let dlq_handlers = dlq_handlers.clone();
             let sqs = sqs.clone();
-            let dlq_config = config.dlq.clone();
             let filter_domains = filter_domains.clone();
             let max_messages = config.max_messages;
             let wait_time_secs = config.wait_time_secs;
@@ -656,14 +498,6 @@ impl EventBus for SnsSqsEventBus {
                                     continue;
                                 }
 
-                                // Get retry count
-                                let retry_count: u32 = message
-                                    .message_attributes()
-                                    .and_then(|attrs| attrs.get(RETRY_COUNT_ATTR))
-                                    .and_then(|v| v.string_value())
-                                    .and_then(|s| s.parse().ok())
-                                    .unwrap_or(0);
-
                                 match EventBook::decode(data.as_slice()) {
                                     Ok(book) => {
                                         let consume_span = tracing::info_span!("bus.consume",
@@ -674,33 +508,21 @@ impl EventBus for SnsSqsEventBus {
 
                                         let book = Arc::new(book);
                                         let handlers_ref = &handlers;
-                                        let dlq_handlers_ref = &dlq_handlers;
                                         let book_ref = &book;
 
                                         let success = async {
                                             let handlers_guard = handlers_ref.read().await;
                                             let mut ok = true;
                                             for handler in handlers_guard.iter() {
-                                                if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
+                                                if let Err(e) =
+                                                    handler.handle(Arc::clone(book_ref)).await
+                                                {
                                                     error!(
                                                         domain = %msg_domain,
                                                         error = %e,
                                                         "Handler failed"
                                                     );
                                                     ok = false;
-
-                                                    if retry_count >= dlq_config.max_retries {
-                                                        let failed = FailedMessage::new(
-                                                            book_ref,
-                                                            e.to_string(),
-                                                            "sns_sqs_handler",
-                                                            retry_count,
-                                                        );
-                                                        let dlq_guard = dlq_handlers_ref.read().await;
-                                                        for dlq_handler in dlq_guard.iter() {
-                                                            let _ = dlq_handler.handle_dlq(failed.clone()).await;
-                                                        }
-                                                    }
                                                 }
                                             }
                                             ok
@@ -718,23 +540,8 @@ impl EventBus for SnsSqsEventBus {
                                                     .send()
                                                     .await;
                                             }
-                                        } else if retry_count < dlq_config.max_retries {
-                                            // Let visibility timeout expire for retry
-                                            debug!(
-                                                retry_count = retry_count,
-                                                "Message will be retried after visibility timeout"
-                                            );
-                                        } else {
-                                            // Max retries exceeded, delete
-                                            if let Some(receipt) = message.receipt_handle() {
-                                                let _ = sqs
-                                                    .delete_message()
-                                                    .queue_url(&queue_url)
-                                                    .receipt_handle(receipt)
-                                                    .send()
-                                                    .await;
-                                            }
                                         }
+                                        // On failure, let visibility timeout expire for retry
                                     }
                                     Err(e) => {
                                         error!(error = %e, "Failed to decode EventBook");
@@ -803,9 +610,7 @@ fn sns_inject_trace_context(
 
     let cx = tracing::Span::current().context();
     opentelemetry::global::get_text_map_propagator(|propagator| {
-        struct SnsInjector<'a>(
-            &'a mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>,
-        );
+        struct SnsInjector<'a>(&'a mut HashMap<String, aws_sdk_sns::types::MessageAttributeValue>);
         impl opentelemetry::propagation::Injector for SnsInjector<'_> {
             fn set(&mut self, key: &str, value: String) {
                 if let Ok(attr) = aws_sdk_sns::types::MessageAttributeValue::builder()
@@ -823,17 +628,12 @@ fn sns_inject_trace_context(
 
 /// Extract W3C trace context from SQS message attributes and set as parent on span.
 #[cfg(feature = "otel")]
-fn sqs_extract_trace_context(
-    message: &aws_sdk_sqs::types::Message,
-    span: &tracing::Span,
-) {
+fn sqs_extract_trace_context(message: &aws_sdk_sqs::types::Message, span: &tracing::Span) {
     use tracing_opentelemetry::OpenTelemetrySpanExt;
 
     if let Some(attrs) = message.message_attributes() {
         let parent_cx = opentelemetry::global::get_text_map_propagator(|propagator| {
-            struct SqsExtractor<'a>(
-                &'a HashMap<String, aws_sdk_sqs::types::MessageAttributeValue>,
-            );
+            struct SqsExtractor<'a>(&'a HashMap<String, aws_sdk_sqs::types::MessageAttributeValue>);
             impl opentelemetry::propagation::Extractor for SqsExtractor<'_> {
                 fn get(&self, key: &str) -> Option<&str> {
                     self.0.get(key).and_then(|v| v.string_value())
@@ -878,26 +678,16 @@ mod tests {
     }
 
     #[test]
-    fn test_dlq_queue() {
-        let config = SnsSqsConfig::subscriber("my-sub", vec![]);
-        assert_eq!(config.dlq_queue(), "angzarr-my-sub-dlq");
-    }
-
-    #[test]
     fn test_publisher_config() {
         let config = SnsSqsConfig::publisher();
         assert!(config.subscription_id.is_none());
         assert!(config.domains.is_empty());
-        assert!(config.dlq.enabled);
     }
 
     #[test]
     fn test_subscriber_config() {
         let config = SnsSqsConfig::subscriber("orders-projector", vec!["orders".to_string()]);
-        assert_eq!(
-            config.subscription_id,
-            Some("orders-projector".to_string())
-        );
+        assert_eq!(config.subscription_id, Some("orders-projector".to_string()));
         assert_eq!(config.domains, vec!["orders".to_string()]);
     }
 
@@ -907,6 +697,9 @@ mod tests {
             .with_region("us-west-2")
             .with_endpoint("http://localhost:4566");
         assert_eq!(config.region, Some("us-west-2".to_string()));
-        assert_eq!(config.endpoint_url, Some("http://localhost:4566".to_string()));
+        assert_eq!(
+            config.endpoint_url,
+            Some("http://localhost:4566".to_string())
+        );
     }
 }

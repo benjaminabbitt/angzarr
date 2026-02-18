@@ -282,6 +282,7 @@ pub fn create_command_book(
                 value: command_data,
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }

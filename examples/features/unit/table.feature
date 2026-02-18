@@ -1,7 +1,38 @@
 Feature: Table aggregate logic
-  Tests table aggregate behavior for game session management.
+  The Table aggregate manages a poker table session: configuration, player
+  seating, and hand lifecycle. It's the orchestration layer between players
+  (who have money) and hands (where money changes ownership).
 
-  # --- CreateTable scenarios ---
+  Why this aggregate exists:
+  - Tables have configuration (blinds, limits) that hands inherit
+  - Player seating is table-scoped, not hand-scoped
+  - Dealer button and hand numbering track across multiple hands
+  - Players join/leave tables, not individual hands
+
+  What breaks if this is wrong:
+  - Players could be double-seated at the same table
+  - Hands could start with insufficient players
+  - Dealer button wouldn't advance correctly
+
+  Patterns enabled by this aggregate:
+  - Cross-aggregate coordination: Table emits HandStarted, triggering saga to
+    create Hand aggregate. Same pattern applies to order→fulfillment, auction→bid.
+  - Slot/capacity management: Seats are exclusive resources with validation.
+    Same pattern applies to parking spots, meeting room bookings, flight seats.
+  - Child aggregate lifecycle: Table spawns hands, tracks their completion,
+    updates state. Same pattern applies to project→tasks, tournament→matches.
+
+  Why poker exercises these patterns well:
+  - Seat occupancy is binary and obvious: seat 3 either has a player or doesn't
+  - Hand lifecycle has clear start/end: HandStarted→HandEnded, easy to verify
+  - Configuration inheritance is explicit: blinds flow from table to hand
+  - Concurrent state is visible: 2 players at seats 0,3 while seats 1,2 empty
+
+  # ==========================================================================
+  # Table Creation
+  # ==========================================================================
+  # Tables are created with game configuration. Once created, the table
+  # exists until closed (future feature). Duplicate creation is rejected.
 
   Scenario: Create a Texas Hold'em table
     Given no prior events for the table aggregate
@@ -30,7 +61,12 @@ Feature: Table aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "already exists"
 
-  # --- JoinTable scenarios ---
+  # ==========================================================================
+  # Player Seating
+  # ==========================================================================
+  # Players join with a buy-in (chips for play). The table tracks occupied
+  # seats. Players can request a specific seat or take any available one.
+  # Join failures don't affect the player's bankroll - no funds reserved yet.
 
   Scenario: Player joins table at preferred seat
     Given a TableCreated event for "Main Table"
@@ -73,7 +109,12 @@ Feature: Table aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "Table is full"
 
-  # --- LeaveTable scenarios ---
+  # ==========================================================================
+  # Player Departure
+  # ==========================================================================
+  # Players leave with their remaining stack (may differ from buy-in).
+  # Departure during an active hand is forbidden - the player must wait
+  # for the hand to complete. This prevents mid-hand bailouts.
 
   Scenario: Player leaves table
     Given a TableCreated event for "Main Table"
@@ -97,7 +138,12 @@ Feature: Table aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "not seated"
 
-  # --- StartHand scenarios ---
+  # ==========================================================================
+  # Hand Lifecycle - Start
+  # ==========================================================================
+  # Starting a hand captures the current player stacks and advances the
+  # dealer button. The HandStarted event triggers the hand-table-saga to
+  # deal cards in the hand domain.
 
   Scenario: Start a new hand
     Given a TableCreated event for "Main Table"
@@ -135,7 +181,12 @@ Feature: Table aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "already in progress"
 
-  # --- EndHand scenarios ---
+  # ==========================================================================
+  # Hand Lifecycle - End
+  # ==========================================================================
+  # Ending a hand applies stack changes (wins/losses) to seated players.
+  # The HandEnded event triggers the hand-player-saga to update player
+  # bankrolls in the player domain.
 
   Scenario: End hand and update stacks
     Given a TableCreated event for "Main Table"
@@ -154,7 +205,11 @@ Feature: Table aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "No hand in progress"
 
-  # --- State reconstruction scenarios ---
+  # ==========================================================================
+  # State Reconstruction
+  # ==========================================================================
+  # Table state is rebuilt by replaying events. This verifies that joining,
+  # leaving, and hand events correctly update seated players and table status.
 
   Scenario: Rebuild state with multiple players
     Given a TableCreated event for "Main Table"

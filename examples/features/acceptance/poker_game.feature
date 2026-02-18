@@ -1,6 +1,31 @@
 Feature: Poker Game Flow
-  Tests end-to-end poker game scenarios across player, table, and hand domains.
-  Validates saga orchestration and cross-domain event propagation.
+  End-to-end acceptance tests for the poker example application. These tests
+  exercise the full angzarr stack: aggregates, sagas, process managers, and
+  projectors working together across player, table, and hand domains.
+
+  Why acceptance tests matter:
+  - Unit tests verify individual components; acceptance tests verify integration
+  - These tests run against the deployed system (standalone or Kubernetes)
+  - They validate that cross-domain sagas actually propagate events/commands
+  - They catch configuration and wiring issues that unit tests miss
+
+  Patterns exercised by these acceptance tests:
+  - Multi-aggregate workflows: Player→Table→Hand coordination via sagas/PMs
+  - Event-driven choreography: No central orchestrator - events trigger sagas
+  - Compensation flows: Failed JoinTable triggers FundsReleased
+  - Async event propagation: "within N seconds" assertions handle saga latency
+
+  Why poker provides effective acceptance tests:
+  - Clear business outcomes: "Bob wins $100" is easy to verify
+  - Visible cross-domain effects: player balance changes when hand completes
+  - Deterministic replay: seeded decks make showdown outcomes predictable
+  - Rich edge cases: all-in, side pots, elimination - real complexity
+
+  What these tests demonstrate:
+  - Player lifecycle: registration, deposits, fund reservation
+  - Table lifecycle: creation, player seating, hand orchestration
+  - Hand lifecycle: dealing, betting, community cards, showdown
+  - Saga coordination: HandStarted→CardsDealt, PotAwarded→FundsDeposited
 
   Background:
     Given the poker system is running in standalone mode
@@ -8,6 +33,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Player Registration and Bankroll
   # ===========================================================================
+  # These scenarios verify the player aggregate handles registration and
+  # fund management correctly. Players must have funds to join tables.
 
   @e2e @player
   Scenario: Register player and deposit funds
@@ -19,6 +46,9 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Table Setup and Player Joining
   # ===========================================================================
+  # Tables coordinate player seating and hand orchestration. When players join,
+  # their funds are reserved (via saga to player domain). These tests verify
+  # the cross-domain fund reservation flow works correctly.
 
   @e2e @table
   Scenario: Create table and seat players
@@ -47,6 +77,9 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Hand Lifecycle - Basic Flow
   # ===========================================================================
+  # Hand lifecycle involves multiple aggregates and sagas. StartHand on table
+  # triggers HandStarted, which triggers the table-hand saga to issue DealCards.
+  # These tests verify the saga coordination completes within expected time.
 
   @e2e @hand
   Scenario: Complete heads-up hand with fold
@@ -97,6 +130,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Betting Actions
   # ===========================================================================
+  # Betting tests verify the hand aggregate correctly validates and processes
+  # player actions. The process manager tracks action order and pot totals.
 
   @e2e @betting
   Scenario: Raise and re-raise sequence
@@ -126,6 +161,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Multi-Player Scenarios
   # ===========================================================================
+  # Multi-player scenarios test more complex pot calculations including
+  # side pots when players go all-in for different amounts.
 
   @e2e @multiplayer
   Scenario: Three player hand with one fold
@@ -161,6 +198,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Game Variants
   # ===========================================================================
+  # Different poker variants have different rules (hole cards, community cards,
+  # draw phases). These tests verify variant-specific logic is correct.
 
   @e2e @variant
   Scenario: Five Card Draw with discard
@@ -193,6 +232,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Tournament/Session Scenarios
   # ===========================================================================
+  # Long-running sessions involve multiple hands with stack changes. Player
+  # elimination occurs when stacks reach zero. These test session continuity.
 
   @e2e @tournament
   Scenario: Player elimination
@@ -226,6 +267,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Saga Coordination
   # ===========================================================================
+  # These tests specifically verify saga-mediated cross-domain workflows.
+  # The "within N seconds" assertions allow for async saga processing.
 
   @e2e @saga
   Scenario: HandStarted triggers DealCards via saga
@@ -250,6 +293,8 @@ Feature: Poker Game Flow
   # ===========================================================================
   # Error Handling
   # ===========================================================================
+  # Invalid commands should be rejected with clear error messages. These tests
+  # verify business rule validation works end-to-end.
 
   @e2e @error
   Scenario: Reject action from wrong player

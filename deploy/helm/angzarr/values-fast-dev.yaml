@@ -47,12 +47,11 @@ resources:
     memory: "256Mi"
     cpu: "250m"
 
-# MongoDB storage
+# PostgreSQL storage
 storage:
-  type: mongodb
-  mongodb:
-    uri: "mongodb://angzarr:angzarr@angzarr-mongodb:27017"
-    database: "angzarr"
+  type: postgres
+  postgres:
+    uri: "postgres://angzarr:angzarr@angzarr-postgresql:5432/angzarr"
 
 # AMQP for event bus
 amqp:
@@ -75,27 +74,24 @@ rabbitmq:
       memory: "256Mi"
       cpu: "250m"
 
-# MongoDB subchart
-mongodb:
+# PostgreSQL subchart
+postgresql:
   enabled: true
   auth:
-    rootUsername: "root"
-    rootPassword: "rootpassword"
-    usernames: ["angzarr"]
-    passwords: ["angzarr"]
-    databases: ["angzarr"]
-  persistence:
-    size: 2Gi
-  # Recreate strategy avoids mongod.lock conflicts during rolling updates
-  updateStrategy:
-    type: Recreate
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "50m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
+    postgresPassword: "postgres"
+    username: "angzarr"
+    password: "angzarr"
+    database: "angzarr"
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
 
 # Infrastructure services
 infrastructure:

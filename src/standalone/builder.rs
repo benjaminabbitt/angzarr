@@ -125,14 +125,6 @@ impl RuntimeBuilder {
         self
     }
 
-    /// Use MongoDB storage.
-    pub fn with_mongodb(mut self, uri: impl Into<String>, database: impl Into<String>) -> Self {
-        self.storage.storage_type = StorageType::Mongodb;
-        self.storage.mongodb.uri = uri.into();
-        self.storage.mongodb.database = database.into();
-        self
-    }
-
     /// Use custom storage configuration.
     pub fn with_storage(mut self, config: StorageConfig) -> Self {
         self.storage = config;

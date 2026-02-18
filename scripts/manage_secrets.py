@@ -144,22 +144,6 @@ def generate_credentials(env_override: bool = True) -> dict[str, str]:
         credentials["postgres-password"] = generate_password()
         print("Generated PostgreSQL user password")
 
-    # MongoDB root password
-    if env_override and os.environ.get("MONGODB_ROOT_PASSWORD"):
-        credentials["mongodb-root-password"] = os.environ["MONGODB_ROOT_PASSWORD"]
-        print("Using MONGODB_ROOT_PASSWORD from environment")
-    else:
-        credentials["mongodb-root-password"] = generate_password()
-        print("Generated MongoDB root password")
-
-    # MongoDB user password
-    if env_override and os.environ.get("MONGODB_PASSWORD"):
-        credentials["mongodb-password"] = os.environ["MONGODB_PASSWORD"]
-        print("Using MONGODB_PASSWORD from environment")
-    else:
-        credentials["mongodb-password"] = generate_password()
-        print("Generated MongoDB user password")
-
     # RabbitMQ password
     if env_override and os.environ.get("RABBITMQ_PASSWORD"):
         credentials["rabbitmq-password"] = os.environ["RABBITMQ_PASSWORD"]
@@ -304,18 +288,18 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     )
     print(f"Created RabbitMQ secret in namespace '{config.namespace}'")
 
-    # Create mongodb-credentials secret (format expected by k8s/base/mongodb.yaml)
-    mongodb_creds = {
+    # Create postgres-credentials secret
+    postgres_creds = {
         "username": "angzarr",
-        "password": source_data.get("mongodb-password", ""),
+        "password": source_data.get("postgres-password", ""),
     }
     create_secret(
-        "mongodb-credentials",
+        "postgres-credentials",
         config.namespace,
-        mongodb_creds,
+        postgres_creds,
         force=args.force,
     )
-    print(f"Created MongoDB credentials in namespace '{config.namespace}'")
+    print(f"Created PostgreSQL credentials in namespace '{config.namespace}'")
 
     # Create rabbitmq-credentials secret (format expected by k8s/base/rabbitmq.yaml)
     rabbitmq_creds = {
@@ -356,12 +340,12 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     print(f"Created EventStoreDB credentials in namespace '{config.namespace}'")
 
     # Create main angzarr secrets with connection URIs
-    mongodb_password = source_data.get("mongodb-password", "")
+    postgres_password = source_data.get("postgres-password", "")
     rabbitmq_password = source_data.get("rabbitmq-password", "")
     redis_password = source_data.get("redis-password", "")
     eventstoredb_password = source_data.get("eventstoredb-password", "")
     angzarr_secret = {
-        "mongodb-uri": f"mongodb://angzarr:{mongodb_password}@mongodb-0.mongodb-headless:27017/angzarr?replicaSet=rs0&authSource=admin",
+        "postgres-uri": f"postgres://angzarr:{postgres_password}@angzarr-db-postgresql:5432/angzarr",
         "amqp-url": f"amqp://angzarr:{rabbitmq_password}@rabbitmq:5672",
         "redis-uri": f"redis://:{redis_password}@angzarr-redis-master:6379",
         "eventstoredb-connection-string": f"esdb://admin:{eventstoredb_password}@angzarr-eventstoredb:2113?tls=false",

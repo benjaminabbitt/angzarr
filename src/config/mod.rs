@@ -55,10 +55,6 @@ pub const TOPOLOGY_STORAGE_TYPE_ENV_VAR: &str = "TOPOLOGY_STORAGE_TYPE";
 pub const TOPOLOGY_SQLITE_PATH_ENV_VAR: &str = "TOPOLOGY_SQLITE_PATH";
 /// Environment variable for topology Postgres URI.
 pub const TOPOLOGY_POSTGRES_URI_ENV_VAR: &str = "TOPOLOGY_POSTGRES_URI";
-/// Environment variable for topology MongoDB URI.
-pub const TOPOLOGY_MONGODB_URI_ENV_VAR: &str = "TOPOLOGY_MONGODB_URI";
-/// Environment variable for topology MongoDB database name.
-pub const TOPOLOGY_MONGODB_DATABASE_ENV_VAR: &str = "TOPOLOGY_MONGODB_DATABASE";
 /// Environment variable for topology Redis URI.
 pub const TOPOLOGY_REDIS_URI_ENV_VAR: &str = "TOPOLOGY_REDIS_URI";
 
@@ -94,6 +90,7 @@ pub const OTEL_SERVICE_NAME_ENV_VAR: &str = "OTEL_SERVICE_NAME";
 use serde::Deserialize;
 
 use crate::bus::MessagingConfig;
+use crate::dlq::DlqConfig;
 use crate::payload_store::PayloadOffloadConfig;
 use crate::services::UpcasterConfig;
 use crate::storage::StorageConfig;
@@ -131,6 +128,8 @@ pub struct Config {
     pub limits: ResourceLimits,
     /// Payload offloading configuration for oversized messages.
     pub payload_offload: PayloadOffloadConfig,
+    /// Dead letter queue configuration.
+    pub dlq: DlqConfig,
 }
 
 impl Config {

@@ -532,6 +532,7 @@ impl CommandBuilder {
                 sequence: self.sequence.unwrap_or(0),
                 command,
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
+                external_payload: None,
             }],
             saga_origin: None,
         }
@@ -597,6 +598,7 @@ mod tests {
                     value: vec![1, 2, 3],
                 }),
                 merge_strategy: MergeStrategy::MergeCommutative as i32,
+                external_payload: None,
             }],
             saga_origin: None,
         };

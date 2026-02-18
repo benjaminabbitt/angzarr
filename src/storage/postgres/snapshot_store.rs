@@ -48,6 +48,39 @@ impl SnapshotStore for PostgresSnapshotStore {
         }
     }
 
+    async fn get_at_seq(
+        &self,
+        domain: &str,
+        edition: &str,
+        root: Uuid,
+        seq: u32,
+    ) -> Result<Option<Snapshot>> {
+        let root_str = root.to_string();
+
+        let query = Query::select()
+            .column(Snapshots::StateData)
+            .column(Snapshots::Sequence)
+            .from(Snapshots::Table)
+            .and_where(Expr::col(Snapshots::Edition).eq(edition))
+            .and_where(Expr::col(Snapshots::Domain).eq(domain))
+            .and_where(Expr::col(Snapshots::Root).eq(&root_str))
+            .and_where(Expr::col(Snapshots::Sequence).lte(seq))
+            .order_by(Snapshots::Sequence, sea_query::Order::Desc)
+            .limit(1)
+            .to_string(PostgresQueryBuilder);
+
+        let row = sqlx::query(&query).fetch_optional(&self.pool).await?;
+
+        match row {
+            Some(row) => {
+                let state_data: Vec<u8> = row.get("state_data");
+                let snapshot = Snapshot::decode(state_data.as_slice())?;
+                Ok(Some(snapshot))
+            }
+            None => Ok(None),
+        }
+    }
+
     async fn put(&self, domain: &str, edition: &str, root: Uuid, snapshot: Snapshot) -> Result<()> {
         let root_str = root.to_string();
         let state_data = snapshot.encode_to_vec();

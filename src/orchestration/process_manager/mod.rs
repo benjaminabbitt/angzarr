@@ -15,7 +15,7 @@ use backon::{BackoffBuilder, ExponentialBuilder};
 use tracing::{debug, error, info, warn};
 
 use crate::bus::BusError;
-use crate::proto::{CommandBook, Cover, EventBook};
+use crate::proto::{CommandBook, Cover, EventBook, SagaCommandOrigin, Uuid as ProtoUuid};
 
 use super::command::{CommandExecutor, CommandOutcome};
 use super::destination::DestinationFetcher;
@@ -110,13 +110,14 @@ pub trait PMContextFactory: Send + Sync {
 /// 3. Fetch destination event books
 /// 4. Handle: PM produces commands + PM events
 /// 5. Persist PM events (retries on sequence conflict)
-/// 6. Execute commands with correlation_id propagation
-#[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_domain, %correlation_id))]
+/// 6. Execute commands with saga_origin stamped for compensation routing
+#[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_name, %pm_domain, %correlation_id))]
 pub async fn orchestrate_pm(
     ctx: &dyn ProcessManagerContext,
     fetcher: &dyn DestinationFetcher,
     executor: &dyn CommandExecutor,
     trigger: &EventBook,
+    pm_name: &str,
     pm_domain: &str,
     correlation_id: &str,
     backoff: ExponentialBuilder,
@@ -221,7 +222,16 @@ pub async fn orchestrate_pm(
 
         // Execute commands produced by process manager
         // PM handler must set correct sequences on commands from destination.next_sequence()
-        execute_pm_commands(ctx, executor, response.commands, correlation_id).await;
+        // saga_origin is stamped so compensation routes back to PM
+        execute_pm_commands(
+            ctx,
+            executor,
+            response.commands,
+            correlation_id,
+            pm_name,
+            pm_domain,
+        )
+        .await;
 
         // Success — exit retry loop
         break;
@@ -242,18 +252,48 @@ pub async fn orchestrate_pm(
     Ok(())
 }
 
-/// Execute PM commands with compensation callback on rejection.
+/// Execute PM commands with saga_origin stamped for compensation routing.
 ///
-/// Unlike `shared::execute_commands`, this calls `on_command_rejected` when
-/// commands fail, allowing PMs to record failures in their own state.
+/// Stamps each command with `saga_origin` pointing to the PM itself, so that
+/// if a command is rejected, the compensation Notification routes back to the
+/// PM through the standard aggregate coordinator infrastructure.
+///
+/// PMs are aggregates — they receive Notifications the same way aggregates do.
 async fn execute_pm_commands(
     ctx: &dyn ProcessManagerContext,
     executor: &dyn CommandExecutor,
     mut commands: Vec<CommandBook>,
     correlation_id: &str,
+    pm_name: &str,
+    pm_domain: &str,
 ) {
     use super::shared::fill_correlation_id;
     fill_correlation_id(&mut commands, correlation_id);
+
+    // Build PM cover for saga_origin — PM is the triggering aggregate
+    // PM root = correlation_id by design (PM is identified by the workflow it coordinates)
+    let pm_cover = Cover {
+        domain: pm_domain.to_string(),
+        root: Some(ProtoUuid {
+            value: uuid::Uuid::parse_str(correlation_id)
+                .unwrap_or_else(|_| uuid::Uuid::nil())
+                .as_bytes()
+                .to_vec(),
+        }),
+        correlation_id: correlation_id.to_string(),
+        edition: None,
+    };
+
+    // Stamp saga_origin on all PM commands so compensation routes back to PM
+    for cmd in &mut commands {
+        if cmd.saga_origin.is_none() {
+            cmd.saga_origin = Some(SagaCommandOrigin {
+                saga_name: pm_name.to_string(),
+                triggering_aggregate: Some(pm_cover.clone()),
+                triggering_event_sequence: 0,
+            });
+        }
+    }
 
     for command_book in commands {
         let cmd_domain = command_book

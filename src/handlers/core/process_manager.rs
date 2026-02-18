@@ -135,6 +135,7 @@ impl EventHandler for ProcessManagerEventHandler {
                     destination_fetcher.as_ref(),
                     command_executor.as_ref(),
                     &book_owned,
+                    &pm_name,
                     &pm_domain,
                     &correlation_id,
                     backoff,

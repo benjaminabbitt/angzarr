@@ -1,7 +1,43 @@
 Feature: Hand aggregate logic
-  Tests hand aggregate behavior for poker hand lifecycle.
+  The Hand aggregate manages a single poker hand: dealing, betting rounds,
+  community cards, and showdown. Each hand is an isolated consistency
+  boundary with its own event stream.
 
-  # --- DealCards scenarios ---
+  Why this aggregate exists:
+  - Hands have complex, well-defined state machines (phases, betting rounds)
+  - Hand-level events (ActionTaken, CardsDealt) are high-frequency
+  - Hand logic is game-variant-specific (Hold'em vs Omaha vs Draw)
+  - Separating from table enables parallel hand processing (multi-table)
+
+  What breaks if this is wrong:
+  - Players could act out of turn
+  - Betting amounts could violate minimum raise rules
+  - Community cards could be dealt in wrong phases
+  - Showdown could award pots incorrectly
+
+  Patterns enabled by this aggregate:
+  - State machine enforcement: DEALING→BLINDS→BETTING→FLOP→... Each phase has
+    valid transitions; invalid actions rejected. Same pattern applies to
+    order fulfillment, insurance claims, approval workflows.
+  - Turn-based action tracking: Only one player can act at a time. Same pattern
+    applies to board games, auction rounds, approval chains.
+  - High-frequency event streams: 20+ events per hand exercises snapshot
+    optimization. Same pattern applies to IoT sensors, trading systems.
+  - Variant polymorphism: Same aggregate handles Hold'em/Omaha/Draw with
+    different rules. Same pattern applies to payment methods, shipping carriers.
+
+  Why poker exercises these patterns well:
+  - State transitions are unambiguous: can't deal turn before flop
+  - Turn order is strictly enforced: only position 2 can act when action_on=2
+  - Event frequency is high: BlindPosted, ActionTaken×N, CommunityCardsDealt×3
+  - Rules vary by variant: 2 hole cards (Hold'em) vs 4 (Omaha) vs 5 (Draw)
+
+  # ==========================================================================
+  # Card Dealing
+  # ==========================================================================
+  # Dealing initializes the hand with hole cards for each player. The number
+  # of hole cards depends on game variant (2 for Hold'em, 4 for Omaha, 5 for Draw).
+  # Deterministic seeding enables reproducible tests.
 
   Scenario: Deal Texas Hold'em hand to 2 players
     Given no prior events for the hand aggregate
@@ -62,7 +98,11 @@ Feature: Hand aggregate logic
     Then the command fails with status "INVALID_ARGUMENT"
     And the error message contains "at least 2 players"
 
-  # --- PostBlind scenarios ---
+  # ==========================================================================
+  # Blind Posting
+  # ==========================================================================
+  # Blinds are forced bets that seed the pot and drive action. Small blind
+  # is posted first, then big blind. Short-stacked players post all-in blinds.
 
   Scenario: Post small blind
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
@@ -92,7 +132,12 @@ Feature: Hand aggregate logic
     And the player event has amount 3
     And the player event has player_stack 0
 
-  # --- PlayerAction scenarios ---
+  # ==========================================================================
+  # Player Actions
+  # ==========================================================================
+  # Actions are the core gameplay: fold, check, call, bet, raise, all-in.
+  # Each action has validation rules (can't check when facing a bet, minimum
+  # raise amounts). Invalid actions are rejected, not auto-corrected.
 
   Scenario: Player folds
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
@@ -165,7 +210,12 @@ Feature: Hand aggregate logic
     Then the command fails with status "INVALID_ARGUMENT"
     And the error message contains "at least"
 
-  # --- DealCommunityCards scenarios ---
+  # ==========================================================================
+  # Community Cards
+  # ==========================================================================
+  # Community cards are shared by all players. Hold'em/Omaha have flop (3),
+  # turn (1), river (1). Draw games have no community cards. Dealing community
+  # cards transitions between betting rounds.
 
   Scenario: Deal the flop
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
@@ -204,7 +254,11 @@ Feature: Hand aggregate logic
     Then the command fails with status "INVALID_ARGUMENT"
     And the error message contains "community cards"
 
-  # --- RequestDraw scenarios (Five Card Draw) ---
+  # ==========================================================================
+  # Draw Phase (Five Card Draw)
+  # ==========================================================================
+  # In draw games, players discard and receive new cards. Standing pat means
+  # keeping all cards. Draw is only valid in draw game variants.
 
   Scenario: Player discards and draws cards
     Given a CardsDealt event for FIVE_CARD_DRAW with 2 players
@@ -232,7 +286,11 @@ Feature: Hand aggregate logic
     Then the command fails with status "INVALID_ARGUMENT"
     And the error message contains "not supported"
 
-  # --- RevealCards scenarios ---
+  # ==========================================================================
+  # Showdown - Card Reveal
+  # ==========================================================================
+  # At showdown, remaining players reveal or muck their cards. Revealing
+  # triggers hand evaluation; mucking concedes without showing.
 
   Scenario: Player reveals cards at showdown
     Given a completed betting for TEXAS_HOLDEM with 2 players
@@ -248,7 +306,11 @@ Feature: Hand aggregate logic
     When I handle a RevealCards command for player "player-1" with muck true
     Then the result is a CardsMucked event
 
-  # --- AwardPot scenarios ---
+  # ==========================================================================
+  # Pot Award
+  # ==========================================================================
+  # Pots are awarded after showdown (best hand) or when all but one player
+  # folds. Awarding the pot triggers HandComplete and returns control to table.
 
   Scenario: Award pot to single winner
     Given a completed betting for TEXAS_HOLDEM with 2 players
@@ -264,7 +326,11 @@ Feature: Hand aggregate logic
     Then a HandComplete event is emitted
     And the hand status is "complete"
 
-  # --- Hand evaluation scenarios (test evaluator logic) ---
+  # ==========================================================================
+  # Hand Evaluation Logic
+  # ==========================================================================
+  # Hand ranking (high card through royal flush) determines winners. These
+  # scenarios verify the evaluator correctly ranks hands and compares kickers.
 
   Scenario: Royal flush beats straight flush
     Given a showdown with player hands:
@@ -296,7 +362,11 @@ Feature: Hand aggregate logic
     And player "player-2" has ranking "PAIR"
     And player "player-2" wins
 
-  # --- Handler hand evaluation scenarios (test through RevealCards handler) ---
+  # ==========================================================================
+  # Handler-Level Hand Evaluation
+  # ==========================================================================
+  # These scenarios verify that RevealCards handlers correctly invoke the
+  # evaluator and populate the CardsRevealed event with rankings.
 
   Scenario: Handler detects straight
     Given a hand at showdown with player "player-1" holding "Th 9c" and community "8d 7s 6h 2c 3d"
@@ -364,7 +434,11 @@ Feature: Hand aggregate logic
     Then the result is a CardsRevealed event
     And the revealed ranking is "HIGH_CARD"
 
-  # --- State reconstruction scenarios ---
+  # ==========================================================================
+  # State Reconstruction
+  # ==========================================================================
+  # Hand state includes phase, community cards, player stacks, and who has
+  # folded. These scenarios verify correct state rebuilding from events.
 
   Scenario: Rebuild state after dealing
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500

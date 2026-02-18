@@ -1,11 +1,32 @@
 Feature: Merge Strategy - Concurrency Control
-  The MergeStrategy enum controls how the aggregate coordinator handles sequence conflicts
-  when multiple commands target the same aggregate concurrently.
+  The MergeStrategy enum controls how the aggregate coordinator handles sequence
+  conflicts when multiple commands target the same aggregate concurrently.
 
   Three strategies are available:
   - STRICT: Reject mismatched sequences immediately (optimistic concurrency)
   - COMMUTATIVE: Return retryable error, allowing client to reload and retry
   - AGGREGATE_HANDLES: Bypass coordinator validation, let aggregate decide
+
+  Why different strategies exist:
+  - Not all operations need the same concurrency semantics
+  - Some operations are order-dependent (fund transfers), others are not (counters)
+  - Framework provides the mechanism; business logic chooses the policy
+
+  Patterns enabled by merge strategies:
+  - STRICT enables saga compensation: if the target rejects, the source compensates.
+    Same pattern applies to payment processing, inventory allocation.
+  - COMMUTATIVE enables automatic retry: framework handles reload/retry transparently.
+    Same pattern applies to idempotent operations, eventual consistency scenarios.
+  - AGGREGATE_HANDLES enables CRDT-style operations: counters, sets, last-writer-wins.
+    Same pattern applies to distributed counters, collaborative editing.
+
+  Why poker exercises merge strategy patterns well:
+  - STRICT for fund operations: ReserveFunds must see current balance to prevent
+    over-reserving. Two players can't both reserve the same $500.
+  - COMMUTATIVE for non-critical updates: AddBonusPoints can retry automatically
+    if another operation updated the player concurrently.
+  - AGGREGATE_HANDLES for visit tracking: IncrementVisits doesn't care about
+    current sequence - just add 1 to whatever the current value is.
 
   Background:
     Given an aggregate "player" with initial events:

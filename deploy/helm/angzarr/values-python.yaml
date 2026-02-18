@@ -79,10 +79,7 @@ applicationResources:
 
 # Storage configuration
 storage:
-  type: mongodb
-  mongodb:
-    uri: "mongodb://angzarr:angzarr-dev@angzarr-db-mongodb:27017/angzarr?authSource=angzarr"
-    database: "angzarr"
+  type: postgres
   postgres:
     uri: "postgres://angzarr:angzarr-dev@angzarr-db-postgresql:5432/angzarr"
 
@@ -117,32 +114,6 @@ rabbitmq:
     password: "angzarr-dev"
   persistence:
     size: 1Gi
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-
-mongodb:
-  enabled: true
-  fullnameOverride: "angzarr-db-mongodb"
-  image:
-    registry: public.ecr.aws
-    repository: bitnami/mongodb
-    tag: "8.0"
-  auth:
-    rootUsername: "root"
-    rootPassword: "angzarr-root-dev"
-    usernames: ["angzarr"]
-    passwords: ["angzarr-dev"]
-    databases: ["angzarr"]
-  persistence:
-    size: 2Gi
-  # Recreate strategy avoids mongod.lock conflicts during rolling updates
-  updateStrategy:
-    type: Recreate
   resources:
     requests:
       memory: "128Mi"

@@ -27,7 +27,7 @@ mod tofu "deploy/tofu/justfile"
 # Build the devcontainer image
 [private]
 _build-image:
-    podman build -t {{IMAGE}} -f "{{TOP}}/.devcontainer/Containerfile" "{{TOP}}/.devcontainer"
+    podman build --network=host -t {{IMAGE}} -f "{{TOP}}/.devcontainer/Containerfile" "{{TOP}}/.devcontainer"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
@@ -36,11 +36,36 @@ _container +ARGS: _build-image
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just {{ARGS}}
     else
-        podman run --rm \
+        podman run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
             -w /workspace \
             -e CARGO_HOME=/workspace/.cargo-container \
+            {{IMAGE}} just {{ARGS}}
+    fi
+
+# Run just target in container with podman socket access (for testcontainers)
+[private]
+_container-dind +ARGS: _build-image
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        just {{ARGS}}
+    else
+        # Find podman socket
+        PODMAN_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+        if [ ! -S "$PODMAN_SOCK" ]; then
+            echo "Error: Podman socket not found at $PODMAN_SOCK"
+            echo "Start the podman socket with: systemctl --user start podman.socket"
+            exit 1
+        fi
+        podman run --rm --network=host \
+            -v "{{TOP}}:/workspace:Z" \
+            -v "{{TOP}}/justfile.container:/workspace/justfile:ro" \
+            -v "$PODMAN_SOCK:/run/podman/podman.sock:Z" \
+            -w /workspace \
+            -e CARGO_HOME=/workspace/.cargo-container \
+            -e DOCKER_HOST=unix:///run/podman/podman.sock \
+            -e TESTCONTAINERS_RYUK_DISABLED=true \
             {{IMAGE}} just {{ARGS}}
     fi
 
@@ -86,6 +111,49 @@ lint:
 # Run unit tests
 test:
     just _container test
+
+# Run interface contract tests (SQLite - no containers needed)
+test-interfaces:
+    just _container test-interfaces
+
+# Run interface tests against PostgreSQL (uses testcontainers)
+test-interfaces-postgres:
+    just _container-dind test-interfaces-postgres
+
+# Run interface tests against Redis (uses testcontainers)
+test-interfaces-redis:
+    just _container-dind test-interfaces-redis
+
+# Run interface tests against all backends
+test-interfaces-all:
+    just _container test-interfaces
+    just _container-dind test-interfaces-postgres
+    just _container-dind test-interfaces-redis
+
+# === Event Bus Tests ===
+
+# Run AMQP/RabbitMQ bus tests (uses testcontainers)
+test-bus-amqp:
+    just _container-dind test-bus-amqp
+
+# Run Kafka bus tests (uses testcontainers)
+test-bus-kafka:
+    just _container-dind test-bus-kafka
+
+# Run GCP Pub/Sub bus tests (uses testcontainers)
+test-bus-pubsub:
+    just _container-dind test-bus-pubsub
+
+# Run AWS SNS/SQS bus tests (uses testcontainers)
+test-bus-sns-sqs:
+    just _container-dind test-bus-sns-sqs
+
+# Run all bus tests
+test-bus-all:
+    just _container-dind test-bus-amqp
+    just _container-dind test-bus-kafka
+    just _container-dind test-bus-pubsub
+    just _container-dind test-bus-sns-sqs
 
 # Clean build artifacts
 clean:

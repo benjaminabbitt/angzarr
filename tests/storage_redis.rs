@@ -1,54 +1,89 @@
-//! Redis storage integration tests.
+//! Redis storage integration tests using testcontainers.
 //!
-//! Run with: cargo test --test storage_redis --features redis -- --ignored --nocapture
+//! Run with: cargo test --test storage_redis --features redis -- --nocapture
 //!
-//! Requires: REDIS_URI env var or Redis on localhost:6379
-//!
-//! Note: Tests use unique key prefixes to avoid data conflicts between runs.
+//! These tests spin up Redis in a container using testcontainers-rs.
+//! No manual Redis setup required.
 
 mod storage;
 
-use angzarr::storage::redis::{RedisEventStore, RedisSnapshotStore};
+use std::time::Duration;
 
-fn redis_uri() -> String {
-    std::env::var("REDIS_URI").unwrap_or_else(|_| "redis://localhost:6379".to_string())
+use angzarr::storage::redis::{RedisEventStore, RedisSnapshotStore};
+use testcontainers::{
+    core::{IntoContainerPort, WaitFor},
+    runners::AsyncRunner,
+    GenericImage, ImageExt,
+};
+
+/// Start Redis container.
+///
+/// Returns (container, connection_string) where connection_string is suitable
+/// for Redis connection.
+async fn start_redis() -> (testcontainers::ContainerAsync<GenericImage>, String) {
+    let image = GenericImage::new("redis", "7")
+        .with_exposed_port(6379.tcp())
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
+
+    let container = image
+        .with_startup_timeout(Duration::from_secs(60))
+        .start()
+        .await
+        .expect("Failed to start redis container");
+
+    let host_port = container
+        .get_host_port_ipv4(6379)
+        .await
+        .expect("Failed to get mapped port");
+
+    let host = container
+        .get_host()
+        .await
+        .expect("Failed to get container host");
+
+    let connection_string = format!("redis://{}:{}", host, host_port);
+
+    println!("Redis available at: {}", connection_string);
+
+    (container, connection_string)
 }
 
 fn test_prefix() -> String {
     format!(
         "test_{}",
-        uuid::Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+        uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
     )
 }
 
 #[tokio::test]
-#[ignore = "requires running Redis instance"]
 async fn test_redis_event_store() {
     println!("=== Redis EventStore Tests ===");
-    println!("Connecting to: {}", redis_uri());
+    println!("Starting Redis container...");
 
+    let (_container, connection_string) = start_redis().await;
     let prefix = test_prefix();
     println!("Using test prefix: {}", prefix);
 
-    let store = RedisEventStore::new(&redis_uri(), Some(&prefix))
+    let store = RedisEventStore::new(&connection_string, Some(&prefix))
         .await
         .expect("Failed to connect to Redis");
 
     run_event_store_tests!(&store);
 
     println!("=== All Redis EventStore tests PASSED ===");
+    // Container is dropped here, stopping Redis
 }
 
 #[tokio::test]
-#[ignore = "requires running Redis instance"]
 async fn test_redis_snapshot_store() {
     println!("=== Redis SnapshotStore Tests ===");
-    println!("Connecting to: {}", redis_uri());
+    println!("Starting Redis container...");
 
+    let (_container, connection_string) = start_redis().await;
     let prefix = test_prefix();
     println!("Using test prefix: {}", prefix);
 
-    let store = RedisSnapshotStore::new(&redis_uri(), Some(&prefix))
+    let store = RedisSnapshotStore::new(&connection_string, Some(&prefix))
         .await
         .expect("Failed to connect to Redis");
 

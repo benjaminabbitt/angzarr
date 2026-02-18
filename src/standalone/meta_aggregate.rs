@@ -171,6 +171,7 @@ mod tests {
                         value: buf,
                     }),
                     merge_strategy: MergeStrategy::MergeCommutative as i32,
+                    external_payload: None,
                 }],
                 saga_origin: None,
             }),

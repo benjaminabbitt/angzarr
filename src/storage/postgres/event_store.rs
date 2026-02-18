@@ -42,8 +42,7 @@ impl PostgresEventStore {
         // Use stored procedure for composite read
         // The procedure handles: main timeline query if edition is 'angzarr',
         // or composite query (main + edition) with implicit divergence
-        let query =
-            format!("SELECT event_data FROM get_edition_events_from($1, $2, $3::uuid, $4, NULL)");
+        let query = format!("SELECT event_data FROM get_edition_events_from($1, $2, $3, $4, NULL)");
 
         let rows = sqlx::query(&query)
             .bind(domain)

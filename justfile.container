@@ -24,5 +24,43 @@ lint:
 test:
     cargo test --lib
 
+# === Interface Contract Tests ===
+# These tests verify that all storage backend implementations conform to the same contract.
+# Written in Gherkin/Cucumber for readable, executable specifications.
+
+# Run interface tests against SQLite (in-memory, no containers)
+test-interfaces:
+    cargo test --test interfaces --features sqlite
+
+# Run interface tests against PostgreSQL (requires podman socket)
+test-interfaces-postgres:
+    STORAGE_BACKEND=postgres cargo test --test interfaces --features postgres
+
+# Run interface tests against Redis (requires podman socket)
+test-interfaces-redis:
+    STORAGE_BACKEND=redis cargo test --test interfaces --features redis
+
+# === Event Bus Tests ===
+# These tests verify event bus implementations using testcontainers.
+
+# Run AMQP/RabbitMQ bus tests (requires podman socket)
+test-bus-amqp:
+    cargo test --test bus_amqp --features amqp
+
+# Run Kafka bus tests (requires podman socket)
+test-bus-kafka:
+    cargo test --test bus_kafka --features kafka
+
+# Run GCP Pub/Sub bus tests (requires podman socket)
+test-bus-pubsub:
+    cargo test --test bus_pubsub --features pubsub
+
+# Run AWS SNS/SQS bus tests (requires podman socket)
+test-bus-sns-sqs:
+    cargo test --test bus_sns_sqs --features sns-sqs
+
+# Run all bus tests
+test-bus-all: test-bus-amqp test-bus-kafka test-bus-pubsub test-bus-sns-sqs
+
 clean:
     cargo clean
