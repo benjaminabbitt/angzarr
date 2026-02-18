@@ -85,15 +85,20 @@ Upcasters transform old event versions to current versions when reading from the
 
 ### How It Works
 
+Upcasters run in the **aggregate pod**, alongside your aggregate logic. The coordinator orchestrates the transformation:
+
 ```mermaid
 sequenceDiagram
     participant ES as Event Store
-    participant U as Upcaster
-    participant A as Aggregate
+    participant C as ⍼ Coordinator
+    participant U as Your Upcaster
+    participant A as Your Aggregate
 
-    ES->>U: EventPage (V1)
-    U->>U: Transform
-    U->>A: EventPage (V2)
+    C->>ES: Read EventBook
+    ES->>C: EventPage (V1)
+    C->>U: Transform request
+    U->>C: EventPage (V2)
+    C->>A: Handle command with V2 events
 ```
 
 The stored event remains unchanged (V1). The upcaster transforms it to V2 on read, so your aggregate only sees current-version events.
@@ -270,7 +275,7 @@ Or via environment variables:
 - **Stored events remain unchanged** — immutability preserved
 - **Transformation happens on read** — lazy migration
 - **Chain upcasters** for multi-version jumps (V1 → V2 → V3)
-- **Upcasters run on the client** — same gRPC server as aggregate logic
+- **Upcasters run in the aggregate pod** — same gRPC server as your aggregate
 
 ---
 

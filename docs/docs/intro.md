@@ -84,8 +84,10 @@ flowchart TB
 
     subgraph AggPod[Aggregate Pod]
         AGG[Your Aggregate<br/>Python/Go/Rust/Java/C#/C++]
+        UPC[Your Upcaster<br/>Schema Evolution]
         AGG_COORD[⍼ Sidecar<br/>Business Coordinator]
         AGG <--> |gRPC| AGG_COORD
+        UPC <--> |gRPC| AGG_COORD
     end
 
     subgraph SagaPod[Saga Pod]
@@ -100,12 +102,6 @@ flowchart TB
         PRJ <--> |gRPC| PRJ_COORD
     end
 
-    subgraph UpcPod[Upcaster Pod]
-        UPC[Your Upcaster<br/>Schema Evolution]
-        UPC_COORD[⍼ Sidecar<br/>Upcaster Coordinator]
-        UPC <--> |gRPC| UPC_COORD
-    end
-
     GW --> |Commands| AGG_COORD
     AGG_COORD --> |Events| ES
     AGG_COORD --> |Publish| BUS
@@ -114,8 +110,6 @@ flowchart TB
     SAGA_COORD --> |Commands| AGG_COORD
     PRJ_COORD --> |gRPC| AGG_COORD
     PRJ --> |Write| PRJ_DB
-    UPC_COORD --> |Read V1| ES
-    UPC_COORD --> |Return V2| AGG_COORD
 ```
 
 Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.
