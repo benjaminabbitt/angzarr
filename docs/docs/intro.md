@@ -76,11 +76,9 @@ flowchart TB
         GW[Gateway]
     end
 
-    subgraph Infrastructure
-        ES[(Event Store<br/>PostgreSQL/SQLite)]
-        BUS[Message Bus<br/>RabbitMQ/Kafka]
-        PRJ_DB[(Projection Database)]
-    end
+    ES[(Event Store<br/>PostgreSQL/SQLite)]
+    BUS[Message Bus<br/>RabbitMQ/Kafka]
+    PRJ_DB[(Projection Database)]
 
     subgraph AggPod[Aggregate Pod]
         AGG[Your Aggregate<br/>Python/Go/Rust/Java/C#/C++]
