@@ -27,6 +27,8 @@ pub mod kafka;
 #[cfg(feature = "lossy")]
 pub mod lossy;
 pub mod mock;
+#[cfg(feature = "nats")]
+pub mod nats;
 pub mod offloading;
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub mod outbox;
@@ -48,6 +50,8 @@ pub use kafka::{KafkaEventBus, KafkaEventBusConfig};
 #[cfg(feature = "lossy")]
 pub use lossy::{LossyConfig, LossyEventBus, LossyStats};
 pub use mock::MockEventBus;
+#[cfg(feature = "nats")]
+pub use nats::{NatsBusConfig, NatsEventBus};
 pub use offloading::{OffloadingConfig, OffloadingEventBus};
 #[cfg(feature = "postgres")]
 pub use outbox::{OutboxConfig, PostgresOutboxEventBus, RecoveryTaskHandle};

@@ -36,6 +36,7 @@ fn create_command_with_strategy(
                 value: vec![1, 2, 3],
             }),
             merge_strategy: strategy as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -752,6 +753,7 @@ impl AggregateHandler for StatefulAggregate {
                             value: value.as_bytes().to_vec(),
                         }),
                         created_at: None,
+                        external_payload: None,
                     });
                 } else if cmd_value.starts_with("update_field_b:") {
                     let value = cmd_value.strip_prefix("update_field_b:").unwrap_or("");
@@ -764,6 +766,7 @@ impl AggregateHandler for StatefulAggregate {
                             value: value.as_bytes().to_vec(),
                         }),
                         created_at: None,
+                        external_payload: None,
                     });
                 } else if cmd_value.starts_with("update_both:") {
                     let parts: Vec<&str> = cmd_value
@@ -783,6 +786,7 @@ impl AggregateHandler for StatefulAggregate {
                             value: a_val.as_bytes().to_vec(),
                         }),
                         created_at: None,
+                        external_payload: None,
                     });
                     event_pages.push(EventPage {
                         sequence: Some(event_page::Sequence::Num(
@@ -793,6 +797,7 @@ impl AggregateHandler for StatefulAggregate {
                             value: b_val.as_bytes().to_vec(),
                         }),
                         created_at: None,
+                        external_payload: None,
                     });
                 } else {
                     // Default: echo as-is
@@ -802,6 +807,7 @@ impl AggregateHandler for StatefulAggregate {
                         )),
                         event: cmd_page.command.clone(),
                         created_at: None,
+                        external_payload: None,
                     });
                 }
             }
@@ -839,6 +845,7 @@ fn create_field_a_command(domain: &str, root: Uuid, sequence: u32, value: i32) -
                 value: format!("update_field_a:{}", value).into_bytes(),
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -862,6 +869,7 @@ fn create_field_b_command(domain: &str, root: Uuid, sequence: u32, value: &str) 
                 value: format!("update_field_b:{}", value).into_bytes(),
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }

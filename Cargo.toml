@@ -82,6 +82,7 @@ aws-k8s = ["dynamo", "sns-sqs", "s3", "topology", "otel"]
 # =============================================================================
 amqp = ["dep:lapin", "dep:deadpool-lapin"]
 kafka = ["dep:rdkafka"]
+nats = ["dep:async-nats"]
 pubsub = ["dep:google-cloud-pubsub", "dep:google-cloud-auth", "dep:google-cloud-googleapis"]
 sns-sqs = ["dep:aws-sdk-sns", "dep:aws-sdk-sqs", "dep:aws-config"]
 channel = []  # In-memory event bus, no external deps
@@ -157,6 +158,9 @@ serde_json = "1"
 # Protobuf reflection (for logging projector)
 prost-reflect = { version = "0.14", features = ["serde"] }
 
+# CloudEvents SDK (for cloudevents projector)
+cloudevents-sdk = "0.9"
+
 # Logging/Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -183,6 +187,9 @@ redis = { version = "0.27", features = ["aio", "connection-manager", "tokio-comp
 
 # Kafka (optional)
 rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"], optional = true }
+
+# NATS JetStream (optional)
+async-nats = { version = "0.38", optional = true }
 
 # Google Pub/Sub (optional)
 google-cloud-pubsub = { version = "0.29", optional = true }
@@ -299,6 +306,14 @@ required-features = ["sqlite"]
 [[test]]
 name = "storage_immudb"
 required-features = ["immudb"]
+
+[[test]]
+name = "storage_nats"
+required-features = ["nats"]
+
+[[test]]
+name = "bus_nats"
+required-features = ["nats"]
 
 # === Build Profiles ===
 

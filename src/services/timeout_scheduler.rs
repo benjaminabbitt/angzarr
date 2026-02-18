@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use prost_types::Timestamp;
 use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::bus::EventBus;
 use crate::config::TimeoutConfig;
@@ -93,6 +93,7 @@ impl TimeoutScheduler {
     /// Run the scheduler loop.
     ///
     /// This runs indefinitely, checking for timeouts at the configured interval.
+    #[instrument(name = "timeout.scheduler.run", skip_all, fields(process_type = %self.config.process_type))]
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!(
             process_type = %self.config.process_type,
@@ -148,6 +149,7 @@ impl TimeoutScheduler {
     }
 
     /// Emit a ProcessTimeout event for a stale process.
+    #[instrument(name = "timeout.emit", skip_all, fields(correlation_id = %process.correlation_id, timeout_type = %process.timeout_type))]
     async fn emit_timeout(
         &self,
         process: &StaleProcess,

@@ -106,6 +106,7 @@ impl AggregateHandler for SelectiveFailAggregate {
                 sequence: Some(event_page::Sequence::Num(next_seq)),
                 event: command_book.pages[0].command.clone(),
                 created_at: None,
+                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()

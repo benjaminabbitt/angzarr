@@ -286,6 +286,16 @@ impl AngzarrDeadLetter {
         dlq_topic_for_domain(domain)
     }
 
+    /// Get the reason type for metrics labeling.
+    pub fn reason_type(&self) -> &'static str {
+        match &self.rejection_details {
+            Some(RejectionDetails::SequenceMismatch(_)) => "sequence_mismatch",
+            Some(RejectionDetails::EventProcessingFailed(_)) => "event_processing_failed",
+            Some(RejectionDetails::PayloadRetrievalFailed(_)) => "payload_retrieval_failed",
+            None => "unknown",
+        }
+    }
+
     /// Convert to proto representation for serialization.
     pub fn to_proto(&self) -> ProtoAngzarrDeadLetter {
         let payload = match &self.payload {
@@ -409,14 +419,48 @@ impl ChannelDeadLetterPublisher {
 #[async_trait]
 impl DeadLetterPublisher for ChannelDeadLetterPublisher {
     async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
         info!(
             topic = %dead_letter.topic(),
             reason = %dead_letter.rejection_reason,
             "Publishing to channel DLQ"
         );
-        self.sender
+
+        #[cfg(feature = "otel")]
+        let domain = dead_letter.domain().unwrap_or("unknown").to_string();
+        #[cfg(feature = "otel")]
+        let reason_type = dead_letter.reason_type();
+
+        let result = self
+            .sender
             .send(dead_letter)
-            .map_err(|e| DlqError::PublishFailed(e.to_string()))
+            .map_err(|e| DlqError::PublishFailed(e.to_string()));
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{
+                self, backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
+                DLQ_PUBLISH_TOTAL,
+            };
+            DLQ_PUBLISH_DURATION.record(
+                start.elapsed().as_secs_f64(),
+                &[metrics::backend_attr("channel")],
+            );
+            if result.is_ok() {
+                DLQ_PUBLISH_TOTAL.add(
+                    1,
+                    &[
+                        domain_attr(&domain),
+                        reason_type_attr(reason_type),
+                        backend_attr("channel"),
+                    ],
+                );
+            }
+        }
+
+        result
     }
 }
 
@@ -490,8 +534,13 @@ impl DeadLetterPublisher for AmqpDeadLetterPublisher {
         use lapin::{options::BasicPublishOptions, BasicProperties};
         use prost::Message;
 
-        let domain = dead_letter.domain().unwrap_or("unknown");
-        let routing_key = domain.to_string();
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
+        let domain = dead_letter.domain().unwrap_or("unknown").to_string();
+        let routing_key = domain.clone();
+        #[cfg(feature = "otel")]
+        let reason_type = dead_letter.reason_type();
 
         // Serialize to proto
         let proto = dead_letter.to_proto();
@@ -531,6 +580,23 @@ impl DeadLetterPublisher for AmqpDeadLetterPublisher {
             reason = %dead_letter.rejection_reason,
             "Published to AMQP DLQ"
         );
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{
+                backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
+                DLQ_PUBLISH_TOTAL,
+            };
+            DLQ_PUBLISH_DURATION.record(start.elapsed().as_secs_f64(), &[backend_attr("amqp")]);
+            DLQ_PUBLISH_TOTAL.add(
+                1,
+                &[
+                    domain_attr(&domain),
+                    reason_type_attr(reason_type),
+                    backend_attr("amqp"),
+                ],
+            );
+        }
 
         Ok(())
     }
@@ -587,8 +653,13 @@ impl DeadLetterPublisher for KafkaDeadLetterPublisher {
         use rdkafka::producer::FutureRecord;
         use std::time::Duration;
 
-        let domain = dead_letter.domain().unwrap_or("unknown");
-        let topic = self.topic_for_domain(domain);
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
+        let domain = dead_letter.domain().unwrap_or("unknown").to_string();
+        let topic = self.topic_for_domain(&domain);
+        #[cfg(feature = "otel")]
+        let reason_type = dead_letter.reason_type();
 
         // Use correlation_id as key for ordering
         let key = dead_letter
@@ -614,6 +685,23 @@ impl DeadLetterPublisher for KafkaDeadLetterPublisher {
             reason = %dead_letter.rejection_reason,
             "Published to Kafka DLQ"
         );
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{
+                backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
+                DLQ_PUBLISH_TOTAL,
+            };
+            DLQ_PUBLISH_DURATION.record(start.elapsed().as_secs_f64(), &[backend_attr("kafka")]);
+            DLQ_PUBLISH_TOTAL.add(
+                1,
+                &[
+                    domain_attr(&domain),
+                    reason_type_attr(reason_type),
+                    backend_attr("kafka"),
+                ],
+            );
+        }
 
         Ok(())
     }
@@ -711,8 +799,13 @@ impl DeadLetterPublisher for PubSubDeadLetterPublisher {
         use google_cloud_googleapis::pubsub::v1::PubsubMessage;
         use prost::Message;
 
-        let domain = dead_letter.domain().unwrap_or("unknown");
-        let publisher = self.get_publisher(domain).await?;
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
+        let domain = dead_letter.domain().unwrap_or("unknown").to_string();
+        let publisher = self.get_publisher(&domain).await?;
+        #[cfg(feature = "otel")]
+        let reason_type = dead_letter.reason_type();
 
         // Serialize to proto
         let proto = dead_letter.to_proto();
@@ -726,7 +819,7 @@ impl DeadLetterPublisher for PubSubDeadLetterPublisher {
             .unwrap_or_default();
 
         let mut attributes = std::collections::HashMap::new();
-        attributes.insert("domain".to_string(), domain.to_string());
+        attributes.insert("domain".to_string(), domain.clone());
         attributes.insert("correlation_id".to_string(), correlation_id.clone());
 
         let message = PubsubMessage {
@@ -747,6 +840,23 @@ impl DeadLetterPublisher for PubSubDeadLetterPublisher {
             reason = %dead_letter.rejection_reason,
             "Published to Pub/Sub DLQ"
         );
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{
+                backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
+                DLQ_PUBLISH_TOTAL,
+            };
+            DLQ_PUBLISH_DURATION.record(start.elapsed().as_secs_f64(), &[backend_attr("pubsub")]);
+            DLQ_PUBLISH_TOTAL.add(
+                1,
+                &[
+                    domain_attr(&domain),
+                    reason_type_attr(reason_type),
+                    backend_attr("pubsub"),
+                ],
+            );
+        }
 
         Ok(())
     }
@@ -849,8 +959,13 @@ impl DeadLetterPublisher for SnsSqsDeadLetterPublisher {
         use base64::prelude::*;
         use prost::Message;
 
-        let domain = dead_letter.domain().unwrap_or("unknown");
-        let topic_arn = self.get_or_create_topic(domain).await?;
+        #[cfg(feature = "otel")]
+        let start = std::time::Instant::now();
+
+        let domain = dead_letter.domain().unwrap_or("unknown").to_string();
+        let topic_arn = self.get_or_create_topic(&domain).await?;
+        #[cfg(feature = "otel")]
+        let reason_type = dead_letter.reason_type();
 
         // Serialize to proto, then base64 encode
         let proto = dead_letter.to_proto();
@@ -869,7 +984,7 @@ impl DeadLetterPublisher for SnsSqsDeadLetterPublisher {
             "domain".to_string(),
             MessageAttributeValue::builder()
                 .data_type("String")
-                .string_value(domain)
+                .string_value(&domain)
                 .build()
                 .map_err(|e| {
                     DlqError::PublishFailed(format!("Failed to build attribute: {}", e))
@@ -901,6 +1016,23 @@ impl DeadLetterPublisher for SnsSqsDeadLetterPublisher {
             reason = %dead_letter.rejection_reason,
             "Published to SNS DLQ"
         );
+
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{
+                backend_attr, domain_attr, reason_type_attr, DLQ_PUBLISH_DURATION,
+                DLQ_PUBLISH_TOTAL,
+            };
+            DLQ_PUBLISH_DURATION.record(start.elapsed().as_secs_f64(), &[backend_attr("sns_sqs")]);
+            DLQ_PUBLISH_TOTAL.add(
+                1,
+                &[
+                    domain_attr(&domain),
+                    reason_type_attr(reason_type),
+                    backend_attr("sns_sqs"),
+                ],
+            );
+        }
 
         Ok(())
     }

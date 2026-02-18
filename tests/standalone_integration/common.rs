@@ -74,6 +74,7 @@ impl AggregateHandler for EchoAggregate {
                 sequence: Some(event_page::Sequence::Num(next_seq + i as u32)),
                 event: cmd_page.command.clone(),
                 created_at: None,
+                external_payload: None,
             })
             .collect();
 
@@ -135,6 +136,7 @@ impl AggregateHandler for MultiEventAggregate {
                     value: vec![i as u8],
                 }),
                 created_at: None,
+                external_payload: None,
             })
             .collect();
 
@@ -211,6 +213,7 @@ pub fn create_test_command(domain: &str, root: Uuid, data: &[u8], sequence: u32)
                 value: data.to_vec(),
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         saga_origin: None,
     }
@@ -233,6 +236,7 @@ pub fn create_test_event_book(domain: &str, root: Uuid, sequence: u32) -> EventB
                 value: vec![1, 2, 3],
             }),
             created_at: None,
+            external_payload: None,
         }],
         snapshot: None,
         ..Default::default()

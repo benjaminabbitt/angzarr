@@ -8,6 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use prost::Message;
 use tonic::Status;
+use tracing::instrument;
 
 use crate::orchestration::aggregate::ClientLogic;
 use crate::proto::business_response::Result as BusinessResult;
@@ -40,6 +41,7 @@ impl AggregateHandlerAdapter {
 
 #[async_trait]
 impl ClientLogic for AggregateHandlerAdapter {
+    #[instrument(name = "adapter.aggregate.invoke", skip_all)]
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
         // Check for rejection notifications
         if let Some(ref command_book) = cmd.command {
@@ -96,6 +98,7 @@ impl ProcessManagerHandlerAdapter {
 
 #[async_trait]
 impl ClientLogic for ProcessManagerHandlerAdapter {
+    #[instrument(name = "adapter.pm.invoke", skip_all)]
     async fn invoke(&self, cmd: ContextualCommand) -> Result<BusinessResponse, Status> {
         // PM only accepts Notification commands for compensation
         let command_book = cmd

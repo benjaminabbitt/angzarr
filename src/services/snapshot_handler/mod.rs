@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use tonic::Status;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::proto::{event_page, EventBook, Snapshot, SnapshotRetention};
@@ -45,6 +46,7 @@ pub fn compute_snapshot_sequence(event_book: &EventBook) -> u32 {
 ///
 /// # Returns
 /// Ok(()) on success, or a Status error if persistence fails
+#[instrument(name = "snapshot.persist", skip_all, fields(%domain, %root_uuid))]
 pub async fn persist_snapshot_if_present(
     snapshot_store: &Arc<dyn SnapshotStore>,
     event_book: &EventBook,

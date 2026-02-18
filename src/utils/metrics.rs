@@ -111,6 +111,27 @@ pub static PROJECTOR_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 });
 
 // ============================================================================
+// Dead Letter Queue
+// ============================================================================
+
+/// Total DLQ publish operations.
+pub static DLQ_PUBLISH_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("angzarr.dlq.publish.total")
+        .with_description("Total DLQ publish operations")
+        .build()
+});
+
+/// Duration of DLQ publish operations.
+pub static DLQ_PUBLISH_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("angzarr.dlq.publish.duration")
+        .with_description("DLQ publish duration")
+        .with_unit("s")
+        .build()
+});
+
+// ============================================================================
 // Helper
 // ============================================================================
 
@@ -137,4 +158,14 @@ pub fn component_attr(component: &str) -> KeyValue {
 /// Create a name label (specific component instance name).
 pub fn name_attr(name: &str) -> KeyValue {
     KeyValue::new("name", name.to_string())
+}
+
+/// Create a reason_type label for DLQ entries.
+pub fn reason_type_attr(reason_type: &str) -> KeyValue {
+    KeyValue::new("reason_type", reason_type.to_string())
+}
+
+/// Create a backend label for DLQ entries.
+pub fn backend_attr(backend: &str) -> KeyValue {
+    KeyValue::new("backend", backend.to_string())
 }

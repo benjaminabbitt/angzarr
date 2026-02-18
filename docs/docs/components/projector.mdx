@@ -294,7 +294,25 @@ The framework manages position tracking automatically.
 
 ---
 
+## Framework Projectors
+
+Angzarr provides built-in projectors for common operational needs:
+
+| Projector | Purpose | Output |
+|-----------|---------|--------|
+| **[LogService](/components/framework-projectors#logservice)** | Debug logging | Console |
+| **[EventService](/components/framework-projectors#eventservice)** | Event storage | Database |
+| **[StreamService](/components/framework-projectors#streamservice)** | Real-time streaming | gRPC |
+| **[TopologyProjector](/components/framework-projectors#topologyprojector)** | Component graph | REST/Grafana |
+| **[CloudEvents](/components/cloudevents)** | External publishing | HTTP/Kafka |
+
+See **[Framework Projectors](/components/framework-projectors)** for details.
+
+---
+
 ## Next Steps
 
+- **[CloudEvents](/components/cloudevents)** — Publish events to external systems
+- **[Framework Projectors](/components/framework-projectors)** — Built-in operational projectors
 - **[Process Managers](/components/process-manager)** — Stateful multi-domain coordination
 - **[Testing](/operations/testing)** — Testing projectors with Gherkin

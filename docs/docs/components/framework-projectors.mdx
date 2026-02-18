@@ -1,0 +1,302 @@
+---
+sidebar_position: 7
+---
+
+# Framework Projectors
+
+Angzarr provides several built-in projectors for common operational needs. These are framework-level services that process events without requiring custom business logic.
+
+| Projector | Purpose | Output |
+|-----------|---------|--------|
+| [LogService](#logservice) | Debug logging | Console (stdout) |
+| [EventService](#eventservice) | Event storage | Database (SQL) |
+| [StreamService](#streamservice) | Real-time streaming | gRPC streams |
+| [TopologyProjector](#topologyprojector) | Component graph | REST API (Grafana) |
+| [CloudEventsCoordinator](/components/cloudevents) | External publishing | HTTP/Kafka |
+
+---
+
+## LogService
+
+Pretty-prints events to stdout with optional JSON decoding. Useful for development debugging and monitoring event flow.
+
+### Features
+
+- ANSI color-coded output by event type
+- JSON decoding via prost-reflect (if descriptors provided)
+- Hex dump fallback for unknown types
+
+### Configuration
+
+| Variable | Description |
+|----------|-------------|
+| `DESCRIPTOR_PATH` | Path to `FileDescriptorSet` for JSON decoding |
+
+### Output Example
+
+```
+────────────────────────────────────────────────────────
+orders:abc123de:0000000005
+OrderCreated
+────────────────────────────────────────────────────────
+  {
+    "order_id": "ORD-12345",
+    "customer_id": "CUST-789",
+    "total": 9999
+  }
+```
+
+### Color Coding
+
+| Event Pattern | Color |
+|---------------|-------|
+| `*Created` | Green |
+| `*Completed` | Cyan |
+| `*Cancelled`, `*Failed` | Red |
+| `*Added`, `*Applied` | Yellow |
+| Other | Blue |
+
+### Usage (Rust)
+
+```rust
+use angzarr::handlers::projectors::{LogService, LogServiceHandle};
+
+let service = LogService::new();
+
+// Or with descriptors
+std::env::set_var("DESCRIPTOR_PATH", "/path/to/descriptors.bin");
+let service = LogService::new();
+
+// Use as gRPC service
+let handle = LogServiceHandle(Arc::new(service));
+```
+
+---
+
+## EventService
+
+Stores all events as JSON in a SQL database for querying, debugging, and audit trails.
+
+### Features
+
+- Stores events keyed by `(domain, root_id, sequence)`
+- JSON decoding via prost-reflect
+- Base64 fallback for unknown types
+- Indexes for efficient querying by domain, type, correlation, time
+
+### Database Support
+
+- SQLite (feature: `sqlite`)
+- PostgreSQL (feature: `postgres`)
+
+### Schema
+
+```sql
+CREATE TABLE events (
+    domain TEXT NOT NULL,
+    root_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (domain, root_id, sequence)
+);
+
+-- Indexes
+CREATE INDEX idx_events_domain_type ON events(domain, event_type);
+CREATE INDEX idx_events_correlation ON events(correlation_id);
+CREATE INDEX idx_events_created ON events(created_at);
+```
+
+### Queries
+
+```sql
+-- All events for an aggregate
+SELECT * FROM events
+WHERE domain = 'orders' AND root_id = 'abc123'
+ORDER BY sequence;
+
+-- Events by type
+SELECT * FROM events
+WHERE domain = 'orders' AND event_type = 'OrderCreated'
+ORDER BY created_at DESC
+LIMIT 100;
+
+-- Trace a correlation flow
+SELECT * FROM events
+WHERE correlation_id = 'corr-xyz-789'
+ORDER BY created_at;
+```
+
+### Usage (Rust)
+
+```rust
+use angzarr::handlers::projectors::{EventService, EventServiceHandle, connect_pool};
+
+let pool = connect_pool("sqlite:events.db").await?;
+let service = EventService::new(pool)
+    .load_descriptors("/path/to/descriptors.bin");
+
+service.init().await?;  // Create schema
+
+let handle = EventServiceHandle(Arc::new(service));
+```
+
+---
+
+## StreamService
+
+Streams events in real-time to subscribers filtered by correlation ID. Enables clients to receive events for their specific workflow/transaction.
+
+### Features
+
+- Correlation-based filtering (only events matching subscriber's correlation ID)
+- Multiple subscribers per correlation ID
+- Automatic cleanup when subscribers disconnect
+- Events without matching subscribers are dropped (expected behavior)
+
+### Use Cases
+
+- WebSocket gateways pushing events to browser clients
+- Long-polling APIs waiting for saga completion
+- Real-time dashboards following specific transactions
+
+### gRPC Service
+
+```protobuf
+service EventStreamService {
+    rpc Subscribe(EventStreamFilter) returns (stream EventBook);
+}
+
+message EventStreamFilter {
+    string correlation_id = 1;
+}
+```
+
+### Usage (Rust)
+
+```rust
+use angzarr::handlers::projectors::{StreamService, StreamEventHandler};
+
+let service = StreamService::new();
+
+// Create event handler for bus integration
+let handler = StreamEventHandler::new(&service);
+
+// Service implements EventStreamService gRPC trait
+```
+
+### Client Example
+
+```python
+async def stream_events(correlation_id: str):
+    async with grpc.aio.insecure_channel("localhost:1340") as channel:
+        stub = EventStreamServiceStub(channel)
+        request = EventStreamFilter(correlation_id=correlation_id)
+
+        async for event_book in stub.Subscribe(request):
+            print(f"Received: {event_book.cover.domain}")
+            for page in event_book.pages:
+                print(f"  Event: {page.event.type_url}")
+```
+
+---
+
+## TopologyProjector
+
+Builds a graph of runtime components from their descriptors. Serves the graph via REST API for visualization in Grafana's Node Graph panel.
+
+### Features
+
+- Graph structure from component descriptors (declarative)
+- Metrics from event observation (dynamic)
+- REST API for Grafana integration
+- K8s watcher mode for pod annotation discovery
+
+### Discovery Modes
+
+| Mode | Source | Use Case |
+|------|--------|----------|
+| Event bus | `_angzarr.topology` domain | Legacy, standalone |
+| K8s watcher | Pod annotations | Production K8s |
+
+### REST API
+
+```
+GET /api/v1/topology/nodes
+GET /api/v1/topology/edges
+GET /api/v1/topology/graph  # Combined for Grafana
+```
+
+### Grafana Integration
+
+Configure as JSON API datasource pointing to the topology REST endpoint. The Node Graph panel displays:
+
+- **Nodes**: Components (aggregates, sagas, projectors, PMs)
+- **Edges**: Event/command flow between components
+- **Metrics**: Event counts, last event type, timestamps
+
+### Usage (Rust)
+
+```rust
+use angzarr::handlers::projectors::TopologyProjector;
+use angzarr::handlers::projectors::topology::store::SqliteTopologyStore;
+
+let store = SqliteTopologyStore::new("topology.db").await?;
+let projector = TopologyProjector::new(Arc::new(store), 9099);
+
+projector.init().await?;  // Start REST server
+
+// Register components
+projector.register_components(&descriptors).await?;
+
+// Process events (updates metrics only, not structure)
+projector.process_event(&event_book).await?;
+```
+
+### Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TOPOLOGY_REST_PORT` | REST API port | `9099` |
+| `TOPOLOGY_DB_PATH` | SQLite database path | `topology.db` |
+
+---
+
+## Comparison
+
+| Feature | Log | Event | Stream | Topology | CloudEvents |
+|---------|-----|-------|--------|----------|-------------|
+| **Output** | Console | Database | gRPC | REST | HTTP/Kafka |
+| **Purpose** | Debug | Audit/Query | Real-time | Visualization | Integration |
+| **State** | Stateless | Persistent | In-memory | Persistent | Stateless |
+| **Filtering** | None | SQL queries | Correlation | Component | Client logic |
+| **Production** | Dev only | Yes | Yes | Yes | Yes |
+
+---
+
+## Standalone Mode Integration
+
+In standalone mode, register framework projectors via `RuntimeBuilder`:
+
+```rust
+let mut runtime = RuntimeBuilder::new()
+    .with_sqlite_memory()
+    .register_aggregate("orders", orders_aggregate)
+    // Framework projectors
+    .register_projector(
+        "topology",
+        topology_projector,
+        ProjectorConfig::async_(),
+    )
+    .build()
+    .await?;
+```
+
+---
+
+## Next Steps
+
+- **[CloudEvents](/components/cloudevents)** — Detailed CloudEvents documentation
+- **[Projectors](/components/projector)** — Custom projector patterns

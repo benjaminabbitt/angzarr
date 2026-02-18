@@ -77,10 +77,12 @@ pub trait SagaRetryContext: Send + Sync {
 }
 
 /// State for a retryable saga command execution operation.
+#[cfg_attr(not(feature = "otel"), allow(dead_code))]
 struct SagaOperation<'a> {
     context: &'a dyn SagaRetryContext,
     executor: &'a dyn CommandExecutor,
     fetcher: Option<&'a dyn DestinationFetcher>,
+    saga_name: &'a str,
     correlation_id: &'a str,
     commands: Vec<CommandBook>,
     /// Domains that had sequence conflicts - need fresh fetch on retry.
@@ -134,6 +136,13 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
     }
 
     async fn prepare_for_retry(&mut self, _failure: &Self::Failure) -> Result<(), Self::Failure> {
+        // Record retry metric
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, SAGA_RETRY_TOTAL};
+            SAGA_RETRY_TOTAL.add(1, &[metrics::name_attr(self.saga_name)]);
+        }
+
         // Re-prepare: get fresh destination covers
         let covers = self
             .context
@@ -244,6 +253,7 @@ impl<'a> SagaRetryBuilder<'a> {
             context: self.context,
             executor: self.executor,
             fetcher: self.fetcher,
+            saga_name: self.saga_name,
             correlation_id: self.correlation_id,
             commands: self.commands,
             failed_domains: HashSet::new(),

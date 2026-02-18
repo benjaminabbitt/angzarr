@@ -74,6 +74,7 @@ impl SagaHandler for FulfillmentSaga {
                                 value: event.value.clone(),
                             }),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
+                            external_payload: None,
                         }],
                         ..Default::default()
                     };
@@ -160,6 +161,7 @@ impl SagaHandler for OrdersToInventorySaga {
                                 value: event.value.clone(),
                             }),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
+                            external_payload: None,
                         }],
                         ..Default::default()
                     });
@@ -223,6 +225,7 @@ impl SagaHandler for InventoryToShippingSaga {
                                 value: event.value.clone(),
                             }),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
+                            external_payload: None,
                         }],
                         ..Default::default()
                     });
@@ -721,6 +724,7 @@ async fn test_two_phase_saga_fetches_destinations() {
                                 value: b"reserve".to_vec(),
                             }),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
+                            external_payload: None,
                         }],
                         ..Default::default()
                     }],
@@ -773,6 +777,7 @@ async fn test_two_phase_saga_fetches_destinations() {
                 value: b"product-data".to_vec(),
             }),
             merge_strategy: MergeStrategy::MergeCommutative as i32,
+            external_payload: None,
         }],
         ..Default::default()
     };
@@ -875,6 +880,7 @@ async fn test_two_phase_saga_no_destinations_needed() {
                                 value: b"ship".to_vec(),
                             }),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
+                            external_payload: None,
                         }],
                         ..Default::default()
                     }],
@@ -982,6 +988,7 @@ async fn test_two_phase_saga_noop_returns_empty_commands() {
                                 value: b"data".to_vec(),
                             }),
                             merge_strategy: MergeStrategy::MergeCommutative as i32,
+                            external_payload: None,
                         }],
                         ..Default::default()
                     }],

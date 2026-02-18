@@ -117,6 +117,7 @@ fn make_v1_event(seq: u32, type_url: &str, value: Vec<u8>) -> EventPage {
             type_url: type_url.to_string(),
             value,
         }),
+        external_payload: None,
     }
 }
 
@@ -236,6 +237,7 @@ async fn test_upcaster_integration_events_without_payload() {
         sequence: Some(Sequence::Num(0)),
         created_at: None,
         event: None, // No payload
+        external_payload: None,
     }];
 
     let result = upcaster.upcast("order", events).await.unwrap();

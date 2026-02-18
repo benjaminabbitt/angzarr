@@ -31,6 +31,8 @@ pub mod helpers;
 #[cfg(feature = "immudb")]
 pub mod immudb;
 pub mod mock;
+#[cfg(feature = "nats")]
+pub mod nats;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 #[cfg(feature = "redis")]
@@ -50,6 +52,8 @@ pub use dynamo::{DynamoConfig, DynamoEventStore, DynamoPositionStore, DynamoSnap
 #[cfg(feature = "immudb")]
 pub use immudb::ImmudbEventStore;
 pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
+#[cfg(feature = "nats")]
+pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
 #[cfg(all(feature = "postgres", feature = "topology"))]
 pub use postgres::PostgresTopologyStore;
 #[cfg(feature = "postgres")]
@@ -110,6 +114,10 @@ pub enum StorageError {
 
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+
+    #[cfg(feature = "nats")]
+    #[error("NATS error: {0}")]
+    Nats(String),
 }
 
 // ============================================================================
@@ -126,6 +134,7 @@ pub enum StorageType {
     Redis,
     Bigtable,
     Dynamo,
+    Nats,
 }
 
 /// Storage configuration (discriminated union).
@@ -422,6 +431,16 @@ pub async fn init_storage(
                 )
             }
         }
+        StorageType::Nats => {
+            #[cfg(feature = "nats")]
+            {
+                Err("NATS storage initialization not yet supported via init_storage. Use NatsEventStore::new() and NatsSnapshotStore::new() directly.".into())
+            }
+            #[cfg(not(feature = "nats"))]
+            {
+                Err("NATS support requires the 'nats' feature. Rebuild with --features nats".into())
+            }
+        }
     }
 }
 
@@ -533,6 +552,16 @@ pub async fn init_position_store(
             #[cfg(not(feature = "dynamo"))]
             {
                 Err("DynamoDB position store requires the 'dynamo' feature".into())
+            }
+        }
+        StorageType::Nats => {
+            #[cfg(feature = "nats")]
+            {
+                Err("NATS position store initialization not yet supported via init_position_store. Use NatsPositionStore::new() directly.".into())
+            }
+            #[cfg(not(feature = "nats"))]
+            {
+                Err("NATS support requires the 'nats' feature. Rebuild with --features nats".into())
             }
         }
     }

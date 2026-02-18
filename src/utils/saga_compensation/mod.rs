@@ -235,6 +235,12 @@ pub fn handle_business_response(
                 events = book.pages.len(),
                 "Business provided compensation events"
             );
+            #[cfg(feature = "otel")]
+            {
+                use crate::utils::metrics::{self, SAGA_COMPENSATION_TOTAL};
+                SAGA_COMPENSATION_TOTAL
+                    .add(1, &[metrics::name_attr(&context.saga_origin.saga_name)]);
+            }
             return Ok(CompensationOutcome::Events(book));
         }
         Ok(BusinessResponse {
@@ -315,6 +321,11 @@ fn process_revocation_flags(
     // Emit system revocation event if requested
     if revocation.emit_system_revocation {
         let event_book = build_compensation_failed_event_book(context, &revocation.reason, config);
+        #[cfg(feature = "otel")]
+        {
+            use crate::utils::metrics::{self, SAGA_COMPENSATION_TOTAL};
+            SAGA_COMPENSATION_TOTAL.add(1, &[metrics::name_attr(&context.saga_origin.saga_name)]);
+        }
         return Ok(CompensationOutcome::EmitSystemRevocation(event_book));
     }
 

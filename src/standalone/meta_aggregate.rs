@@ -9,6 +9,7 @@ use prost::Message;
 use prost_types::{Any, Timestamp};
 use std::time::SystemTime;
 use tonic::Status;
+use tracing::instrument;
 
 use crate::proto::{
     ComponentDescriptor, ComponentRegistered, ContextualCommand, Cover, EventBook, EventPage,
@@ -52,6 +53,7 @@ impl AggregateHandler for MetaAggregateHandler {
         }
     }
 
+    #[instrument(name = "meta.handle", skip_all)]
     async fn handle(&self, ctx: ContextualCommand) -> Result<EventBook, Status> {
         let command_book = ctx
             .command

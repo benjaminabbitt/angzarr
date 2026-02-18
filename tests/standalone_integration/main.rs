@@ -4,6 +4,7 @@
 //! Run with: cargo test --test standalone_integration --features sqlite
 #![cfg(feature = "sqlite")]
 
+mod cloudevents;
 mod common;
 mod error;
 mod event_book_repair;

@@ -41,6 +41,7 @@ impl AggregateCoordinatorService for MockAggregateService {
                 sequence: Some(event_page::Sequence::Num(0)),
                 event: cmd.pages.first().and_then(|p| p.command.clone()),
                 created_at: None,
+                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()
@@ -67,6 +68,7 @@ impl AggregateCoordinatorService for MockAggregateService {
                 sequence: Some(event_page::Sequence::Num(0)),
                 event: cmd.pages.first().and_then(|p| p.command.clone()),
                 created_at: None,
+                external_payload: None,
             }],
             snapshot: None,
             ..Default::default()

@@ -23,7 +23,7 @@ use serde::Deserialize;
 use tokio::sync::Mutex;
 use tonic::transport::Channel;
 use tonic::Status;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 
 use crate::config::{UPCASTER_ADDRESS_ENV_VAR, UPCASTER_ENABLED_ENV_VAR};
 use crate::proto::{upcaster_service_client::UpcasterServiceClient, EventPage, UpcastRequest};
@@ -126,6 +126,7 @@ impl Upcaster {
     /// Transform events to current version.
     ///
     /// If upcaster is disabled, returns events unchanged.
+    #[instrument(name = "upcaster.upcast", skip(self, events), fields(%domain, event_count = events.len()))]
     pub async fn upcast(
         &self,
         domain: &str,

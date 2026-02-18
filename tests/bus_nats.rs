@@ -1,0 +1,469 @@
+//! NATS JetStream EventBus integration tests using testcontainers.
+//!
+//! Run with: cargo test --test bus_nats --features nats -- --nocapture
+//!
+//! These tests spin up NATS with JetStream in a container using testcontainers-rs.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use angzarr::bus::nats::NatsEventBus;
+use angzarr::bus::{BusError, EventBus, EventHandler};
+use angzarr::proto::{event_page, Cover, Edition, EventBook, EventPage};
+use angzarr::storage::nats::NatsEventStore;
+use angzarr::storage::EventStore;
+use futures::future::BoxFuture;
+use prost_types::Any;
+use testcontainers::{
+    core::{IntoContainerPort, WaitFor},
+    runners::AsyncRunner,
+    GenericImage, ImageExt,
+};
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+/// Start NATS container with JetStream enabled.
+async fn start_nats() -> (
+    testcontainers::ContainerAsync<GenericImage>,
+    async_nats::Client,
+) {
+    let image = GenericImage::new("nats", "2.10")
+        .with_exposed_port(4222.tcp())
+        .with_wait_for(WaitFor::message_on_stderr(
+            "Listening for client connections",
+        ))
+        .with_cmd(vec!["-js"]); // Enable JetStream
+
+    let container = image
+        .with_startup_timeout(Duration::from_secs(60))
+        .start()
+        .await
+        .expect("Failed to start NATS container");
+
+    let host_port = container
+        .get_host_port_ipv4(4222)
+        .await
+        .expect("Failed to get mapped port");
+
+    let host = container
+        .get_host()
+        .await
+        .expect("Failed to get container host");
+
+    let url = format!("nats://{}:{}", host, host_port);
+    println!("NATS available at: {}", url);
+
+    let client = async_nats::connect(&url)
+        .await
+        .expect("Failed to connect to NATS");
+
+    (container, client)
+}
+
+fn test_prefix() -> String {
+    format!(
+        "test_{}",
+        uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+    )
+}
+
+/// Create a test EventBook for a given domain.
+fn make_event_book(domain: &str) -> EventBook {
+    let root = Uuid::new_v4();
+    EventBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(angzarr::proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: "test-correlation".to_string(),
+            edition: None,
+        }),
+        snapshot: None,
+        pages: vec![EventPage {
+            sequence: Some(event_page::Sequence::Num(0)),
+            created_at: None,
+            event: Some(Any {
+                type_url: format!("type.example/{}Event", domain),
+                value: vec![1, 2, 3],
+            }),
+            external_payload: None,
+        }],
+        next_sequence: 1,
+    }
+}
+
+/// Handler that captures received events.
+struct CapturingHandler {
+    tx: mpsc::Sender<EventBook>,
+}
+
+impl CapturingHandler {
+    fn new(tx: mpsc::Sender<EventBook>) -> Self {
+        Self { tx }
+    }
+}
+
+impl EventHandler for CapturingHandler {
+    fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
+        let tx = self.tx.clone();
+        let book = (*book).clone();
+        Box::pin(async move {
+            tx.send(book)
+                .await
+                .map_err(|e| BusError::Publish(e.to_string()))?;
+            Ok(())
+        })
+    }
+}
+
+#[tokio::test]
+async fn test_publish_subscribe_roundtrip() {
+    println!("=== test_publish_subscribe_roundtrip ===");
+    let (_container, client) = start_nats().await;
+    let prefix = test_prefix();
+
+    let bus = NatsEventBus::new(client, Some(&prefix))
+        .await
+        .expect("Failed to create NATS EventBus");
+
+    let (tx, mut rx) = mpsc::channel(10);
+
+    // Create subscriber for "order" domain
+    let subscriber = bus
+        .create_subscriber("test-sub", Some("order"))
+        .await
+        .expect("Failed to create subscriber");
+
+    subscriber
+        .subscribe(Box::new(CapturingHandler::new(tx)))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber
+        .start_consuming()
+        .await
+        .expect("Failed to start consuming");
+
+    // Give consumer time to start
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish event
+    let book = make_event_book("order");
+    bus.publish(Arc::new(book.clone()))
+        .await
+        .expect("Failed to publish");
+
+    // Wait for event with timeout
+    let received = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("Timeout waiting for event")
+        .expect("Channel closed");
+
+    assert_eq!(received.cover.as_ref().unwrap().domain, "order");
+    println!("  PASSED");
+}
+
+#[tokio::test]
+async fn test_domain_filtering() {
+    println!("=== test_domain_filtering ===");
+    let (_container, client) = start_nats().await;
+    let prefix = test_prefix();
+
+    let bus = NatsEventBus::new(client, Some(&prefix))
+        .await
+        .expect("Failed to create NATS EventBus");
+
+    let (tx, mut rx) = mpsc::channel(10);
+
+    // Subscribe to "order" domain only
+    let subscriber = bus
+        .create_subscriber("filter-test", Some("order"))
+        .await
+        .expect("Failed to create subscriber");
+
+    subscriber
+        .subscribe(Box::new(CapturingHandler::new(tx)))
+        .await
+        .expect("Failed to subscribe");
+
+    subscriber
+        .start_consuming()
+        .await
+        .expect("Failed to start consuming");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish to order - should be received
+    bus.publish(Arc::new(make_event_book("order")))
+        .await
+        .expect("Failed to publish order");
+
+    // Publish to inventory - should NOT be received
+    bus.publish(Arc::new(make_event_book("inventory")))
+        .await
+        .expect("Failed to publish inventory");
+
+    // Should receive only the order event
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("Timeout waiting for order event")
+        .expect("Channel closed");
+
+    assert_eq!(received.cover.as_ref().unwrap().domain, "order");
+
+    // Should NOT receive another event (inventory was filtered)
+    let timeout_result = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await;
+    assert!(
+        timeout_result.is_err(),
+        "Should not receive inventory event"
+    );
+
+    println!("  PASSED");
+}
+
+#[tokio::test]
+async fn test_consumer_group_load_balancing() {
+    println!("=== test_consumer_group_load_balancing ===");
+    let (_container, client) = start_nats().await;
+    let prefix = test_prefix();
+
+    let bus = NatsEventBus::new(client.clone(), Some(&prefix))
+        .await
+        .expect("Failed to create NATS EventBus");
+
+    let (tx1, mut rx1) = mpsc::channel(10);
+    let (tx2, mut rx2) = mpsc::channel(10);
+
+    // Two subscribers with SAME name = consumer group
+    let sub1 = bus
+        .create_subscriber("shared-consumer", Some("order"))
+        .await
+        .expect("Failed to create subscriber 1");
+
+    let sub2 = bus
+        .create_subscriber("shared-consumer", Some("order"))
+        .await
+        .expect("Failed to create subscriber 2");
+
+    sub1.subscribe(Box::new(CapturingHandler::new(tx1)))
+        .await
+        .expect("Failed to subscribe 1");
+    sub2.subscribe(Box::new(CapturingHandler::new(tx2)))
+        .await
+        .expect("Failed to subscribe 2");
+
+    sub1.start_consuming().await.expect("Failed to start 1");
+    sub2.start_consuming().await.expect("Failed to start 2");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Publish 10 messages
+    for _ in 0..10 {
+        bus.publish(Arc::new(make_event_book("order")))
+            .await
+            .expect("Failed to publish");
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Count received by each subscriber
+    let mut count1 = 0;
+    let mut count2 = 0;
+
+    while rx1.try_recv().is_ok() {
+        count1 += 1;
+    }
+    while rx2.try_recv().is_ok() {
+        count2 += 1;
+    }
+
+    let total = count1 + count2;
+    println!(
+        "  Sub1 received: {}, Sub2 received: {}, Total: {}",
+        count1, count2, total
+    );
+
+    assert_eq!(total, 10, "Should receive all 10 messages across consumers");
+    // In a consumer group, messages are distributed. Both should get some.
+    // Note: with only 10 messages, distribution might not be perfectly even.
+    assert!(
+        count1 > 0 && count2 > 0,
+        "Both consumers should receive messages"
+    );
+
+    println!("  PASSED");
+}
+
+/// Create a test EventBook with specific sequence and root.
+fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32) -> EventBook {
+    let pages: Vec<EventPage> = (0..count)
+        .map(|i| EventPage {
+            sequence: Some(event_page::Sequence::Num(first_seq + i)),
+            created_at: None,
+            event: Some(Any {
+                type_url: format!("type.example/{}Event", domain),
+                value: vec![1, 2, 3, (first_seq + i) as u8],
+            }),
+            external_payload: None,
+        })
+        .collect();
+
+    let next_seq = first_seq + count;
+
+    EventBook {
+        cover: Some(Cover {
+            domain: domain.to_string(),
+            root: Some(angzarr::proto::Uuid {
+                value: root.as_bytes().to_vec(),
+            }),
+            correlation_id: "interop-test".to_string(),
+            edition: Some(Edition {
+                name: "angzarr".to_string(),
+                divergences: vec![],
+            }),
+        }),
+        snapshot: None,
+        pages,
+        next_sequence: next_seq,
+    }
+}
+
+/// Create test EventPages for EventStore.add().
+fn make_event_pages(first_seq: u32, count: u32) -> Vec<EventPage> {
+    (0..count)
+        .map(|i| EventPage {
+            sequence: Some(event_page::Sequence::Num(first_seq + i)),
+            created_at: None,
+            event: Some(Any {
+                type_url: "type.example/TestEvent".to_string(),
+                value: vec![10, 20, 30, (first_seq + i) as u8],
+            }),
+            external_payload: None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn test_eventstore_eventbus_interoperability() {
+    println!("=== test_eventstore_eventbus_interoperability ===");
+    let (_container, client) = start_nats().await;
+    let prefix = test_prefix();
+
+    // Create both EventStore and EventBus pointing to same NATS
+    let event_store = NatsEventStore::new(client.clone(), Some(&prefix))
+        .await
+        .expect("Failed to create NatsEventStore");
+
+    let event_bus = NatsEventBus::new(client.clone(), Some(&prefix))
+        .await
+        .expect("Failed to create NatsEventBus");
+
+    let root = Uuid::new_v4();
+    let domain = "interop";
+    let edition = "angzarr";
+
+    // Set up subscriber to capture events
+    let (tx, mut rx) = mpsc::channel(10);
+    let subscriber = event_bus
+        .create_subscriber("interop-test", Some(domain))
+        .await
+        .expect("Failed to create subscriber");
+    subscriber
+        .subscribe(Box::new(CapturingHandler::new(tx)))
+        .await
+        .expect("Failed to subscribe");
+    subscriber
+        .start_consuming()
+        .await
+        .expect("Failed to start consuming");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // === Part 1: Write via EventStore, read via EventBus subscriber ===
+    println!("  Part 1: EventStore.add() -> EventBus subscriber");
+
+    let events = make_event_pages(0, 2);
+    event_store
+        .add(domain, edition, root, events, "interop-test")
+        .await
+        .expect("Failed to add events via EventStore");
+
+    // Should receive via subscriber
+    let received = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("Timeout waiting for event from EventStore")
+        .expect("Channel closed");
+
+    assert_eq!(received.cover.as_ref().unwrap().domain, domain);
+    assert_eq!(received.pages.len(), 2);
+    println!(
+        "    EventBus received {} pages from EventStore write",
+        received.pages.len()
+    );
+
+    // === Part 2: Verify EventStore.get() can read what it wrote ===
+    println!("  Part 2: EventStore.get() reads EventStore.add() data");
+
+    let stored_events = event_store
+        .get(domain, edition, root)
+        .await
+        .expect("Failed to get events");
+
+    assert_eq!(stored_events.len(), 2);
+    println!(
+        "    EventStore.get() returned {} events",
+        stored_events.len()
+    );
+
+    // === Part 3: Write via EventBus, read via EventStore ===
+    println!("  Part 3: EventBus.publish() -> EventStore.get()");
+
+    let book = make_event_book_with_seq(domain, root, 2, 2); // seq 2, 3
+    event_bus
+        .publish(Arc::new(book))
+        .await
+        .expect("Failed to publish via EventBus");
+
+    // Small delay for NATS to process
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Read all events via EventStore
+    let all_events = event_store
+        .get(domain, edition, root)
+        .await
+        .expect("Failed to get all events");
+
+    assert_eq!(
+        all_events.len(),
+        4,
+        "Should have 4 total events (2 from store + 2 from bus)"
+    );
+    println!(
+        "    EventStore.get() returned {} total events",
+        all_events.len()
+    );
+
+    // Verify sequence ordering
+    for (i, event) in all_events.iter().enumerate() {
+        let seq = match &event.sequence {
+            Some(event_page::Sequence::Num(n)) => *n,
+            _ => panic!("Missing sequence"),
+        };
+        assert_eq!(seq, i as u32, "Events should be in sequence order");
+    }
+    println!("    Events are in correct sequence order (0, 1, 2, 3)");
+
+    // === Part 4: Verify get_next_sequence works with mixed writes ===
+    println!("  Part 4: get_next_sequence() reflects all writes");
+
+    let next_seq = event_store
+        .get_next_sequence(domain, edition, root)
+        .await
+        .expect("Failed to get next sequence");
+
+    assert_eq!(next_seq, 4, "Next sequence should be 4");
+    println!("    get_next_sequence() returned {}", next_seq);
+
+    println!("  PASSED");
+}
