@@ -61,7 +61,7 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 
 | Coordinator | Routes | Purpose |
 |-------------|--------|---------|
-| **BusinessCoordinator** | Commands → Aggregates | Command handling, event persistence |
+| **AggregateCoordinator** | Commands → Aggregates | Command handling, event persistence |
 | **ProjectorCoordinator** | Events → Projectors | Read model updates, side effects |
 | **SagaCoordinator** | Events → Sagas | Cross-domain command orchestration |
 | **ProcessManagerCoordinator** | Events → PMs | Stateful multi-domain workflows |
@@ -69,7 +69,7 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 ```mermaid
 flowchart TB
     Client[External Client]
-    BC[BusinessCoordinator]
+    AC[AggregateCoordinator]
     Agg[Your Aggregate]
     ES[(Event Store)]
     SC[SagaCoordinator]
@@ -79,8 +79,8 @@ flowchart TB
     Cmd[Commands to<br/>Other Aggregates]
     RM[(Read Model<br/>Postgres, Redis, ES)]
 
-    Client --> BC
-    BC --> Agg
+    Client --> AC
+    AC --> Agg
     Agg --> ES
     ES --> SC
     ES --> PC
@@ -149,12 +149,12 @@ When `sync_mode = CASCADE`, the framework orchestrates the complete cascade:
 
 ```mermaid
 flowchart TB
-    Client --> BC[BusinessCoordinator.Handle]
-    BC --> BL[BusinessLogic.Handle → events]
+    Client --> AC[AggregateCoordinator.Handle]
+    AC --> BL[BusinessLogic.Handle → events]
     BL --> Persist[Persist events]
     Persist --> SC[SagaCoordinator.HandleSync]
     SC --> Saga[Saga.HandleSync → commands]
-    Saga -->|Recursive| BC
+    Saga -->|Recursive| AC
     Persist --> PC[ProjectorCoordinator.HandleSync]
     PC --> Resp[CommandResponse<br/>events, projections]
 ```
@@ -188,6 +188,8 @@ Events are correlated via `correlation_id` on `Cover`, allowing clients to track
 | SQLite | Tested | Local development, standalone mode |
 | PostgreSQL | Tested | Production |
 | Redis | Tested | High-throughput scenarios |
+| Bigtable | Tested | GCP deployments, petabyte scale |
+| DynamoDB | Tested | AWS deployments, serverless |
 | immudb | Implemented | Immutable audit requirements |
 
 ### Message Bus Backends

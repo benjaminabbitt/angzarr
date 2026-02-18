@@ -29,6 +29,15 @@ immudb provides **cryptographic verification** for audit-critical event sourcing
 
 ---
 
+## Implementation Note
+
+Angzarr connects to immudb via its **PostgreSQL wire protocol compatibility** layer. This means:
+- Uses the standard `sqlx` PostgreSQL driver
+- Connection strings follow PostgreSQL format
+- Query syntax is PostgreSQL-compatible
+
+---
+
 ## Configuration
 
 ```toml

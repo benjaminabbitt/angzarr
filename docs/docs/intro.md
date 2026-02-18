@@ -83,7 +83,7 @@ flowchart TB
     subgraph AggPod[Aggregate Pod]
         AGG[Your Aggregate<br/>Python/Go/Rust/Java/C#/C++]
         UPC[Your Upcaster<br/>Schema Evolution]
-        AGG_COORD[⍼ Sidecar<br/>Business Coordinator]
+        AGG_COORD[⍼ Sidecar<br/>Aggregate Coordinator]
         AGG <--> |gRPC| AGG_COORD
         UPC <--> |gRPC| AGG_COORD
     end

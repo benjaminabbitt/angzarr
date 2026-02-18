@@ -4,6 +4,10 @@ sidebar_position: 5
 
 # NATS
 
+:::caution Planned Feature
+NATS JetStream support is **planned but not yet implemented**. This page documents the intended design. See [AMQP](/tooling/buses/amqp) or [Kafka](/tooling/buses/kafka) for currently available backends.
+:::
+
 NATS provides **lightweight, high-performance** messaging with simple operations and cloud-native design.
 
 ---
