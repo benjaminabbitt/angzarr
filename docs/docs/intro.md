@@ -136,10 +136,12 @@ Ready to build:
 
 ## Language Support
 
-⍼ Angzarr supports any language with gRPC bindings. First-class examples are provided for:
+**Any language with gRPC support works.** Your business logic communicates with ⍼ Angzarr coordinators via gRPC—if your language can generate code from `.proto` files and make gRPC calls, you can use it. The framework doesn't care what's behind the gRPC endpoint.
 
-| Language | Package | Example |
-|----------|---------|---------|
+**Client libraries simplify integration.** For six languages, we provide client libraries that handle protobuf packing/unpacking, state reconstruction, router registration, and other boilerplate:
+
+| Language | Client Library | Example |
+|----------|----------------|---------|
 | Python | `angzarr-client` | [examples/python/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/python) |
 | Go | `github.com/benjaminabbitt/angzarr/client` | [examples/go/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/go) |
 | Rust | `angzarr-client` | [examples/rust/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/rust) |
@@ -147,7 +149,7 @@ Ready to build:
 | C# | `Angzarr.Client` | [examples/csharp/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/csharp) |
 | C++ | header-only | [examples/cpp/](https://github.com/benjaminabbitt/angzarr/tree/main/examples/cpp) |
 
-All implementations share the same Gherkin specifications, ensuring identical behavior across languages.
+All six implementations share the same Gherkin specifications, ensuring identical behavior across languages.
 
 ---
 
