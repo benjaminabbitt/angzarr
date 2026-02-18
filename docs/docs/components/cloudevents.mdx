@@ -37,87 +37,240 @@ EventBook ──→ [ProjectorHandler] ──→ Projection ──→ [CloudEven
 
 ## Client Usage
 
-### Python
+Two patterns are available for building CloudEvents projectors:
+
+| Pattern | Best For | State Management |
+|---------|----------|------------------|
+| **OO-style** | Simple projectors, familiar class-based design | Instance fields |
+| **Router** | Complex routing, multiple event types, functional style | Explicit state parameter |
+
+Both patterns work in all supported languages. Choose based on team preference.
+
+### OO-Style (Class-Based)
+
+Implement a projector class with handler methods. State lives in instance fields:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
 
 ```python
-from angzarr_client import ProjectorHandler, run_projector_server
-from angzarr_client.proto.angzarr import types_pb2, cloudevents_pb2
+from angzarr_client import CloudEventsProjector, CloudEvent
 from google.protobuf.any_pb2 import Any
 
-def transform_events(event_book: types_pb2.EventBook) -> types_pb2.Projection:
-    cloud_events = []
+class OrderCloudEventsProjector(CloudEventsProjector):
+    """Publishes public order events to external consumers."""
 
-    for page in event_book.pages:
-        if page.event.type_url.endswith("OrderCreated"):
-            order = OrderCreated()
-            page.event.Unpack(order)
+    def __init__(self):
+        super().__init__("prj-orders-cloudevents", "orders")
 
-            # Create filtered public event (remove sensitive fields)
-            public = PublicOrderCreated(
-                order_id=order.order_id,
-                total=order.total,
-                # Omit: customer_email, payment_details, internal_notes
-            )
-            data = Any()
-            data.Pack(public, type_url_prefix="type.googleapis.com/")
+    def on_order_created(self, event: OrderCreated) -> CloudEvent | None:
+        # Filter sensitive fields, return public version
+        public = PublicOrderCreated(
+            order_id=event.order_id,
+            total=event.total,
+            # Omit: customer_email, payment_details
+        )
+        data = Any()
+        data.Pack(public)
+        return CloudEvent(type="com.example.order.created", data=data)
 
-            cloud_events.append(cloudevents_pb2.CloudEvent(
-                type="com.example.order.created",
-                data=data,
-            ))
-
-    # Pack CloudEventsResponse into Projection.projection
-    response = cloudevents_pb2.CloudEventsResponse(events=cloud_events)
-    projection_any = Any()
-    projection_any.Pack(response, type_url_prefix="type.googleapis.com/")
-
-    return types_pb2.Projection(
-        cover=event_book.cover,
-        projector="prj-orders-cloudevents",
-        projection=projection_any,
-    )
-
-handler = ProjectorHandler("prj-orders-cloudevents", "orders").with_handle(transform_events)
-run_projector_server("prj-orders-cloudevents", "50400", handler)
+    def on_order_shipped(self, event: OrderShipped) -> CloudEvent | None:
+        public = PublicOrderShipped(
+            order_id=event.order_id,
+            carrier=event.carrier,
+        )
+        data = Any()
+        data.Pack(public)
+        return CloudEvent(
+            type="com.example.order.shipped",
+            data=data,
+            extensions={"priority": "high"},
+        )
 ```
 
-### Go
+</TabItem>
+<TabItem value="go" label="Go">
 
 ```go
-func (p *OrderCloudEventsProjector) Handle(events *pb.EventBook) (*pb.Projection, error) {
-    var cloudEvents []*pb.CloudEvent
+type OrderCloudEventsProjector struct {
+    angzarr.CloudEventsProjectorBase
+}
 
-    for _, page := range events.Pages {
-        if strings.HasSuffix(page.Event.TypeUrl, "OrderCreated") {
-            order := &examples.OrderCreated{}
-            proto.Unmarshal(page.Event.Value, order)
+func NewOrderCloudEventsProjector() *OrderCloudEventsProjector {
+    p := &OrderCloudEventsProjector{}
+    p.Init("prj-orders-cloudevents", "orders")
+    return p
+}
 
-            // Create filtered public event
-            public := &examples.PublicOrderCreated{
-                OrderId: order.OrderId,
-                Total:   order.Total,
-            }
-            data, _ := anypb.New(public)
-
-            cloudEvents = append(cloudEvents, &pb.CloudEvent{
-                Type: "com.example.order.created",
-                Data: data,
-            })
-        }
+func (p *OrderCloudEventsProjector) OnOrderCreated(event *OrderCreated) *pb.CloudEvent {
+    // Filter sensitive fields, return public version
+    public := &PublicOrderCreated{
+        OrderId: event.OrderId,
+        Total:   event.Total,
     }
+    data, _ := anypb.New(public)
+    return &pb.CloudEvent{
+        Type: "com.example.order.created",
+        Data: data,
+    }
+}
 
-    response := &pb.CloudEventsResponse{Events: cloudEvents}
-    projAny, _ := anypb.New(response)
-
-    return &pb.Projection{
-        Cover:      events.Cover,
-        Projector:  p.Name(),
-        Projection: projAny,
-    }, nil
+func (p *OrderCloudEventsProjector) OnOrderShipped(event *OrderShipped) *pb.CloudEvent {
+    public := &PublicOrderShipped{
+        OrderId: event.OrderId,
+        Carrier: event.Carrier,
+    }
+    data, _ := anypb.New(public)
+    return &pb.CloudEvent{
+        Type:       "com.example.order.shipped",
+        Data:       data,
+        Extensions: map[string]string{"priority": "high"},
+    }
 }
 ```
 
-### Rust
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+pub struct OrderCloudEventsProjector;
+
+impl CloudEventsProjector for OrderCloudEventsProjector {
+    fn name(&self) -> &str { "prj-orders-cloudevents" }
+    fn domain(&self) -> &str { "orders" }
+}
+
+impl OrderCloudEventsProjector {
+    pub fn on_order_created(&self, event: &OrderCreated) -> Option<CloudEvent> {
+        // Filter sensitive fields, return public version
+        let public = PublicOrderCreated {
+            order_id: event.order_id.clone(),
+            total: event.total,
+        };
+        Some(CloudEvent {
+            r#type: "com.example.order.created".into(),
+            data: Some(Any::from_msg(&public).ok()?),
+            ..Default::default()
+        })
+    }
+
+    pub fn on_order_shipped(&self, event: &OrderShipped) -> Option<CloudEvent> {
+        let public = PublicOrderShipped {
+            order_id: event.order_id.clone(),
+            carrier: event.carrier.clone(),
+        };
+        Some(CloudEvent {
+            r#type: "com.example.order.shipped".into(),
+            data: Some(Any::from_msg(&public).ok()?),
+            extensions: [("priority".into(), "high".into())].into(),
+            ..Default::default()
+        })
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+### Router Pattern (Functional)
+
+Register handlers with explicit state passing. Better for complex routing or when you prefer functional composition:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+from angzarr_client import CloudEventsRouter, CloudEvent
+from google.protobuf.any_pb2 import Any
+
+def handle_order_created(event: OrderCreated) -> CloudEvent | None:
+    public = PublicOrderCreated(order_id=event.order_id, total=event.total)
+    data = Any()
+    data.Pack(public)
+    return CloudEvent(type="com.example.order.created", data=data)
+
+def handle_order_shipped(event: OrderShipped) -> CloudEvent | None:
+    public = PublicOrderShipped(order_id=event.order_id, carrier=event.carrier)
+    data = Any()
+    data.Pack(public)
+    return CloudEvent(
+        type="com.example.order.shipped",
+        data=data,
+        extensions={"priority": "high"},
+    )
+
+router = (
+    CloudEventsRouter("prj-orders-cloudevents", "orders")
+    .on("OrderCreated", handle_order_created)
+    .on("OrderShipped", handle_order_shipped)
+)
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+func handleOrderCreated(event *OrderCreated) *pb.CloudEvent {
+    public := &PublicOrderCreated{OrderId: event.OrderId, Total: event.Total}
+    data, _ := anypb.New(public)
+    return &pb.CloudEvent{Type: "com.example.order.created", Data: data}
+}
+
+func handleOrderShipped(event *OrderShipped) *pb.CloudEvent {
+    public := &PublicOrderShipped{OrderId: event.OrderId, Carrier: event.Carrier}
+    data, _ := anypb.New(public)
+    return &pb.CloudEvent{
+        Type:       "com.example.order.shipped",
+        Data:       data,
+        Extensions: map[string]string{"priority": "high"},
+    }
+}
+
+router := angzarr.NewCloudEventsRouter("prj-orders-cloudevents", "orders").
+    On("OrderCreated", handleOrderCreated).
+    On("OrderShipped", handleOrderShipped)
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+fn handle_order_created(event: &OrderCreated) -> Option<CloudEvent> {
+    let public = PublicOrderCreated {
+        order_id: event.order_id.clone(),
+        total: event.total,
+    };
+    Some(CloudEvent {
+        r#type: "com.example.order.created".into(),
+        data: Some(Any::from_msg(&public).ok()?),
+        ..Default::default()
+    })
+}
+
+fn handle_order_shipped(event: &OrderShipped) -> Option<CloudEvent> {
+    let public = PublicOrderShipped {
+        order_id: event.order_id.clone(),
+        carrier: event.carrier.clone(),
+    };
+    Some(CloudEvent {
+        r#type: "com.example.order.shipped".into(),
+        data: Some(Any::from_msg(&public).ok()?),
+        extensions: [("priority".into(), "high".into())].into(),
+        ..Default::default()
+    })
+}
+
+let router = CloudEventsRouter::new("prj-orders-cloudevents", "orders")
+    .on::<OrderCreated>(handle_order_created)
+    .on::<OrderShipped>(handle_order_shipped);
+```
+
+</TabItem>
+</Tabs>
+
+### Raw Handle (Low-Level)
+
+For full control over the projection lifecycle, implement the raw handle method:
 
 ```rust
 async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Projection, Status> {
