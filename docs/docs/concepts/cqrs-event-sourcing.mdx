@@ -249,6 +249,39 @@ PlayerState {
 
 ---
 
+## Event Design Philosophy
+
+### Internal vs External Events
+
+Some frameworks distinguish between "internal" events (implementation details) and "external" events (public API contracts). **⍼ Angzarr rejects this classification at the event level.**
+
+Events are immutable data. Classification as "internal" or "external" is a *usage decision*, not an intrinsic property:
+
+| Approach | Problem |
+|----------|---------|
+| Mark events as internal/external | Classification is frozen. Can't later decide to expose an "internal" event without schema changes. |
+| Separate internal/external event stores | Duplication, synchronization complexity, defeats event sourcing benefits. |
+
+**⍼ Angzarr's approach:** All events are stored as data. What you *do* with them determines visibility:
+
+- **Internal use:** Sagas and projectors within your system consume events directly
+- **External publication:** A projector at the boundary transforms and publishes events to external systems
+
+```
+Internal:  Aggregate → Event Store → Saga → Aggregate
+External:  Aggregate → Event Store → Projector → External API/CloudEvents/Webhook
+```
+
+The projector is the boundary. It can:
+- Filter which events to publish externally
+- Transform event schemas for external consumers
+- Add external envelope formats (CloudEvents, etc.)
+- Version external contracts independently from internal events
+
+This preserves immutability while giving you full control over external contracts.
+
+---
+
 ## Next Steps
 
 - [Aggregates](/components/aggregate) — Command handling and event emission
