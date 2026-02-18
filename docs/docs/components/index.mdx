@@ -275,7 +275,7 @@ Or via environment variables:
 - **Stored events remain unchanged** — immutability preserved
 - **Transformation happens on read** — lazy migration
 - **Chain upcasters** for multi-version jumps (V1 → V2 → V3)
-- **Upcasters run in the aggregate pod** — same gRPC server as your aggregate
+- **Upcasters run in the aggregate pod** — potentially separate gRPC server from your aggregate
 
 ---
 
