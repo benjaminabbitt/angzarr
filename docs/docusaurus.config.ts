@@ -3,13 +3,18 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Angzarr',
+  title: '⍼ Angzarr',
   tagline: 'Polyglot Event Sourcing & CQRS Framework',
   favicon: 'img/favicon.ico',
 
   future: {
     v4: true,
   },
+
+  markdown: {
+    mermaid: true,
+  },
+  themes: ['@docusaurus/theme-mermaid'],
 
   // GitHub Pages deployment
   url: 'https://benjaminabbitt.github.io',
@@ -49,7 +54,7 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Angzarr',
+      title: '⍼ Angzarr',
       items: [
         {
           type: 'docSidebar',

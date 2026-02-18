@@ -5,7 +5,7 @@ slug: /
 
 # Introduction
 
-**Angzarr** is a polyglot CQRS/Event Sourcing framework. You write business logic in your preferred language—Python, Go, Rust, Java, C#, or C++—while the framework handles event persistence, saga coordination, projection management, and all the infrastructure complexity that typically derails CQRS/ES projects.
+**⍼ Angzarr** is a polyglot CQRS/Event Sourcing framework. You write business logic in your preferred language—Python, Go, Rust, Java, C#, or C++—while the framework handles event persistence, saga coordination, projection management, and all the infrastructure complexity that typically derails CQRS/ES projects.
 
 The symbol ⍼ (U+237C, "angzarr") has existed in Unicode since 2002 without a defined purpose. The right angle represents the origin point—your event store. The zigzag arrow represents events cascading through your system. We gave it meaning.
 
@@ -15,7 +15,7 @@ The symbol ⍼ (U+237C, "angzarr") has existed in Unicode since 2002 without a d
 
 CQRS and Event Sourcing deliver real architectural benefits: complete audit history, temporal queries, independent read/write scaling, and natural alignment with domain-driven design. The implementation cost, however, remains steep.
 
-Angzarr's original inspiration was **airline flight network repair after disruption**—when weather or mechanical issues cascade through a schedule, operations teams need to see exactly what happened, why decisions were made, and how to unwind partial recoveries. That domain's requirements (audit, state machines, cross-domain coordination, temporal queries) recur across industries: billing systems, insurance claims, logistics. In the author's experience, roughly **one-third of enterprise projects** exhibit these patterns. Yet most teams can't justify the infrastructure investment.
+⍼ Angzarr's original inspiration was **airline flight network repair after disruption**—when weather or mechanical issues cascade through a schedule, operations teams need to see exactly what happened, why decisions were made, and how to unwind partial recoveries. That domain's requirements (audit, state machines, cross-domain coordination, temporal queries) recur across industries: billing systems, insurance claims, logistics. In the author's experience, roughly **one-third of enterprise projects** exhibit these patterns. Yet most teams can't justify the infrastructure investment.
 
 Teams attempting CQRS/ES consistently face:
 
@@ -26,9 +26,9 @@ Teams attempting CQRS/ES consistently face:
 
 ---
 
-## When Angzarr Fits
+## When ⍼ Angzarr Fits
 
-Angzarr is **not** a do-everything framework. Your domain must fit these constraints:
+⍼ Angzarr is **not** a do-everything framework. Your domain must fit these constraints:
 
 | Requirement | Why It Matters |
 |-------------|----------------|
@@ -44,13 +44,13 @@ Angzarr is **not** a do-everything framework. Your domain must fit these constra
 
 ### The Poker Paradox
 
-Yes, the example domain is a game. Poker works as an *example* because it exercises every pattern—but most games shouldn't use event sourcing in production. The author is developing a board game with angzarr, but primarily because **event logs make game flow understandable during development**, not because it's the optimal production architecture for games.
+Yes, the example domain is a game. Poker works as an *example* because it exercises every pattern—but most games shouldn't use event sourcing in production. The author is developing a board game with ⍼ Angzarr, but primarily because **event logs make game flow understandable during development**, not because it's the optimal production architecture for games.
 
 ---
 
-## The Angzarr Approach
+## The ⍼ Angzarr Approach
 
-Angzarr inverts the typical framework relationship. Rather than providing libraries that applications import, Angzarr provides infrastructure that applications connect to via gRPC.
+⍼ Angzarr inverts the typical framework relationship. Rather than providing libraries that applications import, Angzarr provides infrastructure that applications connect to via gRPC.
 
 | You Define | You Implement | We Handle |
 |------------|---------------|-----------|
@@ -68,22 +68,47 @@ Your business logic receives commands with full event history and emits events. 
 
 ## Architecture Preview
 
-Angzarr models event-sourced aggregates as **books**. An EventBook contains the complete history of an aggregate: its identity (the Cover), an optional Snapshot for efficient replay, and ordered EventPages representing domain events.
+⍼ Angzarr models event-sourced aggregates as **books**. An EventBook contains the complete history of an aggregate: its identity (the Cover), an optional Snapshot for efficient replay, and ordered EventPages representing domain events.
 
-```
-┌─ Pod ────────────────────────────────────────────────────────────────┐
-│  ┌──────────────────────┐      ┌──────────────────────────────────┐ │
-│  │   Your Aggregate     │ gRPC │      Angzarr Sidecar (~8MB)      │ │
-│  │   (any language)     │◄────►│                                  │ │
-│  │                      │      │  • Business Coordinator          │ │
-│  │  Pure domain logic   │      │  • Projector Coordinator         │ │
-│  └──────────────────────┘      │  • Saga Coordinator              │ │
-│                                │  • Event Query                   │ │
-│                                └───────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Client
+        GW[Gateway]
+    end
+
+    subgraph Infrastructure
+        ES[(Event Store<br/>PostgreSQL/SQLite)]
+        BUS[Message Bus<br/>RabbitMQ/Kafka]
+    end
+
+    subgraph AggPod[Aggregate Pod]
+        AGG[Your Aggregate<br/>Python/Go/Rust/Java/C#/C++]
+        AGG_COORD[⍼ Sidecar<br/>Business Coordinator]
+        AGG <--> |gRPC| AGG_COORD
+    end
+
+    subgraph SagaPod[Saga Pod]
+        SAGA[Your Saga<br/>Domain Translator]
+        SAGA_COORD[⍼ Sidecar<br/>Saga Coordinator]
+        SAGA <--> |gRPC| SAGA_COORD
+    end
+
+    subgraph PrjPod[Projector Pod]
+        PRJ[Your Projector<br/>Read Model Builder]
+        PRJ_COORD[⍼ Sidecar<br/>Projector Coordinator]
+        PRJ <--> |gRPC| PRJ_COORD
+    end
+
+    GW --> |Commands| AGG_COORD
+    AGG_COORD --> |Events| ES
+    AGG_COORD --> |Publish| BUS
+    BUS --> |Subscribe| SAGA_COORD
+    BUS --> |Subscribe| PRJ_COORD
+    SAGA_COORD --> |Commands| AGG_COORD
+    PRJ_COORD --> |Read| ES
 ```
 
-The sidecar handles all infrastructure concerns—event persistence, command routing, saga orchestration—while your code focuses on business rules.
+Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.
 
 ---
 
@@ -109,7 +134,7 @@ Ready to build:
 
 ## Language Support
 
-Angzarr supports any language with gRPC bindings. First-class examples are provided for:
+⍼ Angzarr supports any language with gRPC bindings. First-class examples are provided for:
 
 | Language | Package | Example |
 |----------|---------|---------|

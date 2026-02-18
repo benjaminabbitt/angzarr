@@ -4,6 +4,14 @@ sidebar_position: 3
 
 # Getting Started
 
+## Development Environment
+
+**Recommended**: macOS or Linux for ⍼ Angzarr development.
+
+Dev containers are fully supported and work well on Linux. However, the author has experienced issues with dev containers on **Windows with JetBrains IDEs**—if you're on Windows, consider using WSL2 or a Linux VM.
+
+---
+
 ## Prerequisites
 
 - Rust 1.70+

@@ -4,23 +4,23 @@ sidebar_position: 1
 
 # Why Poker
 
-Poker was chosen as the example domain for angzarr because it naturally exercises **every event sourcing and CQRS pattern** the framework supports—while being immediately understandable.
+Poker was chosen as the example domain for ⍼ Angzarr because it naturally exercises **every event sourcing and CQRS pattern** the framework supports—while being immediately understandable.
 
 ---
 
 ## The Core Insight
 
-Poker has a small vocabulary of event types but generates them as fast as they can be processed. A single hand produces 20+ events in rapid succession: cards dealt, blinds posted, actions taken, community cards revealed, pot awarded. This creates a **challenging scenario** that stress-tests the framework—the kind of rapid-fire event processing that may be sustained in real-world systems during peak load. If angzarr handles poker's pace, it handles production traffic.
+Poker has a small vocabulary of event types but generates them as fast as they can be processed. A single hand produces 20+ events in rapid succession: cards dealt, blinds posted, actions taken, community cards revealed, pot awarded. This creates a **challenging scenario** that stress-tests the framework—the kind of rapid-fire event processing that may be sustained in real-world systems during peak load. If ⍼ Angzarr handles poker's pace, it handles production traffic.
 
 A poker application isn't artificially complex—it's exactly as complex as real business software. The patterns that make poker work (fund reservation, saga compensation, state machines, cross-domain coordination) are the same patterns that power airlines, billing systems, and claims processing.
 
-**When you understand how poker works in angzarr, you understand how to build any event-sourced system.**
+**When you understand how poker works in ⍼ Angzarr, you understand how to build any event-sourced system.**
 
 ---
 
 ## Industry Applicability
 
-Angzarr emerged from recognizing recurring patterns across industries. Based on experience working in:
+⍼ Angzarr emerged from recognizing recurring patterns across industries. Based on experience working in:
 
 - **Airlines**: Flight booking, seat inventory, loyalty point accrual—all event-sourced naturally. A single booking triggers reservation holds, payment authorization, seat assignment, and loyalty updates. Bursty during booking windows, quiet between.
 
@@ -28,11 +28,11 @@ Angzarr emerged from recognizing recurring patterns across industries. Based on 
 
 - **Insurance claims/preapproval**: Claim submission → document verification → adjuster assignment → approval/denial → payment. State machine with compensation (claim withdrawn, payment reversed). Bursts during enrollment periods and catastrophic events.
 
-In the author's experience, roughly **one-third of projects** across these industries could benefit significantly from CQRS/Event Sourcing—but the infrastructure overhead prevented adoption. Angzarr removes that barrier.
+In the author's experience, roughly **one-third of projects** across these industries could benefit significantly from CQRS/Event Sourcing—but the infrastructure overhead prevented adoption. ⍼ Angzarr removes that barrier.
 
 ### Common Characteristics
 
-Domains that benefit most from angzarr share these traits:
+Domains that benefit most from ⍼ Angzarr share these traits:
 
 | Characteristic | Example |
 |----------------|---------|
@@ -153,13 +153,13 @@ Poker makes an excellent *teaching example* because it exercises every pattern. 
 - Game state often depends on timing and physics that don't replay deterministically
 - Most games don't need audit trails or temporal queries
 
-The author is developing a board game with angzarr—but primarily because **event logs make game flow understandable during development**. Watching the event stream reveals why a particular game state emerged, which is invaluable for debugging rules and balancing. Whether the production version will use event sourcing remains an open question.
+The author is developing a board game with ⍼ Angzarr—but primarily because **event logs make game flow understandable during development**. Watching the event stream reveals why a particular game state emerged, which is invaluable for debugging rules and balancing. Whether the production version will use event sourcing remains an open question.
 
 ---
 
 ## Summary
 
-Every feature file in angzarr's test suite uses poker examples not because poker is special, but because it naturally requires every pattern the framework provides. Understanding the poker domain means understanding:
+Every feature file in ⍼ Angzarr's test suite uses poker examples not because poker is special, but because it naturally requires every pattern the framework provides. Understanding the poker domain means understanding:
 
 - How aggregates maintain consistency boundaries
 - How sagas translate between domains

@@ -4,13 +4,13 @@ sidebar_position: 2
 
 # Architecture
 
-This document covers Angzarr's core architectural concepts: the book metaphor, coordinator pattern, deployment model, and synchronization modes.
+This document covers ⍼ Angzarr's core architectural concepts: the book metaphor, coordinator pattern, deployment model, and synchronization modes.
 
 ---
 
 ## The Book Metaphor
 
-Angzarr models event-sourced aggregates as books. An **EventBook** contains the complete history of an aggregate root:
+⍼ Angzarr models event-sourced aggregates as books. An **EventBook** contains the complete history of an aggregate root:
 
 | Component | Purpose |
 |-----------|---------|
@@ -52,7 +52,7 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 
 ## Coordinator Pattern
 
-Angzarr uses coordinators to route messages between external clients and your business logic. This separation keeps domain code focused while the framework handles:
+⍼ Angzarr uses coordinators to route messages between external clients and your business logic. This separation keeps domain code focused while the framework handles:
 
 - Event persistence and retrieval
 - Optimistic concurrency via sequence numbers
@@ -93,12 +93,12 @@ BusinessCoordinator ─────► Your Aggregate ────► Events
 
 ## Sidecar Deployment
 
-Angzarr runs as a sidecar container alongside your business logic. Each pod contains your service and an Angzarr instance communicating over localhost gRPC.
+⍼ Angzarr runs as a sidecar container alongside your business logic. Each pod contains your service and an Angzarr instance communicating over localhost gRPC.
 
 ```
 ┌─ Pod ────────────────────────────────────────────────────────────────┐
 │  ┌──────────────────────┐      ┌──────────────────────────────────┐ │
-│  │   Your Aggregate     │ gRPC │      Angzarr Sidecar (~8MB)      │ │
+│  │   Your Aggregate     │ gRPC │      ⍼ Angzarr Sidecar (~8MB)    │ │
 │  │   (Python/Go/Rust/   │◄────►│                                  │ │
 │  │    Java/C#/C++)      │      │  ┌────────────┐ ┌─────────────┐  │ │
 │  │                      │      │  │  Business  │ │  Projector  │  │ │
@@ -130,7 +130,7 @@ Angzarr runs as a sidecar container alongside your business logic. Each pod cont
 
 ## Synchronization Modes
 
-Angzarr provides two mechanisms for controlling when results return to callers.
+⍼ Angzarr provides two mechanisms for controlling when results return to callers.
 
 ### SyncMode
 
@@ -194,7 +194,7 @@ Events are correlated via `correlation_id` on `Cover`, allowing clients to track
 
 ## Pluggable Infrastructure
 
-Angzarr abstracts storage and messaging behind adapter interfaces.
+⍼ Angzarr abstracts storage and messaging behind adapter interfaces.
 
 ### Event Store Backends
 
