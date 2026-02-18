@@ -450,10 +450,30 @@ For complex scenarios (DLQ routing, escalation webhooks, RevocationResponse flag
 
 **Sagas MUST set correct sequence numbers on commands.** The framework validates sequences for optimistic concurrency.
 
-The `SagaContext` provides target aggregate states:
+### Two-Phase Saga Flow
+
+The saga coordinator uses a two-phase flow to provide target domain context:
+
+```
+Phase 1: Coordinator receives source event
+         ↓
+         Coordinator fetches EventBooks for all target domains
+         (based on router's .sends() declarations)
+         ↓
+Phase 2: Coordinator invokes your saga handler with:
+         - Source event
+         - SagaContext containing target domain states
+```
+
+The `SagaContext` contains the **target domain(s)** aggregate states—not the source domain. This allows your saga to:
+- Get correct sequence numbers for optimistic concurrency
+- Make routing decisions based on target state
+- Avoid stale sequence errors
 
 ```python
-# Get next sequence for target aggregate
+# SagaContext contains target domain state (table), not source (player)
+# Fetched by coordinator before invoking your handler
+
 target_seq = context.get_sequence("table", table_id)
 
 # Use in command
