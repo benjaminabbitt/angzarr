@@ -5,6 +5,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import dev.angzarr.*;
 import dev.angzarr.client.annotations.Applies;
+import dev.angzarr.client.annotations.Prepares;
 import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.client.annotations.Rejected;
 
@@ -12,6 +13,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Base class for process managers using annotation-based handler registration.
@@ -56,6 +58,7 @@ public abstract class ProcessManager<S extends Message> {
     private final Map<String, BiFunction<Any, String, List<CommandBook>>> handlers = new HashMap<>();
     private final Map<String, BiConsumer<S, Any>> appliers = new HashMap<>();
     private final Map<String, BiFunction<Notification, S, EventBook>> rejectionHandlers = new HashMap<>();
+    private final Map<String, Function<Any, List<Cover>>> prepareHandlers = new HashMap<>();
 
     private S state;
     private boolean exists = false;
@@ -116,6 +119,25 @@ public abstract class ProcessManager<S extends Message> {
             }
         }
         return commands;
+    }
+
+    /**
+     * Get destinations needed for trigger events (two-phase protocol).
+     */
+    public List<Cover> prepareDestinations(EventBook trigger, EventBook priorEvents) {
+        rebuildState(priorEvents);
+
+        List<Cover> destinations = new ArrayList<>();
+        for (EventPage page : trigger.getPagesList()) {
+            if (!page.hasEvent()) continue;
+
+            String suffix = Helpers.typeNameFromUrl(page.getEvent().getTypeUrl());
+            Function<Any, List<Cover>> handler = prepareHandlers.get(suffix);
+            if (handler != null) {
+                destinations.addAll(handler.apply(page.getEvent()));
+            }
+        }
+        return destinations;
     }
 
     /**
@@ -258,7 +280,35 @@ public abstract class ProcessManager<S extends Message> {
                     }
                 });
             }
+
+            // Prepares handlers
+            Prepares prepares = method.getAnnotation(Prepares.class);
+            if (prepares != null) {
+                Class<? extends Message> eventType = prepares.value();
+                String suffix = eventType.getSimpleName();
+                method.setAccessible(true);
+
+                prepareHandlers.put(suffix, (eventAny) -> {
+                    try {
+                        Message event = eventAny.unpack(eventType);
+                        Object result = method.invoke(this, event);
+                        return asCovers(result);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to invoke prepare handler for " + suffix, e);
+                    }
+                });
+            }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Cover> asCovers(Object result) {
+        if (result instanceof Cover) {
+            return List.of((Cover) result);
+        } else if (result instanceof List) {
+            return (List<Cover>) result;
+        }
+        return List.of();
     }
 
     @SuppressWarnings("unchecked")

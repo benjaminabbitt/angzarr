@@ -30,6 +30,7 @@ project(":hand-saga-player").projectDir = file("hand/saga-player")
 
 // Process Manager
 include("hand-flow")
+include("hand-flow-oo")
 
 // Projector
 include("prj-output")

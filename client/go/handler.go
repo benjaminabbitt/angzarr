@@ -583,3 +583,79 @@ func RunOOSagaServer(name, defaultPort string, saga OOSaga) {
 		EnableReflection: true,
 	})
 }
+
+// OOProcessManager interface for OO-style process managers.
+// Implemented by types that embed ProcessManagerBase.
+type OOProcessManager interface {
+	Name() string
+	PMDomain() string
+	InputDomains() []string
+	PrepareDestinations(trigger, processState *pb.EventBook) []*pb.Cover
+	Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error)
+	Descriptor() *pb.ComponentDescriptor
+}
+
+// OOProcessManagerHandler wraps an OO-style process manager for the gRPC ProcessManager service.
+type OOProcessManagerHandler struct {
+	pb.UnimplementedProcessManagerServiceServer
+	pm OOProcessManager
+}
+
+// NewOOProcessManagerHandler creates a new OO process manager handler.
+func NewOOProcessManagerHandler(pm OOProcessManager) *OOProcessManagerHandler {
+	return &OOProcessManagerHandler{pm: pm}
+}
+
+// GetDescriptor returns the component descriptor for service discovery.
+func (h *OOProcessManagerHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
+	return h.pm.Descriptor(), nil
+}
+
+// Prepare declares which additional destinations are needed.
+func (h *OOProcessManagerHandler) Prepare(ctx context.Context, req *pb.ProcessManagerPrepareRequest) (*pb.ProcessManagerPrepareResponse, error) {
+	destinations := h.pm.PrepareDestinations(req.Trigger, req.ProcessState)
+	return &pb.ProcessManagerPrepareResponse{Destinations: destinations}, nil
+}
+
+// Handle processes events and returns commands and process events.
+func (h *OOProcessManagerHandler) Handle(ctx context.Context, req *pb.ProcessManagerHandleRequest) (*pb.ProcessManagerHandleResponse, error) {
+	commands, processEvents, err := h.pm.Handle(req.Trigger, req.ProcessState, req.Destinations)
+	if err != nil {
+		var rejected CommandRejectedError
+		if errors.As(err, &rejected) {
+			return nil, status.Error(codes.FailedPrecondition, rejected.Message)
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return &pb.ProcessManagerHandleResponse{
+		Commands:      commands,
+		ProcessEvents: processEvents,
+	}, nil
+}
+
+// Descriptor returns the PM's component descriptor.
+func (h *OOProcessManagerHandler) Descriptor() *pb.ComponentDescriptor {
+	return h.pm.Descriptor()
+}
+
+// RegisterOOProcessManagerHandler returns a ServiceRegistrar that registers an OO process manager handler.
+func RegisterOOProcessManagerHandler(pm OOProcessManager) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterProcessManagerServiceServer(server, NewOOProcessManagerHandler(pm))
+	}
+}
+
+// RunOOProcessManagerServer starts a gRPC server for an OO-style process manager.
+//
+// Parameters:
+//   - name: The PM's name (e.g., "hand-flow")
+//   - defaultPort: Default TCP port if PORT env not set
+//   - pm: OO process manager instance
+func RunOOProcessManagerServer(name, defaultPort string, pm OOProcessManager) {
+	RunServer(RegisterOOProcessManagerHandler(pm), ServerOptions{
+		ServiceName:      "ProcessManager",
+		Domain:           name,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}

@@ -45,14 +45,30 @@ public class PreparesAttribute : Attribute
 }
 
 /// <summary>
-/// Marks a method as an event reaction handler for sagas.
+/// Marks a method as an event reaction handler for sagas or process managers.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public class ReactsToAttribute : Attribute
 {
     public Type EventType { get; }
+    public string? InputDomain { get; set; }
+    public string? OutputDomain { get; set; }
 
     public ReactsToAttribute(Type eventType)
+    {
+        EventType = eventType;
+    }
+}
+
+/// <summary>
+/// Marks a method as a projector event handler.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
+public class ProjectsAttribute : Attribute
+{
+    public Type EventType { get; }
+
+    public ProjectsAttribute(Type eventType)
     {
         EventType = eventType;
     }

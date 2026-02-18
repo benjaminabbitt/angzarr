@@ -84,6 +84,7 @@ add_subdirectory(table/saga-player)
 add_subdirectory(hand/saga-table)
 add_subdirectory(hand/saga-player)
 add_subdirectory(hand-flow)
+add_subdirectory(hand-flow-oo)
 add_subdirectory(prj-output)
 
 # Tests (optional, requires cucumber-cpp)

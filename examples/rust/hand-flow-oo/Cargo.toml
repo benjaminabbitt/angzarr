@@ -1,0 +1,16 @@
+[package]
+name = "hand-flow-oo"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hand-flow-oo"
+path = "src/main.rs"
+
+[dependencies]
+angzarr-client = { path = "../../../client/rust" }
+angzarr-macros = { path = "../../../client/rust/angzarr-macros" }
+prost = { workspace = true }
+prost-types = { workspace = true }
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }

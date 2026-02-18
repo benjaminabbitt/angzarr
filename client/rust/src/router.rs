@@ -626,21 +626,53 @@ pub struct ProcessManagerResponse {
     pub process_events: Option<EventBook>,
 }
 
-/// Process manager handler function type.
+/// Process manager handler function pointer type.
 ///
 /// Takes trigger event book, PM's own state, event Any, and destination event books.
 /// Returns commands for other aggregates and events for the PM's own domain.
 pub type ProcessManagerHandler<S> =
     fn(&EventBook, &S, &Any, &[EventBook]) -> CommandResult<ProcessManagerResponse>;
 
-/// Process manager prepare handler function type.
+/// Process manager handler closure type (boxed).
+pub type ProcessManagerHandlerFn<S> = Arc<
+    dyn Fn(&EventBook, &S, &Any, &[EventBook]) -> CommandResult<ProcessManagerResponse>
+        + Send
+        + Sync,
+>;
+
+/// Process manager prepare handler function pointer type.
 ///
 /// Takes trigger event book, PM's own state, and event Any.
 /// Returns list of destination covers to fetch.
 pub type ProcessManagerPrepareHandler<S> = fn(&EventBook, &S, &Any) -> Vec<crate::proto::Cover>;
 
-/// Process manager state rebuilder function type.
+/// Process manager prepare handler closure type (boxed).
+pub type ProcessManagerPrepareHandlerFn<S> =
+    Arc<dyn Fn(&EventBook, &S, &Any) -> Vec<crate::proto::Cover> + Send + Sync>;
+
+/// Process manager state rebuilder function pointer type.
 pub type ProcessManagerStateRebuilder<S> = fn(&EventBook) -> S;
+
+/// Process manager state rebuilder closure type (boxed).
+pub type ProcessManagerStateRebuilderFn<S> = Arc<dyn Fn(&EventBook) -> S + Send + Sync>;
+
+/// Internal handler type for ProcessManagerRouter.
+enum PMHandlerType<S> {
+    Fn(ProcessManagerHandler<S>),
+    Closure(ProcessManagerHandlerFn<S>),
+}
+
+/// Internal prepare handler type for ProcessManagerRouter.
+enum PMPrepareType<S> {
+    Fn(ProcessManagerPrepareHandler<S>),
+    Closure(ProcessManagerPrepareHandlerFn<S>),
+}
+
+/// Internal rebuild type for ProcessManagerRouter.
+enum PMRebuildType<S> {
+    Fn(ProcessManagerStateRebuilder<S>),
+    Closure(ProcessManagerStateRebuilderFn<S>),
+}
 
 /// Process manager router.
 ///
@@ -651,13 +683,13 @@ pub struct ProcessManagerRouter<S> {
     pm_domain: String,
     input_domains: Vec<String>,
     output_domains: Vec<(String, Vec<String>)>, // domain -> command types
-    rebuild: ProcessManagerStateRebuilder<S>,
-    handlers: HashMap<String, ProcessManagerHandler<S>>,
-    prepare_handlers: HashMap<String, ProcessManagerPrepareHandler<S>>,
+    rebuild: PMRebuildType<S>,
+    handlers: HashMap<String, PMHandlerType<S>>,
+    prepare_handlers: HashMap<String, PMPrepareType<S>>,
 }
 
-impl<S> ProcessManagerRouter<S> {
-    /// Create a new process manager router.
+impl<S: 'static> ProcessManagerRouter<S> {
+    /// Create a new process manager router with a function pointer rebuilder.
     ///
     /// - `name`: PM component name (e.g., "pm-poker-hand")
     /// - `pm_domain`: The PM's own domain for its state
@@ -671,7 +703,27 @@ impl<S> ProcessManagerRouter<S> {
             pm_domain: pm_domain.into(),
             input_domains: Vec::new(),
             output_domains: Vec::new(),
-            rebuild,
+            rebuild: PMRebuildType::Fn(rebuild),
+            handlers: HashMap::new(),
+            prepare_handlers: HashMap::new(),
+        }
+    }
+
+    /// Create a new process manager router with a closure rebuilder.
+    pub fn new_with_rebuild_fn<R>(
+        name: impl Into<String>,
+        pm_domain: impl Into<String>,
+        rebuild: R,
+    ) -> Self
+    where
+        R: Fn(&EventBook) -> S + Send + Sync + 'static,
+    {
+        Self {
+            name: name.into(),
+            pm_domain: pm_domain.into(),
+            input_domains: Vec::new(),
+            output_domains: Vec::new(),
+            rebuild: PMRebuildType::Closure(Arc::new(rebuild)),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
         }
@@ -696,19 +748,44 @@ impl<S> ProcessManagerRouter<S> {
         self
     }
 
-    /// Register an event handler for events ending with the given suffix.
+    /// Register an event handler (function pointer) for events ending with the given suffix.
     pub fn on(mut self, suffix: impl Into<String>, handler: ProcessManagerHandler<S>) -> Self {
-        self.handlers.insert(suffix.into(), handler);
+        self.handlers
+            .insert(suffix.into(), PMHandlerType::Fn(handler));
         self
     }
 
-    /// Register a prepare handler for events ending with the given suffix.
+    /// Register an event handler (closure) for events ending with the given suffix.
+    pub fn on_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
+    where
+        H: Fn(&EventBook, &S, &Any, &[EventBook]) -> CommandResult<ProcessManagerResponse>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.handlers
+            .insert(suffix.into(), PMHandlerType::Closure(Arc::new(handler)));
+        self
+    }
+
+    /// Register a prepare handler (function pointer) for events ending with the given suffix.
     pub fn prepare(
         mut self,
         suffix: impl Into<String>,
         handler: ProcessManagerPrepareHandler<S>,
     ) -> Self {
-        self.prepare_handlers.insert(suffix.into(), handler);
+        self.prepare_handlers
+            .insert(suffix.into(), PMPrepareType::Fn(handler));
+        self
+    }
+
+    /// Register a prepare handler (closure) for events ending with the given suffix.
+    pub fn prepare_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
+    where
+        H: Fn(&EventBook, &S, &Any) -> Vec<crate::proto::Cover> + Send + Sync + 'static,
+    {
+        self.prepare_handlers
+            .insert(suffix.into(), PMPrepareType::Closure(Arc::new(handler)));
         self
     }
 
@@ -755,8 +832,8 @@ impl<S> ProcessManagerRouter<S> {
 
         // Rebuild state from process_state
         let state = match process_state {
-            Some(ps) => (self.rebuild)(ps),
-            None => (self.rebuild)(&EventBook::default()),
+            Some(ps) => self.rebuild_state(ps),
+            None => self.rebuild_state(&EventBook::default()),
         };
 
         // Find prepare handler by suffix
@@ -770,7 +847,10 @@ impl<S> ProcessManagerRouter<S> {
             None => return vec![],
         };
 
-        handler(trigger, &state, event_any)
+        match handler {
+            PMPrepareType::Fn(f) => f(trigger, &state, event_any),
+            PMPrepareType::Closure(f) => f(trigger, &state, event_any),
+        }
     }
 
     /// Dispatch a trigger event to the appropriate handler.
@@ -792,7 +872,7 @@ impl<S> ProcessManagerRouter<S> {
         };
 
         // Rebuild state
-        let state = (self.rebuild)(process_state);
+        let state = self.rebuild_state(process_state);
 
         // Find handler by suffix
         let type_url = &event_any.type_url;
@@ -806,7 +886,19 @@ impl<S> ProcessManagerRouter<S> {
         };
 
         // Execute handler
-        handler(trigger, &state, event_any, destinations).map_err(Status::from)
+        let result = match handler {
+            PMHandlerType::Fn(f) => f(trigger, &state, event_any, destinations),
+            PMHandlerType::Closure(f) => f(trigger, &state, event_any, destinations),
+        };
+        result.map_err(Status::from)
+    }
+
+    /// Helper to rebuild state using either fn or closure.
+    fn rebuild_state(&self, events: &EventBook) -> S {
+        match &self.rebuild {
+            PMRebuildType::Fn(f) => f(events),
+            PMRebuildType::Closure(f) => f(events),
+        }
     }
 }
 

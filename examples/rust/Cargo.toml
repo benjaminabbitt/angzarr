@@ -13,6 +13,7 @@ members = [
     "prj-output",
     "prj-output-oo",
     "hand-flow",
+    "hand-flow-oo",
     "tests",
 ]
 

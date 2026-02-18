@@ -525,11 +525,267 @@ pub fn reacts_to(_attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Marks an impl block as a process manager with event handlers.
+///
+/// # Attributes
+/// - `name = "pm-name"` - The PM's name (required)
+/// - `domain = "pm-domain"` - The PM's own domain for state (required)
+/// - `state = StateType` - The PM's state type (required)
+/// - `inputs = ["domain1", "domain2"]` - Input domains to subscribe to (required)
+///
+/// # Example
+/// ```rust,ignore
+/// #[process_manager(name = "hand-flow", domain = "hand-flow", state = PMState, inputs = ["table", "hand"])]
+/// impl HandFlowPM {
+///     #[applies(PMStateUpdated)]
+///     fn apply_state(state: &mut PMState, event: PMStateUpdated) {
+///         // ...
+///     }
+///
+///     #[prepares(HandStarted)]
+///     fn prepare_hand(&self, trigger: &EventBook, state: &PMState, event: &HandStarted) -> Vec<Cover> {
+///         // ...
+///     }
+///
+///     #[handles(HandStarted)]
+///     fn handle_hand(&self, trigger: &EventBook, state: &PMState, event: HandStarted, destinations: &[EventBook])
+///         -> CommandResult<ProcessManagerResponse> {
+///         // ...
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
-pub fn process_manager(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // Similar to saga but with state management
-    // Implementation would follow the same pattern as saga
-    item
+pub fn process_manager(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as ProcessManagerArgs);
+    let input = parse_macro_input!(item as ItemImpl);
+
+    let expanded = expand_process_manager(args, input);
+    TokenStream::from(expanded)
+}
+
+struct ProcessManagerArgs {
+    name: String,
+    domain: String,
+    state: Ident,
+    inputs: Vec<String>,
+}
+
+impl syn::parse::Parse for ProcessManagerArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut name = None;
+        let mut domain = None;
+        let mut state = None;
+        let mut inputs = None;
+
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+
+            match ident.to_string().as_str() {
+                "name" => {
+                    let value: syn::LitStr = input.parse()?;
+                    name = Some(value.value());
+                }
+                "domain" => {
+                    let value: syn::LitStr = input.parse()?;
+                    domain = Some(value.value());
+                }
+                "state" => {
+                    let value: Ident = input.parse()?;
+                    state = Some(value);
+                }
+                "inputs" => {
+                    let content;
+                    syn::bracketed!(content in input);
+                    let mut domains = Vec::new();
+                    while !content.is_empty() {
+                        let lit: syn::LitStr = content.parse()?;
+                        domains.push(lit.value());
+                        if content.peek(Token![,]) {
+                            content.parse::<Token![,]>()?;
+                        }
+                    }
+                    inputs = Some(domains);
+                }
+                _ => return Err(syn::Error::new(ident.span(), "unknown attribute")),
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(ProcessManagerArgs {
+            name: name.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "name is required")
+            })?,
+            domain: domain.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "domain is required")
+            })?,
+            state: state.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "state is required")
+            })?,
+            inputs: inputs.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "inputs is required")
+            })?,
+        })
+    }
+}
+
+fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> TokenStream2 {
+    let name = &args.name;
+    let pm_domain = &args.domain;
+    let state_ty = &args.state;
+    let inputs = &args.inputs;
+    let self_ty = &input.self_ty;
+
+    // Collect handler methods
+    let mut prepare_handlers = Vec::new();
+    let mut event_handlers = Vec::new();
+    let mut appliers = Vec::new();
+
+    for item in &input.items {
+        if let ImplItem::Fn(method) = item {
+            for attr in &method.attrs {
+                if attr.path().is_ident("prepares") {
+                    if let Ok(event_type) = get_attr_ident(attr) {
+                        prepare_handlers.push((method.sig.ident.clone(), event_type));
+                    }
+                } else if attr.path().is_ident("handles") {
+                    if let Ok(event_type) = get_attr_ident(attr) {
+                        event_handlers.push((method.sig.ident.clone(), event_type));
+                    }
+                } else if attr.path().is_ident("applies") {
+                    if let Ok(event_type) = get_attr_ident(attr) {
+                        appliers.push((method.sig.ident.clone(), event_type));
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate prepare handler registrations with event decoding
+    let prepare_registrations: Vec<_> = prepare_handlers
+        .iter()
+        .map(|(method, event_type)| {
+            let event_str = event_type.to_string();
+            quote! {
+                .prepare_fn(#event_str, {
+                    let pm = pm.clone();
+                    move |trigger, state, event_any| {
+                        if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
+                            pm.#method(trigger, state, &event)
+                        } else {
+                            vec![]
+                        }
+                    }
+                })
+            }
+        })
+        .collect();
+
+    // Generate event handler registrations with event decoding
+    let handler_registrations: Vec<_> = event_handlers
+        .iter()
+        .map(|(method, event_type)| {
+            let event_str = event_type.to_string();
+            quote! {
+                .on_fn(#event_str, {
+                    let pm = pm.clone();
+                    move |trigger, state, event_any, destinations| {
+                        let event = <#event_type as prost::Message>::decode(event_any.value.as_slice())
+                            .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
+                        pm.#method(trigger, state, event, destinations)
+                    }
+                })
+            }
+        })
+        .collect();
+
+    // Generate subscribes registrations
+    let subscribes_registrations: Vec<_> = inputs
+        .iter()
+        .map(|domain| {
+            quote! {
+                .subscribes(#domain)
+            }
+        })
+        .collect();
+
+    // Generate apply_event dispatch arms
+    let apply_arms: Vec<_> = appliers
+        .iter()
+        .map(|(method, event_type)| {
+            let suffix = event_type.to_string();
+            quote! {
+                if event_any.type_url.ends_with(#suffix) {
+                    if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
+                        Self::#method(state, event);
+                        return;
+                    }
+                }
+            }
+        })
+        .collect();
+
+    // Remove our attributes from methods
+    for item in &mut input.items {
+        if let ImplItem::Fn(method) = item {
+            method.attrs.retain(|attr| {
+                !attr.path().is_ident("prepares")
+                    && !attr.path().is_ident("handles")
+                    && !attr.path().is_ident("applies")
+            });
+        }
+    }
+
+    // Generate apply_event and rebuild functions if appliers exist
+    let apply_event_fn = if !appliers.is_empty() {
+        quote! {
+            /// Apply a single event to state. Auto-generated from #[applies] methods.
+            pub fn apply_event(state: &mut #state_ty, event_any: &prost_types::Any) {
+                #(#apply_arms)*
+                // Unknown event type - silently ignore (forward compatibility)
+            }
+
+            /// Rebuild state from event book. Auto-generated.
+            pub fn rebuild(events: &angzarr_client::proto::EventBook) -> #state_ty {
+                let mut state = #state_ty::default();
+                for page in &events.pages {
+                    if let Some(event) = &page.event {
+                        Self::apply_event(&mut state, event);
+                    }
+                }
+                state
+            }
+        }
+    } else {
+        quote! {
+            /// Rebuild state from event book. Returns default state (no #[applies] methods).
+            pub fn rebuild(_events: &angzarr_client::proto::EventBook) -> #state_ty {
+                #state_ty::default()
+            }
+        }
+    };
+
+    quote! {
+        #input
+
+        impl #self_ty {
+            #apply_event_fn
+
+            /// Creates a ProcessManagerRouter from this PM's annotated methods.
+            pub fn into_router(self) -> angzarr_client::ProcessManagerRouter<#state_ty>
+            where
+                Self: Send + Sync + 'static,
+            {
+                let pm = std::sync::Arc::new(self);
+                angzarr_client::ProcessManagerRouter::new_with_rebuild_fn(#name, #pm_domain, Self::rebuild)
+                    #(#subscribes_registrations)*
+                    #(#prepare_registrations)*
+                    #(#handler_registrations)*
+            }
+        }
+    }
 }
 
 /// Marks a method as a projector event handler.
