@@ -52,11 +52,13 @@ Yes, the example domain is a game. Poker works as an *example* because it exerci
 
 ⍼ Angzarr inverts the typical framework relationship. Rather than providing libraries that applications import, Angzarr provides infrastructure that applications connect to via gRPC.
 
+**Your data model lives in `.proto` files, not code.** Commands, events, and state are defined as Protocol Buffer messages—language-neutral, versionable, and shared across all implementations. This is what enables true polyglot support: the same event stream can be produced by a Rust aggregate and consumed by a Python projector.
+
 | You Define | You Implement | We Handle |
 |------------|---------------|-----------|
 | Commands in `.proto` | Aggregate handlers | Event persistence |
 | Events in `.proto` | Projector handlers | Optimistic concurrency |
-| Read models in `.proto` | Saga handlers | Snapshot management |
+| State in `.proto` | Saga handlers | Snapshot management |
 | | | Event upcasting |
 | | | Event distribution |
 | | | Saga coordination |
