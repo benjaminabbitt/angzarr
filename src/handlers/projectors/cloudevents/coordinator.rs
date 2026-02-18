@@ -13,19 +13,29 @@ use crate::proto::{CloudEvent, CloudEventsResponse, EventBook, Projection};
 use crate::proto_reflect;
 
 use super::sink::{CloudEventsSink, SinkError};
-use super::types::{normalize_extension_key, CloudEventEnvelope};
+use super::types::{normalize_extension_key, CloudEventEnvelope, ContentType};
 
 /// CloudEvents coordinator.
 ///
 /// Processes projections and routes CloudEventsResponse to configured sinks.
 pub struct CloudEventsCoordinator {
     sink: Arc<dyn CloudEventsSink>,
+    content_type: ContentType,
 }
 
 impl CloudEventsCoordinator {
     /// Create a new coordinator with the given sink.
     pub fn new(sink: Arc<dyn CloudEventsSink>) -> Self {
-        Self { sink }
+        Self {
+            sink,
+            content_type: ContentType::default(),
+        }
+    }
+
+    /// Create with specific content type.
+    pub fn with_content_type(mut self, content_type: ContentType) -> Self {
+        self.content_type = content_type;
+        self
     }
 
     /// Process a projection, publishing CloudEvents if applicable.
@@ -73,7 +83,7 @@ impl CloudEventsCoordinator {
         let envelopes = self.convert_events(&response.events, projection, source_events)?;
 
         // Publish to sink
-        self.sink.publish(envelopes).await?;
+        self.sink.publish(envelopes, self.content_type).await?;
 
         debug!(
             projector = %projection.projector,

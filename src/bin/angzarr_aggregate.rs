@@ -163,16 +163,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-    // Write component descriptor to pod annotation for K8s-native topology discovery
-    let descriptor = angzarr::proto::ComponentDescriptor {
-        name: domain.clone(),
-        component_type: "aggregate".to_string(),
-        inputs: vec![],
-    };
-    if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
-        warn!(error = %e, "Failed to write descriptor annotation");
-    }
-
     let mut aggregate_service = AggregateService::new(
         event_store.clone(),
         snapshot_store.clone(),

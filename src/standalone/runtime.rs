@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::bus::{EventBus, MessagingConfig};
 use crate::config::ResourceLimits;
@@ -82,34 +82,12 @@ impl Runtime {
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         event_bus: Arc<dyn EventBus>,
         limits: ResourceLimits,
-        #[cfg(feature = "topology")] topology_projector: Option<
-            Arc<crate::handlers::projectors::topology::TopologyProjector>,
-        >,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Collect descriptors from all registered handlers before they're consumed.
         // Fills in name/component_type from registration keys and config when the
         // handler returns a default descriptor (pre-router migration).
         let descriptors =
             Self::collect_descriptors(&aggregates, &projectors, &sagas, &process_managers);
-
-        // Register component descriptors with topology projector for correct
-        // node types (saga, projector, PM) in the topology graph.
-        #[cfg(feature = "topology")]
-        if let Some(ref topology) = topology_projector {
-            topology.init().await.map_err(|e| {
-                Box::<dyn std::error::Error>::from(format!("topology init failed: {e}"))
-            })?;
-            topology
-                .register_components(&descriptors)
-                .await
-                .map_err(|e| {
-                    Box::<dyn std::error::Error>::from(format!("topology registration failed: {e}"))
-                })?;
-            info!(
-                components = descriptors.len(),
-                "Topology components registered"
-            );
-        }
 
         // Initialize per-domain storage
         let mut domain_stores = HashMap::new();
@@ -483,18 +461,7 @@ impl Runtime {
     /// Use this for testing or when you need to interact with the runtime
     /// programmatically after starting.
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Register components via _angzarr meta aggregate
-        let pod_id = crate::proto_ext::get_pod_id();
-        let commands = crate::proto_ext::build_registration_commands(&self.descriptors, &pod_id);
-
-        for cmd in commands {
-            if let Err(e) = self.router.execute_command(cmd).await {
-                warn!(error = %e, "Failed to register component");
-            }
-        }
-        info!(count = self.descriptors.len(), "Components registered");
-
-        info!("Runtime started");
+        info!(components = self.descriptors.len(), "Runtime started");
         Ok(())
     }
 

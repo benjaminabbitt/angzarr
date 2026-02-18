@@ -1,4 +1,4 @@
-//! K8s label-based service discovery and descriptor annotations.
+//! K8s label-based service discovery.
 //!
 //! Discovers aggregate and projector services by watching K8s Service
 //! resources with appropriate labels. Service mesh handles L7 gRPC load
@@ -17,17 +17,6 @@
 //!   app.kubernetes.io/component: projector
 //!   angzarr.io/domain: cart
 //! ```
-//!
-//! # Descriptor Annotations
-//!
-//! Coordinators write their `ComponentDescriptor` as JSON to the pod's
-//! `angzarr.io/descriptor` annotation for K8s-native topology discovery.
-
-mod annotation;
-
-pub use annotation::{
-    write_descriptor_annotation, write_descriptor_if_k8s, AnnotationError, DESCRIPTOR_ANNOTATION,
-};
 
 use std::collections::HashMap;
 use std::sync::Arc;

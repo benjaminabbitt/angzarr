@@ -54,16 +54,10 @@ pub use immudb::ImmudbEventStore;
 pub use mock::{MockEventStore, MockPositionStore, MockSnapshotStore};
 #[cfg(feature = "nats")]
 pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
-#[cfg(all(feature = "postgres", feature = "topology"))]
-pub use postgres::PostgresTopologyStore;
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
-#[cfg(all(feature = "redis", feature = "topology"))]
-pub use redis::RedisTopologyStore;
 #[cfg(feature = "redis")]
 pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
-#[cfg(all(feature = "sqlite", feature = "topology"))]
-pub use sqlite::SqliteTopologyStore;
 #[cfg(feature = "sqlite")]
 pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
 

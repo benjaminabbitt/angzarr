@@ -7,29 +7,10 @@ option csharp_namespace = "Angzarr";
 option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
-import "google/protobuf/timestamp.proto";
 
 // ============================================================================
 // Meta Domain (_angzarr) - Infrastructure commands/events
 // ============================================================================
-//
-// TODO: Consider migrating to Notification pattern.
-// Topology messages don't need persistence (runtime state only).
-// Could use: Notification { payload: ComponentRegistrationNotification }
-
-// Command to register a component in the topology registry.
-// Root UUID is derived from component.name for idempotent registration.
-message RegisterComponent {
-  ComponentDescriptor component = 1;
-  string pod_id = 2;  // K8s pod name or hostname for standalone
-}
-
-// Event emitted when a component registers or re-registers.
-message ComponentRegistered {
-  ComponentDescriptor component = 1;
-  string pod_id = 2;
-  google.protobuf.Timestamp registered_at = 3;
-}
 
 // Delete all events for an edition+domain combination.
 // Main timeline ('angzarr' or empty edition name) cannot be deleted.

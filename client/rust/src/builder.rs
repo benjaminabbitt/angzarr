@@ -83,12 +83,11 @@ impl<'a, C: traits::GatewayClient> CommandBuilder<'a, C> {
             }),
             pages: vec![CommandPage {
                 sequence: self.sequence,
-                command: Some(prost_types::Any {
+                merge_strategy: crate::proto::MergeStrategy::MergeCommutative as i32,
+                payload: Some(crate::proto::command_page::Payload::Command(prost_types::Any {
                     type_url,
                     value: payload,
-                }),
-                merge_strategy: crate::proto::MergeStrategy::MergeCommutative as i32,
-                external_payload: None,
+                })),
             }],
             saga_origin: None,
         })
@@ -251,7 +250,10 @@ pub fn events_from_response(response: &CommandResponse) -> &[EventPage] {
 
 /// Helper to decode an event payload if the type URL matches.
 pub fn decode_event<M: Message + Default>(event: &EventPage, type_suffix: &str) -> Option<M> {
-    let any = event.event.as_ref()?;
+    let any = match &event.payload {
+        Some(crate::proto::event_page::Payload::Event(e)) => e,
+        _ => return None,
+    };
     if !any.type_url.ends_with(type_suffix) {
         return None;
     }
@@ -597,7 +599,7 @@ mod tests {
 
     #[test]
     fn test_decode_event_success() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
 
         // Use prost_types::Duration which implements Message + Default
         let msg = prost_types::Duration {
@@ -605,13 +607,12 @@ mod tests {
             nanos: 0,
         };
         let event = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: msg.encode_to_vec(),
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
@@ -621,20 +622,19 @@ mod tests {
 
     #[test]
     fn test_decode_event_type_mismatch() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
 
         let msg = prost_types::Duration {
             seconds: 42,
             nanos: 0,
         };
         let event = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: msg.encode_to_vec(),
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Timestamp");
@@ -643,13 +643,10 @@ mod tests {
 
     #[test]
     fn test_decode_event_nil_event() {
-        use crate::proto::event_page::Sequence;
-
         let event = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: None,
+            sequence: 1,
             created_at: None,
-            external_payload: None,
+            payload: None,
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");
@@ -658,16 +655,15 @@ mod tests {
 
     #[test]
     fn test_decode_event_invalid_payload() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
 
         let event = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: vec![0xFF, 0xFF, 0xFF], // garbage
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
 
         let decoded: Option<prost_types::Duration> = decode_event(&event, "Duration");

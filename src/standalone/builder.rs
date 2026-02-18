@@ -8,8 +8,6 @@ use std::sync::Arc;
 
 use crate::bus::{ChannelConfig, ChannelEventBus, EventBus, MessagingConfig, MessagingType};
 use crate::config::ResourceLimits;
-#[cfg(feature = "topology")]
-use crate::handlers::projectors::topology::TopologyProjector;
 use crate::storage::{SqliteConfig, StorageConfig, StorageType};
 use crate::transport::{TransportConfig, TransportType, UdsConfig};
 
@@ -52,9 +50,6 @@ pub struct RuntimeBuilder {
     process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
     /// Optional custom event bus (for testing or external transports).
     custom_event_bus: Option<Arc<dyn EventBus>>,
-    /// Optional topology projector for automatic descriptor registration.
-    #[cfg(feature = "topology")]
-    topology_projector: Option<Arc<TopologyProjector>>,
     /// Resource limits for message processing.
     limits: ResourceLimits,
 }
@@ -94,8 +89,6 @@ impl RuntimeBuilder {
             sagas: HashMap::new(),
             process_managers: HashMap::new(),
             custom_event_bus: None,
-            #[cfg(feature = "topology")]
-            topology_projector: None,
             limits: ResourceLimits::default(),
         }
     }
@@ -318,28 +311,6 @@ impl RuntimeBuilder {
     }
 
     // ========================================================================
-    // Topology
-    // ========================================================================
-
-    /// Register the topology projector.
-    ///
-    /// Registers it as an async projector for event observation AND calls
-    /// `register_components()` during build with all collected descriptors.
-    /// This ensures sagas, process managers, and projectors appear as correctly
-    /// typed nodes in the topology graph.
-    #[cfg(feature = "topology")]
-    pub fn register_topology(
-        mut self,
-        projector: Arc<TopologyProjector>,
-        config: ProjectorConfig,
-    ) -> Self {
-        self.topology_projector = Some(projector.clone());
-        self.projectors
-            .insert("topology".to_string(), (projector, config));
-        self
-    }
-
-    // ========================================================================
     // Build
     // ========================================================================
 
@@ -347,7 +318,7 @@ impl RuntimeBuilder {
     ///
     /// Initializes storage, messaging, and transport based on configuration.
     /// Returns a Runtime that can be used to run the system.
-    pub async fn build(mut self) -> Result<Runtime, Box<dyn std::error::Error>> {
+    pub async fn build(self) -> Result<Runtime, Box<dyn std::error::Error>> {
         use tracing::warn;
 
         // Initialize proto reflection for COMMUTATIVE merge field detection
@@ -368,13 +339,6 @@ impl RuntimeBuilder {
             );
         }
 
-        // Auto-register the _angzarr meta aggregate for component registration
-        use super::meta_aggregate::{MetaAggregateHandler, META_DOMAIN};
-        self.aggregates.insert(
-            META_DOMAIN.to_string(),
-            Arc::new(MetaAggregateHandler::new()),
-        );
-
         // Use custom event bus if provided, otherwise create a default channel bus.
         let event_bus: Arc<dyn EventBus> = self
             .custom_event_bus
@@ -391,8 +355,6 @@ impl RuntimeBuilder {
             self.process_managers,
             event_bus,
             self.limits,
-            #[cfg(feature = "topology")]
-            self.topology_projector,
         )
         .await
     }

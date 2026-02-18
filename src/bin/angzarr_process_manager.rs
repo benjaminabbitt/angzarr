@@ -115,11 +115,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Write descriptor to pod annotation for K8s-native topology discovery
-    if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
-        warn!(error = %e, "Failed to write descriptor annotation");
-    }
-
     // Connect to all aggregate endpoints (business domains only)
     let endpoints_str = std::env::var(STATIC_ENDPOINTS_ENV_VAR).map_err(|_| {
         format!(

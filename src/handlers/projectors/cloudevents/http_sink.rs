@@ -11,7 +11,7 @@ use reqwest::Client;
 use tracing::{debug, error, warn};
 
 use super::sink::{CloudEventsSink, SinkError};
-use super::types::CloudEventEnvelope;
+use super::types::{CloudEventEnvelope, ContentType};
 
 /// HTTP sink configuration.
 #[derive(Debug, Clone)]
@@ -146,14 +146,29 @@ impl HttpSink {
     }
 
     /// Post a batch of events to the webhook.
-    async fn post_batch(&self, events: &[CloudEventEnvelope]) -> Result<(), SinkError> {
-        let json = serde_json::to_string(&events)?;
+    async fn post_batch(
+        &self,
+        events: &[CloudEventEnvelope],
+        format: ContentType,
+    ) -> Result<(), SinkError> {
+        let (content_type, body) = match format {
+            ContentType::Json => {
+                let json = serde_json::to_string(&events)?;
+                (format.batch_mime_type(), json.into_bytes())
+            }
+            ContentType::Protobuf => {
+                // TODO: Implement protobuf encoding
+                // For now, fall back to JSON
+                let json = serde_json::to_string(&events)?;
+                (ContentType::Json.batch_mime_type(), json.into_bytes())
+            }
+        };
 
         let mut request = self
             .client
             .post(&self.config.endpoint)
-            .header("Content-Type", "application/cloudevents-batch+json")
-            .body(json);
+            .header("Content-Type", content_type)
+            .body(body);
 
         // Add custom headers
         for (key, value) in &self.config.headers {
@@ -211,7 +226,11 @@ impl HttpSink {
 
 #[async_trait]
 impl CloudEventsSink for HttpSink {
-    async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+    async fn publish(
+        &self,
+        events: Vec<CloudEventEnvelope>,
+        format: ContentType,
+    ) -> Result<(), SinkError> {
         if events.is_empty() {
             return Ok(());
         }
@@ -221,7 +240,7 @@ impl CloudEventsSink for HttpSink {
             let batch_vec: Vec<_> = batch.to_vec();
 
             // Retry with backoff on transient failures
-            let result = (|| async { self.post_batch(&batch_vec).await })
+            let result = (|| async { self.post_batch(&batch_vec, format).await })
                 .retry(Self::backoff())
                 .when(|e| {
                     matches!(

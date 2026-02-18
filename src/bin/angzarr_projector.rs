@@ -148,11 +148,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     info!(name = %descriptor.name, inputs = descriptor.inputs.len(), "Got projector descriptor");
 
-    // Write descriptor to pod annotation for K8s-native topology discovery
-    if let Err(e) = angzarr::discovery::k8s::write_descriptor_if_k8s(&descriptor).await {
-        warn!(error = %e, "Failed to write descriptor annotation");
-    }
-
     // Create publisher if streaming is enabled
     let publisher = if stream_output {
         info!("Streaming output enabled - projector results will be published");

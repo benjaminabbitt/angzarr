@@ -486,9 +486,9 @@ impl EventRouter {
             None => return vec![],
         };
 
-        let event_any = match &event_page.event {
-            Some(e) => e,
-            None => return vec![],
+        let event_any = match &event_page.payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => return vec![],
         };
 
         // Find prepare handler by suffix
@@ -522,9 +522,9 @@ impl EventRouter {
             None => return Ok(vec![]),
         };
 
-        let event_any = match &event_page.event {
-            Some(e) => e,
-            None => return Ok(vec![]),
+        let event_any = match &event_page.payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => return Ok(vec![]),
         };
 
         // Find handler by suffix
@@ -557,10 +557,9 @@ impl EventRouter {
 /// Helper to create an event page with proper sequence.
 pub fn event_page(seq: u32, event: Any) -> EventPage {
     EventPage {
-        sequence: Some(event_page::Sequence::Num(seq)),
-        event: Some(event),
+        sequence: seq,
         created_at: Some(crate::now()),
-        external_payload: None,
+        payload: Some(event_page::Payload::Event(event)),
     }
 }
 
@@ -825,9 +824,9 @@ impl<S: 'static> ProcessManagerRouter<S> {
             None => return vec![],
         };
 
-        let event_any = match &event_page.event {
-            Some(e) => e,
-            None => return vec![],
+        let event_any = match &event_page.payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => return vec![],
         };
 
         // Rebuild state from process_state
@@ -866,9 +865,9 @@ impl<S: 'static> ProcessManagerRouter<S> {
             None => return Ok(ProcessManagerResponse::default()),
         };
 
-        let event_any = match &event_page.event {
-            Some(e) => e,
-            None => return Ok(ProcessManagerResponse::default()),
+        let event_any = match &event_page.payload {
+            Some(event_page::Payload::Event(e)) => e,
+            _ => return Ok(ProcessManagerResponse::default()),
         };
 
         // Rebuild state
@@ -1031,7 +1030,7 @@ impl<S: Default + 'static> StateRouter<S> {
     pub fn with_events(&self, pages: &[EventPage]) -> S {
         let mut state = self.create_state();
         for page in pages {
-            if let Some(event) = &page.event {
+            if let Some(event_page::Payload::Event(event)) = &page.payload {
                 self.apply_single(&mut state, event);
             }
         }

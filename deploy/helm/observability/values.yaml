@@ -15,10 +15,7 @@ dashboards:
     command-pipeline: {}
     event-bus: {}
     orchestration: {}
-    topology: {}
-
-# Topology endpoint is configured directly in dashboard JSON queries
-# Uses Infinity plugin to fetch from topology REST API
+    service-graph: {}  # OTel service graph via Tempo (replaces old topology)
 
 # Default resource configuration
 resources:
@@ -157,6 +154,15 @@ opentelemetry-collector:
         check_interval: 1s
         limit_percentage: 80
         spike_limit_percentage: 25
+    # Connectors bridge pipelines - servicegraph consumes traces, emits metrics
+    connectors:
+      servicegraph:
+        latency_histogram_buckets: [1ms, 2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+        dimensions:
+          - service.namespace
+        store:
+          ttl: 2s
+          max_items: 1000
     exporters:
       # Traces -> Tempo via OTLP gRPC
       otlp:
@@ -180,9 +186,14 @@ opentelemetry-collector:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [otlp]
+          exporters: [otlp, servicegraph]  # Also feed servicegraph connector
         metrics:
           receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
+        # Service graph metrics pipeline - connector output -> Prometheus
+        metrics/servicegraph:
+          receivers: [servicegraph]
           processors: [memory_limiter, batch]
           exporters: [prometheusremotewrite]
         logs:
@@ -220,8 +231,8 @@ grafana:
   service:
     type: NodePort
     nodePort: 30300
-  plugins:
-    - yesoreyeram-infinity-datasource
+  plugins: []
+    # Infinity plugin removed - topology now via OTel service graph
   sidecar:
     dashboards:
       enabled: true
@@ -242,12 +253,16 @@ grafana:
           type: tempo
           access: proxy
           url: http://{{ .Release.Name }}-tempo:3100
+          uid: tempo
           isDefault: false
           jsonData:
             tracesToLogsV2:
               datasourceUid: loki
               filterByTraceID: true
             tracesToMetrics:
+              datasourceUid: prometheus
+            # Service graph from OTel servicegraph connector metrics
+            serviceMap:
               datasourceUid: prometheus
         - name: Prometheus
           type: prometheus
@@ -266,16 +281,6 @@ grafana:
                 matcherRegex: "trace_id=(\\w+)"
                 name: TraceID
                 url: "$${__value.raw}"
-        - name: Angzarr Topology
-          type: yesoreyeram-infinity-datasource
-          access: proxy
-          uid: topology
-          isDefault: false
-          jsonData:
-            # Base URL for the topology REST API
-            # Queries will append /api/graph, /api/nodes, /api/edges
-            global_queries: []
-          secureJsonData: {}
   resources:
     requests:
       memory: "128Mi"

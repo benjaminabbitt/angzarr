@@ -24,7 +24,6 @@
 mod builder;
 mod client;
 pub mod grpc_handlers;
-mod meta_aggregate;
 mod router;
 mod runtime;
 mod server;
@@ -34,12 +33,6 @@ mod traits;
 pub use builder::RuntimeBuilder;
 pub use client::{CommandBuilder, CommandClient, SpeculativeClient, StandaloneQueryClient};
 pub use grpc_handlers::{AggregateHandlerAdapter, GrpcProjectorHandler};
-pub use meta_aggregate::MetaAggregateHandler;
-// Re-export meta domain constants from proto_ext for consistency
-pub use crate::proto_ext::{
-    component_name_to_uuid, COMPONENT_REGISTERED_TYPE_URL, META_ANGZARR_DOMAIN as META_DOMAIN,
-    REGISTER_COMPONENT_TYPE_URL,
-};
 pub use router::{CommandRouter, DomainStorage, SyncProjectorEntry};
 pub use runtime::Runtime;
 pub use server::{ServerInfo, SingleDomainEventQuery, StandaloneAggregateService};

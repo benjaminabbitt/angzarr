@@ -70,7 +70,7 @@ mod kafka_sink;
 pub use coordinator::CloudEventsCoordinator;
 pub use http_sink::{HttpSink, HttpSinkConfig};
 pub use sink::{CloudEventsSink, MultiSink, NullSink, SinkError};
-pub use types::CloudEventEnvelope;
+pub use types::{CloudEventEnvelope, ContentType};
 
 #[cfg(feature = "kafka")]
 pub use kafka_sink::{KafkaSink, KafkaSinkConfig};

@@ -20,12 +20,6 @@ pub const WILDCARD_DOMAIN: &str = "*";
 /// The meta domain for angzarr infrastructure.
 pub const META_ANGZARR_DOMAIN: &str = "_angzarr";
 
-/// Type URL for RegisterComponent command.
-pub const REGISTER_COMPONENT_TYPE_URL: &str = "type.angzarr/angzarr.RegisterComponent";
-
-/// Type URL for ComponentRegistered event.
-pub const COMPONENT_REGISTERED_TYPE_URL: &str = "type.angzarr/angzarr.ComponentRegistered";
-
 /// Default edition name for the main timeline.
 ///
 /// The canonical timeline is named "angzarr". Empty edition names are treated

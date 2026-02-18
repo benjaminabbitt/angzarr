@@ -26,23 +26,28 @@ pub trait EventPageExt {
 
 impl EventPageExt for EventPage {
     fn sequence_num(&self) -> u32 {
-        match &self.sequence {
-            Some(crate::proto::event_page::Sequence::Num(n)) => *n,
-            Some(crate::proto::event_page::Sequence::Force(_)) => 0,
-            None => 0,
-        }
+        self.sequence
     }
 
     fn type_url(&self) -> Option<&str> {
-        self.event.as_ref().map(|e| e.type_url.as_str())
+        match &self.payload {
+            Some(crate::proto::event_page::Payload::Event(e)) => Some(e.type_url.as_str()),
+            _ => None,
+        }
     }
 
     fn payload(&self) -> Option<&[u8]> {
-        self.event.as_ref().map(|e| e.value.as_slice())
+        match &self.payload {
+            Some(crate::proto::event_page::Payload::Event(e)) => Some(e.value.as_slice()),
+            _ => None,
+        }
     }
 
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
-        let event = self.event.as_ref()?;
+        let event = match &self.payload {
+            Some(crate::proto::event_page::Payload::Event(e)) => e,
+            _ => return None,
+        };
         if !event.type_url.ends_with(type_suffix) {
             return None;
         }
@@ -81,15 +86,24 @@ impl CommandPageExt for CommandPage {
     }
 
     fn type_url(&self) -> Option<&str> {
-        self.command.as_ref().map(|c| c.type_url.as_str())
+        match &self.payload {
+            Some(crate::proto::command_page::Payload::Command(c)) => Some(c.type_url.as_str()),
+            _ => None,
+        }
     }
 
     fn payload(&self) -> Option<&[u8]> {
-        self.command.as_ref().map(|c| c.value.as_slice())
+        match &self.payload {
+            Some(crate::proto::command_page::Payload::Command(c)) => Some(c.value.as_slice()),
+            _ => None,
+        }
     }
 
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
-        let command = self.command.as_ref()?;
+        let command = match &self.payload {
+            Some(crate::proto::command_page::Payload::Command(c)) => c,
+            _ => return None,
+        };
         if !command.type_url.ends_with(type_suffix) {
             return None;
         }
@@ -97,6 +111,6 @@ impl CommandPageExt for CommandPage {
     }
 
     fn merge_strategy(&self) -> MergeStrategy {
-        MergeStrategy::try_from(self.merge_strategy).unwrap_or(MergeStrategy::MergeCommutative)
+        MergeStrategy::try_from(self.merge_strategy()).unwrap_or(MergeStrategy::MergeCommutative)
     }
 }

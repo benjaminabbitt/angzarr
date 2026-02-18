@@ -24,9 +24,8 @@ pub mod uuid;
 // Re-export all public items for convenient imports
 pub use books::{calculate_next_sequence, calculate_set_next_seq, CommandBookExt, EventBookExt};
 pub use constants::{
-    COMPONENT_REGISTERED_TYPE_URL, CORRELATION_ID_HEADER, DEFAULT_EDITION, META_ANGZARR_DOMAIN,
-    PROJECTION_DOMAIN_PREFIX, PROJECTION_TYPE_URL, REGISTER_COMPONENT_TYPE_URL, UNKNOWN_DOMAIN,
-    WILDCARD_DOMAIN,
+    CORRELATION_ID_HEADER, DEFAULT_EDITION, META_ANGZARR_DOMAIN, PROJECTION_DOMAIN_PREFIX,
+    PROJECTION_TYPE_URL, UNKNOWN_DOMAIN, WILDCARD_DOMAIN,
 };
 pub use cover::CoverExt;
 pub use edition::EditionExt;
@@ -144,58 +143,28 @@ mod tests {
     // EventPage tests
     #[test]
     fn test_event_page_sequence_num() {
-        use crate::proto::event_page::Sequence;
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: Some(Sequence::Num(42)),
-            event: None,
+            sequence: 42,
             created_at: None,
-            external_payload: None,
+            payload: None,
         };
         assert_eq!(page.sequence_num(), 42);
     }
 
     #[test]
-    fn test_event_page_sequence_num_force() {
-        use crate::proto::event_page::Sequence;
-        use crate::proto::EventPage;
-
-        let page = EventPage {
-            sequence: Some(Sequence::Force(true)),
-            event: None,
-            created_at: None,
-            external_payload: None,
-        };
-        assert_eq!(page.sequence_num(), 0);
-    }
-
-    #[test]
-    fn test_event_page_sequence_num_none() {
-        use crate::proto::EventPage;
-
-        let page = EventPage {
-            sequence: None,
-            event: None,
-            created_at: None,
-            external_payload: None,
-        };
-        assert_eq!(page.sequence_num(), 0);
-    }
-
-    #[test]
     fn test_event_page_type_url() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/test.Event".to_string(),
                 value: vec![],
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
         assert_eq!(page.type_url(), Some("type.googleapis.com/test.Event"));
     }
@@ -205,27 +174,25 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: None,
-            event: None,
+            sequence: 0,
             created_at: None,
-            external_payload: None,
+            payload: None,
         };
         assert_eq!(page.type_url(), None);
     }
 
     #[test]
     fn test_event_page_payload() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "test".to_string(),
                 value: vec![1, 2, 3],
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
         assert_eq!(page.payload(), Some(&[1u8, 2, 3][..]));
     }
@@ -235,17 +202,16 @@ mod tests {
         use crate::proto::EventPage;
 
         let page = EventPage {
-            sequence: None,
-            event: None,
+            sequence: 0,
             created_at: None,
-            external_payload: None,
+            payload: None,
         };
         assert_eq!(page.payload(), None);
     }
 
     #[test]
     fn test_event_page_decode() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
         use crate::proto::EventPage;
         use prost::Message;
 
@@ -254,13 +220,12 @@ mod tests {
             nanos: 0,
         };
         let page = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: msg.encode_to_vec(),
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
         let decoded: Option<prost_types::Duration> = page.decode("Duration");
         assert!(decoded.is_some());
@@ -269,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_event_page_decode_type_mismatch() {
-        use crate::proto::event_page::Sequence;
+        use crate::proto::event_page::Payload;
         use crate::proto::EventPage;
         use prost::Message;
 
@@ -278,13 +243,12 @@ mod tests {
             nanos: 0,
         };
         let page = EventPage {
-            sequence: Some(Sequence::Num(1)),
-            event: Some(prost_types::Any {
+            sequence: 1,
+            created_at: None,
+            payload: Some(Payload::Event(prost_types::Any {
                 type_url: "type.googleapis.com/google.protobuf.Duration".to_string(),
                 value: msg.encode_to_vec(),
-            }),
-            created_at: None,
-            external_payload: None,
+            })),
         };
         let decoded: Option<prost_types::Duration> = page.decode("Timestamp");
         assert!(decoded.is_none());

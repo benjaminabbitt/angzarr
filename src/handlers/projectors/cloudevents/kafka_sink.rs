@@ -10,8 +10,10 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::ClientConfig;
 use tracing::{debug, error, warn};
 
+use cloudevents::event::AttributesReader;
+
 use super::sink::{CloudEventsSink, SinkError};
-use super::types::CloudEventEnvelope;
+use super::types::{CloudEventEnvelope, ContentType};
 
 /// Kafka sink configuration.
 #[derive(Debug, Clone)]
@@ -183,13 +185,27 @@ impl KafkaSink {
     }
 
     /// Publish a single event to Kafka.
-    async fn publish_one(&self, event: &CloudEventEnvelope) -> Result<(), SinkError> {
-        let json = serde_json::to_string(event)?;
+    async fn publish_one(
+        &self,
+        event: &CloudEventEnvelope,
+        format: ContentType,
+    ) -> Result<(), SinkError> {
+        let payload = match format {
+            ContentType::Json => serde_json::to_string(event)?,
+            ContentType::Protobuf => {
+                // TODO: Implement protobuf encoding
+                // For now, fall back to JSON
+                serde_json::to_string(event)?
+            }
+        };
 
         // Use subject (aggregate root ID) as message key for ordering
-        let key = event.subject.as_deref().unwrap_or(&event.id);
+        let event_id = event.id();
+        let key = event.subject().unwrap_or(event_id);
 
-        let record = FutureRecord::to(&self.config.topic).key(key).payload(&json);
+        let record = FutureRecord::to(&self.config.topic)
+            .key(key)
+            .payload(&payload);
 
         match self.producer.send(record, self.config.timeout).await {
             Ok((partition, offset)) => {
@@ -197,7 +213,7 @@ impl KafkaSink {
                     topic = %self.config.topic,
                     partition = partition,
                     offset = offset,
-                    event_id = %event.id,
+                    event_id = %event_id,
                     "CloudEvent published to Kafka"
                 );
                 Ok(())
@@ -205,7 +221,7 @@ impl KafkaSink {
             Err((e, _)) => {
                 error!(
                     topic = %self.config.topic,
-                    event_id = %event.id,
+                    event_id = %event_id,
                     error = %e,
                     "Failed to publish CloudEvent to Kafka"
                 );
@@ -217,9 +233,13 @@ impl KafkaSink {
 
 #[async_trait]
 impl CloudEventsSink for KafkaSink {
-    async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+    async fn publish(
+        &self,
+        events: Vec<CloudEventEnvelope>,
+        format: ContentType,
+    ) -> Result<(), SinkError> {
         for event in &events {
-            self.publish_one(event).await?;
+            self.publish_one(event, format).await?;
         }
         Ok(())
     }

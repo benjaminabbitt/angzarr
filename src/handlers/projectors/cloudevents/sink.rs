@@ -3,7 +3,7 @@
 //! Defines the interface for CloudEvents output destinations
 //! (HTTP webhooks, Kafka, etc.).
 
-use super::types::CloudEventEnvelope;
+use super::types::{CloudEventEnvelope, ContentType};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -37,10 +37,14 @@ pub enum SinkError {
 /// Implementations handle batching, retries, and protocol-specific formatting.
 #[async_trait]
 pub trait CloudEventsSink: Send + Sync {
-    /// Publish a batch of CloudEvents.
+    /// Publish a batch of CloudEvents in the specified format.
     ///
     /// Implementations should handle retries internally for transient failures.
-    async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError>;
+    async fn publish(
+        &self,
+        events: Vec<CloudEventEnvelope>,
+        format: ContentType,
+    ) -> Result<(), SinkError>;
 
     /// Return the sink name for logging/metrics.
     fn name(&self) -> &str;
@@ -62,12 +66,16 @@ impl MultiSink {
 
 #[async_trait]
 impl CloudEventsSink for MultiSink {
-    async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+    async fn publish(
+        &self,
+        events: Vec<CloudEventEnvelope>,
+        format: ContentType,
+    ) -> Result<(), SinkError> {
         // Publish to all sinks, collecting errors
         let mut first_error: Option<SinkError> = None;
 
         for sink in &self.sinks {
-            if let Err(e) = sink.publish(events.clone()).await {
+            if let Err(e) = sink.publish(events.clone(), format).await {
                 tracing::error!(
                     sink = %sink.name(),
                     error = %e,
@@ -95,7 +103,11 @@ pub struct NullSink;
 
 #[async_trait]
 impl CloudEventsSink for NullSink {
-    async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+    async fn publish(
+        &self,
+        events: Vec<CloudEventEnvelope>,
+        _format: ContentType,
+    ) -> Result<(), SinkError> {
         tracing::debug!(
             event_count = events.len(),
             "CloudEvents discarded (null sink)"
@@ -141,7 +153,11 @@ mod tests {
 
     #[async_trait]
     impl CloudEventsSink for CountingSink {
-        async fn publish(&self, events: Vec<CloudEventEnvelope>) -> Result<(), SinkError> {
+        async fn publish(
+            &self,
+            events: Vec<CloudEventEnvelope>,
+            _format: ContentType,
+        ) -> Result<(), SinkError> {
             self.count.fetch_add(events.len(), Ordering::SeqCst);
             Ok(())
         }
@@ -155,7 +171,7 @@ mod tests {
     async fn test_null_sink() {
         let sink = NullSink;
         let events = vec![test_event("test-1")];
-        let result = sink.publish(events).await;
+        let result = sink.publish(events, ContentType::Json).await;
         assert!(result.is_ok());
     }
 
@@ -175,7 +191,7 @@ mod tests {
             test_event("test-3"),
         ];
 
-        let result = multi.publish(events).await;
+        let result = multi.publish(events, ContentType::Json).await;
         assert!(result.is_ok());
         assert_eq!(sink1.count(), 3);
         assert_eq!(sink2.count(), 3);

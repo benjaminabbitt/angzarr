@@ -87,7 +87,6 @@ use angzarr::handlers::core::{
 };
 use angzarr::orchestration::aggregate::GrpcBusinessLogic;
 use angzarr::orchestration::command::local::LocalCommandExecutor;
-use angzarr::orchestration::command::CommandExecutor;
 use angzarr::orchestration::destination::local::LocalDestinationFetcher;
 use angzarr::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
@@ -98,9 +97,8 @@ use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
 use angzarr::proto::projector_service_client::ProjectorServiceClient;
 use angzarr::proto::saga_service_client::SagaServiceClient;
 use angzarr::standalone::{
-    AggregateHandlerAdapter, CommandRouter, DomainStorage, GrpcProjectorHandler,
-    MetaAggregateHandler, ServerInfo, SingleDomainEventQuery, StandaloneAggregateService,
-    META_DOMAIN,
+    CommandRouter, DomainStorage, GrpcProjectorHandler, ServerInfo, SingleDomainEventQuery,
+    StandaloneAggregateService,
 };
 use angzarr::transport::{connect_to_address, grpc_trace_layer};
 
@@ -335,19 +333,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Initialize storage for _angzarr meta domain
-    {
-        let (event_store, snapshot_store) = angzarr::storage::init_storage(&config.storage).await?;
-        domain_stores.insert(
-            META_DOMAIN.to_string(),
-            DomainStorage {
-                event_store,
-                snapshot_store,
-            },
-        );
-        info!(domain = %META_DOMAIN, "Initialized meta domain storage");
-    }
-
     // Initialize PM storage early so it's available for LocalDestinationFetcher
     // PMs need their own storage since they emit their own events
     for svc in &config.standalone.process_managers {
@@ -379,14 +364,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn and connect aggregate client logic processes
     let mut client_logic: HashMap<String, Arc<dyn angzarr::orchestration::aggregate::ClientLogic>> =
         HashMap::new();
-
-    // Register built-in _angzarr meta aggregate (in-process, no external process)
-    client_logic.insert(
-        META_DOMAIN.to_string(),
-        Arc::new(AggregateHandlerAdapter::new(Arc::new(
-            MetaAggregateHandler::new(),
-        ))),
-    );
 
     for svc in &config.standalone.aggregates {
         let path = svc
@@ -698,71 +675,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Register components via _angzarr meta aggregate (command-based registration)
-    let descriptors = build_descriptors(&config);
-    let pod_id = angzarr::proto_ext::get_pod_id();
-    let commands = angzarr::proto_ext::build_registration_commands(&descriptors, &pod_id);
-
-    for cmd in &commands {
-        match executor.execute(cmd.clone()).await {
-            angzarr::orchestration::command::CommandOutcome::Success(_) => {}
-            angzarr::orchestration::command::CommandOutcome::Retryable { reason, .. } => {
-                warn!(reason = %reason, "Retryable error registering component");
-            }
-            angzarr::orchestration::command::CommandOutcome::Rejected(reason) => {
-                warn!(reason = %reason, "Rejected while registering component");
-            }
-        }
-    }
-    info!(
-        count = descriptors.len(),
-        "Components registered via _angzarr"
-    );
-
-    // Spawn heartbeat for re-registration (handles topology startup race)
-    // Get meta domain storage to query current sequences
-    let meta_event_store = domain_stores
-        .get(META_DOMAIN)
-        .expect("meta domain storage must exist")
-        .event_store
-        .clone();
-    let hb_executor = executor.clone();
-    let strategy = config.standalone.registration.build_strategy();
-    tokio::spawn(async move {
-        let mut attempt = 0u32;
-        loop {
-            if let Some(delay) = strategy.next_delay(attempt) {
-                tokio::time::sleep(delay).await;
-                for cmd in &commands {
-                    // Query current sequence for this component's aggregate root
-                    let root_uuid = cmd
-                        .cover
-                        .as_ref()
-                        .and_then(|c| c.root.as_ref())
-                        .map(|r| uuid::Uuid::from_slice(&r.value).unwrap_or_default())
-                        .unwrap_or_default();
-
-                    let next_seq = meta_event_store
-                        .get_next_sequence(META_DOMAIN, "angzarr", root_uuid)
-                        .await
-                        .unwrap_or(0);
-
-                    // Update command with correct sequence
-                    let mut cmd = cmd.clone();
-                    if let Some(page) = cmd.pages.first_mut() {
-                        page.sequence = next_seq;
-                    }
-
-                    let _ = hb_executor.execute(cmd).await;
-                }
-                attempt = attempt.saturating_add(1);
-            } else {
-                info!("Registration heartbeat stopped after {} attempts", attempt);
-                break;
-            }
-        }
-    });
-
     info!(
         aggregates = config.standalone.aggregates.len(),
         sagas = config.standalone.sagas.len(),
@@ -946,55 +858,4 @@ async fn check_tcp_health(addr: &str) -> bool {
 /// Check gRPC health (TCP connectivity).
 async fn check_grpc_health(addr: &str) -> bool {
     check_tcp_health(addr).await
-}
-
-/// Build component descriptors from standalone config for topology discovery.
-fn build_descriptors(config: &angzarr::config::Config) -> Vec<angzarr::proto::ComponentDescriptor> {
-    let mut descriptors = Vec::new();
-
-    for svc in &config.standalone.aggregates {
-        descriptors.push(angzarr::proto::ComponentDescriptor {
-            name: svc.domain.clone(),
-            component_type: "aggregate".to_string(),
-            inputs: vec![],
-        });
-    }
-
-    for svc in &config.standalone.sagas {
-        let listen = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        descriptors.push(angzarr::proto::ComponentDescriptor {
-            name: svc.domain.clone(),
-            component_type: "saga".to_string(),
-            inputs: vec![angzarr::proto::Target {
-                domain: listen.clone(),
-                types: vec![],
-            }],
-        });
-    }
-
-    for svc in &config.standalone.projectors {
-        let listen = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        descriptors.push(angzarr::proto::ComponentDescriptor {
-            name: svc.name.clone().unwrap_or_else(|| svc.domain.clone()),
-            component_type: "projector".to_string(),
-            inputs: vec![angzarr::proto::Target {
-                domain: listen.clone(),
-                types: vec![],
-            }],
-        });
-    }
-
-    for svc in &config.standalone.process_managers {
-        let listen = svc.listen_domain.as_ref().unwrap_or(&svc.domain);
-        descriptors.push(angzarr::proto::ComponentDescriptor {
-            name: svc.domain.clone(),
-            component_type: "process_manager".to_string(),
-            inputs: vec![angzarr::proto::Target {
-                domain: listen.clone(),
-                types: vec![],
-            }],
-        });
-    }
-
-    descriptors
 }
