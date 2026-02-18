@@ -27,7 +27,7 @@ Dev containers are fully supported and work well on Linux. However, the author h
 
 ### Container Runtime: Podman or Docker
 
-Angzarr works with either **Podman** or **Docker** — they're fully compatible.
+⍼ Angzarr works with either **Podman** or **Docker**—they're fully compatible.
 
 **Podman** is recommended because:
 - Daemonless architecture (no background service required)
@@ -73,7 +73,7 @@ export RUSTC_WRAPPER=sccache
 
 ---
 
-## Development Environment
+## Development Options
 
 ### Option 1: Dev Container (Recommended)
 
@@ -109,7 +109,7 @@ cargo install just
 ### Clone and Build
 
 ```bash
-git clone https://github.com/angzarr/angzarr
+git clone https://github.com/benjaminabbitt/angzarr
 cd angzarr
 
 # Build the framework
@@ -117,6 +117,14 @@ just build
 
 # Run unit tests
 just test
+```
+
+### One-Time Setup
+
+Before first deployment, configure Podman/Skaffold for the local registry:
+
+```bash
+just skaffold-init
 ```
 
 ### Deploy to Local Kubernetes
@@ -129,7 +137,7 @@ just deploy
 kubectl get pods -n angzarr -w
 ```
 
-This creates a Kind cluster with a local registry, builds all images via Skaffold, and deploys the Rust example application.
+This creates a Kind cluster with a local registry, builds all images via Skaffold, and deploys the example application.
 
 ### Development Workflow
 
@@ -166,9 +174,9 @@ Each language gets a port block:
 
 | Language | Range | Example Assignments |
 |----------|-------|---------------------|
-| Rust | 50050-50199 | order: 50080, inventory: 50070 |
-| Go | 50200-50349 | order: 50203, inventory: 50204 |
-| Python | 50400-50549 | order: 50403, inventory: 50404 |
+| Rust | 50000-50099 | player: 50035, table: 50045 |
+| Go | 50200-50299 | player: 50203, table: 50204 |
+| Python | 50300-50399 | player: 50303, table: 50304 |
 
 See [Port Conventions](./reference/port-conventions) for the full scheme.
 
@@ -196,7 +204,16 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 | `just cluster-create` | Create Kind cluster with local registry |
 | `just cluster-status` | Show cluster and registry status |
 | `just cluster-delete` | Delete Kind cluster |
+| `just cluster-delete-all` | Delete Kind cluster and registry |
 | `just nuke-deploy` | Delete cluster, caches, rebuild from scratch |
+
+### Infrastructure
+
+| Command | Description |
+|---------|-------------|
+| `just infra` | Deploy local backing services (PostgreSQL, RabbitMQ) |
+| `just infra-destroy` | Destroy local backing services |
+| `just skaffold-init` | One-time setup for Podman/Skaffold registry |
 
 ### Deployment (Skaffold)
 
@@ -204,7 +221,8 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 |---------|-------------|
 | `just deploy` | Full deployment: cluster + infra + build + deploy |
 | `just dev` | Watch mode: auto-rebuild on file changes |
-| `just fresh-deploy` | Regenerate protos, bust caches, rebuild |
+| `just framework-build` | Build framework images (⍼ Angzarr sidecars) |
+| `just framework-dev` | Watch and rebuild framework images |
 
 ### Testing
 
@@ -213,6 +231,20 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 | `just test` | Run unit tests |
 | `just integration` | Run integration tests |
 | `just acceptance` | Run acceptance tests |
+| `just test-interfaces` | Run interface contract tests (SQLite) |
+| `just test-interfaces-postgres` | Interface tests with PostgreSQL (testcontainers) |
+| `just test-interfaces-redis` | Interface tests with Redis (testcontainers) |
+| `just test-bus-amqp` | AMQP bus tests (testcontainers) |
+| `just test-bus-kafka` | Kafka bus tests (testcontainers) |
+
+### Port Forwarding
+
+| Command | Description |
+|---------|-------------|
+| `just port-forward-gateway` | Gateway port-forward (9084) |
+| `just port-forward-grafana` | Grafana port-forward (3000) |
+| `just port-forward-topology` | Topology port-forward (9099) |
+| `just port-forward-cleanup` | Kill all angzarr-related port-forwards |
 
 ---
 
@@ -220,7 +252,7 @@ All commands use [just](https://github.com/casey/just). Run `just` with no argum
 
 ### Logging
 
-Angzarr uses [tracing](https://docs.rs/tracing) for structured logging:
+⍼ Angzarr uses [tracing](https://docs.rs/tracing) for structured logging:
 
 ```bash
 # Debug level for angzarr, info for dependencies
@@ -234,7 +266,7 @@ ANGZARR_LOG=sqlx=debug,angzarr=info just dev
 
 ```bash
 # Port forward an aggregate service
-kubectl port-forward svc/angzarr-order 1310:1310 -n angzarr &
+kubectl port-forward svc/angzarr-player 1310:1310 -n angzarr &
 
 # List available services
 grpcurl -plaintext localhost:1310 list
