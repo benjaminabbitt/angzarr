@@ -100,14 +100,14 @@ flowchart TB
         PRJ <--> |gRPC| PRJ_COORD
     end
 
-    GW --> |Commands| AGG_COORD
-    AGG_COORD --> |Events| ES
-    AGG_COORD --> |Publish| BUS
-    BUS --> |Subscribe| SAGA_COORD
-    BUS --> |Subscribe| PRJ_COORD
-    SAGA_COORD --> |Commands| AGG_COORD
-    PRJ_COORD --> |gRPC| AGG_COORD
-    PRJ --> |Write| PRJ_DB
+    GW -->|gRPC| AGG_COORD
+    AGG_COORD -->|SQL| ES
+    AGG_COORD -->|AMQP/Kafka| BUS
+    BUS -->|AMQP/Kafka| SAGA_COORD
+    BUS -->|AMQP/Kafka| PRJ_COORD
+    SAGA_COORD -->|gRPC| AGG_COORD
+    PRJ_COORD -.->|gRPC| AGG_COORD
+    PRJ -->|SQL| PRJ_DB
 ```
 
 Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.

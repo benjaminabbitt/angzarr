@@ -4,7 +4,7 @@ sidebar_position: 5
 
 # Payload Offloading
 
-When event or command payloads exceed message bus size limits, angzarr stores them externally using the **claim check pattern**.
+When event or command payloads exceed message bus size limits, angzarr stores them externally using the **[claim check pattern](https://eda-visuals.boyney.io/visuals/claim-check-pattern)**.
 
 ---
 

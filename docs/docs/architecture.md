@@ -80,16 +80,16 @@ flowchart TB
     Cmd[Commands to<br/>Other Aggregates]
     RM[(Read Model<br/>Postgres, Redis)]
 
-    Client --> AC
-    AC --> Agg
-    AC --> ES
-    AC --> BUS
-    BUS --> SC
-    BUS --> PC
-    SC --> Saga
-    PC --> Proj
-    Saga --> Cmd
-    Proj --> RM
+    Client -->|gRPC| AC
+    AC <-->|gRPC| Agg
+    AC -->|SQL| ES
+    AC -->|AMQP/Kafka| BUS
+    BUS -->|AMQP/Kafka| SC
+    BUS -->|AMQP/Kafka| PC
+    SC <-->|gRPC| Saga
+    PC <-->|gRPC| Proj
+    Saga -->|gRPC| Cmd
+    Proj -->|SQL| RM
 ```
 
 ---
@@ -105,7 +105,7 @@ flowchart TB
             Agg[Aggregate Logic]
             Upc[Upcaster Logic]
         end
-        AggSidecar[⍼ Business Coordinator]
+        AggSidecar[⍼ Aggregate Coordinator]
         AggCode <-->|gRPC| AggSidecar
     end
 
@@ -121,13 +121,13 @@ flowchart TB
         Prj <-->|gRPC| PrjSidecar
     end
 
-    AggSidecar --> ES[(Event Store)]
-    AggSidecar --> MB[Message Bus]
-    SagaSidecar --> MB
-    SagaSidecar -->|Commands| AggSidecar
-    PrjSidecar --> MB
-    PrjSidecar -->|gRPC| AggSidecar
-    Prj --> PrjDB[(Projection DB)]
+    AggSidecar -->|SQL| ES[(Event Store)]
+    AggSidecar -->|AMQP/Kafka| MB[Message Bus]
+    MB -->|AMQP/Kafka| SagaSidecar
+    MB -->|AMQP/Kafka| PrjSidecar
+    SagaSidecar -->|gRPC| AggSidecar
+    PrjSidecar -.->|gRPC| AggSidecar
+    Prj -->|SQL| PrjDB[(Projection DB)]
 ```
 
 ### Benefits
@@ -141,7 +141,7 @@ flowchart TB
 
 ## Synchronization Modes
 
-⍼ Angzarr provides two mechanisms for controlling when results return to callers.
+⍼ Angzarr provides mechanisms for controlling [sync vs async communication](https://eda-visuals.boyney.io/visuals/sync-vs-async) — when results return to callers.
 
 ### SyncMode
 
@@ -209,6 +209,8 @@ Events are correlated via `correlation_id` on `Cover`, allowing clients to track
 | immudb | Implemented | Immutable audit requirements |
 
 ### Message Bus Backends
+
+⍼ Angzarr uses [publish/subscribe messaging](https://eda-visuals.boyney.io/visuals/publish-subscribe) to distribute events to sagas and projectors.
 
 | Backend | Status | Use Case |
 |---------|--------|----------|
