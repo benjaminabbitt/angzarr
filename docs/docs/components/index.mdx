@@ -17,7 +17,7 @@ import TabItem from '@theme/TabItem';
 |-----------|-------|--------|-------|----------|
 | **[Aggregate](/components/aggregate)** | Commands | Events | Via events | Domain logic, consistency boundary |
 | **[Saga](/components/saga)** | Events (single domain) | Commands | Stateless | Cross-domain translation |
-| **[Projector](/components/projector)** | Events (multi-domain) | Side effects | Local only | Read models, external systems |
+| **[Projector](/components/projector)** | Events (single domain preferred) | Side effects | Local only | Read models, external systems |
 | **[Process Manager](/components/process-manager)** | Events (multi-domain) | Commands | Own event stream | Stateful multi-domain workflows |
 | **[Upcaster](#upcaster)** | Old events | New events | None | Schema evolution |
 
@@ -45,9 +45,8 @@ Use when you need to:
 Use when you need to:
 - Build read models (query-optimized views)
 - Write to external systems (search, cache, analytics)
-- Subscribe to events from multiple domains
 
-**Projectors never emit commands.** They only observe.
+**Projectors never emit commands.** They only observe. Prefer single-domain projectors; multi-domain is possible but often signals incorrect domain boundaries.
 
 ### Process Manager
 Use when you need to:
@@ -71,7 +70,7 @@ Use when you need to:
 |--------|------|-----------|-----------------|
 | **Output** | Commands | Side effects | Commands |
 | **State** | None | Local (in-memory) | Own event stream |
-| **Domain subscription** | Single | Multiple | Multiple |
+| **Domain subscription** | Single | Single (prefer) | Multiple |
 | **Receives correlation ID** | Yes (propagates) | Yes (observes) | Yes (aggregate root) |
 | **Failure impact** | Workflow incomplete | Stale read models | Workflow incomplete |
 | **Timeouts** | No | No | Yes |

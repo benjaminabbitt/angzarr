@@ -257,16 +257,19 @@ let router = StateRouter::new("prj-output")
 
 ## Multi-Domain Projectors
 
-Projectors can subscribe to events from multiple domains:
+Projectors **can** subscribe to events from multiple domains, but **should not** unless absolutely required:
 
 ```python
+# Avoid this pattern when possible
 router = StateRouter("prj-output")
     .subscribes("player", ["PlayerRegistered", "FundsDeposited"])
     .subscribes("table", ["PlayerJoined", "HandStarted"])
     .subscribes("hand", ["CardsDealt", "ActionTaken"])
 ```
 
-This is safe for projectors because they only observe—unlike sagas which must handle the complexity of multi-domain command generation.
+**If you need multi-domain subscription, check your domain boundaries first.** Needing to join events across domains often indicates the domains are incorrectly partitioned. Consider whether those events belong in the same domain.
+
+When multi-domain is truly necessary (e.g., a cross-cutting analytics view), it's technically safe because projectors only observe—but prefer single-domain projectors where possible for simpler reasoning and deployment.
 
 ---
 
