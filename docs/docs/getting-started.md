@@ -86,6 +86,8 @@ The project includes a complete dev container configuration:
 # 3. Click "Reopen in Container" when prompted
 ```
 
+Dev containers also work with JetBrains IDEs, though the author found them slow and cumbersome on Windows.
+
 The dev container includes:
 - Rust toolchain with rust-analyzer
 - Container runtime (Docker-in-Docker) for Kind
