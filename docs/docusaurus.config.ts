@@ -1,6 +1,7 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import codeSnippets from 'remark-code-snippets';
 
 const config: Config = {
   title: '⍼ Angzarr',
@@ -39,6 +40,11 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/benjaminabbitt/angzarr/tree/main/docs/',
           routeBasePath: '/', // Docs at root, no /docs prefix
+          remarkPlugins: [
+            [codeSnippets, {
+              baseDir: '..',  // Repository root (one level up from docs/)
+            }],
+          ],
         },
         blog: false, // Disable blog
         theme: {
