@@ -224,6 +224,103 @@ std::vector<CommandBook> handle_funds_reserved(
 
 ---
 
+## Splitter Pattern
+
+When one event should trigger commands to **multiple different aggregates**, return multiple `CommandBook` entries — one per target aggregate root. This is the [splitter pattern](https://eda-visuals.boyney.io/visuals/splitter-pattern).
+
+**Example:** A batch order event creates reservations across multiple inventory SKUs:
+
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
+
+```python
+def handle_batch_order(event: BatchOrderPlaced, context: SagaContext) -> list[CommandBook]:
+    """Split one event into commands for multiple inventory aggregates."""
+    commands = []
+
+    for item in event.items:
+        cmd = ReserveStock(
+            order_id=event.order_id,
+            quantity=item.quantity,
+        )
+
+        target_seq = context.get_sequence("inventory", item.sku_id)
+
+        commands.append(CommandBook(
+            cover=Cover(domain="inventory", root=item.sku_id),
+            pages=[CommandPage(sequence=target_seq, command=pack_any(cmd))],
+        ))
+
+    return commands  # One CommandBook per SKU
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust
+fn handle_batch_order(event: &BatchOrderPlaced, context: &SagaContext) -> Vec<CommandBook> {
+    // Split one event into commands for multiple inventory aggregates
+    event.items.iter().map(|item| {
+        let cmd = ReserveStock {
+            order_id: event.order_id.clone(),
+            quantity: item.quantity,
+        };
+
+        let target_seq = context.get_sequence("inventory", &item.sku_id);
+
+        CommandBook {
+            cover: Some(Cover {
+                domain: "inventory".into(),
+                root: Some(item.sku_id.clone()),
+                ..Default::default()
+            }),
+            pages: vec![CommandPage {
+                sequence: target_seq,
+                command: Some(prost_types::Any::pack(&cmd)),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }).collect()
+}
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+func handleBatchOrder(event *BatchOrderPlaced, ctx *SagaContext) ([]*CommandBook, error) {
+    // Split one event into commands for multiple inventory aggregates
+    var commands []*CommandBook
+
+    for _, item := range event.Items {
+        cmd := &ReserveStock{
+            OrderId:  event.OrderId,
+            Quantity: item.Quantity,
+        }
+
+        targetSeq := ctx.GetSequence("inventory", item.SkuId)
+
+        commands = append(commands, &CommandBook{
+            Cover: &Cover{Domain: "inventory", Root: item.SkuId},
+            Pages: []*CommandPage{{
+                Sequence: targetSeq,
+                Command:  packAny(cmd),
+            }},
+        })
+    }
+
+    return commands, nil
+}
+```
+
+</TabItem>
+</Tabs>
+
+Each `CommandBook` targets a different aggregate root. The framework dispatches them independently — if one fails, others may still succeed (handle via compensation).
+
+---
+
 ## Compensation Flow
 
 When a saga command is rejected (e.g., table is full), Angzarr routes a **Notification** back to the source aggregate:
