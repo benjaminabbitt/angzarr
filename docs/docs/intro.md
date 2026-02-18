@@ -79,6 +79,7 @@ flowchart TB
     subgraph Infrastructure
         ES[(Event Store<br/>PostgreSQL/SQLite)]
         BUS[Message Bus<br/>RabbitMQ/Kafka]
+        PRJ_DB[(Projection Database)]
     end
 
     subgraph AggPod[Aggregate Pod]
@@ -105,7 +106,8 @@ flowchart TB
     BUS --> |Subscribe| SAGA_COORD
     BUS --> |Subscribe| PRJ_COORD
     SAGA_COORD --> |Commands| AGG_COORD
-    PRJ_COORD --> |Read| ES
+    PRJ_COORD --> |gRPC| AGG_COORD
+    PRJ --> |Write| PRJ_DB
 ```
 
 Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.
