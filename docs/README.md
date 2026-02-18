@@ -1,41 +1,25 @@
-# Website
+# Angzarr Documentation
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
-
-## Installation
-
-```bash
-yarn
-```
+This documentation site is built using [Docusaurus](https://docusaurus.io/).
 
 ## Local Development
 
 ```bash
-yarn start
+cd docs
+npm install
+npm start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+This starts a local development server at `http://localhost:3000`. Most changes are reflected live without restarting.
 
 ## Build
 
 ```bash
-yarn build
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Generates static content into `build/` for deployment.
 
 ## Deployment
 
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Documentation is automatically deployed to GitHub Pages via GitHub Actions when changes are pushed to `main`. See `.github/workflows/deploy-docs.yml`.

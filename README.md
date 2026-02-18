@@ -200,7 +200,7 @@ The senior defines the **what** (schemas, aggregates, events). Juniors and AIs i
 ## Architecture
 
 client logic lives in external services called via gRPC. Angzarr handles:
-- **EventStore**: Persist and query events (MongoDB, SQLite tested; [PostgreSQL](src/storage/postgres/README.md), [Redis](src/storage/redis/README.md) implemented but untested)
+- **EventStore**: Persist and query events (SQLite, PostgreSQL, Redis; see [storage backends](src/storage/README.md))
 - **SnapshotStore**: Optimize replay with snapshots
 - **Upcaster**: Transform old event versions on read (schema evolution)
 - **EventBus**: Distribute events to projectors/sagas
@@ -233,28 +233,29 @@ Angzarr provides seven binaries in two categories:
 
 ## Documentation
 
-See [docs/](docs/) for the full documentation index organized by audience:
+**📚 [Full Documentation](https://benjaminabbitt.github.io/angzarr/)** — Docusaurus wiki with multi-language examples
 
-- **[Technical Pitch](docs/PITCH.md)** -- Full architectural overview (standalone document)
-- **[Comparison to Alternatives](docs/COMPARISON.md)** -- vs Axon, AWS, GCP, Kafka
-- **[Getting Started](docs/getting-started.md)** -- Prerequisites, installation, first domain
-- **[TOOLING.md](TOOLING.md)** -- Development tools setup (just, bacon, mold, sccache, Kind)
+Quick links:
+- **[Technical Pitch](PITCH.md)** — Full architectural overview (standalone document)
+- **[Getting Started](https://benjaminabbitt.github.io/angzarr/getting-started)** — Prerequisites, installation, first domain
+- **[Architecture](https://benjaminabbitt.github.io/angzarr/architecture)** — Core concepts and patterns
+- **[Testing](https://benjaminabbitt.github.io/angzarr/operations/testing)** — Three-level testing strategy
 
-Implementation guides:
-- [CQRS and Event Sourcing Concepts](docs/cqrs-event-sourcing.md)
-- [Command Handlers (Aggregates)](docs/components/aggregate/aggregate.md)
-- [Projectors](docs/components/projector/projectors.md)
-- [Sagas (Process Coordinators)](docs/components/saga/sagas.md)
+Components:
+- [Aggregates](https://benjaminabbitt.github.io/angzarr/components/aggregate) — Command handlers
+- [Sagas](https://benjaminabbitt.github.io/angzarr/components/saga) — Cross-domain coordination
+- [Projectors](https://benjaminabbitt.github.io/angzarr/components/projector) — Read model builders
+- [Process Managers](https://benjaminabbitt.github.io/angzarr/components/process-manager) — Stateful orchestration
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/yourorg/angzarr
+git clone https://github.com/benjaminabbitt/angzarr
 cd angzarr
 just build && just test
 ```
 
-For full setup including Kubernetes, standalone mode, and your first domain, see [Getting Started](docs/getting-started.md).
+For full setup including Kubernetes, standalone mode, and your first domain, see [Getting Started](https://benjaminabbitt.github.io/angzarr/getting-started).
 
 ## License
 
