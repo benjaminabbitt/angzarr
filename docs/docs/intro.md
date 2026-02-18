@@ -78,7 +78,7 @@ flowchart LR
         GW[Gateway]
     end
 
-    subgraph AggPod[Aggregate Pod]
+    subgraph AggPod[Domain A - Aggregate]
         AGG_COORD[⍼ Sidecar]
         AGG[Your Aggregate]
         UPC[Your Upcaster]
@@ -107,12 +107,23 @@ flowchart LR
         end
     end
 
+    subgraph AggPod2[Domain B - Aggregate]
+        AGG_COORD2[⍼ Sidecar]
+        AGG2[Another Aggregate]
+        AGG_COORD2 <--> AGG2
+    end
+
     GW -->|cmd| AGG_COORD
     AGG_COORD <--> ES
     AGG_COORD --> BUS
     BUS --> SAGA_COORD
     BUS --> PRJ_COORD
-    SAGA_COORD -->|cmd| AGG_COORD
+    SAGA_COORD -->|cmd| AGG_COORD2
+    AGG_COORD2 <--> ES
+
+    style AggPod2 stroke-dasharray: 5 5
+    style AGG_COORD2 stroke-dasharray: 5 5
+    style AGG2 stroke-dasharray: 5 5
 ```
 
 Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.
