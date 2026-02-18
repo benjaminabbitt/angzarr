@@ -91,11 +91,11 @@ message PayloadReference {
 
 message EventPage {
   uint32 sequence = 1;
-  google.protobuf.Timestamp created_at = 3;
-  google.protobuf.Any event = 4;
-  // If set, the actual event payload is stored externally (claim check pattern).
-  // The `event` field will be empty when this is present.
-  optional PayloadReference external_payload = 10;
+  google.protobuf.Timestamp created_at = 2;
+  oneof payload {
+    google.protobuf.Any event = 3;
+    PayloadReference external = 4;  // Claim check: payload stored externally
+  }
 }
 
 // Snapshot of aggregate state at a given sequence number.
@@ -132,11 +132,11 @@ message CommandPage {
   // Must match the aggregate's current next sequence (i.e., events.len()).
   // For new aggregates, use 0.
   uint32 sequence = 1;
-  google.protobuf.Any command = 3;
-  MergeStrategy merge_strategy = 4; // How to handle sequence conflicts
-  // If set, the actual command payload is stored externally (claim check pattern).
-  // The `command` field will be empty when this is present.
-  optional PayloadReference external_payload = 10;
+  MergeStrategy merge_strategy = 2;
+  oneof payload {
+    google.protobuf.Any command = 3;
+    PayloadReference external = 4;  // Claim check: payload stored externally
+  }
 }
 
 message CommandBook {
