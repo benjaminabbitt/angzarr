@@ -1,20 +1,12 @@
-// Hand bounded context gRPC server.
+// Hand bounded context gRPC server using OO pattern.
+//
+// This aggregate uses the OO-style pattern with embedded AggregateBase,
+// method-based handlers, and fluent registration. This contrasts with
+// the player aggregate which uses the functional CommandRouter pattern.
 package main
 
-import (
-	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	"github.com/benjaminabbitt/angzarr/examples/go/hand/agg/handlers"
-)
+import angzarr "github.com/benjaminabbitt/angzarr/client/go"
 
 func main() {
-	router := angzarr.NewCommandRouter("hand", handlers.RebuildState).
-		On("DealCards", handlers.HandleDealCards).
-		On("PostBlind", handlers.HandlePostBlind).
-		On("PlayerAction", handlers.HandlePlayerAction).
-		On("DealCommunityCards", handlers.HandleDealCommunityCards).
-		On("RequestDraw", handlers.HandleRequestDraw).
-		On("RevealCards", handlers.HandleRevealCards).
-		On("AwardPot", handlers.HandleAwardPot)
-
-	angzarr.RunAggregateServer("hand", "50203", router)
+	angzarr.RunOOAggregateServer[HandState, *Hand]("hand", "50203", NewHand)
 }

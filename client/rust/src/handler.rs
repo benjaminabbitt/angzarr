@@ -212,8 +212,18 @@ impl SagaService for SagaHandler {
     }
 }
 
-/// Handle function type for projectors.
+/// Handle function type for projectors (function pointer).
 pub type ProjectorHandleFn = fn(&EventBook) -> Result<Projection, Status>;
+
+/// Handle closure type for projectors.
+pub type ProjectorHandleClosureFn =
+    Arc<dyn Fn(&EventBook) -> Result<Projection, Status> + Send + Sync>;
+
+/// Internal handle type - either fn pointer or closure.
+enum ProjectorHandleType {
+    Fn(ProjectorHandleFn),
+    Closure(ProjectorHandleClosureFn),
+}
 
 /// gRPC projector service implementation.
 ///
@@ -221,7 +231,7 @@ pub type ProjectorHandleFn = fn(&EventBook) -> Result<Projection, Status>;
 pub struct ProjectorHandler {
     name: String,
     domains: Vec<String>,
-    handle_fn: Option<ProjectorHandleFn>,
+    handle_type: Option<ProjectorHandleType>,
 }
 
 impl ProjectorHandler {
@@ -230,13 +240,22 @@ impl ProjectorHandler {
         Self {
             name: name.into(),
             domains,
-            handle_fn: None,
+            handle_type: None,
         }
     }
 
-    /// Set the handle function.
+    /// Set the handle function (function pointer).
     pub fn with_handle(mut self, handle_fn: ProjectorHandleFn) -> Self {
-        self.handle_fn = Some(handle_fn);
+        self.handle_type = Some(ProjectorHandleType::Fn(handle_fn));
+        self
+    }
+
+    /// Set the handle function (closure).
+    pub fn with_handle_fn<H>(mut self, handle_fn: H) -> Self
+    where
+        H: Fn(&EventBook) -> Result<Projection, Status> + Send + Sync + 'static,
+    {
+        self.handle_type = Some(ProjectorHandleType::Closure(Arc::new(handle_fn)));
         self
     }
 
@@ -271,11 +290,16 @@ impl ProjectorService for ProjectorHandler {
 
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
         let event_book = request.into_inner();
-        if let Some(handle_fn) = self.handle_fn {
-            let projection = handle_fn(&event_book)?;
-            Ok(Response::new(projection))
-        } else {
-            Ok(Response::new(Projection::default()))
+        match &self.handle_type {
+            Some(ProjectorHandleType::Fn(handle_fn)) => {
+                let projection = handle_fn(&event_book)?;
+                Ok(Response::new(projection))
+            }
+            Some(ProjectorHandleType::Closure(handle_fn)) => {
+                let projection = handle_fn(&event_book)?;
+                Ok(Response::new(projection))
+            }
+            None => Ok(Response::new(Projection::default())),
         }
     }
 

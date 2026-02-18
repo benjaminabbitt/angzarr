@@ -1,5 +1,8 @@
 //! Saga: Table → Hand
 //!
+//! DOC: This file is referenced in docs/docs/examples/sagas.mdx
+//!      Update documentation when making changes to saga patterns.
+//!
 //! Reacts to HandStarted events from Table domain.
 //! Sends DealCards commands to Hand domain.
 

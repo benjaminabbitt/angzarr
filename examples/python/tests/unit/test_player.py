@@ -1,4 +1,8 @@
-"""Player aggregate unit tests."""
+"""Player aggregate unit tests.
+
+DOC: This file is referenced in docs/docs/examples/aggregates.mdx
+     Update documentation when making changes to test patterns.
+"""
 
 import sys
 from pathlib import Path

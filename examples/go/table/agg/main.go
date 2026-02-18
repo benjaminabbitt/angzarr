@@ -1,18 +1,12 @@
-// Table bounded context gRPC server.
+// Table bounded context gRPC server using OO pattern.
+//
+// This aggregate uses the OO-style pattern with embedded AggregateBase,
+// method-based handlers, and fluent registration. This contrasts with
+// the player aggregate which uses the functional CommandRouter pattern.
 package main
 
-import (
-	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	"github.com/benjaminabbitt/angzarr/examples/go/table/agg/handlers"
-)
+import angzarr "github.com/benjaminabbitt/angzarr/client/go"
 
 func main() {
-	router := angzarr.NewCommandRouter("table", handlers.RebuildState).
-		On("CreateTable", handlers.HandleCreateTable).
-		On("JoinTable", handlers.HandleJoinTable).
-		On("LeaveTable", handlers.HandleLeaveTable).
-		On("StartHand", handlers.HandleStartHand).
-		On("EndHand", handlers.HandleEndHand)
-
-	angzarr.RunAggregateServer("table", "50202", router)
+	angzarr.RunOOAggregateServer[TableState, *Table]("table", "50202", NewTable)
 }

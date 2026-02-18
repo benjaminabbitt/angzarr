@@ -1,3 +1,6 @@
+// DOC: This file is referenced in docs/docs/examples/sagas.mdx
+//      Update documentation when making changes to saga patterns.
+
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Angzarr;

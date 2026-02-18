@@ -59,10 +59,9 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, format_ident};
+use quote::quote;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, DeriveInput, Expr, ExprLit, FnArg, Ident,
-    ImplItem, ItemImpl, Lit, Meta, MetaNameValue, Pat, Token, Type,
+    parse_macro_input, Attribute, Ident, ImplItem, ItemImpl, Meta, Token,
 };
 
 /// Marks an impl block as an aggregate with command handlers.
@@ -92,19 +91,27 @@ pub fn aggregate(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 struct AggregateArgs {
     domain: String,
+    state: Ident,
 }
 
 impl syn::parse::Parse for AggregateArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut domain = None;
+        let mut state = None;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             input.parse::<Token![=]>()?;
-            let value: syn::LitStr = input.parse()?;
 
             match ident.to_string().as_str() {
-                "domain" => domain = Some(value.value()),
+                "domain" => {
+                    let value: syn::LitStr = input.parse()?;
+                    domain = Some(value.value());
+                }
+                "state" => {
+                    let value: Ident = input.parse()?;
+                    state = Some(value);
+                }
                 _ => return Err(syn::Error::new(ident.span(), "unknown attribute")),
             }
 
@@ -117,12 +124,16 @@ impl syn::parse::Parse for AggregateArgs {
             domain: domain.ok_or_else(|| {
                 syn::Error::new(proc_macro2::Span::call_site(), "domain is required")
             })?,
+            state: state.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "state is required")
+            })?,
         })
     }
 }
 
 fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
     let domain = &args.domain;
+    let state_ty = &args.state;
     let self_ty = &input.self_ty;
 
     // Collect handler methods
@@ -150,13 +161,21 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
-    // Generate router construction
+    // Generate handler registrations with command decoding
+    // Each handler needs its own clone of the Arc<Self>
     let handler_registrations: Vec<_> = handlers
         .iter()
         .map(|(method, cmd_type)| {
             let cmd_str = cmd_type.to_string();
             quote! {
-                .on(#cmd_str, |cb, cmd, state, seq| self.#method(cb, cmd, state, seq))
+                .on(#cmd_str, {
+                    let agg = agg.clone();
+                    move |cb, cmd_any, state, seq| {
+                        let cmd = <#cmd_type as prost::Message>::decode(cmd_any.value.as_slice())
+                            .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #cmd_str, e)))?;
+                        agg.#method(cb, cmd, state, seq)
+                    }
+                })
             }
         })
         .collect();
@@ -165,7 +184,10 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
         .iter()
         .map(|(method, domain, command)| {
             quote! {
-                .on_rejected(#domain, #command, |notification, state| self.#method(notification, state))
+                .on_rejected(#domain, #command, {
+                    let agg = agg.clone();
+                    move |notification, state| agg.#method(notification, state)
+                })
             }
         })
         .collect();
@@ -177,7 +199,7 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
             let suffix = event_type.to_string();
             quote! {
                 if event_any.type_url.ends_with(#suffix) {
-                    if let Ok(event) = prost::Message::decode::<#event_type>(event_any.value.as_slice()) {
+                    if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
                         Self::#method(state, event);
                         return;
                     }
@@ -201,14 +223,14 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
     let apply_event_fn = if !appliers.is_empty() {
         quote! {
             /// Apply a single event to state. Auto-generated from #[applies] methods.
-            pub fn apply_event(state: &mut Self::State, event_any: &prost_types::Any) {
+            pub fn apply_event(state: &mut #state_ty, event_any: &prost_types::Any) {
                 #(#apply_arms)*
                 // Unknown event type - silently ignore (forward compatibility)
             }
 
             /// Rebuild state from event book. Auto-generated.
-            pub fn rebuild(events: &angzarr::proto::EventBook) -> Self::State {
-                let mut state = Self::State::default();
+            pub fn rebuild(events: &angzarr_client::proto::EventBook) -> #state_ty {
+                let mut state = #state_ty::default();
                 for page in &events.pages {
                     if let Some(event) = &page.event {
                         Self::apply_event(&mut state, event);
@@ -228,8 +250,12 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
             #apply_event_fn
 
             /// Creates a CommandRouter from this aggregate's annotated methods.
-            pub fn into_router(self) -> angzarr::CommandRouter<Self::State> {
-                angzarr::CommandRouter::new(#domain, Self::rebuild)
+            pub fn into_router(self) -> angzarr_client::CommandRouter<#state_ty>
+            where
+                Self: Send + Sync + 'static,
+            {
+                let agg = std::sync::Arc::new(self);
+                angzarr_client::CommandRouter::new(#domain, Self::rebuild)
                     #(#handler_registrations)*
                     #(#rejection_registrations)*
             }
@@ -403,23 +429,40 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
-    // Generate router construction
+    // Generate prepare handler registrations with event decoding
     let prepare_registrations: Vec<_> = prepare_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
             quote! {
-                .prepare(#event_str, |event| self.#method(event))
+                .prepare_fn(#event_str, {
+                    let saga = saga.clone();
+                    move |_source, event_any| {
+                        if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
+                            saga.#method(&event)
+                        } else {
+                            vec![]
+                        }
+                    }
+                })
             }
         })
         .collect();
 
+    // Generate event handler registrations with event decoding
     let handler_registrations: Vec<_> = event_handlers
         .iter()
         .map(|(method, event_type)| {
             let event_str = event_type.to_string();
             quote! {
-                .on(#event_str, |event, destinations| self.#method(event, destinations))
+                .on_many_fn(#event_str, {
+                    let saga = saga.clone();
+                    move |_source, event_any, destinations| {
+                        let event = <#event_type as prost::Message>::decode(event_any.value.as_slice())
+                            .map_err(|e| angzarr_client::CommandRejectedError::new(format!("Failed to decode {}: {}", #event_str, e)))?;
+                        saga.#method(event, destinations)
+                    }
+                })
             }
         })
         .collect();
@@ -438,9 +481,13 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
 
         impl #self_ty {
             /// Creates an EventRouter from this saga's annotated methods.
-            pub fn into_router(self) -> angzarr::EventRouter {
-                angzarr::EventRouter::new(#name, #input_domain)
-                    .sends(#output_domain)
+            pub fn into_router(self) -> angzarr_client::EventRouter
+            where
+                Self: Send + Sync + 'static,
+            {
+                let saga = std::sync::Arc::new(self);
+                angzarr_client::EventRouter::new(#name, #input_domain)
+                    .sends_domain(#output_domain)
                     #(#prepare_registrations)*
                     #(#handler_registrations)*
             }
@@ -479,16 +526,216 @@ pub fn reacts_to(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Marks an impl block as a process manager with event handlers.
 #[proc_macro_attribute]
-pub fn process_manager(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn process_manager(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Similar to saga but with state management
     // Implementation would follow the same pattern as saga
     item
 }
 
 /// Marks a method as a projector event handler.
+///
+/// # Example
+/// ```rust,ignore
+/// #[projects(PlayerRegistered)]
+/// fn project_registered(&self, event: PlayerRegistered) -> Projection {
+///     // ...
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn projects(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
+}
+
+/// Marks an impl block as a projector with event handlers.
+///
+/// # Attributes
+/// - `name = "projector-name"` - The projector's name (required)
+/// - `inputs = ["domain1", "domain2"]` - Input domains to subscribe to (required)
+///
+/// # Example
+/// ```rust,ignore
+/// #[projector(name = "output", inputs = ["player", "table", "hand"])]
+/// impl OutputProjector {
+///     #[projects(PlayerRegistered)]
+///     fn project_registered(&self, event: PlayerRegistered) -> Projection {
+///         // ...
+///     }
+///
+///     #[projects(HandComplete)]
+///     fn project_hand_complete(&self, event: HandComplete) -> Projection {
+///         // ...
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn projector(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as ProjectorArgs);
+    let input = parse_macro_input!(item as ItemImpl);
+
+    let expanded = expand_projector(args, input);
+    TokenStream::from(expanded)
+}
+
+struct ProjectorArgs {
+    name: String,
+    inputs: Vec<String>,
+}
+
+impl syn::parse::Parse for ProjectorArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut name = None;
+        let mut inputs = None;
+
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+
+            match ident.to_string().as_str() {
+                "name" => {
+                    let value: syn::LitStr = input.parse()?;
+                    name = Some(value.value());
+                }
+                "inputs" => {
+                    let content;
+                    syn::bracketed!(content in input);
+                    let mut domains = Vec::new();
+                    while !content.is_empty() {
+                        let lit: syn::LitStr = content.parse()?;
+                        domains.push(lit.value());
+                        if content.peek(Token![,]) {
+                            content.parse::<Token![,]>()?;
+                        }
+                    }
+                    inputs = Some(domains);
+                }
+                _ => return Err(syn::Error::new(ident.span(), "unknown attribute")),
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(ProjectorArgs {
+            name: name.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "name is required")
+            })?,
+            inputs: inputs.ok_or_else(|| {
+                syn::Error::new(proc_macro2::Span::call_site(), "inputs is required")
+            })?,
+        })
+    }
+}
+
+fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
+    let name = &args.name;
+    let inputs = &args.inputs;
+    let self_ty = &input.self_ty;
+
+    // Collect handler methods
+    let mut event_handlers = Vec::new();
+
+    for item in &input.items {
+        if let ImplItem::Fn(method) = item {
+            for attr in &method.attrs {
+                if attr.path().is_ident("projects") {
+                    if let Ok(event_type) = get_attr_ident(attr) {
+                        event_handlers.push((method.sig.ident.clone(), event_type));
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate event dispatch arms
+    let handler_arms: Vec<_> = event_handlers
+        .iter()
+        .map(|(method, event_type)| {
+            let suffix = event_type.to_string();
+            quote! {
+                if type_url.ends_with(#suffix) {
+                    if let Ok(event) = <#event_type as prost::Message>::decode(event_any.value.as_slice()) {
+                        return Some(self.#method(event));
+                    }
+                }
+            }
+        })
+        .collect();
+
+    // Generate the handle_event dispatch function
+    let dispatch_fn = if !event_handlers.is_empty() {
+        quote! {
+            /// Dispatch a single event to the appropriate handler.
+            fn handle_event(&self, event_any: &prost_types::Any) -> Option<angzarr_client::proto::Projection> {
+                let type_url = &event_any.type_url;
+                #(#handler_arms)*
+                None
+            }
+        }
+    } else {
+        quote! {
+            fn handle_event(&self, _event_any: &prost_types::Any) -> Option<angzarr_client::proto::Projection> {
+                None
+            }
+        }
+    };
+
+    // Remove our attributes from methods
+    for item in &mut input.items {
+        if let ImplItem::Fn(method) = item {
+            method.attrs.retain(|attr| !attr.path().is_ident("projects"));
+        }
+    }
+
+    // Build inputs vec
+    let inputs_vec: Vec<_> = inputs.iter().map(|d| quote! { #d.to_string() }).collect();
+
+    quote! {
+        #input
+
+        impl #self_ty {
+            #dispatch_fn
+
+            /// Handle an EventBook by dispatching each event to handlers.
+            pub fn handle(&self, events: &angzarr_client::proto::EventBook) -> angzarr_client::proto::Projection {
+                let cover = events.cover.as_ref();
+                let mut last_seq = 0u32;
+
+                for page in &events.pages {
+                    if let Some(event_any) = &page.event {
+                        if let Some(projection) = self.handle_event(event_any) {
+                            return projection;
+                        }
+                    }
+                    if let Some(angzarr_client::proto::event_page::Sequence::Num(n)) = &page.sequence {
+                        last_seq = *n;
+                    }
+                }
+
+                // Default projection if no handler matched
+                angzarr_client::proto::Projection {
+                    cover: cover.cloned(),
+                    projector: #name.to_string(),
+                    sequence: last_seq,
+                    projection: None,
+                }
+            }
+
+            /// Creates a ProjectorHandler from this projector.
+            pub fn into_handler(self) -> angzarr_client::ProjectorHandler
+            where
+                Self: Send + Sync + 'static,
+            {
+                let projector = std::sync::Arc::new(self);
+                angzarr_client::ProjectorHandler::new(
+                    #name,
+                    vec![#(#inputs_vec),*],
+                ).with_handle_fn(move |events| {
+                    Ok(projector.handle(events))
+                })
+            }
+        }
+    }
 }
 
 // Helper functions

@@ -1,5 +1,8 @@
 //! Sequence validation logic for AggregateService.
 //!
+//! DOC: This file is referenced in docs/docs/operations/error-recovery.mdx
+//!      Update documentation when making changes to sequence validation.
+//!
 //! Handles sequence validation and sequence computation helpers.
 
 use prost::Message;

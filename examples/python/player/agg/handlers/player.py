@@ -1,4 +1,8 @@
-"""Player aggregate - rich domain model."""
+"""Player aggregate - rich domain model.
+
+DOC: This file is referenced in docs/docs/examples/aggregates.mdx
+     Update documentation when making changes to handler patterns.
+"""
 
 from dataclasses import dataclass, field
 import logging

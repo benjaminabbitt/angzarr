@@ -410,3 +410,176 @@ func RunProcessManagerServer(name, defaultPort string, handler *ProcessManagerHa
 		EnableReflection: true,
 	})
 }
+
+// ============================================================================
+// OO-Style Handlers
+// ============================================================================
+
+// OOAggregate interface for OO-style aggregates.
+// Implemented by types that embed AggregateBase.
+type OOAggregate[S any] interface {
+	Domain() string
+	Handle(request *pb.ContextualCommand) (*pb.BusinessResponse, error)
+	Descriptor() *pb.ComponentDescriptor
+	HandlerTypes() []string
+}
+
+// OOAggregateFactory creates a new OO aggregate instance with prior events.
+type OOAggregateFactory[S any, A OOAggregate[S]] func(events *pb.EventBook) A
+
+// OOAggregateHandler wraps an OO-style aggregate for the gRPC Aggregate service.
+//
+// Unlike the functional AggregateHandler, this creates a new aggregate instance
+// for each request, passing in the prior events for state reconstruction.
+//
+// Example:
+//
+//	factory := func(events *pb.EventBook) *Table {
+//	    return NewTable(events)
+//	}
+//	handler := NewOOAggregateHandler("table", factory)
+type OOAggregateHandler[S any, A OOAggregate[S]] struct {
+	pb.UnimplementedAggregateServiceServer
+	domain  string
+	factory OOAggregateFactory[S, A]
+}
+
+// NewOOAggregateHandler creates a new OO aggregate handler.
+//
+// Parameters:
+//   - domain: The aggregate's domain name
+//   - factory: Function to create a new aggregate with prior events
+func NewOOAggregateHandler[S any, A OOAggregate[S]](domain string, factory OOAggregateFactory[S, A]) *OOAggregateHandler[S, A] {
+	return &OOAggregateHandler[S, A]{
+		domain:  domain,
+		factory: factory,
+	}
+}
+
+// GetDescriptor returns the component descriptor for service discovery.
+func (h *OOAggregateHandler[S, A]) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
+	// Create a temporary instance to get the descriptor
+	agg := h.factory(nil)
+	return agg.Descriptor(), nil
+}
+
+// Handle processes a contextual command asynchronously.
+func (h *OOAggregateHandler[S, A]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	return h.dispatch(req)
+}
+
+// HandleSync processes a contextual command synchronously.
+func (h *OOAggregateHandler[S, A]) HandleSync(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	return h.dispatch(req)
+}
+
+func (h *OOAggregateHandler[S, A]) dispatch(req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
+	// Create aggregate with prior events
+	agg := h.factory(req.Events)
+
+	// Dispatch command
+	resp, err := agg.Handle(req)
+	if err != nil {
+		var rejected CommandRejectedError
+		if errors.As(err, &rejected) {
+			return nil, status.Error(codes.FailedPrecondition, rejected.Message)
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return resp, nil
+}
+
+// RegisterOOAggregateHandler returns a ServiceRegistrar that registers an OO aggregate handler.
+func RegisterOOAggregateHandler[S any, A OOAggregate[S]](domain string, factory OOAggregateFactory[S, A]) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterAggregateServiceServer(server, NewOOAggregateHandler(domain, factory))
+	}
+}
+
+// RunOOAggregateServer starts a gRPC server for an OO-style aggregate.
+//
+// Parameters:
+//   - domain: The aggregate's domain name
+//   - defaultPort: Default TCP port if PORT env not set
+//   - factory: Function to create a new aggregate with prior events
+func RunOOAggregateServer[S any, A OOAggregate[S]](domain, defaultPort string, factory OOAggregateFactory[S, A]) {
+	RunServer(RegisterOOAggregateHandler(domain, factory), ServerOptions{
+		ServiceName:      "Aggregate",
+		Domain:           domain,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}
+
+// OOSaga interface for OO-style sagas.
+// Implemented by types that embed SagaBase.
+type OOSaga interface {
+	Name() string
+	InputDomain() string
+	OutputDomain() string
+	PrepareDestinations(source *pb.EventBook) []*pb.Cover
+	Execute(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error)
+	Descriptor() *pb.ComponentDescriptor
+}
+
+// OOSagaHandler wraps an OO-style saga for the gRPC Saga service.
+type OOSagaHandler struct {
+	pb.UnimplementedSagaServiceServer
+	saga OOSaga
+}
+
+// NewOOSagaHandler creates a new OO saga handler.
+func NewOOSagaHandler(saga OOSaga) *OOSagaHandler {
+	return &OOSagaHandler{saga: saga}
+}
+
+// GetDescriptor returns the component descriptor for service discovery.
+func (h *OOSagaHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
+	return h.saga.Descriptor(), nil
+}
+
+// Prepare declares which destination aggregates the saga needs to read.
+func (h *OOSagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest) (*pb.SagaPrepareResponse, error) {
+	destinations := h.saga.PrepareDestinations(req.Source)
+	return &pb.SagaPrepareResponse{Destinations: destinations}, nil
+}
+
+// Execute processes events and returns commands for other aggregates.
+func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (*pb.SagaResponse, error) {
+	commands, err := h.saga.Execute(req.Source, req.Destinations)
+	if err != nil {
+		var rejected CommandRejectedError
+		if errors.As(err, &rejected) {
+			return nil, status.Error(codes.FailedPrecondition, rejected.Message)
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return &pb.SagaResponse{Commands: commands}, nil
+}
+
+// Descriptor returns the saga's component descriptor.
+func (h *OOSagaHandler) Descriptor() *pb.ComponentDescriptor {
+	return h.saga.Descriptor()
+}
+
+// RegisterOOSagaHandler returns a ServiceRegistrar that registers an OO saga handler.
+func RegisterOOSagaHandler(saga OOSaga) ServiceRegistrar {
+	return func(server *grpc.Server) {
+		pb.RegisterSagaServiceServer(server, NewOOSagaHandler(saga))
+	}
+}
+
+// RunOOSagaServer starts a gRPC server for an OO-style saga.
+//
+// Parameters:
+//   - name: The saga's name (e.g., "saga-table-hand")
+//   - defaultPort: Default TCP port if PORT env not set
+//   - saga: OO saga instance
+func RunOOSagaServer(name, defaultPort string, saga OOSaga) {
+	RunServer(RegisterOOSagaHandler(saga), ServerOptions{
+		ServiceName:      "Saga",
+		Domain:           name,
+		DefaultPort:      defaultPort,
+		EnableReflection: true,
+	})
+}

@@ -1,4 +1,7 @@
 //! Player aggregate BDD tests using cucumber-rs.
+//!
+//! DOC: This file is referenced in docs/docs/examples/aggregates.mdx
+//!      Update documentation when making changes to test patterns.
 
 use agg_player::{
     handle_deposit_funds, handle_register_player, handle_release_funds, handle_reserve_funds,

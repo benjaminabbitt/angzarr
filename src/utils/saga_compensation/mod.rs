@@ -1,5 +1,8 @@
 //! Saga compensation handling.
 //!
+//! DOC: This file is referenced in docs/docs/operations/error-recovery.mdx
+//!      Update documentation when making changes to compensation patterns.
+//!
 //! Provides utilities for handling saga command rejections, including:
 //! - Building Notification messages with RejectionNotification payload
 //! - Emitting SagaCompensationFailed events

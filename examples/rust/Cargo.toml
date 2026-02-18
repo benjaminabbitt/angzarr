@@ -3,12 +3,15 @@ resolver = "2"
 members = [
     "player/agg",
     "table/agg",
+    "table/agg-oo",
     "table/saga-hand",
+    "table/saga-hand-oo",
     "table/saga-player",
     "hand/agg",
     "hand/saga-table",
     "hand/saga-player",
     "prj-output",
+    "prj-output-oo",
     "hand-flow",
     "tests",
 ]

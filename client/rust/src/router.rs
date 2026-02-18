@@ -64,28 +64,18 @@ impl From<CommandRejectedError> for Status {
 /// Result type for command handlers.
 pub type CommandResult<T> = std::result::Result<T, CommandRejectedError>;
 
+use std::sync::Arc;
+
 /// Function type for rebuilding state from an EventBook.
-pub type StateRebuilder<S> = fn(&EventBook) -> S;
+pub type StateRebuilder<S> = Arc<dyn Fn(&EventBook) -> S + Send + Sync>;
 
-/// Command handler function type.
-///
-/// Takes command book, command Any, current state, and sequence number.
-/// Returns EventBook on success or CommandRejectedError on failure.
-pub type CommandHandler<S> = fn(&CommandBook, &Any, &S, u32) -> CommandResult<EventBook>;
+/// Command handler boxed type (supports both closures and function pointers).
+pub type CommandHandler<S> =
+    Arc<dyn Fn(&CommandBook, &Any, &S, u32) -> CommandResult<EventBook> + Send + Sync>;
 
-/// Revocation handler function type.
-///
-/// Takes notification (containing RejectionNotification payload) and current state.
-/// Returns EventBook on success or CommandRejectedError on failure.
-///
-/// To access rejection details:
-/// ```rust,ignore
-/// let rejection = notification.payload.as_ref()
-///     .map(|p| RejectionNotification::decode(p.value.as_slice()))
-///     .transpose()?
-///     .unwrap_or_default();
-/// ```
-pub type RevocationHandler<S> = fn(&Notification, &S) -> CommandResult<EventBook>;
+/// Revocation handler boxed type.
+pub type RevocationHandler<S> =
+    Arc<dyn Fn(&Notification, &S) -> CommandResult<EventBook> + Send + Sync>;
 
 /// Command router for aggregate handlers.
 ///
@@ -98,20 +88,34 @@ pub struct CommandRouter<S> {
     rejection_handlers: HashMap<String, RevocationHandler<S>>,
 }
 
-impl<S> CommandRouter<S> {
+impl<S: 'static> CommandRouter<S> {
     /// Create a new command router for the given domain.
-    pub fn new(domain: impl Into<String>, rebuild: StateRebuilder<S>) -> Self {
+    pub fn new<R>(domain: impl Into<String>, rebuild: R) -> Self
+    where
+        R: Fn(&EventBook) -> S + Send + Sync + 'static,
+    {
         Self {
             domain: domain.into(),
-            rebuild,
+            rebuild: Arc::new(rebuild),
             handlers: HashMap::new(),
             rejection_handlers: HashMap::new(),
         }
     }
 
     /// Register a command handler for commands ending with the given suffix.
-    pub fn on(mut self, suffix: impl Into<String>, handler: CommandHandler<S>) -> Self {
-        self.handlers.insert(suffix.into(), handler);
+    ///
+    /// Accepts both function pointers and closures:
+    /// ```rust,ignore
+    /// // Function pointer
+    /// .on("CreateTable", handle_create_table)
+    /// // Closure
+    /// .on("CreateTable", |cb, cmd, state, seq| agg.handle_create(cb, cmd, state, seq))
+    /// ```
+    pub fn on<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
+    where
+        H: Fn(&CommandBook, &Any, &S, u32) -> CommandResult<EventBook> + Send + Sync + 'static,
+    {
+        self.handlers.insert(suffix.into(), Arc::new(handler));
         self
     }
 
@@ -125,14 +129,17 @@ impl<S> CommandRouter<S> {
     /// ```rust,ignore
     /// router.on_rejected("payment", "ProcessPayment", handle_payment_rejected)
     /// ```
-    pub fn on_rejected(
+    pub fn on_rejected<H>(
         mut self,
         domain: impl Into<String>,
         command: impl Into<String>,
-        handler: RevocationHandler<S>,
-    ) -> Self {
+        handler: H,
+    ) -> Self
+    where
+        H: Fn(&Notification, &S) -> CommandResult<EventBook> + Send + Sync + 'static,
+    {
         let key = format!("{}/{}", domain.into(), command.into());
-        self.rejection_handlers.insert(key, handler);
+        self.rejection_handlers.insert(key, Arc::new(handler));
         self
     }
 
@@ -298,28 +305,47 @@ fn extract_rejection_key(rejection: &RejectionNotification) -> (String, String) 
     }
 }
 
-/// Event handler function type for sagas.
+/// Event handler function type for sagas (function pointer).
 ///
 /// Takes source event book, event Any, and destination event books.
 /// Returns optional CommandBook (None means no command to emit).
 pub type EventHandler = fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Option<CommandBook>>;
 
-/// Multi-command event handler function type for sagas.
+/// Multi-command event handler function type for sagas (function pointer).
 ///
 /// Takes source event book, event Any, and destination event books.
 /// Returns a vector of CommandBooks (empty means no commands to emit).
 pub type MultiEventHandler = fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Vec<CommandBook>>;
 
-/// Prepare handler function type for sagas.
+/// Prepare handler function type for sagas (function pointer).
 ///
 /// Takes source event book and event Any.
 /// Returns list of destination covers to fetch.
 pub type PrepareHandler = fn(&EventBook, &Any) -> Vec<crate::proto::Cover>;
 
+/// Event handler closure type for sagas (closure).
+pub type EventHandlerFn =
+    Arc<dyn Fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Option<CommandBook>> + Send + Sync>;
+
+/// Multi-command event handler closure type for sagas (closure).
+pub type MultiEventHandlerFn =
+    Arc<dyn Fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Vec<CommandBook>> + Send + Sync>;
+
+/// Prepare handler closure type for sagas (closure).
+pub type PrepareHandlerFn = Arc<dyn Fn(&EventBook, &Any) -> Vec<crate::proto::Cover> + Send + Sync>;
+
 /// Internal enum to hold either single or multi-command handlers.
 enum HandlerType {
     Single(EventHandler),
     Multi(MultiEventHandler),
+    SingleFn(EventHandlerFn),
+    MultiFn(MultiEventHandlerFn),
+}
+
+/// Prepare handler type - either fn pointer or closure.
+enum PrepareType {
+    Fn(PrepareHandler),
+    Closure(PrepareHandlerFn),
 }
 
 /// Event router for saga handlers.
@@ -331,7 +357,7 @@ pub struct EventRouter {
     output_domain: String,
     output_types: Vec<String>,
     handlers: HashMap<String, HandlerType>,
-    prepare_handlers: HashMap<String, PrepareHandler>,
+    prepare_handlers: HashMap<String, PrepareType>,
 }
 
 impl EventRouter {
@@ -357,10 +383,29 @@ impl EventRouter {
         self
     }
 
+    /// Register just the output domain (for OO pattern where command types are implicit).
+    pub fn sends_domain(mut self, domain: impl Into<String>) -> Self {
+        self.output_domain = domain.into();
+        self
+    }
+
     /// Register an event handler for events ending with the given suffix.
     pub fn on(mut self, suffix: impl Into<String>, handler: EventHandler) -> Self {
         self.handlers
             .insert(suffix.into(), HandlerType::Single(handler));
+        self
+    }
+
+    /// Register an event handler closure for events ending with the given suffix.
+    pub fn on_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
+    where
+        H: Fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Option<CommandBook>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.handlers
+            .insert(suffix.into(), HandlerType::SingleFn(Arc::new(handler)));
         self
     }
 
@@ -374,9 +419,33 @@ impl EventRouter {
         self
     }
 
+    /// Register a multi-command event handler closure for events ending with the given suffix.
+    pub fn on_many_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
+    where
+        H: Fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Vec<CommandBook>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.handlers
+            .insert(suffix.into(), HandlerType::MultiFn(Arc::new(handler)));
+        self
+    }
+
     /// Register a prepare handler for events ending with the given suffix.
     pub fn prepare(mut self, suffix: impl Into<String>, handler: PrepareHandler) -> Self {
-        self.prepare_handlers.insert(suffix.into(), handler);
+        self.prepare_handlers
+            .insert(suffix.into(), PrepareType::Fn(handler));
+        self
+    }
+
+    /// Register a prepare handler closure for events ending with the given suffix.
+    pub fn prepare_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
+    where
+        H: Fn(&EventBook, &Any) -> Vec<crate::proto::Cover> + Send + Sync + 'static,
+    {
+        self.prepare_handlers
+            .insert(suffix.into(), PrepareType::Closure(Arc::new(handler)));
         self
     }
 
@@ -433,7 +502,10 @@ impl EventRouter {
             None => return vec![],
         };
 
-        handler(source, event_any)
+        match handler {
+            PrepareType::Fn(h) => h(source, event_any),
+            PrepareType::Closure(h) => h(source, event_any),
+        }
     }
 
     /// Dispatch an event book to the appropriate handler.
@@ -473,6 +545,11 @@ impl EventRouter {
                 Ok(result.into_iter().collect())
             }
             HandlerType::Multi(h) => h(event_book, event_any, destinations).map_err(Status::from),
+            HandlerType::SingleFn(h) => {
+                let result = h(event_book, event_any, destinations).map_err(Status::from)?;
+                Ok(result.into_iter().collect())
+            }
+            HandlerType::MultiFn(h) => h(event_book, event_any, destinations).map_err(Status::from),
         }
     }
 }

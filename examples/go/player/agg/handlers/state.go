@@ -1,4 +1,7 @@
 // Package handlers implements player aggregate command handlers.
+//
+// DOC: This file is referenced in docs/docs/examples/aggregates.mdx
+//      Update documentation when making changes to StateRouter patterns.
 package handlers
 
 import (

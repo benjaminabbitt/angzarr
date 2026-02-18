@@ -1,3 +1,5 @@
+// DOC: This file is referenced in docs/docs/examples/aggregates.mdx
+//      Update documentation when making changes to StateBuilder patterns.
 package dev.angzarr.examples.player.handlers;
 
 import com.google.protobuf.Any;

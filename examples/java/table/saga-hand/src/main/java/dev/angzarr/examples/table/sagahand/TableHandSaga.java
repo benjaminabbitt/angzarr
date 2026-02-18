@@ -1,3 +1,5 @@
+// DOC: This file is referenced in docs/docs/examples/sagas.mdx
+//      Update documentation when making changes to saga patterns.
 package dev.angzarr.examples.table.sagahand;
 
 import com.google.protobuf.Any;
