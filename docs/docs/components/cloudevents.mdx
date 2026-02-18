@@ -130,6 +130,122 @@ func (p *OrderCloudEventsProjector) OnOrderShipped(event *OrderShipped) *pb.Clou
 ```
 
 </TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public class OrderCloudEventsProjector extends CloudEventsProjector {
+
+    public OrderCloudEventsProjector() {
+        super("prj-orders-cloudevents", "orders");
+    }
+
+    @Publishes("OrderCreated")
+    public CloudEvent onOrderCreated(OrderCreated event) {
+        // Filter sensitive fields, return public version
+        var publicEvent = PublicOrderCreated.newBuilder()
+            .setOrderId(event.getOrderId())
+            .setTotal(event.getTotal())
+            .build();
+        return CloudEvent.newBuilder()
+            .setType("com.example.order.created")
+            .setData(Any.pack(publicEvent))
+            .build();
+    }
+
+    @Publishes("OrderShipped")
+    public CloudEvent onOrderShipped(OrderShipped event) {
+        var publicEvent = PublicOrderShipped.newBuilder()
+            .setOrderId(event.getOrderId())
+            .setCarrier(event.getCarrier())
+            .build();
+        return CloudEvent.newBuilder()
+            .setType("com.example.order.shipped")
+            .setData(Any.pack(publicEvent))
+            .putExtensions("priority", "high")
+            .build();
+    }
+}
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+public class OrderCloudEventsProjector : CloudEventsProjector
+{
+    public OrderCloudEventsProjector()
+        : base("prj-orders-cloudevents", "orders") { }
+
+    [Publishes(typeof(OrderCreated))]
+    public CloudEvent? OnOrderCreated(OrderCreated @event)
+    {
+        // Filter sensitive fields, return public version
+        var publicEvent = new PublicOrderCreated
+        {
+            OrderId = @event.OrderId,
+            Total = @event.Total
+        };
+        return new CloudEvent
+        {
+            Type = "com.example.order.created",
+            Data = Any.Pack(publicEvent)
+        };
+    }
+
+    [Publishes(typeof(OrderShipped))]
+    public CloudEvent? OnOrderShipped(OrderShipped @event)
+    {
+        var publicEvent = new PublicOrderShipped
+        {
+            OrderId = @event.OrderId,
+            Carrier = @event.Carrier
+        };
+        return new CloudEvent
+        {
+            Type = "com.example.order.shipped",
+            Data = Any.Pack(publicEvent),
+            Extensions = { ["priority"] = "high" }
+        };
+    }
+}
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+class OrderCloudEventsProjector : public angzarr::CloudEventsProjector {
+public:
+    OrderCloudEventsProjector()
+        : CloudEventsProjector("prj-orders-cloudevents", "orders") {}
+
+    std::optional<CloudEvent> on_order_created(const OrderCreated& event) {
+        // Filter sensitive fields, return public version
+        PublicOrderCreated public_event;
+        public_event.set_order_id(event.order_id());
+        public_event.set_total(event.total());
+
+        CloudEvent ce;
+        ce.set_type("com.example.order.created");
+        ce.mutable_data()->PackFrom(public_event);
+        return ce;
+    }
+
+    std::optional<CloudEvent> on_order_shipped(const OrderShipped& event) {
+        PublicOrderShipped public_event;
+        public_event.set_order_id(event.order_id());
+        public_event.set_carrier(event.carrier());
+
+        CloudEvent ce;
+        ce.set_type("com.example.order.shipped");
+        ce.mutable_data()->PackFrom(public_event);
+        (*ce.mutable_extensions())["priority"] = "high";
+        return ce;
+    }
+};
+```
+
+</TabItem>
 <TabItem value="rust" label="Rust">
 
 ```rust
@@ -229,6 +345,108 @@ func handleOrderShipped(event *OrderShipped) *pb.CloudEvent {
 router := angzarr.NewCloudEventsRouter("prj-orders-cloudevents", "orders").
     On("OrderCreated", handleOrderCreated).
     On("OrderShipped", handleOrderShipped)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+CloudEvent handleOrderCreated(OrderCreated event) {
+    var publicEvent = PublicOrderCreated.newBuilder()
+        .setOrderId(event.getOrderId())
+        .setTotal(event.getTotal())
+        .build();
+    return CloudEvent.newBuilder()
+        .setType("com.example.order.created")
+        .setData(Any.pack(publicEvent))
+        .build();
+}
+
+CloudEvent handleOrderShipped(OrderShipped event) {
+    var publicEvent = PublicOrderShipped.newBuilder()
+        .setOrderId(event.getOrderId())
+        .setCarrier(event.getCarrier())
+        .build();
+    return CloudEvent.newBuilder()
+        .setType("com.example.order.shipped")
+        .setData(Any.pack(publicEvent))
+        .putExtensions("priority", "high")
+        .build();
+}
+
+var router = new CloudEventsRouter("prj-orders-cloudevents", "orders")
+    .on(OrderCreated.class, this::handleOrderCreated)
+    .on(OrderShipped.class, this::handleOrderShipped);
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp
+CloudEvent? HandleOrderCreated(OrderCreated @event)
+{
+    var publicEvent = new PublicOrderCreated
+    {
+        OrderId = @event.OrderId,
+        Total = @event.Total
+    };
+    return new CloudEvent
+    {
+        Type = "com.example.order.created",
+        Data = Any.Pack(publicEvent)
+    };
+}
+
+CloudEvent? HandleOrderShipped(OrderShipped @event)
+{
+    var publicEvent = new PublicOrderShipped
+    {
+        OrderId = @event.OrderId,
+        Carrier = @event.Carrier
+    };
+    return new CloudEvent
+    {
+        Type = "com.example.order.shipped",
+        Data = Any.Pack(publicEvent),
+        Extensions = { ["priority"] = "high" }
+    };
+}
+
+var router = new CloudEventsRouter("prj-orders-cloudevents", "orders")
+    .On<OrderCreated>(HandleOrderCreated)
+    .On<OrderShipped>(HandleOrderShipped);
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp
+std::optional<CloudEvent> handle_order_created(const OrderCreated& event) {
+    PublicOrderCreated public_event;
+    public_event.set_order_id(event.order_id());
+    public_event.set_total(event.total());
+
+    CloudEvent ce;
+    ce.set_type("com.example.order.created");
+    ce.mutable_data()->PackFrom(public_event);
+    return ce;
+}
+
+std::optional<CloudEvent> handle_order_shipped(const OrderShipped& event) {
+    PublicOrderShipped public_event;
+    public_event.set_order_id(event.order_id());
+    public_event.set_carrier(event.carrier());
+
+    CloudEvent ce;
+    ce.set_type("com.example.order.shipped");
+    ce.mutable_data()->PackFrom(public_event);
+    (*ce.mutable_extensions())["priority"] = "high";
+    return ce;
+}
+
+auto router = angzarr::CloudEventsRouter("prj-orders-cloudevents", "orders")
+    .on<OrderCreated>(handle_order_created)
+    .on<OrderShipped>(handle_order_shipped);
 ```
 
 </TabItem>
