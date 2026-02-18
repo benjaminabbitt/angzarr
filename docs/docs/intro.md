@@ -73,43 +73,46 @@ Your business logic receives commands with full event history and emits events. 
 ⍼ Angzarr stores aggregate history as an **EventBook**—the complete event stream for a single aggregate root: its identity (the Cover), an optional Snapshot for efficient replay, and ordered EventPages representing domain events.
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Client
         GW[Gateway]
     end
 
-    ES[(Event Store<br/>PostgreSQL/SQLite)]
-    BUS[Message Bus<br/>RabbitMQ/Kafka]
-    PRJ_DB[(Projection Database)]
-
     subgraph AggPod[Aggregate Pod]
-        AGG[Your Aggregate<br/>Python/Go/Rust/Java/C#/C++]
-        UPC[Your Upcaster<br/>Schema Evolution]
-        AGG_COORD[⍼ Sidecar<br/>Aggregate Coordinator]
-        AGG <--> |gRPC| AGG_COORD
-        UPC <--> |gRPC| AGG_COORD
+        AGG_COORD[⍼ Sidecar]
+        AGG[Your Aggregate]
+        UPC[Your Upcaster]
+        AGG_COORD <--> AGG
+        AGG_COORD <--> UPC
     end
 
-    subgraph SagaPod[Saga Pod]
-        SAGA[Your Saga<br/>Domain Translator]
-        SAGA_COORD[⍼ Sidecar<br/>Saga Coordinator]
-        SAGA <--> |gRPC| SAGA_COORD
+    subgraph Infra[Infrastructure]
+        ES[(Event Store)]
+        BUS[Message Bus]
     end
 
-    subgraph PrjPod[Projector Pod]
-        PRJ[Your Projector<br/>Read Model Builder]
-        PRJ_COORD[⍼ Sidecar<br/>Projector Coordinator]
-        PRJ <--> |gRPC| PRJ_COORD
+    subgraph Consumers[Event Consumers]
+        subgraph SagaPod[Saga Pod]
+            SAGA_COORD[⍼ Sidecar]
+            SAGA[Your Saga]
+            SAGA_COORD <--> SAGA
+        end
+
+        subgraph PrjPod[Projector Pod]
+            PRJ_COORD[⍼ Sidecar]
+            PRJ[Your Projector]
+            PRJ_DB[(Read Model)]
+            PRJ_COORD <--> PRJ
+            PRJ --> PRJ_DB
+        end
     end
 
-    GW -->|gRPC| AGG_COORD
-    AGG_COORD -->|SQL| ES
-    AGG_COORD -->|AMQP/Kafka| BUS
-    BUS -->|AMQP/Kafka| SAGA_COORD
-    BUS -->|AMQP/Kafka| PRJ_COORD
-    SAGA_COORD -->|gRPC| AGG_COORD
-    PRJ_COORD -.->|gRPC| AGG_COORD
-    PRJ -->|SQL| PRJ_DB
+    GW -->|cmd| AGG_COORD
+    AGG_COORD <--> ES
+    AGG_COORD --> BUS
+    BUS --> SAGA_COORD
+    BUS --> PRJ_COORD
+    SAGA_COORD -->|cmd| AGG_COORD
 ```
 
 Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code handles business logic; the sidecar handles persistence, messaging, and coordination.
