@@ -22,6 +22,28 @@ A **process manager** coordinates multi-domain workflows with state tracking. Un
 | State machine transitions | | ✓ |
 | Timeouts and retries | | ✓ |
 
+### Warning: Process Manager Anti-Patterns
+
+**Over-reliance on process managers is a foot-gun.** If you find yourself:
+
+- Putting significant business logic in a PM
+- Building PMs with large, complex state
+- Creating PMs for workflows within a single domain
+- Reaching for PMs as a first solution
+
+**Your domain factoring is probably wrong.**
+
+Process managers should be **lightweight state machines** coordinating across domains—not business logic containers. They answer "what phase are we in?" and "what happens next?", not "how do we calculate X?"
+
+| Symptom | Likely Problem |
+|---------|----------------|
+| PM has complex validation logic | Logic belongs in domain aggregate |
+| PM state mirrors aggregate state | Redundant—query the aggregate |
+| PM handles single-domain workflow | Use saga or aggregate instead |
+| PM event stream grows large | Too much responsibility—split domains |
+
+**Rule of thumb:** If a PM does more than track phases and dispatch commands, reconsider your architecture. The PM's job is orchestration, not computation.
+
 ---
 
 ## Example: Hand Flow PM
