@@ -6,6 +6,19 @@ sidebar_position: 3
 
 Angzarr uses modular Helm charts for Kubernetes and OpenTofu for cloud infrastructure. Each database and message bus is deployed separately from the core application.
 
+## Deployment Modes
+
+| Mode | Infrastructure | Best For |
+|------|---------------|----------|
+| **Standalone** | SQLite + Channel bus | Development, testing |
+| **Local K8s** | Kind + Helm | Integration testing |
+| **GCP Cloud Run** | Cloud SQL + Pub/Sub | Serverless production |
+| **GCP GKE** | Cloud SQL + Helm | K8s production on GCP |
+| **AWS Fargate** | RDS + SNS/SQS | Serverless production on AWS |
+| **AWS EKS** | RDS + Helm | K8s production on AWS |
+
+See **[OpenTofu](/tooling/opentofu)** for complete deployment guides for each target.
+
 ---
 
 ## Available Charts
@@ -169,36 +182,27 @@ deploy:
 
 ## OpenTofu
 
-For cloud infrastructure provisioning, angzarr provides OpenTofu modules:
+For cloud infrastructure provisioning, angzarr provides OpenTofu modules supporting multiple deployment targets.
 
-```
-deploy/tofu/
-├── modules/
-│   ├── gcp/          # GCP resources (Bigtable, Pub/Sub, GKE)
-│   ├── aws/          # AWS resources (DynamoDB, SNS/SQS, EKS)
-│   └── common/       # Cloud-agnostic patterns
-└── environments/
-    ├── dev/
-    ├── staging/
-    └── prod/
-```
+See **[OpenTofu](/tooling/opentofu)** for complete deployment guides including:
+- Standalone mode
+- Local Kubernetes (Kind)
+- GCP Cloud Run
+- GCP GKE
+- AWS Fargate
+- AWS EKS
 
-### Example: GCP Bigtable
+### Quick Reference
 
-```hcl
-module "angzarr_storage" {
-  source = "./modules/gcp/bigtable"
+```bash
+# Local K8s
+just infra-local
 
-  project_id  = var.project_id
-  instance_id = "angzarr-events"
-  zone        = "us-central1-a"
+# GCP Cloud Run
+cd deploy/tofu/environments/gcp && tofu apply
 
-  tables = {
-    events    = { column_families = ["e"] }
-    positions = { column_families = ["p"] }
-    snapshots = { column_families = ["s"] }
-  }
-}
+# AWS Fargate
+cd deploy/tofu/environments/aws-staging && tofu apply
 ```
 
 ### Why OpenTofu
@@ -211,5 +215,6 @@ module "angzarr_storage" {
 
 ## Next Steps
 
+- **[OpenTofu](/tooling/opentofu)** — Cloud deployment guides (GCP, AWS, K8s)
 - **[Observability](/operations/observability)** — Monitoring and tracing
 - **[Databases](/tooling/databases/postgres)** — Database configuration details

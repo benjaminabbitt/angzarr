@@ -155,16 +155,16 @@ def apply(state, event):
 
 CQRS separates the write model (commands/events) from read models (projections):
 
-```
-               Write Side                    Read Side
-          ┌─────────────────┐          ┌─────────────────┐
-Commands ─┤ Command Handler ├─ Events ─┤   Projectors    │
-          └─────────────────┘          └─────────────────┘
-                  │                            │
-                  ▼                            ▼
-           Event Store                  Read Models
-                                    (Redis, Elasticsearch,
-                                     Postgres views, etc.)
+```mermaid
+flowchart LR
+    subgraph Write[Write Side]
+        Cmd[Commands] --> CH[Command Handler]
+        CH --> ES[(Event Store)]
+    end
+    subgraph Read[Read Side]
+        CH -->|Events| Proj[Projectors]
+        Proj --> RM[(Read Models<br/>Redis, Elasticsearch,<br/>Postgres views)]
+    end
 ```
 
 **Why separate?**
@@ -178,35 +178,25 @@ Commands ─┤ Command Handler ├─ Events ─┤   Projectors    │
 
 ## Command Flow in Angzarr
 
-```
-1. Client sends Command
-       │
-       ▼
-2. Angzarr loads prior events for aggregate
-       │
-       ▼
-3. Handler receives: Command + Prior events
-       │
-       ▼
-4. Handler rebuilds current state from events
-       │
-       ▼
-5. Handler validates command against state
-       │
-       ├── Invalid → Return error (command rejected)
-       │
-       ▼
-6. Handler returns new events
-       │
-       ▼
-7. Angzarr persists events to Event Store
-       │
-       ▼
-8. Angzarr publishes events
-       │
-       ├──────────────┐
-       ▼              ▼
-   Projectors      Sagas
+```mermaid
+flowchart TB
+    C1[1. Client sends Command]
+    C2[2. Angzarr loads prior events]
+    C3[3. Handler receives Command + Prior events]
+    C4[4. Handler rebuilds current state]
+    C5{5. Handler validates command}
+    Err[Return error]
+    C6[6. Handler returns new events]
+    C7[7. Angzarr persists events]
+    C8[8. Angzarr publishes events]
+    Proj[Projectors]
+    Saga[Sagas]
+
+    C1 --> C2 --> C3 --> C4 --> C5
+    C5 -->|Invalid| Err
+    C5 -->|Valid| C6 --> C7 --> C8
+    C8 --> Proj
+    C8 --> Saga
 ```
 
 ---

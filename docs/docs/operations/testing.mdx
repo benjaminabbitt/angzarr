@@ -13,21 +13,22 @@ Angzarr uses a three-level testing strategy. Each level has distinct scope and i
 
 ## Three Levels of Testing
 
-```
-                    ┌─────────────────────┐
-                    │   Acceptance Tests   │  Full stack, business behavior
-                    │      (Gherkin)       │  Real infrastructure
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┴────────────────┐
-              │        Integration Tests        │  Framework internals
-              │     (Angzarr plumbing only)     │  Testcontainers
-              └────────────────┬────────────────┘
-                               │
-    ┌──────────────────────────┴──────────────────────────┐
-    │                    Unit Tests                        │  Pure functions
-    │              (guard/validate/compute)                │  No I/O
-    └──────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Acceptance[Acceptance Tests - Gherkin]
+        A1[Full stack, business behavior]
+        A2[Real infrastructure]
+    end
+    subgraph Integration[Integration Tests]
+        I1[Framework internals]
+        I2[Testcontainers]
+    end
+    subgraph Unit[Unit Tests - guard/validate/compute]
+        U1[Pure functions]
+        U2[No I/O]
+    end
+
+    Acceptance --> Integration --> Unit
 ```
 
 ---

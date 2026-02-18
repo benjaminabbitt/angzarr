@@ -13,21 +13,33 @@ Angzarr provides layered error recovery: automatic retry for transient failures,
 
 ## Overview
 
-```
-Command fails
-    │
-    ├─ Transient? ──yes──→ Retry with backoff
-    │                           │
-    │                           └─ Still failing? ──→ DLQ
-    │
-    ├─ Sequence conflict? ──→ Check MergeStrategy
-    │       │
-    │       ├─ COMMUTATIVE ──→ Retry with fresh state
-    │       ├─ STRICT ──→ Reject immediately
-    │       ├─ AGGREGATE_HANDLES ──→ Let aggregate decide
-    │       └─ MANUAL ──→ Send to DLQ
-    │
-    └─ Business rejection? ──→ Compensation flow (sagas)
+```mermaid
+flowchart TB
+    Fail[Command fails]
+    Trans{Transient?}
+    Retry[Retry with backoff]
+    Still{Still failing?}
+    DLQ1[DLQ]
+    Seq{Sequence conflict?}
+    MS[Check MergeStrategy]
+    Comm[COMMUTATIVE:<br/>Retry with fresh state]
+    Strict[STRICT:<br/>Reject immediately]
+    AggH[AGGREGATE_HANDLES:<br/>Let aggregate decide]
+    Manual[MANUAL:<br/>Send to DLQ]
+    Biz{Business rejection?}
+    Comp[Compensation flow]
+
+    Fail --> Trans
+    Trans -->|yes| Retry --> Still
+    Still -->|yes| DLQ1
+    Trans -->|no| Seq
+    Seq -->|yes| MS
+    MS --> Comm
+    MS --> Strict
+    MS --> AggH
+    MS --> Manual
+    Seq -->|no| Biz
+    Biz -->|yes| Comp
 ```
 
 ---

@@ -288,7 +288,9 @@ grpcurl -plaintext localhost:1310 describe angzarr.AggregateCoordinator
 
 ## Standalone Mode
 
-For development without Kubernetes:
+For development without Kubernetes. Standalone mode runs angzarr as a single process with in-memory communication.
+
+### Quick Start
 
 ```bash
 # Build with standalone features
@@ -298,10 +300,64 @@ cargo build --features standalone
 cargo run --features standalone --bin angzarr_standalone
 ```
 
-Standalone mode uses:
-- **SQLite** for event storage
-- **Channel event bus** for in-process pub/sub
-- **Unix domain sockets** for gRPC transport
+### Architecture
+
+```mermaid
+flowchart TB
+    subgraph Process[Single Process]
+        subgraph Components
+            Order[Order Agg]
+            Inventory[Inventory Agg]
+            Saga[Saga]
+            Projector[Projector]
+        end
+        Bus[Channel Event Bus<br/>in-process]
+        DB[(SQLite Storage<br/>./data/events.db)]
+
+        Order & Inventory & Saga & Projector --> Bus
+        Bus --> DB
+    end
+```
+
+### Components
+
+| Component | Standalone Implementation |
+|-----------|---------------------------|
+| Storage | SQLite (file-based, zero config) |
+| Event Bus | Channel bus (in-process, instant delivery) |
+| Transport | Unix domain sockets (no network) |
+| Scaling | Single instance |
+
+### Configuration
+
+```bash
+# Environment variables
+export ANGZARR_STORAGE_TYPE=sqlite
+export ANGZARR_SQLITE_PATH=./data/events.db
+export ANGZARR_LOG=angzarr=debug
+```
+
+### When to Use
+
+- **Local development** — No Docker/Kubernetes required
+- **Unit and integration tests** — Fast, deterministic
+- **CI pipelines** — Minimal dependencies
+- **Prototyping** — Quick iteration
+
+### Comparison with Distributed Mode
+
+| Aspect | Standalone | Distributed (K8s) |
+|--------|-----------|-------------------|
+| Setup | `cargo build` | Kind cluster + Helm |
+| Dependencies | None | PostgreSQL, RabbitMQ |
+| Persistence | SQLite file | PostgreSQL |
+| Event delivery | Instant (in-process) | Network (ms latency) |
+| Scaling | Single instance | Horizontal |
+| Production-ready | No | Yes |
+
+The two modes share the same core code. Only transport, storage, and bus implementations differ.
+
+See **[OpenTofu](/tooling/opentofu)** for all deployment options.
 
 ---
 
@@ -343,3 +399,4 @@ messaging:
 - **[Aggregates](./components/aggregate)** — Command handling
 - **[Testing](./operations/testing)** — Three-level testing strategy
 - **[Tooling](./tooling/just)** — Development tools in depth
+- **[OpenTofu](./tooling/opentofu)** — Cloud deployments (GCP, AWS, K8s)

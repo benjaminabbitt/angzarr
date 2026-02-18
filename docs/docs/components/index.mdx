@@ -86,13 +86,15 @@ Upcasters transform old event versions to current versions when reading from the
 
 ### How It Works
 
-```
-Event Store                    Upcaster                    Aggregate
-     │                            │                            │
-     │── EventPage (V1) ────────► │                            │
-     │                            │── Transform ─────────────► │
-     │                            │                            │
-     │                            │   EventPage (V2)           │
+```mermaid
+sequenceDiagram
+    participant ES as Event Store
+    participant U as Upcaster
+    participant A as Aggregate
+
+    ES->>U: EventPage (V1)
+    U->>U: Transform
+    U->>A: EventPage (V2)
 ```
 
 The stored event remains unchanged (V1). The upcaster transforms it to V2 on read, so your aggregate only sees current-version events.

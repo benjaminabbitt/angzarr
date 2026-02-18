@@ -10,23 +10,25 @@ Angzarr provides full observability through OpenTelemetry, exporting traces, met
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Angzarr        │     │  OTel Collector │     │  Backends       │
-│  Sidecars       │────▶│  (OTLP)         │────▶│                 │
-│                 │     │                 │     │  Tempo (traces) │
-│  - Coordinator  │     │  Processors:    │     │  Prometheus     │
-│  - Projector    │     │  - batch        │     │  Loki (logs)    │
-│  - Saga         │     │  - memory_limit │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                        │
-                                                        ▼
-                                                ┌─────────────────┐
-                                                │  Grafana        │
-                                                │  - Dashboards   │
-                                                │  - Trace viewer │
-                                                │  - Log explorer │
-                                                └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph Sidecars[Angzarr Sidecars]
+        Coord[Coordinator]
+        Proj[Projector]
+        Saga[Saga]
+    end
+    subgraph Collector[OTel Collector]
+        OTLP[OTLP Receiver]
+        Proc[Processors:<br/>batch, memory_limit]
+    end
+    subgraph Backends
+        Tempo[Tempo<br/>traces]
+        Prom[Prometheus]
+        Loki[Loki<br/>logs]
+    end
+    Grafana[Grafana<br/>Dashboards<br/>Trace viewer<br/>Log explorer]
+
+    Sidecars --> Collector --> Backends --> Grafana
 ```
 
 ---

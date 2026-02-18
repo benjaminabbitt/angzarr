@@ -28,17 +28,18 @@ A **process manager** coordinates multi-domain workflows with state tracking. Un
 
 The HandFlowPM orchestrates poker hand phases across table and hand domains:
 
-```
-Table                    HandFlowPM                   Hand
-  │                          │                          │
-  │── HandStarted ─────────► │                          │
-  │                          │── DealCards ───────────► │
-  │                          │ ◄───── CardsDealt ────── │
-  │                          │                          │
-  │                          │── [Phase transitions] ─► │
-  │                          │                          │
-  │                          │ ◄───── HandComplete ──── │
-  │ ◄──── EndHand ────────── │                          │
+```mermaid
+sequenceDiagram
+    participant T as Table
+    participant PM as HandFlowPM
+    participant H as Hand
+
+    T->>PM: HandStarted
+    PM->>H: DealCards
+    H->>PM: CardsDealt
+    PM->>H: Phase transitions
+    H->>PM: HandComplete
+    PM->>T: EndHand
 ```
 
 <Tabs groupId="language">
