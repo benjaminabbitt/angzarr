@@ -72,18 +72,20 @@ flowchart TB
     AC[AggregateCoordinator]
     Agg[Your Aggregate]
     ES[(Event Store)]
+    BUS[Message Bus]
     SC[SagaCoordinator]
     PC[ProjectorCoordinator]
     Saga[Your Saga]
     Proj[Your Projector]
     Cmd[Commands to<br/>Other Aggregates]
-    RM[(Read Model<br/>Postgres, Redis, ES)]
+    RM[(Read Model<br/>Postgres, Redis)]
 
     Client --> AC
     AC --> Agg
-    Agg --> ES
-    ES --> SC
-    ES --> PC
+    AC --> ES
+    AC --> BUS
+    BUS --> SC
+    BUS --> PC
     SC --> Saga
     PC --> Proj
     Saga --> Cmd
@@ -255,6 +257,14 @@ Every span carries the `correlation_id`, so distributed traces follow commands t
 When built with `--features otel`, the sidecar exports traces, metrics, and logs via OTLP to any compatible backend (Grafana, Datadog, AWS X-Ray, GCP Cloud Trace).
 
 See [Observability](./operations/observability) for full details.
+
+---
+
+## Further Reading
+
+For visual explanations of event-driven architecture concepts (events, messaging patterns, event sourcing, choreography vs orchestration, schema management):
+
+- **[EDA Visuals](https://eda-visuals.boyney.io/)** by [@boyney123](https://twitter.com/boyney123) — Bite-sized diagrams explaining EDA concepts ([PDF download](https://eda-visuals.boyney.io/visuals/eda-visuals.pdf))
 
 ---
 
