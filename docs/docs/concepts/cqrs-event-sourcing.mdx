@@ -120,22 +120,34 @@ def rebuild_state(events, snapshot):
 
 ### Idempotent State Reconstruction
 
-**Critical**: Events must contain absolute state values (facts), not deltas (changes).
+Events can contain either **deltas** (changes) or **absolute values** (facts). Both are valid—sequence numbers make either approach idempotent.
 
-**Wrong (deltas):**
+**Delta approach:**
 ```python
-# BAD: FundsReserved { amount: 500 }  # Delta: "reserve 500 more"
-def apply(state, event):
-    state.reserved += event.amount  # Double-apply = wrong state
+# FundsReserved { amount: 500 }  # Delta: "reserve 500 more"
+def apply(state, event, sequence):
+    if sequence <= state.last_applied:
+        return  # Already applied—skip
+    state.reserved += event.amount
+    state.last_applied = sequence
 ```
 
-**Correct (facts):**
+**Absolute value approach:**
 ```python
-# GOOD: FundsReserved { amount: 500, new_reserved: 500, new_available: 500 }
+# FundsReserved { amount: 500, new_reserved: 500, new_available: 500 }
 def apply(state, event):
-    state.reserved = event.new_reserved  # Idempotent
+    state.reserved = event.new_reserved  # Naturally idempotent
     state.available = event.new_available
 ```
+
+**Trade-offs:**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Deltas** | Smaller events, clearer intent | Requires sequence tracking |
+| **Absolute values** | Naturally idempotent, self-describing | Larger events, computed at write time |
+
+⍼ Angzarr's sequence numbers ensure events are never applied twice, making deltas safe. Choose based on your domain's needs.
 
 ---
 

@@ -59,7 +59,7 @@ Consumers must tolerate duplicate events. Design for natural idempotency:
 | `UPDATE SET x = $value` | Yes | Already idempotent |
 | `DELETE WHERE id = $1` | Yes | Already idempotent |
 
-Event sourcing helps: events contain absolute state (`new_balance: 150`), not deltas (`add: 50`).
+⍼ Angzarr's sequence numbers ensure events are never applied twice—both deltas (`amount: 50`) and absolute values (`new_balance: 150`) are idempotent.
 
 ---
 
