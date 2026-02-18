@@ -94,24 +94,38 @@ flowchart TB
 
 ## Sidecar Deployment
 
-⍼ Angzarr runs as a sidecar container alongside your business logic. Each pod contains your service and an Angzarr instance communicating over localhost gRPC.
+⍼ Angzarr runs as a sidecar container alongside your business logic. Each pod contains your code and the appropriate coordinator, communicating over localhost gRPC.
 
 ```mermaid
 flowchart TB
-    subgraph Pod
-        subgraph YourCode[Your Aggregate]
-            Logic[Pure domain logic<br/>Python/Go/Rust/Java/C#/C++]
+    subgraph AggPod[Aggregate Pod]
+        subgraph AggCode[Your Code]
+            Agg[Aggregate Logic]
+            Upc[Upcaster Logic]
         end
-        subgraph Sidecar[⍼ Angzarr Sidecar ~8MB]
-            BC[Business<br/>Coordinator]
-            PC[Projector<br/>Coordinator]
-            EQ[Event<br/>Query]
-            SC[Saga<br/>Coordinator]
-        end
-        Logic <-->|gRPC| Sidecar
+        AggSidecar[⍼ Business Coordinator]
+        AggCode <-->|gRPC| AggSidecar
     end
-    Sidecar --> ES[(Event Store<br/>Postgres)]
-    Sidecar --> MB[(Message Bus<br/>RabbitMQ)]
+
+    subgraph SagaPod[Saga Pod]
+        Saga[Saga Logic]
+        SagaSidecar[⍼ Saga Coordinator]
+        Saga <-->|gRPC| SagaSidecar
+    end
+
+    subgraph PrjPod[Projector Pod]
+        Prj[Projector Logic]
+        PrjSidecar[⍼ Projector Coordinator]
+        Prj <-->|gRPC| PrjSidecar
+    end
+
+    AggSidecar --> ES[(Event Store)]
+    AggSidecar --> MB[Message Bus]
+    SagaSidecar --> MB
+    SagaSidecar -->|Commands| AggSidecar
+    PrjSidecar --> MB
+    PrjSidecar -->|gRPC| AggSidecar
+    Prj --> PrjDB[(Projection DB)]
 ```
 
 ### Benefits
