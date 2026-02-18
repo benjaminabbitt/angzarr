@@ -12,9 +12,9 @@ const config: Config = {
   },
 
   // GitHub Pages deployment
-  url: 'https://angzarr.github.io',
+  url: 'https://benjaminabbitt.github.io',
   baseUrl: '/angzarr/',
-  organizationName: 'angzarr',
+  organizationName: 'benjaminabbitt',
   projectName: 'angzarr',
   trailingSlash: false,
 
@@ -32,7 +32,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/angzarr/angzarr/tree/main/docs/',
+          editUrl: 'https://github.com/benjaminabbitt/angzarr/tree/main/docs/',
           routeBasePath: '/', // Docs at root, no /docs prefix
         },
         blog: false, // Disable blog
@@ -58,7 +58,7 @@ const config: Config = {
           label: 'Documentation',
         },
         {
-          href: 'https://github.com/angzarr/angzarr',
+          href: 'https://github.com/benjaminabbitt/angzarr',
           label: 'GitHub',
           position: 'right',
         },
@@ -106,11 +106,11 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/angzarr/angzarr',
+              href: 'https://github.com/benjaminabbitt/angzarr',
             },
             {
               label: 'PITCH.md',
-              href: 'https://github.com/angzarr/angzarr/blob/main/PITCH.md',
+              href: 'https://github.com/benjaminabbitt/angzarr/blob/main/PITCH.md',
             },
           ],
         },
