@@ -1,3 +1,7 @@
+// DOC: This file is referenced in docs/docs/reference/patterns.mdx
+//      Update documentation when making changes to MergeStrategy, SyncMode,
+//      Edition, SnapshotRetention, or Notification types.
+
 syntax = "proto3";
 package angzarr;
 option go_package = "github.com/angzarr/angzarr/proto/angzarr";
@@ -86,10 +90,7 @@ message PayloadReference {
 }
 
 message EventPage {
-  oneof sequence {
-    uint32 num = 1;
-    bool force = 2;
-  }
+  uint32 sequence = 1;
   google.protobuf.Timestamp created_at = 3;
   google.protobuf.Any event = 4;
   // If set, the actual event payload is stored externally (claim check pattern).

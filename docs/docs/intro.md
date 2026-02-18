@@ -68,7 +68,7 @@ Your business logic receives commands with full event history and emits events. 
 
 ## Architecture Preview
 
-⍼ Angzarr models event-sourced aggregates as **books**. An EventBook contains the complete history of an aggregate: its identity (the Cover), an optional Snapshot for efficient replay, and ordered EventPages representing domain events.
+⍼ Angzarr stores aggregate history as an **EventBook**—the complete event stream for a single aggregate root: its identity (the Cover), an optional Snapshot for efficient replay, and ordered EventPages representing domain events.
 
 ```mermaid
 flowchart TB
@@ -117,7 +117,7 @@ Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code h
 If you're evaluating Angzarr for your organization:
 
 - **[PITCH.md](https://github.com/benjaminabbitt/angzarr/blob/main/PITCH.md)** — Complete architectural pitch (standalone document)
-- **[Architecture](./architecture)** — Core concepts: book metaphor, coordinators, sync modes
+- **[Architecture](./architecture)** — Core concepts: data model, coordinators, sync modes
 - **[Why Poker](./examples/why-poker)** — Why our example domain exercises every pattern
 
 ---

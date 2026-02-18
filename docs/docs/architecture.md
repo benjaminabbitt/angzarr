@@ -4,13 +4,13 @@ sidebar_position: 2
 
 # Architecture
 
-This document covers ⍼ Angzarr's core architectural concepts: the book metaphor, coordinator pattern, deployment model, and synchronization modes.
+This document covers ⍼ Angzarr's core architectural concepts: event sourcing data model, coordinator pattern, deployment model, and synchronization modes.
 
 ---
 
-## The Book Metaphor
+## Event Sourcing Data Model
 
-⍼ Angzarr models event-sourced aggregates as books. An **EventBook** contains the complete history of an aggregate root:
+⍼ Angzarr stores aggregate history as an **EventBook**—the complete event stream for a single aggregate root:
 
 | Component | Purpose |
 |-----------|---------|
@@ -26,10 +26,7 @@ message Cover {
 }
 
 message EventPage {
-  oneof sequence {
-    uint32 num = 1;    // Normal sequenced event
-    bool force = 2;    // Force-write (conflict resolution)
-  }
+  uint32 sequence = 1;
   google.protobuf.Timestamp created_at = 3;
   google.protobuf.Any event = 4;
 }
@@ -69,28 +66,28 @@ Commands follow the same pattern—a **CommandBook** contains one or more **Comm
 | **SagaCoordinator** | Events → Sagas | Cross-domain command orchestration |
 | **ProcessManagerCoordinator** | Events → PMs | Stateful multi-domain workflows |
 
-```
-External Client
-      │
-      ▼
-BusinessCoordinator ─────► Your Aggregate ────► Events
-      │                                            │
-      │                                            ▼
-      │                                     Event Store
-      │                                            │
-      └──────────────────────────────────────────────┘
-                            │
-                            ▼
-              ┌─────────────┴─────────────┐
-              ▼                           ▼
-      SagaCoordinator           ProjectorCoordinator
-              │                           │
-              ▼                           ▼
-        Your Saga                   Your Projector
-              │                           │
-              ▼                           ▼
-      Commands to                   Read Model
-      Other Aggregates        (Postgres, Redis, ES, etc.)
+```mermaid
+flowchart TB
+    Client[External Client]
+    BC[BusinessCoordinator]
+    Agg[Your Aggregate]
+    ES[(Event Store)]
+    SC[SagaCoordinator]
+    PC[ProjectorCoordinator]
+    Saga[Your Saga]
+    Proj[Your Projector]
+    Cmd[Commands to<br/>Other Aggregates]
+    RM[(Read Model<br/>Postgres, Redis, ES)]
+
+    Client --> BC
+    BC --> Agg
+    Agg --> ES
+    ES --> SC
+    ES --> PC
+    SC --> Saga
+    PC --> Proj
+    Saga --> Cmd
+    Proj --> RM
 ```
 
 ---
@@ -99,28 +96,22 @@ BusinessCoordinator ─────► Your Aggregate ────► Events
 
 ⍼ Angzarr runs as a sidecar container alongside your business logic. Each pod contains your service and an Angzarr instance communicating over localhost gRPC.
 
-```
-┌─ Pod ────────────────────────────────────────────────────────────────┐
-│  ┌──────────────────────┐      ┌──────────────────────────────────┐ │
-│  │   Your Aggregate     │ gRPC │      ⍼ Angzarr Sidecar (~8MB)    │ │
-│  │   (Python/Go/Rust/   │◄────►│                                  │ │
-│  │    Java/C#/C++)      │      │  ┌────────────┐ ┌─────────────┐  │ │
-│  │                      │      │  │  Business  │ │  Projector  │  │ │
-│  │  Pure domain logic   │      │  │Coordinator │ │ Coordinator │  │ │
-│  └──────────────────────┘      │  └────────────┘ └─────────────┘  │ │
-│                                │  ┌────────────┐ ┌─────────────┐  │ │
-│                                │  │   Event    │ │    Saga     │  │ │
-│                                │  │   Query    │ │ Coordinator │  │ │
-│                                │  └────────────┘ └─────────────┘  │ │
-│                                └───────────────┬──────────────────┘ │
-└────────────────────────────────────────────────┼────────────────────┘
-                                                 │
-                              ┌──────────────────┴──────────────────┐
-                              ▼                                     ▼
-                     ┌──────────────┐                      ┌──────────────┐
-                     │  Event Store │                      │  Message Bus │
-                     │  (Postgres)  │                      │  (RabbitMQ)  │
-                     └──────────────┘                      └──────────────┘
+```mermaid
+flowchart TB
+    subgraph Pod
+        subgraph YourCode[Your Aggregate]
+            Logic[Pure domain logic<br/>Python/Go/Rust/Java/C#/C++]
+        end
+        subgraph Sidecar[⍼ Angzarr Sidecar ~8MB]
+            BC[Business<br/>Coordinator]
+            PC[Projector<br/>Coordinator]
+            EQ[Event<br/>Query]
+            SC[Saga<br/>Coordinator]
+        end
+        Logic <-->|gRPC| Sidecar
+    end
+    Sidecar --> ES[(Event Store<br/>Postgres)]
+    Sidecar --> MB[(Message Bus<br/>RabbitMQ)]
 ```
 
 ### Benefits
@@ -150,35 +141,25 @@ enum SyncMode {
 |------|------------|-------|----------|
 | `NONE` | Async | Async | Fire-and-forget, eventual consistency |
 | `SIMPLE` | Sync | Async | Read-after-write for single aggregate |
-| `CASCADE` | Sync | Sync (recursive) | Full transactional consistency |
+| `CASCADE` | Sync | Sync (recursive) | Synchronous cross-aggregate workflows |
 
 ### The Cascade Flow
 
 When `sync_mode = CASCADE`, the framework orchestrates the complete cascade:
 
-```
-Client
-  │
-  ▼
-BusinessCoordinator.Handle(CommandBook)
-  │
-  ├─► BusinessLogic.Handle() → events
-  │
-  ├─► Persist events
-  │
-  ├─► SagaCoordinator.HandleSync(events)
-  │     │
-  │     └─► Saga.HandleSync() → commands
-  │           │
-  │           └─► [Recursive: each command through BusinessCoordinator]
-  │
-  ├─► ProjectorCoordinator.HandleSync(all events)
-  │
-  ▼
-CommandResponse { events, projections[] }
+```mermaid
+flowchart TB
+    Client --> BC[BusinessCoordinator.Handle]
+    BC --> BL[BusinessLogic.Handle → events]
+    BL --> Persist[Persist events]
+    Persist --> SC[SagaCoordinator.HandleSync]
+    SC --> Saga[Saga.HandleSync → commands]
+    Saga -->|Recursive| BC
+    Persist --> PC[ProjectorCoordinator.HandleSync]
+    PC --> Resp[CommandResponse<br/>events, projections]
 ```
 
-**Warning**: `CASCADE` is expensive. Each step adds latency. Start with `NONE`, move to `SIMPLE` for read-after-write, reserve `CASCADE` for workflows requiring atomic cross-aggregate consistency.
+**Warning**: `CASCADE` is expensive and does not provide ACID guarantees. Each step adds latency. Start with `NONE`, move to `SIMPLE` for read-after-write, reserve `CASCADE` for workflows requiring synchronous cross-aggregate coordination.
 
 ### Gateway Streaming
 
