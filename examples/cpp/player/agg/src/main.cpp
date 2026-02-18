@@ -33,6 +33,7 @@ google::protobuf::Any pack_any(const T& msg) {
 }
 
 /// Create functional command router for player aggregate.
+// docs:start:command_router
 angzarr::CommandRouter<player::PlayerState> create_router() {
     return angzarr::CommandRouter<player::PlayerState>(PLAYER_DOMAIN, player::PlayerState::from_event_book)
         .on<examples::RegisterPlayer, examples::PlayerRegistered>(player::handlers::handle_register)
@@ -42,6 +43,7 @@ angzarr::CommandRouter<player::PlayerState> create_router() {
         .on<examples::ReleaseFunds, examples::FundsReleased>(player::handlers::handle_release)
         .on<examples::TransferFunds, examples::FundsTransferred>(player::handlers::handle_transfer);
 }
+// docs:end:command_router
 
 /// gRPC service implementation for player aggregate.
 class PlayerAggregateService final : public angzarr::AggregateService::Service {

@@ -46,6 +46,7 @@ def prepare_hand_started(event: Any, root: types.UUID | None) -> list[types.Cove
     ]
 
 
+# docs:start:saga_handler
 def handle_hand_started(
     event: Any,
     root: types.UUID | None,
@@ -98,14 +99,17 @@ def handle_hand_started(
             ],
         )
     ]
+# docs:end:saga_handler
 
 
+# docs:start:event_router
 router = (
     EventRouter("saga-table-hand", "table")
     .sends("hand", "DealCards")
     .prepare("HandStarted", prepare_hand_started)
     .on("HandStarted", handle_hand_started)
 )
+# docs:end:event_router
 
 
 if __name__ == "__main__":

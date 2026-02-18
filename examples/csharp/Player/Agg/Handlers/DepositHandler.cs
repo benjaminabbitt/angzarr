@@ -9,18 +9,27 @@ namespace Player.Agg.Handlers;
 /// </summary>
 public static class DepositHandler
 {
-    public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)
+    // docs:start:deposit_guard
+    internal static void Guard(PlayerState state)
     {
-        // Guard
         if (!state.Exists)
             throw CommandRejectedError.PreconditionFailed("Player does not exist");
+    }
+    // docs:end:deposit_guard
 
-        // Validate
+    // docs:start:deposit_validate
+    internal static long Validate(DepositFunds cmd)
+    {
         var amount = cmd.Amount?.Amount ?? 0;
         if (amount <= 0)
             throw CommandRejectedError.InvalidArgument("amount must be positive");
+        return amount;
+    }
+    // docs:end:deposit_validate
 
-        // Compute
+    // docs:start:deposit_compute
+    internal static FundsDeposited Compute(DepositFunds cmd, PlayerState state, long amount)
+    {
         var newBalance = state.Bankroll + amount;
         return new FundsDeposited
         {
@@ -28,5 +37,13 @@ public static class DepositHandler
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
             DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow)
         };
+    }
+    // docs:end:deposit_compute
+
+    public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)
+    {
+        Guard(state);
+        var amount = Validate(cmd);
+        return Compute(cmd, state, amount);
     }
 }

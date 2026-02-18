@@ -44,6 +44,7 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+# docs:start:command_router
 router = (
     CommandRouter("player", state_from_event_book)
     .on(name(player.RegisterPlayer), handle_register_player)
@@ -53,6 +54,7 @@ router = (
     .on(name(player.ReleaseFunds), handle_release_funds)
     .on(name(player.RequestAction), handle_request_action)
 )
+# docs:end:command_router
 
 
 if __name__ == "__main__":

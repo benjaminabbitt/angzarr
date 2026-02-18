@@ -11,6 +11,7 @@ namespace Player.Agg;
 /// </summary>
 public static class PlayerRouter
 {
+    // docs:start:command_router
     public static CommandRouter Create()
     {
         return new CommandRouter("player", eb => PlayerState.FromEventBook(eb))
@@ -21,4 +22,5 @@ public static class PlayerRouter
             .On<ReleaseFunds>((cmd, state) => ReleaseHandler.Handle(cmd, (PlayerState)state))
             .On<TransferFunds>((cmd, state) => TransferHandler.Handle(cmd, (PlayerState)state));
     }
+    // docs:end:command_router
 }

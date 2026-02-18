@@ -100,6 +100,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
 
     // --- Command handlers ---
 
+    // docs:start:annotation_handlers
     [Handles(typeof(RegisterPlayer))]
     public PlayerRegistered HandleRegister(RegisterPlayer cmd)
     {
@@ -229,6 +230,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
             TransferredAt = Timestamp.FromDateTime(DateTime.UtcNow)
         };
     }
+    // docs:end:annotation_handlers
 
     // --- Rejection handler ---
 

@@ -29,6 +29,7 @@ fn prepare_hand_started(_source: &EventBook, event_any: &Any) -> Vec<Cover> {
     }
 }
 
+// docs:start:saga_handler
 /// Execute handler: translate HandStarted → DealCards.
 fn handle_hand_started(
     _source: &EventBook,
@@ -87,6 +88,7 @@ fn handle_hand_started(
         saga_origin: None,
     }))
 }
+// docs:end:saga_handler
 
 #[tokio::main]
 async fn main() {
@@ -95,10 +97,12 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    // docs:start:event_router
     let router = EventRouter::new("saga-table-hand", "table")
         .sends("hand", "DealCards")
         .prepare("HandStarted", prepare_hand_started)
         .on("HandStarted", handle_hand_started);
+    // docs:end:event_router
 
     run_saga_server("saga-table-hand", 50011, router)
         .await

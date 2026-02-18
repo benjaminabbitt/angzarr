@@ -7,13 +7,16 @@ use prost_types::Any;
 
 use crate::state::PlayerState;
 
+// docs:start:deposit_guard
 fn guard(state: &PlayerState) -> CommandResult<()> {
     if !state.exists() {
         return Err(CommandRejectedError::new("Player does not exist"));
     }
     Ok(())
 }
+// docs:end:deposit_guard
 
+// docs:start:deposit_validate
 fn validate(cmd: &DepositFunds) -> CommandResult<i64> {
     let amount = cmd.amount.as_ref().map(|c| c.amount).unwrap_or(0);
     if amount <= 0 {
@@ -21,7 +24,9 @@ fn validate(cmd: &DepositFunds) -> CommandResult<i64> {
     }
     Ok(amount)
 }
+// docs:end:deposit_validate
 
+// docs:start:deposit_compute
 fn compute(cmd: &DepositFunds, state: &PlayerState, amount: i64) -> FundsDeposited {
     let new_balance = state.bankroll + amount;
     FundsDeposited {
@@ -33,6 +38,7 @@ fn compute(cmd: &DepositFunds, state: &PlayerState, amount: i64) -> FundsDeposit
         deposited_at: Some(angzarr_client::now()),
     }
 }
+// docs:end:deposit_compute
 
 pub fn handle_deposit_funds(
     command_book: &CommandBook,

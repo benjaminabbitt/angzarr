@@ -83,6 +83,7 @@ impl TableState {
 /// Table aggregate using OO-style annotations.
 pub struct TableAggregate;
 
+// docs:start:oo_handlers
 #[aggregate(domain = "table", state = TableState)]
 impl TableAggregate {
     // ==========================================================================
@@ -189,6 +190,7 @@ impl TableAggregate {
 
         Ok(new_event_book(cb, seq, &event, "examples.TableCreated"))
     }
+    // docs:end:oo_handlers
 
     #[handles(JoinTable)]
     pub fn join(

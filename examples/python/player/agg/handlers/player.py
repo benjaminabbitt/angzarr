@@ -146,6 +146,38 @@ class Player(Aggregate[_PlayerState]):
 
     # --- Command handlers ---
 
+    # docs:start:annotation_handlers
+    # --- Deposit: guard/validate/compute ---
+
+    # docs:start:deposit_guard
+    @staticmethod
+    def _guard_deposit(state: _PlayerState) -> None:
+        if not state.player_id:
+            raise CommandRejectedError("Player does not exist")
+    # docs:end:deposit_guard
+
+    # docs:start:deposit_validate
+    @staticmethod
+    def _validate_deposit(cmd: player_proto.DepositFunds) -> int:
+        amount = cmd.amount.amount if cmd.amount else 0
+        if amount <= 0:
+            raise CommandRejectedError("amount must be positive")
+        return amount
+    # docs:end:deposit_validate
+
+    # docs:start:deposit_compute
+    @staticmethod
+    def _compute_deposit(
+        cmd: player_proto.DepositFunds, state: _PlayerState, amount: int
+    ) -> player_proto.FundsDeposited:
+        new_balance = state.bankroll + amount
+        return player_proto.FundsDeposited(
+            amount=cmd.amount,
+            new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
+            deposited_at=now(),
+        )
+    # docs:end:deposit_compute
+
     @handles(player_proto.RegisterPlayer)
     def register(self, cmd: player_proto.RegisterPlayer) -> player_proto.PlayerRegistered:
         """Register a new player."""
@@ -167,19 +199,10 @@ class Player(Aggregate[_PlayerState]):
     @handles(player_proto.DepositFunds)
     def deposit(self, cmd: player_proto.DepositFunds) -> player_proto.FundsDeposited:
         """Deposit funds into player's bankroll."""
-        if not self.exists:
-            raise CommandRejectedError("Player does not exist")
-
-        amount = cmd.amount.amount if cmd.amount else 0
-        if amount <= 0:
-            raise CommandRejectedError("amount must be positive")
-
-        new_balance = self.bankroll + amount
-        return player_proto.FundsDeposited(
-            amount=cmd.amount,
-            new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
-            deposited_at=now(),
-        )
+        state = self._get_state()
+        self._guard_deposit(state)
+        amount = self._validate_deposit(cmd)
+        return self._compute_deposit(cmd, state, amount)
 
     @handles(player_proto.WithdrawFunds)
     def withdraw(self, cmd: player_proto.WithdrawFunds) -> player_proto.FundsWithdrawn:
@@ -255,6 +278,7 @@ class Player(Aggregate[_PlayerState]):
             ),
             released_at=now(),
         )
+    # docs:end:annotation_handlers
 
     # --- Saga/PM Compensation ---
 

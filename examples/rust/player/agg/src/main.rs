@@ -12,12 +12,14 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    // docs:start:command_router
     let router = CommandRouter::new("player", state::rebuild_state)
         .on("RegisterPlayer", handlers::handle_register_player)
         .on("DepositFunds", handlers::handle_deposit_funds)
         .on("WithdrawFunds", handlers::handle_withdraw_funds)
         .on("ReserveFunds", handlers::handle_reserve_funds)
         .on("ReleaseFunds", handlers::handle_release_funds);
+    // docs:end:command_router
 
     run_aggregate_server("player", 50001, router)
         .await

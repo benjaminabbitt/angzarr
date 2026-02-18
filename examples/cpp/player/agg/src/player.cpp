@@ -8,6 +8,7 @@
 
 namespace player {
 
+// docs:start:oo_handlers
 Player::Player() {
     // Register command handlers
     register_handler<examples::RegisterPlayer, examples::PlayerRegistered>(
@@ -65,5 +66,6 @@ examples::FundsReleased Player::handle_release(const examples::ReleaseFunds& cmd
 examples::FundsTransferred Player::handle_transfer(const examples::TransferFunds& cmd) {
     return handlers::handle_transfer(cmd, state_);
 }
+// docs:end:oo_handlers
 
 } // namespace player

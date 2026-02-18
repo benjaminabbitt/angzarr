@@ -15,12 +15,14 @@ public final class TableHandRouter {
 
     private TableHandRouter() {}
 
+    // docs:start:event_router
     public static EventRouter createRouter() {
         return new EventRouter("saga-table-hand", "table")
             .sends("hand", "DealCards")
             .prepare(HandStarted.class, TableHandRouter::prepareHandStarted)
             .on(HandStarted.class, TableHandRouter::handleHandStarted);
     }
+    // docs:end:event_router
 
     public static List<Cover> prepareHandStarted(HandStarted event) {
         return List.of(
@@ -31,6 +33,7 @@ public final class TableHandRouter {
         );
     }
 
+    // docs:start:saga_handler
     public static CommandBook handleHandStarted(HandStarted event, List<EventBook> destinations) {
         int destSeq = EventRouter.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
 
@@ -62,4 +65,5 @@ public final class TableHandRouter {
                 .setCommand(EventRouter.packCommand(dealCards)))
             .build();
     }
+    // docs:end:saga_handler
 }

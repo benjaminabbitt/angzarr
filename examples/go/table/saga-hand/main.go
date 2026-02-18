@@ -30,6 +30,7 @@ func prepareHandStarted(source *pb.EventBook, event *anypb.Any) []*pb.Cover {
 	}
 }
 
+// docs:start:saga_handler
 // handleHandStarted translates HandStarted → DealCards.
 func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 	var handStarted examples.HandStarted
@@ -91,12 +92,15 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 		},
 	}, nil
 }
+// docs:end:saga_handler
 
 func main() {
+	// docs:start:event_router
 	router := angzarr.NewEventRouter("saga-table-hand", "table").
 		Sends("hand", "DealCards").
 		Prepare("HandStarted", prepareHandStarted).
 		On("HandStarted", handleHandStarted)
+	// docs:end:event_router
 
 	angzarr.RunSagaServer("saga-table-hand", "50211", router)
 }

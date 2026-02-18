@@ -11,13 +11,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// docs:start:deposit_guard
 func guardDepositFunds(state PlayerState) error {
 	if !state.Exists() {
 		return angzarr.NewCommandRejectedError("Player does not exist")
 	}
 	return nil
 }
+// docs:end:deposit_guard
 
+// docs:start:deposit_validate
 func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
 	amount := int64(0)
 	if cmd.Amount != nil {
@@ -28,7 +31,9 @@ func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
 	}
 	return amount, nil
 }
+// docs:end:deposit_validate
 
+// docs:start:deposit_compute
 func computeFundsDeposited(cmd *examples.DepositFunds, state PlayerState, amount int64) *examples.FundsDeposited {
 	newBalance := state.Bankroll + amount
 	return &examples.FundsDeposited{
@@ -37,6 +42,7 @@ func computeFundsDeposited(cmd *examples.DepositFunds, state PlayerState, amount
 		DepositedAt: timestamppb.New(time.Now()),
 	}
 }
+// docs:end:deposit_compute
 
 // HandleDepositFunds handles the DepositFunds command.
 func HandleDepositFunds(

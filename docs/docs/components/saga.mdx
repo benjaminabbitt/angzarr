@@ -49,174 +49,85 @@ flowchart TB
 
 ---
 
-## Example: Table-Player Saga
+## Example: Table-Hand Saga
 
-When a player reserves funds, issue a JoinTable command:
+When a table starts a hand, issue a DealCards command to the hand domain:
 
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python
-from angzarr_client import EventRouter
-from proto.player_pb2 import FundsReserved
-from proto.table_pb2 import JoinTable
-
-def handle_funds_reserved(event: FundsReserved, context: SagaContext) -> list[CommandBook]:
-    # Build JoinTable command for table domain
-    cmd = JoinTable(
-        player_id=event.player_id,
-        buy_in=event.amount,
-    )
-
-    # Get target sequence from context
-    target_seq = context.get_sequence("table", event.table_id)
-
-    return [CommandBook(
-        cover=Cover(domain="table", root=event.table_id),
-        pages=[CommandPage(sequence=target_seq, command=pack_any(cmd))],
-    )]
-
-router = EventRouter("saga-table-player", "player")
-    .sends("table", "JoinTable")
-    .on("FundsReserved", handle_funds_reserved)
+```python file=examples/python/table/saga-hand/main.py start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
 <TabItem value="go" label="Go">
 
-```go
-func handleFundsReserved(event *FundsReserved, ctx *SagaContext) ([]*CommandBook, error) {
-    cmd := &JoinTable{
-        PlayerId: event.PlayerId,
-        BuyIn:    event.Amount,
-    }
-
-    targetSeq := ctx.GetSequence("table", event.TableId)
-
-    return []*CommandBook{{
-        Cover: &Cover{Domain: "table", Root: event.TableId},
-        Pages: []*CommandPage{{
-            Sequence: targetSeq,
-            Command:  packAny(cmd),
-        }},
-    }}, nil
-}
-
-router := angzarr.NewEventRouter("saga-table-player", "player").
-    Sends("table", "JoinTable").
-    On("FundsReserved", handleFundsReserved)
+```go file=examples/go/table/saga-hand/main.go start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
 <TabItem value="rust" label="Rust">
 
-```rust
-fn handle_funds_reserved(
-    event: &FundsReserved,
-    context: &SagaContext,
-) -> Result<Vec<CommandBook>, Status> {
-    let cmd = JoinTable {
-        player_id: event.player_id.clone(),
-        buy_in: event.amount,
-    };
-
-    let target_seq = context.get_sequence("table", &event.table_id);
-
-    Ok(vec![CommandBook {
-        cover: Some(Cover {
-            domain: "table".into(),
-            root: Some(event.table_id.clone()),
-            ..Default::default()
-        }),
-        pages: vec![CommandPage {
-            sequence: Some(Sequence::Num(target_seq)),
-            command: Some(pack_any(&cmd)),
-        }],
-        ..Default::default()
-    }])
-}
-
-let router = EventRouter::new("saga-table-player", "player")
-    .sends("table", "JoinTable")
-    .on::<FundsReserved>(handle_funds_reserved);
+```rust file=examples/rust/table/saga-hand/src/main.rs start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-```java
-public class TablePlayerSaga {
-    @ReactsTo(FundsReserved.class)
-    public List<CommandBook> handleFundsReserved(FundsReserved event, SagaContext context) {
-        var cmd = JoinTable.newBuilder()
-            .setPlayerId(event.getPlayerId())
-            .setBuyIn(event.getAmount())
-            .build();
-
-        int targetSeq = context.getSequence("table", event.getTableId());
-
-        return List.of(CommandBook.newBuilder()
-            .setCover(Cover.newBuilder()
-                .setDomain("table")
-                .setRoot(event.getTableId()))
-            .addPages(CommandPage.newBuilder()
-                .setSequence(targetSeq)
-                .setCommand(Any.pack(cmd)))
-            .build());
-    }
-}
+```java file=examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/TableHandRouter.java start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
 <TabItem value="csharp" label="C#">
 
-```csharp
-public class TablePlayerSaga
-{
-    [ReactsTo(typeof(FundsReserved))]
-    public IEnumerable<CommandBook> HandleFundsReserved(
-        FundsReserved @event, SagaContext context)
-    {
-        var cmd = new JoinTable
-        {
-            PlayerId = @event.PlayerId,
-            BuyIn = @event.Amount
-        };
-
-        var targetSeq = context.GetSequence("table", @event.TableId);
-
-        yield return new CommandBook
-        {
-            Cover = new Cover { Domain = "table", Root = @event.TableId },
-            Pages = { new CommandPage { Sequence = targetSeq, Command = Any.Pack(cmd) } }
-        };
-    }
-}
+```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:saga_handler end=docs:end:saga_handler
 ```
 
 </TabItem>
 <TabItem value="cpp" label="C++">
 
-```cpp
-std::vector<CommandBook> handle_funds_reserved(
-    const FundsReserved& event, const SagaContext& context) {
+```cpp file=examples/cpp/table/saga-hand/src/table_hand_saga.cpp start=docs:start:saga_handler end=docs:end:saga_handler
+```
 
-    JoinTable cmd;
-    cmd.set_player_id(event.player_id());
-    cmd.set_buy_in(event.amount());
+</TabItem>
+</Tabs>
 
-    uint32_t target_seq = context.get_sequence("table", event.table_id());
+### EventRouter Registration
 
-    CommandBook book;
-    book.mutable_cover()->set_domain("table");
-    *book.mutable_cover()->mutable_root() = event.table_id();
+<Tabs groupId="language">
+<TabItem value="python" label="Python" default>
 
-    auto* page = book.add_pages();
-    page->set_sequence(target_seq);
-    page->mutable_command()->PackFrom(cmd);
+```python file=examples/python/table/saga-hand/main.py start=docs:start:event_router end=docs:end:event_router
+```
 
-    return {book};
-}
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go file=examples/go/table/saga-hand/main.go start=docs:start:event_router end=docs:end:event_router
+```
+
+</TabItem>
+<TabItem value="rust" label="Rust">
+
+```rust file=examples/rust/table/saga-hand/src/main.rs start=docs:start:event_router end=docs:end:event_router
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java file=examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/TableHandRouter.java start=docs:start:event_router end=docs:end:event_router
+```
+
+</TabItem>
+<TabItem value="csharp" label="C#">
+
+```csharp file=examples/csharp/Table/SagaHand/TableHandSaga.cs start=docs:start:event_router end=docs:end:event_router
+```
+
+</TabItem>
+<TabItem value="cpp" label="C++">
+
+```cpp file=examples/cpp/table/saga-hand/src/table_hand_saga.cpp start=docs:start:event_router end=docs:end:event_router
 ```
 
 </TabItem>

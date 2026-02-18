@@ -78,6 +78,7 @@ type Hand struct {
 	angzarr.AggregateBase[HandState]
 }
 
+// docs:start:oo_handlers
 // NewHand creates a new Hand aggregate with prior events for state reconstruction.
 func NewHand(eventBook *pb.EventBook) *Hand {
 	h := &Hand{}
@@ -113,6 +114,7 @@ func NewHand(eventBook *pb.EventBook) *Hand {
 
 	return h
 }
+// docs:end:oo_handlers
 
 // --- Event Appliers ---
 

@@ -7,16 +7,15 @@ import (
 )
 
 func main() {
+	// docs:start:command_router
 	router := angzarr.NewCommandRouter("player", handlers.RebuildState).
 		On("RegisterPlayer", handlers.HandleRegisterPlayer).
 		On("DepositFunds", handlers.HandleDepositFunds).
 		On("WithdrawFunds", handlers.HandleWithdrawFunds).
 		On("ReserveFunds", handlers.HandleReserveFunds).
 		On("ReleaseFunds", handlers.HandleReleaseFunds).
-		// Rejection handling auto-delegates to framework when no specific handler registered.
-		// Register specific handlers with OnRejected(domain, command, handler) if custom
-		// compensation is needed.
 		OnRejected("table", "JoinTable", handlers.HandleTableJoinRejected)
+	// docs:end:command_router
 
 	angzarr.RunAggregateServer("player", "50201", router)
 }

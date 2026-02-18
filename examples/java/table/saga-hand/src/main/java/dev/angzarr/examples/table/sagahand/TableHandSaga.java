@@ -45,6 +45,7 @@ public class TableHandSaga extends Saga {
         );
     }
 
+    // docs:start:saga_handler
     @ReactsTo(HandStarted.class)
     public CommandBook handleHandStarted(HandStarted event, List<EventBook> destinations) {
         int destSeq = Saga.nextSequence(destinations.isEmpty() ? null : destinations.get(0));
@@ -79,4 +80,5 @@ public class TableHandSaga extends Saga {
                 .setCommand(Any.pack(dealCards, "type.googleapis.com/")))
             .build();
     }
+    // docs:end:saga_handler
 }

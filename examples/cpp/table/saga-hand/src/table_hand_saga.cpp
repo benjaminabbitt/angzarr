@@ -6,12 +6,14 @@
 namespace table {
 namespace saga {
 
+// docs:start:event_router
 angzarr::EventRouter create_table_hand_router() {
     return angzarr::EventRouter("saga-table-hand", "table")
         .sends("hand", "DealCards")
         .prepare<examples::HandStarted>(prepare_hand_started)
         .on<examples::HandStarted>(handle_hand_started);
 }
+// docs:end:event_router
 
 std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& event) {
     std::vector<angzarr::Cover> covers;
@@ -22,6 +24,7 @@ std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& ev
     return covers;
 }
 
+// docs:start:saga_handler
 angzarr::CommandBook handle_hand_started(
     const examples::HandStarted& event,
     const std::vector<angzarr::EventBook>& destinations) {
@@ -60,6 +63,7 @@ angzarr::CommandBook handle_hand_started(
 
     return cmd_book;
 }
+// docs:end:saga_handler
 
 } // namespace saga
 } // namespace table

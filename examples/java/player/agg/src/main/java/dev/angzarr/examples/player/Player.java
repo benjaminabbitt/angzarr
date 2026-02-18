@@ -132,6 +132,7 @@ public class Player extends Aggregate<PlayerState> {
 
     // --- Command handlers ---
 
+    // docs:start:annotation_handlers
     @Handles(RegisterPlayer.class)
     public PlayerRegistered register(RegisterPlayer cmd) {
         // Guard
@@ -277,6 +278,7 @@ public class Player extends Aggregate<PlayerState> {
             .setReleasedAt(now())
             .build();
     }
+    // docs:end:annotation_handlers
 
     // --- Utility methods ---
 

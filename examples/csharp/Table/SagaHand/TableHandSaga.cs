@@ -16,6 +16,7 @@ namespace Table.SagaHand;
 /// </summary>
 public static class TableHandSaga
 {
+    // docs:start:event_router
     public static EventRouter Create()
     {
         return new EventRouter("saga-table-hand", "table")
@@ -23,6 +24,7 @@ public static class TableHandSaga
             .Prepare<HandStarted>(PrepareHandStarted)
             .On<HandStarted>(HandleHandStarted);
     }
+    // docs:end:event_router
 
     private static List<Cover> PrepareHandStarted(HandStarted evt)
     {
@@ -36,6 +38,7 @@ public static class TableHandSaga
         };
     }
 
+    // docs:start:saga_handler
     private static object HandleHandStarted(HandStarted evt, List<EventBook> destinations)
     {
         var destSeq = EventRouter.NextSequence(destinations.FirstOrDefault());
@@ -70,4 +73,5 @@ public static class TableHandSaga
             Pages = { new CommandPage { Sequence = destSeq, Command = cmdAny } }
         };
     }
+    // docs:end:saga_handler
 }
