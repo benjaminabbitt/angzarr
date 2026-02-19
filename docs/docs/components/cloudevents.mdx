@@ -177,21 +177,7 @@ async fn handle(&self, events: &EventBook, _mode: ProjectionMode) -> Result<Proj
 
 ## CloudEvent Proto
 
-```protobuf
-message CloudEvent {
-  string type = 1;                    // Event type (e.g., "com.example.order.created")
-  google.protobuf.Any data = 2;       // Payload (framework converts to JSON)
-  map<string, string> extensions = 3; // Custom extension attributes
-
-  // Optional overrides (framework fills defaults from Cover/EventPage)
-  optional string id = 4;             // Default: {domain}:{root_id}:{sequence}
-  optional string source = 5;         // Default: angzarr/{domain}
-  optional string subject = 6;        // Default: aggregate root ID
-}
-
-message CloudEventsResponse {
-  repeated CloudEvent events = 1;
-}
+```protobuf file=../../../proto/angzarr/cloudevents.proto start=docs:start:cloud_event end=docs:end:cloud_event
 ```
 
 ---

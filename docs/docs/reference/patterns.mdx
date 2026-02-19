@@ -217,12 +217,7 @@ public:
 
 Links related events across aggregates:
 
-```protobuf
-message Cover {
-  string domain = 2;
-  UUID root = 1;
-  string correlation_id = 3;  // Links related events
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
 ```
 
 **Propagation rules:**
@@ -389,12 +384,7 @@ Controls when command processing returns to caller:
 | **SIMPLE** | 1 | Wait for projectors only | Read-after-write consistency |
 | **CASCADE** | 2 | Wait for projectors + saga cascade | Full sync (expensive) |
 
-```protobuf
-enum SyncMode {
-  SYNC_MODE_UNSPECIFIED = 0;  // Async: fire and forget (default)
-  SYNC_MODE_SIMPLE = 1;       // Sync projectors only, no saga cascade
-  SYNC_MODE_CASCADE = 2;      // Full sync: projectors + saga cascade
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:sync_mode end=docs:end:sync_mode
 ```
 
 **Trade-offs:**
@@ -437,16 +427,7 @@ print(f"Balance at {yesterday}: {state.bankroll}")
 
 Editions enable divergent timelines for speculative execution, historical analysis, or saga coordination:
 
-```protobuf
-message Edition {
-  string name = 1;                              // Edition name, e.g., "v2"; empty = main timeline
-  repeated DomainDivergence divergences = 2;   // Optional: explicit divergence points
-}
-
-message DomainDivergence {
-  string domain = 1;    // Domain name
-  uint32 sequence = 2;  // Divergence sequence number
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:edition end=docs:end:edition
 ```
 
 **Use cases:**
@@ -480,12 +461,7 @@ cmd = CommandBook(cover=cover, pages=[...])
 
 Controls how snapshots are managed during compaction:
 
-```protobuf
-enum SnapshotRetention {
-  RETENTION_DEFAULT = 0;   // Persist every 16 events, treated as TRANSIENT otherwise
-  RETENTION_PERSIST = 1;   // Keep indefinitely (business milestone)
-  RETENTION_TRANSIENT = 2; // Delete when newer snapshot written
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:snapshot_retention end=docs:end:snapshot_retention
 ```
 
 **When to use:**

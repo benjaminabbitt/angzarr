@@ -174,14 +174,10 @@ EventBook ──→ [OutboundService] ────┼── HTTP (CloudEvents JS
 
 ### gRPC Service
 
-```protobuf
-service EventStreamService {
-    rpc Subscribe(EventStreamFilter) returns (stream EventBook);
-}
+```protobuf file=../../../proto/angzarr/stream.proto start=docs:start:event_stream_service end=docs:end:event_stream_service
+```
 
-message EventStreamFilter {
-    string correlation_id = 1;
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:event_stream_filter end=docs:end:event_stream_filter
 ```
 
 ### Configuration

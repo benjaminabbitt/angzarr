@@ -18,29 +18,16 @@ This document covers ⍼ Angzarr's core architectural concepts: event sourcing d
 | **Snapshot** | Point-in-time state for replay optimization |
 | **EventPages** | Ordered sequence of domain events |
 
-```protobuf
-message Cover {
-  string domain = 2;
-  UUID root = 1;
-  string correlation_id = 3;  // Workflow correlation
-}
+```protobuf file=../../proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
+```
 
-message EventPage {
-  uint32 sequence = 1;
-  google.protobuf.Timestamp created_at = 3;
-  google.protobuf.Any event = 4;
-}
+```protobuf file=../../proto/angzarr/types.proto start=docs:start:event_page end=docs:end:event_page
+```
 
-message Snapshot {
-  uint32 sequence = 2;
-  google.protobuf.Any state = 3;
-}
+```protobuf file=../../proto/angzarr/types.proto start=docs:start:snapshot end=docs:end:snapshot
+```
 
-message EventBook {
-  Cover cover = 1;
-  Snapshot snapshot = 2;
-  repeated EventPage pages = 3;
-}
+```protobuf file=../../proto/angzarr/types.proto start=docs:start:event_book end=docs:end:event_book
 ```
 
 Commands follow the same pattern—a **CommandBook** contains one or more **CommandPages** targeting a single aggregate.
@@ -77,7 +64,6 @@ flowchart TB
     PC[ProjectorCoordinator]
     Saga[Your Saga]
     Proj[Your Projector]
-    Cmd[Commands to<br/>Other Aggregates]
     RM[(Read Model<br/>Postgres, Redis)]
 
     Client -->|gRPC| AC
@@ -87,8 +73,8 @@ flowchart TB
     BUS -->|AMQP/Kafka| SC
     BUS -->|AMQP/Kafka| PC
     SC <-->|gRPC| Saga
+    SC -->|gRPC| AC
     PC <-->|gRPC| Proj
-    Saga -->|gRPC| Cmd
     Proj -->|SQL| RM
 ```
 
@@ -145,12 +131,7 @@ flowchart TB
 
 ### SyncMode
 
-```protobuf
-enum SyncMode {
-  SYNC_MODE_NONE = 0;     // Async: fire and forget
-  SYNC_MODE_SIMPLE = 1;   // Sync projectors only
-  SYNC_MODE_CASCADE = 2;  // Full sync: projectors + saga cascade
-}
+```protobuf file=../../proto/angzarr/types.proto start=docs:start:sync_mode end=docs:end:sync_mode
 ```
 
 | Mode | Projectors | Sagas | Use Case |
@@ -165,28 +146,31 @@ When `sync_mode = CASCADE`, the framework orchestrates the complete cascade:
 
 ```mermaid
 flowchart TB
-    Client --> AC[AggregateCoordinator.Handle]
+    Client --> AC[AggregateCoordinator.Handle<br/>Domain A]
     AC --> BL[BusinessLogic.Handle → events]
     BL --> Persist[Persist events]
     Persist --> SC[SagaCoordinator.HandleSync]
     SC --> Saga[Saga.HandleSync → commands]
-    Saga -->|Recursive| AC
+    Saga --> SC
+    SC -.->|gRPC| AC2[AggregateCoordinator.Handle<br/>Domain B]
+    AC2 -.-> BL2[BusinessLogic.Handle → events]
+    BL2 -.-> Persist2[Persist events]
     Persist --> PC[ProjectorCoordinator.HandleSync]
     PC --> Resp[CommandResponse<br/>events, projections]
+    style AC2 stroke-dasharray: 5 5
+    style BL2 stroke-dasharray: 5 5
+    style Persist2 stroke-dasharray: 5 5
 ```
+
+*The dashed Domain B represents the target aggregate—sagas bridge events from one domain to commands in another. The cascade recursively waits for the target aggregate's events before returning.*
 
 **Warning**: `CASCADE` is expensive and does not provide ACID guarantees. Each step adds latency. Start with `NONE`, move to `SIMPLE` for read-after-write, reserve `CASCADE` for workflows requiring synchronous cross-aggregate coordination.
 
-### Gateway Streaming
+### Event Streaming
 
 For observing events as they happen rather than waiting:
 
-```protobuf
-service CommandGateway {
-  rpc ExecuteStream(CommandBook) returns (stream EventBook);
-  rpc ExecuteStreamResponseCount(ExecuteStreamCountRequest) returns (stream EventBook);
-  rpc ExecuteStreamResponseTime(ExecuteStreamTimeRequest) returns (stream EventBook);
-}
+```protobuf file=../../proto/angzarr/stream.proto start=docs:start:event_stream_service end=docs:end:event_stream_service
 ```
 
 Events are correlated via `correlation_id` on `Cover`, allowing clients to track causally-related events across aggregate boundaries.

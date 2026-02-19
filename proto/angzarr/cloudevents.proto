@@ -8,6 +8,7 @@ option ruby_package = "Angzarr";
 
 import "google/protobuf/any.proto";
 
+// docs:start:cloud_event
 // CloudEvent represents a single event for external consumption.
 //
 // Client projectors create these by filtering/transforming internal events.
@@ -48,3 +49,4 @@ message CloudEvent {
 message CloudEventsResponse {
   repeated CloudEvent events = 1;
 }
+// docs:end:cloud_event

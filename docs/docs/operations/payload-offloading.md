@@ -108,20 +108,10 @@ URI: gs://bucket/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85
 
 Events and commands reference external payloads via `PayloadReference`:
 
-```protobuf
-message PayloadReference {
-  PayloadStorageType storage_type = 1;  // FILESYSTEM | GCS | S3
-  string uri = 2;                       // Full storage URI
-  bytes content_hash = 3;               // SHA-256 for verification
-  uint64 original_size = 4;             // Size in bytes
-  Timestamp stored_at = 5;              // For TTL cleanup
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:payload_reference end=docs:end:payload_reference
+```
 
-message EventPage {
-  // ... other fields ...
-  google.protobuf.Any event = 4;                  // Empty when offloaded
-  optional PayloadReference external_payload = 10; // Set when offloaded
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:event_page end=docs:end:event_page
 ```
 
 ---
@@ -178,14 +168,7 @@ curl -X POST http://localhost:9099/admin/payload-store/cleanup?age=7d
 
 When payload retrieval fails, angzarr routes to DLQ:
 
-```protobuf
-message PayloadRetrievalFailedDetails {
-  PayloadStorageType storage_type = 1;
-  string uri = 2;
-  bytes content_hash = 3;
-  uint64 original_size = 4;
-  string error = 5;  // "Object not found", "Integrity check failed", etc.
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:dlq_details end=docs:end:dlq_details
 ```
 
 Common failure causes:

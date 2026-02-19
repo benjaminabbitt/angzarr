@@ -254,28 +254,7 @@ Examples:
 
 ### Dead Letter Structure
 
-```protobuf
-message AngzarrDeadLetter {
-  Cover cover = 1;                      // Routing: domain, root, correlation_id
-
-  oneof payload {
-    CommandBook rejected_command = 2;   // Command that failed
-    EventBook rejected_events = 9;      // Events that failed (saga/projector)
-  }
-
-  string rejection_reason = 3;          // Human-readable reason
-
-  oneof rejection_details {
-    SequenceMismatchDetails sequence_mismatch = 12;
-    EventProcessingFailedDetails event_processing_failed = 13;
-    PayloadRetrievalFailedDetails payload_retrieval_failed = 14;
-  }
-
-  Timestamp occurred_at = 7;
-  map<string, string> metadata = 8;
-  string source_component = 10;         // Which component sent to DLQ
-  string source_component_type = 11;    // "aggregate" | "saga" | "projector" | "process_manager"
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:dead_letter end=docs:end:dead_letter
 ```
 
 ### DLQ Backends
@@ -341,15 +320,7 @@ Notifications are ephemeral signals — they trigger behavior but aren't part of
 
 ### RejectionNotification
 
-```protobuf
-message RejectionNotification {
-  CommandBook rejected_command = 1;     // Full command context
-  string rejection_reason = 2;          // "insufficient_funds", "out_of_stock"
-  string issuer_name = 3;               // Saga name
-  string issuer_type = 4;               // "saga" | "process_manager"
-  Cover source_aggregate = 5;           // Original triggering aggregate
-  uint32 source_event_sequence = 6;     // Triggering event sequence
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:rejection_notification end=docs:end:rejection_notification
 ```
 
 ### Handling Rejections

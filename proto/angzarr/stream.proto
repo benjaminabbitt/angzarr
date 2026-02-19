@@ -8,9 +8,11 @@ option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
 
+// docs:start:event_stream_service
 // EventStreamService: streams events to registered subscribers
 service EventStreamService {
   // Subscribe to events matching correlation ID (required)
   // Returns INVALID_ARGUMENT if correlation_id is empty
   rpc Subscribe (EventStreamFilter) returns (stream EventBook);
 }
+// docs:end:event_stream_service

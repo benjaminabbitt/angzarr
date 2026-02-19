@@ -152,12 +152,7 @@ sequenceDiagram
 
 Process managers use the **correlation ID** as their aggregate root:
 
-```protobuf
-message Cover {
-  string domain = 2;
-  UUID root = 1;
-  string correlation_id = 3;  // PM's identity
-}
+```protobuf file=../../../proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
 ```
 
 All events in a workflow share the same correlation ID, allowing the PM to:
