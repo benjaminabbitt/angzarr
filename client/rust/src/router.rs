@@ -64,6 +64,20 @@ impl From<CommandRejectedError> for Status {
 /// Result type for command handlers.
 pub type CommandResult<T> = std::result::Result<T, CommandRejectedError>;
 
+/// Response from rejection handlers.
+///
+/// Handlers may need to:
+/// - Emit events to compensate/fix state (EventBook)
+/// - Emit notification upstream to propagate rejection
+/// - Both
+#[derive(Default)]
+pub struct RejectionHandlerResponse {
+    /// Events to persist to own state (compensation).
+    pub events: Option<EventBook>,
+    /// Notification to forward upstream.
+    pub notification: Option<Notification>,
+}
+
 use std::sync::Arc;
 
 /// Function type for rebuilding state from an EventBook.
@@ -74,8 +88,11 @@ pub type CommandHandler<S> =
     Arc<dyn Fn(&CommandBook, &Any, &S, u32) -> CommandResult<EventBook> + Send + Sync>;
 
 /// Revocation handler boxed type.
+///
+/// Returns `RejectionHandlerResponse` which can contain events (compensation)
+/// and/or notification (upstream propagation).
 pub type RevocationHandler<S> =
-    Arc<dyn Fn(&Notification, &S) -> CommandResult<EventBook> + Send + Sync>;
+    Arc<dyn Fn(&Notification, &S) -> CommandResult<RejectionHandlerResponse> + Send + Sync>;
 
 /// Command router for aggregate handlers.
 ///
@@ -124,6 +141,11 @@ impl<S: 'static> CommandRouter<S> {
     /// Called when a saga/PM command targeting the specified domain and command
     /// type is rejected by the target aggregate.
     ///
+    /// Returns `RejectionHandlerResponse` which can contain:
+    /// - Events to compensate local state
+    /// - Notification to propagate rejection upstream
+    /// - Both
+    ///
     /// # Example
     ///
     /// ```rust,ignore
@@ -136,7 +158,7 @@ impl<S: 'static> CommandRouter<S> {
         handler: H,
     ) -> Self
     where
-        H: Fn(&Notification, &S) -> CommandResult<EventBook> + Send + Sync + 'static,
+        H: Fn(&Notification, &S) -> CommandResult<RejectionHandlerResponse> + Send + Sync + 'static,
     {
         let key = format!("{}/{}", domain.into(), command.into());
         self.rejection_handlers.insert(key, Arc::new(handler));
@@ -245,6 +267,11 @@ impl<S: 'static> CommandRouter<S> {
     }
 
     /// Call the appropriate rejection handler.
+    ///
+    /// Handler returns `RejectionHandlerResponse` with optional events and notification.
+    /// - Events are returned in BusinessResponse::Events
+    /// - Notification is returned in BusinessResponse::Notification (if events are None)
+    /// - If both present, events take precedence (notification is included in response)
     fn call_rejection_handler(
         &self,
         notification: &Notification,
@@ -255,10 +282,29 @@ impl<S: 'static> CommandRouter<S> {
         let key = format!("{}/{}", domain, cmd_suffix);
 
         if let Some(handler) = self.rejection_handlers.get(&key) {
-            let result_book = handler(notification, state)?;
-            return Ok(BusinessResponse {
-                result: Some(business_response::Result::Events(result_book)),
-            });
+            let response = handler(notification, state)?;
+
+            // Return based on what the handler provided
+            return match (response.events, response.notification) {
+                // Events present - return them (notification handled by framework)
+                (Some(events), _) => Ok(BusinessResponse {
+                    result: Some(business_response::Result::Events(events)),
+                }),
+                // Notification only - forward upstream via Revocation response
+                (None, Some(notif)) => Ok(BusinessResponse {
+                    result: Some(business_response::Result::Notification(notif)),
+                }),
+                // Neither - delegate to framework
+                (None, None) => Ok(BusinessResponse {
+                    result: Some(business_response::Result::Revocation(RevocationResponse {
+                        emit_system_revocation: true,
+                        send_to_dead_letter_queue: false,
+                        escalate: false,
+                        abort: false,
+                        reason: format!("Handler for {} returned empty response", key),
+                    })),
+                }),
+            };
         }
 
         // Default: delegate to framework
@@ -626,6 +672,8 @@ pub struct ProcessManagerResponse {
     pub commands: Vec<CommandBook>,
     /// Events to persist to the PM's own domain.
     pub process_events: Option<EventBook>,
+    /// Notification to forward upstream (for rejection propagation).
+    pub notification: Option<Notification>,
 }
 
 /// Process manager handler function pointer type.
@@ -658,6 +706,13 @@ pub type ProcessManagerStateRebuilder<S> = fn(&EventBook) -> S;
 /// Process manager state rebuilder closure type (boxed).
 pub type ProcessManagerStateRebuilderFn<S> = Arc<dyn Fn(&EventBook) -> S + Send + Sync>;
 
+/// Process manager rejection handler closure type.
+///
+/// Takes notification and PM's own state.
+/// Returns `RejectionHandlerResponse` with events and/or notification.
+pub type ProcessManagerRejectionHandler<S> =
+    Arc<dyn Fn(&Notification, &S) -> CommandResult<RejectionHandlerResponse> + Send + Sync>;
+
 /// Internal handler type for ProcessManagerRouter.
 enum PMHandlerType<S> {
     Fn(ProcessManagerHandler<S>),
@@ -680,6 +735,7 @@ enum PMRebuildType<S> {
 ///
 /// Routes events to handlers based on type URL suffix matching.
 /// Unlike sagas, PMs have their own persistent state (rebuilt from events).
+/// Also routes rejection notifications to rejection handlers.
 pub struct ProcessManagerRouter<S> {
     name: String,
     pm_domain: String,
@@ -688,6 +744,7 @@ pub struct ProcessManagerRouter<S> {
     rebuild: PMRebuildType<S>,
     handlers: HashMap<String, PMHandlerType<S>>,
     prepare_handlers: HashMap<String, PMPrepareType<S>>,
+    rejection_handlers: HashMap<String, ProcessManagerRejectionHandler<S>>,
 }
 
 impl<S: 'static> ProcessManagerRouter<S> {
@@ -708,6 +765,7 @@ impl<S: 'static> ProcessManagerRouter<S> {
             rebuild: PMRebuildType::Fn(rebuild),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
+            rejection_handlers: HashMap::new(),
         }
     }
 
@@ -728,6 +786,7 @@ impl<S: 'static> ProcessManagerRouter<S> {
             rebuild: PMRebuildType::Closure(Arc::new(rebuild)),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
+            rejection_handlers: HashMap::new(),
         }
     }
 
@@ -788,6 +847,35 @@ impl<S: 'static> ProcessManagerRouter<S> {
     {
         self.prepare_handlers
             .insert(suffix.into(), PMPrepareType::Closure(Arc::new(handler)));
+        self
+    }
+
+    /// Register a rejection handler for when a specific command is rejected.
+    ///
+    /// Called when a PM-issued command targeting the specified domain and command
+    /// type is rejected by the target aggregate.
+    ///
+    /// Returns `RejectionHandlerResponse` which can contain:
+    /// - Events to persist to PM's own state
+    /// - Notification to propagate rejection upstream
+    /// - Both
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// router.on_rejected("table", "JoinTable", handle_join_rejected)
+    /// ```
+    pub fn on_rejected<H>(
+        mut self,
+        domain: impl Into<String>,
+        command: impl Into<String>,
+        handler: H,
+    ) -> Self
+    where
+        H: Fn(&Notification, &S) -> CommandResult<RejectionHandlerResponse> + Send + Sync + 'static,
+    {
+        let key = format!("{}/{}", domain.into(), command.into());
+        self.rejection_handlers.insert(key, Arc::new(handler));
         self
     }
 
@@ -856,6 +944,8 @@ impl<S: 'static> ProcessManagerRouter<S> {
     }
 
     /// Dispatch a trigger event to the appropriate handler.
+    ///
+    /// Detects Notification (rejection) payloads and routes to rejection handlers.
     pub fn dispatch(
         &self,
         trigger: &EventBook,
@@ -876,8 +966,14 @@ impl<S: 'static> ProcessManagerRouter<S> {
         // Rebuild state
         let state = self.rebuild_state(process_state);
 
-        // Find handler by suffix
         let type_url = &event_any.type_url;
+
+        // Check for Notification (rejection/compensation)
+        if type_url.ends_with("Notification") {
+            return self.dispatch_notification(event_any, &state);
+        }
+
+        // Find handler by suffix
         let handler = match self
             .handlers
             .iter()
@@ -893,6 +989,48 @@ impl<S: 'static> ProcessManagerRouter<S> {
             PMHandlerType::Closure(f) => f(trigger, &state, event_any, destinations),
         };
         result.map_err(Status::from)
+    }
+
+    /// Dispatch a Notification to the appropriate rejection handler.
+    fn dispatch_notification(
+        &self,
+        event_any: &Any,
+        state: &S,
+    ) -> Result<ProcessManagerResponse, Status> {
+        use prost::Message;
+
+        // Decode the Notification
+        let notification = Notification::decode(event_any.value.as_slice()).map_err(|e| {
+            Status::invalid_argument(format!("Failed to decode Notification: {}", e))
+        })?;
+
+        // Unpack rejection details from payload
+        let rejection = notification
+            .payload
+            .as_ref()
+            .map(|p| RejectionNotification::decode(p.value.as_slice()))
+            .transpose()
+            .map_err(|e| {
+                Status::invalid_argument(format!("Failed to decode RejectionNotification: {}", e))
+            })?
+            .unwrap_or_default();
+
+        // Extract domain and command type from rejected_command
+        let (domain, cmd_suffix) = extract_rejection_key(&rejection);
+        let key = format!("{}/{}", domain, cmd_suffix);
+
+        // Call handler if found
+        if let Some(handler) = self.rejection_handlers.get(&key) {
+            let response = handler(&notification, state)?;
+            return Ok(ProcessManagerResponse {
+                commands: vec![],
+                process_events: response.events,
+                notification: response.notification,
+            });
+        }
+
+        // Default: no handler, return empty response (framework handles)
+        Ok(ProcessManagerResponse::default())
     }
 
     /// Helper to rebuild state using either fn or closure.
@@ -1065,5 +1203,143 @@ impl<S: Default + 'static> StateRouter<S> {
     /// since CommandRouter expects a function pointer.
     pub fn into_rebuilder(self) -> impl Fn(&EventBook) -> S + Send + Sync {
         move |event_book| self.with_event_book(event_book)
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use prost::Message;
+
+    // =========================================================================
+    // RejectionHandlerResponse Tests
+    // =========================================================================
+
+    #[test]
+    fn empty_response_has_no_events_or_notification() {
+        let response = RejectionHandlerResponse::default();
+
+        assert!(response.events.is_none());
+        assert!(response.notification.is_none());
+    }
+
+    #[test]
+    fn response_with_events_only() {
+        let event_book = make_event_book();
+
+        let response = RejectionHandlerResponse {
+            events: Some(event_book),
+            notification: None,
+        };
+
+        assert!(response.events.is_some());
+        assert_eq!(response.events.as_ref().unwrap().pages.len(), 1);
+        assert!(response.notification.is_none());
+    }
+
+    #[test]
+    fn response_with_notification_only() {
+        let notification = make_notification("inventory", "ReserveStock", "out of stock");
+
+        let response = RejectionHandlerResponse {
+            events: None,
+            notification: Some(notification),
+        };
+
+        assert!(response.events.is_none());
+        assert!(response.notification.is_some());
+    }
+
+    #[test]
+    fn response_with_both_events_and_notification() {
+        let event_book = make_event_book();
+        let notification = make_notification("payment", "ProcessPayment", "declined");
+
+        let response = RejectionHandlerResponse {
+            events: Some(event_book),
+            notification: Some(notification),
+        };
+
+        assert!(response.events.is_some());
+        assert!(response.notification.is_some());
+    }
+
+    #[test]
+    fn response_events_are_accessible() {
+        let mut event_book = EventBook::default();
+        event_book.pages.push(EventPage {
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/test.Event1".to_string(),
+                value: vec![],
+            })),
+            ..Default::default()
+        });
+        event_book.pages.push(EventPage {
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/test.Event2".to_string(),
+                value: vec![],
+            })),
+            ..Default::default()
+        });
+
+        let response = RejectionHandlerResponse {
+            events: Some(event_book),
+            notification: None,
+        };
+
+        assert_eq!(response.events.as_ref().unwrap().pages.len(), 2);
+    }
+
+    // =========================================================================
+    // Helper Functions
+    // =========================================================================
+
+    fn make_event_book() -> EventBook {
+        let mut book = EventBook::default();
+        book.pages.push(EventPage {
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/test.TestEvent".to_string(),
+                value: vec![],
+            })),
+            ..Default::default()
+        });
+        book
+    }
+
+    fn make_notification(domain: &str, command_type: &str, reason: &str) -> Notification {
+        use crate::proto::{command_page, CommandBook, CommandPage, Cover};
+
+        let mut rejected_command = CommandBook::default();
+        rejected_command.cover = Some(Cover {
+            domain: domain.to_string(),
+            ..Default::default()
+        });
+        rejected_command.pages.push(CommandPage {
+            payload: Some(command_page::Payload::Command(Any {
+                type_url: format!("type.googleapis.com/test.{}", command_type),
+                value: vec![],
+            })),
+            ..Default::default()
+        });
+
+        let rejection = RejectionNotification {
+            issuer_name: "test-saga".to_string(),
+            issuer_type: "saga".to_string(),
+            rejection_reason: reason.to_string(),
+            rejected_command: Some(rejected_command),
+            ..Default::default()
+        };
+
+        Notification {
+            payload: Some(Any {
+                type_url: "type.googleapis.com/angzarr.RejectionNotification".to_string(),
+                value: rejection.encode_to_vec(),
+            }),
+            ..Default::default()
+        }
     }
 }

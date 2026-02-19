@@ -19,12 +19,16 @@ These are actual projector implementations that process events and produce outpu
 
 - **log.rs** - `LogService`: Pretty-prints events to stdout. Useful for debugging and monitoring event flow. Optionally decodes protobuf messages to JSON if a descriptor file is provided.
 
-- **stream.rs** - `StreamService`: Streams events to clients via gRPC. Maintains subscriptions by correlation ID and forwards matching events to connected clients through the gateway.
+- **outbound/** - `OutboundService`: Unified outbound projector combining gRPC streaming (for gateways) with CloudEvents publishing (HTTP/Kafka). Supports JSON and protobuf encoding.
+
+- **stream.rs** - `StreamService`: Legacy gRPC streaming service. Use `OutboundService` for new implementations.
+
+- **cloudevents/** - CloudEvents sink implementations (HTTP, Kafka) and protobuf encoding.
 
 ## Used By
 
 - `angzarr-log` binary (log projector)
-- `angzarr-stream` binary (stream projector)
+- `angzarr-stream` binary (outbound projector - gRPC + CloudEvents)
 
 ## See Also
 

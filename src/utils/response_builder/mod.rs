@@ -38,6 +38,20 @@ pub fn extract_events_from_response(
                 revocation.reason
             )));
         }
+        Some(business_response::Result::Notification(notification)) => {
+            // client logic wants to forward rejection upstream
+            // Return empty EventBook - notification forwarding handled separately
+            tracing::debug!(
+                message = "Rejection handler returned notification for upstream propagation",
+                cover = ?notification.cover,
+            );
+            EventBook {
+                cover: None,
+                pages: vec![],
+                snapshot: None,
+                ..Default::default()
+            }
+        }
         None => {
             // Empty response - return empty EventBook
             EventBook {

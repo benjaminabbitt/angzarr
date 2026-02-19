@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=proto/angzarr/upcaster.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/meta.proto");
     println!("cargo:rerun-if-changed=proto/angzarr/cloudevents.proto");
+    println!("cargo:rerun-if-changed=proto/io/cloudevents/v1/cloudevents.proto");
     println!("cargo:rerun-if-changed=proto/examples/poker_types.proto");
     println!("cargo:rerun-if-changed=proto/examples/player.proto");
     println!("cargo:rerun-if-changed=proto/examples/table.proto");
@@ -52,6 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/angzarr/upcaster.proto",
                 "proto/angzarr/meta.proto",
                 "proto/angzarr/cloudevents.proto",
+                "proto/io/cloudevents/v1/cloudevents.proto",
                 "proto/examples/poker_types.proto",
                 "proto/examples/player.proto",
                 "proto/examples/table.proto",

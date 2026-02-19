@@ -3,20 +3,23 @@
 
 set shell := ["bash", "-c"]
 
+# Gradle needs explicit settings file path
+SETTINGS := "--settings-file /workspace/client/java/settings.gradle.kts"
+
 default:
     @just --list
 
 proto:
-    cd /workspace/client/java && ./gradlew :proto:generateProto
+    cd /workspace/client/java && gradle {{SETTINGS}} :proto:generateProto
 
 build:
-    cd /workspace/client/java && ./gradlew build
+    cd /workspace/client/java && gradle {{SETTINGS}} build
 
 test:
-    cd /workspace/client/java && ./gradlew test
+    cd /workspace/client/java && gradle {{SETTINGS}} :client:test
 
 coverage:
-    cd /workspace/client/java && ./gradlew jacocoTestReport
+    cd /workspace/client/java && gradle {{SETTINGS}} jacocoTestReport
 
 publish:
-    cd /workspace/client/java && ./gradlew publish
+    cd /workspace/client/java && gradle {{SETTINGS}} publish

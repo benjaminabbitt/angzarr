@@ -8,6 +8,7 @@ import dev.angzarr.client.annotations.Applies;
 import dev.angzarr.client.annotations.Prepares;
 import dev.angzarr.client.annotations.ReactsTo;
 import dev.angzarr.client.annotations.Rejected;
+import dev.angzarr.client.compensation.RejectionHandlerResponse;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -57,7 +58,7 @@ public abstract class ProcessManager<S extends Message> {
     private final String name;
     private final Map<String, BiFunction<Any, String, List<CommandBook>>> handlers = new HashMap<>();
     private final Map<String, BiConsumer<S, Any>> appliers = new HashMap<>();
-    private final Map<String, BiFunction<Notification, S, EventBook>> rejectionHandlers = new HashMap<>();
+    private final Map<String, BiFunction<Notification, S, RejectionHandlerResponse>> rejectionHandlers = new HashMap<>();
     private final Map<String, Function<Any, List<Cover>>> prepareHandlers = new HashMap<>();
 
     private S state;
@@ -78,15 +79,40 @@ public abstract class ProcessManager<S extends Message> {
     protected abstract S createEmptyState();
 
     /**
+     * Result from PM dispatch - commands for normal events, or rejection response.
+     */
+    public static class DispatchResult {
+        private final List<CommandBook> commands;
+        private final RejectionHandlerResponse rejectionResponse;
+
+        public DispatchResult(List<CommandBook> commands, RejectionHandlerResponse rejectionResponse) {
+            this.commands = commands;
+            this.rejectionResponse = rejectionResponse;
+        }
+
+        public List<CommandBook> getCommands() {
+            return commands;
+        }
+
+        public RejectionHandlerResponse getRejectionResponse() {
+            return rejectionResponse;
+        }
+
+        public boolean hasRejectionResponse() {
+            return rejectionResponse != null;
+        }
+    }
+
+    /**
      * Dispatch events and produce commands.
      */
-    public List<CommandBook> dispatch(EventBook book, EventBook priorEvents) {
+    public DispatchResult dispatch(EventBook book, EventBook priorEvents) {
         rebuildState(priorEvents);
 
         String correlationId = book.hasCover() ? book.getCover().getCorrelationId() : "";
         if (correlationId.isEmpty()) {
             // PMs require correlation ID
-            return List.of();
+            return new DispatchResult(List.of(), null);
         }
 
         List<CommandBook> commands = new ArrayList<>();
@@ -97,7 +123,8 @@ public abstract class ProcessManager<S extends Message> {
             if (Helpers.typeUrlMatches(page.getEvent().getTypeUrl(), "Notification")) {
                 try {
                     Notification notification = page.getEvent().unpack(Notification.class);
-                    dispatchRejection(notification);
+                    RejectionHandlerResponse response = dispatchRejection(notification);
+                    return new DispatchResult(List.of(), response);
                 } catch (InvalidProtocolBufferException e) {
                     // Ignore malformed notifications
                 }
@@ -118,7 +145,7 @@ public abstract class ProcessManager<S extends Message> {
                 commands.addAll(handler.apply(page.getEvent(), correlationId));
             }
         }
-        return commands;
+        return new DispatchResult(commands, null);
     }
 
     /**
@@ -201,7 +228,7 @@ public abstract class ProcessManager<S extends Message> {
         }
     }
 
-    private void dispatchRejection(Notification notification) {
+    private RejectionHandlerResponse dispatchRejection(Notification notification) {
         String domain = "";
         String commandSuffix = "";
 
@@ -222,10 +249,13 @@ public abstract class ProcessManager<S extends Message> {
         }
 
         String key = domain + "/" + commandSuffix;
-        BiFunction<Notification, S, EventBook> handler = rejectionHandlers.get(key);
+        BiFunction<Notification, S, RejectionHandlerResponse> handler = rejectionHandlers.get(key);
         if (handler != null) {
-            handler.apply(notification, state);
+            return handler.apply(notification, state);
         }
+
+        // Default: no handler found
+        return RejectionHandlerResponse.empty();
     }
 
     @SuppressWarnings("unchecked")
@@ -274,7 +304,17 @@ public abstract class ProcessManager<S extends Message> {
 
                 rejectionHandlers.put(key, (notification, currentState) -> {
                     try {
-                        return (EventBook) method.invoke(this, notification);
+                        Object result = method.invoke(this, notification);
+                        // Handler may return RejectionHandlerResponse directly
+                        if (result instanceof RejectionHandlerResponse) {
+                            return (RejectionHandlerResponse) result;
+                        }
+                        // Handler returned EventBook - wrap it
+                        if (result instanceof EventBook) {
+                            return RejectionHandlerResponse.withEvents((EventBook) result);
+                        }
+                        // Handler returned null or void
+                        return RejectionHandlerResponse.empty();
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to handle rejection for " + key, e);
                     }

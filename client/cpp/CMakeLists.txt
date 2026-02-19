@@ -22,7 +22,7 @@ set(PROTO_FILES
     ${PROTO_DIR}/angzarr/stream.proto
     ${PROTO_DIR}/angzarr/upcaster.proto
     ${PROTO_DIR}/angzarr/meta.proto
-    ${PROTO_DIR}/examples/types.proto
+    ${PROTO_DIR}/examples/poker_types.proto
     ${PROTO_DIR}/examples/player.proto
     ${PROTO_DIR}/examples/table.proto
     ${PROTO_DIR}/examples/hand.proto
@@ -30,8 +30,11 @@ set(PROTO_FILES
 
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY ${GENERATED_DIR})
+file(MAKE_DIRECTORY ${GENERATED_DIR}/angzarr)
+file(MAKE_DIRECTORY ${GENERATED_DIR}/examples)
 
 # Generate protobuf and gRPC sources
+# Use relative path from PROTO_DIR to preserve subdirectory structure
 set(PROTO_SRCS)
 set(PROTO_HDRS)
 set(GRPC_SRCS)
@@ -39,18 +42,23 @@ set(GRPC_HDRS)
 
 foreach(PROTO_FILE ${PROTO_FILES})
     get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
-    get_filename_component(PROTO_PATH ${PROTO_FILE} DIRECTORY)
+    # Get relative path from PROTO_DIR to preserve subdirectory (angzarr/ or examples/)
+    file(RELATIVE_PATH PROTO_REL_PATH ${PROTO_DIR} ${PROTO_FILE})
+    get_filename_component(PROTO_SUBDIR ${PROTO_REL_PATH} DIRECTORY)
 
-    list(APPEND PROTO_SRCS "${GENERATED_DIR}/${PROTO_NAME}.pb.cc")
-    list(APPEND PROTO_HDRS "${GENERATED_DIR}/${PROTO_NAME}.pb.h")
-    list(APPEND GRPC_SRCS "${GENERATED_DIR}/${PROTO_NAME}.grpc.pb.cc")
-    list(APPEND GRPC_HDRS "${GENERATED_DIR}/${PROTO_NAME}.grpc.pb.h")
+    set(OUT_DIR "${GENERATED_DIR}/${PROTO_SUBDIR}")
+    file(MAKE_DIRECTORY ${OUT_DIR})
+
+    list(APPEND PROTO_SRCS "${OUT_DIR}/${PROTO_NAME}.pb.cc")
+    list(APPEND PROTO_HDRS "${OUT_DIR}/${PROTO_NAME}.pb.h")
+    list(APPEND GRPC_SRCS "${OUT_DIR}/${PROTO_NAME}.grpc.pb.cc")
+    list(APPEND GRPC_HDRS "${OUT_DIR}/${PROTO_NAME}.grpc.pb.h")
 
     add_custom_command(
-        OUTPUT "${GENERATED_DIR}/${PROTO_NAME}.pb.cc"
-               "${GENERATED_DIR}/${PROTO_NAME}.pb.h"
-               "${GENERATED_DIR}/${PROTO_NAME}.grpc.pb.cc"
-               "${GENERATED_DIR}/${PROTO_NAME}.grpc.pb.h"
+        OUTPUT "${OUT_DIR}/${PROTO_NAME}.pb.cc"
+               "${OUT_DIR}/${PROTO_NAME}.pb.h"
+               "${OUT_DIR}/${PROTO_NAME}.grpc.pb.cc"
+               "${OUT_DIR}/${PROTO_NAME}.grpc.pb.h"
         COMMAND protobuf::protoc
         ARGS --grpc_out=${GENERATED_DIR}
              --cpp_out=${GENERATED_DIR}
@@ -58,7 +66,7 @@ foreach(PROTO_FILE ${PROTO_FILES})
              -I${PROTO_DIR}
              ${PROTO_FILE}
         DEPENDS ${PROTO_FILE}
-        COMMENT "Generating C++ protobuf/gRPC sources for ${PROTO_NAME}"
+        COMMENT "Generating C++ protobuf/gRPC sources for ${PROTO_SUBDIR}/${PROTO_NAME}"
     )
 endforeach()
 
@@ -103,3 +111,21 @@ install(DIRECTORY ${GENERATED_DIR}/
     DESTINATION include
     FILES_MATCHING PATTERN "*.h"
 )
+
+# Testing
+enable_testing()
+find_package(GTest CONFIG REQUIRED)
+
+add_executable(rejection_handler_response_test
+    tests/rejection_handler_response_test.cpp
+)
+
+target_link_libraries(rejection_handler_response_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
+include(GoogleTest)
+gtest_discover_tests(rejection_handler_response_test)

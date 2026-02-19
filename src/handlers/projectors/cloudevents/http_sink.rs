@@ -10,6 +10,7 @@ use backon::{ExponentialBuilder, Retryable};
 use reqwest::Client;
 use tracing::{debug, error, warn};
 
+use super::proto_encoding::encode_proto_batch;
 use super::sink::{CloudEventsSink, SinkError};
 use super::types::{CloudEventEnvelope, ContentType};
 
@@ -157,10 +158,8 @@ impl HttpSink {
                 (format.batch_mime_type(), json.into_bytes())
             }
             ContentType::Protobuf => {
-                // TODO: Implement protobuf encoding
-                // For now, fall back to JSON
-                let json = serde_json::to_string(&events)?;
-                (ContentType::Json.batch_mime_type(), json.into_bytes())
+                let bytes = encode_proto_batch(events)?;
+                (format.batch_mime_type(), bytes)
             }
         };
 

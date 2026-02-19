@@ -10,9 +10,8 @@ Angzarr provides several built-in projectors for common operational needs. These
 |-----------|---------|--------|
 | [LogService](#logservice) | Debug logging | Console (stdout) |
 | [EventService](#eventservice) | Event storage | Database (SQL) |
-| [StreamService](#streamservice) | Real-time streaming | gRPC streams |
+| [OutboundService](#outboundservice) | Real-time streaming + external publishing | gRPC streams, HTTP/Kafka |
 | [TopologyProjector](#topologyprojector) | Component graph | REST API (Grafana) |
-| [CloudEventsCoordinator](/components/cloudevents) | External publishing | HTTP/Kafka |
 
 ---
 
@@ -145,22 +144,33 @@ let handle = EventServiceHandle(Arc::new(service));
 
 ---
 
-## StreamService
+## OutboundService
 
-Streams events in real-time to subscribers filtered by correlation ID. Enables clients to receive events for their specific workflow/transaction.
+Unified outbound projector for event streaming to both internal and external consumers. Combines gRPC streaming (for gateways) with CloudEvents publishing (for external systems).
+
+### Architecture
+
+```
+                                    ┌── gRPC stream (EventBook, multi-page)
+EventBook ──→ [OutboundService] ────┼── HTTP (CloudEvents JSON/protobuf)
+                                    └── Kafka (CloudEvents JSON/protobuf)
+```
 
 ### Features
 
-- Correlation-based filtering (only events matching subscriber's correlation ID)
+- **gRPC Streaming**: Correlation-based filtering for internal consumers (gateways)
+- **CloudEvents HTTP**: Webhook publishing with JSON or protobuf encoding
+- **CloudEvents Kafka**: Topic publishing with message key ordering
 - Multiple subscribers per correlation ID
 - Automatic cleanup when subscribers disconnect
-- Events without matching subscribers are dropped (expected behavior)
+- Configurable content type (JSON or protobuf)
 
 ### Use Cases
 
 - WebSocket gateways pushing events to browser clients
 - Long-polling APIs waiting for saga completion
-- Real-time dashboards following specific transactions
+- Webhook integrations with external systems
+- Event-driven microservices via Kafka
 
 ### gRPC Service
 
@@ -174,20 +184,37 @@ message EventStreamFilter {
 }
 ```
 
+### Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CLOUDEVENTS_SINK` | Sink type: `http`, `kafka`, `both`, `null` | `null` (gRPC only) |
+| `OUTBOUND_CONTENT_TYPE` | `json` or `protobuf` | `json` |
+| `CLOUDEVENTS_HTTP_ENDPOINT` | HTTP webhook URL | (required if http) |
+| `CLOUDEVENTS_HTTP_TIMEOUT` | HTTP timeout in seconds | `30` |
+| `CLOUDEVENTS_KAFKA_BROKERS` | Kafka bootstrap servers | (required if kafka) |
+| `CLOUDEVENTS_KAFKA_TOPIC` | Kafka topic name | `cloudevents` |
+
 ### Usage (Rust)
 
 ```rust
-use angzarr::handlers::projectors::{StreamService, StreamEventHandler};
+use angzarr::handlers::projectors::{OutboundService, OutboundEventHandler};
+use angzarr::handlers::projectors::outbound;
 
-let service = StreamService::new();
+// Create from environment config (with sinks)
+let service = outbound::from_env()?;
+
+// Or create with explicit configuration
+let service = OutboundService::new()  // gRPC only
+    .with_content_type(ContentType::Json);
 
 // Create event handler for bus integration
-let handler = StreamEventHandler::new(&service);
+let handler = OutboundEventHandler::new(Arc::new(service));
 
 // Service implements EventStreamService gRPC trait
 ```
 
-### Client Example
+### Client Example (gRPC)
 
 ```python
 async def stream_events(correlation_id: str):
@@ -198,8 +225,21 @@ async def stream_events(correlation_id: str):
         async for event_book in stub.Subscribe(request):
             print(f"Received: {event_book.cover.domain}")
             for page in event_book.pages:
-                print(f"  Event: {page.event.type_url}")
+                print(f"  Event: {page.payload}")
 ```
+
+### CloudEvents Format
+
+Each EventBook page becomes a CloudEvent with:
+
+| Field | Value |
+|-------|-------|
+| `id` | `{domain}:{root_id}:{sequence}` |
+| `type` | `angzarr.{event_type}` |
+| `source` | `angzarr/{domain}` |
+| `subject` | Root ID (hex) |
+| `data` | Single-page EventBook (protobuf bytes) |
+| `correlationid` | Extension: correlation ID |
 
 ---
 
@@ -266,13 +306,13 @@ projector.process_event(&event_book).await?;
 
 ## Comparison
 
-| Feature | Log | Event | Stream | Topology | CloudEvents |
-|---------|-----|-------|--------|----------|-------------|
-| **Output** | Console | Database | gRPC | REST | HTTP/Kafka |
-| **Purpose** | Debug | Audit/Query | Real-time | Visualization | Integration |
-| **State** | Stateless | Persistent | In-memory | Persistent | Stateless |
-| **Filtering** | None | SQL queries | Correlation | Component | Client logic |
-| **Production** | Dev only | Yes | Yes | Yes | Yes |
+| Feature | Log | Event | Outbound | Topology |
+|---------|-----|-------|----------|----------|
+| **Output** | Console | Database | gRPC + HTTP/Kafka | REST |
+| **Purpose** | Debug | Audit/Query | Real-time + Integration | Visualization |
+| **State** | Stateless | Persistent | In-memory | Persistent |
+| **Filtering** | None | SQL queries | Correlation | Component |
+| **Production** | Dev only | Yes | Yes | Yes |
 
 ---
 
@@ -298,5 +338,5 @@ let mut runtime = RuntimeBuilder::new()
 
 ## Next Steps
 
-- **[CloudEvents](/components/cloudevents)** — Detailed CloudEvents documentation
 - **[Projectors](/components/projector)** — Custom projector patterns
+- **[Process Managers](/components/process-manager)** — Cross-domain orchestration

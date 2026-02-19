@@ -130,6 +130,16 @@ func EmitCompensationEvents(events *pb.EventBook) *pb.BusinessResponse {
 
 // --- Process Manager helpers ---
 
+// RejectionHandlerResponse is returned from rejection handlers.
+// Can contain events (compensation), notification (upstream propagation), or both.
+type RejectionHandlerResponse struct {
+	// Events to persist to own state (compensation).
+	Events *pb.EventBook
+
+	// Notification to forward upstream (rejection propagation).
+	Notification *pb.Notification
+}
+
 // PMRevocationResponse holds PM compensation results.
 type PMRevocationResponse struct {
 	// ProcessEvents contains PM events to persist (may be nil).

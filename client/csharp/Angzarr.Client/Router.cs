@@ -50,9 +50,25 @@ public delegate Angzarr.EventBook CommandHandler<TState>(
 public delegate TState StateRebuilder<TState>(Angzarr.EventBook? eventBook);
 
 /// <summary>
+/// Response from rejection handlers - can emit events AND/OR notification.
+/// </summary>
+public class RejectionHandlerResponse
+{
+    /// <summary>
+    /// Events to persist to own state (compensation).
+    /// </summary>
+    public Angzarr.EventBook? Events { get; set; }
+
+    /// <summary>
+    /// Notification to forward upstream (rejection propagation).
+    /// </summary>
+    public Angzarr.Notification? Notification { get; set; }
+}
+
+/// <summary>
 /// Delegate for rejection handlers.
 /// </summary>
-public delegate Angzarr.EventBook RejectionHandler<TState>(
+public delegate RejectionHandlerResponse RejectionHandler<TState>(
     Angzarr.Notification notification,
     TState state);
 
@@ -160,8 +176,26 @@ public class CommandRouter<TState> where TState : new()
             var parts = key.Split('/');
             if (parts[0] == domain && commandSuffix.EndsWith(parts[1]))
             {
-                var events = handler(notification, state);
-                return new Angzarr.BusinessResponse { Events = events };
+                var response = handler(notification, state);
+                // Handle notification forwarding
+                if (response.Notification != null)
+                {
+                    return new Angzarr.BusinessResponse { Notification = response.Notification };
+                }
+                // Handle compensation events
+                if (response.Events != null)
+                {
+                    return new Angzarr.BusinessResponse { Events = response.Events };
+                }
+                // Handler returned empty response
+                return new Angzarr.BusinessResponse
+                {
+                    Revocation = new Angzarr.RevocationResponse
+                    {
+                        EmitSystemRevocation = false,
+                        Reason = $"Aggregate {_domain} handled rejection for {key}"
+                    }
+                };
             }
         }
 
@@ -449,7 +483,7 @@ public class UpcasterRouter
                     var newPage = new Angzarr.EventPage
                     {
                         Event = newEvent,
-                        Num = page.Num,
+                        Sequence = page.Sequence,
                         CreatedAt = page.CreatedAt
                     };
                     result.Add(newPage);

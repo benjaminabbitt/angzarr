@@ -112,6 +112,7 @@ from .upcaster_handler import UpcasterHandler, run_upcaster_server, UpcasterHand
 from .router import upcaster, UpcasterRouter
 from .compensation import (
     CompensationContext,
+    RejectionHandlerResponse,
     delegate_to_framework,
     emit_compensation_events,
     pm_delegate_to_framework,
@@ -241,6 +242,7 @@ __all__ = [
     "UpcasterHandleFunc",
     # Compensation
     "CompensationContext",
+    "RejectionHandlerResponse",
     "delegate_to_framework",
     "emit_compensation_events",
     "pm_delegate_to_framework",

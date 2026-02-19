@@ -2,11 +2,12 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include <google/protobuf/any.pb.h>
-#include "types.pb.h"
-#include "aggregate.pb.h"
+#include "angzarr/types.pb.h"
+#include "angzarr/aggregate.pb.h"
 #include "helpers.hpp"
 #include "errors.hpp"
 
@@ -41,6 +42,16 @@ struct Descriptor {
 };
 
 /**
+ * Response from rejection handlers - can emit events AND/OR notification.
+ */
+struct RejectionHandlerResponse {
+    /// Events to persist to own state (compensation).
+    std::optional<EventBook> events;
+    /// Notification to forward upstream (rejection propagation).
+    std::optional<Notification> notification;
+};
+
+/**
  * DRY command dispatcher for aggregates (functional pattern).
  */
 template<typename State>
@@ -48,7 +59,7 @@ class CommandRouter {
 public:
     using CommandHandler = std::function<EventBook(
         const CommandBook&, const google::protobuf::Any&, State&, int)>;
-    using RejectionHandler = std::function<EventBook(const Notification&, State&)>;
+    using RejectionHandler = std::function<RejectionHandlerResponse(const Notification&, State&)>;
     using StateRebuilder = std::function<State(const EventBook*)>;
 
     explicit CommandRouter(const std::string& domain, StateRebuilder rebuild = nullptr)
@@ -161,10 +172,25 @@ private:
             auto expected_command = key.substr(pos + 1);
             if (domain == expected_domain &&
                 helpers::type_url_matches(command_suffix, expected_command)) {
-                auto events = handler(notification, state);
-                BusinessResponse response;
-                *response.mutable_events() = std::move(events);
-                return response;
+                auto response = handler(notification, state);
+                // Handle notification forwarding
+                if (response.notification.has_value()) {
+                    BusinessResponse biz_response;
+                    *biz_response.mutable_notification() = std::move(*response.notification);
+                    return biz_response;
+                }
+                // Handle compensation events
+                if (response.events.has_value()) {
+                    BusinessResponse biz_response;
+                    *biz_response.mutable_events() = std::move(*response.events);
+                    return biz_response;
+                }
+                // Handler returned empty response
+                BusinessResponse biz_response;
+                auto* revocation = biz_response.mutable_revocation();
+                revocation->set_emit_system_revocation(false);
+                revocation->set_reason("Aggregate " + domain_ + " handled rejection for " + key);
+                return biz_response;
             }
         }
 

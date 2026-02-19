@@ -1,37 +1,43 @@
-//! angzarr-stream: Event streaming projector
+//! angzarr-stream: Event streaming and CloudEvents projector
 //!
-//! Infrastructure projector that streams events to registered subscribers.
+//! Infrastructure projector that streams events to internal and external consumers.
 //! Receives events from the projector sidecar (via Projector gRPC) and forwards
-//! to gateway subscribers filtered by correlation ID.
+//! to gateway subscribers (gRPC) and CloudEvents sinks (HTTP/Kafka).
 //!
 //! ## Architecture
 //! ```text
 //! [angzarr-projector sidecar] --(Projector gRPC)--> [angzarr-stream]
 //!                                                         |
-//!                                                         v
-//!                                               (correlation ID match)
-//!                                                         |
-//!                                                         v
-//!                                               [EventStream gRPC] --> [angzarr-gateway]
+//!                                              ┌──────────┴──────────┐
+//!                                              ▼                     ▼
+//!                                    [EventStream gRPC]    [CloudEvents Sinks]
+//!                                          |                    |
+//!                                          ▼                    ▼
+//!                                  [angzarr-gateway]     [HTTP/Kafka endpoints]
 //! ```
 //!
 //! Unlike client logic projectors, the stream projector is core infrastructure
-//! that enables real-time event streaming to connected clients via the gateway.
+//! that enables real-time event streaming to connected clients via the gateway
+//! and external systems via CloudEvents.
 //!
 //! ## Configuration
 //! - transport.type: "tcp" or "uds"
 //! - transport.tcp.port: Port for TCP (default: 50051)
 //! - transport.uds.base_path: Base path for UDS sockets
+//! - CLOUDEVENTS_SINK: `http`, `kafka`, `both`, or `null` (default: null)
+//! - OUTBOUND_CONTENT_TYPE: `json` or `protobuf` (default: json)
+//! - CLOUDEVENTS_HTTP_ENDPOINT: HTTP webhook URL (if using http sink)
+//! - CLOUDEVENTS_KAFKA_BROKERS: Kafka brokers (if using kafka sink)
 
 use std::sync::Arc;
 
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_health::server::health_reporter;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use angzarr::config::Config;
-use angzarr::handlers::projectors::stream::StreamService;
+use angzarr::handlers::projectors::outbound::{self, OutboundService};
 use angzarr::proto::event_stream_service_server::EventStreamServiceServer;
 use angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorServiceServer;
 use angzarr::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
@@ -40,19 +46,19 @@ use angzarr::utils::bootstrap::init_tracing;
 
 /// Projector service that receives events from the projector sidecar.
 /// Implements ProjectorCoordinator (HandleSync) which is what angzarr-projector calls.
-struct StreamProjectorService {
-    stream_service: Arc<StreamService>,
+struct OutboundProjectorService {
+    outbound_service: Arc<OutboundService>,
 }
 
-impl StreamProjectorService {
-    fn new(stream_service: Arc<StreamService>) -> Self {
-        Self { stream_service }
+impl OutboundProjectorService {
+    fn new(outbound_service: Arc<OutboundService>) -> Self {
+        Self { outbound_service }
     }
 }
 
 #[tonic::async_trait]
 impl angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorService
-    for StreamProjectorService
+    for OutboundProjectorService
 {
     /// Handle sync event book from projector sidecar.
     async fn handle_sync(
@@ -61,46 +67,50 @@ impl angzarr::proto::projector_coordinator_service_server::ProjectorCoordinatorS
     ) -> Result<Response<Projection>, Status> {
         let sync_book = request.into_inner();
         if let Some(book) = sync_book.events {
-            self.stream_service.handle(&book).await;
+            if let Err(e) = self.outbound_service.handle(&book).await {
+                warn!(error = %e, "OutboundService handle failed");
+            }
         }
 
-        // Stream projector doesn't produce projection output
+        // Outbound projector doesn't produce projection output
         Ok(Response::new(Projection::default()))
     }
 
     /// Fire-and-forget handle (not used by projector sidecar).
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<()>, Status> {
         let book = request.into_inner();
-        self.stream_service.handle(&book).await;
+        if let Err(e) = self.outbound_service.handle(&book).await {
+            warn!(error = %e, "OutboundService handle failed");
+        }
         Ok(Response::new(()))
     }
 
-    /// Speculative handle - stream projector doesn't produce projections.
+    /// Speculative handle - outbound projector doesn't produce projections.
     async fn handle_speculative(
         &self,
         _request: Request<SpeculateProjectorRequest>,
     ) -> Result<Response<Projection>, Status> {
-        // Stream projector doesn't produce projection output
+        // Outbound projector doesn't produce projection output
         // Speculative execution is a no-op for streaming
         Ok(Response::new(Projection::default()))
     }
 }
 
-/// Wrapper to implement EventStream for Arc<StreamService>.
+/// Wrapper to implement EventStream for Arc<OutboundService>.
 #[derive(Clone)]
-struct StreamServiceWrapper(Arc<StreamService>);
+struct OutboundServiceWrapper(Arc<OutboundService>);
 
-impl std::ops::Deref for StreamServiceWrapper {
-    type Target = StreamService;
+impl std::ops::Deref for OutboundServiceWrapper {
+    type Target = OutboundService;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 #[tonic::async_trait]
-impl angzarr::proto::event_stream_service_server::EventStreamService for StreamServiceWrapper {
+impl angzarr::proto::event_stream_service_server::EventStreamService for OutboundServiceWrapper {
     type SubscribeStream =
-        <StreamService as angzarr::proto::event_stream_service_server::EventStreamService>::SubscribeStream;
+        <OutboundService as angzarr::proto::event_stream_service_server::EventStreamService>::SubscribeStream;
 
     async fn subscribe(
         &self,
@@ -120,19 +130,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         e
     })?;
 
-    // Create shared stream service
-    let stream_service = Arc::new(StreamService::new());
+    // Create outbound service with sinks from environment
+    let outbound_service = Arc::new(match outbound::from_env() {
+        Ok(service) => {
+            info!("OutboundService configured with CloudEvents sinks");
+            service
+        }
+        Err(e) => {
+            // If sink config fails, fall back to gRPC-only mode
+            warn!(
+                error = %e,
+                "CloudEvents sink configuration failed, running in gRPC-only mode"
+            );
+            OutboundService::new()
+        }
+    });
 
     // Projector service receives events from sidecar
-    let projector_service = StreamProjectorService::new(Arc::clone(&stream_service));
+    let projector_service = OutboundProjectorService::new(Arc::clone(&outbound_service));
 
     // EventStream service for gateway subscriptions
-    let event_stream_service = StreamServiceWrapper(Arc::clone(&stream_service));
+    let event_stream_service = OutboundServiceWrapper(Arc::clone(&outbound_service));
 
     // Health reporter
     let (mut health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<ProjectorCoordinatorServiceServer<StreamProjectorService>>()
+        .set_serving::<ProjectorCoordinatorServiceServer<OutboundProjectorService>>()
         .await;
 
     info!("angzarr-stream started");

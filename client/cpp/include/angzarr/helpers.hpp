@@ -5,7 +5,7 @@
 #include <chrono>
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/timestamp.pb.h>
-#include "types.pb.h"
+#include "angzarr/types.pb.h"
 
 namespace angzarr {
 

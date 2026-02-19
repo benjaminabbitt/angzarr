@@ -6,5 +6,12 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash 
 # Install protoc
 RUN apt-get update && apt-get install -y protobuf-compiler
 
+# Install modern Gradle (apt version is too old for Kotlin DSL)
+ENV GRADLE_VERSION=8.5
+RUN curl -L https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -o /tmp/gradle.zip && \
+    unzip -d /opt /tmp/gradle.zip && \
+    rm /tmp/gradle.zip && \
+    ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle
+
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

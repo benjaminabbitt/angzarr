@@ -209,8 +209,7 @@ public abstract class ProcessManager<TState> where TState : class
     /// <summary>
     /// Handle rejection notification.
     /// </summary>
-    public (Angzarr.EventBook? Events, Angzarr.RevocationResponse Revocation) HandleRevocation(
-        Angzarr.Notification notification)
+    public RejectionHandlerResponse HandleRevocation(Angzarr.Notification notification)
     {
         var rejection = notification.Payload?.Unpack<Angzarr.RejectionNotification>();
         var domain = "";
@@ -232,20 +231,25 @@ public abstract class ProcessManager<TState> where TState : class
             {
                 _ = State; // Ensure state is built
                 var result = method.Invoke(this, new object[] { notification });
-                HandleResult(result);
-                return (ProcessEvents(), new Angzarr.RevocationResponse
+
+                // Handler may return RejectionHandlerResponse directly
+                if (result is RejectionHandlerResponse response)
                 {
-                    EmitSystemRevocation = false,
-                    Reason = $"ProcessManager {Name} handled rejection for {key}"
-                });
+                    return response;
+                }
+
+                // Handler returned event(s) - wrap in ProcessEvents
+                HandleResult(result);
+                var processEvents = ProcessEvents();
+                return new RejectionHandlerResponse
+                {
+                    Events = processEvents.Pages.Count > 0 ? processEvents : null
+                };
             }
         }
 
-        return (null, new Angzarr.RevocationResponse
-        {
-            EmitSystemRevocation = true,
-            Reason = $"ProcessManager {Name} has no custom compensation for {domain}/{commandSuffix}"
-        });
+        // Default: no handler found
+        return new RejectionHandlerResponse();
     }
 
     /// <summary>

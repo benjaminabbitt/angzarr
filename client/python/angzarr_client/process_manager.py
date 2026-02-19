@@ -53,6 +53,7 @@ from google.protobuf.any_pb2 import Any
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
+from .compensation import RejectionHandlerResponse
 from .router import Descriptor, TargetDesc, _pack_any, prepares, reacts_to, rejected
 
 # Re-export decorators
@@ -393,28 +394,29 @@ class ProcessManager(Generic[StateT], ABC):
     def handle_revocation(
         self,
         notification: types.Notification,
-    ) -> tuple[types.EventBook | None, aggregate.RevocationResponse]:
+    ) -> RejectionHandlerResponse:
         """Handle a rejection notification for commands this PM issued.
 
         Called when a command produced by this PM is rejected by the target aggregate.
         Dispatches to @rejected decorated methods based on target domain
         and rejected command type.
 
-        If no matching @rejected handler is found, delegates to framework.
+        If no matching @rejected handler is found, returns empty response
+        (framework handles default behavior).
 
         Args:
             notification: Notification containing RejectionNotification payload.
 
         Returns:
-            Tuple of (optional PM events to persist, RevocationResponse for framework).
-            Return events to record compensation in PM state. Return RevocationResponse
-            to delegate to framework handling.
+            RejectionHandlerResponse with optional events (compensation)
+            and/or notification (upstream propagation).
 
         Usage:
             @rejected(domain="inventory", command="ReserveInventory")
-            def handle_reserve_rejected(self, notification) -> WorkflowFailed:
+            def handle_reserve_rejected(self, notification) -> RejectionHandlerResponse:
                 ctx = CompensationContext.from_notification(notification)
-                return WorkflowFailed(reason=ctx.rejection_reason)
+                self._apply_and_record(WorkflowFailed(reason=ctx.rejection_reason))
+                return RejectionHandlerResponse(events=self.process_events())
         """
         # Unpack rejection details from notification payload
         rejection = types.RejectionNotification()
@@ -440,19 +442,21 @@ class ProcessManager(Generic[StateT], ABC):
             if domain == expected_domain and command_suffix.endswith(expected_command):
                 # Ensure state is built before calling handler
                 _ = self._get_state()
-                # Call the handler (wrapper will auto-apply events)
-                getattr(self, method_name)(notification)
-                # Return PM events and a response indicating we handled it
-                return self.process_events(), aggregate.RevocationResponse(
-                    emit_system_revocation=False,
-                    reason=f"ProcessManager {self.name} handled rejection for {key}",
+                # Call the handler
+                result = getattr(self, method_name)(notification)
+
+                # Handler may return RejectionHandlerResponse directly
+                if isinstance(result, RejectionHandlerResponse):
+                    return result
+
+                # Handler may return None or a single event
+                process_events = self.process_events()
+                return RejectionHandlerResponse(
+                    events=process_events if process_events.pages else None,
                 )
 
-        # Default: no PM events, delegate to framework
-        return None, aggregate.RevocationResponse(
-            emit_system_revocation=True,
-            reason=f"ProcessManager {self.name} has no custom compensation for {domain}/{command_suffix}",
-        )
+        # Default: no handler, return empty response
+        return RejectionHandlerResponse()
 
     @property
     def state(self) -> StateT:

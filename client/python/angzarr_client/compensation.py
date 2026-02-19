@@ -174,6 +174,20 @@ def emit_compensation_events(event_book: types.EventBook) -> aggregate.BusinessR
 # --- Process Manager helpers ---
 
 
+@dataclass
+class RejectionHandlerResponse:
+    """Response from rejection handlers.
+
+    Can contain events (compensation), notification (upstream propagation), or both.
+    """
+
+    events: Optional[types.EventBook] = None
+    """Events to persist to own state (compensation)."""
+
+    notification: Optional[types.Notification] = None
+    """Notification to forward upstream (rejection propagation)."""
+
+
 def pm_delegate_to_framework(
     reason: str,
     emit_system_event: bool = True,

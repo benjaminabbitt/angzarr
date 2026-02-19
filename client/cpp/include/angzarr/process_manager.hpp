@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 #include <google/protobuf/any.pb.h>
-#include "types.pb.h"
-#include "saga.pb.h"
+#include "angzarr/types.pb.h"
+#include "angzarr/saga.pb.h"
 #include "helpers.hpp"
 #include "errors.hpp"
 #include "router.hpp"
@@ -52,7 +52,7 @@ public:
         ProcessManager*, const google::protobuf::Any&, const std::string&)>;
     using EventApplier = std::function<void(
         ProcessManager*, StateT&, const google::protobuf::Any&)>;
-    using RejectionHandler = std::function<EventBook(
+    using RejectionHandler = std::function<RejectionHandlerResponse(
         ProcessManager*, const Notification&, StateT&)>;
 
     virtual ~ProcessManager() = default;
@@ -65,8 +65,16 @@ public:
     /**
      * Dispatch an event to the appropriate handler.
      */
-    std::vector<CommandBook> dispatch(const EventBook& book,
-                                       const EventBook* prior_events = nullptr) {
+    /**
+     * Result from PM dispatch - commands for normal events, or rejection response.
+     */
+    struct DispatchResult {
+        std::vector<CommandBook> commands;
+        std::optional<RejectionHandlerResponse> rejection_response;
+    };
+
+    DispatchResult dispatch(const EventBook& book,
+                            const EventBook* prior_events = nullptr) {
         rebuild_state(prior_events);
 
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
@@ -83,10 +91,9 @@ public:
             if (helpers::type_url_matches(page.event().type_url(), "Notification")) {
                 Notification notification;
                 page.event().UnpackTo(&notification);
-                auto events = dispatch_rejection(notification);
-                // Note: PM rejection returns events, not commands
-                // This would need additional handling in the framework
-                continue;
+                auto response = dispatch_rejection(notification);
+                // Return rejection response
+                return DispatchResult{{}, response};
             }
 
             auto suffix = helpers::type_name_from_url(page.event().type_url());
@@ -104,7 +111,7 @@ public:
                 commands.insert(commands.end(), cmds.begin(), cmds.end());
             }
         }
-        return commands;
+        return DispatchResult{commands, std::nullopt};
     }
 
     /**
@@ -197,7 +204,7 @@ private:
         }
     }
 
-    EventBook dispatch_rejection(const Notification& notification) {
+    RejectionHandlerResponse dispatch_rejection(const Notification& notification) {
         std::string domain;
         std::string command_suffix;
 
@@ -220,7 +227,8 @@ private:
             return it->second(this, notification, state_);
         }
 
-        return EventBook{};
+        // Default: no handler found
+        return RejectionHandlerResponse{};
     }
 
     static std::map<std::string, EventDispatcher>& handlers() {

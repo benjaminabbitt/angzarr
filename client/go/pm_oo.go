@@ -48,6 +48,10 @@ type pmHandlerOOFunc[S any] func(trigger *pb.EventBook, state S, eventAny *anypb
 // Mutates state based on a PM event.
 type pmApplierOOFunc[S any] func(state S, eventAny *anypb.Any)
 
+// pmRejectionOOFunc is an internal type for rejection handlers.
+// Returns RejectionHandlerResponse with events and/or notification.
+type pmRejectionOOFunc[S any] func(state S, notification *pb.Notification) *RejectionHandlerResponse
+
 // ProcessManagerBase provides OO-style process manager infrastructure.
 //
 // Embed this in your PM struct and call Init() to set up the base.
@@ -62,6 +66,7 @@ type ProcessManagerBase[S any] struct {
 	prepares     map[string]pmPrepareOOFunc[S]
 	handlers     map[string]pmHandlerOOFunc[S]
 	appliers     map[string]pmApplierOOFunc[S]
+	rejections   map[string]pmRejectionOOFunc[S]
 }
 
 // Init initializes the process manager base with name and domain configuration.
@@ -81,6 +86,7 @@ func (pm *ProcessManagerBase[S]) Init(name, pmDomain string, inputDomains []stri
 	pm.prepares = make(map[string]pmPrepareOOFunc[S])
 	pm.handlers = make(map[string]pmHandlerOOFunc[S])
 	pm.appliers = make(map[string]pmApplierOOFunc[S])
+	pm.rejections = make(map[string]pmRejectionOOFunc[S])
 }
 
 // WithStateFactory sets the factory function for creating new state instances.
@@ -312,6 +318,58 @@ func (pm *ProcessManagerBase[S]) Applies(suffix string, handler any) {
 	pm.appliers[suffix] = wrapper
 }
 
+// OnRejected registers a rejection handler for when a specific command is rejected.
+//
+// Called when a PM-issued command targeting the specified domain and command
+// type is rejected by the target aggregate.
+//
+// The handler function must have signature:
+// func(state S, notification *pb.Notification) *RejectionHandlerResponse
+//
+// Example:
+//
+//	pm.OnRejected("table", "JoinTable", pm.handleJoinRejected)
+//
+//	func (pm *HandFlowPM) handleJoinRejected(
+//	    state *PMState,
+//	    notification *pb.Notification,
+//	) *RejectionHandlerResponse {
+//	    return &angzarr.RejectionHandlerResponse{
+//	        Events: compensationEvents,
+//	        Notification: upstreamNotification,
+//	    }
+//	}
+func (pm *ProcessManagerBase[S]) OnRejected(domain, command string, handler any) {
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+
+	if handlerType.Kind() != reflect.Func {
+		panic("handler must be a function")
+	}
+	if handlerType.NumIn() != 2 {
+		panic("handler must have 2 parameters (state S, notification *pb.Notification)")
+	}
+	if handlerType.NumOut() != 1 {
+		panic("handler must return *RejectionHandlerResponse")
+	}
+
+	// Create the wrapper function
+	wrapper := func(state S, notification *pb.Notification) *RejectionHandlerResponse {
+		stateValue := reflect.ValueOf(state)
+		notificationValue := reflect.ValueOf(notification)
+		results := handlerValue.Call([]reflect.Value{stateValue, notificationValue})
+
+		// Extract result
+		if results[0].IsNil() {
+			return nil
+		}
+		return results[0].Interface().(*RejectionHandlerResponse)
+	}
+
+	key := fmt.Sprintf("%s/%s", domain, command)
+	pm.rejections[key] = wrapper
+}
+
 // RebuildState reconstructs PM state from the process EventBook.
 func (pm *ProcessManagerBase[S]) RebuildState(processState *pb.EventBook) S {
 	var state S
@@ -371,17 +429,20 @@ func (pm *ProcessManagerBase[S]) PrepareDestinations(trigger, processState *pb.E
 	return covers
 }
 
-// Handle processes events and returns commands and PM events.
+// Handle processes events and returns commands, PM events, and notification.
 // Called during the Handle phase of the two-phase PM protocol.
-func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error) {
+//
+// Detects Notification (rejection) payloads and routes to rejection handlers.
+func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, *pb.Notification, error) {
 	if trigger == nil || len(trigger.Pages) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	state := pm.RebuildState(processState)
 
 	var commands []*pb.CommandBook
 	var allPMEvents []*pb.EventPage
+	var notification *pb.Notification
 
 	for _, page := range trigger.Pages {
 		if page.Event == nil {
@@ -389,11 +450,26 @@ func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, des
 		}
 
 		typeURL := page.Event.TypeUrl
+
+		// Check for Notification (rejection/compensation)
+		if strings.HasSuffix(typeURL, "Notification") {
+			resp := pm.handleNotification(state, page.Event)
+			if resp != nil {
+				if resp.Events != nil {
+					allPMEvents = append(allPMEvents, resp.Events.Pages...)
+				}
+				if resp.Notification != nil {
+					notification = resp.Notification
+				}
+			}
+			continue
+		}
+
 		for suffix, handler := range pm.handlers {
 			if strings.HasSuffix(typeURL, suffix) {
 				cmds, pmEvents, err := handler(trigger, state, page.Event, destinations)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 				commands = append(commands, cmds...)
 				if pmEvents != nil {
@@ -411,7 +487,64 @@ func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, des
 		}
 	}
 
-	return commands, resultPMEvents, nil
+	return commands, resultPMEvents, notification, nil
+}
+
+// handleNotification routes a Notification to the appropriate rejection handler.
+func (pm *ProcessManagerBase[S]) handleNotification(state S, eventAny *anypb.Any) *RejectionHandlerResponse {
+	// Decode the Notification
+	var notification pb.Notification
+	if err := eventAny.UnmarshalTo(&notification); err != nil {
+		return nil
+	}
+
+	// Unpack rejection details from payload
+	var rejection pb.RejectionNotification
+	if notification.Payload != nil {
+		if err := proto.Unmarshal(notification.Payload.Value, &rejection); err != nil {
+			return nil
+		}
+	}
+
+	// Extract domain and command type from rejected_command
+	domain, cmdSuffix := extractRejectionKey(&rejection)
+	key := fmt.Sprintf("%s/%s", domain, cmdSuffix)
+
+	// Call handler if found
+	if handler, ok := pm.rejections[key]; ok {
+		return handler(state, &notification)
+	}
+
+	// Default: no handler
+	return nil
+}
+
+// extractRejectionKey extracts domain and command suffix from a RejectionNotification.
+func extractRejectionKey(rejection *pb.RejectionNotification) (string, string) {
+	if rejection.RejectedCommand == nil {
+		return "", ""
+	}
+
+	domain := ""
+	if rejection.RejectedCommand.Cover != nil {
+		domain = rejection.RejectedCommand.Cover.Domain
+	}
+
+	cmdSuffix := ""
+	if len(rejection.RejectedCommand.Pages) > 0 {
+		page := rejection.RejectedCommand.Pages[0]
+		if page.Command != nil {
+			typeURL := page.Command.TypeUrl
+			// Extract suffix (last part after /)
+			if idx := strings.LastIndex(typeURL, "/"); idx >= 0 {
+				cmdSuffix = typeURL[idx+1:]
+			} else {
+				cmdSuffix = typeURL
+			}
+		}
+	}
+
+	return domain, cmdSuffix
 }
 
 // HandlerTypes returns the registered event type suffixes for handlers.

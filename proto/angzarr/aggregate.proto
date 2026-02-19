@@ -64,6 +64,7 @@ message BusinessResponse {
   oneof result {
     EventBook events = 1;               // Business provides compensation events
     RevocationResponse revocation = 2;  // Business requests framework action
+    Notification notification = 3;      // Forward rejection notification upstream
   }
 }
 

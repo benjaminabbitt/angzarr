@@ -12,6 +12,7 @@ use tracing::{debug, error, warn};
 
 use cloudevents::event::AttributesReader;
 
+use super::proto_encoding::encode_proto_single;
 use super::sink::{CloudEventsSink, SinkError};
 use super::types::{CloudEventEnvelope, ContentType};
 
@@ -190,13 +191,9 @@ impl KafkaSink {
         event: &CloudEventEnvelope,
         format: ContentType,
     ) -> Result<(), SinkError> {
-        let payload = match format {
-            ContentType::Json => serde_json::to_string(event)?,
-            ContentType::Protobuf => {
-                // TODO: Implement protobuf encoding
-                // For now, fall back to JSON
-                serde_json::to_string(event)?
-            }
+        let payload: Vec<u8> = match format {
+            ContentType::Json => serde_json::to_string(event)?.into_bytes(),
+            ContentType::Protobuf => encode_proto_single(event)?,
         };
 
         // Use subject (aggregate root ID) as message key for ordering

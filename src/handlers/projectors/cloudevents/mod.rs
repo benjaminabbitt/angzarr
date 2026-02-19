@@ -61,6 +61,7 @@
 
 mod coordinator;
 mod http_sink;
+mod proto_encoding;
 pub mod sink;
 pub mod types;
 

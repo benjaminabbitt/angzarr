@@ -5,6 +5,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import dev.angzarr.*;
 
+import dev.angzarr.client.compensation.RejectionHandlerResponse;
+
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -26,7 +28,7 @@ class CommandRouter<S> {
 
     @FunctionalInterface
     public interface RejectionHandler<S> {
-        EventBook handle(Notification notification, S state);
+        RejectionHandlerResponse handle(Notification notification, S state);
     }
 
     public CommandRouter(String domain) {
@@ -111,8 +113,26 @@ class CommandRouter<S> {
         for (var entry : rejectionHandlers.entrySet()) {
             var parts = entry.getKey().split("/");
             if (parts[0].equals(domain) && commandSuffix.endsWith(parts[1])) {
-                var events = entry.getValue().handle(notification, state);
-                return BusinessResponse.newBuilder().setEvents(events).build();
+                var response = entry.getValue().handle(notification, state);
+                // Handle notification forwarding
+                if (response.hasNotification()) {
+                    return BusinessResponse.newBuilder()
+                        .setNotification(response.getNotification())
+                        .build();
+                }
+                // Handle compensation events
+                if (response.hasEvents()) {
+                    return BusinessResponse.newBuilder()
+                        .setEvents(response.getEvents())
+                        .build();
+                }
+                // Handler returned empty response
+                return BusinessResponse.newBuilder()
+                    .setRevocation(RevocationResponse.newBuilder()
+                        .setEmitSystemRevocation(false)
+                        .setReason("Aggregate " + this.domain + " handled rejection for " + entry.getKey())
+                        .build())
+                    .build();
             }
         }
 

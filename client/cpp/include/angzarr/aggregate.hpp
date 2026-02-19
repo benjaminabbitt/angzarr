@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 #include <google/protobuf/any.pb.h>
-#include "types.pb.h"
-#include "aggregate.pb.h"
+#include "angzarr/types.pb.h"
+#include "angzarr/aggregate.pb.h"
 #include "helpers.hpp"
 #include "errors.hpp"
 #include "router.hpp"
