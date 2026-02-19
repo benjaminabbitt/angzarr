@@ -348,7 +348,8 @@ import (
 
 // New{{.TypeName}}Router creates an EventRouter from the {{.TypeName}}'s annotated methods.
 func New{{.TypeName}}Router(saga *{{.TypeName}}) *angzarr.EventRouter {
-	return angzarr.NewEventRouter("{{.Domain}}", saga.InputDomain()){{range .Handlers}}{{if .IsPrepare}}.
+	return angzarr.NewEventRouter("{{.Domain}}").
+		Domain(saga.InputDomain()){{range .Handlers}}{{if .IsPrepare}}.
 		Prepare("{{.EventType}}", wrap{{.MethodName}}Prepare(saga)){{else}}{{if .EventType}}.
 		On("{{.EventType}}", wrap{{.MethodName}}(saga)){{end}}{{end}}{{end}}
 }
@@ -364,8 +365,7 @@ import (
 
 // New{{.TypeName}}Handler creates a ProcessManagerHandler from the {{.TypeName}}'s annotated methods.
 func New{{.TypeName}}Handler(pm *{{.TypeName}}) *angzarr.ProcessManagerHandler {
-	handler := angzarr.NewProcessManagerHandler("{{.Domain}}"){{range $domain, $types := .InputDomains}}.
-		ListenTo("{{$domain}}"{{range $types}}, "{{.}}"{{end}}){{end}}
+	handler := angzarr.NewProcessManagerHandler("{{.Domain}}")
 	return handler
 }
 `

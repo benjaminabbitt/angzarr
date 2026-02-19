@@ -18,9 +18,6 @@ from .types_pb2 import (
     TemporalQuery,
     Projection,
     SyncMode,
-    GetDescriptorRequest,
-    ComponentDescriptor,
-    Target,
     ContextualCommand,
 )
 from .aggregate_pb2 import (

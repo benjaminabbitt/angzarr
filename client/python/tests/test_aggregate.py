@@ -6,7 +6,6 @@ from google.protobuf import any_pb2
 from angzarr_client import Aggregate, handles
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.router import COMPONENT_AGGREGATE
 
 
 # =============================================================================
@@ -269,24 +268,6 @@ class TestAggregateHandle:
 
         with pytest.raises(ValueError, match="No command pages"):
             SampleAggregate.handle(request)
-
-
-class TestAggregateDescriptor:
-    """Test descriptor() for topology discovery."""
-
-    def test_descriptor_returns_correct_type(self):
-        desc = SampleAggregate.descriptor()
-
-        assert desc.name == "test"
-        assert desc.component_type == COMPONENT_AGGREGATE
-        assert len(desc.inputs) == 1
-        assert desc.inputs[0].domain == "test"
-
-    def test_descriptor_lists_command_types(self):
-        desc = SampleAggregate.descriptor()
-
-        types_list = desc.inputs[0].types
-        assert "FakeCommand" in types_list
 
 
 class TestAggregateApplyAndRecord:

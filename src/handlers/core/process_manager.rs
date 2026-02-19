@@ -14,12 +14,13 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, Instrument};
 
 use crate::bus::{BusError, EventBus, EventHandler};
+use crate::descriptor::Target;
 use crate::orchestration::command::CommandExecutor;
 use crate::orchestration::destination::DestinationFetcher;
 use crate::orchestration::process_manager::grpc::GrpcPMContextFactory;
 use crate::orchestration::process_manager::{orchestrate_pm, PMContextFactory};
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
-use crate::proto::{EventBook, Target};
+use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
 use crate::storage::EventStore;
 use crate::utils::retry::saga_backoff;

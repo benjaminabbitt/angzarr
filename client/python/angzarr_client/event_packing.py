@@ -38,7 +38,7 @@ def new_event_book(
         cover=command_book.cover,
         pages=[
             angzarr.EventPage(
-                num=seq,
+                sequence=seq,
                 event=event,
                 created_at=_now_timestamp(),
             ),
@@ -64,7 +64,7 @@ def new_event_book_multi(
     now = _now_timestamp()
     pages = [
         angzarr.EventPage(
-            num=start_seq + i,
+            sequence=start_seq + i,
             event=event,
             created_at=now,
         )
@@ -100,7 +100,7 @@ def pack_event(
         cover=cover,
         pages=[
             angzarr.EventPage(
-                num=seq,
+                sequence=seq,
                 event=event_any,
                 created_at=_now_timestamp(),
             ),
@@ -131,7 +131,7 @@ def pack_events(
         event_any.Pack(event, type_url_prefix=type_url_prefix)
         pages.append(
             angzarr.EventPage(
-                num=start_seq + i,
+                sequence=start_seq + i,
                 event=event_any,
                 created_at=_now_timestamp(),
             ),

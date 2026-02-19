@@ -20,23 +20,6 @@ constexpr const char* OUTPUT_DOMAIN = "table";
 /// gRPC service implementation for hand-table saga.
 class HandTableSagaService final : public angzarr::SagaService::Service {
 public:
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* context,
-        const angzarr::GetDescriptorRequest* request,
-        angzarr::ComponentDescriptor* response) override {
-
-        response->set_name(SAGA_NAME);
-        response->set_component_type("saga");
-
-        auto* input = response->add_inputs();
-        input->set_domain(INPUT_DOMAIN);
-        input->add_types("HandComplete");
-
-        // Note: outputs not tracked in ComponentDescriptor
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Prepare(
         grpc::ServerContext* context,
         const angzarr::SagaPrepareRequest* request,
@@ -88,7 +71,7 @@ public:
                     if (request->destinations_size() > 0) {
                         const auto& dest = request->destinations(0);
                         if (dest.pages_size() > 0) {
-                            dest_seq = dest.pages(dest.pages_size() - 1).num() + 1;
+                            dest_seq = dest.pages(dest.pages_size() - 1).sequence() + 1;
                         }
                     }
 

@@ -29,6 +29,7 @@
 //! ## Configuration
 //! - TARGET_ADDRESS: Saga gRPC address (e.g., "localhost:50051")
 //! - TARGET_COMMAND: Optional command to spawn saga (embedded mode)
+//! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing (format: "domain=address,...")
 //!   Enables two-phase protocol with EventQuery support
 //! - COMMAND_ADDRESS: Single command handler (fallback, no two-phase support)
@@ -44,16 +45,19 @@ use tracing::{error, info, warn};
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::SagaCompensationConfig;
 use angzarr::config::{COMMAND_ADDRESS_ENV_VAR, STATIC_ENDPOINTS_ENV_VAR};
+use angzarr::descriptor::{parse_subscriptions, Target};
 use angzarr::handlers::core::saga::SagaEventHandler;
 use angzarr::orchestration::command::grpc::SingleClientExecutor;
 use angzarr::orchestration::command::CommandExecutor;
 use angzarr::orchestration::saga::grpc::GrpcSagaContextFactory;
 use angzarr::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
 use angzarr::proto::saga_service_client::SagaServiceClient;
-use angzarr::proto::GetDescriptorRequest;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
+
+/// Environment variable for subscription configuration.
+const SUBSCRIPTIONS_ENV_VAR: &str = "ANGZARR_SUBSCRIPTIONS";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to saga service with retry
     let saga_addr = bootstrap.address.clone();
-    let mut saga_client = (|| {
+    let saga_client = (|| {
         let addr = saga_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
@@ -87,40 +91,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
-    // Fetch descriptor from saga service
-    let descriptor = match saga_client.get_descriptor(GetDescriptorRequest {}).await {
-        Ok(resp) => resp.into_inner(),
-        Err(e) => {
-            warn!(error = %e, "Failed to fetch descriptor from saga, using fallback");
-            // Fallback: derive input domain from config
-            let listen_domain = bootstrap
-                .config
-                .target
-                .as_ref()
-                .and_then(|t| t.listen_domain.clone())
-                .or_else(|| {
-                    bootstrap
-                        .config
-                        .messaging
-                        .as_ref()
-                        .and_then(|m| m.amqp.domain.as_ref())
-                        .and_then(|d| d.strip_suffix(".*").map(String::from))
-                })
-                .unwrap_or_else(|| bootstrap.domain.clone());
-            angzarr::proto::ComponentDescriptor {
-                name: bootstrap.domain.clone(),
-                component_type: "saga".to_string(),
-                inputs: vec![angzarr::proto::Target {
-                    domain: listen_domain,
-                    types: vec![],
-                }],
-            }
-        }
+    // Get subscriptions from environment variable or config
+    let inputs = if let Ok(subs_str) = std::env::var(SUBSCRIPTIONS_ENV_VAR) {
+        info!(subscriptions = %subs_str, "Using subscriptions from environment");
+        parse_subscriptions(&subs_str)
+    } else {
+        // Fallback: derive input domain from config
+        let listen_domain = bootstrap
+            .config
+            .target
+            .as_ref()
+            .and_then(|t| t.listen_domain.clone())
+            .or_else(|| {
+                bootstrap
+                    .config
+                    .messaging
+                    .as_ref()
+                    .and_then(|m| m.amqp.domain.as_ref())
+                    .and_then(|d| d.strip_suffix(".*").map(String::from))
+            })
+            .unwrap_or_else(|| bootstrap.domain.clone());
+        info!(domain = %listen_domain, "Using config-derived subscription");
+        vec![Target::domain(listen_domain)]
     };
+
     info!(
-        name = %descriptor.name,
-        inputs = descriptor.inputs.len(),
-        "Fetched saga descriptor"
+        name = %bootstrap.domain,
+        inputs = inputs.len(),
+        "Configured saga subscriptions"
     );
 
     // Build executor, fetcher, and factory based on configuration mode

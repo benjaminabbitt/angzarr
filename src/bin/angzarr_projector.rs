@@ -22,6 +22,7 @@
 //! ## Configuration
 //! - TARGET_ADDRESS: Projector gRPC address (e.g., "localhost:50051")
 //! - TARGET_COMMAND: Optional command to spawn projector (embedded mode)
+//! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 //! - STREAM_OUTPUT: Set to "true" to publish projector output (default: false)
 
@@ -33,13 +34,16 @@ use tracing::{error, info, warn};
 
 use angzarr::bus::{init_event_bus, EventBusMode};
 use angzarr::config::{Config, STREAM_OUTPUT_ENV_VAR, TARGET_COMMAND_JSON_ENV_VAR};
+use angzarr::descriptor::parse_subscriptions;
 use angzarr::handlers::core::projector::ProjectorEventHandler;
 use angzarr::process::{wait_for_ready, ManagedProcess, ProcessEnv};
 use angzarr::proto::projector_service_client::ProjectorServiceClient;
-use angzarr::proto::GetDescriptorRequest;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::bootstrap::init_tracing;
 use angzarr::utils::retry::connection_backoff;
+
+/// Environment variable for subscription configuration.
+const SUBSCRIPTIONS_ENV_VAR: &str = "ANGZARR_SUBSCRIPTIONS";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -127,26 +131,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await?;
 
-    // Create client for the Projector service (GetDescriptor and Handle)
-    let mut descriptor_client = ProjectorServiceClient::new(channel.clone());
+    // Create client for the Projector service (Handle RPC)
     let projector_client = ProjectorServiceClient::new(channel);
 
-    // Fetch descriptor from projector service for topology registration
-    let descriptor = match descriptor_client
-        .get_descriptor(GetDescriptorRequest {})
-        .await
-    {
-        Ok(response) => response.into_inner(),
-        Err(e) => {
-            warn!(error = %e, "Failed to get descriptor from projector, using basic descriptor");
-            angzarr::proto::ComponentDescriptor {
-                name: projector_name.clone(),
-                component_type: "projector".to_string(),
-                inputs: vec![],
-            }
-        }
+    // Get subscriptions from environment or config
+    let subscriptions = if let Ok(subs_str) = std::env::var(SUBSCRIPTIONS_ENV_VAR) {
+        info!(subscriptions = %subs_str, "Using subscriptions from environment");
+        parse_subscriptions(&subs_str)
+    } else if let Some(listen_domain) = target.listen_domain.as_ref() {
+        info!(domain = %listen_domain, "Using config-derived subscription");
+        vec![angzarr::descriptor::Target::domain(listen_domain)]
+    } else {
+        info!("No subscriptions configured, will receive all events");
+        vec![]
     };
-    info!(name = %descriptor.name, inputs = descriptor.inputs.len(), "Got projector descriptor");
+    info!(name = %projector_name, inputs = subscriptions.len(), "Configured projector subscriptions");
 
     // Create publisher if streaming is enabled
     let publisher = if stream_output {

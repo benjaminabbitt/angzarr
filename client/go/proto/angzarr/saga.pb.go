@@ -470,9 +470,8 @@ const file_angzarr_saga_proto_rawDesc = "" +
 	"\x1bcompensation_failure_reason\x18\x05 \x01(\tR\x19compensationFailureReason\x12?\n" +
 	"\x10rejected_command\x18\x06 \x01(\v2\x14.angzarr.CommandBookR\x0frejectedCommand\x12;\n" +
 	"\voccurred_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt2\xe0\x01\n" +
-	"\vSagaService\x12L\n" +
-	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12D\n" +
+	"occurredAt2\x92\x01\n" +
+	"\vSagaService\x12D\n" +
 	"\aPrepare\x12\x1b.angzarr.SagaPrepareRequest\x1a\x1c.angzarr.SagaPrepareResponse\x12=\n" +
 	"\aExecute\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponse2\xa3\x01\n" +
 	"\x16SagaCoordinatorService\x12=\n" +
@@ -506,8 +505,6 @@ var file_angzarr_saga_proto_goTypes = []any{
 	(*EventBook)(nil),              // 9: angzarr.EventBook
 	(*Cover)(nil),                  // 10: angzarr.Cover
 	(*timestamppb.Timestamp)(nil),  // 11: google.protobuf.Timestamp
-	(*GetDescriptorRequest)(nil),   // 12: angzarr.GetDescriptorRequest
-	(*ComponentDescriptor)(nil),    // 13: angzarr.ComponentDescriptor
 }
 var file_angzarr_saga_proto_depIdxs = []int32{
 	4,  // 0: angzarr.SpeculateSagaRequest.request:type_name -> angzarr.SagaExecuteRequest
@@ -524,18 +521,16 @@ var file_angzarr_saga_proto_depIdxs = []int32{
 	10, // 11: angzarr.SagaCompensationFailed.triggering_aggregate:type_name -> angzarr.Cover
 	8,  // 12: angzarr.SagaCompensationFailed.rejected_command:type_name -> angzarr.CommandBook
 	11, // 13: angzarr.SagaCompensationFailed.occurred_at:type_name -> google.protobuf.Timestamp
-	12, // 14: angzarr.SagaService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	2,  // 15: angzarr.SagaService.Prepare:input_type -> angzarr.SagaPrepareRequest
-	4,  // 16: angzarr.SagaService.Execute:input_type -> angzarr.SagaExecuteRequest
-	4,  // 17: angzarr.SagaCoordinatorService.Execute:input_type -> angzarr.SagaExecuteRequest
-	0,  // 18: angzarr.SagaCoordinatorService.ExecuteSpeculative:input_type -> angzarr.SpeculateSagaRequest
-	13, // 19: angzarr.SagaService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	3,  // 20: angzarr.SagaService.Prepare:output_type -> angzarr.SagaPrepareResponse
-	1,  // 21: angzarr.SagaService.Execute:output_type -> angzarr.SagaResponse
-	1,  // 22: angzarr.SagaCoordinatorService.Execute:output_type -> angzarr.SagaResponse
-	1,  // 23: angzarr.SagaCoordinatorService.ExecuteSpeculative:output_type -> angzarr.SagaResponse
-	19, // [19:24] is the sub-list for method output_type
-	14, // [14:19] is the sub-list for method input_type
+	2,  // 14: angzarr.SagaService.Prepare:input_type -> angzarr.SagaPrepareRequest
+	4,  // 15: angzarr.SagaService.Execute:input_type -> angzarr.SagaExecuteRequest
+	4,  // 16: angzarr.SagaCoordinatorService.Execute:input_type -> angzarr.SagaExecuteRequest
+	0,  // 17: angzarr.SagaCoordinatorService.ExecuteSpeculative:input_type -> angzarr.SpeculateSagaRequest
+	3,  // 18: angzarr.SagaService.Prepare:output_type -> angzarr.SagaPrepareResponse
+	1,  // 19: angzarr.SagaService.Execute:output_type -> angzarr.SagaResponse
+	1,  // 20: angzarr.SagaCoordinatorService.Execute:output_type -> angzarr.SagaResponse
+	1,  // 21: angzarr.SagaCoordinatorService.ExecuteSpeculative:output_type -> angzarr.SagaResponse
+	18, // [18:22] is the sub-list for method output_type
+	14, // [14:18] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
 	14, // [14:14] is the sub-list for extension extendee
 	0,  // [0:14] is the sub-list for field type_name

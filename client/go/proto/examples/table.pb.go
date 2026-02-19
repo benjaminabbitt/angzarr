@@ -1343,7 +1343,7 @@ var File_examples_table_proto protoreflect.FileDescriptor
 
 const file_examples_table_proto_rawDesc = "" +
 	"\n" +
-	"\x14examples/table.proto\x12\bexamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14examples/types.proto\"\xb7\x02\n" +
+	"\x14examples/table.proto\x12\bexamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1aexamples/poker_types.proto\"\xb7\x02\n" +
 	"\vCreateTable\x12\x1d\n" +
 	"\n" +
 	"table_name\x18\x01 \x01(\tR\ttableName\x128\n" +
@@ -1557,7 +1557,7 @@ func file_examples_table_proto_init() {
 	if File_examples_table_proto != nil {
 		return
 	}
-	file_examples_types_proto_init()
+	file_examples_poker_types_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

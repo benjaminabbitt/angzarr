@@ -393,14 +393,13 @@ class TestEventBookHelpers:
     def test_event_pages_returns_list(self) -> None:
         """event_pages returns pages as list."""
         book = EventBook()
-        # EventPage uses 'num' field in oneof sequence
-        page1 = EventPage(num=1)
-        page2 = EventPage(num=2)
+        page1 = EventPage(sequence=1)
+        page2 = EventPage(sequence=2)
         book.pages.extend([page1, page2])
         result = event_pages(book)
         assert len(result) == 2
-        assert result[0].num == 1
-        assert result[1].num == 2
+        assert result[0].sequence == 1
+        assert result[1].sequence == 2
 
     def test_event_pages_none_returns_empty(self) -> None:
         """event_pages returns empty list for None."""
@@ -442,9 +441,8 @@ class TestEventsFromResponse:
         """Returns event pages when present."""
         from angzarr_client.proto.angzarr import CommandResponse, SyncEventBook
         resp = CommandResponse()
-        # EventPage uses 'num' field in oneof sequence
-        resp.events.pages.add(num=1)
-        resp.events.pages.add(num=2)
+        resp.events.pages.add(sequence=1)
+        resp.events.pages.add(sequence=2)
         result = events_from_response(resp)
         assert len(result) == 2
 
@@ -520,15 +518,13 @@ class TestDecodeEvent:
     def test_returns_none_for_no_event_field(self) -> None:
         """Returns None when event field not set."""
         from angzarr_client.proto.angzarr import Cover
-        # EventPage uses 'num' field in oneof sequence
-        page = EventPage(num=1)
+        page = EventPage(sequence=1)
         assert decode_event(page, "Cover", Cover) is None
 
     def test_returns_none_for_type_mismatch(self) -> None:
         """Returns None when type URL doesn't match."""
         from angzarr_client.proto.angzarr import Cover
-        # EventPage uses 'num' field in oneof sequence
-        page = EventPage(num=1)
+        page = EventPage(sequence=1)
         page.event.type_url = "type.googleapis.com/some.OtherType"
         page.event.value = b""
         assert decode_event(page, "Cover", Cover) is None
@@ -538,8 +534,7 @@ class TestDecodeEvent:
         from angzarr_client.proto.angzarr import Cover
         # Create a cover and pack it
         cover = Cover(domain="test", correlation_id="abc")
-        # EventPage uses 'num' field in oneof sequence
-        page = EventPage(num=1)
+        page = EventPage(sequence=1)
         page.event.Pack(cover)
 
         result = decode_event(page, "Cover", Cover)
@@ -551,7 +546,7 @@ class TestDecodeEvent:
         """Returns None when decoding fails."""
         from angzarr_client.proto.angzarr import Cover
         # Create page with matching type URL but invalid data
-        page = EventPage(num=1)
+        page = EventPage(sequence=1)
         page.event.type_url = "type.googleapis.com/angzarr.Cover"
         page.event.value = b"invalid proto data that will fail to decode"
         # Should return None, not raise

@@ -28,7 +28,6 @@ from typing import Callable
 from google.protobuf import any_pb2
 
 from .proto.angzarr import types_pb2 as types
-from .router import Descriptor, TargetDesc
 
 __all__ = ["Upcaster", "upcasts"]
 
@@ -193,7 +192,7 @@ class Upcaster(ABC):
         for page in events:
             if page.HasField("event"):
                 new_event = upcaster.upcast(page.event)
-                new_page = types.EventPage(event=new_event, num=page.num)
+                new_page = types.EventPage(event=new_event, sequence=page.sequence)
                 new_page.created_at.CopyFrom(page.created_at)
                 result.append(new_page)
             else:
@@ -201,12 +200,3 @@ class Upcaster(ABC):
 
         return result
 
-    @classmethod
-    def descriptor(cls) -> Descriptor:
-        """Build component descriptor for topology discovery."""
-        from_types = [suffix for suffix in cls._dispatch_table.keys()]
-        return Descriptor(
-            name=cls.name,
-            component_type="upcaster",
-            inputs=[TargetDesc(domain=cls.domain, types=from_types)],
-        )

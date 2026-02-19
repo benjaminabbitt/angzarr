@@ -19,26 +19,6 @@ public class TableAggregateService : AggregateService.AggregateServiceBase
         _router = router;
     }
 
-    public override Task<ComponentDescriptor> GetDescriptor(GetDescriptorRequest request, ServerCallContext context)
-    {
-        var descriptor = new ComponentDescriptor
-        {
-            Name = "table",
-            ComponentType = "aggregate"
-        };
-        var input = new Target { Domain = "table" };
-        input.Types_.Add("CreateTable");
-        input.Types_.Add("JoinTable");
-        input.Types_.Add("LeaveTable");
-        input.Types_.Add("SitOut");
-        input.Types_.Add("SitIn");
-        input.Types_.Add("StartHand");
-        input.Types_.Add("EndHand");
-        input.Types_.Add("AddChips");
-        descriptor.Inputs.Add(input);
-        return Task.FromResult(descriptor);
-    }
-
     public override Task<BusinessResponse> Handle(ContextualCommand request, ServerCallContext context)
     {
         try

@@ -633,7 +633,7 @@ func TestDecodeEvent(t *testing.T) {
 
 	t.Run("type mismatch", func(t *testing.T) {
 		page := &pb.EventPage{
-			Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Other"},
+			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Other"}},
 		}
 		var msg mockUnmarshaler
 		got := DecodeEvent(page, "CreateCart", &msg)
@@ -644,7 +644,7 @@ func TestDecodeEvent(t *testing.T) {
 
 	t.Run("successful decode", func(t *testing.T) {
 		page := &pb.EventPage{
-			Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}},
+			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}}},
 		}
 		msg := &mockUnmarshaler{shouldSucceed: true}
 		got := DecodeEvent(page, "CreateCart", msg)
@@ -655,7 +655,7 @@ func TestDecodeEvent(t *testing.T) {
 
 	t.Run("unmarshal failure", func(t *testing.T) {
 		page := &pb.EventPage{
-			Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}},
+			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}}},
 		}
 		msg := &mockUnmarshaler{shouldSucceed: false}
 		got := DecodeEvent(page, "CreateCart", msg)

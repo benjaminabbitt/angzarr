@@ -168,18 +168,6 @@ public abstract class ProcessManager<S extends Message> {
     }
 
     /**
-     * Build a component descriptor.
-     */
-    public Descriptor getDescriptor() {
-        List<String> types = new ArrayList<>(handlers.keySet());
-        return new Descriptor(
-            name,
-            ComponentTypes.PROCESS_MANAGER,
-            List.of() // PM subscribes to multiple domains
-        );
-    }
-
-    /**
      * Check if the PM exists.
      */
     public boolean exists() {

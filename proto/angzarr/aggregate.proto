@@ -14,8 +14,6 @@ import "google/protobuf/empty.proto";
 // Also known as Command Handler in CQRS terminology
 // client logic doesn't care about sync - coordinator decides
 service AggregateService {
-  // Self-description: component type, subscribed domains, handled command types
-  rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
   // Process command and return business response (events or revocation request)
   rpc Handle (ContextualCommand) returns (BusinessResponse);
   // Replay events to compute state (for conflict detection)

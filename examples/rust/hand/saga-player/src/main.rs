@@ -4,7 +4,7 @@
 //! Sends DepositFunds commands to Player domain.
 
 use angzarr_client::proto::examples::{Currency, DepositFunds, PotAwarded};
-use angzarr_client::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid};
+use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
     run_saga_server, CommandRejectedError, CommandResult, EventRouter, UnpackAny,
 };
@@ -89,7 +89,7 @@ fn handle_pot_awarded(
                 }),
                 pages: vec![CommandPage {
                     sequence: dest_seq,
-                    command: Some(command_any),
+                    payload: Some(command_page::Payload::Command(command_any)),
                     ..Default::default()
                 }],
                 saga_origin: None,
@@ -107,8 +107,8 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let router = EventRouter::new("saga-hand-player", "hand")
-        .sends("player", "DepositFunds")
+    let router = EventRouter::new("saga-hand-player")
+        .domain("hand")
         .prepare("PotAwarded", prepare_pot_awarded)
         .on_many("PotAwarded", handle_pot_awarded);
 

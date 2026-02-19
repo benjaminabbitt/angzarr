@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import inspect
 import typing
-from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Generic, TypeVar
 
@@ -24,10 +23,6 @@ from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 
 S = TypeVar("S")
-
-# Component type constants for Descriptor.
-COMPONENT_AGGREGATE = "aggregate"
-COMPONENT_SAGA = "saga"
 
 # Error message constants.
 ERRMSG_UNKNOWN_COMMAND = "Unknown command type"
@@ -422,35 +417,6 @@ def event_handler(event_type: type):
 
 
 # ============================================================================
-# Descriptor types — mirrors angzarr ComponentDescriptor
-# ============================================================================
-
-
-@dataclass
-class TargetDesc:
-    """Describes what a component subscribes to (inputs) or sends to (outputs).
-
-    Mirrors angzarr.Target proto message.
-    """
-
-    domain: str
-    types: list[str] = field(default_factory=list)
-
-
-@dataclass
-class Descriptor:
-    """Describes a component for topology discovery.
-
-    Mirrors angzarr.ComponentDescriptor. Will be replaced by the real proto
-    type once generated code includes it.
-    """
-
-    name: str
-    component_type: str
-    inputs: list[TargetDesc] = field(default_factory=list)
-
-
-# ============================================================================
 # CommandRouter — aggregate dispatch
 # ============================================================================
 
@@ -701,18 +667,6 @@ class CommandRouter(Generic[S]):
             )
         )
 
-    def descriptor(self) -> Descriptor:
-        """Build a component descriptor from registered handlers."""
-        return Descriptor(
-            name=self.domain,
-            component_type=COMPONENT_AGGREGATE,
-            inputs=[TargetDesc(domain=self.domain, types=self.types())],
-        )
-
-    def types(self) -> list[str]:
-        """Return registered command type suffixes."""
-        return [suffix for suffix, _ in self._handlers]
-
 
 # ============================================================================
 # Helpers
@@ -727,18 +681,15 @@ def next_sequence(events: types.EventBook | None) -> int:
 
 
 # ============================================================================
-# EventRouter — saga dispatch
+# EventRouter — unified event dispatch for sagas, PMs, and projectors
 # ============================================================================
 
 
 class EventRouter:
-    """DRY event dispatcher for sagas.
+    """Unified event dispatcher for sagas, process managers, and projectors.
 
-    Matches event type_url suffixes and dispatches to registered handlers.
-    Auto-derives descriptors from registrations.
-
-    Takes an EventBook, iterates its pages, matches type_url suffixes,
-    and collects commands from handlers.
+    Uses fluent `.domain().on()` pattern to register handlers with domain context.
+    Subscriptions are auto-derived from registrations.
 
     Two-phase protocol support:
         1. prepare_destinations(source) -> list of Covers to fetch
@@ -750,59 +701,99 @@ class EventRouter:
     The prepare handler signature:
         prepare_handler(event: Any, root: UUID | None) -> list[Cover]
 
-    Example::
+    Example (Saga - single domain)::
 
-        router = (EventRouter("fulfillment", "order")
-            .output("fulfillment")
-            .prepare("OrderCompleted", prepare_order)
-            .on("OrderCompleted", handle_order_completed))
+        router = (EventRouter("saga-table-hand")
+            .domain("table")
+                .on("HandStarted", handle_started))
 
-        # In saga Prepare:
-        covers = router.prepare_destinations(source_event_book)
+    Example (Process Manager - multi-domain)::
+
+        router = (EventRouter("pmg-order-flow")
+            .domain("order")
+                .on("OrderCreated", handle_created)
+            .domain("inventory")
+                .on("StockReserved", handle_reserved))
+
+    Example (Projector - multi-domain)::
+
+        router = (EventRouter("prj-output")
+            .domain("player")
+                .on("PlayerRegistered", handle_registered)
+            .domain("hand")
+                .on("CardsDealt", handle_dealt))
+
+    Usage::
+
+        # Get auto-derived subscriptions
+        subs = router.subscriptions()  # [("player", ["PlayerRegistered", ...]), ...]
 
         # In saga Execute:
         commands = router.dispatch(source_event_book, destinations)
-
-        # For topology:
-        desc = router.descriptor()
     """
 
-    def __init__(self, name: str, input_domain: str) -> None:
-        self.name = name
-        self.input_domain = input_domain
-        self._output_targets: dict[str, list[str]] = {}
-        self._handlers: list[tuple[str, Callable]] = []
-        self._prepare_handlers: dict[str, Callable] = {}
+    def __init__(self, name: str, input_domain: str | None = None) -> None:
+        """Create a new EventRouter.
 
-    def sends(self, domain: str, command_type: str) -> EventRouter:
-        """Declare an output domain and command type this saga produces.
-
-        Call multiple times for multiple command types or domains.
+        Args:
+            name: Component name (e.g., "saga-order-fulfillment", "pmg-hand-flow")
+            input_domain: (Deprecated) Single input domain. Use .domain() instead.
         """
-        if domain not in self._output_targets:
-            self._output_targets[domain] = []
-        self._output_targets[domain].append(command_type)
+        self.name = name
+        self._current_domain: str | None = None
+        # domain -> [(suffix, handler)]
+        self._handlers: dict[str, list[tuple[str, Callable]]] = {}
+        # domain -> {suffix: handler}
+        self._prepare_handlers: dict[str, dict[str, Callable]] = {}
+
+        # Backwards compatibility: if input_domain provided, set it as current context
+        if input_domain is not None:
+            self.domain(input_domain)
+
+    def domain(self, name: str) -> "EventRouter":
+        """Set the current domain context for subsequent .on() calls.
+
+        Args:
+            name: Domain name (e.g., "player", "order", "inventory")
+
+        Returns:
+            Self for chaining.
+        """
+        self._current_domain = name
+        if name not in self._handlers:
+            self._handlers[name] = []
+        if name not in self._prepare_handlers:
+            self._prepare_handlers[name] = {}
         return self
 
-    def prepare(self, suffix: str, handler: Callable) -> EventRouter:
+    def prepare(self, suffix: str, handler: Callable) -> "EventRouter":
         """Register a prepare handler for an event type_url suffix.
 
         The prepare handler returns a list of Covers identifying destinations
         that should be fetched before the main handler executes.
+
+        Must be called after .domain() to set context.
         """
-        self._prepare_handlers[suffix] = handler
+        if self._current_domain is None:
+            raise ValueError("Must call .domain() before .prepare()")
+        self._prepare_handlers[self._current_domain][suffix] = handler
         return self
 
-    def on(self, suffix_or_handler, handler: Callable = None) -> EventRouter:
-        """Register a handler for an event type_url suffix.
+    def on(self, suffix_or_handler, handler: Callable = None) -> "EventRouter":
+        """Register a handler for an event type_url suffix in current domain.
+
+        Must be called after .domain() to set context.
 
         Two calling patterns:
-            router.on("OrderCompleted", handle_completed)  # Explicit suffix
-            router.on(handle_completed)                    # Derive suffix from @event_handler
+            router.domain("order").on("OrderCompleted", handle_completed)
+            router.domain("order").on(handle_completed)  # Derive suffix from @event_handler
 
         When passing only a handler, it must be decorated with @event_handler
         so the event type can be derived via reflection.
         """
+        if self._current_domain is None:
+            raise ValueError("Must call .domain() before .on()")
+
         if handler is None:
             # Single argument: derive suffix from @event_handler decorator
             handler = suffix_or_handler
@@ -815,8 +806,20 @@ class EventRouter:
         else:
             suffix = suffix_or_handler
 
-        self._handlers.append((suffix, handler))
+        self._handlers[self._current_domain].append((suffix, handler))
         return self
+
+    def subscriptions(self) -> list[tuple[str, list[str]]]:
+        """Auto-derive subscriptions from registered handlers.
+
+        Returns:
+            List of (domain, event_types) tuples.
+        """
+        return [
+            (domain, [suffix for suffix, _ in handlers])
+            for domain, handlers in self._handlers.items()
+            if handlers
+        ]
 
     def prepare_destinations(self, book: types.EventBook) -> list[types.Cover]:
         """Get destinations needed for the given source events.
@@ -825,15 +828,18 @@ class EventRouter:
         and collects destination Covers.
         """
         root = book.cover.root if book.HasField("cover") else None
+        source_domain = book.cover.domain if book.HasField("cover") else ""
 
         destinations: list[types.Cover] = []
         for page in book.pages:
             if not page.HasField("event"):
                 continue
-            for suffix, handler in self._prepare_handlers.items():
-                if page.event.type_url.endswith(suffix):
-                    destinations.extend(handler(page.event, root))
-                    break
+            # Check prepare handlers for source domain
+            if source_domain in self._prepare_handlers:
+                for suffix, handler in self._prepare_handlers[source_domain].items():
+                    if page.event.type_url.endswith(suffix):
+                        destinations.extend(handler(page.event, root))
+                        break
         return destinations
 
     def dispatch(
@@ -843,7 +849,7 @@ class EventRouter:
     ) -> list[types.CommandBook]:
         """Dispatch all events in an EventBook to registered handlers.
 
-        Iterates pages, matches type_url suffixes, and collects commands.
+        Routes based on source domain and event type suffix.
 
         Args:
             book: Source EventBook containing events to process
@@ -851,39 +857,37 @@ class EventRouter:
         """
         root = book.cover.root if book.HasField("cover") else None
         correlation_id = book.cover.correlation_id if book.HasField("cover") else ""
+        source_domain = book.cover.domain if book.HasField("cover") else ""
         dests = destinations or []
+
+        # Find handlers for this domain
+        domain_handlers = self._handlers.get(source_domain, [])
+        if not domain_handlers:
+            return []
 
         commands: list[types.CommandBook] = []
         for page in book.pages:
             if not page.HasField("event"):
                 continue
-            for suffix, handler in self._handlers:
+            for suffix, handler in domain_handlers:
                 if page.event.type_url.endswith(suffix):
                     commands.extend(handler(page.event, root, correlation_id, dests))
                     break
         return commands
 
-    def descriptor(self) -> Descriptor:
-        """Build a component descriptor from registered handlers."""
-        return Descriptor(
-            name=self.name,
-            component_type=COMPONENT_SAGA,
-            inputs=[
-                TargetDesc(domain=self.input_domain, types=self.types())
-            ],
-        )
+    # -------------------------------------------------------------------------
+    # Backwards compatibility (deprecated)
+    # -------------------------------------------------------------------------
 
-    def types(self) -> list[str]:
-        """Return registered event type suffixes."""
-        return [suffix for suffix, _ in self._handlers]
+    @property
+    def input_domain(self) -> str:
+        """Return first registered domain (for backwards compatibility).
 
-    def output_domains(self) -> list[str]:
-        """Return the list of output domain names."""
-        return list(self._output_targets.keys())
+        Deprecated: Use .subscriptions() instead.
+        """
+        domains = list(self._handlers.keys())
+        return domains[0] if domains else ""
 
-    def output_types(self, domain: str) -> list[str]:
-        """Return the command types for a given output domain."""
-        return self._output_targets.get(domain, [])
 
 
 # ============================================================================
@@ -1023,7 +1027,7 @@ class UpcasterRouter:
             for suffix, handler, _ in self._handlers:
                 if type_url.endswith(suffix):
                     new_event = handler(page.event)
-                    new_page = types.EventPage(event=new_event, num=page.num)
+                    new_page = types.EventPage(event=new_event, sequence=page.sequence)
                     new_page.created_at.CopyFrom(page.created_at)
                     result.append(new_page)
                     transformed = True
@@ -1033,15 +1037,3 @@ class UpcasterRouter:
                 result.append(page)
 
         return result
-
-    def descriptor(self) -> Descriptor:
-        """Build a component descriptor from registered handlers."""
-        return Descriptor(
-            name=f"upcaster-{self.domain}",
-            component_type="upcaster",
-            inputs=[TargetDesc(domain=self.domain, types=self.types())],
-        )
-
-    def types(self) -> list[str]:
-        """Return registered old event type suffixes."""
-        return [suffix for suffix, _, _ in self._handlers]

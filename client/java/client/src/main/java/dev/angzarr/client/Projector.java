@@ -100,22 +100,6 @@ public abstract class Projector {
         return projections;
     }
 
-    /**
-     * Build a component descriptor.
-     */
-    public Descriptor getDescriptor() {
-        List<String> types = new ArrayList<>(handlers.keySet());
-        List<TargetDesc> inputs = new ArrayList<>();
-        for (String domain : inputDomains) {
-            inputs.add(new TargetDesc(domain, types));
-        }
-        return new Descriptor(
-            name,
-            ComponentTypes.PROJECTOR,
-            inputs
-        );
-    }
-
     private void buildDispatchTable() {
         for (Method method : this.getClass().getDeclaredMethods()) {
             Projects projects = method.getAnnotation(Projects.class);

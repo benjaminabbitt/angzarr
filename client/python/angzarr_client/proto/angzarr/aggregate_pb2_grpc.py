@@ -18,11 +18,6 @@ class AggregateServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetDescriptor = channel.unary_unary(
-                '/angzarr.AggregateService/GetDescriptor',
-                request_serializer=angzarr_dot_types__pb2.GetDescriptorRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.ComponentDescriptor.FromString,
-                _registered_method=True)
         self.Handle = channel.unary_unary(
                 '/angzarr.AggregateService/Handle',
                 request_serializer=angzarr_dot_types__pb2.ContextualCommand.SerializeToString,
@@ -40,13 +35,6 @@ class AggregateServiceServicer(object):
     Also known as Command Handler in CQRS terminology
     client logic doesn't care about sync - coordinator decides
     """
-
-    def GetDescriptor(self, request, context):
-        """Self-description: component type, subscribed domains, handled command types
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
 
     def Handle(self, request, context):
         """Process command and return business response (events or revocation request)
@@ -66,11 +54,6 @@ class AggregateServiceServicer(object):
 
 def add_AggregateServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetDescriptor': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetDescriptor,
-                    request_deserializer=angzarr_dot_types__pb2.GetDescriptorRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.ComponentDescriptor.SerializeToString,
-            ),
             'Handle': grpc.unary_unary_rpc_method_handler(
                     servicer.Handle,
                     request_deserializer=angzarr_dot_types__pb2.ContextualCommand.FromString,
@@ -94,33 +77,6 @@ class AggregateService(object):
     Also known as Command Handler in CQRS terminology
     client logic doesn't care about sync - coordinator decides
     """
-
-    @staticmethod
-    def GetDescriptor(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.AggregateService/GetDescriptor',
-            angzarr_dot_types__pb2.GetDescriptorRequest.SerializeToString,
-            angzarr_dot_types__pb2.ComponentDescriptor.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
 
     @staticmethod
     def Handle(request,

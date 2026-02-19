@@ -272,54 +272,54 @@ Aggregates may query projections (read models) when processing commands to gathe
 
 Keep events lean. Use IDs to reference immutable objects rather than embedding full data—if the object won't change, the ID suffices.
 
-## Component Descriptors
+## Component Subscriptions
 
-Components self-describe via `ComponentDescriptor`:
-- `name`: Unique identifier (follows naming conventions below)
-- `component_type`: aggregate, saga, projector, process_manager
-- `inputs`: Domains/event types consumed (subscriptions)
-- `outputs`: Domains/command types produced
+Components declare which domains/events they subscribe to via configuration:
 
-### Auto-Derivation
+### Configuration-Based Subscriptions
 
-Event and command types are auto-derived from router registrations—never manually configured:
+Subscriptions are configured via environment variable or config file—not derived from code:
 
-```rust
-// Saga: .on() registers input event types, .sends() registers output command types
-EventRouter::new("saga-order-fulfillment", "order")
-    .sends("fulfillment", "CreateShipment")  // output: fulfillment domain, CreateShipment command
-    .on("OrderCompleted", handle_completed)  // input: order domain, OrderCompleted event
-
-// Aggregate: .on() registers handled command types
-CommandRouter::new("inventory")
-    .on("InitializeStock", handle_init)      // input: inventory domain, InitializeStock command
-    .on("ReserveStock", handle_reserve)
+**Environment Variable** (distributed mode):
+```bash
+# Format: domain:Type1,Type2;domain2:Type3
+ANGZARR_SUBSCRIPTIONS="order:OrderCreated,OrderCompleted;inventory"
 ```
 
-The descriptor is built from these registrations—no separate configuration needed.
+**Config File** (standalone mode):
+```yaml
+sagas:
+  - domain: saga-order-fulfillment
+    subscriptions: "order:OrderCompleted"
+    command: ["./saga-order-fulfillment"]
+```
+
+- Empty types list means "all events from domain"
+- Multiple domains separated by `;`
+- Event types within a domain separated by `,`
 
 ### Target Type
 
-A unified `Target` message represents both inputs and outputs:
-```protobuf
-message Target {
-  string domain = 1;      // Domain name
-  repeated string types = 2;  // Event or command type names
+A `Target` struct represents subscriptions:
+```rust
+pub struct Target {
+    pub domain: String,      // Domain name
+    pub types: Vec<String>,  // Event type names (empty = all)
 }
 ```
 
-- For inputs: domain I subscribe to, event types I consume
-- For outputs: domain I send to, command types I emit
+- For sagas: domain to listen for, event types to process
+- For PMs: multiple domains with their event filters
 
 ## Topology
 
-The topology graph is built **declaratively from descriptors**, not from runtime observation:
+The topology graph is built from **runtime event observation**:
 
-- **Nodes**: Created when components register their descriptors
-- **Edges**: Created from descriptor inputs (subscriptions) and outputs (commands)
+- **Nodes**: Created when components process their first event
+- **Edges**: Inferred from event flow between components
 - **Metrics**: Updated from event observation (counts, last seen)
 
-Graph structure comes only from descriptors. Runtime events update metrics on existing edges but never create new ones.
+Graph structure emerges from actual event traffic.
 
 ### Visualization
 
@@ -342,8 +342,7 @@ Topology serves a REST API for Grafana Node Graph panel:
 - **Coordinator**: The angzarr support coordinator that abstracts functionality away from business logic code. Deployed as sidecar container with business logic. Thin wrapper around library code reused in standalone mode.
 - **Events**: Domain-specific facts that have occurred. Immutable. Named in past tense (OrderCreated, StockReserved).
 - **Commands**: Requests to perform actions. Named imperatively (CreateOrder, ReserveStock).
-- **Descriptor**: Self-description of a component's inputs, outputs, and type. Published to event bus for topology discovery.
-- **Target**: A domain + list of message types. Used for both subscriptions (inputs) and command destinations (outputs).
+- **Target**: A domain + list of event types. Used for subscriptions (inputs) to filter which events a component receives.
 - **Correlation ID**: Identifies a cross-domain business process. Not a domain entity ID (like `order_id` or `game_id`)—it's the identifier for the workflow/transaction that spans domains. Stable across all events in that process. Flows through sagas/PMs. For PMs, the correlation ID serves as the aggregate root.
 
   **Propagation rules:**
@@ -420,12 +419,6 @@ Component names must be globally unique across all component types. A saga named
 **Correct:**
 - Saga: "saga-order-fulfillment", PM: "order-fulfillment"
 - Projector: "projector-inventory", Aggregate: "inventory"
-
-### Descriptor Publishing
-All coordinator binaries must publish their component's descriptor to the event bus for topology discovery. If a component doesn't appear in the topology, check:
-1. Does the coordinator call `publish_descriptors()`?
-2. Does the business logic implement `GetDescriptor` RPC?
-3. Is the descriptor name unique?
 
 ### Proto Field Unification
 When proto messages share structure, unify them. Separate `Subscription` (event types) and `CommandTarget` (command types) were unified into a single `Target` with a `types` field. Duplication leads to:

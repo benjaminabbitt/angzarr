@@ -19,7 +19,7 @@ from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import aggregate_pb2_grpc
 from .proto.angzarr import types_pb2 as types
 from .errors import CommandRejectedError
-from .router import COMPONENT_AGGREGATE, CommandRouter
+from .router import CommandRouter
 from .server import run_server
 
 if TYPE_CHECKING:
@@ -38,34 +38,16 @@ class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
     def __init__(self, handler: Union[type[Aggregate], CommandRouter]) -> None:
         if isinstance(handler, type) and issubclass(handler, Aggregate):
             self._handle = handler.handle
-            self._get_descriptor = handler.descriptor
             self._replay: Callable[[aggregate.ReplayRequest], aggregate.ReplayResponse] | None = handler.replay
             self._domain = handler.domain
         else:
             self._handle = handler.dispatch
-            self._get_descriptor = handler.descriptor
             self._replay = None  # CommandRouter doesn't support replay
             self._domain = handler.domain
 
     @property
     def domain(self) -> str:
         return self._domain
-
-    def GetDescriptor(
-        self,
-        request: types.GetDescriptorRequest,
-        context: grpc.ServicerContext,
-    ) -> types.ComponentDescriptor:
-        """Return component descriptor for service discovery."""
-        desc = self._get_descriptor()
-        return types.ComponentDescriptor(
-            name=desc.name,
-            component_type=COMPONENT_AGGREGATE,
-            inputs=[
-                types.Target(domain=inp.domain, types=inp.types)
-                for inp in desc.inputs
-            ],
-        )
 
     def Handle(
         self,

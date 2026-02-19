@@ -19,19 +19,6 @@ public class HandTableSagaService : SagaService.SagaServiceBase
         _router = router;
     }
 
-    public override Task<ComponentDescriptor> GetDescriptor(GetDescriptorRequest request, ServerCallContext context)
-    {
-        var descriptor = new ComponentDescriptor
-        {
-            Name = "saga-hand-table",
-            ComponentType = "saga"
-        };
-        var input = new Target { Domain = "hand" };
-        input.Types_.Add("HandComplete");
-        descriptor.Inputs.Add(input);
-        return Task.FromResult(descriptor);
-    }
-
     public override Task<SagaPrepareResponse> Prepare(SagaPrepareRequest request, ServerCallContext context)
     {
         var response = new SagaPrepareResponse();

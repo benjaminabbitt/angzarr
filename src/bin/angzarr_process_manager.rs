@@ -23,6 +23,7 @@
 //! - TARGET_ADDRESS: ProcessManager gRPC address (e.g., "localhost:50060")
 //! - TARGET_DOMAIN: Process manager domain name (used for PM state storage)
 //! - TARGET_COMMAND: Optional command to spawn PM (embedded mode)
+//! - ANGZARR_SUBSCRIPTIONS: Event subscriptions (format: "domain:Type1,Type2;domain2")
 //! - ANGZARR_STATIC_ENDPOINTS: Static endpoints for multi-domain routing
 //! - MESSAGING_TYPE: amqp, kafka, or ipc
 
@@ -36,14 +37,17 @@ use tracing::{info, warn};
 use angzarr::bus::{AmqpConfig, AmqpEventBus};
 use angzarr::bus::{EventBus, IpcConfig, IpcEventBus, MessagingType, MockEventBus};
 use angzarr::config::STATIC_ENDPOINTS_ENV_VAR;
+use angzarr::descriptor::parse_subscriptions;
 use angzarr::handlers::core::ProcessManagerEventHandler;
 use angzarr::orchestration::destination::hybrid::HybridDestinationFetcher;
 use angzarr::proto::process_manager_service_client::ProcessManagerServiceClient;
-use angzarr::proto::GetDescriptorRequest;
 use angzarr::storage::init_storage;
 use angzarr::transport::connect_to_address;
 use angzarr::utils::retry::connection_backoff;
 use angzarr::utils::sidecar::{bootstrap_sidecar, connect_endpoints, run_subscriber};
+
+/// Environment variable for subscription configuration.
+const SUBSCRIPTIONS_ENV_VAR: &str = "ANGZARR_SUBSCRIPTIONS";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -80,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to process manager service
     let pm_addr = bootstrap.address.clone();
-    let mut pm_client = (|| {
+    let pm_client = (|| {
         let addr = pm_addr.clone();
         async move {
             let channel = connect_to_address(&addr).await.map_err(|e| e.to_string())?;
@@ -93,18 +97,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await?;
 
-    // Get component descriptor from process manager
-    let descriptor = pm_client
-        .get_descriptor(GetDescriptorRequest {})
-        .await?
-        .into_inner();
+    // Get subscriptions from environment variable
+    let subscriptions_str = std::env::var(SUBSCRIPTIONS_ENV_VAR).map_err(|_| {
+        format!(
+            "Process manager requires {} for multi-domain subscriptions",
+            SUBSCRIPTIONS_ENV_VAR
+        )
+    })?;
 
-    let subscriptions = descriptor.inputs.clone();
+    let subscriptions = parse_subscriptions(&subscriptions_str);
     info!(
-        name = %descriptor.name,
-        component_type = %descriptor.component_type,
+        name = %bootstrap.domain,
         subscriptions = subscriptions.len(),
-        "Process manager descriptor"
+        "Process manager subscriptions configured"
     );
 
     for sub in &subscriptions {
@@ -141,7 +146,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         command_executor,
         event_store,
         event_bus,
-    );
+    )
+    .with_targets(subscriptions);
 
     let queue_name = format!("process-manager-{}", bootstrap.domain);
     run_subscriber(messaging, queue_name, Box::new(handler)).await

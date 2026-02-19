@@ -90,8 +90,8 @@ func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations []*
 }
 
 func main() {
-	router := angzarr.NewEventRouter("saga-hand-table", "hand").
-		Sends("table", "EndHand").
+	router := angzarr.NewEventRouter("saga-hand-table").
+		Domain("hand").
 		Prepare("HandComplete", prepareHandComplete).
 		On("HandComplete", handleHandComplete)
 

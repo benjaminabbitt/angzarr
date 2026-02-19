@@ -17,26 +17,6 @@ class HandFlowOOService final : public angzarr::ProcessManagerService::Service {
 public:
     HandFlowOOService() : pm_() {}
 
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* /* context */,
-        const angzarr::GetDescriptorRequest* /* request */,
-        angzarr::ComponentDescriptor* response) override {
-
-        auto desc = pm_.descriptor();
-        response->set_name(desc.name);
-        response->set_component_type(desc.component_type);
-
-        for (const auto& input : desc.inputs) {
-            auto* target = response->add_inputs();
-            target->set_domain(input.domain);
-            for (const auto& type : input.types) {
-                target->add_types(type);
-            }
-        }
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Prepare(
         grpc::ServerContext* /* context */,
         const angzarr::ProcessManagerPrepareRequest* request,

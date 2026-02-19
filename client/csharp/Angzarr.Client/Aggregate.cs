@@ -211,18 +211,6 @@ public abstract class Aggregate<TState> where TState : class
     /// </summary>
     public Angzarr.EventBook EventBook() => _eventBook;
 
-    /// <summary>
-    /// Build a component descriptor for topology discovery.
-    /// </summary>
-    public Descriptor Descriptor()
-    {
-        var dispatchTable = _dispatchTables[GetType()];
-        return new Descriptor(
-            Domain,
-            ComponentTypes.Aggregate,
-            new List<TargetDesc> { new(Domain, dispatchTable.Keys.ToList()) });
-    }
-
     private TState GetState()
     {
         if (_state == null)

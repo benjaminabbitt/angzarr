@@ -1148,7 +1148,7 @@ var File_examples_player_proto protoreflect.FileDescriptor
 
 const file_examples_player_proto_rawDesc = "" +
 	"\n" +
-	"\x15examples/player.proto\x12\bexamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14examples/types.proto\"\xa0\x01\n" +
+	"\x15examples/player.proto\x12\bexamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1aexamples/poker_types.proto\"\xa0\x01\n" +
 	"\x0eRegisterPlayer\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x125\n" +
@@ -1346,7 +1346,7 @@ func file_examples_player_proto_init() {
 	if File_examples_player_proto != nil {
 		return
 	}
-	file_examples_types_proto_init()
+	file_examples_poker_types_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

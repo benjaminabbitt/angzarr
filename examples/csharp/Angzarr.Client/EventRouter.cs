@@ -6,45 +6,58 @@ using Type = System.Type;
 namespace Angzarr.Client;
 
 /// <summary>
-/// Functional router for saga event handling.
+/// Unified router for saga event handling.
+/// Uses fluent .Domain().On() pattern to register handlers with domain context.
+///
+/// Example:
+/// <code>
+/// var router = new EventRouter("saga-table-hand")
+///     .Domain("table")
+///     .Prepare&lt;HandStarted&gt;(PrepareHandStarted)
+///     .On&lt;HandStarted&gt;(HandleHandStarted);
+/// </code>
 /// </summary>
 public class EventRouter
 {
     private readonly string _name;
-    private readonly string _inputDomain;
-    private readonly List<(string domain, string command)> _outputs = new();
+    private string? _currentDomain;
     private readonly Dictionary<Type, Delegate> _prepareHandlers = new();
     private readonly Dictionary<Type, Delegate> _reactHandlers = new();
 
-    public EventRouter(string name, string inputDomain)
+    public EventRouter(string name)
     {
         _name = name;
-        _inputDomain = inputDomain;
     }
 
     /// <summary>
-    /// Declare an output domain and command type.
+    /// Set the current domain context for subsequent On() calls.
     /// </summary>
-    public EventRouter Sends(string domain, string command)
+    public EventRouter Domain(string name)
     {
-        _outputs.Add((domain, command));
+        _currentDomain = name;
         return this;
     }
 
     /// <summary>
     /// Register a prepare handler.
+    /// Must be called after Domain() to set context.
     /// </summary>
     public EventRouter Prepare<TEvent>(Func<TEvent, List<Cover>> handler) where TEvent : IMessage
     {
+        if (_currentDomain == null)
+            throw new InvalidOperationException("Must call Domain() before Prepare()");
         _prepareHandlers[typeof(TEvent)] = handler;
         return this;
     }
 
     /// <summary>
     /// Register an event reaction handler.
+    /// Must be called after Domain() to set context.
     /// </summary>
     public EventRouter On<TEvent>(Func<TEvent, List<EventBook>, object> handler) where TEvent : IMessage
     {
+        if (_currentDomain == null)
+            throw new InvalidOperationException("Must call Domain() before On()");
         _reactHandlers[typeof(TEvent)] = handler;
         return this;
     }

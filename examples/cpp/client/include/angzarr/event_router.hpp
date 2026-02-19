@@ -13,6 +13,7 @@ namespace angzarr {
 
 /// Functional router for saga event handling.
 /// Two-phase pattern: prepare (get destinations) then handle (produce commands).
+/// Uses fluent .domain().on() pattern to register handlers with domain context.
 class EventRouter {
 public:
     using PrepareHandler = std::function<std::vector<Cover>(const google::protobuf::Message&)>;
@@ -20,18 +21,17 @@ public:
 
 private:
     std::string name_;
-    std::string input_domain_;
-    std::vector<std::pair<std::string, std::string>> outputs_; // (domain, command)
+    std::string current_domain_;
     std::unordered_map<std::string, PrepareHandler> prepare_handlers_;
     std::unordered_map<std::string, HandleHandler> handle_handlers_;
 
 public:
-    EventRouter(const std::string& name, const std::string& input_domain)
-        : name_(name), input_domain_(input_domain) {}
+    explicit EventRouter(const std::string& name)
+        : name_(name) {}
 
-    /// Declare an output domain and command type.
-    EventRouter& sends(const std::string& domain, const std::string& command) {
-        outputs_.emplace_back(domain, command);
+    /// Set the current domain context for subsequent .on() calls.
+    EventRouter& domain(const std::string& domain_name) {
+        current_domain_ = domain_name;
         return *this;
     }
 
@@ -95,8 +95,6 @@ public:
     }
 
     const std::string& name() const { return name_; }
-    const std::string& input_domain() const { return input_domain_; }
-    const std::vector<std::pair<std::string, std::string>>& outputs() const { return outputs_; }
 };
 
 } // namespace angzarr

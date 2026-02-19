@@ -3,7 +3,6 @@
 import grpc
 
 from angzarr_client.proto.angzarr import saga_pb2 as angzarr_dot_saga__pb2
-from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
 class SagaServiceStub(object):
@@ -17,11 +16,6 @@ class SagaServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetDescriptor = channel.unary_unary(
-                '/angzarr.SagaService/GetDescriptor',
-                request_serializer=angzarr_dot_types__pb2.GetDescriptorRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.ComponentDescriptor.FromString,
-                _registered_method=True)
         self.Prepare = channel.unary_unary(
                 '/angzarr.SagaService/Prepare',
                 request_serializer=angzarr_dot_saga__pb2.SagaPrepareRequest.SerializeToString,
@@ -38,13 +32,6 @@ class SagaServiceServicer(object):
     """SagaService: client logic that coordinates across aggregates
     Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
     """
-
-    def GetDescriptor(self, request, context):
-        """Self-description: component type, subscribed domains, handled event types
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
 
     def Prepare(self, request, context):
         """Phase 1: Saga declares which destination aggregates it needs
@@ -63,11 +50,6 @@ class SagaServiceServicer(object):
 
 def add_SagaServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetDescriptor': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetDescriptor,
-                    request_deserializer=angzarr_dot_types__pb2.GetDescriptorRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.ComponentDescriptor.SerializeToString,
-            ),
             'Prepare': grpc.unary_unary_rpc_method_handler(
                     servicer.Prepare,
                     request_deserializer=angzarr_dot_saga__pb2.SagaPrepareRequest.FromString,
@@ -90,33 +72,6 @@ class SagaService(object):
     """SagaService: client logic that coordinates across aggregates
     Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
     """
-
-    @staticmethod
-    def GetDescriptor(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.SagaService/GetDescriptor',
-            angzarr_dot_types__pb2.GetDescriptorRequest.SerializeToString,
-            angzarr_dot_types__pb2.ComponentDescriptor.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
 
     @staticmethod
     def Prepare(request,

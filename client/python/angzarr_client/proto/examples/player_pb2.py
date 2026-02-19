@@ -23,49 +23,49 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from angzarr_client.proto.examples import types_pb2 as examples_dot_types__pb2
+from angzarr_client.proto.examples import poker_types_pb2 as examples_dot_poker__types__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x15\x65xamples/player.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14\x65xamples/types.proto\"\xa0\x01\n\x0eRegisterPlayer\x12!\n\x0c\x64isplay_name\x18\x01 \x01(\tR\x0b\x64isplayName\x12\x14\n\x05\x65mail\x18\x02 \x01(\tR\x05\x65mail\x12\x35\n\x0bplayer_type\x18\x03 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12\x1e\n\x0b\x61i_model_id\x18\x04 \x01(\tR\taiModelId\":\n\x0c\x44\x65positFunds\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\";\n\rWithdrawFunds\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\"Y\n\x0cReserveFunds\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\"-\n\x0cReleaseFunds\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\"\x9a\x01\n\rTransferFunds\x12(\n\x10\x66rom_player_root\x18\x01 \x01(\x0cR\x0e\x66romPlayerRoot\x12*\n\x06\x61mount\x18\x02 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1b\n\thand_root\x18\x03 \x01(\x0cR\x08handRoot\x12\x16\n\x06reason\x18\x04 \x01(\tR\x06reason\"\x85\x03\n\rRequestAction\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12$\n\x0e\x61mount_to_call\x18\x03 \x01(\x03R\x0c\x61mountToCall\x12\x1b\n\tmin_raise\x18\x04 \x01(\x03R\x08minRaise\x12\x1b\n\tmax_raise\x18\x05 \x01(\x03R\x08maxRaise\x12-\n\nhole_cards\x18\x06 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x37\n\x0f\x63ommunity_cards\x18\x07 \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12\x19\n\x08pot_size\x18\x08 \x01(\x03R\x07potSize\x12,\n\x05phase\x18\t \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12\'\n\x0ftimeout_seconds\x18\n \x01(\x05R\x0etimeoutSeconds\"\xe3\x01\n\x10PlayerRegistered\x12!\n\x0c\x64isplay_name\x18\x01 \x01(\tR\x0b\x64isplayName\x12\x14\n\x05\x65mail\x18\x02 \x01(\tR\x05\x65mail\x12\x35\n\x0bplayer_type\x18\x03 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12\x1e\n\x0b\x61i_model_id\x18\x04 \x01(\tR\taiModelId\x12?\n\rregistered_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0cregisteredAt\"\xb0\x01\n\x0e\x46undsDeposited\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x33\n\x0bnew_balance\x18\x02 \x01(\x0b\x32\x12.examples.CurrencyR\nnewBalance\x12=\n\x0c\x64\x65posited_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x64\x65positedAt\"\xb0\x01\n\x0e\x46undsWithdrawn\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x33\n\x0bnew_balance\x18\x02 \x01(\x0b\x32\x12.examples.CurrencyR\nnewBalance\x12=\n\x0cwithdrawn_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0bwithdrawnAt\"\xa5\x02\n\rFundsReserved\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x46\n\x15new_available_balance\x18\x03 \x01(\x0b\x32\x12.examples.CurrencyR\x13newAvailableBalance\x12\x44\n\x14new_reserved_balance\x18\x04 \x01(\x0b\x32\x12.examples.CurrencyR\x12newReservedBalance\x12;\n\x0breserved_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreservedAt\"\xa5\x02\n\rFundsReleased\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x46\n\x15new_available_balance\x18\x03 \x01(\x0b\x32\x12.examples.CurrencyR\x13newAvailableBalance\x12\x44\n\x14new_reserved_balance\x18\x04 \x01(\x0b\x32\x12.examples.CurrencyR\x12newReservedBalance\x12;\n\x0breleased_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreleasedAt\"\xbb\x02\n\x10\x46undsTransferred\x12(\n\x10\x66rom_player_root\x18\x01 \x01(\x0cR\x0e\x66romPlayerRoot\x12$\n\x0eto_player_root\x18\x02 \x01(\x0cR\x0ctoPlayerRoot\x12*\n\x06\x61mount\x18\x03 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1b\n\thand_root\x18\x04 \x01(\x0cR\x08handRoot\x12\x16\n\x06reason\x18\x05 \x01(\tR\x06reason\x12\x33\n\x0bnew_balance\x18\x06 \x01(\x0b\x32\x12.examples.CurrencyR\nnewBalance\x12\x41\n\x0etransferred_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\rtransferredAt\"\xee\x03\n\x0f\x41\x63tionRequested\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bplayer_root\x18\x03 \x01(\x0cR\nplayerRoot\x12\x35\n\x0bplayer_type\x18\x04 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12$\n\x0e\x61mount_to_call\x18\x05 \x01(\x03R\x0c\x61mountToCall\x12\x1b\n\tmin_raise\x18\x06 \x01(\x03R\x08minRaise\x12\x1b\n\tmax_raise\x18\x07 \x01(\x03R\x08maxRaise\x12-\n\nhole_cards\x18\x08 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x37\n\x0f\x63ommunity_cards\x18\t \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12\x19\n\x08pot_size\x18\n \x01(\x03R\x07potSize\x12,\n\x05phase\x18\x0b \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12\x36\n\x08\x64\x65\x61\x64line\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08\x64\x65\x61\x64line\"\xe0\x03\n\x0bPlayerState\x12\x1b\n\tplayer_id\x18\x01 \x01(\tR\x08playerId\x12!\n\x0c\x64isplay_name\x18\x02 \x01(\tR\x0b\x64isplayName\x12\x14\n\x05\x65mail\x18\x03 \x01(\tR\x05\x65mail\x12\x35\n\x0bplayer_type\x18\x04 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12\x1e\n\x0b\x61i_model_id\x18\x05 \x01(\tR\taiModelId\x12.\n\x08\x62\x61nkroll\x18\x06 \x01(\x0b\x32\x12.examples.CurrencyR\x08\x62\x61nkroll\x12\x39\n\x0ereserved_funds\x18\x07 \x01(\x0b\x32\x12.examples.CurrencyR\rreservedFunds\x12[\n\x12table_reservations\x18\x08 \x03(\x0b\x32,.examples.PlayerState.TableReservationsEntryR\x11tableReservations\x12\x16\n\x06status\x18\t \x01(\tR\x06status\x1a\x44\n\x16TableReservationsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value:\x02\x38\x01\x42[\n\x0c\x63om.examplesB\x0bPlayerProtoP\x01\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x15\x65xamples/player.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1a\x65xamples/poker_types.proto\"\xa0\x01\n\x0eRegisterPlayer\x12!\n\x0c\x64isplay_name\x18\x01 \x01(\tR\x0b\x64isplayName\x12\x14\n\x05\x65mail\x18\x02 \x01(\tR\x05\x65mail\x12\x35\n\x0bplayer_type\x18\x03 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12\x1e\n\x0b\x61i_model_id\x18\x04 \x01(\tR\taiModelId\":\n\x0c\x44\x65positFunds\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\";\n\rWithdrawFunds\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\"Y\n\x0cReserveFunds\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\"-\n\x0cReleaseFunds\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\"\x9a\x01\n\rTransferFunds\x12(\n\x10\x66rom_player_root\x18\x01 \x01(\x0cR\x0e\x66romPlayerRoot\x12*\n\x06\x61mount\x18\x02 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1b\n\thand_root\x18\x03 \x01(\x0cR\x08handRoot\x12\x16\n\x06reason\x18\x04 \x01(\tR\x06reason\"\x85\x03\n\rRequestAction\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12$\n\x0e\x61mount_to_call\x18\x03 \x01(\x03R\x0c\x61mountToCall\x12\x1b\n\tmin_raise\x18\x04 \x01(\x03R\x08minRaise\x12\x1b\n\tmax_raise\x18\x05 \x01(\x03R\x08maxRaise\x12-\n\nhole_cards\x18\x06 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x37\n\x0f\x63ommunity_cards\x18\x07 \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12\x19\n\x08pot_size\x18\x08 \x01(\x03R\x07potSize\x12,\n\x05phase\x18\t \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12\'\n\x0ftimeout_seconds\x18\n \x01(\x05R\x0etimeoutSeconds\"\xe3\x01\n\x10PlayerRegistered\x12!\n\x0c\x64isplay_name\x18\x01 \x01(\tR\x0b\x64isplayName\x12\x14\n\x05\x65mail\x18\x02 \x01(\tR\x05\x65mail\x12\x35\n\x0bplayer_type\x18\x03 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12\x1e\n\x0b\x61i_model_id\x18\x04 \x01(\tR\taiModelId\x12?\n\rregistered_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0cregisteredAt\"\xb0\x01\n\x0e\x46undsDeposited\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x33\n\x0bnew_balance\x18\x02 \x01(\x0b\x32\x12.examples.CurrencyR\nnewBalance\x12=\n\x0c\x64\x65posited_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x64\x65positedAt\"\xb0\x01\n\x0e\x46undsWithdrawn\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x33\n\x0bnew_balance\x18\x02 \x01(\x0b\x32\x12.examples.CurrencyR\nnewBalance\x12=\n\x0cwithdrawn_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0bwithdrawnAt\"\xa5\x02\n\rFundsReserved\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x46\n\x15new_available_balance\x18\x03 \x01(\x0b\x32\x12.examples.CurrencyR\x13newAvailableBalance\x12\x44\n\x14new_reserved_balance\x18\x04 \x01(\x0b\x32\x12.examples.CurrencyR\x12newReservedBalance\x12;\n\x0breserved_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreservedAt\"\xa5\x02\n\rFundsReleased\x12*\n\x06\x61mount\x18\x01 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x46\n\x15new_available_balance\x18\x03 \x01(\x0b\x32\x12.examples.CurrencyR\x13newAvailableBalance\x12\x44\n\x14new_reserved_balance\x18\x04 \x01(\x0b\x32\x12.examples.CurrencyR\x12newReservedBalance\x12;\n\x0breleased_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreleasedAt\"\xbb\x02\n\x10\x46undsTransferred\x12(\n\x10\x66rom_player_root\x18\x01 \x01(\x0cR\x0e\x66romPlayerRoot\x12$\n\x0eto_player_root\x18\x02 \x01(\x0cR\x0ctoPlayerRoot\x12*\n\x06\x61mount\x18\x03 \x01(\x0b\x32\x12.examples.CurrencyR\x06\x61mount\x12\x1b\n\thand_root\x18\x04 \x01(\x0cR\x08handRoot\x12\x16\n\x06reason\x18\x05 \x01(\tR\x06reason\x12\x33\n\x0bnew_balance\x18\x06 \x01(\x0b\x32\x12.examples.CurrencyR\nnewBalance\x12\x41\n\x0etransferred_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\rtransferredAt\"\xee\x03\n\x0f\x41\x63tionRequested\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bplayer_root\x18\x03 \x01(\x0cR\nplayerRoot\x12\x35\n\x0bplayer_type\x18\x04 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12$\n\x0e\x61mount_to_call\x18\x05 \x01(\x03R\x0c\x61mountToCall\x12\x1b\n\tmin_raise\x18\x06 \x01(\x03R\x08minRaise\x12\x1b\n\tmax_raise\x18\x07 \x01(\x03R\x08maxRaise\x12-\n\nhole_cards\x18\x08 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x37\n\x0f\x63ommunity_cards\x18\t \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12\x19\n\x08pot_size\x18\n \x01(\x03R\x07potSize\x12,\n\x05phase\x18\x0b \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12\x36\n\x08\x64\x65\x61\x64line\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08\x64\x65\x61\x64line\"\xe0\x03\n\x0bPlayerState\x12\x1b\n\tplayer_id\x18\x01 \x01(\tR\x08playerId\x12!\n\x0c\x64isplay_name\x18\x02 \x01(\tR\x0b\x64isplayName\x12\x14\n\x05\x65mail\x18\x03 \x01(\tR\x05\x65mail\x12\x35\n\x0bplayer_type\x18\x04 \x01(\x0e\x32\x14.examples.PlayerTypeR\nplayerType\x12\x1e\n\x0b\x61i_model_id\x18\x05 \x01(\tR\taiModelId\x12.\n\x08\x62\x61nkroll\x18\x06 \x01(\x0b\x32\x12.examples.CurrencyR\x08\x62\x61nkroll\x12\x39\n\x0ereserved_funds\x18\x07 \x01(\x0b\x32\x12.examples.CurrencyR\rreservedFunds\x12[\n\x12table_reservations\x18\x08 \x03(\x0b\x32,.examples.PlayerState.TableReservationsEntryR\x11tableReservations\x12\x16\n\x06status\x18\t \x01(\tR\x06status\x1a\x44\n\x16TableReservationsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value:\x02\x38\x01\x42\x86\x01\n\x0c\x63om.examplesB\x0bPlayerProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.player_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\013PlayerProtoP\001\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
+  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\013PlayerProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
   _globals['_PLAYERSTATE_TABLERESERVATIONSENTRY']._loaded_options = None
   _globals['_PLAYERSTATE_TABLERESERVATIONSENTRY']._serialized_options = b'8\001'
-  _globals['_REGISTERPLAYER']._serialized_start=91
-  _globals['_REGISTERPLAYER']._serialized_end=251
-  _globals['_DEPOSITFUNDS']._serialized_start=253
-  _globals['_DEPOSITFUNDS']._serialized_end=311
-  _globals['_WITHDRAWFUNDS']._serialized_start=313
-  _globals['_WITHDRAWFUNDS']._serialized_end=372
-  _globals['_RESERVEFUNDS']._serialized_start=374
-  _globals['_RESERVEFUNDS']._serialized_end=463
-  _globals['_RELEASEFUNDS']._serialized_start=465
-  _globals['_RELEASEFUNDS']._serialized_end=510
-  _globals['_TRANSFERFUNDS']._serialized_start=513
-  _globals['_TRANSFERFUNDS']._serialized_end=667
-  _globals['_REQUESTACTION']._serialized_start=670
-  _globals['_REQUESTACTION']._serialized_end=1059
-  _globals['_PLAYERREGISTERED']._serialized_start=1062
-  _globals['_PLAYERREGISTERED']._serialized_end=1289
-  _globals['_FUNDSDEPOSITED']._serialized_start=1292
-  _globals['_FUNDSDEPOSITED']._serialized_end=1468
-  _globals['_FUNDSWITHDRAWN']._serialized_start=1471
-  _globals['_FUNDSWITHDRAWN']._serialized_end=1647
-  _globals['_FUNDSRESERVED']._serialized_start=1650
-  _globals['_FUNDSRESERVED']._serialized_end=1943
-  _globals['_FUNDSRELEASED']._serialized_start=1946
-  _globals['_FUNDSRELEASED']._serialized_end=2239
-  _globals['_FUNDSTRANSFERRED']._serialized_start=2242
-  _globals['_FUNDSTRANSFERRED']._serialized_end=2557
-  _globals['_ACTIONREQUESTED']._serialized_start=2560
-  _globals['_ACTIONREQUESTED']._serialized_end=3054
-  _globals['_PLAYERSTATE']._serialized_start=3057
-  _globals['_PLAYERSTATE']._serialized_end=3537
-  _globals['_PLAYERSTATE_TABLERESERVATIONSENTRY']._serialized_start=3469
-  _globals['_PLAYERSTATE_TABLERESERVATIONSENTRY']._serialized_end=3537
+  _globals['_REGISTERPLAYER']._serialized_start=97
+  _globals['_REGISTERPLAYER']._serialized_end=257
+  _globals['_DEPOSITFUNDS']._serialized_start=259
+  _globals['_DEPOSITFUNDS']._serialized_end=317
+  _globals['_WITHDRAWFUNDS']._serialized_start=319
+  _globals['_WITHDRAWFUNDS']._serialized_end=378
+  _globals['_RESERVEFUNDS']._serialized_start=380
+  _globals['_RESERVEFUNDS']._serialized_end=469
+  _globals['_RELEASEFUNDS']._serialized_start=471
+  _globals['_RELEASEFUNDS']._serialized_end=516
+  _globals['_TRANSFERFUNDS']._serialized_start=519
+  _globals['_TRANSFERFUNDS']._serialized_end=673
+  _globals['_REQUESTACTION']._serialized_start=676
+  _globals['_REQUESTACTION']._serialized_end=1065
+  _globals['_PLAYERREGISTERED']._serialized_start=1068
+  _globals['_PLAYERREGISTERED']._serialized_end=1295
+  _globals['_FUNDSDEPOSITED']._serialized_start=1298
+  _globals['_FUNDSDEPOSITED']._serialized_end=1474
+  _globals['_FUNDSWITHDRAWN']._serialized_start=1477
+  _globals['_FUNDSWITHDRAWN']._serialized_end=1653
+  _globals['_FUNDSRESERVED']._serialized_start=1656
+  _globals['_FUNDSRESERVED']._serialized_end=1949
+  _globals['_FUNDSRELEASED']._serialized_start=1952
+  _globals['_FUNDSRELEASED']._serialized_end=2245
+  _globals['_FUNDSTRANSFERRED']._serialized_start=2248
+  _globals['_FUNDSTRANSFERRED']._serialized_end=2563
+  _globals['_ACTIONREQUESTED']._serialized_start=2566
+  _globals['_ACTIONREQUESTED']._serialized_end=3060
+  _globals['_PLAYERSTATE']._serialized_start=3063
+  _globals['_PLAYERSTATE']._serialized_end=3543
+  _globals['_PLAYERSTATE_TABLERESERVATIONSENTRY']._serialized_start=3475
+  _globals['_PLAYERSTATE_TABLERESERVATIONSENTRY']._serialized_end=3543
 # @@protoc_insertion_point(module_scope)

@@ -18,7 +18,7 @@ use crate::orchestration::command::local::LocalCommandExecutor;
 use crate::orchestration::destination::local::LocalDestinationFetcher;
 use crate::orchestration::process_manager::local::LocalPMContextFactory;
 use crate::orchestration::saga::local::LocalSagaContextFactory;
-use crate::proto::{CommandBook, ComponentDescriptor, Target};
+use crate::proto::CommandBook;
 use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore, StorageConfig};
 use crate::transport::TransportConfig;
@@ -50,8 +50,6 @@ pub struct Runtime {
     router: Arc<CommandRouter>,
     /// Speculative executor for dry-run of projectors, sagas, and PMs.
     speculative: Arc<SpeculativeExecutor>,
-    /// Component descriptors collected from all registered handlers at build time.
-    descriptors: Vec<ComponentDescriptor>,
     /// Background task handles.
     tasks: Vec<JoinHandle<()>>,
     /// gRPC servers for cleanup on shutdown.
@@ -83,12 +81,6 @@ impl Runtime {
         event_bus: Arc<dyn EventBus>,
         limits: ResourceLimits,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Collect descriptors from all registered handlers before they're consumed.
-        // Fills in name/component_type from registration keys and config when the
-        // handler returns a default descriptor (pre-router migration).
-        let descriptors =
-            Self::collect_descriptors(&aggregates, &projectors, &sagas, &process_managers);
-
         // Initialize per-domain storage
         let mut domain_stores = HashMap::new();
 
@@ -259,7 +251,7 @@ impl Runtime {
 
         // Process managers — subscriber_all with handler-level subscription filtering
         for (name, (handler, config)) in process_managers {
-            let subscriptions = handler.descriptor().inputs;
+            let subscriptions = config.subscriptions.clone();
             let pm_store = match domain_stores.get(&config.domain) {
                 Some(store) => store.clone(),
                 None => continue,
@@ -298,7 +290,6 @@ impl Runtime {
             event_bus,
             router,
             speculative,
-            descriptors,
             tasks: Vec::new(),
             servers,
             limits,
@@ -371,97 +362,13 @@ impl Runtime {
         super::client::SpeculativeClient::new(self.speculative.clone(), self.router.clone())
     }
 
-    /// Get the component descriptors collected at build time.
-    ///
-    /// These describe all registered handlers (aggregates, projectors, sagas,
-    /// process managers) with their names, types, and input subscriptions.
-    /// Pass to `TopologyProjector::register_components()` for graph construction.
-    pub fn descriptors(&self) -> &[ComponentDescriptor] {
-        &self.descriptors
-    }
-
-    /// Collect descriptors from all registered handlers.
-    ///
-    /// Merges handler-declared descriptors with registration metadata (keys + config).
-    /// Handlers returning default descriptors get name/type/inputs filled from config.
-    fn collect_descriptors(
-        aggregates: &HashMap<String, Arc<dyn AggregateHandler>>,
-        projectors: &HashMap<String, (Arc<dyn ProjectorHandler>, ProjectorConfig)>,
-        sagas: &HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
-        process_managers: &HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
-    ) -> Vec<ComponentDescriptor> {
-        let mut descriptors = Vec::new();
-
-        for (domain, handler) in aggregates {
-            let mut desc = handler.descriptor();
-            if desc.name.is_empty() {
-                desc.name = domain.clone();
-            }
-            if desc.component_type.is_empty() {
-                desc.component_type = "aggregate".to_string();
-            }
-            descriptors.push(desc);
-        }
-
-        for (name, (handler, config)) in projectors {
-            let mut desc = handler.descriptor();
-            if desc.name.is_empty() {
-                desc.name = name.clone();
-            }
-            if desc.component_type.is_empty() {
-                desc.component_type = "projector".to_string();
-            }
-            if desc.inputs.is_empty() && !config.domains.is_empty() {
-                desc.inputs = config
-                    .domains
-                    .iter()
-                    .map(|d| Target {
-                        domain: d.clone(),
-                        types: vec![],
-                    })
-                    .collect();
-            }
-            descriptors.push(desc);
-        }
-
-        for (name, (handler, config)) in sagas {
-            let mut desc = handler.descriptor();
-            if desc.name.is_empty() {
-                desc.name = name.clone();
-            }
-            if desc.component_type.is_empty() {
-                desc.component_type = "saga".to_string();
-            }
-            if desc.inputs.is_empty() {
-                desc.inputs = vec![Target {
-                    domain: config.input_domain.clone(),
-                    types: vec![],
-                }];
-            }
-            descriptors.push(desc);
-        }
-
-        for (name, (handler, _config)) in process_managers {
-            let mut desc = handler.descriptor();
-            if desc.name.is_empty() {
-                desc.name = name.clone();
-            }
-            if desc.component_type.is_empty() {
-                desc.component_type = "process_manager".to_string();
-            }
-            descriptors.push(desc);
-        }
-
-        descriptors
-    }
-
     /// Start the runtime without blocking.
     ///
     /// This starts event distribution to projectors and sagas.
     /// Use this for testing or when you need to interact with the runtime
     /// programmatically after starting.
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        info!(components = self.descriptors.len(), "Runtime started");
+        info!("Runtime started");
         Ok(())
     }
 

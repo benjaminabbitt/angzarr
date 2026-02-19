@@ -91,7 +91,7 @@ func (b *CommandBuilder) Build() (*pb.CommandBook, error) {
 		Cover: cover,
 		Pages: []*pb.CommandPage{{
 			Sequence: b.sequence,
-			Command:  &anypb.Any{TypeUrl: b.typeURL, Value: b.payload},
+			Payload:  &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: b.typeURL, Value: b.payload}},
 		}},
 	}, nil
 }

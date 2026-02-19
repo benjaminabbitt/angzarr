@@ -3,7 +3,6 @@
 import grpc
 
 from angzarr_client.proto.angzarr import process_manager_pb2 as angzarr_dot_process__manager__pb2
-from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
 class ProcessManagerServiceStub(object):
@@ -30,11 +29,6 @@ class ProcessManagerServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetDescriptor = channel.unary_unary(
-                '/angzarr.ProcessManagerService/GetDescriptor',
-                request_serializer=angzarr_dot_types__pb2.GetDescriptorRequest.SerializeToString,
-                response_deserializer=angzarr_dot_types__pb2.ComponentDescriptor.FromString,
-                _registered_method=True)
         self.Prepare = channel.unary_unary(
                 '/angzarr.ProcessManagerService/Prepare',
                 request_serializer=angzarr_dot_process__manager__pb2.ProcessManagerPrepareRequest.SerializeToString,
@@ -65,13 +59,6 @@ class ProcessManagerServiceServicer(object):
     It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
     """
 
-    def GetDescriptor(self, request, context):
-        """Self-description: component type, subscribed domains, handled event types
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def Prepare(self, request, context):
         """Phase 1: Declare which additional destinations are needed beyond the trigger.
         PM automatically receives triggering event's domain state.
@@ -91,11 +78,6 @@ class ProcessManagerServiceServicer(object):
 
 def add_ProcessManagerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetDescriptor': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetDescriptor,
-                    request_deserializer=angzarr_dot_types__pb2.GetDescriptorRequest.FromString,
-                    response_serializer=angzarr_dot_types__pb2.ComponentDescriptor.SerializeToString,
-            ),
             'Prepare': grpc.unary_unary_rpc_method_handler(
                     servicer.Prepare,
                     request_deserializer=angzarr_dot_process__manager__pb2.ProcessManagerPrepareRequest.FromString,
@@ -131,33 +113,6 @@ class ProcessManagerService(object):
     Process Manager IS an aggregate with its own domain, events, and state.
     It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
     """
-
-    @staticmethod
-    def GetDescriptor(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/angzarr.ProcessManagerService/GetDescriptor',
-            angzarr_dot_types__pb2.GetDescriptorRequest.SerializeToString,
-            angzarr_dot_types__pb2.ComponentDescriptor.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
 
     @staticmethod
     def Prepare(request,

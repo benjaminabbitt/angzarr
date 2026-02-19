@@ -153,26 +153,42 @@ class CommandRouter<S> {
         }
         throw new IllegalStateException("CommandRouter requires either rebuild function or StateRouter");
     }
-
-    public Descriptor descriptor() {
-        return new Descriptor(domain, ComponentTypes.AGGREGATE,
-            List.of(new TargetDesc(domain, types())));
-    }
-
-    public List<String> types() {
-        return handlers.stream().map(Map.Entry::getKey).toList();
-    }
 }
 
 /**
- * DRY event dispatcher for sagas (functional pattern).
+ * Unified event dispatcher for sagas, process managers, and projectors.
+ * Uses fluent .domain().on() pattern to register handlers with domain context.
+ *
+ * Example (Saga - single domain):
+ * <pre>
+ * EventRouter router = new EventRouter("saga-table-hand")
+ *     .domain("table")
+ *     .on("HandStarted", this::handleStarted);
+ * </pre>
+ *
+ * Example (Process Manager - multi-domain):
+ * <pre>
+ * EventRouter router = new EventRouter("pmg-order-flow")
+ *     .domain("order")
+ *     .on("OrderCreated", this::handleCreated)
+ *     .domain("inventory")
+ *     .on("StockReserved", this::handleReserved);
+ * </pre>
+ *
+ * Example (Projector - multi-domain):
+ * <pre>
+ * EventRouter router = new EventRouter("prj-output")
+ *     .domain("player")
+ *     .on("PlayerRegistered", this::handleRegistered)
+ *     .domain("hand")
+ *     .on("CardsDealt", this::handleDealt);
+ * </pre>
  */
 class EventRouter {
     private final String name;
-    private final String inputDomain;
-    private final Map<String, List<String>> outputTargets = new HashMap<>();
-    private final List<Map.Entry<String, EventHandler>> handlers = new ArrayList<>();
-    private final Map<String, PrepareHandler> prepareHandlers = new HashMap<>();
+    private String currentDomain;
+    private final Map<String, List<Map.Entry<String, EventHandler>>> handlers = new HashMap<>();
+    private final Map<String, Map<String, PrepareHandler>> prepareHandlers = new HashMap<>();
 
     @FunctionalInterface
     public interface EventHandler {
@@ -184,33 +200,88 @@ class EventRouter {
         List<Cover> handle(Any eventAny, dev.angzarr.UUID root);
     }
 
+    public EventRouter(String name) {
+        this.name = name;
+    }
+
+    /**
+     * Create a new EventRouter with a single input domain (backwards compatibility).
+     * @deprecated Use new EventRouter(name).domain(inputDomain) instead.
+     */
+    @Deprecated
     public EventRouter(String name, String inputDomain) {
         this.name = name;
-        this.inputDomain = inputDomain;
+        if (inputDomain != null && !inputDomain.isEmpty()) {
+            domain(inputDomain);
+        }
     }
 
-    public EventRouter sends(String domain, String commandType) {
-        outputTargets.computeIfAbsent(domain, k -> new ArrayList<>()).add(commandType);
+    /**
+     * Set the current domain context for subsequent on() calls.
+     */
+    public EventRouter domain(String name) {
+        this.currentDomain = name;
+        handlers.computeIfAbsent(name, k -> new ArrayList<>());
+        prepareHandlers.computeIfAbsent(name, k -> new HashMap<>());
         return this;
     }
 
+    /**
+     * Register a prepare handler for an event type_url suffix.
+     * Must be called after domain() to set context.
+     */
     public EventRouter prepare(String suffix, PrepareHandler handler) {
-        prepareHandlers.put(suffix, handler);
+        if (currentDomain == null) {
+            throw new IllegalStateException("Must call domain() before prepare()");
+        }
+        prepareHandlers.get(currentDomain).put(suffix, handler);
         return this;
     }
 
+    /**
+     * Register a handler for an event type_url suffix in current domain.
+     * Must be called after domain() to set context.
+     */
     public EventRouter on(String suffix, EventHandler handler) {
-        handlers.add(new AbstractMap.SimpleEntry<>(suffix, handler));
+        if (currentDomain == null) {
+            throw new IllegalStateException("Must call domain() before on()");
+        }
+        handlers.get(currentDomain).add(new AbstractMap.SimpleEntry<>(suffix, handler));
         return this;
     }
 
+    /**
+     * Auto-derive subscriptions from registered handlers.
+     * @return Map of domain to event types.
+     */
+    public Map<String, List<String>> subscriptions() {
+        var result = new HashMap<String, List<String>>();
+        for (var entry : handlers.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                result.put(entry.getKey(),
+                    entry.getValue().stream().map(Map.Entry::getKey).toList());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get destinations needed for the given source events.
+     * Routes based on source domain.
+     */
     public List<Cover> prepareDestinations(EventBook book) {
+        var sourceDomain = book.hasCover() ? book.getCover().getDomain() : "";
+        var domainHandlers = prepareHandlers.get(sourceDomain);
+        if (domainHandlers == null) {
+            return List.of();
+        }
+
         var root = book.hasCover() ? book.getCover().getRoot() : null;
         var destinations = new ArrayList<Cover>();
 
         for (var page : book.getPagesList()) {
             if (!page.hasEvent()) continue;
-            for (var entry : prepareHandlers.entrySet()) {
+            for (var entry : domainHandlers.entrySet()) {
                 if (page.getEvent().getTypeUrl().endsWith(entry.getKey())) {
                     destinations.addAll(entry.getValue().handle(page.getEvent(), root));
                     break;
@@ -220,7 +291,17 @@ class EventRouter {
         return destinations;
     }
 
+    /**
+     * Dispatch all events in an EventBook to registered handlers.
+     * Routes based on source domain and event type suffix.
+     */
     public List<CommandBook> dispatch(EventBook book, List<EventBook> destinations) {
+        var sourceDomain = book.hasCover() ? book.getCover().getDomain() : "";
+        var domainHandlers = handlers.get(sourceDomain);
+        if (domainHandlers == null) {
+            return List.of();
+        }
+
         var root = book.hasCover() ? book.getCover().getRoot().getValue().toByteArray() : null;
         var correlationId = book.hasCover() ? book.getCover().getCorrelationId() : "";
         var dests = destinations != null ? destinations : List.<EventBook>of();
@@ -228,7 +309,7 @@ class EventRouter {
         var commands = new ArrayList<CommandBook>();
         for (var page : book.getPagesList()) {
             if (!page.hasEvent()) continue;
-            for (var entry : handlers) {
+            for (var entry : domainHandlers) {
                 if (page.getEvent().getTypeUrl().endsWith(entry.getKey())) {
                     commands.addAll(entry.getValue().handle(page.getEvent(), root, correlationId, dests));
                     break;
@@ -238,13 +319,42 @@ class EventRouter {
         return commands;
     }
 
-    public Descriptor descriptor() {
-        return new Descriptor(name, ComponentTypes.SAGA,
-            List.of(new TargetDesc(inputDomain, types())));
+    /**
+     * Return the first registered domain (for backwards compatibility).
+     * @deprecated Use subscriptions() instead.
+     */
+    @Deprecated
+    public String inputDomain() {
+        return handlers.keySet().stream().findFirst().orElse("");
     }
 
-    public List<String> types() {
-        return handlers.stream().map(Map.Entry::getKey).toList();
+    /**
+     * Declare an output domain and command type (deprecated, no-op).
+     * This method was used for topology discovery but is now deprecated.
+     * @deprecated This method has no effect and will be removed.
+     */
+    @Deprecated
+    public EventRouter sends(String domain, String commandType) {
+        // No-op for backwards compatibility
+        return this;
+    }
+
+    /**
+     * Return output domain names (deprecated, returns empty list).
+     * @deprecated Output domains are no longer tracked.
+     */
+    @Deprecated
+    public List<String> outputDomains() {
+        return List.of();
+    }
+
+    /**
+     * Return command types for a given output domain (deprecated, returns empty list).
+     * @deprecated Output types are no longer tracked.
+     */
+    @Deprecated
+    public List<String> outputTypes(String domain) {
+        return List.of();
     }
 }
 

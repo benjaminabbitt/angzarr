@@ -1872,7 +1872,7 @@ var File_examples_hand_proto protoreflect.FileDescriptor
 
 const file_examples_hand_proto_rawDesc = "" +
 	"\n" +
-	"\x13examples/hand.proto\x12\bexamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14examples/types.proto\"\xbb\x02\n" +
+	"\x13examples/hand.proto\x12\bexamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1aexamples/poker_types.proto\"\xbb\x02\n" +
 	"\tDealCards\x12\x1d\n" +
 	"\n" +
 	"table_root\x18\x01 \x01(\fR\ttableRoot\x12\x1f\n" +
@@ -2156,7 +2156,7 @@ func file_examples_hand_proto_init() {
 	if File_examples_hand_proto != nil {
 		return
 	}
-	file_examples_types_proto_init()
+	file_examples_poker_types_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

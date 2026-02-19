@@ -386,14 +386,15 @@ func (pm *ProcessManagerBase[S]) RebuildState(processState *pb.EventBook) S {
 	}
 
 	for _, page := range processState.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 		for suffix, applier := range pm.appliers {
 			if strings.HasSuffix(typeURL, suffix) {
-				applier(state, page.Event)
+				applier(state, event)
 				break
 			}
 		}
@@ -413,14 +414,15 @@ func (pm *ProcessManagerBase[S]) PrepareDestinations(trigger, processState *pb.E
 
 	var covers []*pb.Cover
 	for _, page := range trigger.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 		for suffix, handler := range pm.prepares {
 			if strings.HasSuffix(typeURL, suffix) {
-				result := handler(trigger, state, page.Event)
+				result := handler(trigger, state, event)
 				covers = append(covers, result...)
 				break
 			}
@@ -445,15 +447,16 @@ func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, des
 	var notification *pb.Notification
 
 	for _, page := range trigger.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 
 		// Check for Notification (rejection/compensation)
 		if strings.HasSuffix(typeURL, "Notification") {
-			resp := pm.handleNotification(state, page.Event)
+			resp := pm.handleNotification(state, event)
 			if resp != nil {
 				if resp.Events != nil {
 					allPMEvents = append(allPMEvents, resp.Events.Pages...)
@@ -467,7 +470,7 @@ func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, des
 
 		for suffix, handler := range pm.handlers {
 			if strings.HasSuffix(typeURL, suffix) {
-				cmds, pmEvents, err := handler(trigger, state, page.Event, destinations)
+				cmds, pmEvents, err := handler(trigger, state, event, destinations)
 				if err != nil {
 					return nil, nil, nil, err
 				}
@@ -533,8 +536,8 @@ func extractRejectionKey(rejection *pb.RejectionNotification) (string, string) {
 	cmdSuffix := ""
 	if len(rejection.RejectedCommand.Pages) > 0 {
 		page := rejection.RejectedCommand.Pages[0]
-		if page.Command != nil {
-			typeURL := page.Command.TypeUrl
+		if cmd := page.GetCommand(); cmd != nil {
+			typeURL := cmd.TypeUrl
 			// Extract suffix (last part after /)
 			if idx := strings.LastIndex(typeURL, "/"); idx >= 0 {
 				cmdSuffix = typeURL[idx+1:]
@@ -554,21 +557,4 @@ func (pm *ProcessManagerBase[S]) HandlerTypes() []string {
 		types = append(types, suffix)
 	}
 	return types
-}
-
-// Descriptor builds a ComponentDescriptor from registered handlers.
-func (pm *ProcessManagerBase[S]) Descriptor() *pb.ComponentDescriptor {
-	inputs := make([]*pb.Target, len(pm.inputDomains))
-	for i, domain := range pm.inputDomains {
-		inputs[i] = &pb.Target{
-			Domain: domain,
-			Types:  pm.HandlerTypes(), // All handler types apply to all input domains
-		}
-	}
-
-	return &pb.ComponentDescriptor{
-		Name:          pm.name,
-		ComponentType: ComponentProcessManager,
-		Inputs:        inputs,
-	}
 }

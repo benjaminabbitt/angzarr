@@ -12,8 +12,6 @@ import "google/protobuf/empty.proto";
 // ProjectorService: client logic that projects events to read models
 // client logic doesn't care about sync - coordinator decides
 service ProjectorService {
-  // Self-description: component type, subscribed domains, handled event types
-  rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
   // Async projection - projector should persist and return
   rpc Handle (EventBook) returns (Projection);
   // Speculative processing - projector must avoid external side effects

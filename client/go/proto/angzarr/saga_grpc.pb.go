@@ -19,9 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SagaService_GetDescriptor_FullMethodName = "/angzarr.SagaService/GetDescriptor"
-	SagaService_Prepare_FullMethodName       = "/angzarr.SagaService/Prepare"
-	SagaService_Execute_FullMethodName       = "/angzarr.SagaService/Execute"
+	SagaService_Prepare_FullMethodName = "/angzarr.SagaService/Prepare"
+	SagaService_Execute_FullMethodName = "/angzarr.SagaService/Execute"
 )
 
 // SagaServiceClient is the client API for SagaService service.
@@ -31,8 +30,6 @@ const (
 // SagaService: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
 type SagaServiceClient interface {
-	// Self-description: component type, subscribed domains, handled event types
-	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
 	// Phase 1: Saga declares which destination aggregates it needs
 	Prepare(ctx context.Context, in *SagaPrepareRequest, opts ...grpc.CallOption) (*SagaPrepareResponse, error)
 	// Phase 2: Execute with source + fetched destination state
@@ -45,16 +42,6 @@ type sagaServiceClient struct {
 
 func NewSagaServiceClient(cc grpc.ClientConnInterface) SagaServiceClient {
 	return &sagaServiceClient{cc}
-}
-
-func (c *sagaServiceClient) GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ComponentDescriptor)
-	err := c.cc.Invoke(ctx, SagaService_GetDescriptor_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *sagaServiceClient) Prepare(ctx context.Context, in *SagaPrepareRequest, opts ...grpc.CallOption) (*SagaPrepareResponse, error) {
@@ -84,8 +71,6 @@ func (c *sagaServiceClient) Execute(ctx context.Context, in *SagaExecuteRequest,
 // SagaService: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
 type SagaServiceServer interface {
-	// Self-description: component type, subscribed domains, handled event types
-	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
 	// Phase 1: Saga declares which destination aggregates it needs
 	Prepare(context.Context, *SagaPrepareRequest) (*SagaPrepareResponse, error)
 	// Phase 2: Execute with source + fetched destination state
@@ -100,9 +85,6 @@ type SagaServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSagaServiceServer struct{}
 
-func (UnimplementedSagaServiceServer) GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDescriptor not implemented")
-}
 func (UnimplementedSagaServiceServer) Prepare(context.Context, *SagaPrepareRequest) (*SagaPrepareResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Prepare not implemented")
 }
@@ -128,24 +110,6 @@ func RegisterSagaServiceServer(s grpc.ServiceRegistrar, srv SagaServiceServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&SagaService_ServiceDesc, srv)
-}
-
-func _SagaService_GetDescriptor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDescriptorRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SagaServiceServer).GetDescriptor(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SagaService_GetDescriptor_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SagaServiceServer).GetDescriptor(ctx, req.(*GetDescriptorRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _SagaService_Prepare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -191,10 +155,6 @@ var SagaService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "angzarr.SagaService",
 	HandlerType: (*SagaServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetDescriptor",
-			Handler:    _SagaService_GetDescriptor_Handler,
-		},
 		{
 			MethodName: "Prepare",
 			Handler:    _SagaService_Prepare_Handler,

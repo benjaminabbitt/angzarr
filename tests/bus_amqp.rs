@@ -5,6 +5,8 @@
 //! These tests spin up RabbitMQ in a container using testcontainers-rs.
 //! No manual RabbitMQ setup required.
 
+#![cfg(feature = "amqp")]
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

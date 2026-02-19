@@ -4,8 +4,8 @@ namespace hand {
 namespace saga {
 
 angzarr::EventRouter create_hand_table_router() {
-    return angzarr::EventRouter("saga-hand-table", "hand")
-        .sends("table", "EndHand")
+    return angzarr::EventRouter("saga-hand-table")
+        .domain("hand")
         .prepare<examples::HandComplete>(prepare_hand_complete)
         .on<examples::HandComplete>(handle_hand_complete);
 }

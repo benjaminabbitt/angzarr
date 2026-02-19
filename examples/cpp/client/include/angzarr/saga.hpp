@@ -32,9 +32,6 @@ public:
     /// Get the input domain this saga listens to.
     virtual std::string input_domain() const = 0;
 
-    /// Get the output domain this saga sends commands to.
-    virtual std::string output_domain() const = 0;
-
     /// Prepare phase - declare destinations needed.
     template<typename EventType>
     std::vector<Cover> prepare(const EventType& event) {

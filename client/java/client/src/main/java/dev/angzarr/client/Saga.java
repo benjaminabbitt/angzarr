@@ -103,18 +103,6 @@ public abstract class Saga {
     }
 
     /**
-     * Build a component descriptor.
-     */
-    public Descriptor getDescriptor() {
-        List<String> types = new ArrayList<>(handlers.keySet());
-        return new Descriptor(
-            name,
-            ComponentTypes.SAGA,
-            List.of(new TargetDesc(inputDomain, types))
-        );
-    }
-
-    /**
      * Pack a command into a CommandBook.
      */
     protected List<CommandBook> packCommands(Message command, String correlationId) {

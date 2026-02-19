@@ -7,7 +7,7 @@
 #include "examples/player.pb.h"
 #include "examples/table.pb.h"
 #include "examples/hand.pb.h"
-#include "examples/types.pb.h"
+#include "examples/poker_types.pb.h"
 
 namespace projector {
 

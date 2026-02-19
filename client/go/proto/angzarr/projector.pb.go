@@ -82,9 +82,8 @@ const file_angzarr_projector_proto_rawDesc = "" +
 	"\x17angzarr/projector.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x83\x01\n" +
 	"\x19SpeculateProjectorRequest\x12*\n" +
 	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookR\x06events\x12:\n" +
-	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\xd1\x01\n" +
-	"\x10ProjectorService\x12L\n" +
-	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x121\n" +
+	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\x83\x01\n" +
+	"\x10ProjectorService\x121\n" +
 	"\x06Handle\x12\x12.angzarr.EventBook\x1a\x13.angzarr.Projection\x12<\n" +
 	"\x11HandleSpeculative\x12\x12.angzarr.EventBook\x1a\x13.angzarr.Projection2\xdc\x01\n" +
 	"\x1bProjectorCoordinatorService\x129\n" +
@@ -111,29 +110,25 @@ var file_angzarr_projector_proto_goTypes = []any{
 	(*SpeculateProjectorRequest)(nil), // 0: angzarr.SpeculateProjectorRequest
 	(*EventBook)(nil),                 // 1: angzarr.EventBook
 	(*TemporalQuery)(nil),             // 2: angzarr.TemporalQuery
-	(*GetDescriptorRequest)(nil),      // 3: angzarr.GetDescriptorRequest
-	(*SyncEventBook)(nil),             // 4: angzarr.SyncEventBook
-	(*ComponentDescriptor)(nil),       // 5: angzarr.ComponentDescriptor
-	(*Projection)(nil),                // 6: angzarr.Projection
-	(*emptypb.Empty)(nil),             // 7: google.protobuf.Empty
+	(*SyncEventBook)(nil),             // 3: angzarr.SyncEventBook
+	(*Projection)(nil),                // 4: angzarr.Projection
+	(*emptypb.Empty)(nil),             // 5: google.protobuf.Empty
 }
 var file_angzarr_projector_proto_depIdxs = []int32{
 	1, // 0: angzarr.SpeculateProjectorRequest.events:type_name -> angzarr.EventBook
 	2, // 1: angzarr.SpeculateProjectorRequest.point_in_time:type_name -> angzarr.TemporalQuery
-	3, // 2: angzarr.ProjectorService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	1, // 3: angzarr.ProjectorService.Handle:input_type -> angzarr.EventBook
-	1, // 4: angzarr.ProjectorService.HandleSpeculative:input_type -> angzarr.EventBook
-	4, // 5: angzarr.ProjectorCoordinatorService.HandleSync:input_type -> angzarr.SyncEventBook
-	1, // 6: angzarr.ProjectorCoordinatorService.Handle:input_type -> angzarr.EventBook
-	0, // 7: angzarr.ProjectorCoordinatorService.HandleSpeculative:input_type -> angzarr.SpeculateProjectorRequest
-	5, // 8: angzarr.ProjectorService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	6, // 9: angzarr.ProjectorService.Handle:output_type -> angzarr.Projection
-	6, // 10: angzarr.ProjectorService.HandleSpeculative:output_type -> angzarr.Projection
-	6, // 11: angzarr.ProjectorCoordinatorService.HandleSync:output_type -> angzarr.Projection
-	7, // 12: angzarr.ProjectorCoordinatorService.Handle:output_type -> google.protobuf.Empty
-	6, // 13: angzarr.ProjectorCoordinatorService.HandleSpeculative:output_type -> angzarr.Projection
-	8, // [8:14] is the sub-list for method output_type
-	2, // [2:8] is the sub-list for method input_type
+	1, // 2: angzarr.ProjectorService.Handle:input_type -> angzarr.EventBook
+	1, // 3: angzarr.ProjectorService.HandleSpeculative:input_type -> angzarr.EventBook
+	3, // 4: angzarr.ProjectorCoordinatorService.HandleSync:input_type -> angzarr.SyncEventBook
+	1, // 5: angzarr.ProjectorCoordinatorService.Handle:input_type -> angzarr.EventBook
+	0, // 6: angzarr.ProjectorCoordinatorService.HandleSpeculative:input_type -> angzarr.SpeculateProjectorRequest
+	4, // 7: angzarr.ProjectorService.Handle:output_type -> angzarr.Projection
+	4, // 8: angzarr.ProjectorService.HandleSpeculative:output_type -> angzarr.Projection
+	4, // 9: angzarr.ProjectorCoordinatorService.HandleSync:output_type -> angzarr.Projection
+	5, // 10: angzarr.ProjectorCoordinatorService.Handle:output_type -> google.protobuf.Empty
+	4, // 11: angzarr.ProjectorCoordinatorService.HandleSpeculative:output_type -> angzarr.Projection
+	7, // [7:12] is the sub-list for method output_type
+	2, // [2:7] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name

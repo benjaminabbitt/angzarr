@@ -15,7 +15,6 @@ import grpc
 from .proto.angzarr import upcaster_pb2 as upcaster
 from .proto.angzarr import upcaster_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .router import Descriptor, TargetDesc
 from .server import run_server
 
 if TYPE_CHECKING:
@@ -40,22 +39,6 @@ class UpcasterHandler(upcaster_pb2_grpc.UpcasterServiceServicer):
         self._handle_fn = fn
         return self
 
-    def GetDescriptor(
-        self,
-        request: types.GetDescriptorRequest,
-        context: grpc.ServicerContext,
-    ) -> types.ComponentDescriptor:
-        """Return component descriptor for service discovery."""
-        desc = self.descriptor()
-        return types.ComponentDescriptor(
-            name=desc.name,
-            component_type=desc.component_type,
-            inputs=[
-                types.Target(domain=inp.domain, types=inp.types)
-                for inp in desc.inputs
-            ],
-        )
-
     def Upcast(
         self,
         request: upcaster.UpcastRequest,
@@ -71,14 +54,6 @@ class UpcasterHandler(upcaster_pb2_grpc.UpcasterServiceServicer):
             events = self._handle_fn(events)
 
         return upcaster.UpcastResponse(events=events)
-
-    def descriptor(self) -> Descriptor:
-        """Build a component descriptor."""
-        return Descriptor(
-            name=self._name,
-            component_type="upcaster",
-            inputs=[TargetDesc(domain=self._domain)],
-        )
 
 
 def run_upcaster_server(

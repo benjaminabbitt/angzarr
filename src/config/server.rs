@@ -81,6 +81,11 @@ pub struct ServiceConfig {
     #[serde(default)]
     pub listen_domain: Option<String>,
 
+    /// Event subscriptions (process managers only).
+    /// Format: "domain:Type1,Type2;domain2" or "domain1;domain2" for all types.
+    #[serde(default)]
+    pub subscriptions: Option<String>,
+
     /// Environment variables to set for the spawned process.
     #[serde(default)]
     pub env: HashMap<String, String>,

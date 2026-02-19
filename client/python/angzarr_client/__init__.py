@@ -45,10 +45,6 @@ from .wrappers import (
 from .router import (
     CommandRouter,
     EventRouter,
-    Descriptor,
-    TargetDesc,
-    COMPONENT_AGGREGATE,
-    COMPONENT_SAGA,
     ERRMSG_UNKNOWN_COMMAND,
     ERRMSG_NO_COMMAND_PAGES,
     next_sequence as router_next_sequence,
@@ -163,10 +159,6 @@ __all__ = [
     # Router
     "CommandRouter",
     "EventRouter",
-    "Descriptor",
-    "TargetDesc",
-    "COMPONENT_AGGREGATE",
-    "COMPONENT_SAGA",
     "ERRMSG_UNKNOWN_COMMAND",
     "ERRMSG_NO_COMMAND_PAGES",
     "router_next_sequence",

@@ -225,26 +225,6 @@ message EventStreamFilter {
 }
 // docs:end:event_stream_filter
 
-// docs:start:target
-// Domain subscription with event types.
-// Types are auto-derived from router registrations, never manually configured.
-message Target {
-  string domain = 1;
-  repeated string types = 2;
-}
-// docs:end:target
-
-// Self-description of a runtime component (aggregate, saga, projector, process_manager).
-// Topology edges derived from inputs: if A subscribes to domain X, edge X→A exists.
-message ComponentDescriptor {
-  string name = 1;
-  string component_type = 2;
-  repeated Target inputs = 3;   // Domains I subscribe to (event types I consume)
-}
-
-// Request for GetDescriptor RPC.
-message GetDescriptorRequest {}
-
 // Track saga command origin for compensation flow
 message SagaCommandOrigin {
   string saga_name = 1;                 // Name of the saga that issued the command

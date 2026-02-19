@@ -9,7 +9,7 @@ from google.protobuf import any_pb2
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.saga import Saga, reacts_to
-from angzarr_client.router import EventRouter, event_handler, COMPONENT_SAGA
+from angzarr_client.router import EventRouter, event_handler
 
 from .fixtures import (
     CreateShipment,
@@ -97,8 +97,7 @@ def build_order_fulfillment_router() -> EventRouter:
 
     Demonstrates same logic as OrderFulfillmentSaga but with router pattern.
     """
-    router = EventRouter("saga-order-fulfillment-fn", "order")
-    router.sends("fulfillment", "CreateShipment")
+    router = EventRouter("saga-order-fulfillment-fn").domain("order")
 
     @event_handler(OrderCompleted)
     def handle_completed(
@@ -120,7 +119,7 @@ def build_order_fulfillment_router() -> EventRouter:
 
 def build_inventory_router() -> EventRouter:
     """Function-based router for inventory events."""
-    router = EventRouter("saga-inventory-order-fn", "inventory")
+    router = EventRouter("saga-inventory-order-fn").domain("inventory")
 
     @event_handler(StockReserved)
     def handle_reserved(
@@ -353,26 +352,6 @@ class TestSagaExecute:
 
 
 # =============================================================================
-# Tests for OO pattern descriptor
-# =============================================================================
-
-
-class TestSagaDescriptor:
-    def test_descriptor_returns_correct_type(self):
-        desc = OrderFulfillmentSaga.descriptor()
-
-        assert desc.name == "saga-order-fulfillment"
-        assert desc.component_type == COMPONENT_SAGA
-        assert len(desc.inputs) == 1
-        assert desc.inputs[0].domain == "order"
-
-    def test_descriptor_lists_event_types(self):
-        desc = OrderFulfillmentSaga.descriptor()
-
-        types_list = desc.inputs[0].types
-        assert "OrderCompleted" in types_list
-
-
 # =============================================================================
 # Tests for function-based pattern (router)
 # =============================================================================
@@ -387,7 +366,7 @@ class TestFunctionBasedRouter:
         event_any.Pack(event)
 
         source = types.EventBook(
-            cover=types.Cover(correlation_id="corr-fn-1"),
+            cover=types.Cover(domain="order", correlation_id="corr-fn-1"),
             pages=[types.EventPage(event=event_any)],
         )
 
@@ -405,7 +384,7 @@ class TestFunctionBasedRouter:
         event_any.Pack(event)
 
         source = types.EventBook(
-            cover=types.Cover(correlation_id="corr-fn-2"),
+            cover=types.Cover(domain="inventory", correlation_id="corr-fn-2"),
             pages=[types.EventPage(event=event_any)],
         )
 
@@ -414,21 +393,6 @@ class TestFunctionBasedRouter:
         assert len(commands) == 2
         assert commands[0].cover.domain == "order"
         assert commands[1].cover.domain == "order"
-
-    def test_router_descriptor(self):
-        router = build_order_fulfillment_router()
-        desc = router.descriptor()
-
-        assert desc.name == "saga-order-fulfillment-fn"
-        assert desc.component_type == COMPONENT_SAGA
-        assert "OrderCompleted" in desc.inputs[0].types
-
-    def test_router_output_domains(self):
-        router = build_order_fulfillment_router()
-
-        assert router.output_domains() == ["fulfillment"]
-        assert router.output_types("fulfillment") == ["CreateShipment"]
-
 
 # =============================================================================
 # Tests comparing both patterns produce equivalent output
@@ -450,7 +414,7 @@ class TestPatternEquivalence:
         # Function pattern
         router = build_order_fulfillment_router()
         source = types.EventBook(
-            cover=types.Cover(correlation_id="corr-eq"),
+            cover=types.Cover(domain="order", correlation_id="corr-eq"),
             pages=[types.EventPage(event=event_any)],
         )
         fn_commands = router.dispatch(source)

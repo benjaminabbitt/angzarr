@@ -212,16 +212,4 @@ public abstract class Saga
             Pages = { new Angzarr.CommandPage { Command = cmdAny } }
         };
     }
-
-    /// <summary>
-    /// Build a component descriptor for topology discovery.
-    /// </summary>
-    public Descriptor Descriptor()
-    {
-        var dispatchTable = _dispatchTables[GetType()];
-        return new Descriptor(
-            Name,
-            ComponentTypes.Saga,
-            new List<TargetDesc> { new(InputDomain, dispatchTable.Keys.ToList()) });
-    }
 }

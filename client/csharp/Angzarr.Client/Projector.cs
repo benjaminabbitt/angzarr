@@ -94,16 +94,4 @@ public abstract class Projector
         }
         return new Angzarr.Projection();
     }
-
-    /// <summary>
-    /// Build a component descriptor for topology discovery.
-    /// </summary>
-    public Descriptor Descriptor()
-    {
-        var dispatchTable = _dispatchTables[GetType()];
-        return new Descriptor(
-            Name,
-            ComponentTypes.Projector,
-            new List<TargetDesc> { new(InputDomain, dispatchTable.Keys.ToList()) });
-    }
 }

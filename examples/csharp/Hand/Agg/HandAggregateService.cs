@@ -19,25 +19,6 @@ public class HandAggregateService : AggregateService.AggregateServiceBase
         _router = router;
     }
 
-    public override Task<ComponentDescriptor> GetDescriptor(GetDescriptorRequest request, ServerCallContext context)
-    {
-        var descriptor = new ComponentDescriptor
-        {
-            Name = "hand",
-            ComponentType = "aggregate"
-        };
-        var input = new Target { Domain = "hand" };
-        input.Types_.Add("DealCards");
-        input.Types_.Add("PostBlind");
-        input.Types_.Add("PlayerAction");
-        input.Types_.Add("DealCommunityCards");
-        input.Types_.Add("RequestDraw");
-        input.Types_.Add("RevealCards");
-        input.Types_.Add("AwardPot");
-        descriptor.Inputs.Add(input);
-        return Task.FromResult(descriptor);
-    }
-
     public override Task<BusinessResponse> Handle(ContextualCommand request, ServerCallContext context)
     {
         try

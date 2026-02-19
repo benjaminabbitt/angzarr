@@ -222,15 +222,6 @@ public abstract class Aggregate<S> {
         return eventBook;
     }
 
-    /**
-     * Build a component descriptor for topology discovery.
-     */
-    public Descriptor descriptor() {
-        var dispatch = dispatchTables.get(getClass());
-        return new Descriptor(getDomain(), ComponentTypes.AGGREGATE,
-            List.of(new TargetDesc(getDomain(), new ArrayList<>(dispatch.keySet()))));
-    }
-
     private S rebuild() {
         var newState = createEmptyState();
         for (var page : eventBook.getPagesList()) {

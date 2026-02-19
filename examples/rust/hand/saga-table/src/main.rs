@@ -4,7 +4,7 @@
 //! Sends EndHand commands to Table domain.
 
 use angzarr_client::proto::examples::{EndHand, HandComplete, PotResult};
-use angzarr_client::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid};
+use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
     run_saga_server, CommandRejectedError, CommandResult, EventRouter, UnpackAny,
 };
@@ -80,7 +80,7 @@ fn handle_hand_complete(
         }),
         pages: vec![CommandPage {
             sequence: dest_seq,
-            command: Some(command_any),
+            payload: Some(command_page::Payload::Command(command_any)),
             ..Default::default()
         }],
         saga_origin: None,
@@ -94,8 +94,8 @@ async fn main() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let router = EventRouter::new("saga-hand-table", "hand")
-        .sends("table", "EndHand")
+    let router = EventRouter::new("saga-hand-table")
+        .domain("hand")
         .prepare("HandComplete", prepare_hand_complete)
         .on("HandComplete", handle_hand_complete);
 

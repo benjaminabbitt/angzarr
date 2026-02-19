@@ -3,7 +3,7 @@ package dev.angzarr.examples.table.sagaplayer;
 import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
 import dev.angzarr.*;
-import dev.angzarr.client.router.EventRouter;
+import dev.angzarr.client.EventRouter;
 import dev.angzarr.examples.*;
 
 import java.util.ArrayList;
@@ -22,8 +22,8 @@ public final class TablePlayerRouter {
     private TablePlayerRouter() {}
 
     public static EventRouter createRouter() {
-        return new EventRouter("saga-table-player", "table")
-            .sends("player", "ReleaseFunds")
+        return new EventRouter("saga-table-player")
+            .domain("table")
             .prepare(HandEnded.class, TablePlayerRouter::prepareHandEnded)
             .on(HandEnded.class, TablePlayerRouter::handleHandEnded);
     }

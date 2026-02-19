@@ -19,7 +19,6 @@ from .process_manager import ProcessManager
 from .proto.angzarr import process_manager_pb2 as pm
 from .proto.angzarr import process_manager_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .router import Descriptor, TargetDesc
 from .server import run_server
 
 if TYPE_CHECKING:
@@ -52,23 +51,14 @@ class ProcessManagerHandler(process_manager_pb2_grpc.ProcessManagerServiceServic
             # OO pattern: ProcessManager class
             self._pm_class = name_or_class
             self._name = name_or_class.name
-            self._inputs: list[TargetDesc] = list(name_or_class.descriptor().inputs)
             self._prepare_fn: PMPrepareFunc | None = None
             self._handle_fn: PMHandleFunc | None = None
         else:
             # Functional pattern: name string
             self._pm_class = None
             self._name = name_or_class
-            self._inputs = []
             self._prepare_fn = None
             self._handle_fn = None
-
-    def listen_to(self, domain: str, *types: str) -> ProcessManagerHandler:
-        """Subscribe to events from a domain."""
-        self._inputs.append(
-            TargetDesc(domain=domain, types=list(types))
-        )
-        return self
 
     def with_prepare(self, fn: PMPrepareFunc) -> ProcessManagerHandler:
         """Set the prepare callback."""
@@ -79,22 +69,6 @@ class ProcessManagerHandler(process_manager_pb2_grpc.ProcessManagerServiceServic
         """Set the handle callback."""
         self._handle_fn = fn
         return self
-
-    def GetDescriptor(
-        self,
-        request: types.GetDescriptorRequest,
-        context: grpc.ServicerContext,
-    ) -> types.ComponentDescriptor:
-        """Return the component descriptor."""
-        desc = self.descriptor()
-        return types.ComponentDescriptor(
-            name=desc.name,
-            component_type=desc.component_type,
-            inputs=[
-                types.Target(domain=inp.domain, types=inp.types)
-                for inp in desc.inputs
-            ],
-        )
 
     def Prepare(
         self,
@@ -147,16 +121,6 @@ class ProcessManagerHandler(process_manager_pb2_grpc.ProcessManagerServiceServic
             )
 
         return pm.ProcessManagerHandleResponse()
-
-    def descriptor(self) -> Descriptor:
-        """Build a component descriptor."""
-        if self._pm_class is not None:
-            return self._pm_class.descriptor()
-        return Descriptor(
-            name=self._name,
-            component_type="process_manager",
-            inputs=list(self._inputs),
-        )
 
 
 def run_process_manager_server(

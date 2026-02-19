@@ -12,26 +12,6 @@
 
 namespace angzarr {
 
-/// Component type constants for descriptors.
-namespace component_types {
-    constexpr const char* AGGREGATE = "aggregate";
-    constexpr const char* SAGA = "saga";
-    constexpr const char* PROCESS_MANAGER = "process_manager";
-    constexpr const char* PROJECTOR = "projector";
-}
-
-/// Describes a component for topology discovery.
-struct TargetDesc {
-    std::string domain;
-    std::vector<std::string> types;
-};
-
-struct Descriptor {
-    std::string name;
-    std::string component_type;
-    std::vector<TargetDesc> inputs;
-};
-
 /// Base class for process managers using macro-based handler registration.
 ///
 /// Usage:
@@ -133,20 +113,6 @@ public:
             }
         }
         return commands;
-    }
-
-    /// Build a component descriptor.
-    Descriptor descriptor() const {
-        std::vector<TargetDesc> inputs;
-        auto domains = input_domains();
-        for (const auto& domain : domains) {
-            std::vector<std::string> types;
-            for (const auto& [suffix, _] : handlers()) {
-                types.push_back(suffix);
-            }
-            inputs.push_back({domain, types});
-        }
-        return {name(), component_types::PROCESS_MANAGER, inputs};
     }
 
     /// Check if the PM exists (has prior events).

@@ -97,6 +97,7 @@ fn to_proto_event(event: &CloudEventEnvelope) -> ProtoCloudEvent {
 ///
 /// Converts a `cloudevents::Event` to `io.cloudevents.v1.CloudEvent`
 /// and serializes to bytes.
+#[cfg(any(feature = "kafka", test))]
 pub fn encode_proto_single(event: &CloudEventEnvelope) -> Result<Vec<u8>, SinkError> {
     let proto_event = to_proto_event(event);
     Ok(proto_event.encode_to_vec())

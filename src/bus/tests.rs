@@ -1,5 +1,6 @@
 use super::*;
-use crate::proto::{event_page, Cover, EventPage, Target, Uuid as ProtoUuid};
+use crate::descriptor::Target;
+use crate::proto::{event_page, Cover, EventPage, Uuid as ProtoUuid};
 use prost_types::Any;
 
 fn make_event_book(domain: &str, event_types: &[&str]) -> EventBook {

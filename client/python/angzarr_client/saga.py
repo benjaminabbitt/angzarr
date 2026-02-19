@@ -49,9 +49,6 @@ from google.protobuf.any_pb2 import Any
 
 from .proto.angzarr import types_pb2 as types
 from .router import (
-    COMPONENT_SAGA,
-    Descriptor,
-    TargetDesc,
     _pack_any,
     prepares,  # Re-export for convenience
     reacts_to,  # Re-export for convenience
@@ -314,11 +311,3 @@ class Saga(ABC):
 
         return commands
 
-    @classmethod
-    def descriptor(cls) -> Descriptor:
-        """Build component descriptor for topology discovery."""
-        return Descriptor(
-            name=cls.name,
-            component_type=COMPONENT_SAGA,
-            inputs=[TargetDesc(domain=cls.input_domain, types=list(cls._dispatch_table.keys()))],
-        )

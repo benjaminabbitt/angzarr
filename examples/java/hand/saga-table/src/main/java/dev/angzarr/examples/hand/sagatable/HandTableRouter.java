@@ -2,7 +2,7 @@ package dev.angzarr.examples.hand.sagatable;
 
 import com.google.protobuf.Any;
 import dev.angzarr.*;
-import dev.angzarr.client.router.EventRouter;
+import dev.angzarr.client.EventRouter;
 import dev.angzarr.examples.*;
 
 import java.util.ArrayList;
@@ -19,8 +19,8 @@ public final class HandTableRouter {
     private HandTableRouter() {}
 
     public static EventRouter createRouter() {
-        return new EventRouter("saga-hand-table", "hand")
-            .sends("table", "EndHand")
+        return new EventRouter("saga-hand-table")
+            .domain("hand")
             .prepare(HandComplete.class, HandTableRouter::prepareHandComplete)
             .on(HandComplete.class, HandTableRouter::handleHandComplete);
     }

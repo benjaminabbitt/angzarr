@@ -12,8 +12,6 @@ import "google/protobuf/timestamp.proto";
 // SagaService: client logic that coordinates across aggregates
 // Two-phase protocol: Prepare (declare destinations) → Execute (with fetched state)
 service SagaService {
-  // Self-description: component type, subscribed domains, handled event types
-  rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
   // Phase 1: Saga declares which destination aggregates it needs
   rpc Prepare (SagaPrepareRequest) returns (SagaPrepareResponse);
   // Phase 2: Execute with source + fetched destination state

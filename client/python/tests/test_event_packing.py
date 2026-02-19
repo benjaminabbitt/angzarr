@@ -22,7 +22,7 @@ def test_pack_event_preserves_sequence():
     event = Timestamp(seconds=1000)
     book = pack_event(_cover(), event, seq=42)
 
-    assert book.pages[0].num == 42
+    assert book.pages[0].sequence == 42
 
 
 def test_pack_event_sets_created_at():
@@ -47,7 +47,7 @@ def test_pack_events_multiple_returns_sequential_pages():
 
     assert len(book.pages) == 3
     for i, page in enumerate(book.pages):
-        assert page.num == 5 + i
+        assert page.sequence == 5 + i
 
 
 def test_pack_events_empty_returns_empty_pages():

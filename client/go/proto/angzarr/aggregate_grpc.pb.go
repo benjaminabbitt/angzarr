@@ -19,9 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AggregateService_GetDescriptor_FullMethodName = "/angzarr.AggregateService/GetDescriptor"
-	AggregateService_Handle_FullMethodName        = "/angzarr.AggregateService/Handle"
-	AggregateService_Replay_FullMethodName        = "/angzarr.AggregateService/Replay"
+	AggregateService_Handle_FullMethodName = "/angzarr.AggregateService/Handle"
+	AggregateService_Replay_FullMethodName = "/angzarr.AggregateService/Replay"
 )
 
 // AggregateServiceClient is the client API for AggregateService service.
@@ -32,8 +31,6 @@ const (
 // Also known as Command Handler in CQRS terminology
 // client logic doesn't care about sync - coordinator decides
 type AggregateServiceClient interface {
-	// Self-description: component type, subscribed domains, handled command types
-	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
 	// Process command and return business response (events or revocation request)
 	Handle(ctx context.Context, in *ContextualCommand, opts ...grpc.CallOption) (*BusinessResponse, error)
 	// Replay events to compute state (for conflict detection)
@@ -47,16 +44,6 @@ type aggregateServiceClient struct {
 
 func NewAggregateServiceClient(cc grpc.ClientConnInterface) AggregateServiceClient {
 	return &aggregateServiceClient{cc}
-}
-
-func (c *aggregateServiceClient) GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ComponentDescriptor)
-	err := c.cc.Invoke(ctx, AggregateService_GetDescriptor_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *aggregateServiceClient) Handle(ctx context.Context, in *ContextualCommand, opts ...grpc.CallOption) (*BusinessResponse, error) {
@@ -87,8 +74,6 @@ func (c *aggregateServiceClient) Replay(ctx context.Context, in *ReplayRequest, 
 // Also known as Command Handler in CQRS terminology
 // client logic doesn't care about sync - coordinator decides
 type AggregateServiceServer interface {
-	// Self-description: component type, subscribed domains, handled command types
-	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
 	// Process command and return business response (events or revocation request)
 	Handle(context.Context, *ContextualCommand) (*BusinessResponse, error)
 	// Replay events to compute state (for conflict detection)
@@ -104,9 +89,6 @@ type AggregateServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAggregateServiceServer struct{}
 
-func (UnimplementedAggregateServiceServer) GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDescriptor not implemented")
-}
 func (UnimplementedAggregateServiceServer) Handle(context.Context, *ContextualCommand) (*BusinessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handle not implemented")
 }
@@ -132,24 +114,6 @@ func RegisterAggregateServiceServer(s grpc.ServiceRegistrar, srv AggregateServic
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&AggregateService_ServiceDesc, srv)
-}
-
-func _AggregateService_GetDescriptor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDescriptorRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AggregateServiceServer).GetDescriptor(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AggregateService_GetDescriptor_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggregateServiceServer).GetDescriptor(ctx, req.(*GetDescriptorRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _AggregateService_Handle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -195,10 +159,6 @@ var AggregateService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "angzarr.AggregateService",
 	HandlerType: (*AggregateServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetDescriptor",
-			Handler:    _AggregateService_GetDescriptor_Handler,
-		},
 		{
 			MethodName: "Handle",
 			Handler:    _AggregateService_Handle_Handler,

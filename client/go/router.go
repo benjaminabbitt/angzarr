@@ -15,14 +15,6 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// Component type constants for Descriptor.
-const (
-	ComponentAggregate      = "aggregate"
-	ComponentSaga           = "saga"
-	ComponentProjector      = "projector"
-	ComponentProcessManager = "process_manager"
-)
-
 // Error constants.
 const (
 	ErrMsgUnknownCommand = "unknown command type"
@@ -130,7 +122,7 @@ func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResp
 		return nil, fmt.Errorf("%s", ErrMsgNoCommandPages)
 	}
 
-	commandAny := commandBook.Pages[0].Command
+	commandAny := commandBook.Pages[0].GetCommand()
 	if commandAny == nil || commandAny.TypeUrl == "" {
 		return nil, fmt.Errorf("%s", ErrMsgNoCommandPages)
 	}
@@ -178,8 +170,8 @@ func (r *CommandRouter[S]) dispatchRejection(notification *pb.Notification, stat
 		if rejection.RejectedCommand.Cover != nil {
 			domain = rejection.RejectedCommand.Cover.Domain
 		}
-		if rejection.RejectedCommand.Pages[0].Command != nil {
-			cmdTypeURL := rejection.RejectedCommand.Pages[0].Command.TypeUrl
+		if cmd := rejection.RejectedCommand.Pages[0].GetCommand(); cmd != nil {
+			cmdTypeURL := cmd.TypeUrl
 			if idx := strings.LastIndex(cmdTypeURL, "/"); idx >= 0 {
 				cmdSuffix = cmdTypeURL[idx+1:]
 			} else {
@@ -197,29 +189,6 @@ func (r *CommandRouter[S]) dispatchRejection(notification *pb.Notification, stat
 	return DelegateToFramework(
 		fmt.Sprintf("Aggregate %s has no custom compensation for %s", r.domain, key),
 	), nil
-}
-
-// Descriptor builds a ComponentDescriptor from registered handlers.
-func (r *CommandRouter[S]) Descriptor() *pb.ComponentDescriptor {
-	return &pb.ComponentDescriptor{
-		Name:          r.domain,
-		ComponentType: ComponentAggregate,
-		Inputs: []*pb.Target{
-			{
-				Domain: r.domain,
-				Types:  r.Types(),
-			},
-		},
-	}
-}
-
-// Types returns registered command type suffixes.
-func (r *CommandRouter[S]) Types() []string {
-	types := make([]string, len(r.handlers))
-	for i, reg := range r.handlers {
-		types[i] = reg.suffix
-	}
-	return types
 }
 
 // RebuildState reconstructs state from an EventBook using the registered rebuilder.
@@ -246,30 +215,36 @@ type EventHandler func(source *pb.EventBook, event *anypb.Any, destinations []*p
 // Returns: List of Covers for destinations to fetch
 type PrepareHandler func(source *pb.EventBook, event *anypb.Any) []*pb.Cover
 
-// outputTarget tracks a domain and its command types for topology.
-type outputTarget struct {
-	domain string
-	types  []string
-}
-
 // EventRouter dispatches events to handlers by type_url suffix.
-// Used for sagas that translate events from one domain to commands in another.
+// Unified router for sagas, process managers, and projectors.
+// Uses fluent .Domain().On() pattern to register handlers with domain context.
 //
-// Example:
+// Example (Saga - single domain):
 //
-//	router := NewEventRouter("saga-order-fulfillment", "order").
-//	    Sends("fulfillment", "CreateShipment").
-//	    Prepare("OrderCompleted", prepareOrderCompleted).
-//	    On("OrderCompleted", handleOrderCompleted)
+//	router := NewEventRouter("saga-table-hand").
+//	    Domain("table").
+//	    On("HandStarted", handleStarted)
 //
-//	// In saga Execute():
-//	commands, err := router.Dispatch(sourceEventBook, destinations)
+// Example (Process Manager - multi-domain):
+//
+//	router := NewEventRouter("pmg-order-flow").
+//	    Domain("order").
+//	    On("OrderCreated", handleCreated).
+//	    Domain("inventory").
+//	    On("StockReserved", handleReserved)
+//
+// Example (Projector - multi-domain):
+//
+//	router := NewEventRouter("prj-output").
+//	    Domain("player").
+//	    On("PlayerRegistered", handleRegistered).
+//	    Domain("hand").
+//	    On("CardsDealt", handleDealt)
 type EventRouter struct {
 	name            string
-	inputDomain     string
-	outputTargets   []outputTarget
-	handlers        []eventRegistration
-	prepareHandlers []prepareRegistration
+	currentDomain   string
+	handlers        map[string][]eventRegistration  // domain -> handlers
+	prepareHandlers map[string][]prepareRegistration // domain -> prepare handlers
 }
 
 type eventRegistration struct {
@@ -282,82 +257,135 @@ type prepareRegistration struct {
 	handler PrepareHandler
 }
 
-// NewEventRouter creates a new router for the given saga name and input domain.
-func NewEventRouter(name, inputDomain string) *EventRouter {
-	return &EventRouter{
+// NewEventRouter creates a new router for the given component name.
+// For single-domain routers, you can pass an optional inputDomain as the second argument
+// (backwards compatibility). For multi-domain routers, use Domain() instead.
+func NewEventRouter(name string, inputDomain ...string) *EventRouter {
+	router := &EventRouter{
 		name:            name,
-		inputDomain:     inputDomain,
-		outputTargets:   make([]outputTarget, 0),
-		handlers:        make([]eventRegistration, 0),
-		prepareHandlers: make([]prepareRegistration, 0),
+		handlers:        make(map[string][]eventRegistration),
+		prepareHandlers: make(map[string][]prepareRegistration),
 	}
+	// Backwards compatibility: if inputDomain provided, set it as current context
+	if len(inputDomain) > 0 && inputDomain[0] != "" {
+		router.Domain(inputDomain[0])
+	}
+	return router
 }
 
-// Sends declares an output domain and command type this saga produces.
-// Call multiple times for multiple command types or domains.
-func (r *EventRouter) Sends(domain, commandType string) *EventRouter {
-	// Find existing target for this domain or create new one
-	for i := range r.outputTargets {
-		if r.outputTargets[i].domain == domain {
-			r.outputTargets[i].types = append(r.outputTargets[i].types, commandType)
-			return r
-		}
+// Domain sets the current domain context for subsequent On() calls.
+func (r *EventRouter) Domain(name string) *EventRouter {
+	r.currentDomain = name
+	if _, ok := r.handlers[name]; !ok {
+		r.handlers[name] = make([]eventRegistration, 0)
 	}
-	r.outputTargets = append(r.outputTargets, outputTarget{domain: domain, types: []string{commandType}})
+	if _, ok := r.prepareHandlers[name]; !ok {
+		r.prepareHandlers[name] = make([]prepareRegistration, 0)
+	}
 	return r
 }
 
 // Prepare registers a prepare handler for an event type_url suffix.
 // The prepare handler declares which destinations are needed before Execute.
+// Must be called after Domain() to set context.
 func (r *EventRouter) Prepare(suffix string, handler PrepareHandler) *EventRouter {
-	r.prepareHandlers = append(r.prepareHandlers, prepareRegistration{suffix: suffix, handler: handler})
+	if r.currentDomain == "" {
+		panic("Must call Domain() before Prepare()")
+	}
+	r.prepareHandlers[r.currentDomain] = append(
+		r.prepareHandlers[r.currentDomain],
+		prepareRegistration{suffix: suffix, handler: handler},
+	)
 	return r
 }
 
-// On registers a handler for an event type_url suffix.
+// On registers a handler for an event type_url suffix in current domain.
+// Must be called after Domain() to set context.
 func (r *EventRouter) On(suffix string, handler EventHandler) *EventRouter {
-	r.handlers = append(r.handlers, eventRegistration{suffix: suffix, handler: handler})
+	if r.currentDomain == "" {
+		panic("Must call Domain() before On()")
+	}
+	r.handlers[r.currentDomain] = append(
+		r.handlers[r.currentDomain],
+		eventRegistration{suffix: suffix, handler: handler},
+	)
 	return r
+}
+
+// Subscriptions auto-derives subscriptions from registered handlers.
+// Returns list of (domain, event_types) pairs.
+func (r *EventRouter) Subscriptions() map[string][]string {
+	result := make(map[string][]string)
+	for domain, handlers := range r.handlers {
+		if len(handlers) > 0 {
+			types := make([]string, len(handlers))
+			for i, reg := range handlers {
+				types[i] = reg.suffix
+			}
+			result[domain] = types
+		}
+	}
+	return result
 }
 
 // PrepareDestinations returns the destination covers needed for the given source.
-// Called during the Prepare phase of the two-phase saga protocol.
+// Routes based on source domain.
 func (r *EventRouter) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
 	if source == nil || len(source.Pages) == 0 {
 		return nil
 	}
 
-	// Use the last event page
-	page := source.Pages[len(source.Pages)-1]
-	if page.Event == nil {
+	sourceDomain := ""
+	if source.Cover != nil {
+		sourceDomain = source.Cover.Domain
+	}
+
+	domainHandlers, ok := r.prepareHandlers[sourceDomain]
+	if !ok {
 		return nil
 	}
 
-	for _, reg := range r.prepareHandlers {
-		if strings.HasSuffix(page.Event.TypeUrl, reg.suffix) {
-			return reg.handler(source, page.Event)
+	// Use the last event page
+	page := source.Pages[len(source.Pages)-1]
+	event := page.GetEvent()
+	if event == nil {
+		return nil
+	}
+
+	for _, reg := range domainHandlers {
+		if strings.HasSuffix(event.TypeUrl, reg.suffix) {
+			return reg.handler(source, event)
 		}
 	}
 	return nil
 }
 
 // Dispatch routes all events in an EventBook to registered handlers.
-//
-// Iterates pages, matches type_url suffixes, and collects commands.
-// Destinations are the EventBooks for the covers declared in Prepare.
+// Routes based on source domain and event type suffix.
 func (r *EventRouter) Dispatch(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 	if source == nil {
 		return nil, nil
 	}
 
+	sourceDomain := ""
+	if source.Cover != nil {
+		sourceDomain = source.Cover.Domain
+	}
+
+	domainHandlers, ok := r.handlers[sourceDomain]
+	if !ok {
+		return nil, nil
+	}
+
 	var commands []*pb.CommandBook
 	for _, page := range source.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
-		for _, reg := range r.handlers {
-			if strings.HasSuffix(page.Event.TypeUrl, reg.suffix) {
-				cmds, err := reg.handler(source, page.Event, destinations)
+		for _, reg := range domainHandlers {
+			if strings.HasSuffix(event.TypeUrl, reg.suffix) {
+				cmds, err := reg.handler(source, event, destinations)
 				if err != nil {
 					return nil, err
 				}
@@ -369,46 +397,13 @@ func (r *EventRouter) Dispatch(source *pb.EventBook, destinations []*pb.EventBoo
 	return commands, nil
 }
 
-// Descriptor builds a ComponentDescriptor from registered handlers.
-func (r *EventRouter) Descriptor() *pb.ComponentDescriptor {
-	return &pb.ComponentDescriptor{
-		Name:          r.name,
-		ComponentType: ComponentSaga,
-		Inputs: []*pb.Target{
-			{
-				Domain: r.inputDomain,
-				Types:  r.Types(),
-			},
-		},
+// InputDomain returns the first registered domain (for backwards compatibility).
+// Deprecated: Use Subscriptions() instead.
+func (r *EventRouter) InputDomain() string {
+	for domain := range r.handlers {
+		return domain
 	}
-}
-
-// Types returns registered event type suffixes.
-func (r *EventRouter) Types() []string {
-	types := make([]string, len(r.handlers))
-	for i, reg := range r.handlers {
-		types[i] = reg.suffix
-	}
-	return types
-}
-
-// OutputDomains returns the list of output domain names.
-func (r *EventRouter) OutputDomains() []string {
-	domains := make([]string, len(r.outputTargets))
-	for i, t := range r.outputTargets {
-		domains[i] = t.domain
-	}
-	return domains
-}
-
-// OutputTypes returns the command types for a given output domain.
-func (r *EventRouter) OutputTypes(domain string) []string {
-	for _, t := range r.outputTargets {
-		if t.domain == domain {
-			return t.types
-		}
-	}
-	return nil
+	return ""
 }
 
 // ============================================================================
@@ -492,8 +487,8 @@ func (r *StateRouter[S]) On(handler any) *StateRouter[S] {
 func (r *StateRouter[S]) WithEvents(pages []*pb.EventPage) S {
 	state := r.factory()
 	for _, page := range pages {
-		if page.Event != nil {
-			r.ApplySingle(&state, page.Event)
+		if event := page.GetEvent(); event != nil {
+			r.ApplySingle(&state, event)
 		}
 	}
 	return state

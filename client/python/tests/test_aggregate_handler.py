@@ -9,7 +9,7 @@ from google.protobuf import any_pb2
 from angzarr_client.proto.angzarr import types_pb2 as angzarr
 from angzarr_client.aggregate_handler import AggregateHandler
 from angzarr_client.errors import CommandRejectedError
-from angzarr_client.router import COMPONENT_AGGREGATE, CommandRouter
+from angzarr_client.router import CommandRouter
 
 # ============================================================================
 # Test constants
@@ -167,24 +167,6 @@ class TestAggregateHandlerDispatch:
         assert resp.events.pages[0].event.type_url == "handled_a:seq=3"
 
 
-class TestAggregateHandlerDescriptor:
-    def test_descriptor(self):
-        router = (
-            CommandRouter("order", dummy_rebuild)
-            .on("CreateOrder", handler_a)
-            .on("CancelOrder", handler_a)
-        )
-        handler = AggregateHandler(router)
-        context = MagicMock(spec=grpc.ServicerContext)
-        request = MagicMock()
-        resp = handler.GetDescriptor(request, context)
-
-        assert resp.name == "order"
-        assert resp.component_type == COMPONENT_AGGREGATE
-        assert len(resp.inputs) == 1
-        assert len(resp.inputs[0].types) == 2
-
-
 class TestAggregateHandlerWithAggregateClass:
     """Test AggregateHandler with Aggregate class (OO approach)."""
 
@@ -260,40 +242,6 @@ class TestAggregateHandlerWithAggregateClass:
 
         handler = AggregateHandler(TestAgg)
         assert handler.domain == "myagg"
-
-    def test_aggregate_class_descriptor(self):
-        from dataclasses import dataclass
-        from angzarr_client import Aggregate, handles
-
-        class FakeCommand:
-            DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
-            def SerializeToString(self, deterministic=None):
-                return b""
-
-        @dataclass
-        class TestState:
-            pass
-
-        class TestAgg(Aggregate[TestState]):
-            domain = "descagg"
-
-            def _create_empty_state(self):
-                return TestState()
-
-            def _apply_event(self, state, event_any):
-                pass
-
-            @handles(FakeCommand)
-            def do_it(self, cmd: FakeCommand):
-                pass
-
-        handler = AggregateHandler(TestAgg)
-        context = MagicMock(spec=grpc.ServicerContext)
-        resp = handler.GetDescriptor(MagicMock(), context)
-
-        assert resp.name == "descagg"
-        assert "FakeCommand" in resp.inputs[0].types
-
 
 class TestAggregateHandlerReplay:
     """Test Replay RPC for Aggregate class handlers."""

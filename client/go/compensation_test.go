@@ -26,7 +26,7 @@ func TestRejectionHandlerResponse_EmptyResponse(t *testing.T) {
 func TestRejectionHandlerResponse_EventsOnly(t *testing.T) {
 	eventBook := &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.CompensationEvent"}},
+			{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.CompensationEvent"}}},
 		},
 	}
 
@@ -61,7 +61,7 @@ func TestRejectionHandlerResponse_NotificationOnly(t *testing.T) {
 func TestRejectionHandlerResponse_BothEventsAndNotification(t *testing.T) {
 	eventBook := &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.CompensationEvent"}},
+			{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.CompensationEvent"}}},
 		},
 	}
 	notification := &pb.Notification{
@@ -88,8 +88,8 @@ func TestRejectionHandlerResponse_BothEventsAndNotification(t *testing.T) {
 func TestRejectionHandlerResponse_MultipleEvents(t *testing.T) {
 	eventBook := &pb.EventBook{
 		Pages: []*pb.EventPage{
-			{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event1"}},
-			{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event2"}},
+			{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event1"}}},
+			{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/test.Event2"}}},
 		},
 	}
 
@@ -157,7 +157,7 @@ func TestCompensationContext(t *testing.T) {
 	rejectedCmd := &pb.CommandBook{
 		Cover: &pb.Cover{Domain: "inventory"},
 		Pages: []*pb.CommandPage{
-			{Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.ReserveStock"}},
+			{Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "type.googleapis.com/test.ReserveStock"}}},
 		},
 	}
 	rejection := &pb.RejectionNotification{

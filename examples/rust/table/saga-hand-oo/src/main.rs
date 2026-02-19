@@ -88,7 +88,7 @@ impl TableHandSaga {
             }),
             pages: vec![CommandPage {
                 sequence: dest_seq,
-                command: Some(command_any),
+                payload: Some(angzarr_client::proto::command_page::Payload::Command(command_any)),
                 ..Default::default()
             }],
             saga_origin: None,

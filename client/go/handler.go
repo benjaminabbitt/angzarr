@@ -65,11 +65,6 @@ func (h *AggregateHandler[S]) WithReplay(packer StatePacker[S]) *AggregateHandle
 	return h
 }
 
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *AggregateHandler[S]) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	return h.router.Descriptor(), nil
-}
-
 // Handle processes a contextual command asynchronously.
 func (h *AggregateHandler[S]) Handle(ctx context.Context, req *pb.ContextualCommand) (*pb.BusinessResponse, error) {
 	return h.dispatch(req)
@@ -120,11 +115,6 @@ func (h *AggregateHandler[S]) Replay(ctx context.Context, req *pb.ReplayRequest)
 	return &pb.ReplayResponse{State: stateAny}, nil
 }
 
-// Descriptor returns the router's component descriptor.
-func (h *AggregateHandler[S]) Descriptor() *pb.ComponentDescriptor {
-	return h.router.Descriptor()
-}
-
 // RegisterAggregateHandler returns a ServiceRegistrar that registers an aggregate handler.
 func RegisterAggregateHandler[S any](router *CommandRouter[S]) ServiceRegistrar {
 	return func(server *grpc.Server) {
@@ -160,11 +150,6 @@ func NewSagaHandler(router *EventRouter) *SagaHandler {
 	return &SagaHandler{router: router}
 }
 
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *SagaHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	return h.router.Descriptor(), nil
-}
-
 // Prepare declares which destination aggregates the saga needs to read.
 // This is phase 1 of the two-phase saga protocol.
 func (h *SagaHandler) Prepare(ctx context.Context, req *pb.SagaPrepareRequest) (*pb.SagaPrepareResponse, error) {
@@ -184,11 +169,6 @@ func (h *SagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest) (
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &pb.SagaResponse{Commands: commands}, nil
-}
-
-// Descriptor returns the router's component descriptor.
-func (h *SagaHandler) Descriptor() *pb.ComponentDescriptor {
-	return h.router.Descriptor()
 }
 
 // RegisterSagaHandler returns a ServiceRegistrar that registers a saga handler.
@@ -236,19 +216,6 @@ func NewProjectorHandler(name string, domains ...string) *ProjectorHandler {
 func (h *ProjectorHandler) WithHandle(fn ProjectorHandleFunc) *ProjectorHandler {
 	h.handleFn = fn
 	return h
-}
-
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *ProjectorHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	inputs := make([]*pb.Target, len(h.domains))
-	for i, domain := range h.domains {
-		inputs[i] = &pb.Target{Domain: domain}
-	}
-	return &pb.ComponentDescriptor{
-		Name:          h.name,
-		ComponentType: ComponentProjector,
-		Inputs:        inputs,
-	}, nil
 }
 
 // Handle processes an EventBook and returns a Projection.
@@ -310,7 +277,6 @@ type PMRevocationFunc func(notification *pb.Notification, processState *pb.Event
 type ProcessManagerHandler struct {
 	pb.UnimplementedProcessManagerServiceServer
 	name          string
-	inputs        []*pb.Target
 	prepareFn     PMPrepareFunc
 	handleFn      PMHandleFunc
 	revocationFn  PMRevocationFunc
@@ -319,15 +285,8 @@ type ProcessManagerHandler struct {
 // NewProcessManagerHandler creates a new process manager handler.
 func NewProcessManagerHandler(name string) *ProcessManagerHandler {
 	return &ProcessManagerHandler{
-		name:   name,
-		inputs: make([]*pb.Target, 0),
+		name: name,
 	}
-}
-
-// ListenTo subscribes to events from a domain.
-func (h *ProcessManagerHandler) ListenTo(domain string, types ...string) *ProcessManagerHandler {
-	h.inputs = append(h.inputs, &pb.Target{Domain: domain, Types: types})
-	return h
 }
 
 // WithPrepare sets the prepare callback.
@@ -354,15 +313,6 @@ func (h *ProcessManagerHandler) WithHandle(fn PMHandleFunc) *ProcessManagerHandl
 func (h *ProcessManagerHandler) WithRevocationHandler(fn PMRevocationFunc) *ProcessManagerHandler {
 	h.revocationFn = fn
 	return h
-}
-
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *ProcessManagerHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	return &pb.ComponentDescriptor{
-		Name:          h.name,
-		ComponentType: ComponentProcessManager,
-		Inputs:        h.inputs,
-	}, nil
 }
 
 // Prepare declares which additional destinations are needed.
@@ -420,7 +370,6 @@ func RunProcessManagerServer(name, defaultPort string, handler *ProcessManagerHa
 type OOAggregate[S any] interface {
 	Domain() string
 	Handle(request *pb.ContextualCommand) (*pb.BusinessResponse, error)
-	Descriptor() *pb.ComponentDescriptor
 	HandlerTypes() []string
 }
 
@@ -454,13 +403,6 @@ func NewOOAggregateHandler[S any, A OOAggregate[S]](domain string, factory OOAgg
 		domain:  domain,
 		factory: factory,
 	}
-}
-
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *OOAggregateHandler[S, A]) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	// Create a temporary instance to get the descriptor
-	agg := h.factory(nil)
-	return agg.Descriptor(), nil
 }
 
 // Handle processes a contextual command asynchronously.
@@ -519,7 +461,6 @@ type OOSaga interface {
 	OutputDomain() string
 	PrepareDestinations(source *pb.EventBook) []*pb.Cover
 	Execute(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error)
-	Descriptor() *pb.ComponentDescriptor
 }
 
 // OOSagaHandler wraps an OO-style saga for the gRPC Saga service.
@@ -531,11 +472,6 @@ type OOSagaHandler struct {
 // NewOOSagaHandler creates a new OO saga handler.
 func NewOOSagaHandler(saga OOSaga) *OOSagaHandler {
 	return &OOSagaHandler{saga: saga}
-}
-
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *OOSagaHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	return h.saga.Descriptor(), nil
 }
 
 // Prepare declares which destination aggregates the saga needs to read.
@@ -555,11 +491,6 @@ func (h *OOSagaHandler) Execute(ctx context.Context, req *pb.SagaExecuteRequest)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &pb.SagaResponse{Commands: commands}, nil
-}
-
-// Descriptor returns the saga's component descriptor.
-func (h *OOSagaHandler) Descriptor() *pb.ComponentDescriptor {
-	return h.saga.Descriptor()
 }
 
 // RegisterOOSagaHandler returns a ServiceRegistrar that registers an OO saga handler.
@@ -592,7 +523,6 @@ type OOProcessManager interface {
 	InputDomains() []string
 	PrepareDestinations(trigger, processState *pb.EventBook) []*pb.Cover
 	Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error)
-	Descriptor() *pb.ComponentDescriptor
 }
 
 // OOProcessManagerHandler wraps an OO-style process manager for the gRPC ProcessManager service.
@@ -604,11 +534,6 @@ type OOProcessManagerHandler struct {
 // NewOOProcessManagerHandler creates a new OO process manager handler.
 func NewOOProcessManagerHandler(pm OOProcessManager) *OOProcessManagerHandler {
 	return &OOProcessManagerHandler{pm: pm}
-}
-
-// GetDescriptor returns the component descriptor for service discovery.
-func (h *OOProcessManagerHandler) GetDescriptor(ctx context.Context, req *pb.GetDescriptorRequest) (*pb.ComponentDescriptor, error) {
-	return h.pm.Descriptor(), nil
 }
 
 // Prepare declares which additional destinations are needed.
@@ -631,11 +556,6 @@ func (h *OOProcessManagerHandler) Handle(ctx context.Context, req *pb.ProcessMan
 		Commands:      commands,
 		ProcessEvents: processEvents,
 	}, nil
-}
-
-// Descriptor returns the PM's component descriptor.
-func (h *OOProcessManagerHandler) Descriptor() *pb.ComponentDescriptor {
-	return h.pm.Descriptor()
 }
 
 // RegisterOOProcessManagerHandler returns a ServiceRegistrar that registers an OO process manager handler.

@@ -21,7 +21,7 @@ import grpc
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import saga_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .router import COMPONENT_SAGA, Descriptor, EventRouter
+from .router import EventRouter
 from .saga import Saga
 from .server import run_server
 
@@ -53,12 +53,10 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
             # OO pattern: Saga class
             self._saga_class = handler
             self._router = None
-            self._get_descriptor = handler.descriptor
         else:
             # Functional pattern: EventRouter
             self._saga_class = None
             self._router = handler
-            self._get_descriptor = handler.descriptor
 
     def with_prepare(self, fn: PrepareFunc) -> SagaHandler:
         """Set custom prepare callback for destination declaration."""
@@ -69,22 +67,6 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
         """Set custom execute callback for destination-aware command production."""
         self._execute = fn
         return self
-
-    def GetDescriptor(
-        self,
-        request: types.GetDescriptorRequest,
-        context: grpc.ServicerContext,
-    ) -> types.ComponentDescriptor:
-        """Return component descriptor for service discovery."""
-        desc = self._get_descriptor()
-        return types.ComponentDescriptor(
-            name=desc.name,
-            component_type=COMPONENT_SAGA,
-            inputs=[
-                types.Target(domain=inp.domain, types=inp.types)
-                for inp in desc.inputs
-            ],
-        )
 
     def Prepare(
         self,
@@ -137,10 +119,6 @@ class SagaHandler(saga_pb2_grpc.SagaServiceServicer):
             return self._router.dispatch(source, destinations)
 
         return []
-
-    def descriptor(self) -> Descriptor:
-        """Return the saga's component descriptor."""
-        return self._get_descriptor()
 
 
 def run_saga_server(

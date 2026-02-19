@@ -15,7 +15,6 @@ import grpc
 
 from .proto.angzarr import projector_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .router import Descriptor, TargetDesc
 from .server import run_server
 
 if TYPE_CHECKING:
@@ -40,22 +39,6 @@ class ProjectorHandler(projector_pb2_grpc.ProjectorServiceServicer):
         self._handle_fn = fn
         return self
 
-    def GetDescriptor(
-        self,
-        request: types.GetDescriptorRequest,
-        context: grpc.ServicerContext,
-    ) -> types.ComponentDescriptor:
-        """Return component descriptor for service discovery."""
-        desc = self.descriptor()
-        return types.ComponentDescriptor(
-            name=desc.name,
-            component_type=desc.component_type,
-            inputs=[
-                types.Target(domain=inp.domain, types=inp.types)
-                for inp in desc.inputs
-            ],
-        )
-
     def Handle(
         self,
         request: types.EventBook,
@@ -68,14 +51,6 @@ class ProjectorHandler(projector_pb2_grpc.ProjectorServiceServicer):
         if self._handle_fn is not None:
             return self._handle_fn(request)
         return types.Projection()
-
-    def descriptor(self) -> Descriptor:
-        """Build a component descriptor."""
-        return Descriptor(
-            name=self._name,
-            component_type="projector",
-            inputs=[TargetDesc(domain=d) for d in self._domains],
-        )
 
 
 def run_projector_server(

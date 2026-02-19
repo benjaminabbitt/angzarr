@@ -8,8 +8,8 @@ namespace saga {
 
 // docs:start:event_router
 angzarr::EventRouter create_table_hand_router() {
-    return angzarr::EventRouter("saga-table-hand", "table")
-        .sends("hand", "DealCards")
+    return angzarr::EventRouter("saga-table-hand")
+        .domain("table")
         .prepare<examples::HandStarted>(prepare_hand_started)
         .on<examples::HandStarted>(handle_hand_started);
 }

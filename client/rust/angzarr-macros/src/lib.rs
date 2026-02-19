@@ -42,7 +42,7 @@
 //! ```rust,ignore
 //! use angzarr_macros::{saga, prepares, reacts_to};
 //!
-//! #[saga(name = "saga-order-fulfillment", input = "order", output = "fulfillment")]
+//! #[saga(name = "saga-order-fulfillment", input = "order")]
 //! impl OrderFulfillmentSaga {
 //!     #[prepares(OrderCompleted)]
 //!     fn prepare_order(&self, event: &OrderCompleted) -> Vec<Cover> {
@@ -338,11 +338,11 @@ pub fn applies(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// # Attributes
 /// - `name = "saga-name"` - The saga's name (required)
 /// - `input = "domain"` - Input domain to listen to (required)
-/// - `output = "domain"` - Output domain for commands (required)
+/// - `output = "domain"` - Output domain for commands (deprecated, ignored)
 ///
 /// # Example
 /// ```rust,ignore
-/// #[saga(name = "saga-order-fulfillment", input = "order", output = "fulfillment")]
+/// #[saga(name = "saga-order-fulfillment", input = "order")]
 /// impl OrderFulfillmentSaga {
 ///     #[reacts_to(OrderCompleted)]
 ///     fn handle_completed(&self, event: OrderCompleted, destinations: &[EventBook])
@@ -363,7 +363,8 @@ pub fn saga(attr: TokenStream, item: TokenStream) -> TokenStream {
 struct SagaArgs {
     name: String,
     input: String,
-    output: String,
+    #[allow(dead_code)]
+    output: Option<String>, // Deprecated, ignored
 }
 
 impl syn::parse::Parse for SagaArgs {
@@ -380,7 +381,7 @@ impl syn::parse::Parse for SagaArgs {
             match ident.to_string().as_str() {
                 "name" => name = Some(value.value()),
                 "input" => input_domain = Some(value.value()),
-                "output" => output = Some(value.value()),
+                "output" => output = Some(value.value()), // Deprecated, accepted but ignored
                 _ => return Err(syn::Error::new(ident.span(), "unknown attribute")),
             }
 
@@ -396,9 +397,7 @@ impl syn::parse::Parse for SagaArgs {
             input: input_domain.ok_or_else(|| {
                 syn::Error::new(proc_macro2::Span::call_site(), "input is required")
             })?,
-            output: output.ok_or_else(|| {
-                syn::Error::new(proc_macro2::Span::call_site(), "output is required")
-            })?,
+            output, // Deprecated, accepted but ignored
         })
     }
 }
@@ -406,7 +405,7 @@ impl syn::parse::Parse for SagaArgs {
 fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
     let name = &args.name;
     let input_domain = &args.input;
-    let output_domain = &args.output;
+    // args.output is deprecated and ignored
     let self_ty = &input.self_ty;
 
     // Collect handler methods
@@ -486,8 +485,8 @@ fn expand_saga(args: SagaArgs, mut input: ItemImpl) -> TokenStream2 {
                 Self: Send + Sync + 'static,
             {
                 let saga = std::sync::Arc::new(self);
-                angzarr_client::EventRouter::new(#name, #input_domain)
-                    .sends_domain(#output_domain)
+                angzarr_client::EventRouter::new(#name)
+                    .domain(#input_domain)
                     #(#prepare_registrations)*
                     #(#handler_registrations)*
             }
@@ -806,11 +805,10 @@ pub fn projects(_attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// # Attributes
 /// - `name = "projector-name"` - The projector's name (required)
-/// - `inputs = ["domain1", "domain2"]` - Input domains to subscribe to (required)
 ///
 /// # Example
 /// ```rust,ignore
-/// #[projector(name = "output", inputs = ["player", "table", "hand"])]
+/// #[projector(name = "output")]
 /// impl OutputProjector {
 ///     #[projects(PlayerRegistered)]
 ///     fn project_registered(&self, event: PlayerRegistered) -> Projection {
@@ -834,13 +832,11 @@ pub fn projector(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 struct ProjectorArgs {
     name: String,
-    inputs: Vec<String>,
 }
 
 impl syn::parse::Parse for ProjectorArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut name = None;
-        let mut inputs = None;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
@@ -850,19 +846,6 @@ impl syn::parse::Parse for ProjectorArgs {
                 "name" => {
                     let value: syn::LitStr = input.parse()?;
                     name = Some(value.value());
-                }
-                "inputs" => {
-                    let content;
-                    syn::bracketed!(content in input);
-                    let mut domains = Vec::new();
-                    while !content.is_empty() {
-                        let lit: syn::LitStr = content.parse()?;
-                        domains.push(lit.value());
-                        if content.peek(Token![,]) {
-                            content.parse::<Token![,]>()?;
-                        }
-                    }
-                    inputs = Some(domains);
                 }
                 _ => return Err(syn::Error::new(ident.span(), "unknown attribute")),
             }
@@ -876,16 +859,12 @@ impl syn::parse::Parse for ProjectorArgs {
             name: name.ok_or_else(|| {
                 syn::Error::new(proc_macro2::Span::call_site(), "name is required")
             })?,
-            inputs: inputs.ok_or_else(|| {
-                syn::Error::new(proc_macro2::Span::call_site(), "inputs is required")
-            })?,
         })
     }
 }
 
 fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
     let name = &args.name;
-    let inputs = &args.inputs;
     let self_ty = &input.self_ty;
 
     // Collect handler methods
@@ -943,9 +922,6 @@ fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
         }
     }
 
-    // Build inputs vec
-    let inputs_vec: Vec<_> = inputs.iter().map(|d| quote! { #d.to_string() }).collect();
-
     quote! {
         #input
 
@@ -983,10 +959,7 @@ fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
                 Self: Send + Sync + 'static,
             {
                 let projector = std::sync::Arc::new(self);
-                angzarr_client::ProjectorHandler::new(
-                    #name,
-                    vec![#(#inputs_vec),*],
-                ).with_handle_fn(move |events| {
+                angzarr_client::ProjectorHandler::new(#name).with_handle_fn(move |events| {
                     Ok(projector.handle(events))
                 })
             }

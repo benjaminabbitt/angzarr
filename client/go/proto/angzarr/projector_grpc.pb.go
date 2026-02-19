@@ -20,7 +20,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProjectorService_GetDescriptor_FullMethodName     = "/angzarr.ProjectorService/GetDescriptor"
 	ProjectorService_Handle_FullMethodName            = "/angzarr.ProjectorService/Handle"
 	ProjectorService_HandleSpeculative_FullMethodName = "/angzarr.ProjectorService/HandleSpeculative"
 )
@@ -32,8 +31,6 @@ const (
 // ProjectorService: client logic that projects events to read models
 // client logic doesn't care about sync - coordinator decides
 type ProjectorServiceClient interface {
-	// Self-description: component type, subscribed domains, handled event types
-	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
 	// Async projection - projector should persist and return
 	Handle(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error)
 	// Speculative processing - projector must avoid external side effects
@@ -46,16 +43,6 @@ type projectorServiceClient struct {
 
 func NewProjectorServiceClient(cc grpc.ClientConnInterface) ProjectorServiceClient {
 	return &projectorServiceClient{cc}
-}
-
-func (c *projectorServiceClient) GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ComponentDescriptor)
-	err := c.cc.Invoke(ctx, ProjectorService_GetDescriptor_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *projectorServiceClient) Handle(ctx context.Context, in *EventBook, opts ...grpc.CallOption) (*Projection, error) {
@@ -85,8 +72,6 @@ func (c *projectorServiceClient) HandleSpeculative(ctx context.Context, in *Even
 // ProjectorService: client logic that projects events to read models
 // client logic doesn't care about sync - coordinator decides
 type ProjectorServiceServer interface {
-	// Self-description: component type, subscribed domains, handled event types
-	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
 	// Async projection - projector should persist and return
 	Handle(context.Context, *EventBook) (*Projection, error)
 	// Speculative processing - projector must avoid external side effects
@@ -101,9 +86,6 @@ type ProjectorServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedProjectorServiceServer struct{}
 
-func (UnimplementedProjectorServiceServer) GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDescriptor not implemented")
-}
 func (UnimplementedProjectorServiceServer) Handle(context.Context, *EventBook) (*Projection, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handle not implemented")
 }
@@ -129,24 +111,6 @@ func RegisterProjectorServiceServer(s grpc.ServiceRegistrar, srv ProjectorServic
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ProjectorService_ServiceDesc, srv)
-}
-
-func _ProjectorService_GetDescriptor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDescriptorRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ProjectorServiceServer).GetDescriptor(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ProjectorService_GetDescriptor_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProjectorServiceServer).GetDescriptor(ctx, req.(*GetDescriptorRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _ProjectorService_Handle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -192,10 +156,6 @@ var ProjectorService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "angzarr.ProjectorService",
 	HandlerType: (*ProjectorServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetDescriptor",
-			Handler:    _ProjectorService_GetDescriptor_Handler,
-		},
 		{
 			MethodName: "Handle",
 			Handler:    _ProjectorService_Handle_Handler,

@@ -22,6 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// docs:start:cloud_event
 // CloudEvent represents a single event for external consumption.
 //
 // Client projectors create these by filtering/transforming internal events.

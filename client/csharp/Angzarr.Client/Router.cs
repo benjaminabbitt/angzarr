@@ -5,18 +5,6 @@ using Type = System.Type;
 namespace Angzarr.Client;
 
 /// <summary>
-/// Component type constants for descriptors.
-/// </summary>
-public static class ComponentTypes
-{
-    public const string Aggregate = "aggregate";
-    public const string Saga = "saga";
-    public const string ProcessManager = "process_manager";
-    public const string Projector = "projector";
-    public const string Upcaster = "upcaster";
-}
-
-/// <summary>
 /// Error message constants.
 /// </summary>
 public static class ErrorMessages
@@ -24,16 +12,6 @@ public static class ErrorMessages
     public const string UnknownCommand = "Unknown command type";
     public const string NoCommandPages = "No command pages";
 }
-
-/// <summary>
-/// Describes what a component subscribes to or sends to.
-/// </summary>
-public record TargetDesc(string Domain, List<string> Types);
-
-/// <summary>
-/// Describes a component for topology discovery.
-/// </summary>
-public record Descriptor(string Name, string ComponentType, List<TargetDesc> Inputs);
 
 /// <summary>
 /// Delegate for command handlers in the functional pattern.
@@ -218,22 +196,6 @@ public class CommandRouter<TState> where TState : new()
         throw new InvalidOperationException(
             "CommandRouter requires either rebuild function or StateRouter via WithState()");
     }
-
-    /// <summary>
-    /// Build a component descriptor from registered handlers.
-    /// </summary>
-    public Descriptor Descriptor()
-    {
-        return new Descriptor(
-            _domain,
-            ComponentTypes.Aggregate,
-            new List<TargetDesc> { new(_domain, Types()) });
-    }
-
-    /// <summary>
-    /// Return registered command type suffixes.
-    /// </summary>
-    public List<string> Types() => _handlers.Select(h => h.Suffix).ToList();
 }
 
 /// <summary>
@@ -251,66 +213,127 @@ public delegate List<Angzarr.CommandBook> EventHandler(
 public delegate List<Angzarr.Cover> PrepareHandler(Any eventAny, Angzarr.UUID? root);
 
 /// <summary>
-/// DRY event dispatcher for sagas.
+/// Unified event dispatcher for sagas, process managers, and projectors.
+/// Uses fluent .Domain().On() pattern to register handlers with domain context.
+///
+/// Example (Saga - single domain):
+/// <code>
+/// var router = new EventRouter("saga-table-hand")
+///     .Domain("table")
+///     .On("HandStarted", HandleStarted);
+/// </code>
+///
+/// Example (Process Manager - multi-domain):
+/// <code>
+/// var router = new EventRouter("pmg-order-flow")
+///     .Domain("order")
+///     .On("OrderCreated", HandleCreated)
+///     .Domain("inventory")
+///     .On("StockReserved", HandleReserved);
+/// </code>
+///
+/// Example (Projector - multi-domain):
+/// <code>
+/// var router = new EventRouter("prj-output")
+///     .Domain("player")
+///     .On("PlayerRegistered", HandleRegistered)
+///     .Domain("hand")
+///     .On("CardsDealt", HandleDealt);
+/// </code>
 /// </summary>
 public class EventRouter
 {
     private readonly string _name;
-    private readonly string _inputDomain;
-    private readonly Dictionary<string, List<string>> _outputTargets = new();
-    private readonly List<(string Suffix, EventHandler Handler)> _handlers = new();
-    private readonly Dictionary<string, PrepareHandler> _prepareHandlers = new();
+    private string? _currentDomain;
+    private readonly Dictionary<string, List<(string Suffix, EventHandler Handler)>> _handlers = new();
+    private readonly Dictionary<string, Dictionary<string, PrepareHandler>> _prepareHandlers = new();
 
-    public EventRouter(string name, string inputDomain)
+    public EventRouter(string name)
     {
         _name = name;
-        _inputDomain = inputDomain;
     }
 
     /// <summary>
-    /// Declare an output domain and command type.
+    /// Create a new EventRouter with a single input domain (backwards compatibility).
     /// </summary>
-    public EventRouter Sends(string domain, string commandType)
+    /// <param name="name">Component name</param>
+    /// <param name="inputDomain">Single input domain (deprecated, use Domain() instead)</param>
+    [Obsolete("Use new EventRouter(name).Domain(inputDomain) instead")]
+    public EventRouter(string name, string inputDomain) : this(name)
     {
-        if (!_outputTargets.TryGetValue(domain, out var types))
-        {
-            types = new List<string>();
-            _outputTargets[domain] = types;
-        }
-        types.Add(commandType);
+        if (!string.IsNullOrEmpty(inputDomain))
+            Domain(inputDomain);
+    }
+
+    /// <summary>
+    /// Set the current domain context for subsequent On() calls.
+    /// </summary>
+    public EventRouter Domain(string name)
+    {
+        _currentDomain = name;
+        if (!_handlers.ContainsKey(name))
+            _handlers[name] = new List<(string, EventHandler)>();
+        if (!_prepareHandlers.ContainsKey(name))
+            _prepareHandlers[name] = new Dictionary<string, PrepareHandler>();
         return this;
     }
 
     /// <summary>
     /// Register a prepare handler for an event type_url suffix.
+    /// Must be called after Domain() to set context.
     /// </summary>
     public EventRouter Prepare(string suffix, PrepareHandler handler)
     {
-        _prepareHandlers[suffix] = handler;
+        if (_currentDomain == null)
+            throw new InvalidOperationException("Must call Domain() before Prepare()");
+        _prepareHandlers[_currentDomain][suffix] = handler;
         return this;
     }
 
     /// <summary>
-    /// Register a handler for an event type_url suffix.
+    /// Register a handler for an event type_url suffix in current domain.
+    /// Must be called after Domain() to set context.
     /// </summary>
     public EventRouter On(string suffix, EventHandler handler)
     {
-        _handlers.Add((suffix, handler));
+        if (_currentDomain == null)
+            throw new InvalidOperationException("Must call Domain() before On()");
+        _handlers[_currentDomain].Add((suffix, handler));
         return this;
+    }
+
+    /// <summary>
+    /// Auto-derive subscriptions from registered handlers.
+    /// </summary>
+    /// <returns>Dictionary of domain to event types.</returns>
+    public Dictionary<string, List<string>> Subscriptions()
+    {
+        var result = new Dictionary<string, List<string>>();
+        foreach (var (domain, handlers) in _handlers)
+        {
+            if (handlers.Count > 0)
+                result[domain] = handlers.Select(h => h.Suffix).ToList();
+        }
+        return result;
     }
 
     /// <summary>
     /// Get destinations needed for the given source events.
+    /// Routes based on source domain.
     /// </summary>
     public List<Angzarr.Cover> PrepareDestinations(Angzarr.EventBook book)
     {
+        var sourceDomain = book.Cover?.Domain ?? "";
+        if (!_prepareHandlers.TryGetValue(sourceDomain, out var domainHandlers))
+            return new List<Angzarr.Cover>();
+
         var root = book.Cover?.Root;
         var destinations = new List<Angzarr.Cover>();
 
         foreach (var page in book.Pages)
         {
             if (page.Event == null) continue;
-            foreach (var (suffix, handler) in _prepareHandlers)
+            foreach (var (suffix, handler) in domainHandlers)
             {
                 if (page.Event.TypeUrl.EndsWith(suffix))
                 {
@@ -324,11 +347,16 @@ public class EventRouter
 
     /// <summary>
     /// Dispatch all events in an EventBook to registered handlers.
+    /// Routes based on source domain and event type suffix.
     /// </summary>
     public List<Angzarr.CommandBook> Dispatch(
         Angzarr.EventBook book,
         List<Angzarr.EventBook>? destinations = null)
     {
+        var sourceDomain = book.Cover?.Domain ?? "";
+        if (!_handlers.TryGetValue(sourceDomain, out var domainHandlers))
+            return new List<Angzarr.CommandBook>();
+
         var root = book.Cover?.Root?.Value.ToByteArray();
         var correlationId = book.Cover?.CorrelationId ?? "";
         var commands = new List<Angzarr.CommandBook>();
@@ -336,7 +364,7 @@ public class EventRouter
         foreach (var page in book.Pages)
         {
             if (page.Event == null) continue;
-            foreach (var (suffix, handler) in _handlers)
+            foreach (var (suffix, handler) in domainHandlers)
             {
                 if (page.Event.TypeUrl.EndsWith(suffix))
                 {
@@ -349,31 +377,11 @@ public class EventRouter
     }
 
     /// <summary>
-    /// Build a component descriptor from registered handlers.
+    /// Return the first registered domain (for backwards compatibility).
     /// </summary>
-    public Descriptor Descriptor()
-    {
-        return new Descriptor(
-            _name,
-            ComponentTypes.Saga,
-            new List<TargetDesc> { new(_inputDomain, Types()) });
-    }
+    [Obsolete("Use Subscriptions() instead")]
+    public string InputDomain() => _handlers.Keys.FirstOrDefault() ?? "";
 
-    /// <summary>
-    /// Return registered event type suffixes.
-    /// </summary>
-    public List<string> Types() => _handlers.Select(h => h.Suffix).ToList();
-
-    /// <summary>
-    /// Return output domain names.
-    /// </summary>
-    public List<string> OutputDomains() => _outputTargets.Keys.ToList();
-
-    /// <summary>
-    /// Return command types for a given output domain.
-    /// </summary>
-    public List<string> OutputTypes(string domain) =>
-        _outputTargets.TryGetValue(domain, out var types) ? types : new List<string>();
 }
 
 /// <summary>
@@ -498,20 +506,4 @@ public class UpcasterRouter
 
         return result;
     }
-
-    /// <summary>
-    /// Build a component descriptor.
-    /// </summary>
-    public Descriptor Descriptor()
-    {
-        return new Descriptor(
-            $"upcaster-{_domain}",
-            ComponentTypes.Upcaster,
-            new List<TargetDesc> { new(_domain, Types()) });
-    }
-
-    /// <summary>
-    /// Return registered old event type suffixes.
-    /// </summary>
-    public List<string> Types() => _handlers.Select(h => h.Suffix).ToList();
 }

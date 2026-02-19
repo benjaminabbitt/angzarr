@@ -362,13 +362,14 @@ func NewEventPageW(proto *pb.EventPage) *EventPageW {
 
 // DecodeEvent attempts to decode an event payload if the type URL matches.
 func (w *EventPageW) DecodeEvent(typeSuffix string, msg interface{ Unmarshal([]byte) error }) bool {
-	if w.EventPage == nil || w.EventPage.Event == nil {
+	event := w.EventPage.GetEvent()
+	if w.EventPage == nil || event == nil {
 		return false
 	}
-	if !TypeURLMatches(w.EventPage.Event.TypeUrl, typeSuffix) {
+	if !TypeURLMatches(event.TypeUrl, typeSuffix) {
 		return false
 	}
-	return msg.Unmarshal(w.EventPage.Event.Value) == nil
+	return msg.Unmarshal(event.Value) == nil
 }
 
 // CommandPageW wraps a CommandPage proto with extension methods.

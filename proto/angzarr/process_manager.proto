@@ -25,9 +25,6 @@ import "google/protobuf/timestamp.proto";
 // Process Manager IS an aggregate with its own domain, events, and state.
 // It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 service ProcessManagerService {
-  // Self-description: component type, subscribed domains, handled event types
-  rpc GetDescriptor (GetDescriptorRequest) returns (ComponentDescriptor);
-
   // Phase 1: Declare which additional destinations are needed beyond the trigger.
   // PM automatically receives triggering event's domain state.
   rpc Prepare (ProcessManagerPrepareRequest) returns (ProcessManagerPrepareResponse);

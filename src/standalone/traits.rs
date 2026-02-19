@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use tonic::Status;
 
 use crate::proto::{
-    BusinessResponse, CommandBook, ComponentDescriptor, ContextualCommand, Cover, EventBook,
-    Notification, RejectionNotification, RevocationResponse, SagaResponse,
+    BusinessResponse, CommandBook, ContextualCommand, Cover, EventBook, Notification,
+    RejectionNotification, RevocationResponse, SagaResponse,
 };
 
 /// client logic handler for a domain aggregate.
@@ -42,11 +42,6 @@ use crate::proto::{
 /// ```
 #[async_trait]
 pub trait AggregateHandler: Send + Sync + 'static {
-    /// Self-description: component type, subscribed domains, handled command types.
-    fn descriptor(&self) -> ComponentDescriptor {
-        ComponentDescriptor::default()
-    }
-
     /// Handle a contextual command and return new events.
     async fn handle(&self, command: ContextualCommand) -> Result<EventBook, Status>;
 
@@ -217,11 +212,6 @@ pub use crate::orchestration::projector::{ProjectionMode, ProjectorHandler};
 /// ```
 #[async_trait]
 pub trait SagaHandler: Send + Sync + 'static {
-    /// Self-description: component type, subscribed domains, handled event types.
-    fn descriptor(&self) -> ComponentDescriptor {
-        ComponentDescriptor::default()
-    }
-
     /// Phase 1: Examine source events and declare destination aggregates needed.
     ///
     /// Return covers for aggregates whose state you need before producing commands.
@@ -329,22 +319,11 @@ impl SagaConfig {
 ///
 /// ```ignore
 /// use angzarr::standalone::ProcessManagerHandler;
-/// use angzarr::proto::{CommandBook, ComponentDescriptor, Cover, EventBook, Target};
+/// use angzarr::proto::{CommandBook, Cover, EventBook};
 ///
 /// struct OrderFulfillmentPM;
 ///
 /// impl ProcessManagerHandler for OrderFulfillmentPM {
-///     fn descriptor(&self) -> ComponentDescriptor {
-///         ComponentDescriptor {
-///             name: "order-fulfillment".into(),
-///             component_type: "process_manager".into(),
-///             inputs: vec![
-///                 Target { domain: "order".into(), types: vec![] },
-///                 Target { domain: "inventory".into(), types: vec![] },
-///             ],
-///         }
-///     }
-///
 ///     fn prepare(&self, _trigger: &EventBook, _state: Option<&EventBook>) -> Vec<Cover> {
 ///         vec![] // Only needs PM state
 ///     }
@@ -361,11 +340,6 @@ impl SagaConfig {
 /// }
 /// ```
 pub trait ProcessManagerHandler: Send + Sync + 'static {
-    /// Self-description: component type, subscribed domains, handled event types.
-    ///
-    /// Called at startup to configure event routing and topology registration.
-    fn descriptor(&self) -> ComponentDescriptor;
-
     /// Phase 1: Declare additional destinations needed beyond trigger + PM state.
     ///
     /// Returns destinations to fetch. Most PMs return empty (only need PM state).
@@ -464,6 +438,8 @@ pub trait ProcessManagerHandler: Send + Sync + 'static {
 pub struct ProcessManagerConfig {
     /// The PM's own aggregate domain for state storage.
     pub domain: String,
+    /// Subscriptions: which domains/event types this PM listens to.
+    pub subscriptions: Vec<crate::descriptor::Target>,
 }
 
 impl ProcessManagerConfig {
@@ -471,6 +447,13 @@ impl ProcessManagerConfig {
     pub fn new(domain: impl Into<String>) -> Self {
         Self {
             domain: domain.into(),
+            subscriptions: vec![],
         }
+    }
+
+    /// Add subscriptions for this process manager.
+    pub fn with_subscriptions(mut self, subscriptions: Vec<crate::descriptor::Target>) -> Self {
+        self.subscriptions = subscriptions;
+        self
     }
 }

@@ -38,25 +38,6 @@ public:
     explicit TableAggregateService(angzarr::CommandRouter<table::TableState> router)
         : router_(std::move(router)) {}
 
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* context,
-        const angzarr::GetDescriptorRequest* request,
-        angzarr::ComponentDescriptor* response) override {
-
-        response->set_name(TABLE_DOMAIN);
-        response->set_component_type("aggregate");
-
-        auto* input = response->add_inputs();
-        input->set_domain(TABLE_DOMAIN);
-        input->add_types("CreateTable");
-        input->add_types("JoinTable");
-        input->add_types("LeaveTable");
-        input->add_types("StartHand");
-        input->add_types("EndHand");
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Handle(
         grpc::ServerContext* context,
         const angzarr::ContextualCommand* request,

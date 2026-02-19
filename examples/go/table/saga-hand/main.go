@@ -96,8 +96,8 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 
 func main() {
 	// docs:start:event_router
-	router := angzarr.NewEventRouter("saga-table-hand", "table").
-		Sends("hand", "DealCards").
+	router := angzarr.NewEventRouter("saga-table-hand").
+		Domain("table").
 		Prepare("HandStarted", prepareHandStarted).
 		On("HandStarted", handleHandStarted)
 	// docs:end:event_router

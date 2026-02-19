@@ -7,8 +7,8 @@ namespace table {
 namespace saga {
 
 angzarr::EventRouter create_table_player_router() {
-    return angzarr::EventRouter("saga-table-player", "table")
-        .sends("player", "ReleaseFunds")
+    return angzarr::EventRouter("saga-table-player")
+        .domain("table")
         .prepare<examples::HandEnded>(prepare_hand_ended)
         .on<examples::HandEnded>(handle_hand_ended);
 }

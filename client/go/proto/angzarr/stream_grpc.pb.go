@@ -26,6 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
+// docs:start:event_stream_service
 // EventStreamService: streams events to registered subscribers
 type EventStreamServiceClient interface {
 	// Subscribe to events matching correlation ID (required)
@@ -64,6 +65,7 @@ type EventStreamService_SubscribeClient = grpc.ServerStreamingClient[EventBook]
 // All implementations must embed UnimplementedEventStreamServiceServer
 // for forward compatibility.
 //
+// docs:start:event_stream_service
 // EventStreamService: streams events to registered subscribers
 type EventStreamServiceServer interface {
 	// Subscribe to events matching correlation ID (required)

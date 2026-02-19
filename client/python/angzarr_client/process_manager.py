@@ -54,7 +54,7 @@ from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
 from .compensation import RejectionHandlerResponse
-from .router import Descriptor, TargetDesc, _pack_any, prepares, reacts_to, rejected
+from .router import _pack_any, prepares, reacts_to, rejected
 
 # Re-export decorators
 __all__ = ["ProcessManager", "prepares", "reacts_to", "rejected"]
@@ -377,19 +377,6 @@ class ProcessManager(Generic[StateT], ABC):
                 commands.extend(pm.dispatch(page.event, root, correlation_id, destinations))
 
         return commands, pm.process_events()
-
-    @classmethod
-    def descriptor(cls) -> Descriptor:
-        """Build component descriptor for topology discovery."""
-        inputs = [
-            TargetDesc(domain=domain, types=types_list)
-            for domain, types_list in cls._input_domains.items()
-        ]
-        return Descriptor(
-            name=cls.name,
-            component_type="process_manager",
-            inputs=inputs,
-        )
 
     def handle_revocation(
         self,

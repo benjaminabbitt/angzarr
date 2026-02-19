@@ -4,7 +4,7 @@
 //! Writes formatted game logs to a file.
 //!
 //! This example demonstrates the OO pattern using:
-//! - `#[projector(name = "...", inputs = ["domain1", "domain2"])]` on impl blocks
+//! - `#[projector(name = "...")]` on impl blocks
 //! - `#[projects(EventType)]` on handler methods
 
 use std::env;
@@ -53,7 +53,7 @@ fn truncate_id(id: &[u8]) -> String {
 /// Output projector using OO-style annotations.
 pub struct OutputProjector;
 
-#[projector(name = "output", inputs = ["player", "table", "hand"])]
+#[projector(name = "output")]
 impl OutputProjector {
     #[projects(PlayerRegistered)]
     fn project_registered(&self, event: PlayerRegistered) -> Projection {

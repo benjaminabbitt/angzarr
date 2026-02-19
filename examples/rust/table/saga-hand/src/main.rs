@@ -7,7 +7,7 @@
 //! Sends DealCards commands to Hand domain.
 
 use angzarr_client::proto::examples::{DealCards, HandStarted, PlayerInHand};
-use angzarr_client::proto::{CommandBook, CommandPage, Cover, EventBook, Uuid};
+use angzarr_client::proto::{command_page, CommandBook, CommandPage, Cover, EventBook, Uuid};
 use angzarr_client::{
     run_saga_server, CommandRejectedError, CommandResult, EventRouter, UnpackAny,
 };
@@ -82,7 +82,7 @@ fn handle_hand_started(
         }),
         pages: vec![CommandPage {
             sequence: dest_seq,
-            command: Some(command_any),
+            payload: Some(command_page::Payload::Command(command_any)),
             ..Default::default()
         }],
         saga_origin: None,
@@ -98,8 +98,8 @@ async fn main() {
         .init();
 
     // docs:start:event_router
-    let router = EventRouter::new("saga-table-hand", "table")
-        .sends("hand", "DealCards")
+    let router = EventRouter::new("saga-table-hand")
+        .domain("table")
         .prepare("HandStarted", prepare_hand_started)
         .on("HandStarted", handle_hand_started);
     // docs:end:event_router

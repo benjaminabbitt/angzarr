@@ -15,8 +15,8 @@ public static class HandPlayerSaga
 {
     public static EventRouter Create()
     {
-        return new EventRouter("saga-hand-player", "hand")
-            .Sends("player", "DepositFunds")
+        return new EventRouter("saga-hand-player")
+            .Domain("hand")
             .Prepare<PotAwarded>(PreparePotAwarded)
             .On<PotAwarded>(HandlePotAwarded);
     }

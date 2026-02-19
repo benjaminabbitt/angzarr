@@ -8,7 +8,7 @@
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/table.pb.h"
-#include "examples/types.pb.h"
+#include "examples/poker_types.pb.h"
 
 namespace hand_flow {
 

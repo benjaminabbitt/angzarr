@@ -20,23 +20,6 @@ constexpr const char* OUTPUT_DOMAIN = "player";
 /// gRPC service implementation for table-player saga.
 class TablePlayerSagaService final : public angzarr::SagaService::Service {
 public:
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* context,
-        const angzarr::GetDescriptorRequest* request,
-        angzarr::ComponentDescriptor* response) override {
-
-        response->set_name(SAGA_NAME);
-        response->set_component_type("saga");
-
-        auto* input = response->add_inputs();
-        input->set_domain(INPUT_DOMAIN);
-        input->add_types("HandEnded");
-
-        // Note: outputs not tracked in ComponentDescriptor
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Prepare(
         grpc::ServerContext* context,
         const angzarr::SagaPrepareRequest* request,
@@ -111,7 +94,7 @@ public:
                         uint64_t dest_seq = 0;
                         auto it = dest_map.find(player_hex);
                         if (it != dest_map.end() && it->second->pages_size() > 0) {
-                            dest_seq = it->second->pages(it->second->pages_size() - 1).num() + 1;
+                            dest_seq = it->second->pages(it->second->pages_size() - 1).sequence() + 1;
                         }
 
                         // Create ReleaseFunds command

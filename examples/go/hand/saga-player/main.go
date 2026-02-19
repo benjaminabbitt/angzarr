@@ -95,8 +95,8 @@ func handlePotAwarded(source *pb.EventBook, event *anypb.Any, destinations []*pb
 }
 
 func main() {
-	router := angzarr.NewEventRouter("saga-hand-player", "hand").
-		Sends("player", "DepositFunds").
+	router := angzarr.NewEventRouter("saga-hand-player").
+		Domain("hand").
 		Prepare("PotAwarded", preparePotAwarded).
 		On("PotAwarded", handlePotAwarded)
 

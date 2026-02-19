@@ -79,8 +79,8 @@ func NewCompensationContext(notification *pb.Notification) *CompensationContext 
 func (c *CompensationContext) RejectedCommandType() string {
 	if c.RejectedCommand != nil && len(c.RejectedCommand.Pages) > 0 {
 		page := c.RejectedCommand.Pages[0]
-		if page.Command != nil {
-			return page.Command.TypeUrl
+		if cmd := page.GetCommand(); cmd != nil {
+			return cmd.TypeUrl
 		}
 	}
 	return ""

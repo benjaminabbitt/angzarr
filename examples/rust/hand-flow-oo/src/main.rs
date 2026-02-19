@@ -144,10 +144,7 @@ async fn main() {
     println!("Starting Hand Flow process manager (OO pattern)");
 
     let pm = HandFlowPM;
-    let router = pm.into_router()
-        .sends("hand", "PostBlind")
-        .sends("hand", "DealCommunityCards")
-        .sends("hand", "AwardPot");
+    let router = pm.into_router();
 
     run_process_manager_server("hand-flow", 50092, router)
         .await

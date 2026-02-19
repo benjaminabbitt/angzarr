@@ -5,7 +5,7 @@
 #include <google/protobuf/any.pb.h>
 #include "angzarr/types.pb.h"
 #include "examples/table.pb.h"
-#include "examples/types.pb.h"
+#include "examples/poker_types.pb.h"
 
 namespace table {
 

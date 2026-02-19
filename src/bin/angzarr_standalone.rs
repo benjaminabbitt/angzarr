@@ -80,6 +80,7 @@ use angzarr::config::{
     Config, ExternalServiceConfig, HealthCheckConfig, CONFIG_ENV_PREFIX, CONFIG_ENV_VAR,
     TRANSPORT_TYPE_ENV_VAR,
 };
+use angzarr::descriptor::parse_subscriptions;
 use angzarr::discovery::k8s::K8sServiceDiscovery;
 use angzarr::discovery::ServiceDiscovery;
 use angzarr::handlers::core::{
@@ -509,26 +510,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         let channel = connect_to_address(&path).await?;
-        let mut pm_client = ProcessManagerServiceClient::new(channel);
+        let pm_client = ProcessManagerServiceClient::new(channel);
 
-        // Get PM descriptor to determine which domains/event types it subscribes to
-        let descriptor = pm_client
-            .get_descriptor(angzarr::proto::GetDescriptorRequest {})
-            .await?
-            .into_inner();
-        let subscriptions = descriptor.inputs.clone();
+        // Get PM subscriptions from config
+        let subscriptions = svc
+            .subscriptions
+            .as_ref()
+            .map(|s| parse_subscriptions(s))
+            .unwrap_or_default();
 
-        info!(
-            domain = %svc.domain,
-            subscriptions = subscriptions.len(),
-            "PM subscriptions from descriptor"
-        );
-        for sub in &subscriptions {
-            info!(
-                domain = %sub.domain,
-                types = ?sub.types,
-                "PM subscription target"
+        if subscriptions.is_empty() {
+            warn!(
+                domain = %svc.domain,
+                "No subscriptions configured for PM - will not receive events"
             );
+        } else {
+            info!(
+                domain = %svc.domain,
+                subscriptions = subscriptions.len(),
+                "PM subscriptions from config"
+            );
+            for sub in &subscriptions {
+                info!(
+                    domain = %sub.domain,
+                    types = ?sub.types,
+                    "PM subscription target"
+                );
+            }
         }
 
         let pm_client = Arc::new(Mutex::new(pm_client));

@@ -5,14 +5,10 @@ from google.protobuf import any_pb2
 
 from angzarr_client.proto.angzarr import types_pb2 as angzarr
 from angzarr_client.router import (
-    COMPONENT_AGGREGATE,
-    COMPONENT_SAGA,
     ERRMSG_NO_COMMAND_PAGES,
     ERRMSG_UNKNOWN_COMMAND,
     CommandRouter,
-    Descriptor,
     EventRouter,
-    TargetDesc,
     next_sequence,
     command_handler,
     _pack_events,
@@ -233,35 +229,6 @@ class TestCommandRouterMetadata:
         router = CommandRouter(DOMAIN_ORDER, dummy_rebuild)
         assert router.domain == DOMAIN_ORDER
 
-    def test_types(self):
-        router = (
-            CommandRouter(DOMAIN_ORDER, dummy_rebuild)
-            .on(SUFFIX_CREATE_ORDER, handler_a)
-            .on(SUFFIX_CANCEL_ORDER, handler_b)
-        )
-        assert router.types() == [SUFFIX_CREATE_ORDER, SUFFIX_CANCEL_ORDER]
-
-    def test_descriptor(self):
-        router = (
-            CommandRouter(DOMAIN_ORDER, dummy_rebuild)
-            .on(SUFFIX_CREATE_ORDER, handler_a)
-            .on(SUFFIX_CANCEL_ORDER, handler_b)
-        )
-
-        desc = router.descriptor()
-        assert desc.name == DOMAIN_ORDER
-        assert desc.component_type == COMPONENT_AGGREGATE
-        assert len(desc.inputs) == 1
-        assert desc.inputs[0].domain == DOMAIN_ORDER
-        assert desc.inputs[0].types == [SUFFIX_CREATE_ORDER, SUFFIX_CANCEL_ORDER]
-
-    def test_descriptor_type(self):
-        router = CommandRouter(DOMAIN_CART, dummy_rebuild).on("CreateCart", handler_a)
-        desc = router.descriptor()
-        assert isinstance(desc, Descriptor)
-        assert isinstance(desc.inputs[0], TargetDesc)
-
-
 # ============================================================================
 # next_sequence tests
 # ============================================================================
@@ -315,11 +282,11 @@ def multi_command_handler(event, root, correlation_id, destinations):
     ]
 
 
-def make_event_book(type_url, correlation_id, root_bytes):
+def make_event_book(type_url, correlation_id, root_bytes, domain=DOMAIN_ORDER):
     """Create an EventBook for testing."""
     return angzarr.EventBook(
         cover=angzarr.Cover(
-            domain=DOMAIN_ORDER,
+            domain=domain,
             root=angzarr.UUID(value=root_bytes),
             correlation_id=correlation_id,
         ),
@@ -334,8 +301,8 @@ def make_event_book(type_url, correlation_id, root_bytes):
 class TestEventRouterDispatch:
     def test_dispatches_matching_event(self):
         router = (
-            EventRouter(SAGA_TEST, DOMAIN_ORDER)
-            .sends(DOMAIN_FULFILLMENT, "CreateShipment")
+            EventRouter(SAGA_TEST)
+            .domain(DOMAIN_ORDER)
             .on(SUFFIX_ORDER_COMPLETED, saga_handler)
         )
 
@@ -348,7 +315,7 @@ class TestEventRouterDispatch:
         assert commands[0].cover.root.value == ROOT_BYTES_A
 
     def test_skips_unmatched_event(self):
-        router = EventRouter(SAGA_TEST, DOMAIN_ORDER).on(
+        router = EventRouter(SAGA_TEST).domain(DOMAIN_ORDER).on(
             SUFFIX_ORDER_COMPLETED, saga_handler
         )
 
@@ -359,18 +326,18 @@ class TestEventRouterDispatch:
 
     def test_multiple_commands(self):
         router = (
-            EventRouter(SAGA_INVENTORY_RESERVE, DOMAIN_CART)
-            .sends(DOMAIN_INVENTORY, "ReserveStock")
+            EventRouter(SAGA_INVENTORY_RESERVE)
+            .domain(DOMAIN_CART)
             .on(SUFFIX_QTY_UPDATED, multi_command_handler)
         )
 
-        book = make_event_book(TYPE_URL_QTY_UPDATED, CORR_ID_2, ROOT_BYTES_B)
+        book = make_event_book(TYPE_URL_QTY_UPDATED, CORR_ID_2, ROOT_BYTES_B, DOMAIN_CART)
         commands = router.dispatch(book)
 
         assert len(commands) == 2
 
     def test_multiple_pages(self):
-        router = EventRouter(SAGA_TEST, DOMAIN_ORDER).on(
+        router = EventRouter(SAGA_TEST).domain(DOMAIN_ORDER).on(
             SUFFIX_ORDER_COMPLETED, saga_handler
         )
 
@@ -392,54 +359,12 @@ class TestEventRouterDispatch:
 
 class TestEventRouterMetadata:
     def test_name(self):
-        router = EventRouter(SAGA_FULFILLMENT, DOMAIN_ORDER)
+        router = EventRouter(SAGA_FULFILLMENT).domain(DOMAIN_ORDER)
         assert router.name == SAGA_FULFILLMENT
 
     def test_input_domain(self):
-        router = EventRouter(SAGA_FULFILLMENT, DOMAIN_ORDER)
+        router = EventRouter(SAGA_FULFILLMENT).domain(DOMAIN_ORDER)
         assert router.input_domain == DOMAIN_ORDER
-
-    def test_output_domains(self):
-        router = (
-            EventRouter(SAGA_FULFILLMENT, DOMAIN_ORDER)
-            .sends(DOMAIN_FULFILLMENT, "CreateShipment")
-            .sends(DOMAIN_INVENTORY, "ReserveStock")
-        )
-        assert router.output_domains() == [DOMAIN_FULFILLMENT, DOMAIN_INVENTORY]
-
-    def test_output_types(self):
-        router = (
-            EventRouter(SAGA_FULFILLMENT, DOMAIN_ORDER)
-            .sends(DOMAIN_FULFILLMENT, "CreateShipment")
-            .sends(DOMAIN_FULFILLMENT, "CancelShipment")
-            .sends(DOMAIN_INVENTORY, "ReserveStock")
-        )
-        assert router.output_types(DOMAIN_FULFILLMENT) == ["CreateShipment", "CancelShipment"]
-        assert router.output_types(DOMAIN_INVENTORY) == ["ReserveStock"]
-        assert router.output_types("nonexistent") == []
-
-    def test_types(self):
-        router = (
-            EventRouter(SAGA_FULFILLMENT, DOMAIN_ORDER)
-            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
-            .on(SUFFIX_ORDER_CANCELLED, saga_handler)
-        )
-        assert router.types() == [SUFFIX_ORDER_COMPLETED, SUFFIX_ORDER_CANCELLED]
-
-    def test_descriptor(self):
-        router = (
-            EventRouter(SAGA_FULFILLMENT, DOMAIN_ORDER)
-            .sends(DOMAIN_FULFILLMENT, "CreateShipment")
-            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
-        )
-
-        desc = router.descriptor()
-        assert desc.name == SAGA_FULFILLMENT
-        assert desc.component_type == COMPONENT_SAGA
-        assert len(desc.inputs) == 1
-        assert desc.inputs[0].domain == DOMAIN_ORDER
-        assert desc.inputs[0].types == [SUFFIX_ORDER_COMPLETED]
-
 
 # ============================================================================
 # @command_handler decorator tests
@@ -628,9 +553,6 @@ class TestCommandHandlerDecorator:
 
         # Single argument - suffix derived from @command_handler
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(handle_create)
-
-        # Verify the type was registered correctly
-        assert router.types() == ["FakeCommand"]
 
         # Create contextual command
         cmd = FakeCommand(value="test456")

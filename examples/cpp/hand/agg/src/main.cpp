@@ -38,25 +38,6 @@ public:
     explicit HandAggregateService(angzarr::CommandRouter<hand::HandState> router)
         : router_(std::move(router)) {}
 
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* context,
-        const angzarr::GetDescriptorRequest* request,
-        angzarr::ComponentDescriptor* response) override {
-
-        response->set_name(HAND_DOMAIN);
-        response->set_component_type("aggregate");
-
-        auto* input = response->add_inputs();
-        input->set_domain(HAND_DOMAIN);
-        input->add_types("DealCards");
-        input->add_types("PostBlind");
-        input->add_types("PlayerAction");
-        input->add_types("DealCommunityCards");
-        input->add_types("AwardPot");
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Handle(
         grpc::ServerContext* context,
         const angzarr::ContextualCommand* request,

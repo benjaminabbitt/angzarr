@@ -96,11 +96,6 @@ impl OutboundService {
         self
     }
 
-    /// Get a reference to subscriptions for the event handler.
-    pub(crate) fn subscriptions(&self) -> Arc<RwLock<HashMap<String, Vec<Subscriber>>>> {
-        Arc::clone(&self.subscriptions)
-    }
-
     /// Process an event book - forward to gRPC subscribers and CloudEvents sinks.
     ///
     /// This is the main entry point for handling events.

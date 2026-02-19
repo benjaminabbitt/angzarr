@@ -26,7 +26,7 @@ from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ngzarr/projector.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x83\x01\n\x19SpeculateProjectorRequest\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12:\n\rpoint_in_time\x18\x02 \x01(\x0b\x32\x16.angzarr.TemporalQueryR\x0bpointInTime2\xd1\x01\n\x10ProjectorService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12\x31\n\x06Handle\x12\x12.angzarr.EventBook\x1a\x13.angzarr.Projection\x12<\n\x11HandleSpeculative\x12\x12.angzarr.EventBook\x1a\x13.angzarr.Projection2\xdc\x01\n\x1bProjectorCoordinatorService\x12\x39\n\nHandleSync\x12\x16.angzarr.SyncEventBook\x1a\x13.angzarr.Projection\x12\x34\n\x06Handle\x12\x12.angzarr.EventBook\x1a\x16.google.protobuf.Empty\x12L\n\x11HandleSpeculative\x12\".angzarr.SpeculateProjectorRequest\x1a\x13.angzarr.ProjectionB\x83\x01\n\x0b\x63om.angzarrB\x0eProjectorProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ngzarr/projector.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x83\x01\n\x19SpeculateProjectorRequest\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12:\n\rpoint_in_time\x18\x02 \x01(\x0b\x32\x16.angzarr.TemporalQueryR\x0bpointInTime2\x83\x01\n\x10ProjectorService\x12\x31\n\x06Handle\x12\x12.angzarr.EventBook\x1a\x13.angzarr.Projection\x12<\n\x11HandleSpeculative\x12\x12.angzarr.EventBook\x1a\x13.angzarr.Projection2\xdc\x01\n\x1bProjectorCoordinatorService\x12\x39\n\nHandleSync\x12\x16.angzarr.SyncEventBook\x1a\x13.angzarr.Projection\x12\x34\n\x06Handle\x12\x12.angzarr.EventBook\x1a\x16.google.protobuf.Empty\x12L\n\x11HandleSpeculative\x12\".angzarr.SpeculateProjectorRequest\x1a\x13.angzarr.ProjectionB\x83\x01\n\x0b\x63om.angzarrB\x0eProjectorProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,7 +37,7 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_SPECULATEPROJECTORREQUEST']._serialized_start=87
   _globals['_SPECULATEPROJECTORREQUEST']._serialized_end=218
   _globals['_PROJECTORSERVICE']._serialized_start=221
-  _globals['_PROJECTORSERVICE']._serialized_end=430
-  _globals['_PROJECTORCOORDINATORSERVICE']._serialized_start=433
-  _globals['_PROJECTORCOORDINATORSERVICE']._serialized_end=653
+  _globals['_PROJECTORSERVICE']._serialized_end=352
+  _globals['_PROJECTORCOORDINATORSERVICE']._serialized_start=355
+  _globals['_PROJECTORCOORDINATORSERVICE']._serialized_end=575
 # @@protoc_insertion_point(module_scope)

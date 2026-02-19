@@ -36,27 +36,6 @@ public:
         }
     }
 
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* context,
-        const angzarr::GetDescriptorRequest* request,
-        angzarr::ComponentDescriptor* response) override {
-
-        response->set_name(PROJECTOR_NAME);
-        response->set_component_type("projector");
-
-        // Subscribe to all poker domains
-        auto* player_input = response->add_inputs();
-        player_input->set_domain("player");
-
-        auto* table_input = response->add_inputs();
-        table_input->set_domain("table");
-
-        auto* hand_input = response->add_inputs();
-        hand_input->set_domain("hand");
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Handle(
         grpc::ServerContext* context,
         const angzarr::EventBook* request,
@@ -73,7 +52,7 @@ public:
         // Speculative mode - don't write to file
         uint32_t seq = 0;
         for (const auto& page : request->pages()) {
-            seq = page.num();
+            seq = page.sequence();
         }
 
         response->mutable_cover()->CopyFrom(request->cover());
@@ -90,7 +69,7 @@ private:
 
         for (const auto& page : event_book.pages()) {
             const auto& event_any = page.event();
-            seq = page.num();
+            seq = page.sequence();
 
             // Format and write event
             std::string formatted = format_event(event_any, event_book.cover().domain());

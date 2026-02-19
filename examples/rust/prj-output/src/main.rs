@@ -204,15 +204,7 @@ async fn main() {
     let path = env::var("HAND_LOG_FILE").unwrap_or_else(|_| "hand_log.txt".to_string());
     let _ = std::fs::remove_file(&path);
 
-    let handler = ProjectorHandler::new(
-        "output",
-        vec![
-            "player".to_string(),
-            "table".to_string(),
-            "hand".to_string(),
-        ],
-    )
-    .with_handle(handle_events);
+    let handler = ProjectorHandler::new("output").with_handle(handle_events);
 
     run_projector_server("output", 50090, handler)
         .await

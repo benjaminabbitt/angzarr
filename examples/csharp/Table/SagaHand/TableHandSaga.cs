@@ -19,8 +19,8 @@ public static class TableHandSaga
     // docs:start:event_router
     public static EventRouter Create()
     {
-        return new EventRouter("saga-table-hand", "table")
-            .Sends("hand", "DealCards")
+        return new EventRouter("saga-table-hand")
+            .Domain("table")
             .Prepare<HandStarted>(PrepareHandStarted)
             .On<HandStarted>(HandleHandStarted);
     }

@@ -2,7 +2,7 @@ package dev.angzarr.examples.hand.sagaplayer;
 
 import com.google.protobuf.Any;
 import dev.angzarr.*;
-import dev.angzarr.client.router.EventRouter;
+import dev.angzarr.client.EventRouter;
 import dev.angzarr.examples.*;
 
 import java.util.ArrayList;
@@ -21,8 +21,8 @@ public final class HandPlayerRouter {
     private HandPlayerRouter() {}
 
     public static EventRouter createRouter() {
-        return new EventRouter("saga-hand-player", "hand")
-            .sends("player", "DepositFunds")
+        return new EventRouter("saga-hand-player")
+            .domain("hand")
             .prepare(PotAwarded.class, HandPlayerRouter::preparePotAwarded)
             .on(PotAwarded.class, HandPlayerRouter::handlePotAwarded);
     }

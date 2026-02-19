@@ -13,7 +13,7 @@ EventBook new_event_book(const T& event, int sequence = 1) {
     EventBook book;
     auto* page = book.add_pages();
     page->mutable_event()->PackFrom(event, "type.googleapis.com/");
-    page->set_num(sequence);  // Uses oneof sequence.num field
+    page->set_sequence(sequence);
     return book;
 }
 
@@ -33,8 +33,7 @@ inline bool type_url_matches(const std::string& type_url, const std::string& suf
 inline int next_sequence(const EventBook* book) {
     if (!book || book->pages_size() == 0) return 1;
     const auto& last_page = book->pages(book->pages_size() - 1);
-    // Uses oneof sequence.num field
-    return last_page.has_num() ? last_page.num() + 1 : 1;
+    return last_page.sequence() + 1;
 }
 
 } // namespace helpers
@@ -53,13 +52,11 @@ inline int next_sequence(const EventBook* book) {
     std::string domain() const override { return kDomain; }
 
 /// Declare this class as a saga.
-#define ANGZARR_SAGA(saga_name, in_domain, out_domain) \
+#define ANGZARR_SAGA(saga_name, in_domain) \
     static constexpr const char* kName = saga_name; \
     static constexpr const char* kInputDomain = in_domain; \
-    static constexpr const char* kOutputDomain = out_domain; \
     std::string name() const override { return kName; } \
-    std::string input_domain() const override { return kInputDomain; } \
-    std::string output_domain() const override { return kOutputDomain; }
+    std::string input_domain() const override { return kInputDomain; }
 
 /// Register a command handler method (for aggregates).
 #define ANGZARR_HANDLES(T) \

@@ -308,14 +308,15 @@ func (s *SagaBase) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
 
 	var covers []*pb.Cover
 	for _, page := range source.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 		for suffix, handler := range s.prepares {
 			if strings.HasSuffix(typeURL, suffix) {
-				result := handler(page.Event)
+				result := handler(event)
 				covers = append(covers, result...)
 				break
 			}
@@ -333,14 +334,15 @@ func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (
 
 	var commands []*pb.CommandBook
 	for _, page := range source.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 		for suffix, handler := range s.handlers {
 			if strings.HasSuffix(typeURL, suffix) {
-				cmds, err := handler(page.Event, destinations)
+				cmds, err := handler(event, destinations)
 				if err != nil {
 					return nil, err
 				}
@@ -359,18 +361,4 @@ func (s *SagaBase) HandlerTypes() []string {
 		types = append(types, suffix)
 	}
 	return types
-}
-
-// Descriptor builds a ComponentDescriptor from registered handlers.
-func (s *SagaBase) Descriptor() *pb.ComponentDescriptor {
-	return &pb.ComponentDescriptor{
-		Name:          s.name,
-		ComponentType: ComponentSaga,
-		Inputs: []*pb.Target{
-			{
-				Domain: s.inputDomain,
-				Types:  s.HandlerTypes(),
-			},
-		},
-	}
 }

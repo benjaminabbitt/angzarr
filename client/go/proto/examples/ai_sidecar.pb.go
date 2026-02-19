@@ -641,7 +641,7 @@ var File_examples_ai_sidecar_proto protoreflect.FileDescriptor
 
 const file_examples_ai_sidecar_proto_rawDesc = "" +
 	"\n" +
-	"\x19examples/ai_sidecar.proto\x12\bexamples\x1a\x14examples/types.proto\"\xfa\x04\n" +
+	"\x19examples/ai_sidecar.proto\x12\bexamples\x1a\x1aexamples/poker_types.proto\"\xfa\x04\n" +
 	"\rActionRequest\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x128\n" +
 	"\fgame_variant\x18\x02 \x01(\x0e2\x15.examples.GameVariantR\vgameVariant\x12,\n" +
@@ -760,7 +760,7 @@ func file_examples_ai_sidecar_proto_init() {
 	if File_examples_ai_sidecar_proto != nil {
 		return
 	}
-	file_examples_types_proto_init()
+	file_examples_poker_types_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

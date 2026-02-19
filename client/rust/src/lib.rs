@@ -63,6 +63,7 @@ pub mod proto_ext;
 pub mod router;
 pub mod server;
 pub mod traits;
+pub mod validation;
 
 // Re-export main types at crate root
 pub use client::{AggregateClient, Client, DomainClient, QueryClient, SpeculativeClient};
@@ -90,6 +91,7 @@ pub use router::{
     CommandRejectedError, CommandResult, CommandRouter, EventApplier, EventHandler, EventRouter,
     PrepareHandler, ProcessManagerHandler, ProcessManagerPrepareHandler, ProcessManagerResponse,
     ProcessManagerRouter, ProcessManagerStateRebuilder, StateRebuilder, StateRouter, UnpackAny,
+    UpcasterHandler, UpcasterRouter,
 };
 
 // Re-export handler types
@@ -101,4 +103,10 @@ pub use handler::{
 pub use server::{
     run_aggregate_server, run_process_manager_server, run_projector_server, run_saga_server,
     ServerConfig,
+};
+
+// Re-export validation helpers
+pub use validation::{
+    require_exists, require_non_negative, require_not_empty, require_not_empty_str,
+    require_not_exists, require_positive, require_status, require_status_not,
 };

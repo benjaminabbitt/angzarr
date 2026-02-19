@@ -449,7 +449,7 @@ func TestEventPageW_Constructor(t *testing.T) {
 func TestEventPageW_DecodeEvent(t *testing.T) {
 	t.Run("successful decode", func(t *testing.T) {
 		page := &pb.EventPage{
-			Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}},
+			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}}},
 		}
 		wrapper := NewEventPageW(page)
 		msg := &mockUnmarshaler{shouldSucceed: true}
@@ -460,7 +460,7 @@ func TestEventPageW_DecodeEvent(t *testing.T) {
 
 	t.Run("type mismatch", func(t *testing.T) {
 		page := &pb.EventPage{
-			Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Other"},
+			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Other"}},
 		}
 		wrapper := NewEventPageW(page)
 		msg := &mockUnmarshaler{shouldSucceed: true}

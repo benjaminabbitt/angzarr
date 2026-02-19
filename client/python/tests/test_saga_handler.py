@@ -7,7 +7,7 @@ from google.protobuf import any_pb2
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.angzarr import saga_pb2 as saga
-from angzarr_client.router import COMPONENT_SAGA, EventRouter
+from angzarr_client.router import EventRouter
 from angzarr_client.saga_handler import SagaHandler
 
 # ============================================================================
@@ -63,8 +63,8 @@ def make_event_book(type_url, correlation_id, root_bytes):
 class TestSagaHandlerSimpleMode:
     def test_prepare_returns_empty_by_default(self):
         router = (
-            EventRouter(SAGA_NAME, DOMAIN_SOURCE)
-            .sends(DOMAIN_TARGET, "TargetCommand")
+            EventRouter(SAGA_NAME)
+            .domain(DOMAIN_SOURCE)
             .on(SUFFIX_EVENT_A, saga_event_handler)
         )
         handler = SagaHandler(router)
@@ -77,8 +77,8 @@ class TestSagaHandlerSimpleMode:
 
     def test_execute_dispatches_matching_event(self):
         router = (
-            EventRouter(SAGA_NAME, DOMAIN_SOURCE)
-            .sends(DOMAIN_TARGET, "TargetCommand")
+            EventRouter(SAGA_NAME)
+            .domain(DOMAIN_SOURCE)
             .on(SUFFIX_EVENT_A, saga_event_handler)
         )
         handler = SagaHandler(router)
@@ -92,7 +92,7 @@ class TestSagaHandlerSimpleMode:
         assert resp.commands[0].cover.correlation_id == CORR_ID_1
 
     def test_execute_no_match_returns_empty(self):
-        router = EventRouter(SAGA_NAME, DOMAIN_SOURCE).on(
+        router = EventRouter(SAGA_NAME).domain(DOMAIN_SOURCE).on(
             SUFFIX_EVENT_A, saga_event_handler
         )
         handler = SagaHandler(router)
@@ -111,7 +111,7 @@ class TestSagaHandlerSimpleMode:
 
 class TestSagaHandlerCustomMode:
     def test_custom_prepare(self):
-        router = EventRouter(SAGA_NAME, DOMAIN_SOURCE).on(
+        router = EventRouter(SAGA_NAME).domain(DOMAIN_SOURCE).on(
             SUFFIX_EVENT_A, saga_event_handler
         )
 
@@ -128,7 +128,7 @@ class TestSagaHandlerCustomMode:
         assert resp.destinations[0].domain == DOMAIN_TARGET
 
     def test_custom_execute(self):
-        router = EventRouter(SAGA_NAME, DOMAIN_SOURCE).on(
+        router = EventRouter(SAGA_NAME).domain(DOMAIN_SOURCE).on(
             SUFFIX_EVENT_A, saga_event_handler
         )
 
@@ -155,39 +155,3 @@ class TestSagaHandlerCustomMode:
         assert resp.commands[0].cover.domain == "custom"
 
 
-# ============================================================================
-# Descriptor tests
-# ============================================================================
-
-
-class TestSagaHandlerDescriptor:
-    def test_descriptor(self):
-        router = (
-            EventRouter(SAGA_NAME, DOMAIN_SOURCE)
-            .sends(DOMAIN_TARGET, "TargetCommand")
-            .on(SUFFIX_EVENT_A, saga_event_handler)
-            .on(SUFFIX_EVENT_B, saga_event_handler)
-        )
-        handler = SagaHandler(router)
-        desc = handler.descriptor()
-
-        assert desc.name == SAGA_NAME
-        assert desc.component_type == COMPONENT_SAGA
-        assert len(desc.inputs) == 1
-        assert len(desc.inputs[0].types) == 2
-
-    def test_grpc_get_descriptor(self):
-        router = (
-            EventRouter(SAGA_NAME, DOMAIN_SOURCE)
-            .sends(DOMAIN_TARGET, "TargetCommand")
-            .on(SUFFIX_EVENT_A, saga_event_handler)
-        )
-        handler = SagaHandler(router)
-        context = MagicMock(spec=grpc.ServicerContext)
-
-        resp = handler.GetDescriptor(types.GetDescriptorRequest(), context)
-
-        assert resp.name == SAGA_NAME
-        assert resp.component_type == COMPONENT_SAGA
-        assert len(resp.inputs) == 1
-        assert resp.inputs[0].domain == DOMAIN_SOURCE

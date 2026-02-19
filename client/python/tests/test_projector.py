@@ -175,7 +175,7 @@ class NoopProjector(Projector):
 
 def build_audit_trail_router(engine: Engine) -> EventRouter:
     """Build function-based audit trail projector."""
-    router = EventRouter("projector-audit-trail-fn", "inventory")
+    router = EventRouter("projector-audit-trail-fn").domain("inventory")
 
     @event_handler(StockUpdated)
     def handle_stock_updated(
@@ -199,7 +199,7 @@ def build_audit_trail_router(engine: Engine) -> EventRouter:
 
 def build_fulfillment_projector_router() -> EventRouter:
     """Projects fulfillment events (no DB, for comparison)."""
-    router = EventRouter("projector-fulfillment-tracking", "fulfillment")
+    router = EventRouter("projector-fulfillment-tracking").domain("fulfillment")
 
     @event_handler(ShipmentCreated)
     def handle_shipment_created(
@@ -438,34 +438,6 @@ class TestPlayerStatsProjector:
 
 
 # =============================================================================
-# Tests for OO pattern descriptor
-# =============================================================================
-
-
-class TestProjectorDescriptor:
-    def test_audit_trail_descriptor(self):
-        engine = create_test_db()
-        projector = AuditTrailProjector(engine)
-        desc = projector.descriptor()
-
-        assert desc.name == "projector-audit-trail"
-        assert desc.component_type == "projector"
-        assert desc.inputs[0].domain == "inventory"
-        assert "StockUpdated" in desc.inputs[0].types
-        assert "StockReserved" in desc.inputs[0].types
-
-    def test_player_stats_descriptor(self):
-        engine = create_test_db()
-        projector = PlayerStatsProjector(engine)
-        desc = projector.descriptor()
-
-        assert desc.name == "projector-player-stats"
-        assert desc.inputs[0].domain == "player"
-        assert "PlayerRegistered" in desc.inputs[0].types
-        assert "ScoreUpdated" in desc.inputs[0].types
-
-
-# =============================================================================
 # Tests for function-based pattern (router)
 # =============================================================================
 
@@ -479,7 +451,10 @@ class TestFunctionBasedProjectorRouter:
         event_any = any_pb2.Any()
         event_any.Pack(event)
 
-        source = types.EventBook(pages=[types.EventPage(event=event_any)])
+        source = types.EventBook(
+            cover=types.Cover(domain="inventory"),
+            pages=[types.EventPage(event=event_any)],
+        )
         results = router.dispatch(source)
 
         assert len(results) == 1
@@ -490,15 +465,6 @@ class TestFunctionBasedProjectorRouter:
             result = conn.execute(select(audit_trail)).fetchall()
             assert len(result) == 1
             assert result[0].aggregate_id == "SKU-fn-123"
-
-    def test_router_descriptor(self):
-        engine = create_test_db()
-        router = build_audit_trail_router(engine)
-        desc = router.descriptor()
-
-        assert desc.name == "projector-audit-trail-fn"
-        assert "StockUpdated" in desc.inputs[0].types
-
 
 # =============================================================================
 # Tests comparing both patterns produce equivalent output
@@ -521,7 +487,10 @@ class TestPatternEquivalence:
         # Function pattern
         fn_engine = create_test_db()
         fn_router = build_audit_trail_router(fn_engine)
-        source = types.EventBook(pages=[types.EventPage(event=event_any)])
+        source = types.EventBook(
+            cover=types.Cover(domain="inventory"),
+            pages=[types.EventPage(event=event_any)],
+        )
         fn_router.dispatch(source)
 
         # Both produce same DB state

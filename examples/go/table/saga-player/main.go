@@ -100,8 +100,8 @@ func handleHandEnded(source *pb.EventBook, event *anypb.Any, destinations []*pb.
 }
 
 func main() {
-	router := angzarr.NewEventRouter("saga-table-player", "table").
-		Sends("player", "ReleaseFunds").
+	router := angzarr.NewEventRouter("saga-table-player").
+		Domain("table").
 		Prepare("HandEnded", prepareHandEnded).
 		On("HandEnded", handleHandEnded)
 

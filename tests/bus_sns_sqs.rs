@@ -4,6 +4,8 @@
 //!
 //! Uses LocalStack to emulate AWS SNS/SQS locally.
 
+#![cfg(feature = "sns_sqs")]
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

@@ -138,21 +138,20 @@ func (p *ProjectorBase) Handle(events *pb.EventBook) (*pb.Projection, error) {
 	var lastSeq uint32
 
 	for _, page := range events.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 
 		// Extract sequence
-		if num, ok := page.Sequence.(*pb.EventPage_Num); ok {
-			lastSeq = num.Num
-		}
+		lastSeq = page.Sequence
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 
 		// Find handler by suffix
 		for suffix, handler := range p.handlers {
 			if strings.HasSuffix(typeURL, suffix) {
-				if projection := handler(page.Event.Value); projection != nil {
+				if projection := handler(event.Value); projection != nil {
 					return projection, nil
 				}
 				break
@@ -166,20 +165,6 @@ func (p *ProjectorBase) Handle(events *pb.EventBook) (*pb.Projection, error) {
 		Projector: p.name,
 		Sequence:  lastSeq,
 	}, nil
-}
-
-// Descriptor builds a ComponentDescriptor from the projector configuration.
-func (p *ProjectorBase) Descriptor() *pb.ComponentDescriptor {
-	inputs := make([]*pb.Target, len(p.domains))
-	for i, domain := range p.domains {
-		inputs[i] = &pb.Target{Domain: domain}
-	}
-
-	return &pb.ComponentDescriptor{
-		Name:          p.name,
-		ComponentType: "projector",
-		Inputs:        inputs,
-	}
 }
 
 // RunOOProjectorServer runs a gRPC projector server using the OO projector.

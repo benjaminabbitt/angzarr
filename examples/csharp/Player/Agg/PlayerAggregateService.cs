@@ -19,25 +19,6 @@ public class PlayerAggregateService : AggregateService.AggregateServiceBase
         _router = router;
     }
 
-    public override Task<ComponentDescriptor> GetDescriptor(GetDescriptorRequest request, ServerCallContext context)
-    {
-        var descriptor = new ComponentDescriptor
-        {
-            Name = "player",
-            ComponentType = "aggregate"
-        };
-        var input = new Target { Domain = "player" };
-        input.Types_.Add("RegisterPlayer");
-        input.Types_.Add("DepositFunds");
-        input.Types_.Add("WithdrawFunds");
-        input.Types_.Add("ReserveFunds");
-        input.Types_.Add("ReleaseFunds");
-        input.Types_.Add("TransferFunds");
-        input.Types_.Add("RequestAction");
-        descriptor.Inputs.Add(input);
-        return Task.FromResult(descriptor);
-    }
-
     public override Task<BusinessResponse> Handle(ContextualCommand request, ServerCallContext context)
     {
         try

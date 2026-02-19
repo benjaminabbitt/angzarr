@@ -303,17 +303,16 @@ class TestQueryBuilder:
         """get_pages extracts pages from book."""
         client = self._mock_query_client()
         book = EventBook()
-        # EventPage uses 'num' field in oneof sequence
-        book.pages.add(num=1)
-        book.pages.add(num=2)
+        book.pages.add(sequence=1)
+        book.pages.add(sequence=2)
         client.get_event_book.return_value = book
 
         builder = QueryBuilder(client, "orders")
         result = builder.get_pages()
 
         assert len(result) == 2
-        assert result[0].num == 1
-        assert result[1].num == 2
+        assert result[0].sequence == 1
+        assert result[1].sequence == 2
 
     def test_fluent_chaining(self) -> None:
         """Methods return self for chaining."""

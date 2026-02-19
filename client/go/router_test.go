@@ -34,7 +34,7 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 		cmd := &pb.ContextualCommand{
 			Command: &pb.CommandBook{
 				Pages: []*pb.CommandPage{
-					{Command: &anypb.Any{TypeUrl: "type.googleapis.com/examples.TestCommand"}},
+					{Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "type.googleapis.com/examples.TestCommand"}}},
 				},
 			},
 		}
@@ -57,7 +57,7 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 		cmd := &pb.ContextualCommand{
 			Command: &pb.CommandBook{
 				Pages: []*pb.CommandPage{
-					{Command: &anypb.Any{TypeUrl: "type.googleapis.com/examples.UnknownCommand"}},
+					{Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "type.googleapis.com/examples.UnknownCommand"}}},
 				},
 			},
 		}
@@ -94,11 +94,15 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 		cmd := &pb.ContextualCommand{
 			Command: &pb.CommandBook{
 				Pages: []*pb.CommandPage{
-					{Command: &anypb.Any{TypeUrl: "type.googleapis.com/examples.TestCommand"}},
+					{Payload: &pb.CommandPage_Command{Command: &anypb.Any{TypeUrl: "type.googleapis.com/examples.TestCommand"}}},
 				},
 			},
 			Events: &pb.EventBook{
-				Pages: []*pb.EventPage{{}, {}, {}}, // 3 prior events
+				Pages: []*pb.EventPage{
+					{Payload: &pb.EventPage_Event{Event: &anypb.Any{}}},
+					{Payload: &pb.EventPage_Event{Event: &anypb.Any{}}},
+					{Payload: &pb.EventPage_Event{Event: &anypb.Any{}}},
+				}, // 3 prior events
 			},
 		}
 
@@ -112,57 +116,12 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 	})
 }
 
-func TestCommandRouter_Descriptor(t *testing.T) {
-	router := NewCommandRouter("cart", rebuildTestState).
-		On("CreateCart", nil).
-		On("AddItem", nil)
-
-	desc := router.Descriptor()
-
-	if desc.Name != "cart" {
-		t.Errorf("expected name 'cart', got %s", desc.Name)
-	}
-	if desc.ComponentType != ComponentAggregate {
-		t.Errorf("expected component type 'aggregate', got %s", desc.ComponentType)
-	}
-	if len(desc.Inputs) != 1 {
-		t.Fatalf("expected 1 input, got %d", len(desc.Inputs))
-	}
-	if desc.Inputs[0].Domain != "cart" {
-		t.Errorf("expected input domain 'cart', got %s", desc.Inputs[0].Domain)
-	}
-	types := desc.Inputs[0].Types
-	if len(types) != 2 {
-		t.Fatalf("expected 2 types, got %d", len(types))
-	}
-	if types[0] != "CreateCart" || types[1] != "AddItem" {
-		t.Errorf("unexpected types: %v", types)
-	}
-}
-
-func TestCommandRouter_Types(t *testing.T) {
-	router := NewCommandRouter("test", rebuildTestState).
-		On("Type1", nil).
-		On("Type2", nil).
-		On("Type3", nil)
-
-	types := router.Types()
-	if len(types) != 3 {
-		t.Fatalf("expected 3 types, got %d", len(types))
-	}
-	expected := []string{"Type1", "Type2", "Type3"}
-	for i, typ := range types {
-		if typ != expected[i] {
-			t.Errorf("expected type %s at index %d, got %s", expected[i], i, typ)
-		}
-	}
-}
 
 func TestEventRouter_Dispatch(t *testing.T) {
 	t.Run("dispatches to matching handler", func(t *testing.T) {
 		called := false
-		router := NewEventRouter("saga-test", "source").
-			Sends("target", "TargetCommand").
+		router := NewEventRouter("saga-test").
+			Domain("source").
 			On("TestEvent", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				called = true
 				return []*pb.CommandBook{{}}, nil
@@ -170,11 +129,12 @@ func TestEventRouter_Dispatch(t *testing.T) {
 
 		book := &pb.EventBook{
 			Cover: &pb.Cover{
+				Domain:        "source",
 				Root:          &pb.UUID{Value: []byte("test-root")},
 				CorrelationId: "corr-123",
 			},
 			Pages: []*pb.EventPage{
-				{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.TestEvent"}},
+				{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.TestEvent"}}},
 			},
 		}
 
@@ -192,7 +152,8 @@ func TestEventRouter_Dispatch(t *testing.T) {
 
 	t.Run("handles multiple events", func(t *testing.T) {
 		callCount := 0
-		router := NewEventRouter("saga-test", "source").
+		router := NewEventRouter("saga-test").
+			Domain("source").
 			On("Event1", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				callCount++
 				return []*pb.CommandBook{{}}, nil
@@ -203,9 +164,10 @@ func TestEventRouter_Dispatch(t *testing.T) {
 			})
 
 		book := &pb.EventBook{
+			Cover: &pb.Cover{Domain: "source"},
 			Pages: []*pb.EventPage{
-				{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Event1"}},
-				{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Event2"}},
+				{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Event1"}}},
+				{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Event2"}}},
 			},
 		}
 
@@ -222,14 +184,16 @@ func TestEventRouter_Dispatch(t *testing.T) {
 	})
 
 	t.Run("skips unmatched events", func(t *testing.T) {
-		router := NewEventRouter("saga-test", "source").
+		router := NewEventRouter("saga-test").
+			Domain("source").
 			On("KnownEvent", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				return []*pb.CommandBook{{}}, nil
 			})
 
 		book := &pb.EventBook{
+			Cover: &pb.Cover{Domain: "source"},
 			Pages: []*pb.EventPage{
-				{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.UnknownEvent"}},
+				{Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.UnknownEvent"}}},
 			},
 		}
 
@@ -243,24 +207,3 @@ func TestEventRouter_Dispatch(t *testing.T) {
 	})
 }
 
-func TestEventRouter_Descriptor(t *testing.T) {
-	router := NewEventRouter("saga-order-fulfillment", "order").
-		Sends("fulfillment", "CreateShipment").
-		On("OrderCompleted", nil).
-		On("OrderCancelled", nil)
-
-	desc := router.Descriptor()
-
-	if desc.Name != "saga-order-fulfillment" {
-		t.Errorf("expected name 'saga-order-fulfillment', got %s", desc.Name)
-	}
-	if desc.ComponentType != ComponentSaga {
-		t.Errorf("expected component type 'saga', got %s", desc.ComponentType)
-	}
-	if len(desc.Inputs) != 1 {
-		t.Fatalf("expected 1 input, got %d", len(desc.Inputs))
-	}
-	if desc.Inputs[0].Domain != "order" {
-		t.Errorf("expected input domain 'order', got %s", desc.Inputs[0].Domain)
-	}
-}

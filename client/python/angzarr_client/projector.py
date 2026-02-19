@@ -39,7 +39,7 @@ from abc import ABC
 from google.protobuf.any_pb2 import Any
 
 from .proto.angzarr import types_pb2 as types
-from .router import Descriptor, TargetDesc, projects
+from .router import projects
 
 # Re-export decorator
 __all__ = ["Projector", "projects"]
@@ -169,15 +169,3 @@ class Projector(ABC):
 
         return last_projection
 
-    @classmethod
-    def descriptor(cls) -> Descriptor:
-        """Build component descriptor for topology discovery."""
-        # Get list of domains (support both single and multi-domain)
-        domains = cls.input_domains if cls.input_domains else [cls.input_domain]
-        types_list = list(cls._dispatch_table.keys())
-
-        return Descriptor(
-            name=cls.name,
-            component_type="projector",
-            inputs=[TargetDesc(domain=d, types=types_list) for d in domains],
-        )

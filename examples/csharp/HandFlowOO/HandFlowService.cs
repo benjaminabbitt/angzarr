@@ -9,27 +9,6 @@ namespace HandFlowOO;
 /// </summary>
 public class HandFlowService : ProcessManagerService.ProcessManagerServiceBase
 {
-    public override Task<ComponentDescriptor> GetDescriptor(GetDescriptorRequest request, ServerCallContext context)
-    {
-        var pm = new HandFlowPM();
-        var desc = pm.Descriptor();
-
-        var descriptor = new ComponentDescriptor
-        {
-            Name = desc.Name,
-            ComponentType = desc.ComponentType
-        };
-
-        foreach (var input in desc.Inputs)
-        {
-            var target = new Target { Domain = input.Domain };
-            target.Types_.AddRange(input.Types);
-            descriptor.Inputs.Add(target);
-        }
-
-        return Task.FromResult(descriptor);
-    }
-
     public override Task<ProcessManagerPrepareResponse> Prepare(ProcessManagerPrepareRequest request, ServerCallContext context)
     {
         var covers = ProcessManager<PMState>.PrepareDestinations<HandFlowPM>(

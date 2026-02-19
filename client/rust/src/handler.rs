@@ -11,10 +11,9 @@ use crate::proto::{
     aggregate_service_server::AggregateService,
     process_manager_service_server::ProcessManagerService,
     projector_service_server::ProjectorService, saga_service_server::SagaService, BusinessResponse,
-    ComponentDescriptor, ContextualCommand, EventBook, GetDescriptorRequest,
-    ProcessManagerHandleRequest, ProcessManagerHandleResponse, ProcessManagerPrepareRequest,
-    ProcessManagerPrepareResponse, Projection, ReplayRequest, ReplayResponse, SagaExecuteRequest,
-    SagaPrepareRequest, SagaPrepareResponse, SagaResponse, Target,
+    ContextualCommand, EventBook, ProcessManagerHandleRequest, ProcessManagerHandleResponse,
+    ProcessManagerPrepareRequest, ProcessManagerPrepareResponse, Projection, ReplayRequest,
+    ReplayResponse, SagaExecuteRequest, SagaPrepareRequest, SagaPrepareResponse, SagaResponse,
 };
 use crate::router::{CommandRouter, EventRouter, ProcessManagerRouter};
 
@@ -78,21 +77,6 @@ impl<S: Send + Sync + 'static> AggregateHandler<S> {
 
 #[tonic::async_trait]
 impl<S: Send + Sync + 'static> AggregateService for AggregateHandler<S> {
-    async fn get_descriptor(
-        &self,
-        _request: Request<GetDescriptorRequest>,
-    ) -> Result<Response<ComponentDescriptor>, Status> {
-        let descriptor = ComponentDescriptor {
-            name: self.router.domain().to_string(),
-            component_type: "aggregate".to_string(),
-            inputs: vec![Target {
-                domain: self.router.domain().to_string(),
-                types: self.router.command_types(),
-            }],
-        };
-        Ok(Response::new(descriptor))
-    }
-
     async fn handle(
         &self,
         request: Request<ContextualCommand>,
@@ -165,21 +149,6 @@ impl SagaHandler {
 
 #[tonic::async_trait]
 impl SagaService for SagaHandler {
-    async fn get_descriptor(
-        &self,
-        _request: Request<GetDescriptorRequest>,
-    ) -> Result<Response<ComponentDescriptor>, Status> {
-        let descriptor = ComponentDescriptor {
-            name: self.router.name().to_string(),
-            component_type: "saga".to_string(),
-            inputs: vec![Target {
-                domain: self.router.input_domain().to_string(),
-                types: self.router.event_types(),
-            }],
-        };
-        Ok(Response::new(descriptor))
-    }
-
     async fn prepare(
         &self,
         request: Request<SagaPrepareRequest>,
@@ -230,16 +199,14 @@ enum ProjectorHandleType {
 /// Wraps a handle function to process events and produce projections.
 pub struct ProjectorHandler {
     name: String,
-    domains: Vec<String>,
     handle_type: Option<ProjectorHandleType>,
 }
 
 impl ProjectorHandler {
     /// Create a new projector handler.
-    pub fn new(name: impl Into<String>, domains: Vec<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            domains,
             handle_type: None,
         }
     }
@@ -267,27 +234,6 @@ impl ProjectorHandler {
 
 #[tonic::async_trait]
 impl ProjectorService for ProjectorHandler {
-    async fn get_descriptor(
-        &self,
-        _request: Request<GetDescriptorRequest>,
-    ) -> Result<Response<ComponentDescriptor>, Status> {
-        let inputs: Vec<Target> = self
-            .domains
-            .iter()
-            .map(|d| Target {
-                domain: d.clone(),
-                types: vec![],
-            })
-            .collect();
-
-        let descriptor = ComponentDescriptor {
-            name: self.name.clone(),
-            component_type: "projector".to_string(),
-            inputs,
-        };
-        Ok(Response::new(descriptor))
-    }
-
     async fn handle(&self, request: Request<EventBook>) -> Result<Response<Projection>, Status> {
         let event_book = request.into_inner();
         match &self.handle_type {
@@ -334,28 +280,6 @@ impl<S: Send + Sync + 'static> ProcessManagerGrpcHandler<S> {
 
 #[tonic::async_trait]
 impl<S: Send + Sync + 'static> ProcessManagerService for ProcessManagerGrpcHandler<S> {
-    async fn get_descriptor(
-        &self,
-        _request: Request<GetDescriptorRequest>,
-    ) -> Result<Response<ComponentDescriptor>, Status> {
-        let inputs: Vec<Target> = self
-            .router
-            .input_domains()
-            .iter()
-            .map(|d| Target {
-                domain: d.clone(),
-                types: self.router.event_types(),
-            })
-            .collect();
-
-        let descriptor = ComponentDescriptor {
-            name: self.router.name().to_string(),
-            component_type: "process_manager".to_string(),
-            inputs,
-        };
-        Ok(Response::new(descriptor))
-    }
-
     async fn prepare(
         &self,
         request: Request<ProcessManagerPrepareRequest>,

@@ -18,6 +18,8 @@ const sidebars: SidebarsConfig = {
         'components/saga',
         'components/projector',
         'components/process-manager',
+        'components/framework-projectors',
+        'components/cloudevents',
       ],
     },
     {

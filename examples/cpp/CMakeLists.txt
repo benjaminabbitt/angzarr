@@ -11,7 +11,7 @@ find_package(gRPC CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
 
 # Proto files location
-set(PROTO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../client/rust/proto")
+set(PROTO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../proto")
 set(ANGZARR_PROTO_DIR "${PROTO_ROOT}/angzarr")
 set(EXAMPLES_PROTO_DIR "${PROTO_ROOT}/examples")
 

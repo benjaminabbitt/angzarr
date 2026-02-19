@@ -15,8 +15,8 @@ public static class HandTableSaga
 {
     public static EventRouter Create()
     {
-        return new EventRouter("saga-hand-table", "hand")
-            .Sends("table", "EndHand")
+        return new EventRouter("saga-hand-table")
+            .Domain("hand")
             .Prepare<HandComplete>(PrepareHandComplete)
             .On<HandComplete>(HandleHandComplete);
     }

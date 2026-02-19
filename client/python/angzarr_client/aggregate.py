@@ -46,7 +46,7 @@ from google.protobuf.any_pb2 import Any
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
-from .router import COMPONENT_AGGREGATE, Descriptor, TargetDesc, validate_command_handler
+from .router import validate_command_handler
 
 
 def handles(command_type: type):
@@ -377,15 +377,6 @@ class Aggregate(Generic[StateT], ABC):
                 emit_system_revocation=True,
                 reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_suffix}",
             )
-        )
-
-    @classmethod
-    def descriptor(cls) -> Descriptor:
-        """Build component descriptor for topology discovery."""
-        return Descriptor(
-            name=cls.domain,
-            component_type=COMPONENT_AGGREGATE,
-            inputs=[TargetDesc(domain=cls.domain, types=list(cls._dispatch_table.keys()))],
         )
 
     @classmethod

@@ -9,7 +9,6 @@ package angzarr
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -21,121 +20,6 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
-
-// Command to register a component in the topology registry.
-// Root UUID is derived from descriptor.name for idempotent registration.
-type RegisterComponent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Descriptor_   *ComponentDescriptor   `protobuf:"bytes,1,opt,name=descriptor,proto3" json:"descriptor,omitempty"`
-	PodId         string                 `protobuf:"bytes,2,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"` // K8s pod name or hostname for standalone
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RegisterComponent) Reset() {
-	*x = RegisterComponent{}
-	mi := &file_angzarr_meta_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegisterComponent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegisterComponent) ProtoMessage() {}
-
-func (x *RegisterComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_meta_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegisterComponent.ProtoReflect.Descriptor instead.
-func (*RegisterComponent) Descriptor() ([]byte, []int) {
-	return file_angzarr_meta_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *RegisterComponent) GetDescriptor_() *ComponentDescriptor {
-	if x != nil {
-		return x.Descriptor_
-	}
-	return nil
-}
-
-func (x *RegisterComponent) GetPodId() string {
-	if x != nil {
-		return x.PodId
-	}
-	return ""
-}
-
-// Event emitted when a component registers or re-registers.
-type ComponentRegistered struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Descriptor_   *ComponentDescriptor   `protobuf:"bytes,1,opt,name=descriptor,proto3" json:"descriptor,omitempty"`
-	PodId         string                 `protobuf:"bytes,2,opt,name=pod_id,json=podId,proto3" json:"pod_id,omitempty"`
-	RegisteredAt  *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ComponentRegistered) Reset() {
-	*x = ComponentRegistered{}
-	mi := &file_angzarr_meta_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ComponentRegistered) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ComponentRegistered) ProtoMessage() {}
-
-func (x *ComponentRegistered) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_meta_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ComponentRegistered.ProtoReflect.Descriptor instead.
-func (*ComponentRegistered) Descriptor() ([]byte, []int) {
-	return file_angzarr_meta_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *ComponentRegistered) GetDescriptor_() *ComponentDescriptor {
-	if x != nil {
-		return x.Descriptor_
-	}
-	return nil
-}
-
-func (x *ComponentRegistered) GetPodId() string {
-	if x != nil {
-		return x.PodId
-	}
-	return ""
-}
-
-func (x *ComponentRegistered) GetRegisteredAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.RegisteredAt
-	}
-	return nil
-}
 
 // Delete all events for an edition+domain combination.
 // Main timeline ('angzarr' or empty edition name) cannot be deleted.
@@ -149,7 +33,7 @@ type DeleteEditionEvents struct {
 
 func (x *DeleteEditionEvents) Reset() {
 	*x = DeleteEditionEvents{}
-	mi := &file_angzarr_meta_proto_msgTypes[2]
+	mi := &file_angzarr_meta_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -161,7 +45,7 @@ func (x *DeleteEditionEvents) String() string {
 func (*DeleteEditionEvents) ProtoMessage() {}
 
 func (x *DeleteEditionEvents) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_meta_proto_msgTypes[2]
+	mi := &file_angzarr_meta_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -174,7 +58,7 @@ func (x *DeleteEditionEvents) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEditionEvents.ProtoReflect.Descriptor instead.
 func (*DeleteEditionEvents) Descriptor() ([]byte, []int) {
-	return file_angzarr_meta_proto_rawDescGZIP(), []int{2}
+	return file_angzarr_meta_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *DeleteEditionEvents) GetEdition() string {
@@ -204,7 +88,7 @@ type EditionEventsDeleted struct {
 
 func (x *EditionEventsDeleted) Reset() {
 	*x = EditionEventsDeleted{}
-	mi := &file_angzarr_meta_proto_msgTypes[3]
+	mi := &file_angzarr_meta_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -216,7 +100,7 @@ func (x *EditionEventsDeleted) String() string {
 func (*EditionEventsDeleted) ProtoMessage() {}
 
 func (x *EditionEventsDeleted) ProtoReflect() protoreflect.Message {
-	mi := &file_angzarr_meta_proto_msgTypes[3]
+	mi := &file_angzarr_meta_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -229,7 +113,7 @@ func (x *EditionEventsDeleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditionEventsDeleted.ProtoReflect.Descriptor instead.
 func (*EditionEventsDeleted) Descriptor() ([]byte, []int) {
-	return file_angzarr_meta_proto_rawDescGZIP(), []int{3}
+	return file_angzarr_meta_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *EditionEventsDeleted) GetEdition() string {
@@ -264,18 +148,7 @@ var File_angzarr_meta_proto protoreflect.FileDescriptor
 
 const file_angzarr_meta_proto_rawDesc = "" +
 	"\n" +
-	"\x12angzarr/meta.proto\x12\aangzarr\x1a\x13angzarr/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"h\n" +
-	"\x11RegisterComponent\x12<\n" +
-	"\n" +
-	"descriptor\x18\x01 \x01(\v2\x1c.angzarr.ComponentDescriptorR\n" +
-	"descriptor\x12\x15\n" +
-	"\x06pod_id\x18\x02 \x01(\tR\x05podId\"\xab\x01\n" +
-	"\x13ComponentRegistered\x12<\n" +
-	"\n" +
-	"descriptor\x18\x01 \x01(\v2\x1c.angzarr.ComponentDescriptorR\n" +
-	"descriptor\x12\x15\n" +
-	"\x06pod_id\x18\x02 \x01(\tR\x05podId\x12?\n" +
-	"\rregistered_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt\"G\n" +
+	"\x12angzarr/meta.proto\x12\aangzarr\x1a\x13angzarr/types.proto\"G\n" +
 	"\x13DeleteEditionEvents\x12\x18\n" +
 	"\aedition\x18\x01 \x01(\tR\aedition\x12\x16\n" +
 	"\x06domain\x18\x02 \x01(\tR\x06domain\"\x8c\x01\n" +
@@ -299,24 +172,17 @@ func file_angzarr_meta_proto_rawDescGZIP() []byte {
 	return file_angzarr_meta_proto_rawDescData
 }
 
-var file_angzarr_meta_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_angzarr_meta_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_angzarr_meta_proto_goTypes = []any{
-	(*RegisterComponent)(nil),     // 0: angzarr.RegisterComponent
-	(*ComponentRegistered)(nil),   // 1: angzarr.ComponentRegistered
-	(*DeleteEditionEvents)(nil),   // 2: angzarr.DeleteEditionEvents
-	(*EditionEventsDeleted)(nil),  // 3: angzarr.EditionEventsDeleted
-	(*ComponentDescriptor)(nil),   // 4: angzarr.ComponentDescriptor
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*DeleteEditionEvents)(nil),  // 0: angzarr.DeleteEditionEvents
+	(*EditionEventsDeleted)(nil), // 1: angzarr.EditionEventsDeleted
 }
 var file_angzarr_meta_proto_depIdxs = []int32{
-	4, // 0: angzarr.RegisterComponent.descriptor:type_name -> angzarr.ComponentDescriptor
-	4, // 1: angzarr.ComponentRegistered.descriptor:type_name -> angzarr.ComponentDescriptor
-	5, // 2: angzarr.ComponentRegistered.registered_at:type_name -> google.protobuf.Timestamp
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0, // [0:0] is the sub-list for method output_type
+	0, // [0:0] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_meta_proto_init() }
@@ -331,7 +197,7 @@ func file_angzarr_meta_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_angzarr_meta_proto_rawDesc), len(file_angzarr_meta_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

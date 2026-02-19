@@ -315,28 +315,6 @@ class TestPlayerUpcasterRouter:
 
 
 # =============================================================================
-# Tests for OO pattern descriptor
-# =============================================================================
-
-
-class TestUpcasterDescriptor:
-    def test_order_upcaster_descriptor(self):
-        desc = OrderUpcaster.descriptor()
-
-        assert desc.name == "upcaster-order"
-        assert desc.component_type == "upcaster"
-        assert desc.inputs[0].domain == "order"
-        assert "OrderCreatedV1" in desc.inputs[0].types
-
-    def test_player_upcaster_descriptor(self):
-        desc = PlayerUpcaster.descriptor()
-
-        assert desc.name == "upcaster-player"
-        assert desc.inputs[0].domain == "player"
-        assert "PlayerRegisteredV1" in desc.inputs[0].types
-
-
-# =============================================================================
 # Tests comparing both patterns produce equivalent output
 # =============================================================================
 

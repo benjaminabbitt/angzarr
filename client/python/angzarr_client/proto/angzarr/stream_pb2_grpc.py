@@ -6,7 +6,8 @@ from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
 class EventStreamServiceStub(object):
-    """EventStreamService: streams events to registered subscribers
+    """docs:start:event_stream_service
+    EventStreamService: streams events to registered subscribers
     """
 
     def __init__(self, channel):
@@ -23,7 +24,8 @@ class EventStreamServiceStub(object):
 
 
 class EventStreamServiceServicer(object):
-    """EventStreamService: streams events to registered subscribers
+    """docs:start:event_stream_service
+    EventStreamService: streams events to registered subscribers
     """
 
     def Subscribe(self, request, context):
@@ -51,7 +53,8 @@ def add_EventStreamServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class EventStreamService(object):
-    """EventStreamService: streams events to registered subscribers
+    """docs:start:event_stream_service
+    EventStreamService: streams events to registered subscribers
     """
 
     @staticmethod

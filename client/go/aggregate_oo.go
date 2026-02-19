@@ -385,7 +385,7 @@ func (a *AggregateBase[S]) applyAndRecord(event proto.Message) {
 	}
 
 	// Record in event book
-	page := &pb.EventPage{Event: eventAny}
+	page := &pb.EventPage{Payload: &pb.EventPage_Event{Event: eventAny}}
 	a.eventBook.Pages = append(a.eventBook.Pages, page)
 }
 
@@ -413,8 +413,8 @@ func (a *AggregateBase[S]) rebuild() {
 
 	// Apply all events
 	for _, page := range a.eventBook.Pages {
-		if page.Event != nil {
-			a.applyEvent(a.state, page.Event)
+		if event := page.GetEvent(); event != nil {
+			a.applyEvent(a.state, event)
 		}
 	}
 
@@ -434,20 +434,6 @@ func (a *AggregateBase[S]) HandlerTypes() []string {
 	return types
 }
 
-// Descriptor builds a ComponentDescriptor from registered handlers.
-func (a *AggregateBase[S]) Descriptor() *pb.ComponentDescriptor {
-	return &pb.ComponentDescriptor{
-		Name:          a.domain,
-		ComponentType: ComponentAggregate,
-		Inputs: []*pb.Target{
-			{
-				Domain: a.domain,
-				Types:  a.HandlerTypes(),
-			},
-		},
-	}
-}
-
 // Handle processes a full gRPC request.
 //
 // This is the entry point for gRPC integration. It extracts the command,
@@ -461,7 +447,7 @@ func (a *AggregateBase[S]) Handle(request *pb.ContextualCommand) (*pb.BusinessRe
 		return nil, fmt.Errorf("%s", ErrMsgNoCommandPages)
 	}
 
-	cmdAny := request.Command.Pages[0].Command
+	cmdAny := request.Command.Pages[0].GetCommand()
 	if cmdAny == nil || cmdAny.TypeUrl == "" {
 		return nil, fmt.Errorf("%s", ErrMsgNoCommandPages)
 	}

@@ -263,16 +263,6 @@ public abstract class ProcessManager<TState> where TState : class
         return book;
     }
 
-    /// <summary>
-    /// Build a component descriptor for topology discovery.
-    /// </summary>
-    public Descriptor Descriptor()
-    {
-        var domains = _inputDomains[GetType()];
-        var inputs = domains.Select(kv => new TargetDesc(kv.Key, kv.Value)).ToList();
-        return new Descriptor(Name, ComponentTypes.ProcessManager, inputs);
-    }
-
     private TState GetState()
     {
         if (_state == null)

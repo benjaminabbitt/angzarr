@@ -18,27 +18,6 @@ public class HandFlowService : ProcessManagerService.ProcessManagerServiceBase
         _pm = pm;
     }
 
-    public override Task<ComponentDescriptor> GetDescriptor(GetDescriptorRequest request, ServerCallContext context)
-    {
-        var descriptor = new ComponentDescriptor
-        {
-            Name = "hand-flow",
-            ComponentType = "process_manager"
-        };
-
-        // Hand domain events
-        var handInput = new Target { Domain = "hand" };
-        handInput.Types_.Add("HandStarted");
-        handInput.Types_.Add("CardsDealt");
-        handInput.Types_.Add("BlindPosted");
-        handInput.Types_.Add("ActionTaken");
-        handInput.Types_.Add("CommunityCardsDealt");
-        handInput.Types_.Add("PotAwarded");
-        descriptor.Inputs.Add(handInput);
-
-        return Task.FromResult(descriptor);
-    }
-
     public override Task<ProcessManagerPrepareResponse> Prepare(ProcessManagerPrepareRequest request, ServerCallContext context)
     {
         var covers = _pm.Prepare(request.Trigger, request.ProcessState);

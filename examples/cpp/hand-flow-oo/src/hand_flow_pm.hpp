@@ -88,19 +88,6 @@ public:
         return {"table", "hand"};
     }
 
-    /// Build a component descriptor.
-    angzarr::Descriptor descriptor() const {
-        std::vector<angzarr::TargetDesc> inputs;
-        for (const auto& domain : input_domains()) {
-            std::vector<std::string> types;
-            for (const auto& [suffix, _] : handlers_) {
-                types.push_back(suffix);
-            }
-            inputs.push_back({domain, types});
-        }
-        return {name(), angzarr::component_types::PROCESS_MANAGER, inputs};
-    }
-
     /// Prepare destinations for events (two-phase protocol).
     std::vector<angzarr::Cover> prepare_destinations(const angzarr::EventBook& book) {
         std::vector<angzarr::Cover> destinations;

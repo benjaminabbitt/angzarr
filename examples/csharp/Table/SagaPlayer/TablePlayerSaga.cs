@@ -15,8 +15,8 @@ public static class TablePlayerSaga
 {
     public static EventRouter Create()
     {
-        return new EventRouter("saga-table-player", "table")
-            .Sends("player", "ReleaseFunds")
+        return new EventRouter("saga-table-player")
+            .Domain("table")
             .Prepare<HandEnded>(PrepareHandEnded)
             .On<HandEnded>(HandleHandEnded);
     }

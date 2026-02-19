@@ -23,10 +23,9 @@ _sym_db = _symbol_database.Default()
 
 
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
-from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61ngzarr/meta.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"f\n\x11RegisterComponent\x12:\n\tcomponent\x18\x01 \x01(\x0b\x32\x1c.angzarr.ComponentDescriptorR\tcomponent\x12\x15\n\x06pod_id\x18\x02 \x01(\tR\x05podId\"\xa9\x01\n\x13\x43omponentRegistered\x12:\n\tcomponent\x18\x01 \x01(\x0b\x32\x1c.angzarr.ComponentDescriptorR\tcomponent\x12\x15\n\x06pod_id\x18\x02 \x01(\tR\x05podId\x12?\n\rregistered_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0cregisteredAt\"G\n\x13\x44\x65leteEditionEvents\x12\x18\n\x07\x65\x64ition\x18\x01 \x01(\tR\x07\x65\x64ition\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\"\x8c\x01\n\x14\x45\x64itionEventsDeleted\x12\x18\n\x07\x65\x64ition\x18\x01 \x01(\tR\x07\x65\x64ition\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\x12#\n\rdeleted_count\x18\x03 \x01(\rR\x0c\x64\x65letedCount\x12\x1d\n\ndeleted_at\x18\x04 \x01(\tR\tdeletedAtB~\n\x0b\x63om.angzarrB\tMetaProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61ngzarr/meta.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\"G\n\x13\x44\x65leteEditionEvents\x12\x18\n\x07\x65\x64ition\x18\x01 \x01(\tR\x07\x65\x64ition\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\"\x8c\x01\n\x14\x45\x64itionEventsDeleted\x12\x18\n\x07\x65\x64ition\x18\x01 \x01(\tR\x07\x65\x64ition\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\x12#\n\rdeleted_count\x18\x03 \x01(\rR\x0c\x64\x65letedCount\x12\x1d\n\ndeleted_at\x18\x04 \x01(\tR\tdeletedAtB~\n\x0b\x63om.angzarrB\tMetaProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,12 +33,8 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.meta_pb2', _globals
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\tMetaProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_REGISTERCOMPONENT']._serialized_start=85
-  _globals['_REGISTERCOMPONENT']._serialized_end=187
-  _globals['_COMPONENTREGISTERED']._serialized_start=190
-  _globals['_COMPONENTREGISTERED']._serialized_end=359
-  _globals['_DELETEEDITIONEVENTS']._serialized_start=361
-  _globals['_DELETEEDITIONEVENTS']._serialized_end=432
-  _globals['_EDITIONEVENTSDELETED']._serialized_start=435
-  _globals['_EDITIONEVENTSDELETED']._serialized_end=575
+  _globals['_DELETEEDITIONEVENTS']._serialized_start=52
+  _globals['_DELETEEDITIONEVENTS']._serialized_end=123
+  _globals['_EDITIONEVENTSDELETED']._serialized_start=126
+  _globals['_EDITIONEVENTSDELETED']._serialized_end=266
 # @@protoc_insertion_point(module_scope)

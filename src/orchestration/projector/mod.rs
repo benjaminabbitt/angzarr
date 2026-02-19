@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tonic::Status;
 
 use crate::proto::projector_service_client::ProjectorServiceClient;
-use crate::proto::{ComponentDescriptor, EventBook, Projection};
+use crate::proto::{EventBook, Projection};
 use crate::proto_ext::{correlated_request, CoverExt};
 
 /// Execution mode for projectors.
@@ -37,11 +37,6 @@ pub enum ProjectionMode {
 /// persistence side effects are gated on `ProjectionMode`.
 #[async_trait]
 pub trait ProjectorHandler: Send + Sync + 'static {
-    /// Self-description: component type, subscribed domains, handled event types.
-    fn descriptor(&self) -> ComponentDescriptor {
-        ComponentDescriptor::default()
-    }
-
     /// Handle events and update read model.
     ///
     /// `mode` controls whether persistence side effects should occur:

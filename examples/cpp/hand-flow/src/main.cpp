@@ -23,33 +23,6 @@ public:
         std::cout << "Would send command to domain: " << cmd.cover().domain() << std::endl;
     }) {}
 
-    grpc::Status GetDescriptor(
-        grpc::ServerContext* context,
-        const angzarr::GetDescriptorRequest* request,
-        angzarr::ComponentDescriptor* response) override {
-
-        response->set_name(PM_NAME);
-        response->set_component_type("process_manager");
-
-        // Subscribes to hand domain events
-        auto* input = response->add_inputs();
-        input->set_domain("hand");
-        input->add_types("HandStarted");
-        input->add_types("CardsDealt");
-        input->add_types("BlindPosted");
-        input->add_types("ActionTaken");
-        input->add_types("CommunityCardsDealt");
-        input->add_types("ShowdownStarted");
-        input->add_types("PotAwarded");
-
-        // Also subscribes to table events
-        auto* table_input = response->add_inputs();
-        table_input->set_domain("table");
-        table_input->add_types("HandStarted");
-
-        return grpc::Status::OK;
-    }
-
     grpc::Status Prepare(
         grpc::ServerContext* context,
         const angzarr::ProcessManagerPrepareRequest* request,

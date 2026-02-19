@@ -11,30 +11,6 @@ def _trigger() -> types.EventBook:
     )
 
 
-class TestGetDescriptor:
-    def test_returns_name_and_type(self):
-        h = (
-            ProcessManagerHandler("test-pm")
-            .listen_to("source", "EventA")
-            .listen_to("other", "EventB")
-        )
-        desc = h.descriptor()
-
-        assert desc.name == "test-pm"
-        assert desc.component_type == "process_manager"
-        assert len(desc.inputs) == 2
-        assert desc.inputs[0].domain == "source"
-        assert desc.inputs[1].domain == "other"
-
-    def test_grpc_descriptor(self):
-        h = ProcessManagerHandler("test").listen_to("source", "EventA")
-        resp = h.GetDescriptor(types.GetDescriptorRequest(), None)
-
-        assert resp.name == "test"
-        assert resp.component_type == "process_manager"
-        assert len(resp.inputs) == 1
-
-
 class TestPrepare:
     def test_default_returns_empty(self):
         h = ProcessManagerHandler("test")
@@ -72,7 +48,7 @@ class TestHandle:
                 types.CommandBook(cover=types.Cover(domain="target")),
             ]
             events = types.EventBook(
-                pages=[types.EventPage(num=0)],
+                pages=[types.EventPage(sequence=0)],
             )
             return commands, events
 

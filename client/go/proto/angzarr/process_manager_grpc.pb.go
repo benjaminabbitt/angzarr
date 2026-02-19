@@ -19,9 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProcessManagerService_GetDescriptor_FullMethodName = "/angzarr.ProcessManagerService/GetDescriptor"
-	ProcessManagerService_Prepare_FullMethodName       = "/angzarr.ProcessManagerService/Prepare"
-	ProcessManagerService_Handle_FullMethodName        = "/angzarr.ProcessManagerService/Handle"
+	ProcessManagerService_Prepare_FullMethodName = "/angzarr.ProcessManagerService/Prepare"
+	ProcessManagerService_Handle_FullMethodName  = "/angzarr.ProcessManagerService/Handle"
 )
 
 // ProcessManagerServiceClient is the client API for ProcessManagerService service.
@@ -44,8 +43,6 @@ const (
 // Process Manager IS an aggregate with its own domain, events, and state.
 // It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 type ProcessManagerServiceClient interface {
-	// Self-description: component type, subscribed domains, handled event types
-	GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error)
 	// Phase 1: Declare which additional destinations are needed beyond the trigger.
 	// PM automatically receives triggering event's domain state.
 	Prepare(ctx context.Context, in *ProcessManagerPrepareRequest, opts ...grpc.CallOption) (*ProcessManagerPrepareResponse, error)
@@ -60,16 +57,6 @@ type processManagerServiceClient struct {
 
 func NewProcessManagerServiceClient(cc grpc.ClientConnInterface) ProcessManagerServiceClient {
 	return &processManagerServiceClient{cc}
-}
-
-func (c *processManagerServiceClient) GetDescriptor(ctx context.Context, in *GetDescriptorRequest, opts ...grpc.CallOption) (*ComponentDescriptor, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ComponentDescriptor)
-	err := c.cc.Invoke(ctx, ProcessManagerService_GetDescriptor_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *processManagerServiceClient) Prepare(ctx context.Context, in *ProcessManagerPrepareRequest, opts ...grpc.CallOption) (*ProcessManagerPrepareResponse, error) {
@@ -112,8 +99,6 @@ func (c *processManagerServiceClient) Handle(ctx context.Context, in *ProcessMan
 // Process Manager IS an aggregate with its own domain, events, and state.
 // It reuses all aggregate infrastructure (EventStore, SnapshotStore, AggregateCoordinator).
 type ProcessManagerServiceServer interface {
-	// Self-description: component type, subscribed domains, handled event types
-	GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error)
 	// Phase 1: Declare which additional destinations are needed beyond the trigger.
 	// PM automatically receives triggering event's domain state.
 	Prepare(context.Context, *ProcessManagerPrepareRequest) (*ProcessManagerPrepareResponse, error)
@@ -130,9 +115,6 @@ type ProcessManagerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedProcessManagerServiceServer struct{}
 
-func (UnimplementedProcessManagerServiceServer) GetDescriptor(context.Context, *GetDescriptorRequest) (*ComponentDescriptor, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDescriptor not implemented")
-}
 func (UnimplementedProcessManagerServiceServer) Prepare(context.Context, *ProcessManagerPrepareRequest) (*ProcessManagerPrepareResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Prepare not implemented")
 }
@@ -158,24 +140,6 @@ func RegisterProcessManagerServiceServer(s grpc.ServiceRegistrar, srv ProcessMan
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ProcessManagerService_ServiceDesc, srv)
-}
-
-func _ProcessManagerService_GetDescriptor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDescriptorRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ProcessManagerServiceServer).GetDescriptor(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ProcessManagerService_GetDescriptor_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProcessManagerServiceServer).GetDescriptor(ctx, req.(*GetDescriptorRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _ProcessManagerService_Prepare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -221,10 +185,6 @@ var ProcessManagerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "angzarr.ProcessManagerService",
 	HandlerType: (*ProcessManagerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetDescriptor",
-			Handler:    _ProcessManagerService_GetDescriptor_Handler,
-		},
 		{
 			MethodName: "Prepare",
 			Handler:    _ProcessManagerService_Prepare_Handler,

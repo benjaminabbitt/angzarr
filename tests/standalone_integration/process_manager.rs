@@ -5,7 +5,8 @@ use crate::common::*;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-use angzarr::proto::{command_page, event_page, ComponentDescriptor, Target};
+use angzarr::descriptor::Target;
+use angzarr::proto::{command_page, event_page};
 use angzarr::standalone::{ProcessManagerConfig, ProcessManagerHandler};
 
 // ============================================================================
@@ -42,17 +43,6 @@ impl StateTrackingPM {
 }
 
 impl ProcessManagerHandler for StateTrackingPM {
-    fn descriptor(&self) -> ComponentDescriptor {
-        ComponentDescriptor {
-            name: "state-tracking-pm".to_string(),
-            component_type: "process_manager".to_string(),
-            inputs: vec![Target {
-                domain: "orders".to_string(),
-                types: vec!["OrderPlaced".to_string()],
-            }],
-        }
-    }
-
     fn prepare(&self, _trigger: &EventBook, _process_state: Option<&EventBook>) -> Vec<Cover> {
         vec![] // No additional destinations needed
     }
@@ -124,10 +114,6 @@ impl ProcessManagerHandler for StateTrackingPM {
 struct PMWrapper(Arc<StateTrackingPM>);
 
 impl ProcessManagerHandler for PMWrapper {
-    fn descriptor(&self) -> ComponentDescriptor {
-        self.0.descriptor()
-    }
-
     fn prepare(&self, trigger: &EventBook, process_state: Option<&EventBook>) -> Vec<Cover> {
         self.0.prepare(trigger, process_state)
     }
@@ -158,7 +144,12 @@ async fn test_pm_state_loads_across_invocations() {
         .register_process_manager(
             "state-tracking-pm",
             PMWrapper(pm_clone),
-            ProcessManagerConfig::new("state-tracking-pm"),
+            ProcessManagerConfig::new("state-tracking-pm").with_subscriptions(vec![
+                Target {
+                    domain: "orders".to_string(),
+                    types: vec!["OrderPlaced".to_string()],
+                },
+            ]),
         )
         .build()
         .await
@@ -246,7 +237,12 @@ async fn test_pm_state_isolated_by_correlation_id() {
         .register_process_manager(
             "state-tracking-pm",
             PMWrapper(pm_clone),
-            ProcessManagerConfig::new("state-tracking-pm"),
+            ProcessManagerConfig::new("state-tracking-pm").with_subscriptions(vec![
+                Target {
+                    domain: "orders".to_string(),
+                    types: vec!["OrderPlaced".to_string()],
+                },
+            ]),
         )
         .build()
         .await

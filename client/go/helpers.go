@@ -220,8 +220,8 @@ func NewEventBook(cover *pb.Cover, seq uint32, event *anypb.Any) *pb.EventBook {
 		Cover: cover,
 		Pages: []*pb.EventPage{
 			{
-				Sequence:  &pb.EventPage_Num{Num: seq},
-				Event:     event,
+				Sequence:  seq,
+				Payload:   &pb.EventPage_Event{Event: event},
 				CreatedAt: timestamppb.Now(),
 			},
 		},
@@ -235,8 +235,8 @@ func NewEventBookMulti(cover *pb.Cover, startSeq uint32, events ...*anypb.Any) *
 	now := timestamppb.Now()
 	for i, event := range events {
 		pages[i] = &pb.EventPage{
-			Sequence:  &pb.EventPage_Num{Num: startSeq + uint32(i)},
-			Event:     event,
+			Sequence:  startSeq + uint32(i),
+			Payload:   &pb.EventPage_Event{Event: event},
 			CreatedAt: now,
 		}
 	}
@@ -309,13 +309,14 @@ func ParseTimestamp(rfc3339 string) (*timestamppb.Timestamp, error) {
 
 // DecodeEvent attempts to decode an event payload if the type URL matches.
 func DecodeEvent(page *pb.EventPage, typeSuffix string, msg interface{ Unmarshal([]byte) error }) bool {
-	if page == nil || page.Event == nil {
+	event := page.GetEvent()
+	if page == nil || event == nil {
 		return false
 	}
-	if !TypeURLMatches(page.Event.TypeUrl, typeSuffix) {
+	if !TypeURLMatches(event.TypeUrl, typeSuffix) {
 		return false
 	}
-	return msg.Unmarshal(page.Event.Value) == nil
+	return msg.Unmarshal(event.Value) == nil
 }
 
 // NewCover creates a new Cover with the given parameters.
@@ -341,7 +342,7 @@ func NewCoverWithEdition(domain string, root uuid.UUID, correlationID string, ed
 func NewCommandPage(sequence uint32, command *anypb.Any) *pb.CommandPage {
 	return &pb.CommandPage{
 		Sequence: sequence,
-		Command:  command,
+		Payload:  &pb.CommandPage_Command{Command: command},
 	}
 }
 

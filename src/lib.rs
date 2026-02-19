@@ -6,6 +6,7 @@
 pub mod bus;
 pub mod clients;
 pub mod config;
+pub mod descriptor;
 pub mod discovery;
 pub mod dlq;
 pub mod edition;

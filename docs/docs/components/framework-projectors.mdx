@@ -241,12 +241,12 @@ Each EventBook page becomes a CloudEvent with:
 
 ## TopologyProjector
 
-Builds a graph of runtime components from their descriptors. Serves the graph via REST API for visualization in Grafana's Node Graph panel.
+Builds a graph of runtime components from event observation. Serves the graph via REST API for visualization in Grafana's Node Graph panel.
 
 ### Features
 
-- Graph structure from component descriptors (declarative)
-- Metrics from event observation (dynamic)
+- Graph structure inferred from event flow
+- Metrics from event observation (counts, last seen)
 - REST API for Grafana integration
 - K8s watcher mode for pod annotation discovery
 
@@ -254,7 +254,7 @@ Builds a graph of runtime components from their descriptors. Serves the graph vi
 
 | Mode | Source | Use Case |
 |------|--------|----------|
-| Event bus | `_angzarr.topology` domain | Legacy, standalone |
+| Event observation | Runtime event flow | Default |
 | K8s watcher | Pod annotations | Production K8s |
 
 ### REST API
@@ -284,10 +284,7 @@ let projector = TopologyProjector::new(Arc::new(store), 9099);
 
 projector.init().await?;  // Start REST server
 
-// Register components
-projector.register_components(&descriptors).await?;
-
-// Process events (updates metrics only, not structure)
+// Process events (builds graph from observed traffic)
 projector.process_event(&event_book).await?;
 ```
 

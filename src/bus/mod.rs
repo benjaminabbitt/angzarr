@@ -112,7 +112,7 @@ pub struct PublishResult {
 // Subscription Matching
 // ============================================================================
 
-use crate::proto::Target;
+use crate::descriptor::Target;
 use crate::proto_ext::CoverExt;
 
 /// Check if an EventBook matches a target filter.

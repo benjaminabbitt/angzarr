@@ -135,7 +135,6 @@ pub async fn run_aggregate_server<S: Send + Sync + 'static>(
 /// #[tokio::main]
 /// async fn main() {
 ///     let router = EventRouter::new("saga-order-fulfillment", "order")
-///         .sends("fulfillment", "CreateShipment")
 ///         .on("OrderCompleted", handle_order_completed);
 ///
 ///     run_saga_server("saga-order-fulfillment", 50010, router).await;
@@ -188,8 +187,7 @@ pub async fn run_saga_server(
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let handler = ProjectorHandler::new("output", vec!["player".into(), "table".into()])
-///         .with_handle(handle_events);
+///     let handler = ProjectorHandler::new("output").with_handle(handle_events);
 ///
 ///     run_projector_server("output", 9090, handler).await;
 /// }

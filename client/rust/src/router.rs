@@ -397,55 +397,95 @@ enum PrepareType {
     Closure(PrepareHandlerFn),
 }
 
-/// Event router for saga handlers.
+/// Unified event router for sagas, process managers, and projectors.
 ///
-/// Routes events to handlers based on type URL suffix matching.
+/// Uses fluent `.domain().on()` pattern to register handlers with domain context.
+/// Subscriptions are auto-derived from registrations.
+///
+/// # Example (Saga - single domain)
+///
+/// ```rust,ignore
+/// let router = EventRouter::new("saga-table-hand")
+///     .domain("table")
+///     .on("HandStarted", handle_started);
+/// ```
+///
+/// # Example (Process Manager - multi-domain)
+///
+/// ```rust,ignore
+/// let router = EventRouter::new("pmg-order-flow")
+///     .domain("order")
+///     .on("OrderCreated", handle_created)
+///     .domain("inventory")
+///     .on("StockReserved", handle_reserved);
+/// ```
+///
+/// # Example (Projector - multi-domain)
+///
+/// ```rust,ignore
+/// let router = EventRouter::new("prj-output")
+///     .domain("player")
+///     .on("PlayerRegistered", handle_registered)
+///     .domain("hand")
+///     .on("CardsDealt", handle_dealt);
+/// ```
 pub struct EventRouter {
     name: String,
-    input_domain: String,
-    output_domain: String,
-    output_types: Vec<String>,
-    handlers: HashMap<String, HandlerType>,
-    prepare_handlers: HashMap<String, PrepareType>,
+    current_domain: Option<String>,
+    /// domain -> handlers
+    handlers: HashMap<String, Vec<(String, HandlerType)>>,
+    /// domain -> prepare_handlers
+    prepare_handlers: HashMap<String, HashMap<String, PrepareType>>,
 }
 
 impl EventRouter {
-    /// Create a new event router for a saga.
+    /// Create a new event router.
     ///
-    /// - `name`: Saga component name (e.g., "saga-order-fulfillment")
-    /// - `input_domain`: Domain this saga subscribes to
-    pub fn new(name: impl Into<String>, input_domain: impl Into<String>) -> Self {
+    /// - `name`: Component name (e.g., "saga-order-fulfillment", "pmg-hand-flow")
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            input_domain: input_domain.into(),
-            output_domain: String::new(),
-            output_types: Vec::new(),
+            current_domain: None,
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
         }
     }
 
-    /// Register the output domain and command type this saga sends.
-    pub fn sends(mut self, domain: impl Into<String>, command_type: impl Into<String>) -> Self {
-        self.output_domain = domain.into();
-        self.output_types.push(command_type.into());
-        self
+    /// Create a new event router with a single input domain (backwards compatibility).
+    ///
+    /// Deprecated: Use `EventRouter::new(name).domain(input_domain)` instead.
+    #[deprecated(note = "Use EventRouter::new(name).domain(input_domain) instead")]
+    pub fn with_domain(name: impl Into<String>, input_domain: impl Into<String>) -> Self {
+        Self::new(name).domain(input_domain)
     }
 
-    /// Register just the output domain (for OO pattern where command types are implicit).
-    pub fn sends_domain(mut self, domain: impl Into<String>) -> Self {
-        self.output_domain = domain.into();
+    /// Set the current domain context for subsequent `.on()` calls.
+    pub fn domain(mut self, name: impl Into<String>) -> Self {
+        let domain = name.into();
+        self.current_domain = Some(domain.clone());
+        self.handlers.entry(domain.clone()).or_default();
+        self.prepare_handlers.entry(domain).or_default();
         self
     }
 
     /// Register an event handler for events ending with the given suffix.
+    ///
+    /// Must be called after `.domain()` to set context.
     pub fn on(mut self, suffix: impl Into<String>, handler: EventHandler) -> Self {
+        let domain = self
+            .current_domain
+            .as_ref()
+            .expect("Must call .domain() before .on()");
         self.handlers
-            .insert(suffix.into(), HandlerType::Single(handler));
+            .get_mut(domain)
+            .unwrap()
+            .push((suffix.into(), HandlerType::Single(handler)));
         self
     }
 
     /// Register an event handler closure for events ending with the given suffix.
+    ///
+    /// Must be called after `.domain()` to set context.
     pub fn on_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
     where
         H: Fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Option<CommandBook>>
@@ -453,8 +493,14 @@ impl EventRouter {
             + Sync
             + 'static,
     {
+        let domain = self
+            .current_domain
+            .as_ref()
+            .expect("Must call .domain() before .on_fn()");
         self.handlers
-            .insert(suffix.into(), HandlerType::SingleFn(Arc::new(handler)));
+            .get_mut(domain)
+            .unwrap()
+            .push((suffix.into(), HandlerType::SingleFn(Arc::new(handler))));
         self
     }
 
@@ -462,13 +508,23 @@ impl EventRouter {
     ///
     /// Use this for sagas that need to emit multiple commands for a single event
     /// (e.g., PotAwarded -> DepositFunds for each winner).
+    ///
+    /// Must be called after `.domain()` to set context.
     pub fn on_many(mut self, suffix: impl Into<String>, handler: MultiEventHandler) -> Self {
+        let domain = self
+            .current_domain
+            .as_ref()
+            .expect("Must call .domain() before .on_many()");
         self.handlers
-            .insert(suffix.into(), HandlerType::Multi(handler));
+            .get_mut(domain)
+            .unwrap()
+            .push((suffix.into(), HandlerType::Multi(handler)));
         self
     }
 
     /// Register a multi-command event handler closure for events ending with the given suffix.
+    ///
+    /// Must be called after `.domain()` to set context.
     pub fn on_many_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
     where
         H: Fn(&EventBook, &Any, &[EventBook]) -> CommandResult<Vec<CommandBook>>
@@ -476,51 +532,86 @@ impl EventRouter {
             + Sync
             + 'static,
     {
+        let domain = self
+            .current_domain
+            .as_ref()
+            .expect("Must call .domain() before .on_many_fn()");
         self.handlers
-            .insert(suffix.into(), HandlerType::MultiFn(Arc::new(handler)));
+            .get_mut(domain)
+            .unwrap()
+            .push((suffix.into(), HandlerType::MultiFn(Arc::new(handler))));
         self
     }
 
     /// Register a prepare handler for events ending with the given suffix.
+    ///
+    /// Must be called after `.domain()` to set context.
     pub fn prepare(mut self, suffix: impl Into<String>, handler: PrepareHandler) -> Self {
+        let domain = self
+            .current_domain
+            .as_ref()
+            .expect("Must call .domain() before .prepare()");
         self.prepare_handlers
+            .get_mut(domain)
+            .unwrap()
             .insert(suffix.into(), PrepareType::Fn(handler));
         self
     }
 
     /// Register a prepare handler closure for events ending with the given suffix.
+    ///
+    /// Must be called after `.domain()` to set context.
     pub fn prepare_fn<H>(mut self, suffix: impl Into<String>, handler: H) -> Self
     where
         H: Fn(&EventBook, &Any) -> Vec<crate::proto::Cover> + Send + Sync + 'static,
     {
+        let domain = self
+            .current_domain
+            .as_ref()
+            .expect("Must call .domain() before .prepare_fn()");
         self.prepare_handlers
+            .get_mut(domain)
+            .unwrap()
             .insert(suffix.into(), PrepareType::Closure(Arc::new(handler)));
         self
     }
 
-    /// Get the saga name.
+    /// Get the component name.
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Get the input domain.
+    /// Auto-derive subscriptions from registered handlers.
+    ///
+    /// Returns list of (domain, event_types) tuples.
+    pub fn subscriptions(&self) -> Vec<(String, Vec<String>)> {
+        self.handlers
+            .iter()
+            .filter(|(_, handlers)| !handlers.is_empty())
+            .map(|(domain, handlers)| {
+                let types: Vec<String> =
+                    handlers.iter().map(|(suffix, _)| suffix.clone()).collect();
+                (domain.clone(), types)
+            })
+            .collect()
+    }
+
+    /// Get the first registered domain (for backwards compatibility).
+    #[deprecated(note = "Use subscriptions() instead")]
     pub fn input_domain(&self) -> &str {
-        &self.input_domain
+        self.handlers
+            .keys()
+            .next()
+            .map(|s| s.as_str())
+            .unwrap_or("")
     }
 
-    /// Get the output domain.
-    pub fn output_domain(&self) -> &str {
-        &self.output_domain
-    }
-
-    /// Get the list of registered event type suffixes.
+    /// Get all registered event type suffixes across all domains.
     pub fn event_types(&self) -> Vec<String> {
-        self.handlers.keys().cloned().collect()
-    }
-
-    /// Get the list of output command types.
-    pub fn output_types(&self) -> &[String] {
-        &self.output_types
+        self.handlers
+            .values()
+            .flat_map(|handlers| handlers.iter().map(|(suffix, _)| suffix.clone()))
+            .collect()
     }
 
     /// Get destinations needed for the given source events.
@@ -529,6 +620,12 @@ impl EventRouter {
             Some(s) => s,
             None => return vec![],
         };
+
+        let source_domain = source
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
 
         let event_page = match source.pages.last() {
             Some(p) => p,
@@ -540,10 +637,14 @@ impl EventRouter {
             _ => return vec![],
         };
 
-        // Find prepare handler by suffix
+        // Find prepare handler by domain and suffix
+        let domain_handlers = match self.prepare_handlers.get(source_domain) {
+            Some(h) => h,
+            None => return vec![],
+        };
+
         let type_url = &event_any.type_url;
-        let handler = match self
-            .prepare_handlers
+        let handler = match domain_handlers
             .iter()
             .find(|(suffix, _)| type_url.ends_with(*suffix))
         {
@@ -559,12 +660,25 @@ impl EventRouter {
 
     /// Dispatch an event book to the appropriate handler.
     ///
+    /// Routes based on source domain and event type suffix.
     /// Returns empty vec if no handler matches or handler returns None/empty.
     pub fn dispatch(
         &self,
         event_book: &EventBook,
         destinations: &[EventBook],
     ) -> Result<Vec<CommandBook>, Status> {
+        let source_domain = event_book
+            .cover
+            .as_ref()
+            .map(|c| c.domain.as_str())
+            .unwrap_or("");
+
+        // Find handlers for this domain
+        let domain_handlers = match self.handlers.get(source_domain) {
+            Some(h) => h,
+            None => return Ok(vec![]),
+        };
+
         // Get the last event
         let event_page = match event_book.pages.last() {
             Some(p) => p,
@@ -578,10 +692,9 @@ impl EventRouter {
 
         // Find handler by suffix
         let type_url = &event_any.type_url;
-        let handler = match self
-            .handlers
+        let handler = match domain_handlers
             .iter()
-            .find(|(suffix, _)| type_url.ends_with(*suffix))
+            .find(|(suffix, _)| type_url.ends_with(suffix))
         {
             Some((_, h)) => h,
             None => return Ok(vec![]),
@@ -740,7 +853,6 @@ pub struct ProcessManagerRouter<S> {
     name: String,
     pm_domain: String,
     input_domains: Vec<String>,
-    output_domains: Vec<(String, Vec<String>)>, // domain -> command types
     rebuild: PMRebuildType<S>,
     handlers: HashMap<String, PMHandlerType<S>>,
     prepare_handlers: HashMap<String, PMPrepareType<S>>,
@@ -761,7 +873,6 @@ impl<S: 'static> ProcessManagerRouter<S> {
             name: name.into(),
             pm_domain: pm_domain.into(),
             input_domains: Vec::new(),
-            output_domains: Vec::new(),
             rebuild: PMRebuildType::Fn(rebuild),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
@@ -782,7 +893,6 @@ impl<S: 'static> ProcessManagerRouter<S> {
             name: name.into(),
             pm_domain: pm_domain.into(),
             input_domains: Vec::new(),
-            output_domains: Vec::new(),
             rebuild: PMRebuildType::Closure(Arc::new(rebuild)),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
@@ -793,19 +903,6 @@ impl<S: 'static> ProcessManagerRouter<S> {
     /// Add an input domain this PM subscribes to.
     pub fn subscribes(mut self, domain: impl Into<String>) -> Self {
         self.input_domains.push(domain.into());
-        self
-    }
-
-    /// Register an output domain and command type this PM sends.
-    pub fn sends(mut self, domain: impl Into<String>, command_type: impl Into<String>) -> Self {
-        let domain = domain.into();
-        let cmd_type = command_type.into();
-
-        if let Some((_, types)) = self.output_domains.iter_mut().find(|(d, _)| d == &domain) {
-            types.push(cmd_type);
-        } else {
-            self.output_domains.push((domain, vec![cmd_type]));
-        }
         self
     }
 
@@ -1207,6 +1304,98 @@ impl<S: Default + 'static> StateRouter<S> {
 }
 
 // ============================================================================
+// UpcasterRouter — event version transformation
+// ============================================================================
+
+/// Handler type for upcasting events from old versions to new versions.
+///
+/// Takes an old event (Any) and returns the new event (Any).
+pub type UpcasterHandler = Arc<dyn Fn(&Any) -> Any + Send + Sync>;
+
+/// Event version transformer.
+///
+/// Matches old event type_url suffixes and transforms to new versions.
+/// Events without registered transformations pass through unchanged.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use angzarr_client::UpcasterRouter;
+///
+/// fn upcast_created_v1(old: &Any) -> Any {
+///     let v1: OrderCreatedV1 = old.unpack().unwrap();
+///     let v2 = OrderCreated {
+///         order_id: v1.order_id,
+///         total: 0, // default for new field
+///     };
+///     pack_any(&v2)
+/// }
+///
+/// let router = UpcasterRouter::new("order")
+///     .on("OrderCreatedV1", upcast_created_v1);
+///
+/// let new_events = router.upcast(&old_events);
+/// ```
+pub struct UpcasterRouter {
+    domain: String,
+    handlers: Vec<(String, UpcasterHandler)>,
+}
+
+impl UpcasterRouter {
+    /// Create a new upcaster router for a domain.
+    pub fn new(domain: impl Into<String>) -> Self {
+        Self {
+            domain: domain.into(),
+            handlers: Vec::new(),
+        }
+    }
+
+    /// Register a handler for an old event type_url suffix.
+    ///
+    /// # Arguments
+    /// - `suffix`: The type_url suffix to match (e.g., "OrderCreatedV1")
+    /// - `handler`: Function that transforms old event to new event
+    pub fn on<F>(mut self, suffix: impl Into<String>, handler: F) -> Self
+    where
+        F: Fn(&Any) -> Any + Send + Sync + 'static,
+    {
+        self.handlers.push((suffix.into(), Arc::new(handler)));
+        self
+    }
+
+    /// Transform a list of events to current versions.
+    ///
+    /// Events matching registered handlers are transformed.
+    /// Events without matching handlers pass through unchanged.
+    pub fn upcast(&self, events: &[EventPage]) -> Vec<EventPage> {
+        events
+            .iter()
+            .map(|page| {
+                let Some(event_page::Payload::Event(event)) = &page.payload else {
+                    return page.clone();
+                };
+
+                for (suffix, handler) in &self.handlers {
+                    if event.type_url.ends_with(suffix) {
+                        let new_event = handler(event);
+                        let mut new_page = page.clone();
+                        new_page.payload = Some(event_page::Payload::Event(new_event));
+                        return new_page;
+                    }
+                }
+
+                page.clone()
+            })
+            .collect()
+    }
+
+    /// Get the domain this upcaster handles.
+    pub fn domain(&self) -> &str {
+        &self.domain
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1341,5 +1530,79 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    // =========================================================================
+    // UpcasterRouter Tests
+    // =========================================================================
+
+    #[test]
+    fn upcaster_router_new_creates_router() {
+        let router = UpcasterRouter::new("order");
+        assert_eq!(router.domain(), "order");
+    }
+
+    #[test]
+    fn upcaster_router_on_chains_fluently() {
+        // Just verify chaining works - no types() assertion
+        let _router = UpcasterRouter::new("order")
+            .on("OrderCreatedV1", |_| Any::default())
+            .on("OrderShippedV1", |_| Any::default());
+    }
+
+    #[test]
+    fn upcaster_router_upcast_transforms_matching_events() {
+        let router = UpcasterRouter::new("order").on("TestEventV1", |_old| Any {
+            type_url: "type.googleapis.com/test.TestEventV2".to_string(),
+            value: vec![1, 2, 3],
+        });
+
+        let old_events = vec![EventPage {
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/test.TestEventV1".to_string(),
+                value: vec![],
+            })),
+            ..Default::default()
+        }];
+
+        let new_events = router.upcast(&old_events);
+
+        assert_eq!(new_events.len(), 1);
+        if let Some(event_page::Payload::Event(event)) = &new_events[0].payload {
+            assert!(event.type_url.ends_with("TestEventV2"));
+            assert_eq!(event.value, vec![1, 2, 3]);
+        } else {
+            panic!("Expected event payload");
+        }
+    }
+
+    #[test]
+    fn upcaster_router_upcast_passes_through_unmatched_events() {
+        let router = UpcasterRouter::new("order").on("OrderCreatedV1", |_| Any::default());
+
+        let events = vec![EventPage {
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.googleapis.com/test.OtherEvent".to_string(),
+                value: vec![42],
+            })),
+            ..Default::default()
+        }];
+
+        let result = router.upcast(&events);
+
+        assert_eq!(result.len(), 1);
+        if let Some(event_page::Payload::Event(event)) = &result[0].payload {
+            assert!(event.type_url.ends_with("OtherEvent"));
+            assert_eq!(event.value, vec![42]);
+        } else {
+            panic!("Expected event payload");
+        }
+    }
+
+    #[test]
+    fn upcaster_router_upcast_handles_empty_input() {
+        let router = UpcasterRouter::new("order");
+        let result = router.upcast(&[]);
+        assert!(result.is_empty());
     }
 }

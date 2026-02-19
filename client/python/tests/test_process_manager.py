@@ -117,7 +117,7 @@ def build_order_workflow_router() -> EventRouter:
 
     Demonstrates same logic as OrderWorkflowPM but with router pattern.
     """
-    router = EventRouter("order-workflow-fn", "order")
+    router = EventRouter("order-workflow-fn").domain("order")
 
     @event_handler(OrderCreated)
     def handle_order_created(
@@ -139,7 +139,7 @@ def build_order_workflow_router() -> EventRouter:
 
 def build_inventory_router() -> EventRouter:
     """Separate router for inventory domain events."""
-    router = EventRouter("order-workflow-fn", "inventory")
+    router = EventRouter("order-workflow-fn").domain("inventory")
 
     @event_handler(StockReserved)
     def handle_stock_reserved(
@@ -339,33 +339,6 @@ class TestProcessManagerHandle:
         assert commands[0].cover.correlation_id == "corr-abc"
 
 
-# =============================================================================
-# Tests for OO pattern descriptor
-# =============================================================================
-
-
-class TestProcessManagerDescriptor:
-    def test_descriptor_returns_correct_type(self):
-        desc = OrderWorkflowPM.descriptor()
-
-        assert desc.name == "order-workflow"
-        assert desc.component_type == "process_manager"
-
-    def test_descriptor_lists_input_domains(self):
-        desc = OrderWorkflowPM.descriptor()
-
-        domains = {inp.domain for inp in desc.inputs}
-        assert "order" in domains
-        assert "inventory" in domains
-
-    def test_descriptor_lists_event_types_per_domain(self):
-        desc = OrderWorkflowPM.descriptor()
-
-        order_input = next(inp for inp in desc.inputs if inp.domain == "order")
-        assert "OrderCreated" in order_input.types
-
-        inventory_input = next(inp for inp in desc.inputs if inp.domain == "inventory")
-        assert "StockReserved" in inventory_input.types
 
 
 # =============================================================================
@@ -382,7 +355,7 @@ class TestFunctionBasedRouter:
         event_any.Pack(event)
 
         source = types.EventBook(
-            cover=types.Cover(correlation_id="corr-fn-1"),
+            cover=types.Cover(domain="order", correlation_id="corr-fn-1"),
             pages=[types.EventPage(event=event_any)],
         )
 
@@ -400,7 +373,7 @@ class TestFunctionBasedRouter:
         event_any.Pack(event)
 
         source = types.EventBook(
-            cover=types.Cover(correlation_id="corr-fn-2"),
+            cover=types.Cover(domain="inventory", correlation_id="corr-fn-2"),
             pages=[types.EventPage(event=event_any)],
         )
 
@@ -408,14 +381,6 @@ class TestFunctionBasedRouter:
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "fulfillment"
-
-    def test_router_descriptor(self):
-        router = build_order_workflow_router()
-        desc = router.descriptor()
-
-        assert desc.name == "order-workflow-fn"
-        assert "OrderCreated" in desc.inputs[0].types
-
 
 # =============================================================================
 # Tests comparing both patterns produce equivalent output
@@ -437,7 +402,7 @@ class TestPatternEquivalence:
         # Function pattern
         router = build_order_workflow_router()
         source = types.EventBook(
-            cover=types.Cover(correlation_id="corr-eq"),
+            cover=types.Cover(domain="order", correlation_id="corr-eq"),
             pages=[types.EventPage(event=event_any)],
         )
         fn_commands = router.dispatch(source)

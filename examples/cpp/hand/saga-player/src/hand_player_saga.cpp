@@ -7,8 +7,8 @@ namespace hand {
 namespace saga {
 
 angzarr::EventRouter create_hand_player_router() {
-    return angzarr::EventRouter("saga-hand-player", "hand")
-        .sends("player", "DepositFunds")
+    return angzarr::EventRouter("saga-hand-player")
+        .domain("hand")
         .prepare<examples::PotAwarded>(prepare_pot_awarded)
         .on<examples::PotAwarded>(handle_pot_awarded);
 }

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: examples/types.proto
+// source: examples/poker_types.proto
 
 package examples
 
@@ -60,11 +60,11 @@ func (x Suit) String() string {
 }
 
 func (Suit) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[0].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[0].Descriptor()
 }
 
 func (Suit) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[0]
+	return &file_examples_poker_types_proto_enumTypes[0]
 }
 
 func (x Suit) Number() protoreflect.EnumNumber {
@@ -73,7 +73,7 @@ func (x Suit) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Suit.Descriptor instead.
 func (Suit) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{0}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{0}
 }
 
 type Rank int32
@@ -142,11 +142,11 @@ func (x Rank) String() string {
 }
 
 func (Rank) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[1].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[1].Descriptor()
 }
 
 func (Rank) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[1]
+	return &file_examples_poker_types_proto_enumTypes[1]
 }
 
 func (x Rank) Number() protoreflect.EnumNumber {
@@ -155,7 +155,7 @@ func (x Rank) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Rank.Descriptor instead.
 func (Rank) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{1}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{1}
 }
 
 type HandRankType int32
@@ -215,11 +215,11 @@ func (x HandRankType) String() string {
 }
 
 func (HandRankType) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[2].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[2].Descriptor()
 }
 
 func (HandRankType) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[2]
+	return &file_examples_poker_types_proto_enumTypes[2]
 }
 
 func (x HandRankType) Number() protoreflect.EnumNumber {
@@ -228,7 +228,7 @@ func (x HandRankType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use HandRankType.Descriptor instead.
 func (HandRankType) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{2}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{2}
 }
 
 // Game variant configuration
@@ -271,11 +271,11 @@ func (x GameVariant) String() string {
 }
 
 func (GameVariant) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[3].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[3].Descriptor()
 }
 
 func (GameVariant) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[3]
+	return &file_examples_poker_types_proto_enumTypes[3]
 }
 
 func (x GameVariant) Number() protoreflect.EnumNumber {
@@ -284,7 +284,7 @@ func (x GameVariant) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GameVariant.Descriptor instead.
 func (GameVariant) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{3}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{3}
 }
 
 // Betting round phase
@@ -333,11 +333,11 @@ func (x BettingPhase) String() string {
 }
 
 func (BettingPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[4].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[4].Descriptor()
 }
 
 func (BettingPhase) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[4]
+	return &file_examples_poker_types_proto_enumTypes[4]
 }
 
 func (x BettingPhase) Number() protoreflect.EnumNumber {
@@ -346,7 +346,7 @@ func (x BettingPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BettingPhase.Descriptor instead.
 func (BettingPhase) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{4}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{4}
 }
 
 // Player action type
@@ -395,11 +395,11 @@ func (x ActionType) String() string {
 }
 
 func (ActionType) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[5].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[5].Descriptor()
 }
 
 func (ActionType) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[5]
+	return &file_examples_poker_types_proto_enumTypes[5]
 }
 
 func (x ActionType) Number() protoreflect.EnumNumber {
@@ -408,7 +408,7 @@ func (x ActionType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ActionType.Descriptor instead.
 func (ActionType) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{5}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{5}
 }
 
 // Player type - abstraction for human vs AI
@@ -445,11 +445,11 @@ func (x PlayerType) String() string {
 }
 
 func (PlayerType) Descriptor() protoreflect.EnumDescriptor {
-	return file_examples_types_proto_enumTypes[6].Descriptor()
+	return file_examples_poker_types_proto_enumTypes[6].Descriptor()
 }
 
 func (PlayerType) Type() protoreflect.EnumType {
-	return &file_examples_types_proto_enumTypes[6]
+	return &file_examples_poker_types_proto_enumTypes[6]
 }
 
 func (x PlayerType) Number() protoreflect.EnumNumber {
@@ -458,7 +458,7 @@ func (x PlayerType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PlayerType.Descriptor instead.
 func (PlayerType) EnumDescriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{6}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{6}
 }
 
 // Card representation
@@ -472,7 +472,7 @@ type Card struct {
 
 func (x *Card) Reset() {
 	*x = Card{}
-	mi := &file_examples_types_proto_msgTypes[0]
+	mi := &file_examples_poker_types_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -484,7 +484,7 @@ func (x *Card) String() string {
 func (*Card) ProtoMessage() {}
 
 func (x *Card) ProtoReflect() protoreflect.Message {
-	mi := &file_examples_types_proto_msgTypes[0]
+	mi := &file_examples_poker_types_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -497,7 +497,7 @@ func (x *Card) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Card.ProtoReflect.Descriptor instead.
 func (*Card) Descriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{0}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Card) GetSuit() Suit {
@@ -526,7 +526,7 @@ type HandRanking struct {
 
 func (x *HandRanking) Reset() {
 	*x = HandRanking{}
-	mi := &file_examples_types_proto_msgTypes[1]
+	mi := &file_examples_poker_types_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -538,7 +538,7 @@ func (x *HandRanking) String() string {
 func (*HandRanking) ProtoMessage() {}
 
 func (x *HandRanking) ProtoReflect() protoreflect.Message {
-	mi := &file_examples_types_proto_msgTypes[1]
+	mi := &file_examples_poker_types_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -551,7 +551,7 @@ func (x *HandRanking) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandRanking.ProtoReflect.Descriptor instead.
 func (*HandRanking) Descriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{1}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *HandRanking) GetRankType() HandRankType {
@@ -586,7 +586,7 @@ type Currency struct {
 
 func (x *Currency) Reset() {
 	*x = Currency{}
-	mi := &file_examples_types_proto_msgTypes[2]
+	mi := &file_examples_poker_types_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -598,7 +598,7 @@ func (x *Currency) String() string {
 func (*Currency) ProtoMessage() {}
 
 func (x *Currency) ProtoReflect() protoreflect.Message {
-	mi := &file_examples_types_proto_msgTypes[2]
+	mi := &file_examples_poker_types_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -611,7 +611,7 @@ func (x *Currency) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Currency.ProtoReflect.Descriptor instead.
 func (*Currency) Descriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{2}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Currency) GetAmount() int64 {
@@ -642,7 +642,7 @@ type Seat struct {
 
 func (x *Seat) Reset() {
 	*x = Seat{}
-	mi := &file_examples_types_proto_msgTypes[3]
+	mi := &file_examples_poker_types_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -654,7 +654,7 @@ func (x *Seat) String() string {
 func (*Seat) ProtoMessage() {}
 
 func (x *Seat) ProtoReflect() protoreflect.Message {
-	mi := &file_examples_types_proto_msgTypes[3]
+	mi := &file_examples_poker_types_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -667,7 +667,7 @@ func (x *Seat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Seat.ProtoReflect.Descriptor instead.
 func (*Seat) Descriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{3}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Seat) GetPosition() int32 {
@@ -717,7 +717,7 @@ type Pot struct {
 
 func (x *Pot) Reset() {
 	*x = Pot{}
-	mi := &file_examples_types_proto_msgTypes[4]
+	mi := &file_examples_poker_types_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -729,7 +729,7 @@ func (x *Pot) String() string {
 func (*Pot) ProtoMessage() {}
 
 func (x *Pot) ProtoReflect() protoreflect.Message {
-	mi := &file_examples_types_proto_msgTypes[4]
+	mi := &file_examples_poker_types_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -742,7 +742,7 @@ func (x *Pot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pot.ProtoReflect.Descriptor instead.
 func (*Pot) Descriptor() ([]byte, []int) {
-	return file_examples_types_proto_rawDescGZIP(), []int{4}
+	return file_examples_poker_types_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Pot) GetAmount() int64 {
@@ -766,11 +766,11 @@ func (x *Pot) GetPotType() string {
 	return ""
 }
 
-var File_examples_types_proto protoreflect.FileDescriptor
+var File_examples_poker_types_proto protoreflect.FileDescriptor
 
-const file_examples_types_proto_rawDesc = "" +
+const file_examples_poker_types_proto_rawDesc = "" +
 	"\n" +
-	"\x14examples/types.proto\x12\bexamples\"N\n" +
+	"\x1aexamples/poker_types.proto\x12\bexamples\"N\n" +
 	"\x04Card\x12\"\n" +
 	"\x04suit\x18\x01 \x01(\x0e2\x0e.examples.SuitR\x04suit\x12\"\n" +
 	"\x04rank\x18\x02 \x01(\x0e2\x0e.examples.RankR\x04rank\"\x82\x01\n" +
@@ -858,25 +858,24 @@ const file_examples_types_proto_rawDesc = "" +
 	"PlayerType\x12\x1b\n" +
 	"\x17PLAYER_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05HUMAN\x10\x01\x12\x06\n" +
-	"\x02AI\x10\x02B\x96\x01\n" +
-	"\fcom.examplesB\n" +
-	"TypesProtoP\x01Z:github.com/benjaminabbitt/angzarr/client/go/proto/examples\xa2\x02\x03EXX\xaa\x02\bExamples\xca\x02\bExamples\xe2\x02\x14Examples\\GPBMetadata\xea\x02\bExamplesb\x06proto3"
+	"\x02AI\x10\x02B\x9b\x01\n" +
+	"\fcom.examplesB\x0fPokerTypesProtoP\x01Z:github.com/benjaminabbitt/angzarr/client/go/proto/examples\xa2\x02\x03EXX\xaa\x02\bExamples\xca\x02\bExamples\xe2\x02\x14Examples\\GPBMetadata\xea\x02\bExamplesb\x06proto3"
 
 var (
-	file_examples_types_proto_rawDescOnce sync.Once
-	file_examples_types_proto_rawDescData []byte
+	file_examples_poker_types_proto_rawDescOnce sync.Once
+	file_examples_poker_types_proto_rawDescData []byte
 )
 
-func file_examples_types_proto_rawDescGZIP() []byte {
-	file_examples_types_proto_rawDescOnce.Do(func() {
-		file_examples_types_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_examples_types_proto_rawDesc), len(file_examples_types_proto_rawDesc)))
+func file_examples_poker_types_proto_rawDescGZIP() []byte {
+	file_examples_poker_types_proto_rawDescOnce.Do(func() {
+		file_examples_poker_types_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_examples_poker_types_proto_rawDesc), len(file_examples_poker_types_proto_rawDesc)))
 	})
-	return file_examples_types_proto_rawDescData
+	return file_examples_poker_types_proto_rawDescData
 }
 
-var file_examples_types_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_examples_types_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_examples_types_proto_goTypes = []any{
+var file_examples_poker_types_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
+var file_examples_poker_types_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_examples_poker_types_proto_goTypes = []any{
 	(Suit)(0),           // 0: examples.Suit
 	(Rank)(0),           // 1: examples.Rank
 	(HandRankType)(0),   // 2: examples.HandRankType
@@ -890,7 +889,7 @@ var file_examples_types_proto_goTypes = []any{
 	(*Seat)(nil),        // 10: examples.Seat
 	(*Pot)(nil),         // 11: examples.Pot
 }
-var file_examples_types_proto_depIdxs = []int32{
+var file_examples_poker_types_proto_depIdxs = []int32{
 	0, // 0: examples.Card.suit:type_name -> examples.Suit
 	1, // 1: examples.Card.rank:type_name -> examples.Rank
 	2, // 2: examples.HandRanking.rank_type:type_name -> examples.HandRankType
@@ -903,27 +902,27 @@ var file_examples_types_proto_depIdxs = []int32{
 	0, // [0:5] is the sub-list for field type_name
 }
 
-func init() { file_examples_types_proto_init() }
-func file_examples_types_proto_init() {
-	if File_examples_types_proto != nil {
+func init() { file_examples_poker_types_proto_init() }
+func file_examples_poker_types_proto_init() {
+	if File_examples_poker_types_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_examples_types_proto_rawDesc), len(file_examples_types_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_examples_poker_types_proto_rawDesc), len(file_examples_poker_types_proto_rawDesc)),
 			NumEnums:      7,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_examples_types_proto_goTypes,
-		DependencyIndexes: file_examples_types_proto_depIdxs,
-		EnumInfos:         file_examples_types_proto_enumTypes,
-		MessageInfos:      file_examples_types_proto_msgTypes,
+		GoTypes:           file_examples_poker_types_proto_goTypes,
+		DependencyIndexes: file_examples_poker_types_proto_depIdxs,
+		EnumInfos:         file_examples_poker_types_proto_enumTypes,
+		MessageInfos:      file_examples_poker_types_proto_msgTypes,
 	}.Build()
-	File_examples_types_proto = out.File
-	file_examples_types_proto_goTypes = nil
-	file_examples_types_proto_depIdxs = nil
+	File_examples_poker_types_proto = out.File
+	file_examples_poker_types_proto_goTypes = nil
+	file_examples_poker_types_proto_depIdxs = nil
 }

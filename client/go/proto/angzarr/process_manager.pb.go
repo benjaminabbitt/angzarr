@@ -390,9 +390,8 @@ const file_angzarr_process_manager_proto_rawDesc = "" +
 	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12!\n" +
 	"\fprocess_type\x18\x02 \x01(\tR\vprocessType\x12!\n" +
 	"\ftimeout_type\x18\x03 \x01(\tR\vtimeoutType\x126\n" +
-	"\bdeadline\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline2\x96\x02\n" +
-	"\x15ProcessManagerService\x12L\n" +
-	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12X\n" +
+	"\bdeadline\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline2\xc8\x01\n" +
+	"\x15ProcessManagerService\x12X\n" +
 	"\aPrepare\x12%.angzarr.ProcessManagerPrepareRequest\x1a&.angzarr.ProcessManagerPrepareResponse\x12U\n" +
 	"\x06Handle\x12$.angzarr.ProcessManagerHandleRequest\x1a%.angzarr.ProcessManagerHandleResponse2{\n" +
 	" ProcessManagerCoordinatorService\x12W\n" +
@@ -424,8 +423,6 @@ var file_angzarr_process_manager_proto_goTypes = []any{
 	(*Cover)(nil),                         // 8: angzarr.Cover
 	(*CommandBook)(nil),                   // 9: angzarr.CommandBook
 	(*timestamppb.Timestamp)(nil),         // 10: google.protobuf.Timestamp
-	(*GetDescriptorRequest)(nil),          // 11: angzarr.GetDescriptorRequest
-	(*ComponentDescriptor)(nil),           // 12: angzarr.ComponentDescriptor
 }
 var file_angzarr_process_manager_proto_depIdxs = []int32{
 	3,  // 0: angzarr.SpeculatePmRequest.request:type_name -> angzarr.ProcessManagerHandleRequest
@@ -439,16 +436,14 @@ var file_angzarr_process_manager_proto_depIdxs = []int32{
 	9,  // 8: angzarr.ProcessManagerHandleResponse.commands:type_name -> angzarr.CommandBook
 	7,  // 9: angzarr.ProcessManagerHandleResponse.process_events:type_name -> angzarr.EventBook
 	10, // 10: angzarr.ProcessTimeout.deadline:type_name -> google.protobuf.Timestamp
-	11, // 11: angzarr.ProcessManagerService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
-	1,  // 12: angzarr.ProcessManagerService.Prepare:input_type -> angzarr.ProcessManagerPrepareRequest
-	3,  // 13: angzarr.ProcessManagerService.Handle:input_type -> angzarr.ProcessManagerHandleRequest
-	0,  // 14: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:input_type -> angzarr.SpeculatePmRequest
-	12, // 15: angzarr.ProcessManagerService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	2,  // 16: angzarr.ProcessManagerService.Prepare:output_type -> angzarr.ProcessManagerPrepareResponse
-	4,  // 17: angzarr.ProcessManagerService.Handle:output_type -> angzarr.ProcessManagerHandleResponse
-	4,  // 18: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:output_type -> angzarr.ProcessManagerHandleResponse
-	15, // [15:19] is the sub-list for method output_type
-	11, // [11:15] is the sub-list for method input_type
+	1,  // 11: angzarr.ProcessManagerService.Prepare:input_type -> angzarr.ProcessManagerPrepareRequest
+	3,  // 12: angzarr.ProcessManagerService.Handle:input_type -> angzarr.ProcessManagerHandleRequest
+	0,  // 13: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:input_type -> angzarr.SpeculatePmRequest
+	2,  // 14: angzarr.ProcessManagerService.Prepare:output_type -> angzarr.ProcessManagerPrepareResponse
+	4,  // 15: angzarr.ProcessManagerService.Handle:output_type -> angzarr.ProcessManagerHandleResponse
+	4,  // 16: angzarr.ProcessManagerCoordinatorService.HandleSpeculative:output_type -> angzarr.ProcessManagerHandleResponse
+	14, // [14:17] is the sub-list for method output_type
+	11, // [11:14] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name

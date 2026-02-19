@@ -258,6 +258,7 @@ type BusinessResponse struct {
 	//
 	//	*BusinessResponse_Events
 	//	*BusinessResponse_Revocation
+	//	*BusinessResponse_Notification
 	Result        isBusinessResponse_Result `protobuf_oneof:"result"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -318,6 +319,15 @@ func (x *BusinessResponse) GetRevocation() *RevocationResponse {
 	return nil
 }
 
+func (x *BusinessResponse) GetNotification() *Notification {
+	if x != nil {
+		if x, ok := x.Result.(*BusinessResponse_Notification); ok {
+			return x.Notification
+		}
+	}
+	return nil
+}
+
 type isBusinessResponse_Result interface {
 	isBusinessResponse_Result()
 }
@@ -330,9 +340,15 @@ type BusinessResponse_Revocation struct {
 	Revocation *RevocationResponse `protobuf:"bytes,2,opt,name=revocation,proto3,oneof"` // Business requests framework action
 }
 
+type BusinessResponse_Notification struct {
+	Notification *Notification `protobuf:"bytes,3,opt,name=notification,proto3,oneof"` // Forward rejection notification upstream
+}
+
 func (*BusinessResponse_Events) isBusinessResponse_Result() {}
 
 func (*BusinessResponse_Revocation) isBusinessResponse_Result() {}
+
+func (*BusinessResponse_Notification) isBusinessResponse_Result() {}
 
 // Request for speculative command execution against temporal state.
 type SpeculateAggregateRequest struct {
@@ -405,18 +421,18 @@ const file_angzarr_aggregate_proto_rawDesc = "" +
 	"\x19send_to_dead_letter_queue\x18\x02 \x01(\bR\x15sendToDeadLetterQueue\x12\x1a\n" +
 	"\bescalate\x18\x03 \x01(\bR\bescalate\x12\x14\n" +
 	"\x05abort\x18\x04 \x01(\bR\x05abort\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\"\x89\x01\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"\xc6\x01\n" +
 	"\x10BusinessResponse\x12,\n" +
 	"\x06events\x18\x01 \x01(\v2\x12.angzarr.EventBookH\x00R\x06events\x12=\n" +
 	"\n" +
 	"revocation\x18\x02 \x01(\v2\x1b.angzarr.RevocationResponseH\x00R\n" +
-	"revocationB\b\n" +
+	"revocation\x12;\n" +
+	"\fnotification\x18\x03 \x01(\v2\x15.angzarr.NotificationH\x00R\fnotificationB\b\n" +
 	"\x06result\"\x87\x01\n" +
 	"\x19SpeculateAggregateRequest\x12.\n" +
 	"\acommand\x18\x01 \x01(\v2\x14.angzarr.CommandBookR\acommand\x12:\n" +
-	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\xdc\x01\n" +
-	"\x10AggregateService\x12L\n" +
-	"\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n" +
+	"\rpoint_in_time\x18\x02 \x01(\v2\x16.angzarr.TemporalQueryR\vpointInTime2\x8e\x01\n" +
+	"\x10AggregateService\x12?\n" +
 	"\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse\x129\n" +
 	"\x06Replay\x12\x16.angzarr.ReplayRequest\x1a\x17.angzarr.ReplayResponse2\xf0\x01\n" +
 	"\x1bAggregateCoordinatorService\x128\n" +
@@ -451,12 +467,11 @@ var file_angzarr_aggregate_proto_goTypes = []any{
 	(*anypb.Any)(nil),                 // 8: google.protobuf.Any
 	(*EventBook)(nil),                 // 9: angzarr.EventBook
 	(*Projection)(nil),                // 10: angzarr.Projection
-	(*CommandBook)(nil),               // 11: angzarr.CommandBook
-	(*TemporalQuery)(nil),             // 12: angzarr.TemporalQuery
-	(*GetDescriptorRequest)(nil),      // 13: angzarr.GetDescriptorRequest
+	(*Notification)(nil),              // 11: angzarr.Notification
+	(*CommandBook)(nil),               // 12: angzarr.CommandBook
+	(*TemporalQuery)(nil),             // 13: angzarr.TemporalQuery
 	(*ContextualCommand)(nil),         // 14: angzarr.ContextualCommand
 	(*SyncCommandBook)(nil),           // 15: angzarr.SyncCommandBook
-	(*ComponentDescriptor)(nil),       // 16: angzarr.ComponentDescriptor
 }
 var file_angzarr_aggregate_proto_depIdxs = []int32{
 	6,  // 0: angzarr.ReplayRequest.base_snapshot:type_name -> angzarr.Snapshot
@@ -466,25 +481,24 @@ var file_angzarr_aggregate_proto_depIdxs = []int32{
 	10, // 4: angzarr.CommandResponse.projections:type_name -> angzarr.Projection
 	9,  // 5: angzarr.BusinessResponse.events:type_name -> angzarr.EventBook
 	3,  // 6: angzarr.BusinessResponse.revocation:type_name -> angzarr.RevocationResponse
-	11, // 7: angzarr.SpeculateAggregateRequest.command:type_name -> angzarr.CommandBook
-	12, // 8: angzarr.SpeculateAggregateRequest.point_in_time:type_name -> angzarr.TemporalQuery
-	13, // 9: angzarr.AggregateService.GetDescriptor:input_type -> angzarr.GetDescriptorRequest
+	11, // 7: angzarr.BusinessResponse.notification:type_name -> angzarr.Notification
+	12, // 8: angzarr.SpeculateAggregateRequest.command:type_name -> angzarr.CommandBook
+	13, // 9: angzarr.SpeculateAggregateRequest.point_in_time:type_name -> angzarr.TemporalQuery
 	14, // 10: angzarr.AggregateService.Handle:input_type -> angzarr.ContextualCommand
 	0,  // 11: angzarr.AggregateService.Replay:input_type -> angzarr.ReplayRequest
-	11, // 12: angzarr.AggregateCoordinatorService.Handle:input_type -> angzarr.CommandBook
+	12, // 12: angzarr.AggregateCoordinatorService.Handle:input_type -> angzarr.CommandBook
 	15, // 13: angzarr.AggregateCoordinatorService.HandleSync:input_type -> angzarr.SyncCommandBook
 	5,  // 14: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:input_type -> angzarr.SpeculateAggregateRequest
-	16, // 15: angzarr.AggregateService.GetDescriptor:output_type -> angzarr.ComponentDescriptor
-	4,  // 16: angzarr.AggregateService.Handle:output_type -> angzarr.BusinessResponse
-	1,  // 17: angzarr.AggregateService.Replay:output_type -> angzarr.ReplayResponse
-	2,  // 18: angzarr.AggregateCoordinatorService.Handle:output_type -> angzarr.CommandResponse
-	2,  // 19: angzarr.AggregateCoordinatorService.HandleSync:output_type -> angzarr.CommandResponse
-	2,  // 20: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:output_type -> angzarr.CommandResponse
-	15, // [15:21] is the sub-list for method output_type
-	9,  // [9:15] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	4,  // 15: angzarr.AggregateService.Handle:output_type -> angzarr.BusinessResponse
+	1,  // 16: angzarr.AggregateService.Replay:output_type -> angzarr.ReplayResponse
+	2,  // 17: angzarr.AggregateCoordinatorService.Handle:output_type -> angzarr.CommandResponse
+	2,  // 18: angzarr.AggregateCoordinatorService.HandleSync:output_type -> angzarr.CommandResponse
+	2,  // 19: angzarr.AggregateCoordinatorService.HandleSyncSpeculative:output_type -> angzarr.CommandResponse
+	15, // [15:20] is the sub-list for method output_type
+	10, // [10:15] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_angzarr_aggregate_proto_init() }
@@ -496,6 +510,7 @@ func file_angzarr_aggregate_proto_init() {
 	file_angzarr_aggregate_proto_msgTypes[4].OneofWrappers = []any{
 		(*BusinessResponse_Events)(nil),
 		(*BusinessResponse_Revocation)(nil),
+		(*BusinessResponse_Notification)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
