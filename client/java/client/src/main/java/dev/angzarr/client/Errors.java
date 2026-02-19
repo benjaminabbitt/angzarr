@@ -18,6 +18,34 @@ public class Errors {
         public ClientError(String message, Throwable cause) {
             super(message, cause);
         }
+
+        /**
+         * Returns true if this is a "not found" error.
+         */
+        public boolean isNotFound() {
+            return false;
+        }
+
+        /**
+         * Returns true if this is a "precondition failed" error.
+         */
+        public boolean isPreconditionFailed() {
+            return false;
+        }
+
+        /**
+         * Returns true if this is an "invalid argument" error.
+         */
+        public boolean isInvalidArgument() {
+            return false;
+        }
+
+        /**
+         * Returns true if this is a connection or transport error.
+         */
+        public boolean isConnectionError() {
+            return false;
+        }
     }
 
     /**
@@ -75,6 +103,16 @@ public class Errors {
         public Status toGrpcStatus() {
             return Status.fromCode(statusCode).withDescription(getMessage());
         }
+
+        @Override
+        public boolean isPreconditionFailed() {
+            return statusCode == Status.Code.FAILED_PRECONDITION;
+        }
+
+        @Override
+        public boolean isInvalidArgument() {
+            return statusCode == Status.Code.INVALID_ARGUMENT;
+        }
     }
 
     /**
@@ -91,6 +129,26 @@ public class Errors {
         public Status.Code getStatusCode() {
             return statusCode;
         }
+
+        @Override
+        public boolean isNotFound() {
+            return statusCode == Status.Code.NOT_FOUND;
+        }
+
+        @Override
+        public boolean isPreconditionFailed() {
+            return statusCode == Status.Code.FAILED_PRECONDITION;
+        }
+
+        @Override
+        public boolean isInvalidArgument() {
+            return statusCode == Status.Code.INVALID_ARGUMENT;
+        }
+
+        @Override
+        public boolean isConnectionError() {
+            return statusCode == Status.Code.UNAVAILABLE;
+        }
     }
 
     /**
@@ -103,6 +161,11 @@ public class Errors {
 
         public ConnectionError(String message, Throwable cause) {
             super(message, cause);
+        }
+
+        @Override
+        public boolean isConnectionError() {
+            return true;
         }
     }
 
@@ -117,6 +180,11 @@ public class Errors {
         public TransportError(String message, Throwable cause) {
             super(message, cause);
         }
+
+        @Override
+        public boolean isConnectionError() {
+            return true;
+        }
     }
 
     /**
@@ -125,6 +193,11 @@ public class Errors {
     public static class InvalidArgumentError extends ClientError {
         public InvalidArgumentError(String message) {
             super(message);
+        }
+
+        @Override
+        public boolean isInvalidArgument() {
+            return true;
         }
     }
 

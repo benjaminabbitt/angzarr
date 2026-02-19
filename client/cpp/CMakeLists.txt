@@ -138,6 +138,18 @@ target_link_libraries(builder_test
         GTest::gtest_main
 )
 
+add_executable(error_introspection_test
+    tests/error_introspection_test.cpp
+)
+
+target_link_libraries(error_introspection_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(rejection_handler_response_test)
 gtest_discover_tests(builder_test)
+gtest_discover_tests(error_introspection_test)
