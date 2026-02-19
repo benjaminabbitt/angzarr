@@ -10,6 +10,7 @@
 #include "helpers.hpp"
 #include "errors.hpp"
 #include "router.hpp"
+#include "descriptor.hpp"
 
 namespace angzarr {
 

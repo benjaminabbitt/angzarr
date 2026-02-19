@@ -26,3 +26,12 @@
 #include "saga.hpp"
 #include "process_manager.hpp"
 #include "projector.hpp"
+
+// gRPC client classes
+#include "client.hpp"
+
+// Fluent builders
+#include "builder.hpp"
+
+// Compensation context for rejection handling
+#include "compensation.hpp"

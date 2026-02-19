@@ -34,10 +34,26 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.assertj:assertj-core:3.24.2")
+
+    // Cucumber
+    testImplementation("io.cucumber:cucumber-java:7.15.0")
+    testImplementation("io.cucumber:cucumber-junit-platform-engine:7.15.0")
+    testImplementation("org.junit.platform:junit-platform-suite:1.10.1")
 }
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+}
+
+// Copy shared feature files to test resources
+tasks.register<Copy>("copyClientFeatures") {
+    from("${rootDir}/../../tests/client/features")
+    into("src/test/resources/features")
+}
+
+tasks.named("processTestResources") {
+    dependsOn("copyClientFeatures")
 }
 
 publishing {

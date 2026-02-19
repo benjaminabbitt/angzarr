@@ -127,5 +127,17 @@ target_link_libraries(rejection_handler_response_test
         GTest::gtest_main
 )
 
+add_executable(builder_test
+    tests/builder_test.cpp
+)
+
+target_link_libraries(builder_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(rejection_handler_response_test)
+gtest_discover_tests(builder_test)

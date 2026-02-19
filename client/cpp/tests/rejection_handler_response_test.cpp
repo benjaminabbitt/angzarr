@@ -4,6 +4,7 @@
 #include <google/protobuf/any.pb.h>
 #include "angzarr/types.pb.h"
 #include "angzarr/router.hpp"
+#include "angzarr/process_manager.hpp"
 
 using namespace angzarr;
 
