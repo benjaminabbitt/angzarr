@@ -1,6 +1,15 @@
+---
+title: Java SDK
+sidebar_label: Java
+---
+
 # angzarr-client-java
 
 Java client library for Angzarr event-sourcing services.
+
+:::tip Unified Documentation
+For cross-language API reference with side-by-side comparisons, see the [SDK Documentation](/sdks).
+:::
 
 ## Installation
 

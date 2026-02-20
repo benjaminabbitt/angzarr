@@ -1,6 +1,15 @@
+---
+title: Python SDK
+sidebar_label: Python
+---
+
 # angzarr-client
 
 Python client library for Angzarr CQRS/ES framework.
+
+:::tip Unified Documentation
+For cross-language API reference with side-by-side comparisons, see the [SDK Documentation](/sdks).
+:::
 
 ## Installation
 

@@ -1,6 +1,15 @@
+---
+title: C# SDK
+sidebar_label: C#
+---
+
 # Angzarr.Client
 
 .NET client library for Angzarr event-sourcing services.
+
+:::tip Unified Documentation
+For cross-language API reference with side-by-side comparisons, see the [SDK Documentation](/sdks).
+:::
 
 ## Installation
 

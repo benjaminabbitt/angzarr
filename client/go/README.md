@@ -1,6 +1,15 @@
+---
+title: Go SDK
+sidebar_label: Go
+---
+
 # angzarr-client-go
 
 Go client library for Angzarr event-sourcing services.
+
+:::tip Unified Documentation
+For cross-language API reference with side-by-side comparisons, see the [SDK Documentation](/sdks).
+:::
 
 ## Installation
 

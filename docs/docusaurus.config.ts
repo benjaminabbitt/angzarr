@@ -54,6 +54,82 @@ const config: Config = {
     ],
   ],
 
+  plugins: [
+    // SDK documentation - each client README becomes a doc root
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'sdk-rust',
+        path: '../client/rust',
+        routeBasePath: 'sdk/rust',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'sdk-go',
+        path: '../client/go',
+        routeBasePath: 'sdk/go',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'sdk-python',
+        path: '../client/python',
+        routeBasePath: 'sdk/python',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'sdk-java',
+        path: '../client/java',
+        routeBasePath: 'sdk/java',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'sdk-csharp',
+        path: '../client/csharp',
+        routeBasePath: 'sdk/csharp',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'sdk-cpp',
+        path: '../client/cpp',
+        routeBasePath: 'sdk/cpp',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+  ],
+
   themeConfig: {
     colorMode: {
       defaultMode: 'dark',

@@ -1,6 +1,15 @@
+---
+title: C++ SDK
+sidebar_label: C++
+---
+
 # angzarr-client-cpp
 
 C++ client library for Angzarr event-sourcing services.
+
+:::tip Unified Documentation
+For cross-language API reference with side-by-side comparisons, see the [SDK Documentation](/sdks).
+:::
 
 ## Requirements
 
