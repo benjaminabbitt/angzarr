@@ -148,6 +148,76 @@ def test_deposit_increases_bankroll():
     assert player.bankroll == 100
 ```
 
+## Error Handling
+
+```python
+from angzarr_client.errors import GRPCError, ConnectionError, ClientError
+
+try:
+    response = client.aggregate.handle(command)
+except GRPCError as e:
+    if e.is_not_found():
+        # Aggregate doesn't exist
+        pass
+    elif e.is_precondition_failed():
+        # Sequence mismatch (optimistic locking failure)
+        pass
+    elif e.is_invalid_argument():
+        # Invalid command arguments
+        pass
+except ConnectionError as e:
+    # Network/transport error
+    pass
+```
+
+## Speculative Execution
+
+Test commands without persisting to the event store:
+
+```python
+from angzarr_client import SpeculativeClient
+from angzarr_client.proto.angzarr import SpeculateAggregateRequest
+
+client = SpeculativeClient.connect("localhost:1310")
+
+# Build speculative request with temporal state
+request = SpeculateAggregateRequest(
+    command=command_book,
+    events=prior_events
+)
+
+# Execute without persistence
+response = client.aggregate(request)
+
+# Inspect projected events
+for page in response.events.pages:
+    print(f"Would produce: {page.event.type_url}")
+
+client.close()
+```
+
+## Client Types
+
+| Client | Purpose |
+|--------|---------|
+| `QueryClient` | Query events from aggregates |
+| `AggregateClient` | Send commands to aggregates |
+| `SpeculativeClient` | Dry-run commands, test projectors/sagas |
+| `DomainClient` | Combined query + aggregate for a domain |
+| `Client` | Full client with all capabilities |
+
+## Error Types
+
+| Error | Description |
+|-------|-------------|
+| `ClientError` | Base class for all errors |
+| `CommandRejectedError` | Business logic rejection |
+| `GRPCError` | gRPC transport failure (has introspection methods) |
+| `ConnectionError` | Connection failure |
+| `TransportError` | Transport-level failure |
+| `InvalidArgumentError` | Invalid input |
+| `InvalidTimestampError` | Timestamp parse failure |
+
 ## License
 
 AGPL-3.0 - See [LICENSE](LICENSE) for details.

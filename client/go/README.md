@@ -120,6 +120,36 @@ if err != nil {
 }
 ```
 
+### Speculative Execution
+
+Test commands without persisting to the event store:
+
+```go
+// Connect to speculative client
+specClient, err := angzarr.NewSpeculativeClient("localhost:1310")
+if err != nil {
+    log.Fatal(err)
+}
+defer specClient.Close()
+
+// Build speculative request with temporal state
+request := &pb.SpeculateAggregateRequest{
+    Command: commandBook,
+    Events:  priorEvents,
+}
+
+// Execute without persistence
+response, err := specClient.Aggregate(ctx, request)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Inspect projected events
+for _, page := range response.Events.Pages {
+    log.Printf("Would produce: %s", page.Event.TypeUrl)
+}
+```
+
 ## Client Types
 
 | Client | Purpose |
