@@ -13,7 +13,7 @@
 #
 # Base images from ghcr.io/angzarr (see build/images/)
 
-ARG RUST_IMAGE=ghcr.io/angzarr/angzarr-rust:latest
+ARG RUST_IMAGE=ghcr.io/angzarr-io/angzarr-rust:latest
 ARG RUST_VERSION=1.92
 
 # ============================================================================

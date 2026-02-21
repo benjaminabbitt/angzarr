@@ -18,7 +18,7 @@
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
-IMAGE := "ghcr.io/angzarr/angzarr-go:latest"
+IMAGE := "ghcr.io/angzarr-io/angzarr-go:latest"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]

@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
 # C# build image for angzarr
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-csharp .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-csharp .
 #
 # Provides: .NET SDK 8.0
-# Based on: ghcr.io/angzarr/angzarr-base
+# Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
 ARG DOTNET_VERSION=8.0

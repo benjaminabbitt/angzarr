@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
 # Go build image for angzarr
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-go .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-go .
 #
 # Provides: Go toolchain, protoc-gen-go, protoc-gen-go-grpc
-# Based on: ghcr.io/angzarr/angzarr-base
+# Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
 ARG GO_VERSION=1.23.6

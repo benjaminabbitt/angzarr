@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
 # Rust build image for angzarr
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-rust .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-rust .
 #
 # Provides: rustup, cargo, clippy, rustfmt, mold linker, clang
-# Based on: ghcr.io/angzarr/angzarr-base
+# Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
 ARG RUST_VERSION=1.92.0

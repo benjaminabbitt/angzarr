@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 # Base image for all angzarr language-specific build images
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-base .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-base .
 #
 # Provides: just, buf, core build tools, system libraries
 # Based on: debian:bookworm-slim (minimal)

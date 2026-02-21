@@ -1,7 +1,7 @@
 # Rust examples devcontainer
 # Uses custom base image from ghcr.io/angzarr
 
-ARG RUST_IMAGE=ghcr.io/angzarr/angzarr-rust:latest
+ARG RUST_IMAGE=ghcr.io/angzarr-io/angzarr-rust:latest
 FROM ${RUST_IMAGE}
 
 # Mark as devcontainer for justfile detection

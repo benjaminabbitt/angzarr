@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
 # Java build image for angzarr
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-java .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-java .
 #
 # Provides: JDK 21, Gradle 8.5
-# Based on: ghcr.io/angzarr/angzarr-base
+# Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
 ARG JAVA_VERSION=17

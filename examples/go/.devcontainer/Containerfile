@@ -1,7 +1,7 @@
 # Go examples devcontainer
 # Uses custom base image from ghcr.io/angzarr
 
-ARG GO_IMAGE=ghcr.io/angzarr/angzarr-go:latest
+ARG GO_IMAGE=ghcr.io/angzarr-io/angzarr-go:latest
 FROM ${GO_IMAGE}
 
 # Mark as devcontainer for justfile detection

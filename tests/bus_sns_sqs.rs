@@ -3,6 +3,7 @@
 //! Run with: cargo test --test bus_sns_sqs --features sns-sqs -- --nocapture
 //!
 //! Uses LocalStack to emulate AWS SNS/SQS locally.
+//! Tests share a single LocalStack container to avoid rootless port conflicts.
 
 #![cfg(feature = "sns-sqs")]
 
@@ -21,14 +22,32 @@ use prost_types::Any;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ImageExt,
+    ContainerAsync, GenericImage, ImageExt,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, OnceCell};
 
-/// Start LocalStack container with SNS/SQS services.
+/// Shared LocalStack container and endpoint URL.
+/// Using a shared container avoids rootless port conflicts in podman
+/// that occur when rapidly starting/stopping containers.
+static LOCALSTACK: OnceCell<(ContainerAsync<GenericImage>, String)> = OnceCell::const_new();
+
+/// Get the shared LocalStack endpoint, starting the container if needed.
+async fn get_localstack_endpoint() -> String {
+    let (_, endpoint) = LOCALSTACK
+        .get_or_init(|| async {
+            println!("Starting shared LocalStack container...");
+            let (container, endpoint) = start_localstack_internal().await;
+            println!("LocalStack available at: {}", endpoint);
+            (container, endpoint)
+        })
+        .await;
+    endpoint.clone()
+}
+
+/// Start LocalStack container with SNS/SQS services (internal implementation).
 ///
 /// Returns (container, endpoint_url) where endpoint_url is suitable for AWS SDK connection.
-async fn start_localstack() -> (testcontainers::ContainerAsync<GenericImage>, String) {
+async fn start_localstack_internal() -> (ContainerAsync<GenericImage>, String) {
     let image = GenericImage::new("localstack/localstack", "latest")
         .with_exposed_port(4566.tcp())
         .with_wait_for(WaitFor::message_on_stdout("Ready."));
@@ -115,10 +134,9 @@ impl EventHandler for CountingHandler {
 #[tokio::test]
 async fn test_sns_sqs_publish_and_consume() {
     println!("=== SNS/SQS Publish and Consume Test ===");
-    println!("Starting LocalStack container...");
 
-    let (_container, endpoint_url) = start_localstack().await;
-    let domain = "test";
+    let endpoint_url = get_localstack_endpoint().await;
+    let domain = "test-pub-consume";
     let subscription_id = format!("test-sub-{}", uuid::Uuid::new_v4());
 
     // Set dummy AWS credentials for LocalStack
@@ -185,9 +203,8 @@ async fn test_sns_sqs_publish_and_consume() {
 #[tokio::test]
 async fn test_sns_sqs_publisher_only() {
     println!("=== SNS/SQS Publisher Only Test ===");
-    println!("Starting LocalStack container...");
 
-    let (_container, endpoint_url) = start_localstack().await;
+    let endpoint_url = get_localstack_endpoint().await;
 
     // Set dummy AWS credentials for LocalStack
     std::env::set_var("AWS_ACCESS_KEY_ID", "test");
@@ -202,7 +219,9 @@ async fn test_sns_sqs_publisher_only() {
     .await
     .expect("Failed to create publisher");
 
-    let book = make_test_book("publish-test");
+    // Use unique domain name per test
+    let domain = format!("pub-only-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let book = make_test_book(&domain);
 
     // Should succeed (topic created automatically)
     publisher
@@ -216,11 +235,11 @@ async fn test_sns_sqs_publisher_only() {
 #[tokio::test]
 async fn test_sns_sqs_multiple_messages() {
     println!("=== SNS/SQS Multiple Messages Test ===");
-    println!("Starting LocalStack container...");
 
-    let (_container, endpoint_url) = start_localstack().await;
-    let domain = "multi";
-    let subscription_id = format!("test-multi-{}", uuid::Uuid::new_v4());
+    let endpoint_url = get_localstack_endpoint().await;
+    // Use unique domain name per test to avoid collisions with shared container
+    let domain = format!("multi-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let subscription_id = format!("test-multi-{}", &uuid::Uuid::new_v4().to_string()[..8]);
 
     // Set dummy AWS credentials for LocalStack
     std::env::set_var("AWS_ACCESS_KEY_ID", "test");
@@ -236,7 +255,7 @@ async fn test_sns_sqs_multiple_messages() {
     .expect("Failed to create publisher");
 
     let subscriber = SnsSqsEventBus::new(
-        SnsSqsConfig::subscriber(&subscription_id, vec![domain.to_string()])
+        SnsSqsConfig::subscriber(&subscription_id, vec![domain.clone()])
             .with_endpoint(&endpoint_url)
             .with_region("us-east-1"),
     )
@@ -258,7 +277,7 @@ async fn test_sns_sqs_multiple_messages() {
 
     // Publish 5 messages
     for _ in 0..5 {
-        let book = make_test_book(domain);
+        let book = make_test_book(&domain);
         publisher.publish(Arc::new(book)).await.unwrap();
     }
 
@@ -280,9 +299,8 @@ async fn test_sns_sqs_dlq_publish() {
     use angzarr::dlq::create_publisher_async;
 
     println!("=== SNS/SQS DLQ Publish Test ===");
-    println!("Starting LocalStack container...");
 
-    let (_container, endpoint_url) = start_localstack().await;
+    let endpoint_url = get_localstack_endpoint().await;
 
     // Set dummy AWS credentials for LocalStack
     std::env::set_var("AWS_ACCESS_KEY_ID", "test");
@@ -298,7 +316,8 @@ async fn test_sns_sqs_dlq_publish() {
         .expect("Failed to create DLQ publisher");
 
     // Create a dead letter from an event processing failure
-    let book = make_test_book("orders");
+    let domain = format!("dlq-orders-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let book = make_test_book(&domain);
     let dead_letter = AngzarrDeadLetter {
         cover: book.cover.clone(),
         payload: DeadLetterPayload::Events(book),
@@ -330,9 +349,8 @@ async fn test_sns_sqs_dlq_sequence_mismatch() {
     use angzarr::dlq::create_publisher_async;
 
     println!("=== SNS/SQS DLQ Sequence Mismatch Test ===");
-    println!("Starting LocalStack container...");
 
-    let (_container, endpoint_url) = start_localstack().await;
+    let endpoint_url = get_localstack_endpoint().await;
 
     // Set dummy AWS credentials for LocalStack
     std::env::set_var("AWS_ACCESS_KEY_ID", "test");
@@ -347,10 +365,11 @@ async fn test_sns_sqs_dlq_sequence_mismatch() {
         .await
         .expect("Failed to create DLQ publisher");
 
-    // Create a command book
+    // Create a command book with unique domain
+    let domain = format!("dlq-inv-{}", &uuid::Uuid::new_v4().to_string()[..8]);
     let command_book = CommandBook {
         cover: Some(Cover {
-            domain: "inventory".to_string(),
+            domain,
             root: Some(Uuid {
                 value: uuid::Uuid::new_v4().as_bytes().to_vec(),
             }),

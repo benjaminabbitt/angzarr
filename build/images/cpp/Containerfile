@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
 # C++ build image for angzarr
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-cpp .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-cpp .
 #
 # Provides: CMake, gRPC, protobuf, abseil, gtest (system packages)
-# Based on: ghcr.io/angzarr/angzarr-base
+# Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
 ARG CMAKE_VERSION=3.31.4

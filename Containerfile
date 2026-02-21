@@ -11,7 +11,7 @@
 #
 # Base images from ghcr.io/angzarr (see build/images/)
 
-ARG RUST_IMAGE=ghcr.io/angzarr/angzarr-rust:latest
+ARG RUST_IMAGE=ghcr.io/angzarr-io/angzarr-rust:latest
 
 # =============================================================================
 # Dev builder - native glibc (fast compilation)

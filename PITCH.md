@@ -640,7 +640,7 @@ spec:
             - containerPort: 50051
 
         - name: angzarr
-          image: ghcr.io/angzarr/angzarr:latest  # ~8MB
+          image: ghcr.io/angzarr-io/angzarr:latest  # ~8MB
           env:
             - name: ANGZARR_SERVICE_ENDPOINT
               value: "localhost:50051"

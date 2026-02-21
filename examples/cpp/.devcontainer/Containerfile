@@ -1,7 +1,7 @@
 # C++ examples devcontainer
 # Uses custom base image from ghcr.io/angzarr
 
-ARG CPP_IMAGE=ghcr.io/angzarr/angzarr-cpp:latest
+ARG CPP_IMAGE=ghcr.io/angzarr-io/angzarr-cpp:latest
 FROM ${CPP_IMAGE}
 
 # Mark as devcontainer for justfile detection

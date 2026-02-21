@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
 # Python build image for angzarr
 #
-# Build: podman build -t ghcr.io/angzarr/angzarr-python .
+# Build: podman build -t ghcr.io/angzarr-io/angzarr-python .
 #
 # Provides: Python 3.12, pip, uv, grpcio-tools
-# Based on: ghcr.io/angzarr/angzarr-base
+# Based on: ghcr.io/angzarr-io/angzarr-base
 
-ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
 ARG PYTHON_VERSION=3.11

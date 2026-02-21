@@ -1,7 +1,7 @@
 # Python examples devcontainer
 # Uses custom base image from ghcr.io/angzarr
 
-ARG PYTHON_IMAGE=ghcr.io/angzarr/angzarr-python:latest
+ARG PYTHON_IMAGE=ghcr.io/angzarr-io/angzarr-python:latest
 FROM ${PYTHON_IMAGE}
 
 # Mark as devcontainer for justfile detection
