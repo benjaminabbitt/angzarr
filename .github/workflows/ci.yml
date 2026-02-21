@@ -387,7 +387,7 @@ jobs:
       - name: Run standalone integration tests
         run: cargo test --test standalone_integration --features sqlite
 
-  # Backend unit tests using testcontainers (requires Docker, runs on host)
+  # Backend unit tests using testcontainers (requires Docker socket access)
   test-unit-backends:
     needs: [changes, build-rust]
     if: |
@@ -395,6 +395,11 @@ jobs:
       (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
       (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+      options: --user root
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
     strategy:
       fail-fast: false
       matrix:
@@ -410,14 +415,6 @@ jobs:
             features: nats
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler clang mold
 
       - name: Cache cargo
         uses: actions/cache@v4
