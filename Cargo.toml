@@ -25,7 +25,8 @@ hex = "0.4"
 thiserror = "2"
 
 # HTTP client and serialization for external service calls
-reqwest = { version = "0.12", features = ["json"] }
+# Using rustls-tls for musl static build compatibility (no OpenSSL dependency)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 
 # Logging
@@ -110,8 +111,10 @@ lossy = ["dep:rand"]
 # All Features (for CI/development)
 # =============================================================================
 full = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb", "lossy"]
-# full-musl: For musl static builds - excludes kafka (requires OpenSSL/native libs)
-full-musl = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lossy"]
+# full-musl: For musl static builds - excludes features requiring native libs (OpenSSL):
+#   - kafka: requires librdkafka with OpenSSL
+#   - gcp-*: google-cloud crates use reqwest with native-tls
+full-musl = ["standalone", "k8s", "aws-k8s", "redis", "immudb", "lossy"]
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)
@@ -142,7 +145,8 @@ sqlx = { version = "0.8", features = ["runtime-tokio"], optional = true }
 backon = "1"
 
 # HTTP client for external service calls
-reqwest = { version = "0.12", features = ["json"] }
+# Using rustls-tls for musl static build compatibility (no OpenSSL dependency)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Core utilities
 uuid = { version = "1", features = ["v4", "v5"] }
