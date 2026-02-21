@@ -136,13 +136,13 @@ jobs:
           ### Installation
 
           \`\`\`bash
-          go get github.com/benjaminabbitt/angzarr/client/go@v${VERSION}
+          go get github.com/${{ github.repository }}/client/go@v${VERSION}
           \`\`\`
 
           ### Usage
 
           \`\`\`go
-          import angzarr "github.com/benjaminabbitt/angzarr/client/go"
+          import angzarr "github.com/${{ github.repository }}/client/go"
 
           client, err := angzarr.NewClient("localhost:1310")
           if err != nil {

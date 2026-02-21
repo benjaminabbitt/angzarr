@@ -19,7 +19,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: angzarr/angzarr
+  IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
 
 permissions:
   contents: read
