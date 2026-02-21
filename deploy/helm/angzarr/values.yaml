@@ -169,6 +169,19 @@ infrastructure:
         cpu: 100m
         memory: 128Mi
 
+  # Gateway service - API gateway for external access
+  gateway:
+    enabled: false
+    replicas: 1
+    port: 8080
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
 ingress:
   enabled: false
   className: ""

@@ -9,7 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: angzarr/angzarr
+  IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
 
 permissions:
   contents: read
@@ -86,7 +86,7 @@ jobs:
     needs: build-rust-image
     if: always() && (needs.build-rust-image.result == 'success' || needs.build-rust-image.result == 'skipped')
     runs-on: ubuntu-latest
-    container: ghcr.io/angzarr/angzarr-rust:latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -110,7 +110,7 @@ jobs:
     needs: build-rust-image
     if: always() && (needs.build-rust-image.result == 'success' || needs.build-rust-image.result == 'skipped')
     runs-on: ubuntu-latest
-    container: ghcr.io/angzarr/angzarr-rust:latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
 
