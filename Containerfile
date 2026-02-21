@@ -39,7 +39,8 @@ RUN mkdir -p src/bin client/rust/src && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
-             storage_immudb storage_nats bus_nats \
+             storage_immudb storage_nats \
+             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
              standalone_integration; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
@@ -89,33 +90,22 @@ RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
 # =============================================================================
 # Release builder - musl static, multi-arch (small images, all features)
 # Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
-# For release, we still use Alpine for musl static linking
+# Uses our angzarr-rust image with musl-tools for cross-compilation
 # =============================================================================
-FROM docker.io/library/rust:1.92-alpine AS builder-release-deps
+FROM ${RUST_IMAGE} AS builder-release-deps
 
 # Build argument for target architecture (set by buildx/podman)
 ARG TARGETARCH
 
-RUN apk add --no-cache \
-    musl-dev \
-    protobuf-dev \
-    protoc \
-    openssl-dev \
-    openssl-libs-static \
-    pkgconfig \
+# Install additional deps needed for static OpenSSL linking
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl-dev \
+    pkg-config \
     cmake \
-    make \
-    g++ \
-    perl \
-    linux-headers \
-    cyrus-sasl-dev
-
-# Install targets for both architectures
-RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+    && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 ENV OPENSSL_STATIC=1
-ENV OPENSSL_DIR=/usr
 
 WORKDIR /app
 
@@ -135,7 +125,8 @@ RUN mkdir -p src/bin client/rust/src && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
-             storage_immudb storage_nats bus_nats \
+             storage_immudb storage_nats \
+             bus_nats bus_amqp bus_kafka bus_pubsub bus_sns_sqs \
              standalone_integration; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
