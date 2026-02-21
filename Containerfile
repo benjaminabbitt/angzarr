@@ -29,13 +29,14 @@ COPY proto/ ./proto/
 COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin client/rust/src && \
+RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
+    echo "fn main() {}" > client/rust/tests/features.rs && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
@@ -115,13 +116,14 @@ COPY proto/ ./proto/
 COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin client/rust/src && \
+RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
+    echo "fn main() {}" > client/rust/tests/features.rs && \
     mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
