@@ -9,6 +9,8 @@
 ARG BASE_IMAGE=ghcr.io/angzarr-io/angzarr-base:latest
 FROM ${BASE_IMAGE}
 
+# TARGETARCH is set by Docker buildx (amd64, arm64)
+ARG TARGETARCH
 ARG JAVA_VERSION=17
 ARG GRADLE_VERSION=8.5
 
@@ -16,10 +18,10 @@ ARG GRADLE_VERSION=8.5
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-${JAVA_VERSION}-jdk-headless \
     protobuf-compiler \
-    && rm -rf /var/lib/apt/lists/* \
-    && echo "export JAVA_HOME=/usr/lib/jvm/java-${JAVA_VERSION}-openjdk-$(dpkg --print-architecture)" >> /etc/profile.d/java.sh
+    && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+# Set JAVA_HOME dynamically for multi-arch support
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${TARGETARCH}
 ENV PATH=${JAVA_HOME}/bin:${PATH}
 
 # Install Gradle
