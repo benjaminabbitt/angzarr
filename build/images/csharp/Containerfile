@@ -12,9 +12,11 @@ FROM ${BASE_IMAGE}
 ARG DOTNET_VERSION=8.0
 
 # Install .NET SDK using official install script (supports multi-arch)
+# libicu is required for .NET globalization support
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     ca-certificates \
+    libicu72 \
     && wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
     && chmod +x /tmp/dotnet-install.sh \
     && /tmp/dotnet-install.sh --channel ${DOTNET_VERSION} --install-dir /usr/share/dotnet \
