@@ -45,6 +45,18 @@ jobs:
       csharp: ${{ steps.filter.outputs.csharp }}
       cpp: ${{ steps.filter.outputs.cpp }}
       core: ${{ steps.filter.outputs.core }}
+      client-rust: ${{ steps.filter.outputs.client-rust }}
+      client-python: ${{ steps.filter.outputs.client-python }}
+      client-go: ${{ steps.filter.outputs.client-go }}
+      client-java: ${{ steps.filter.outputs.client-java }}
+      client-csharp: ${{ steps.filter.outputs.client-csharp }}
+      client-cpp: ${{ steps.filter.outputs.client-cpp }}
+      examples-rust: ${{ steps.filter.outputs.examples-rust }}
+      examples-python: ${{ steps.filter.outputs.examples-python }}
+      examples-go: ${{ steps.filter.outputs.examples-go }}
+      examples-java: ${{ steps.filter.outputs.examples-java }}
+      examples-csharp: ${{ steps.filter.outputs.examples-csharp }}
+      examples-cpp: ${{ steps.filter.outputs.examples-cpp }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +86,48 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Containerfile'
+            client-rust:
+              - 'client/rust/**'
+              - 'proto/**'
+            client-python:
+              - 'client/python/**'
+              - 'proto/**'
+            client-go:
+              - 'client/go/**'
+              - 'proto/**'
+            client-java:
+              - 'client/java/**'
+              - 'proto/**'
+            client-csharp:
+              - 'client/csharp/**'
+              - 'proto/**'
+            client-cpp:
+              - 'client/cpp/**'
+              - 'proto/**'
+            examples-rust:
+              - 'examples/rust/**'
+              - 'client/rust/**'
+              - 'proto/**'
+            examples-python:
+              - 'examples/python/**'
+              - 'client/python/**'
+              - 'proto/**'
+            examples-go:
+              - 'examples/go/**'
+              - 'client/go/**'
+              - 'proto/**'
+            examples-java:
+              - 'examples/java/**'
+              - 'client/java/**'
+              - 'proto/**'
+            examples-csharp:
+              - 'examples/csharp/**'
+              - 'client/csharp/**'
+              - 'proto/**'
+            examples-cpp:
+              - 'examples/cpp/**'
+              - 'client/cpp/**'
+              - 'proto/**'
 
   # ==========================================================================
   # Phase 2: Build support images (base first, then language-specific)
@@ -569,3 +623,225 @@ jobs:
           build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
           cache-from: type=gha,scope=core-builder
           cache-to: type=gha,mode=max,scope=core-builder
+
+  # ==========================================================================
+  # Phase 5: Build and test client libraries (in language containers)
+  # ==========================================================================
+  client-rust:
+    needs: [changes, build-rust]
+    if: |
+      always() &&
+      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
+      (needs.changes.outputs.client-rust == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: client/rust
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: client/rust
+        run: just --justfile justfile.container test
+
+  client-python:
+    needs: [changes, build-python]
+    if: |
+      always() &&
+      (needs.build-python.result == 'success' || needs.build-python.result == 'skipped') &&
+      (needs.changes.outputs.client-python == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-python:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: client/python
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: client/python
+        run: just --justfile justfile.container test
+
+  client-go:
+    needs: [changes, build-go]
+    if: |
+      always() &&
+      (needs.build-go.result == 'success' || needs.build-go.result == 'skipped') &&
+      (needs.changes.outputs.client-go == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-go:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: client/go
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: client/go
+        run: just --justfile justfile.container test
+
+  client-java:
+    needs: [changes, build-java]
+    if: |
+      always() &&
+      (needs.build-java.result == 'success' || needs.build-java.result == 'skipped') &&
+      (needs.changes.outputs.client-java == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-java:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: client/java
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: client/java
+        run: just --justfile justfile.container test
+
+  client-csharp:
+    needs: [changes, build-csharp]
+    if: |
+      always() &&
+      (needs.build-csharp.result == 'success' || needs.build-csharp.result == 'skipped') &&
+      (needs.changes.outputs.client-csharp == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-csharp:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: client/csharp
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: client/csharp
+        run: just --justfile justfile.container test
+
+  client-cpp:
+    needs: [changes, build-cpp]
+    if: |
+      always() &&
+      (needs.build-cpp.result == 'success' || needs.build-cpp.result == 'skipped') &&
+      (needs.changes.outputs.client-cpp == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-cpp:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: client/cpp
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: client/cpp
+        run: just --justfile justfile.container test
+
+  # ==========================================================================
+  # Phase 6: Build and test examples (depends on client libraries)
+  # ==========================================================================
+  examples-rust:
+    needs: [changes, client-rust]
+    if: |
+      always() &&
+      (needs.client-rust.result == 'success' || needs.client-rust.result == 'skipped') &&
+      (needs.changes.outputs.examples-rust == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: examples/rust
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: examples/rust
+        run: just --justfile justfile.container test
+
+  examples-python:
+    needs: [changes, client-python]
+    if: |
+      always() &&
+      (needs.client-python.result == 'success' || needs.client-python.result == 'skipped') &&
+      (needs.changes.outputs.examples-python == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-python:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: examples/python
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: examples/python
+        run: just --justfile justfile.container test
+
+  examples-go:
+    needs: [changes, client-go]
+    if: |
+      always() &&
+      (needs.client-go.result == 'success' || needs.client-go.result == 'skipped') &&
+      (needs.changes.outputs.examples-go == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-go:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: examples/go
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: examples/go
+        run: just --justfile justfile.container test
+
+  examples-java:
+    needs: [changes, client-java]
+    if: |
+      always() &&
+      (needs.client-java.result == 'success' || needs.client-java.result == 'skipped') &&
+      (needs.changes.outputs.examples-java == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-java:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: examples/java
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: examples/java
+        run: just --justfile justfile.container test
+
+  examples-csharp:
+    needs: [changes, client-csharp]
+    if: |
+      always() &&
+      (needs.client-csharp.result == 'success' || needs.client-csharp.result == 'skipped') &&
+      (needs.changes.outputs.examples-csharp == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-csharp:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: examples/csharp
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: examples/csharp
+        run: just --justfile justfile.container test
+
+  examples-cpp:
+    needs: [changes, client-cpp]
+    if: |
+      always() &&
+      (needs.client-cpp.result == 'success' || needs.client-cpp.result == 'skipped') &&
+      (needs.changes.outputs.examples-cpp == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/angzarr-cpp:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: examples/cpp
+        run: just --justfile justfile.container build
+      - name: Test
+        working-directory: examples/cpp
+        run: just --justfile justfile.container test

@@ -1,9 +1,10 @@
 # C# poker examples - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI container jobs
 
 set shell := ["bash", "-c"]
 
-SLN := "/workspace/examples/csharp/Angzarr.Examples.sln"
+SLN := "Angzarr.Examples.sln"
 
 default:
     @just --list
