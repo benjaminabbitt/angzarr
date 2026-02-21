@@ -638,6 +638,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: client/rust
         run: just --justfile justfile.container build
@@ -656,6 +658,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-python:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: client/python
         run: just --justfile justfile.container build
@@ -674,6 +678,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-go:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: client/go
         run: just --justfile justfile.container build
@@ -692,6 +698,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-java:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: client/java
         run: just --justfile justfile.container build
@@ -710,6 +718,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-csharp:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: client/csharp
         run: just --justfile justfile.container build
@@ -728,6 +738,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-cpp:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: client/cpp
         run: just --justfile justfile.container build
@@ -749,6 +761,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: examples/rust
         run: just --justfile justfile.container build
@@ -767,6 +781,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-python:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: examples/python
         run: just --justfile justfile.container build
@@ -785,6 +801,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-go:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: examples/go
         run: just --justfile justfile.container build
@@ -803,6 +821,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-java:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: examples/java
         run: just --justfile justfile.container build
@@ -821,6 +841,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-csharp:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: examples/csharp
         run: just --justfile justfile.container build
@@ -839,6 +861,8 @@ jobs:
       image: ghcr.io/${{ github.repository_owner }}/angzarr-cpp:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fix git ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build
         working-directory: examples/cpp
         run: just --justfile justfile.container build
