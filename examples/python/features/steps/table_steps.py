@@ -29,12 +29,12 @@ def make_timestamp():
     return Timestamp(seconds=int(datetime.now(timezone.utc).timestamp()))
 
 
-def make_event_page(event_msg, num: int = 0) -> types.EventPage:
+def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
     """Create EventPage with packed event."""
     event_any = ProtoAny()
     event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
-        num=num,
+        sequence=seq,
         event=event_any,
         created_at=make_timestamp(),
     )
@@ -77,7 +77,7 @@ def step_given_table_created(context, name):
         action_timeout_seconds=30,
         created_at=make_timestamp(),
     )
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(r'a TableCreated event for "(?P<name>[^"]+)" with min_buy_in (?P<min_buy_in>\d+)')
@@ -97,7 +97,7 @@ def step_given_table_created_min_buy_in(context, name, min_buy_in):
         action_timeout_seconds=30,
         created_at=make_timestamp(),
     )
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(r'a TableCreated event for "(?P<name>[^"]+)" with max_players (?P<max_players>\d+)')
@@ -117,7 +117,7 @@ def step_given_table_created_max_players(context, name, max_players):
         action_timeout_seconds=30,
         created_at=make_timestamp(),
     )
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(r'a PlayerJoined event for player "(?P<player_id>[^"]+)" at seat (?P<seat>\d+)')
@@ -133,7 +133,7 @@ def step_given_player_joined(context, player_id, seat):
         stack=500,
         joined_at=make_timestamp(),
     )
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(
@@ -151,7 +151,7 @@ def step_given_player_joined_with_stack(context, player_id, seat, stack):
         stack=int(stack),
         joined_at=make_timestamp(),
     )
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(r"a HandStarted event for hand (?P<hand_num>\d+)")
@@ -186,7 +186,7 @@ def step_given_hand_started(context, hand_num):
         started_at=make_timestamp(),
     )
     event.active_players.extend(active_players)
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(r"a HandStarted event for hand (?P<hand_num>\d+) with dealer at seat (?P<seat>\d+)")
@@ -221,7 +221,7 @@ def step_given_hand_started_with_dealer(context, hand_num, seat):
         started_at=make_timestamp(),
     )
     event.active_players.extend(active_players)
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 @given(r"a HandEnded event for hand (?P<hand_num>\d+)")
@@ -234,7 +234,7 @@ def step_given_hand_ended(context, hand_num):
         hand_root=f"hand-{hand_num}".encode(),
         ended_at=make_timestamp(),
     )
-    context.events.append(make_event_page(event, num=len(context.events)))
+    context.events.append(make_event_page(event, seq=len(context.events)))
 
 
 # --- When steps ---

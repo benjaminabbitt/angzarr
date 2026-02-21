@@ -29,12 +29,12 @@ def make_timestamp():
     return Timestamp(seconds=int(datetime.now(timezone.utc).timestamp()))
 
 
-def make_event_page(event_msg, num: int = 0) -> types.EventPage:
+def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
     """Create EventPage with packed event."""
     event_any = ProtoAny()
     event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
-        num=num,
+        sequence=seq,
         event=event_any,
         created_at=make_timestamp(),
     )

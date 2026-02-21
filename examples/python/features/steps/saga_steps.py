@@ -1,7 +1,6 @@
 """Behave step definitions for saga tests.
 
-Note: These tests are currently disabled pending implementation of the sagas package.
-The saga implementations exist but use a different pattern (EventRouter/SagaHandler).
+Tests both OO-style (Saga base class) and functional-style (EventRouter) patterns.
 """
 
 from datetime import datetime, timezone
@@ -10,31 +9,13 @@ from behave import given, when, then, use_step_matcher
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
+from angzarr_client import next_sequence
+from angzarr_client.saga import Saga, reacts_to, prepares
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import table_pb2 as table
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-
-# Saga base classes not yet implemented - mark all saga steps as pending
-try:
-    from sagas.base import Saga, SagaContext, SagaRouter
-    from sagas.table_sync_saga import TableSyncSaga
-    from sagas.hand_results_saga import HandResultsSaga
-    SAGAS_AVAILABLE = True
-except ImportError:
-    SAGAS_AVAILABLE = False
-    # Stub classes for type hints
-    class Saga:
-        pass
-    class SagaContext:
-        pass
-    class SagaRouter:
-        pass
-    class TableSyncSaga:
-        pass
-    class HandResultsSaga:
-        pass
 
 # Use regex matchers for flexibility
 use_step_matcher("re")
@@ -45,48 +26,217 @@ def make_timestamp():
     return Timestamp(seconds=int(datetime.now(timezone.utc).timestamp()))
 
 
-def make_event_page(event_msg, num: int = 0) -> types.EventPage:
+def make_event_page(event_msg, seq: int = 0) -> types.EventPage:
     """Create EventPage with packed event."""
     event_any = ProtoAny()
     event_any.Pack(event_msg, type_url_prefix="type.googleapis.com/")
     return types.EventPage(
-        num=num,
+        sequence=seq,
         event=event_any,
         created_at=make_timestamp(),
     )
 
 
+# =============================================================================
+# OO-style Saga implementations for testing
+# =============================================================================
+
+
+class TableSyncSaga(Saga):
+    """Table <-> Hand saga: bidirectional bridge for testing.
+
+    Production sagas are single-domain, but for testing we combine both directions:
+    - table.HandStarted -> hand.DealCards
+    - hand.HandComplete -> table.EndHand
+    """
+
+    name = "saga-table-hand"
+    input_domain = "table"  # Primary domain
+    output_domain = "hand"
+
+    @prepares(table.HandStarted)
+    def prepare_hand(self, event: table.HandStarted) -> list[types.Cover]:
+        return [
+            types.Cover(
+                domain="hand",
+                root=types.UUID(value=event.hand_root),
+            )
+        ]
+
+    @reacts_to(table.HandStarted)
+    def handle_hand_started(
+        self, event: table.HandStarted, destinations: list[types.EventBook] = None
+    ) -> hand.DealCards:
+        cmd = hand.DealCards(
+            table_root=event.hand_root,
+            hand_number=event.hand_number,
+            game_variant=event.game_variant,
+            dealer_position=event.dealer_position,
+            small_blind=event.small_blind,
+            big_blind=event.big_blind,
+        )
+
+        for seat in event.active_players:
+            cmd.players.append(
+                hand.PlayerInHand(
+                    player_root=seat.player_root,
+                    position=seat.position,
+                    stack=seat.stack,
+                )
+            )
+
+        return cmd
+
+    @prepares(hand.HandComplete)
+    def prepare_end_hand(self, event: hand.HandComplete) -> list[types.Cover]:
+        return [
+            types.Cover(
+                domain="table",
+                root=types.UUID(value=event.table_root),
+            )
+        ]
+
+    @reacts_to(hand.HandComplete)
+    def handle_hand_complete(
+        self, event: hand.HandComplete, destinations: list[types.EventBook] = None
+    ) -> types.CommandBook:
+        # Build the command
+        cmd = table.EndHand(
+            hand_root=event.table_root,  # Use table_root as hand identifier
+        )
+        for winner in event.winners:
+            cmd.results.append(
+                table.PotResult(
+                    winner_root=winner.player_root,
+                    amount=winner.amount,
+                    pot_type=winner.pot_type,
+                )
+            )
+
+        # Pack into CommandBook with correct domain ("table", not "hand")
+        cmd_any = ProtoAny()
+        cmd_any.Pack(cmd, type_url_prefix="type.googleapis.com/")
+        return types.CommandBook(
+            cover=types.Cover(domain="table", root=types.UUID(value=event.table_root)),
+            pages=[types.CommandPage(command=cmd_any)],
+        )
+
+
+class HandResultsSaga(Saga):
+    """Hand/Table -> Player saga: bidirectional bridge for testing.
+
+    Production sagas are single-domain, but for testing we handle multiple events:
+    - hand.PotAwarded -> player.DepositFunds
+    - table.HandEnded -> player.ReleaseFunds
+    """
+
+    name = "saga-hand-player"
+    input_domain = "hand"  # Primary domain
+    output_domain = "player"
+
+    @prepares(hand.PotAwarded)
+    def prepare_pot_awarded(self, event: hand.PotAwarded) -> list[types.Cover]:
+        return [
+            types.Cover(
+                domain="player",
+                root=types.UUID(value=winner.player_root),
+            )
+            for winner in event.winners
+        ]
+
+    @reacts_to(hand.PotAwarded)
+    def handle_pot_awarded(
+        self, event: hand.PotAwarded, destinations: list[types.EventBook] = None
+    ) -> tuple:
+        """Return multiple DepositFunds commands, one per winner."""
+        commands = []
+        for winner in event.winners:
+            commands.append(
+                player.DepositFunds(
+                    amount=poker_types.Currency(amount=winner.amount, currency_code="CHIPS"),
+                )
+            )
+        return tuple(commands) if commands else None
+
+    @prepares(table.HandEnded)
+    def prepare_hand_ended(self, event: table.HandEnded) -> list[types.Cover]:
+        # Generate covers for all players with stack changes
+        return [
+            types.Cover(
+                domain="player",
+                root=types.UUID(value=bytes.fromhex(player_hex)),
+            )
+            for player_hex in event.stack_changes.keys()
+        ]
+
+    @reacts_to(table.HandEnded)
+    def handle_hand_ended(
+        self, event: table.HandEnded, destinations: list[types.EventBook] = None
+    ) -> tuple:
+        """Return ReleaseFunds commands for each player in stack_changes."""
+        commands = []
+        for player_hex, change in event.stack_changes.items():
+            commands.append(
+                player.ReleaseFunds(
+                    table_root=event.hand_root,
+                )
+            )
+        return tuple(commands) if commands else None
+
+
 class FailingSaga(Saga):
     """A saga that always fails for testing."""
 
-    @property
-    def name(self) -> str:
-        return "FailingSaga"
+    name = "saga-failing"
+    input_domain = "table"
+    output_domain = "hand"
 
-    @property
-    def subscribed_events(self) -> list[str]:
-        return ["HandStarted"]
-
-    def handle(self, context: SagaContext) -> list[types.CommandBook]:
+    @reacts_to(table.HandStarted)
+    def handle_hand_started(self, event: table.HandStarted) -> None:
         raise RuntimeError("FailingSaga always fails")
 
 
-def _check_sagas_available(context):
-    """Skip scenario if sagas module not available."""
-    if not SAGAS_AVAILABLE:
-        context.scenario.skip("sagas module not implemented")
-        return False
-    return True
+# =============================================================================
+# Simple SagaRouter for testing multiple sagas
+# =============================================================================
 
 
-# --- Given steps ---
+class SagaRouter:
+    """Routes events to multiple registered sagas."""
+
+    def __init__(self):
+        self._sagas: list[Saga] = []
+
+    def register(self, saga: Saga) -> "SagaRouter":
+        self._sagas.append(saga)
+        return self
+
+    def route(
+        self, source: types.EventBook, domain: str = None
+    ) -> list[types.CommandBook]:
+        """Route events to all matching sagas, collect commands."""
+        commands = []
+        for saga in self._sagas:
+            # Only route to sagas that listen to this domain
+            if domain and saga.input_domain != domain:
+                continue
+            try:
+                saga_commands = saga.__class__.execute(source, [])
+                commands.extend(saga_commands)
+            except Exception:
+                # Continue routing to other sagas even if one fails
+                pass
+        return commands
+
+
+# =============================================================================
+# Given steps
+# =============================================================================
 
 
 @given("a TableSyncSaga")
 def step_given_table_sync_saga(context):
     """Create TableSyncSaga instance."""
-    if not _check_sagas_available(context):
-        return
     context.saga = TableSyncSaga()
     context.event = None
     context.event_book = None
@@ -96,8 +246,6 @@ def step_given_table_sync_saga(context):
 @given("a HandResultsSaga")
 def step_given_hand_results_saga(context):
     """Create HandResultsSaga instance."""
-    if not _check_sagas_available(context):
-        return
     context.saga = HandResultsSaga()
     context.event = None
     context.event_book = None
@@ -107,22 +255,17 @@ def step_given_hand_results_saga(context):
 @given("a SagaRouter with TableSyncSaga and HandResultsSaga")
 def step_given_saga_router_with_sagas(context):
     """Create SagaRouter with multiple sagas."""
-    if not _check_sagas_available(context):
-        return
     context.router = SagaRouter()
     context.table_sync = TableSyncSaga()
     context.hand_results = HandResultsSaga()
     context.router.register(context.table_sync)
     context.router.register(context.hand_results)
     context.commands = []
-    context.saga_calls = {}
 
 
 @given("a SagaRouter with TableSyncSaga")
 def step_given_saga_router_with_table_sync(context):
     """Create SagaRouter with TableSyncSaga."""
-    if not _check_sagas_available(context):
-        return
     context.router = SagaRouter()
     context.table_sync = TableSyncSaga()
     context.router.register(context.table_sync)
@@ -132,8 +275,6 @@ def step_given_saga_router_with_table_sync(context):
 @given("a SagaRouter with a failing saga and TableSyncSaga")
 def step_given_saga_router_with_failing(context):
     """Create SagaRouter with a failing saga and TableSyncSaga."""
-    if not _check_sagas_available(context):
-        return
     context.router = SagaRouter()
     context.failing_saga = FailingSaga()
     context.table_sync = TableSyncSaga()
@@ -147,7 +288,8 @@ def step_given_saga_router_with_failing(context):
 def step_given_hand_started_event(context):
     """Create a HandStarted event from datatable."""
     row = {context.table.headings[i]: context.table[0][i] for i in range(len(context.table.headings))}
-    variant = getattr(poker_types, row.get("game_variant", "TEXAS_HOLDEM"), poker_types.TEXAS_HOLDEM)
+    variant_name = row.get("game_variant", "TEXAS_HOLDEM")
+    variant = getattr(poker_types, variant_name, poker_types.TEXAS_HOLDEM)
 
     context.event = table.HandStarted(
         hand_root=row.get("hand_root", "hand-1").encode(),
@@ -192,7 +334,6 @@ def step_given_hand_started_event_simple(context):
 @given("active players:")
 def step_given_active_players(context):
     """Add active players from datatable."""
-    # Support both context.event (sagas) and context.hand_started (process manager)
     target = getattr(context, "hand_started", None) or getattr(context, "event", None)
     if not target:
         raise ValueError("No hand_started or event in context")
@@ -215,7 +356,6 @@ def step_given_hand_complete_event(context):
     row = {context.table.headings[i]: context.table[0][i] for i in range(len(context.table.headings))}
     context.event = hand.HandComplete(
         table_root=row.get("table_root", "table-1").encode(),
-        # Note: pot_total is in feature file but not in proto - ignore it
     )
 
 
@@ -259,7 +399,6 @@ def step_given_pot_awarded_event(context):
     """Create a PotAwarded event from datatable."""
     row = {context.table.headings[i]: context.table[0][i] for i in range(len(context.table.headings))}
     context.event = hand.PotAwarded()
-    # pot_total is not a field on PotAwarded, but we store it for context
     context.pot_total = int(row.get("pot_total", 0))
 
 
@@ -284,43 +423,31 @@ def step_given_event_book_with(context):
                 started_at=make_timestamp(),
             )
             event.active_players.append(
-                table.SeatSnapshot(
-                    player_root=b"player-1",
-                    position=0,
-                    stack=500,
-                )
+                table.SeatSnapshot(player_root=b"player-1", position=0, stack=500)
             )
             event.active_players.append(
-                table.SeatSnapshot(
-                    player_root=b"player-2",
-                    position=1,
-                    stack=500,
-                )
+                table.SeatSnapshot(player_root=b"player-2", position=1, stack=500)
             )
             context.event_book.pages.append(make_event_page(event, len(context.event_book.pages)))
 
 
-# --- When steps ---
+# =============================================================================
+# When steps
+# =============================================================================
 
 
 @when("the saga handles the event")
 def step_when_saga_handles_event(context):
-    """Have saga handle the event."""
+    """Have saga handle the event using Saga.execute()."""
     event_page = make_event_page(context.event)
     event_book = types.EventBook(
-        cover=types.Cover(root=types.UUID(value=b"table-1"), domain="table"),
+        cover=types.Cover(
+            root=types.UUID(value=b"source-1"),
+            domain=context.saga.input_domain,
+        ),
         pages=[event_page],
     )
-
-    event_type = context.event.DESCRIPTOR.name
-    saga_context = SagaContext(
-        event_book=event_book,
-        event_type=event_type,
-        aggregate_type="table" if hasattr(context.event, "hand_root") else "hand",
-        aggregate_root=event_book.cover.root.value,
-    )
-
-    context.commands = context.saga.handle(saga_context)
+    context.commands = context.saga.__class__.execute(event_book, [])
 
 
 @when("the router routes the event")
@@ -344,7 +471,9 @@ def step_when_router_routes_events(context):
     context.commands = context.router.route(context.event_book, "table")
 
 
-# --- Then steps ---
+# =============================================================================
+# Then steps
+# =============================================================================
 
 
 @then("the saga emits a DealCards command to hand domain")
@@ -390,8 +519,7 @@ def step_then_saga_emits_deal_cards_count(context, count):
     """Verify saga emits specified number of DealCards commands."""
     expected = int(count)
     deal_cards_count = sum(
-        1 for cmd in context.commands
-        if "DealCards" in cmd.pages[0].command.type_url
+        1 for cmd in context.commands if "DealCards" in cmd.pages[0].command.type_url
     )
     assert deal_cards_count == expected, f"Expected {expected} DealCards commands, got {deal_cards_count}"
 
@@ -448,21 +576,21 @@ def step_then_result_has_winner(context, winner, amount):
     assert result.amount == expected_amount, f"Expected {expected_amount}, got {result.amount}"
 
 
-@then('the first command has amount (?P<amount>\\d+) for "(?P<player>[^"]+)"')
-def step_then_first_command_has_amount(context, amount, player):
+@then('the first command has amount (?P<amount>\\d+) for "(?P<player_id>[^"]+)"')
+def step_then_first_command_has_amount(context, amount, player_id):
     """Verify first command has specified amount for player."""
     cmd_any = context.commands[0].pages[0].command
-    cmd = player_pb.DepositFunds()
+    cmd = player.DepositFunds()
     cmd_any.Unpack(cmd)
     expected_amount = int(amount)
     assert cmd.amount.amount == expected_amount, f"Expected {expected_amount}, got {cmd.amount.amount}"
 
 
-@then('the second command has amount (?P<amount>\\d+) for "(?P<player>[^"]+)"')
-def step_then_second_command_has_amount(context, amount, player):
+@then('the second command has amount (?P<amount>\\d+) for "(?P<player_id>[^"]+)"')
+def step_then_second_command_has_amount(context, amount, player_id):
     """Verify second command has specified amount for player."""
     cmd_any = context.commands[1].pages[0].command
-    cmd = player_pb.DepositFunds()
+    cmd = player.DepositFunds()
     cmd_any.Unpack(cmd)
     expected_amount = int(amount)
     assert cmd.amount.amount == expected_amount, f"Expected {expected_amount}, got {cmd.amount.amount}"
@@ -471,21 +599,17 @@ def step_then_second_command_has_amount(context, amount, player):
 @then("only TableSyncSaga handles the event")
 def step_then_only_table_sync_handles(context):
     """Verify only TableSyncSaga handled the event."""
-    # TableSyncSaga handles HandStarted and emits DealCards
     deal_cards_count = sum(
-        1 for cmd in context.commands
-        if "DealCards" in cmd.pages[0].command.type_url
+        1 for cmd in context.commands if "DealCards" in cmd.pages[0].command.type_url
     )
     assert deal_cards_count >= 1, "Expected TableSyncSaga to emit DealCards"
-    # HandResultsSaga doesn't handle HandStarted
 
 
 @then("TableSyncSaga still emits its command")
 def step_then_table_sync_emits(context):
     """Verify TableSyncSaga still emitted its command despite other saga failure."""
     deal_cards_count = sum(
-        1 for cmd in context.commands
-        if "DealCards" in cmd.pages[0].command.type_url
+        1 for cmd in context.commands if "DealCards" in cmd.pages[0].command.type_url
     )
     assert deal_cards_count >= 1, "Expected TableSyncSaga to emit DealCards"
 
@@ -494,7 +618,3 @@ def step_then_table_sync_emits(context):
 def step_then_no_exception(context):
     """Verify no exception was raised."""
     assert not context.exception_raised, "Exception was raised unexpectedly"
-
-
-# Import player module with alias to avoid shadowing
-player_pb = player
