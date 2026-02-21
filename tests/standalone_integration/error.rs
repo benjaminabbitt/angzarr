@@ -98,7 +98,8 @@ impl AggregateHandler for SelectiveFailAggregate {
             .map(|p| p.sequence + 1)
             .unwrap_or(0);
 
-        let event = if let Some(command_page::Payload::Command(c)) = &command_book.pages[0].payload {
+        let event = if let Some(command_page::Payload::Command(c)) = &command_book.pages[0].payload
+        {
             Some(c.clone())
         } else {
             None

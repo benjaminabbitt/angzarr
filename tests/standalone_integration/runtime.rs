@@ -171,7 +171,11 @@ async fn test_sequential_commands_same_aggregate() {
 
     // Verify sequences are 0-4
     for (i, event) in events.iter().enumerate() {
-        assert_eq!(event.sequence as usize, i, "Event {} should have sequence {}", i, i);
+        assert_eq!(
+            event.sequence as usize, i,
+            "Event {} should have sequence {}",
+            i, i
+        );
     }
 }
 

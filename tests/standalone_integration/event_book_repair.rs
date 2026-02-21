@@ -96,7 +96,11 @@ async fn test_repairer_fetches_missing_history() {
 
     // Verify sequence order
     for (i, page) in repaired.pages.iter().enumerate() {
-        assert_eq!(page.sequence as usize, i, "Event {} should have sequence {}", i, i);
+        assert_eq!(
+            page.sequence as usize, i,
+            "Event {} should have sequence {}",
+            i, i
+        );
     }
 }
 

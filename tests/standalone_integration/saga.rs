@@ -682,7 +682,9 @@ async fn test_two_phase_saga_fetches_destinations() {
                     !dest.pages.is_empty(),
                     "Destination should have events from the inventory aggregate we created"
                 );
-                let event_page::Payload::Event(first_event) = dest.pages[0].payload.as_ref().expect("Should have payload") else {
+                let event_page::Payload::Event(first_event) =
+                    dest.pages[0].payload.as_ref().expect("Should have payload")
+                else {
                     panic!("Expected event payload");
                 };
                 assert!(

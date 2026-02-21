@@ -144,12 +144,10 @@ async fn test_pm_state_loads_across_invocations() {
         .register_process_manager(
             "state-tracking-pm",
             PMWrapper(pm_clone),
-            ProcessManagerConfig::new("state-tracking-pm").with_subscriptions(vec![
-                Target {
-                    domain: "orders".to_string(),
-                    types: vec!["OrderPlaced".to_string()],
-                },
-            ]),
+            ProcessManagerConfig::new("state-tracking-pm").with_subscriptions(vec![Target {
+                domain: "orders".to_string(),
+                types: vec!["OrderPlaced".to_string()],
+            }]),
         )
         .build()
         .await
@@ -237,12 +235,10 @@ async fn test_pm_state_isolated_by_correlation_id() {
         .register_process_manager(
             "state-tracking-pm",
             PMWrapper(pm_clone),
-            ProcessManagerConfig::new("state-tracking-pm").with_subscriptions(vec![
-                Target {
-                    domain: "orders".to_string(),
-                    types: vec!["OrderPlaced".to_string()],
-                },
-            ]),
+            ProcessManagerConfig::new("state-tracking-pm").with_subscriptions(vec![Target {
+                domain: "orders".to_string(),
+                types: vec!["OrderPlaced".to_string()],
+            }]),
         )
         .build()
         .await

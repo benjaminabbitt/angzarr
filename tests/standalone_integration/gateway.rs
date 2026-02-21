@@ -178,11 +178,7 @@ async fn test_list_registered_domains() {
     let router = runtime.router();
     let domains = router.domains();
     // 3 user-registered domains
-    assert_eq!(
-        domains.len(),
-        3,
-        "Should have 3 domains"
-    );
+    assert_eq!(domains.len(), 3, "Should have 3 domains");
     assert!(domains.contains(&"orders"), "Should contain orders");
     assert!(domains.contains(&"products"), "Should contain products");
     assert!(domains.contains(&"customers"), "Should contain customers");

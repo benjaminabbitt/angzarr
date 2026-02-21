@@ -173,10 +173,7 @@ async fn test_coordinator_converts_event_fields() {
     assert_eq!(envelope.ty(), "com.example.order.created");
     assert_eq!(envelope.source().to_string(), "custom-source");
     assert_eq!(envelope.subject(), Some("custom-subject"));
-    assert_eq!(
-        envelope.specversion(),
-        cloudevents::event::SpecVersion::V10
-    );
+    assert_eq!(envelope.specversion(), cloudevents::event::SpecVersion::V10);
     assert_eq!(
         envelope.extension("priority"),
         Some(&ExtensionValue::String("high".to_string()))
