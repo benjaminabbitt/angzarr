@@ -78,11 +78,12 @@ jobs:
         working-directory: client/rust
         run: just --justfile justfile.container build && just --justfile justfile.container test
 
-      - name: Publish to crates.io
-        working-directory: client/rust
-        run: just --justfile justfile.container publish
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      # TODO: Re-enable when ready to publish
+      # - name: Publish to crates.io
+      #   working-directory: client/rust
+      #   run: just --justfile justfile.container publish
+      #   env:
+      #     CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   # Publish Python client to PyPI
   python:
@@ -108,12 +109,13 @@ jobs:
         working-directory: client/python
         run: just --justfile justfile.container build && just --justfile justfile.container test
 
-      - name: Publish to PyPI
-        working-directory: client/python
-        run: just --justfile justfile.container publish
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+      # TODO: Re-enable when ready to publish
+      # - name: Publish to PyPI
+      #   working-directory: client/python
+      #   run: just --justfile justfile.container publish
+      #   env:
+      #     TWINE_USERNAME: __token__
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
   # Go releases via tags - Go modules auto-discover from tags
   go:
@@ -154,14 +156,15 @@ jobs:
           \`\`\`
           EOF
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: release-notes.md
-          draft: false
-          prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # TODO: Re-enable when ready to publish
+      # - name: Create GitHub Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     body_path: release-notes.md
+      #     draft: false
+      #     prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Publish Java client to GitHub Packages
   java:
@@ -187,12 +190,13 @@ jobs:
         working-directory: client/java
         run: just --justfile justfile.container build && just --justfile justfile.container test
 
-      - name: Publish to GitHub Packages
-        working-directory: client/java
-        run: just --justfile justfile.container publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
+      # TODO: Re-enable when ready to publish
+      # - name: Publish to GitHub Packages
+      #   working-directory: client/java
+      #   run: just --justfile justfile.container publish
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     GITHUB_ACTOR: ${{ github.actor }}
 
   # Publish C# client to NuGet
   csharp:
@@ -221,11 +225,12 @@ jobs:
           just --justfile justfile.container test
           just --justfile justfile.container pack
 
-      - name: Publish to NuGet
-        working-directory: client/csharp
-        run: just --justfile justfile.container publish
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      # TODO: Re-enable when ready to publish
+      # - name: Publish to NuGet
+      #   working-directory: client/csharp
+      #   run: just --justfile justfile.container publish
+      #   env:
+      #     NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
   # Publish C++ client as GitHub Release with source archive
   cpp:
@@ -296,14 +301,15 @@ jobs:
           ```
           EOF
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: release-notes.md
-          files: |
-            client/cpp/angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz
-            client/cpp/angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz.sha512
-          draft: false
-          prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # TODO: Re-enable when ready to publish
+      # - name: Create GitHub Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     body_path: release-notes.md
+      #     files: |
+      #       client/cpp/angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz
+      #       client/cpp/angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz.sha512
+      #     draft: false
+      #     prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
