@@ -36,12 +36,14 @@ RUN mkdir -p src/bin client/rust/src && \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    mkdir -p tests/integration && \
+    mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
+             storage_immudb storage_nats bus_nats \
              standalone_integration; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
+    echo "fn main() {}" > tests/interfaces/main.rs && \
     for f in query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
@@ -132,12 +134,14 @@ RUN mkdir -p src/bin client/rust/src && \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    mkdir -p tests/integration && \
+    mkdir -p tests/integration tests/interfaces && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
+             storage_immudb storage_nats bus_nats \
              standalone_integration; do \
       echo "fn main() {}" > tests/$f.rs; \
     done && \
+    echo "fn main() {}" > tests/interfaces/main.rs && \
     for f in query_test; do \
       echo "fn main() {}" > tests/integration/$f.rs; \
     done && \
