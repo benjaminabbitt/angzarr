@@ -46,8 +46,8 @@ func InitRouterSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the state should have (\d+) items$`, rc.thenStateHasItems)
 	ctx.Step(`^the state should be the default/initial state$`, rc.thenStateIsDefault)
 
-	// Additional router steps
-	ctx.Step(`^I receive an? "([^"]*)" command$`, rc.iReceiveAnCommand)
+	// Additional router steps - removed duplicate "I receive a/an X command" step
+	// that conflicted with AggregateContext's version
 	ctx.Step(`^I receive an event that triggers command to "([^"]*)"$`, rc.iReceiveAnEventThatTriggersCommandTo)
 	ctx.Step(`^I receive an event with invalid payload$`, rc.iReceiveAnEventWithInvalidPayload)
 	ctx.Step(`^I receive an event with that type$`, rc.iReceiveAnEventWithThatType)

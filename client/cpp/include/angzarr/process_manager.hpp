@@ -89,7 +89,7 @@ public:
             if (!page.has_event()) continue;
 
             // Check for rejection notification
-            if (helpers::type_url_matches(page.event().type_url(), "Notification")) {
+            if (helpers::type_url_matches(page.event().type_url(), "angzarr.Notification")) {
                 Notification notification;
                 page.event().UnpackTo(&notification);
                 auto response = dispatch_rejection(notification);
@@ -222,7 +222,13 @@ private:
             }
         }
 
-        auto key = domain + "/" + command_suffix;
+        // Extract simple type name (e.g., "test.ReserveStock" -> "ReserveStock")
+        auto dot_pos = command_suffix.rfind('.');
+        std::string simple_command = (dot_pos != std::string::npos)
+            ? command_suffix.substr(dot_pos + 1)
+            : command_suffix;
+
+        auto key = domain + "/" + simple_command;
         auto it = rejection_handlers().find(key);
         if (it != rejection_handlers().end()) {
             return it->second(this, notification, state_);

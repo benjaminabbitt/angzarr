@@ -21,7 +21,15 @@ public class PlayerSteps
 
     private List<EventPage> Events
     {
-        get => _context.TryGetValue("events", out List<EventPage>? events) ? events! : new List<EventPage>();
+        get
+        {
+            if (!_context.TryGetValue("events", out List<EventPage>? events))
+            {
+                events = new List<EventPage>();
+                _context["events"] = events;
+            }
+            return events!;
+        }
         set => _context["events"] = value;
     }
 
@@ -265,7 +273,7 @@ public class PlayerSteps
 
     // --- Then steps ---
 
-    [Then(@"the result is a (.*) event")]
+    [Then(@"the result is a (PlayerRegistered|FundsDeposited|FundsWithdrawn|FundsReserved|FundsReleased) event")]
     public void ThenTheResultIsAEvent(string eventType)
     {
         Error.Should().BeNull($"Expected {eventType} event but got error: {Error?.Message}");
@@ -366,18 +374,6 @@ public class PlayerSteps
         }
     }
 
-    [Then(@"the command fails with status ""(.*)""")]
-    public void ThenTheCommandFailsWithStatus(string status)
-    {
-        Error.Should().NotBeNull("Expected command to fail but it succeeded");
-    }
-
-    [Then(@"the error message contains ""(.*)""")]
-    public void ThenTheErrorMessageContains(string text)
-    {
-        Error.Should().NotBeNull("Expected an error but got success");
-        Error!.Message.ToLower().Should().Contain(text.ToLower());
-    }
 
     [Then(@"the player state has bankroll (\d+)")]
     public void ThenThePlayerStateHasBankroll(int amount)

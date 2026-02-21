@@ -22,7 +22,15 @@ public class TableSteps
 
     private List<EventPage> Events
     {
-        get => _context.TryGetValue("tableEvents", out List<EventPage>? events) ? events! : new List<EventPage>();
+        get
+        {
+            if (!_context.TryGetValue("tableEvents", out List<EventPage>? events))
+            {
+                events = new List<EventPage>();
+                _context["tableEvents"] = events;
+            }
+            return events!;
+        }
         set => _context["tableEvents"] = value;
     }
 
@@ -54,6 +62,12 @@ public class TableSteps
     {
         get => _context.TryGetValue("maxPlayers", out int val) ? val : 9;
         set => _context["maxPlayers"] = value;
+    }
+
+    private string? CurrentHandRoot
+    {
+        get => _context.TryGetValue("currentHandRoot", out string? val) ? val : null;
+        set => _context["currentHandRoot"] = value!;
     }
 
     private EventPage MakeEventPage(IMessage evt, int seq)
@@ -116,8 +130,6 @@ public class TableSteps
     [Given(@"a TableCreated event for ""(.*)""")]
     public void GivenATableCreatedEventFor(string name)
     {
-        if (Events == null) Events = new List<EventPage>();
-
         var evt = new TableCreated
         {
             TableName = name,
@@ -180,10 +192,13 @@ public class TableSteps
     {
         if (Events == null) Events = new List<EventPage>();
 
+        var handRoot = $"hand-{handNumber}";
+        CurrentHandRoot = handRoot;
+
         var evt = new HandStarted
         {
             HandNumber = handNumber,
-            HandRoot = ByteString.CopyFromUtf8($"hand-{handNumber}"),
+            HandRoot = ByteString.CopyFromUtf8(handRoot),
             DealerPosition = dealerSeat,
             GameVariant = GameVariant.TexasHoldem,
             SmallBlind = 5,
@@ -265,9 +280,10 @@ public class TableSteps
     [When(@"I handle an EndHand command with winner ""(.*)"" winning (\d+)")]
     public void WhenIHandleAnEndHandCommandWithWinnerWinning(string winnerId, int amount)
     {
+        var handRoot = CurrentHandRoot ?? "current_hand";
         var cmd = new EndHand
         {
-            HandRoot = ByteString.CopyFromUtf8("current_hand")
+            HandRoot = ByteString.CopyFromUtf8(handRoot)
         };
         cmd.Results.Add(new PotResult
         {
@@ -384,19 +400,6 @@ public class TableSteps
         evt.StackChanges[playerKey].Should().Be(amount);
     }
 
-    // Reuse shared Then steps
-    [Then(@"the command fails with status ""(.*)""")]
-    public void ThenTheTableCommandFailsWithStatus(string status)
-    {
-        Error.Should().NotBeNull("Expected command to fail but it succeeded");
-    }
-
-    [Then(@"the error message contains ""(.*)""")]
-    public void ThenTheTableErrorMessageContains(string text)
-    {
-        Error.Should().NotBeNull("Expected an error but got success");
-        Error!.Message.ToLower().Should().Contain(text.ToLower());
-    }
 
     // State assertions
     [Then(@"the table state has (\d+) players")]

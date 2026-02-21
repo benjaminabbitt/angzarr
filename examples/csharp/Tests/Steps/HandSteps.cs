@@ -164,6 +164,20 @@ public class HandSteps
         _context.LastEvent.Should().BeOfType<ActionTaken>();
     }
 
+    [Then(@"the result is a (CardsDealt|BlindPosted|ActionTaken|CommunityCardsDealt|DrawCompleted|CardsRevealed|CardsMucked|PotAwarded) event")]
+    public void ThenTheResultIsAHandEvent(string eventType)
+    {
+        _context.LastException.Should().BeNull($"Expected {eventType} event but got error: {_context.LastException?.Message}");
+        _context.LastEvent.Should().NotBeNull();
+        _context.LastEvent!.GetType().Name.Should().Be(eventType);
+    }
+
+    [Then(@"the result is an (ActionTaken) event")]
+    public void ThenTheResultIsAnHandEvent(string eventType)
+    {
+        ThenTheResultIsAHandEvent(eventType);
+    }
+
     [Then(@"the action should be ""(.*)""")]
     public void ThenTheActionShouldBe(string action)
     {

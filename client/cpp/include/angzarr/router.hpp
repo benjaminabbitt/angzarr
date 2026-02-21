@@ -75,8 +75,8 @@ public:
 
         const auto& type_url = command_any.type_url();
 
-        // Check for Notification
-        if (helpers::type_url_matches(type_url, "Notification")) {
+        // Check for Notification (fully qualified: angzarr.Notification)
+        if (helpers::type_url_matches(type_url, "angzarr.Notification")) {
             Notification notification;
             command_any.UnpackTo(&notification);
             return dispatch_rejection(notification, state);
@@ -120,12 +120,18 @@ private:
             }
         }
 
+        // Extract simple type name (e.g., "test.ReserveStock" -> "ReserveStock")
+        std::string simple_command;
+        auto dot_pos = command_suffix.rfind('.');
+        simple_command = (dot_pos != std::string::npos)
+            ? command_suffix.substr(dot_pos + 1)
+            : command_suffix;
+
         for (const auto& [key, handler] : rejection_handlers_) {
             auto pos = key.find('/');
             auto expected_domain = key.substr(0, pos);
             auto expected_command = key.substr(pos + 1);
-            if (domain == expected_domain &&
-                helpers::type_url_matches(command_suffix, expected_command)) {
+            if (domain == expected_domain && simple_command == expected_command) {
                 auto response = handler(notification, state);
                 // Handle notification forwarding
                 if (response.notification.has_value()) {

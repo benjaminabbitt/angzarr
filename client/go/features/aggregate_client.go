@@ -1134,7 +1134,7 @@ func InitializeAggregateScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^an aggregate router$`, c.anAggregateRouter)
 	ctx.Step(`^an aggregate with existing events$`, c.anAggregateWithExistingEvents)
 	ctx.Step(`^an aggregate at sequence (\d+)$`, c.anAggregateAtSequence)
-	ctx.Step(`^I receive a "([^"]*)" command$`, c.iReceiveACommand)
+	ctx.Step(`^I receive an? "([^"]*)" command$`, c.iReceiveACommand)
 	ctx.Step(`^I receive a command for that aggregate$`, c.iReceiveACommandForThatAggregate)
 	ctx.Step(`^I receive a command at sequence (\d+)$`, c.iReceiveACommandAtSequence)
 	ctx.Step(`^the ([^"]*) handler should be invoked$`, c.theHandlerShouldBeInvoked)

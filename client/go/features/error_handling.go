@@ -64,7 +64,7 @@ func InitErrorHandlingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I build a command without required fields$`, ec.iBuildACommandWithoutRequiredFields)
 	ctx.Step(`^I build a query with invalid timestamp format$`, ec.iBuildAQueryWithInvalidTimestampFormat)
 	ctx.Step(`^the aggregate does not exist$`, ec.theAggregateDoesNotExist)
-	ctx.Step(`^an aggregate at sequence (\d+)$`, ec.anAggregateAtSequence)
+	ctx.Step(`^the server aggregate is at sequence (\d+)$`, ec.anAggregateAtSequence)
 	ctx.Step(`^the client lacks required permissions$`, ec.theClientLacksRequiredPermissions)
 	ctx.Step(`^the server has an internal error$`, ec.theServerHasAnInternalError)
 	ctx.Step(`^the operation times out$`, ec.theOperationTimesOut)
@@ -80,7 +80,7 @@ func InitErrorHandlingSteps(ctx *godog.ScenarioContext) {
 	// When steps
 	ctx.Step(`^I attempt a client operation$`, ec.iAttemptAClientOperation)
 	ctx.Step(`^I query events for the aggregate$`, ec.iQueryEventsForTheAggregate)
-	ctx.Step(`^I execute a command at sequence (\d+)$`, ec.iExecuteACommandAtSequence)
+	ctx.Step(`^I execute a mock command at sequence (\d+)$`, ec.iExecuteACommandAtSequence)
 	ctx.Step(`^I send a malformed request to the server$`, ec.iSendAMalformedRequestToTheServer)
 	ctx.Step(`^I attempt a restricted operation$`, ec.iAttemptARestrictedOperation)
 	ctx.Step(`^I call message\(\) on the error$`, ec.iCallMessageOnTheError)

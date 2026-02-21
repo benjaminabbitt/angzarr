@@ -56,8 +56,8 @@ Feature: Error Handling - Client Error Introspection
     And code should return NOT_FOUND
 
   Scenario: FAILED_PRECONDITION error is identifiable
-    Given an aggregate at sequence 5
-    When I execute a command at sequence 3
+    Given the server aggregate is at sequence 5
+    When I execute a mock command at sequence 3
     Then is_precondition_failed should return true
     And code should return FAILED_PRECONDITION
     And the error indicates optimistic lock failure
