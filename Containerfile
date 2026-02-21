@@ -83,10 +83,9 @@ RUN cargo build --profile container-dev --features otel,sqlite \
 # Generate protobuf FileDescriptorSet for runtime event decoding
 RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
     -I proto \
-    proto/examples/inventory.proto \
-    proto/examples/order.proto \
-    proto/examples/fulfillment.proto \
-    proto/examples/projections.proto
+    proto/examples/player.proto \
+    proto/examples/table.proto \
+    proto/examples/hand.proto
 
 # =============================================================================
 # Release builder - musl static, multi-arch (small images, all features)
@@ -177,10 +176,9 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 # Generate protobuf FileDescriptorSet for runtime event decoding
 RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
     -I proto \
-    proto/examples/inventory.proto \
-    proto/examples/order.proto \
-    proto/examples/fulfillment.proto \
-    proto/examples/projections.proto
+    proto/examples/player.proto \
+    proto/examples/table.proto \
+    proto/examples/hand.proto
 
 # =============================================================================
 # Runtime bases
