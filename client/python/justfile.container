@@ -1,5 +1,6 @@
 # Python client library - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI container jobs
 
 set shell := ["bash", "-c"]
 
@@ -7,9 +8,9 @@ default:
     @just --list
 
 proto:
-    cd /workspace/proto && buf generate --template buf.gen.python.yaml && \
-    find /workspace/client/python/angzarr_client/proto -name "*.py" -exec sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \; && \
-    find /workspace/client/python/angzarr_client/proto/examples -name "*.py" -exec sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
+    cd ../../proto && buf generate --template buf.gen.python.yaml && \
+    find ../client/python/angzarr_client/proto -name "*.py" -exec sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \; && \
+    find ../client/python/angzarr_client/proto/examples -name "*.py" -exec sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
 
 test:
     uv run --extra dev pytest tests/

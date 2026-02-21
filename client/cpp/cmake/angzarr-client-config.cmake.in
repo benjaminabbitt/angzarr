@@ -1,0 +1,11 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(Protobuf REQUIRED)
+find_dependency(gRPC CONFIG REQUIRED)
+find_dependency(absl CONFIG REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/angzarr-client-targets.cmake")
+
+check_required_components(angzarr-client)

@@ -53,5 +53,9 @@ coverage:
 publish:
     just _container publish
 
+# Publish to local Maven repository for testing
+publish-local:
+    just _container publish-local
+
 clean:
     rm -rf "{{TOP}}/client/java/build" "{{TOP}}/client/java/proto/build" "{{TOP}}/client/java/client/build" "{{TOP}}/client/java/.gradle"

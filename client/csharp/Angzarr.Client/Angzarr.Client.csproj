@@ -14,6 +14,10 @@
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/benjaminabbitt/angzarr</RepositoryUrl>
     <PackageTags>angzarr;grpc;event-sourcing;cqrs</PackageTags>
+
+    <!-- Package output -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>

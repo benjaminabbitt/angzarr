@@ -50,5 +50,9 @@ build:
 test:
     just _container test
 
+# Create release archive
+archive VERSION:
+    just _container archive {{VERSION}}
+
 clean:
     rm -rf "{{TOP}}/client/cpp/build"

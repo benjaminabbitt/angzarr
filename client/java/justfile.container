@@ -1,25 +1,27 @@
 # Java client library - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI container jobs
 
 set shell := ["bash", "-c"]
-
-# Gradle needs explicit settings file path
-SETTINGS := "--settings-file /workspace/client/java/settings.gradle.kts"
 
 default:
     @just --list
 
 proto:
-    cd /workspace/client/java && gradle {{SETTINGS}} :proto:generateProto
+    gradle :proto:generateProto
 
 build:
-    cd /workspace/client/java && gradle {{SETTINGS}} build
+    gradle build
 
 test:
-    cd /workspace/client/java && gradle {{SETTINGS}} :client:test
+    gradle :client:test
 
 coverage:
-    cd /workspace/client/java && gradle {{SETTINGS}} jacocoTestReport
+    gradle jacocoTestReport
 
 publish:
-    cd /workspace/client/java && gradle {{SETTINGS}} publish
+    gradle publish
+
+# Publish to local Maven repository for testing
+publish-local:
+    gradle publishToMavenLocal

@@ -59,12 +59,14 @@ tasks.named("processTestResources") {
 publishing {
     publications {
         create<MavenPublication>("maven") {
+            groupId = "dev.angzarr"
+            artifactId = "angzarr-client"
             from(components["java"])
 
             pom {
                 name.set("Angzarr Client")
                 description.set("Java client library for Angzarr gRPC services")
-                url.set("https://github.com/benjaminabbitt/angzarr")
+                url.set("https://github.com/angzarr-io/angzarr")
 
                 licenses {
                     license {

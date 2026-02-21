@@ -1,5 +1,6 @@
 # Go client library - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI container jobs
 
 set shell := ["bash", "-c"]
 
@@ -7,7 +8,7 @@ default:
     @just --list
 
 proto:
-    cd /workspace/proto && buf generate --template buf.gen.go.yaml
+    cd ../../proto && buf generate --template buf.gen.go.yaml
 
 build:
     go build ./...

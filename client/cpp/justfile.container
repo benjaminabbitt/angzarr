@@ -1,5 +1,6 @@
 # C++ client library - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI container jobs
 # Uses system packages for gRPC/protobuf (not vcpkg)
 
 set shell := ["bash", "-c"]
@@ -8,13 +9,18 @@ default:
     @just --list
 
 proto:
-    cd /workspace/client/cpp && cmake -B build && cmake --build build --target angzarr-client
+    cmake -B build && cmake --build build --target angzarr-client
 
 configure:
-    cd /workspace/client/cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release
+    cmake -B build -DCMAKE_BUILD_TYPE=Release
 
 build:
-    cd /workspace/client/cpp && cmake -B build && cmake --build build
+    cmake -B build && cmake --build build
 
 test:
-    cd /workspace/client/cpp && cmake -B build && cmake --build build && ctest --test-dir build --output-on-failure
+    cmake -B build && cmake --build build && ctest --test-dir build --output-on-failure
+
+# Create release archive with checksums
+archive VERSION:
+    cd ../.. && git archive --format=tar.gz --prefix=angzarr-client-cpp-{{VERSION}}/ -o client/cpp/angzarr-client-cpp-{{VERSION}}.tar.gz HEAD:client/cpp
+    sha512sum angzarr-client-cpp-{{VERSION}}.tar.gz > angzarr-client-cpp-{{VERSION}}.tar.gz.sha512

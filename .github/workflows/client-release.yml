@@ -6,10 +6,14 @@ on:
       - 'client-rust/v*.*.*'
       - 'client-python/v*.*.*'
       - 'client/go/v*.*.*'
+      - 'client-java/v*.*.*'
+      - 'client-csharp/v*.*.*'
+      - 'client-cpp/v*.*.*'
 
 permissions:
   contents: write
   id-token: write
+  packages: write
 
 jobs:
   # Determine which client(s) to release based on the tag
@@ -19,6 +23,9 @@ jobs:
       rust: ${{ steps.check.outputs.rust }}
       python: ${{ steps.check.outputs.python }}
       go: ${{ steps.check.outputs.go }}
+      java: ${{ steps.check.outputs.java }}
+      csharp: ${{ steps.check.outputs.csharp }}
+      cpp: ${{ steps.check.outputs.cpp }}
       version: ${{ steps.check.outputs.version }}
     steps:
       - name: Detect release type
@@ -36,6 +43,15 @@ jobs:
           elif [[ "$TAG" == client/go/v* ]]; then
             echo "go=true" >> $GITHUB_OUTPUT
             echo "version=${TAG#client/go/v}" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == client-java/v* ]]; then
+            echo "java=true" >> $GITHUB_OUTPUT
+            echo "version=${TAG#client-java/v}" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == client-csharp/v* ]]; then
+            echo "csharp=true" >> $GITHUB_OUTPUT
+            echo "version=${TAG#client-csharp/v}" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == client-cpp/v* ]]; then
+            echo "cpp=true" >> $GITHUB_OUTPUT
+            echo "version=${TAG#client-cpp/v}" >> $GITHUB_OUTPUT
           fi
 
   # Publish Rust client to crates.io
@@ -43,16 +59,10 @@ jobs:
     needs: detect
     if: needs.detect.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: "27.x"
 
       - name: Verify version matches
         working-directory: client/rust
@@ -64,13 +74,13 @@ jobs:
             exit 1
           fi
 
-      - name: Build
+      - name: Build and test
         working-directory: client/rust
-        run: cargo build --release
+        run: just --justfile justfile.container build && just --justfile justfile.container test
 
       - name: Publish to crates.io
         working-directory: client/rust
-        run: cargo publish
+        run: just --justfile justfile.container publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -79,17 +89,10 @@ jobs:
     needs: detect
     if: needs.detect.outputs.python == 'true'
     runs-on: ubuntu-latest
-    environment: pypi
+    container:
+      image: ghcr.io/angzarr-io/angzarr-python:latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install build tools
-        run: pip install build twine
 
       - name: Verify version matches
         working-directory: client/python
@@ -101,31 +104,30 @@ jobs:
             exit 1
           fi
 
-      - name: Build package
+      - name: Build and test
         working-directory: client/python
-        run: python -m build
+        run: just --justfile justfile.container build && just --justfile justfile.container test
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: client/python/dist/
+        working-directory: client/python
+        run: just --justfile justfile.container publish
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
   # Go releases via tags - Go modules auto-discover from tags
   go:
     needs: detect
     if: needs.detect.outputs.go == 'true'
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-go:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Verify module builds
+      - name: Build and test
         working-directory: client/go
-        run: go build ./...
+        run: just --justfile justfile.container build && just --justfile justfile.container test
 
       - name: Create release notes
         run: |
@@ -156,6 +158,151 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish Java client to GitHub Packages
+  java:
+    needs: detect
+    if: needs.detect.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-java:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version matches
+        working-directory: client/java
+        run: |
+          BUILD_VERSION=$(grep '^version = ' build.gradle.kts | head -1 | sed 's/.*version = "\(.*\)".*/\1/')
+          TAG_VERSION=${{ needs.detect.outputs.version }}
+          if [ "$BUILD_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: build.gradle.kts version ($BUILD_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build and test
+        working-directory: client/java
+        run: just --justfile justfile.container build && just --justfile justfile.container test
+
+      - name: Publish to GitHub Packages
+        working-directory: client/java
+        run: just --justfile justfile.container publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+
+  # Publish C# client to NuGet
+  csharp:
+    needs: detect
+    if: needs.detect.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-csharp:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version matches
+        working-directory: client/csharp/Angzarr.Client
+        run: |
+          CSPROJ_VERSION=$(grep '<Version>' Angzarr.Client.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+          TAG_VERSION=${{ needs.detect.outputs.version }}
+          if [ "$CSPROJ_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: Angzarr.Client.csproj version ($CSPROJ_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build, test, and pack
+        working-directory: client/csharp
+        run: |
+          just --justfile justfile.container build
+          just --justfile justfile.container test
+          just --justfile justfile.container pack
+
+      - name: Publish to NuGet
+        working-directory: client/csharp
+        run: just --justfile justfile.container publish
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  # Publish C++ client as GitHub Release with source archive
+  cpp:
+    needs: detect
+    if: needs.detect.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-cpp:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version matches
+        working-directory: client/cpp
+        run: |
+          CMAKE_VERSION=$(grep 'project(angzarr-client VERSION' CMakeLists.txt | sed 's/.*VERSION \([0-9.]*\).*/\1/')
+          TAG_VERSION=${{ needs.detect.outputs.version }}
+          if [ "$CMAKE_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: CMakeLists.txt version ($CMAKE_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build and test
+        working-directory: client/cpp
+        run: |
+          just --justfile justfile.container build
+          just --justfile justfile.container test
+
+      - name: Create archive
+        working-directory: client/cpp
+        run: just --justfile justfile.container archive ${{ needs.detect.outputs.version }}
+
+      - name: Create release notes
+        run: |
+          VERSION=${{ needs.detect.outputs.version }}
+          cat << 'EOF' > release-notes.md
+          ## C++ Client v${{ needs.detect.outputs.version }}
+
+          ### Installation via vcpkg
+
+          Add to your `vcpkg-configuration.json`:
+          ```json
+          {
+            "registries": [
+              {
+                "kind": "git",
+                "repository": "https://github.com/angzarr-io/vcpkg-registry",
+                "baseline": "<commit-sha>",
+                "packages": ["angzarr-client"]
+              }
+            ]
+          }
+          ```
+
+          Then install:
+          ```bash
+          vcpkg install angzarr-client
+          ```
+
+          ### Manual Installation
+
+          Download the source archive and build with CMake:
+          ```bash
+          tar xzf angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz
+          cd angzarr-client-cpp-${{ needs.detect.outputs.version }}
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          cmake --install build --prefix /usr/local
+          ```
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release-notes.md
+          files: |
+            client/cpp/angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz
+            client/cpp/angzarr-client-cpp-${{ needs.detect.outputs.version }}.tar.gz.sha512
           draft: false
           prerelease: ${{ contains(needs.detect.outputs.version, '-') }}
         env:
