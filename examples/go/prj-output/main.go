@@ -42,10 +42,7 @@ func writeLog(msg string) {
 }
 
 func getSequence(page *pb.EventPage) uint32 {
-	if num, ok := page.Sequence.(*pb.EventPage_Num); ok {
-		return num.Num
-	}
-	return 0
+	return page.Sequence
 }
 
 // docs:start:projector_functional
@@ -60,15 +57,16 @@ func handleEvents(events *pb.EventBook) (*pb.Projection, error) {
 	var seq uint32
 
 	for _, page := range events.Pages {
-		if page.Event == nil {
+		event := page.GetEvent()
+		if event == nil {
 			continue
 		}
 		seq = getSequence(page)
 
-		typeURL := page.Event.TypeUrl
+		typeURL := event.TypeUrl
 		typeName := typeURL[strings.LastIndex(typeURL, ".")+1:]
 
-		msg := formatEvent(domain, rootID, typeName, page.Event.Value)
+		msg := formatEvent(domain, rootID, typeName, event.Value)
 		writeLog(msg)
 	}
 

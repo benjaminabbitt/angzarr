@@ -249,7 +249,7 @@ func (p *HandProcess) buildPostBlindCommand(player *PlayerState, blindType strin
 		Pages: []*pb.CommandPage{
 			{
 				Sequence: 0, // Will be set by caller with destination state
-				Command:  cmdAny,
+				Payload:  &pb.CommandPage_Command{Command: cmdAny},
 			},
 		},
 	}
@@ -424,7 +424,7 @@ func (p *HandProcess) dealCommunity(count int) []*pb.CommandBook {
 			Pages: []*pb.CommandPage{
 				{
 					Sequence: 0,
-					Command:  cmdAny,
+					Payload:  &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		},
@@ -466,7 +466,7 @@ func (p *HandProcess) awardPotToLastPlayer(winner *PlayerState) []*pb.CommandBoo
 			Pages: []*pb.CommandPage{
 				{
 					Sequence: 0,
-					Command:  cmdAny,
+					Payload:  &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		},
@@ -520,7 +520,7 @@ func (p *HandProcess) autoAwardPot() []*pb.CommandBook {
 			Pages: []*pb.CommandPage{
 				{
 					Sequence: 0,
-					Command:  cmdAny,
+					Payload:  &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		},

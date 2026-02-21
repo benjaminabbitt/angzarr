@@ -90,7 +90,7 @@ func handleHandEnded(source *pb.EventBook, event *anypb.Any, destinations []*pb.
 			Pages: []*pb.CommandPage{
 				{
 					Sequence: destSeq,
-					Command:  cmdAny,
+					Payload:  &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		})

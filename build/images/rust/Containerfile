@@ -13,12 +13,14 @@ ARG RUST_VERSION=1.92.0
 ARG MOLD_VERSION=2.35.1
 
 # Clang for faster linking with mold, protoc for prost-build, musl for static builds
+# libsasl2-dev for rdkafka SASL authentication support
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     lld \
     protobuf-compiler \
     musl-tools \
     musl-dev \
+    libsasl2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install mold (fast linker)

@@ -35,14 +35,14 @@ func (m *HandFlowManager) Prepare(trigger, processState *pb.EventBook) []*pb.Cov
 	var destinations []*pb.Cover
 
 	for _, page := range trigger.Pages {
-		if page.Event == nil {
+		if page.GetEvent() == nil {
 			continue
 		}
-		typeURL := page.Event.TypeUrl
+		typeURL := page.GetEvent().TypeUrl
 
 		if strings.HasSuffix(typeURL, "HandStarted") {
 			var event examples.HandStarted
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				destinations = append(destinations, &pb.Cover{
 					Domain: "hand",
 					Root:   &pb.UUID{Value: event.HandRoot},
@@ -74,51 +74,51 @@ func (m *HandFlowManager) Handle(trigger, processState *pb.EventBook, destinatio
 	}
 
 	for _, page := range trigger.Pages {
-		if page.Event == nil {
+		if page.GetEvent() == nil {
 			continue
 		}
-		typeURL := page.Event.TypeUrl
+		typeURL := page.GetEvent().TypeUrl
 		typeName := typeURL[strings.LastIndex(typeURL, ".")+1:]
 
 		switch typeName {
 		case "HandStarted":
 			var event examples.HandStarted
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				cmds := m.handleHandStarted(&event, trigger.Cover.Root.Value, correlationID, destMap)
 				commands = append(commands, cmds...)
 			}
 
 		case "CardsDealt":
 			var event examples.CardsDealt
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				cmds := m.handleCardsDealt(&event, correlationID, destMap)
 				commands = append(commands, cmds...)
 			}
 
 		case "BlindPosted":
 			var event examples.BlindPosted
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				cmds := m.handleBlindPosted(&event, correlationID, destMap)
 				commands = append(commands, cmds...)
 			}
 
 		case "ActionTaken":
 			var event examples.ActionTaken
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				cmds := m.handleActionTaken(&event, correlationID, destMap)
 				commands = append(commands, cmds...)
 			}
 
 		case "CommunityCardsDealt":
 			var event examples.CommunityCardsDealt
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				cmds := m.handleCommunityDealt(&event, correlationID, destMap)
 				commands = append(commands, cmds...)
 			}
 
 		case "PotAwarded":
 			var event examples.PotAwarded
-			if err := proto.Unmarshal(page.Event.Value, &event); err == nil {
+			if err := proto.Unmarshal(page.GetEvent().Value, &event); err == nil {
 				m.handlePotAwarded(&event, correlationID)
 			}
 		}
@@ -232,20 +232,6 @@ func main() {
 	manager := NewHandFlowManager()
 
 	handler := angzarr.NewProcessManagerHandler("hand-flow").
-		ListenTo("table", "HandStarted", "HandEnded").
-		ListenTo("hand",
-			"CardsDealt",
-			"BlindPosted",
-			"ActionTaken",
-			"BettingRoundComplete",
-			"CommunityCardsDealt",
-			"DrawCompleted",
-			"ShowdownStarted",
-			"CardsRevealed",
-			"CardsMucked",
-			"PotAwarded",
-			"HandComplete",
-		).
 		WithPrepare(manager.Prepare).
 		WithHandle(manager.Handle)
 

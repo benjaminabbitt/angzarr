@@ -86,7 +86,7 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 			Pages: []*pb.CommandPage{
 				{
 					Sequence: destSeq,
-					Command:  cmdAny,
+					Payload:  &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		},

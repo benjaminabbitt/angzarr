@@ -522,7 +522,7 @@ type OOProcessManager interface {
 	PMDomain() string
 	InputDomains() []string
 	PrepareDestinations(trigger, processState *pb.EventBook) []*pb.Cover
-	Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error)
+	Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, *pb.Notification, error)
 }
 
 // OOProcessManagerHandler wraps an OO-style process manager for the gRPC ProcessManager service.
@@ -544,7 +544,7 @@ func (h *OOProcessManagerHandler) Prepare(ctx context.Context, req *pb.ProcessMa
 
 // Handle processes events and returns commands and process events.
 func (h *OOProcessManagerHandler) Handle(ctx context.Context, req *pb.ProcessManagerHandleRequest) (*pb.ProcessManagerHandleResponse, error) {
-	commands, processEvents, err := h.pm.Handle(req.Trigger, req.ProcessState, req.Destinations)
+	commands, processEvents, _, err := h.pm.Handle(req.Trigger, req.ProcessState, req.Destinations)
 	if err != nil {
 		var rejected CommandRejectedError
 		if errors.As(err, &rejected) {

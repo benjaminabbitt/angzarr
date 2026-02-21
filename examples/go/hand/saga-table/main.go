@@ -82,7 +82,7 @@ func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations []*
 			Pages: []*pb.CommandPage{
 				{
 					Sequence: destSeq,
-					Command:  cmdAny,
+					Payload:  &pb.CommandPage_Command{Command: cmdAny},
 				},
 			},
 		},

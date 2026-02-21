@@ -89,7 +89,7 @@ func (s *TableHandSaga) handleHandStarted(
 		Pages: []*pb.CommandPage{
 			{
 				Sequence: destSeq,
-				Command:  cmdAny,
+				Payload:  &pb.CommandPage_Command{Command: cmdAny},
 			},
 		},
 	}, nil
