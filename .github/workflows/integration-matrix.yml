@@ -33,6 +33,11 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -99,6 +104,12 @@ jobs:
       - name: Set up Rust
         if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold linker (Rust)
+        if: matrix.language == 'rust'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
 
       - name: Set up Go
         if: matrix.language == 'go'
