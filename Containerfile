@@ -52,7 +52,7 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     mkdir -p migrations && touch migrations/.keep
 
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
-RUN cargo build --profile container-dev --features otel,topology,sqlite \
+RUN cargo build --profile container-dev --features otel,sqlite \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
@@ -71,7 +71,7 @@ COPY client/ ./client/
 COPY migrations/ ./migrations/
 
 # Rebuild with real source (deps already compiled in previous stage)
-RUN cargo build --profile container-dev --features otel,topology,sqlite \
+RUN cargo build --profile container-dev --features otel,sqlite \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
