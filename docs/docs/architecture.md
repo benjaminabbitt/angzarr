@@ -18,16 +18,16 @@ This document covers ⍼ Angzarr's core architectural concepts: event sourcing d
 | **Snapshot** | Point-in-time state for replay optimization |
 | **EventPages** | Ordered sequence of domain events |
 
-```protobuf file=../../proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
+```protobuf file=proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
 ```
 
-```protobuf file=../../proto/angzarr/types.proto start=docs:start:event_page end=docs:end:event_page
+```protobuf file=proto/angzarr/types.proto start=docs:start:event_page end=docs:end:event_page
 ```
 
-```protobuf file=../../proto/angzarr/types.proto start=docs:start:snapshot end=docs:end:snapshot
+```protobuf file=proto/angzarr/types.proto start=docs:start:aggregate_snapshot end=docs:end:aggregate_snapshot
 ```
 
-```protobuf file=../../proto/angzarr/types.proto start=docs:start:event_book end=docs:end:event_book
+```protobuf file=proto/angzarr/types.proto start=docs:start:event_book end=docs:end:event_book
 ```
 
 Commands follow the same pattern—a **CommandBook** contains one or more **CommandPages** targeting a single aggregate.
@@ -131,7 +131,7 @@ flowchart TB
 
 ### SyncMode
 
-```protobuf file=../../proto/angzarr/types.proto start=docs:start:sync_mode end=docs:end:sync_mode
+```protobuf file=proto/angzarr/types.proto start=docs:start:sync_mode end=docs:end:sync_mode
 ```
 
 | Mode | Projectors | Sagas | Use Case |
@@ -170,7 +170,7 @@ flowchart TB
 
 For observing events as they happen rather than waiting:
 
-```protobuf file=../../proto/angzarr/stream.proto start=docs:start:event_stream_service end=docs:end:event_stream_service
+```protobuf file=proto/angzarr/stream.proto start=docs:start:event_stream_service end=docs:end:event_stream_service
 ```
 
 Events are correlated via `correlation_id` on `Cover`, allowing clients to track causally-related events across aggregate boundaries.

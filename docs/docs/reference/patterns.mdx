@@ -217,7 +217,7 @@ public:
 
 Links related events across aggregates:
 
-```protobuf file=../../../proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
+```protobuf file=proto/angzarr/types.proto start=docs:start:cover end=docs:end:cover
 ```
 
 **Propagation rules:**
@@ -384,7 +384,7 @@ Controls when command processing returns to caller:
 | **SIMPLE** | 1 | Wait for projectors only | Read-after-write consistency |
 | **CASCADE** | 2 | Wait for projectors + saga cascade | Full sync (expensive) |
 
-```protobuf file=../../../proto/angzarr/types.proto start=docs:start:sync_mode end=docs:end:sync_mode
+```protobuf file=proto/angzarr/types.proto start=docs:start:sync_mode end=docs:end:sync_mode
 ```
 
 **Trade-offs:**
@@ -427,7 +427,7 @@ print(f"Balance at {yesterday}: {state.bankroll}")
 
 Editions enable divergent timelines for speculative execution, historical analysis, or saga coordination:
 
-```protobuf file=../../../proto/angzarr/types.proto start=docs:start:edition end=docs:end:edition
+```protobuf file=proto/angzarr/types.proto start=docs:start:edition end=docs:end:edition
 ```
 
 **Use cases:**
@@ -461,7 +461,7 @@ cmd = CommandBook(cover=cover, pages=[...])
 
 Controls how snapshots are managed during compaction:
 
-```protobuf file=../../../proto/angzarr/types.proto start=docs:start:snapshot_retention end=docs:end:snapshot_retention
+```protobuf file=proto/angzarr/types.proto start=docs:start:snapshot_retention end=docs:end:snapshot_retention
 ```
 
 **When to use:**
