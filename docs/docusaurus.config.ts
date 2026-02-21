@@ -18,8 +18,8 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   // GitHub Pages deployment
-  url: 'https://benjaminabbitt.github.io',
-  baseUrl: '/angzarr/',
+  url: 'https://angzarr.io',
+  baseUrl: '/',
   organizationName: 'benjaminabbitt',
   projectName: 'angzarr',
   trailingSlash: false,
@@ -122,6 +122,31 @@ const config: Config = {
         id: 'sdk-cpp',
         path: '../client/cpp',
         routeBasePath: 'sdk/cpp',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    // Internal component documentation
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'internals-bus',
+        path: '../src/bus',
+        routeBasePath: 'internals/bus',
+        sidebarPath: false,
+        remarkPlugins: [
+          [codeSnippets, { baseDir: '..' }],
+        ],
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'internals-storage',
+        path: '../src/storage',
+        routeBasePath: 'internals/storage',
         sidebarPath: false,
         remarkPlugins: [
           [codeSnippets, { baseDir: '..' }],
