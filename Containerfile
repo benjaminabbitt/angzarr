@@ -26,17 +26,17 @@ WORKDIR /app
 # Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
-COPY angzarr-client/rust/Cargo.toml ./angzarr-client/rust/Cargo.toml
+COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
+RUN mkdir -p src/bin client/rust/src examples/rust/common/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log topology stream; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
-    echo "pub fn stub() {}" > angzarr-client/rust/src/lib.rs && \
+    echo "pub fn stub() {}" > client/rust/src/lib.rs && \
     echo "pub fn stub() {}" > examples/rust/common/src/lib.rs && \
     mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
@@ -66,7 +66,7 @@ FROM builder-dev-deps AS builder-dev
 
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
-COPY angzarr-client/ ./angzarr-client/
+COPY client/ ./client/
 COPY examples/rust examples/rust/
 COPY migrations/ ./migrations/
 
@@ -125,17 +125,17 @@ WORKDIR /app
 # Copy only dependency manifests first (layer cached until Cargo.toml/Cargo.lock change)
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
-COPY angzarr-client/rust/Cargo.toml ./angzarr-client/rust/Cargo.toml
+COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin angzarr-client/rust/src examples/rust/common/src && \
+RUN mkdir -p src/bin client/rust/src examples/rust/common/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log topology stream; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
-    echo "pub fn stub() {}" > angzarr-client/rust/src/lib.rs && \
+    echo "pub fn stub() {}" > client/rust/src/lib.rs && \
     echo "pub fn stub() {}" > examples/rust/common/src/lib.rs && \
     mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
@@ -172,7 +172,7 @@ ARG TARGETARCH
 
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
-COPY angzarr-client/ ./angzarr-client/
+COPY client/ ./client/
 COPY examples/rust examples/rust/
 COPY migrations/ ./migrations/
 
