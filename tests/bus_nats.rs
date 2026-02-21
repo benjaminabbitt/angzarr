@@ -443,7 +443,10 @@ async fn test_eventstore_eventbus_interoperability() {
 
     // Verify sequence ordering
     for (i, event) in all_events.iter().enumerate() {
-        assert_eq!(event.sequence, i as u32, "Events should be in sequence order");
+        assert_eq!(
+            event.sequence, i as u32,
+            "Events should be in sequence order"
+        );
     }
     println!("    Events are in correct sequence order (0, 1, 2, 3)");
 
