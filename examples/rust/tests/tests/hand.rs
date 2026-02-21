@@ -142,8 +142,8 @@ impl HandWorld {
                 .iter()
                 .enumerate()
                 .map(|(i, e)| EventPage {
-                    sequence: Some(event_page::Sequence::Num(i as u32)),
-                    event: Some(e.clone()),
+                    sequence: i as u32,
+                    payload: Some(event_page::Payload::Event(e.clone())),
                     created_at: None,
                 })
                 .collect(),
@@ -163,7 +163,10 @@ impl HandWorld {
                 r.as_ref()
                     .ok()
                     .and_then(|eb| eb.pages.first())
-                    .and_then(|p| p.event.clone())
+                    .and_then(|p| match &p.payload {
+                        Some(event_page::Payload::Event(e)) => Some(e.clone()),
+                        _ => None,
+                    })
             })
     }
 
@@ -864,6 +867,7 @@ fn when_deal_community(world: &mut HandWorld, count: i32) {
 
     let event_book = world.event_book();
     let state = rebuild_state(&event_book);
+
     let cmd_book = command_book(&world.hand_root(), "hand");
     let cmd_any = pack_cmd(&cmd, "examples.DealCommunityCards");
 
@@ -990,7 +994,10 @@ fn then_result_is_event(world: &mut HandWorld, event_type: String) {
     let event = event_book
         .pages
         .first()
-        .and_then(|p| p.event.as_ref())
+        .and_then(|p| match &p.payload {
+            Some(event_page::Payload::Event(e)) => Some(e),
+            _ => None,
+        })
         .expect("No event in result");
 
     assert!(
@@ -1343,13 +1350,10 @@ fn then_revealed_ranking(world: &mut HandWorld, expected: String) {
 
     let result = world.result.as_ref().expect("No result from command");
     let event_book = result.as_ref().expect("Command failed");
-    let event_any = event_book
-        .pages
-        .first()
-        .expect("No event page")
-        .event
-        .as_ref()
-        .expect("No event");
+    let event_any = match &event_book.pages.first().expect("No event page").payload {
+        Some(event_page::Payload::Event(e)) => e,
+        _ => panic!("No event in page"),
+    };
 
     let revealed: CardsRevealed = event_any.unpack().expect("Failed to unpack CardsRevealed");
     let ranking = revealed.ranking.expect("No ranking in CardsRevealed");

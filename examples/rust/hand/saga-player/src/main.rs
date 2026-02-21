@@ -109,8 +109,8 @@ async fn main() {
 
     let router = EventRouter::new("saga-hand-player")
         .domain("hand")
-        .prepare("PotAwarded", prepare_pot_awarded)
-        .on_many("PotAwarded", handle_pot_awarded);
+        .prepare("examples.PotAwarded", prepare_pot_awarded)
+        .on_many("examples.PotAwarded", handle_pot_awarded);
 
     run_saga_server("saga-hand-player", 50014, router)
         .await

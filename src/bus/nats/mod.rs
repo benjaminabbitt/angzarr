@@ -339,13 +339,7 @@ impl EventBus for NatsEventBus {
                 };
 
                 // Dispatch to handlers
-                let handlers_guard = handlers.read().await;
-                for handler in handlers_guard.iter() {
-                    if let Err(e) = handler.handle(book.clone()).await {
-                        tracing::error!("Handler error: {}", e);
-                    }
-                }
-                drop(handlers_guard);
+                crate::bus::dispatch_to_handlers(&handlers, &book).await;
 
                 // Acknowledge message
                 if let Err(e) = msg.ack().await {

@@ -11,7 +11,7 @@ from enum import Enum
 sys.path.insert(0, str(Path(__file__).parent / "agg-player"))
 sys.path.insert(0, str(Path(__file__).parent / "agg-hand"))
 
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from handlers.game_rules import get_game_rules, FiveCardDrawRules
 from handlers.ai import PokerAI
 from handlers.betting import BettingRound, DrawRound, PlayerState

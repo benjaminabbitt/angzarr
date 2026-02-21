@@ -47,7 +47,7 @@ public class HandAggregateService : AggregateService.AggregateServiceBase
             var eventAny = Any.Pack(eventMessage, "type.googleapis.com/");
             eventBook.Pages.Add(new EventPage
             {
-                Num = request.Events.NextSequence,
+                Sequence = request.Events.NextSequence,
                 Event = eventAny
             });
 

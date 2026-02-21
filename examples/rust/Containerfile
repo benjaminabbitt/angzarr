@@ -10,18 +10,19 @@
 # 3. Dev vs release profiles (fast dev builds, minimal release images)
 # 4. Distroless runtime for release - minimal attack surface
 # 5. Multi-arch support (amd64 + arm64)
+#
+# Base images from ghcr.io/angzarr (see build/images/)
 
+ARG RUST_IMAGE=ghcr.io/angzarr/angzarr-rust:latest
 ARG RUST_VERSION=1.92
 
 # ============================================================================
 # Dev builder - native glibc (fast compilation)
+# Uses custom angzarr-rust image with protoc and mold pre-installed
 # ============================================================================
-FROM docker.io/library/rust:${RUST_VERSION}-bookworm AS builder-dev-deps
+FROM ${RUST_IMAGE} AS builder-dev-deps
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    protobuf-compiler \
-    libprotobuf-dev \
-    && rm -rf /var/lib/apt/lists/*
+# protoc and libs already in base image
 
 WORKDIR /app
 

@@ -12,6 +12,15 @@ dependencies {
     implementation("net.devh:grpc-spring-boot-starter:2.15.0.RELEASE")
 }
 
+// Exclude documentation-only example files that use conceptual APIs
+sourceSets {
+    main {
+        java {
+            exclude("**/SplitterExample.java")
+        }
+    }
+}
+
 application {
     mainClass.set("dev.angzarr.examples.table.sagahand.Main")
 }

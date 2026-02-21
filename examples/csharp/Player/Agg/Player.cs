@@ -5,7 +5,6 @@ using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
-using Angzarr.Client.Compensation;
 using Angzarr.Examples;
 
 namespace Player.Agg;
@@ -258,7 +257,6 @@ public class PlayerAggregate : Aggregate<PlayerState>
         {
             Amount = new Currency { Amount = reservedAmount, CurrencyCode = "CHIPS" },
             TableRoot = tableRoot,
-            Reason = $"Join failed: {ctx.RejectionReason}",
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
             ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow)

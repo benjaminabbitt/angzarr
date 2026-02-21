@@ -24,7 +24,7 @@ IMAGE := "angzarr-csharp-dev"
 # Build the devcontainer image
 [private]
 _build-image:
-    podman build -t {{IMAGE}} -f "{{TOP}}/examples/csharp/.devcontainer/Containerfile" "{{TOP}}/examples/csharp/.devcontainer"
+    podman build --network=host -t {{IMAGE}} -f "{{TOP}}/examples/csharp/.devcontainer/Containerfile" "{{TOP}}/examples/csharp/.devcontainer"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
@@ -33,7 +33,7 @@ _container +ARGS: _build-image
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just {{ARGS}}
     else
-        podman run --rm \
+        podman run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/examples/csharp/justfile.container:/workspace/examples/csharp/justfile:ro" \
             -w /workspace/examples/csharp \

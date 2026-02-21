@@ -110,8 +110,8 @@ async fn main() {
 
     let router = EventRouter::new("saga-table-player")
         .domain("table")
-        .prepare("HandEnded", prepare_hand_ended)
-        .on_many("HandEnded", handle_hand_ended);
+        .prepare("examples.HandEnded", prepare_hand_ended)
+        .on_many("examples.HandEnded", handle_hand_ended);
 
     run_saga_server("saga-table-player", 50013, router)
         .await

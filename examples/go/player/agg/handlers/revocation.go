@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/hex"
-	"fmt"
 	"log"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
@@ -38,12 +37,11 @@ func HandleTableJoinRejected(notification *pb.Notification, state PlayerState) *
 	newAvailable := state.Bankroll - newReserved
 
 	event := &examples.FundsReleased{
-		Amount:       &examples.Currency{Amount: reservedAmount, CurrencyCode: "CHIPS"},
-		TableRoot:    tableRoot,
-		Reason:       fmt.Sprintf("Join failed: %s", ctx.RejectionReason),
+		Amount:              &examples.Currency{Amount: reservedAmount, CurrencyCode: "CHIPS"},
+		TableRoot:           tableRoot,
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
-		ReleasedAt:   timestamppb.Now(),
+		ReleasedAt:          timestamppb.Now(),
 	}
 
 	eventAny, _ := anypb.New(event)

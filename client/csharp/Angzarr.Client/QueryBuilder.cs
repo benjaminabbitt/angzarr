@@ -44,8 +44,11 @@ public class QueryBuilder
     /// <param name="client">The query client to use</param>
     /// <param name="domain">The aggregate domain</param>
     /// <param name="root">The aggregate root GUID</param>
+    /// <exception cref="InvalidArgumentError">If domain is empty</exception>
     public QueryBuilder(QueryClient client, string domain, Guid root)
     {
+        if (string.IsNullOrEmpty(domain))
+            throw new InvalidArgumentError("domain cannot be empty");
         _client = client;
         _domain = domain;
         _root = root;
@@ -56,8 +59,11 @@ public class QueryBuilder
     /// </summary>
     /// <param name="client">The query client to use</param>
     /// <param name="domain">The aggregate domain</param>
+    /// <exception cref="InvalidArgumentError">If domain is empty</exception>
     public QueryBuilder(QueryClient client, string domain)
     {
+        if (string.IsNullOrEmpty(domain))
+            throw new InvalidArgumentError("domain cannot be empty");
         _client = client;
         _domain = domain;
         _root = null;

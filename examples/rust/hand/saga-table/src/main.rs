@@ -96,8 +96,8 @@ async fn main() {
 
     let router = EventRouter::new("saga-hand-table")
         .domain("hand")
-        .prepare("HandComplete", prepare_hand_complete)
-        .on("HandComplete", handle_hand_complete);
+        .prepare("examples.HandComplete", prepare_hand_complete)
+        .on("examples.HandComplete", handle_hand_complete);
 
     run_saga_server("saga-hand-table", 50012, router)
         .await

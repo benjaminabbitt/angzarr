@@ -91,8 +91,8 @@ impl TableWorld {
                 .iter()
                 .enumerate()
                 .map(|(i, e)| EventPage {
-                    sequence: Some(event_page::Sequence::Num(i as u32)),
-                    event: Some(e.clone()),
+                    sequence: i as u32,
+                    payload: Some(event_page::Payload::Event(e.clone())),
                     created_at: None,
                 })
                 .collect(),
@@ -110,7 +110,10 @@ impl TableWorld {
             r.as_ref()
                 .ok()
                 .and_then(|eb| eb.pages.first())
-                .and_then(|p| p.event.clone())
+                .and_then(|p| match &p.payload {
+                    Some(event_page::Payload::Event(e)) => Some(e.clone()),
+                    _ => None,
+                })
         })
     }
 }
@@ -394,7 +397,10 @@ fn then_result_is_event(world: &mut TableWorld, event_type: String) {
     let event = event_book
         .pages
         .first()
-        .and_then(|p| p.event.as_ref())
+        .and_then(|p| match &p.payload {
+            Some(event_page::Payload::Event(e)) => Some(e),
+            _ => None,
+        })
         .expect("No event in result");
 
     assert!(

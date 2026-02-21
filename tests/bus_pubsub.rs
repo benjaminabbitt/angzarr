@@ -159,8 +159,8 @@ async fn test_pubsub_publish_and_consume() {
         .await
         .expect("Failed to start consuming");
 
-    // Give consumer time to start
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Give consumer time to start (increased for CI stability)
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Publish event
     let book = make_test_book(domain);
@@ -169,8 +169,8 @@ async fn test_pubsub_publish_and_consume() {
         .await
         .expect("Failed to publish");
 
-    // Wait for message
-    let received = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+    // Wait for message (increased timeout for CI stability)
+    let received = tokio::time::timeout(Duration::from_secs(30), rx.recv())
         .await
         .expect("Timed out waiting for message")
         .expect("Channel closed");

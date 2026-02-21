@@ -12,7 +12,7 @@ use angzarr_client::proto::examples::{
     Currency, DepositFunds, FundsDeposited, FundsReleased, FundsReserved, FundsWithdrawn,
     PlayerRegistered, PlayerType, RegisterPlayer, ReleaseFunds, ReserveFunds, WithdrawFunds,
 };
-use angzarr_client::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
+use angzarr_client::proto::{command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, Uuid};
 use angzarr_client::{pack_event, UnpackAny};
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -95,9 +95,9 @@ impl PlayerWorld {
                 }),
                 ..Default::default()
             }),
-            pages: vec![angzarr_client::proto::CommandPage {
+            pages: vec![CommandPage {
                 sequence: self.next_sequence,
-                command: Some(cmd_any),
+                payload: Some(command_page::Payload::Command(cmd_any)),
                 ..Default::default()
             }],
             saga_origin: None,
@@ -106,8 +106,8 @@ impl PlayerWorld {
 
     fn add_event(&mut self, event_any: Any) {
         self.events.push(EventPage {
-            sequence: Some(event_page::Sequence::Num(self.next_sequence)),
-            event: Some(event_any),
+            sequence: self.next_sequence,
+            payload: Some(event_page::Payload::Event(event_any)),
             created_at: Some(angzarr_client::now()),
         });
         self.next_sequence += 1;
@@ -121,7 +121,10 @@ impl PlayerWorld {
         self.last_event_book
             .as_ref()
             .and_then(|eb| eb.pages.first())
-            .and_then(|p| p.event.as_ref())
+            .and_then(|p| match &p.payload {
+                Some(event_page::Payload::Event(e)) => Some(e),
+                _ => None,
+            })
     }
 }
 

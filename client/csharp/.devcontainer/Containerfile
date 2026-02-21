@@ -1,7 +1,8 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0
+# C# client devcontainer
+# Uses custom base image from ghcr.io/angzarr
 
-# Install just
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+ARG CSHARP_IMAGE=ghcr.io/angzarr/angzarr-csharp:latest
+FROM ${CSHARP_IMAGE}
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

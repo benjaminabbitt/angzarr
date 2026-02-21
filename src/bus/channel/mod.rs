@@ -166,12 +166,7 @@ impl ChannelEventBus {
                         );
 
                         // Call all handlers
-                        let handlers_guard = handlers.read().await;
-                        for handler in handlers_guard.iter() {
-                            if let Err(e) = handler.handle(Arc::clone(&book)).await {
-                                error!(error = %e, "Handler failed");
-                            }
-                        }
+                        super::dispatch_to_handlers(&handlers, &book).await;
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         error!(skipped = n, "Channel consumer lagged, skipped messages");

@@ -521,7 +521,7 @@ mod tests {
                 "PostgreSQL should use backslash escape: {sql}"
             );
         }
-        #[cfg(feature = "sqlite")]
+        #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
         {
             assert!(
                 sql.contains("''"),

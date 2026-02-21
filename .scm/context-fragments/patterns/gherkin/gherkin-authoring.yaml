@@ -1,0 +1,356 @@
+version: 1.0
+tags:
+    - pattern
+    - testing
+    - gherkin
+    - bdd
+    - documentation
+content: |-
+    # Gherkin Authoring: Behavior Over Implementation
+
+    Gherkin is business-readable specification, not test code. Your audience is stakeholders, product owners, and future developers—not test frameworks.
+
+    ## The Golden Rule
+
+    **Describe what the system does and why it matters—never how it does it.**
+
+    Before writing any step, ask: *"Will this wording need to change if the implementation changes?"* If yes, you're describing implementation. Abstract to behavior.
+
+    ## Philosophy: Living Documentation
+
+    Gherkin scenarios are executable specifications that serve as:
+    - **Shared understanding** between business and development
+    - **Living documentation** that stays current with the system
+    - **Acceptance criteria** that define "done"
+    - **Regression tests** as a side effect, not the primary purpose
+
+    Write for the person who joins the team in six months and needs to understand the business rules without reading code.
+
+    ## What vs How: Declarative Over Imperative
+
+    ### Imperative (Wrong)
+    ```gherkin
+    Scenario: User logs in
+      Given I am on the login page
+      When I enter "alice@example.com" in the email field
+      And I enter "secret123" in the password field
+      And I click the "Login" button
+      Then I should see the dashboard
+      And the welcome message shows "Alice"
+    ```
+
+    ### Declarative (Right)
+    ```gherkin
+    Scenario: Successful login shows personalized dashboard
+      Given Alice has an active account
+      When Alice logs in
+      Then Alice sees her personalized dashboard
+    ```
+
+    The declarative version:
+    - Survives UI redesigns unchanged
+    - Explains the business outcome (personalized dashboard)
+    - Uses domain language (active account, logs in)
+    - Hides implementation (no fields, buttons, pages)
+
+    ## Given-When-Then Semantics
+
+    Each keyword has a distinct purpose:
+
+    ### Given: Establish Context
+    State the preconditions. Describe the world before the behavior occurs.
+
+    **Good:** `Given a player with $500 in their bankroll`
+    **Bad:** `Given the player deposits $500` (this is an action, not context)
+
+    Given steps set up state declaratively. They're past tense conceptually—things that have already happened.
+
+    ### When: Trigger Behavior
+    The single action that causes the behavior under test. One When per scenario.
+
+    **Good:** `When the player reserves $200 for the table`
+    **Bad:** `When the player clicks Reserve and enters 200 and confirms` (UI steps)
+
+    When steps are the pivot point. Everything before is setup; everything after is verification.
+
+    ### Then: Verify Outcomes
+    Assert the observable results. What changed? What's now true?
+
+    **Good:** `Then the player's available balance is $300`
+    **Bad:** `Then the database shows 300 in the balance column` (implementation)
+
+    Then steps describe business outcomes, not technical state.
+
+    ## Business Language, Not Technical Jargon
+
+    Use the ubiquitous language of the domain. Write as stakeholders speak.
+
+    | Technical (Avoid) | Business (Prefer) |
+    |-------------------|-------------------|
+    | API returns 201 | Order is confirmed |
+    | Database has record | Customer exists |
+    | Event is published | Notification is sent |
+    | State machine transitions | Hand progresses to showdown |
+    | Cache is invalidated | Updated info appears |
+
+    Exception: When testing framework internals (event stores, buses), technical language is the domain language. Use it precisely.
+
+    ## One Scenario, One Behavior
+
+    Each scenario tests exactly one thing. Multiple When-Then pairs indicate multiple behaviors—split them.
+
+    ### Wrong: Multiple behaviors
+    ```gherkin
+    Scenario: Order lifecycle
+      When I create an order
+      Then the order is pending
+      When I pay for the order
+      Then the order is confirmed
+      When I cancel the order
+      Then the order is cancelled
+    ```
+
+    ### Right: Separate scenarios
+    ```gherkin
+    Scenario: New orders start in pending status
+      When a customer creates an order
+      Then the order is pending
+
+    Scenario: Payment confirms a pending order
+      Given a pending order
+      When the customer pays
+      Then the order is confirmed
+
+    Scenario: Customers can cancel confirmed orders
+      Given a confirmed order
+      When the customer cancels
+      Then the order is cancelled
+    ```
+
+    ## Scenario Structure
+
+    ### Length
+    Keep scenarios short. If you exceed 8-10 steps, you're likely:
+    - Testing multiple behaviors (split them)
+    - Writing imperative steps (abstract them)
+    - Including unnecessary setup (use Background)
+
+    ### Background
+    Extract common Given steps to Background when most scenarios share setup:
+
+    ```gherkin
+    Background:
+      Given a registered player "Alice"
+      And Alice has $1000 in her bankroll
+
+    Scenario: Reserve funds for a table
+      When Alice joins a $500 buy-in table
+      Then Alice has $500 reserved for the table
+      And Alice's available balance is $500
+
+    Scenario: Cannot reserve more than available
+      When Alice tries to join a $1500 buy-in table
+      Then the request is declined
+      And Alice's available balance remains $1000
+    ```
+
+    ### Tables for Complex Data
+    Use Gherkin tables for structured inputs—they're readable and avoid step proliferation:
+
+    ```gherkin
+    Scenario: Multiple players join a table
+      Given seated players:
+        | name  | seat | stack |
+        | Alice | 0    | 500   |
+        | Bob   | 1    | 750   |
+        | Carol | 3    | 600   |
+      When the hand starts
+      Then all 3 players receive cards
+    ```
+
+    ### Scenario Outlines for Variations
+    When the same behavior applies to multiple inputs, use Scenario Outline:
+
+    ```gherkin
+    Scenario Outline: Withdraw validation
+      Given a player with $500 available
+      When the player withdraws <amount>
+      Then the result is <outcome>
+
+      Examples:
+        | amount | outcome                    |
+        | 100    | success with $400 remaining |
+        | 500    | success with $0 remaining   |
+        | 501    | declined: insufficient funds |
+        | -50    | declined: invalid amount    |
+        | 0      | declined: invalid amount    |
+    ```
+
+    ## Document the Why
+
+    Features and scenarios should explain business purpose, not just behavior.
+
+    ### Feature Preamble
+    Open with context explaining:
+    - **What** this capability enables
+    - **Why** it matters to the business
+    - **What breaks** if it doesn't work correctly
+
+    ```gherkin
+    Feature: Player fund reservation
+
+      Players must reserve funds when joining a table. This ensures:
+      - Players can cover their buy-in before sitting down
+      - Funds are locked and cannot be double-spent across tables
+      - The house can guarantee the game's stakes
+
+      Without fund reservation, players could join multiple tables with
+      the same bankroll, creating settlement disputes.
+    ```
+
+    ### Section Comments
+    Group related scenarios with explanatory headers:
+
+    ```gherkin
+    # ============================================================
+    # Reservation Lifecycle
+    # ------------------------------------------------------------
+    # Funds move through: available -> reserved -> (released | converted)
+    # These scenarios verify the transitions and constraints.
+    # ============================================================
+
+    Scenario: Reserve funds for buy-in
+      ...
+
+    Scenario: Release reservation when leaving table
+      ...
+    ```
+
+    ## Error Cases Are First-Class Citizens
+
+    Don't just test happy paths. Business rules often live in the constraints:
+
+    ```gherkin
+    Scenario: Cannot reserve funds twice for the same table
+      Given Alice has $1000 available
+      And Alice has $500 reserved for "Table A"
+      When Alice tries to reserve another $500 for "Table A"
+      Then the request fails with "already reserved at this table"
+      And Alice's reservation at "Table A" remains $500
+
+    Scenario: Cannot reserve more than available balance
+      Given Alice has $500 available
+      When Alice tries to reserve $600
+      Then the request fails with "insufficient funds"
+      And Alice's available balance remains $500
+    ```
+
+    Test error messages too—they're part of the user experience.
+
+    ## Anti-Patterns to Avoid
+
+    ### 1. UI Choreography
+    ```gherkin
+    # Bad: Click-by-click instructions
+    When I click "Add to Cart"
+    And I click "Checkout"
+    And I fill in "Card Number" with "4111..."
+    And I click "Pay Now"
+
+    # Good: Business intent
+    When I purchase the items in my cart
+    ```
+
+    ### 2. Technical Assertions
+    ```gherkin
+    # Bad: Implementation details
+    Then the database should have 1 row in orders
+    And the event bus should have published OrderCreated
+
+    # Good: Business outcomes
+    Then my order is confirmed
+    And I receive an order confirmation
+    ```
+
+    ### 3. Conditional Logic
+    ```gherkin
+    # Bad: Branching in scenarios
+    When I submit the form
+    Then if the form is valid, I should see success
+    But if the form is invalid, I should see errors
+
+    # Good: Separate scenarios
+    Scenario: Valid form submission
+      Given valid form data
+      When I submit
+      Then I see success
+
+    Scenario: Invalid form submission
+      Given invalid form data
+      When I submit
+      Then I see validation errors
+    ```
+
+    ### 4. Vague Assertions
+    ```gherkin
+    # Bad: What does "works correctly" mean?
+    Then the feature works correctly
+
+    # Good: Specific, verifiable outcomes
+    Then the player's balance increases by $100
+    And the transaction appears in the player's history
+    ```
+
+    ### 5. Test Data Leakage
+    ```gherkin
+    # Bad: Hardcoded test data
+    Given user with ID "12345" and token "abc123xyz"
+
+    # Good: Meaningful descriptions
+    Given an authenticated premium subscriber
+    ```
+
+    ## Cross-Domain Scenarios
+
+    When testing sagas or process managers that bridge domains, show the translation explicitly:
+
+    ```gherkin
+    Scenario: Order completion triggers fulfillment
+      Given an order with items:
+        | sku    | quantity |
+        | WIDGET | 3        |
+        | GADGET | 1        |
+      When the order is completed
+      Then a fulfillment request is created with:
+        | sku    | quantity |
+        | WIDGET | 3        |
+        | GADGET | 1        |
+    ```
+
+    The scenario shows the mapping from order domain to fulfillment domain without exposing saga implementation.
+
+    ## Acceptance vs Unit Feature Files
+
+    ### Acceptance Features (End-to-End)
+    - Test business workflows through the full system
+    - Use business personas (Alice, the customer)
+    - Assert on user-visible outcomes
+    - May include timing constraints (`within 2 seconds`)
+
+    ### Unit Features (Component-Level)
+    - Test individual aggregate/saga/projector logic
+    - Use event/command terminology when testing event-sourced systems
+    - Assert on emitted events and state changes
+    - More technical vocabulary is acceptable since the component IS the domain
+
+    Both should be declarative—the difference is the domain language.
+
+    ## Checklist Before Committing
+
+    - [ ] Can a product owner read and understand every scenario?
+    - [ ] Does each scenario test exactly one behavior?
+    - [ ] Are steps declarative (what) rather than imperative (how)?
+    - [ ] Will scenarios survive implementation changes unchanged?
+    - [ ] Do error cases explain business constraints, not just failure modes?
+    - [ ] Is the feature preamble sufficient for a newcomer to understand the capability?
+    - [ ] Are technical terms domain terms, not implementation leakage?

@@ -1,8 +1,20 @@
+---
+title: Storage
+sidebar_label: Storage
+---
+
 # Storage
 
 Event sourcing requires three storage capabilities: persisting events, tracking handler progress, and optionally caching aggregate state. Each serves a distinct purpose in maintaining system correctness and performance.
 
 ## EventStore
+
+### Contract
+
+```gherkin file=tests/interfaces/features/event_store.feature start=docs:start:store_contract end=docs:end:store_contract
+```
+
+> Source: [`event_store.feature`](../../tests/interfaces/features/event_store.feature)
 
 The EventStore is the source of truth. Every state change in the system exists because an event recorded it. This immutability provides a complete audit trail and enables temporal queries—you can reconstruct any aggregate's state at any point in history.
 
@@ -32,6 +44,13 @@ Events carry an optional correlation_id linking related events across aggregates
 
 ## PositionStore
 
+### Contract
+
+```gherkin file=tests/interfaces/features/position_store.feature start=docs:start:position_contract end=docs:end:position_contract
+```
+
+> Source: [`position_store.feature`](../../tests/interfaces/features/position_store.feature)
+
 Handlers (projectors, sagas) must remember where they left off. Without position tracking:
 
 - Restarts would reprocess every event from the beginning
@@ -55,6 +74,13 @@ Positions store sequence numbers, not event IDs or timestamps. Sequences are:
 - **Stable**: An event's sequence never changes after write
 
 ## SnapshotStore
+
+### Contract
+
+```gherkin file=tests/interfaces/features/snapshot_store.feature start=docs:start:snapshot_contract end=docs:end:snapshot_contract
+```
+
+> Source: [`snapshot_store.feature`](../../tests/interfaces/features/snapshot_store.feature)
 
 Aggregates with long histories (thousands of events) become expensive to load. Replaying all events on every command would be unacceptable. Snapshots cache aggregate state at a point-in-time.
 
@@ -94,9 +120,33 @@ If no snapshot exists (or reads are disabled), replay starts from sequence 0.
 | DynamoDB | Strong | Low | Massive | AWS native, serverless scaling. |
 | ImmuDB | Cryptographic | Low | Moderate | Audit-critical, tamper-proof requirements. |
 
+## Implementation Architecture
+
+### Unified SQL Module
+
+PostgreSQL and SQLite share significant implementation logic. The `sql` module provides a unified implementation using generic programming:
+
+```rust
+use angzarr::storage::sql::{SqlPositionStore, SqlSnapshotStore};
+use angzarr::storage::sql::postgres::{Postgres, PostgresPositionStore};
+use angzarr::storage::sql::sqlite::{Sqlite, SqlitePositionStore};
+
+// Type aliases for convenience
+let pg_positions: PostgresPositionStore = SqlPositionStore::new(pg_pool);
+let sqlite_positions: SqlitePositionStore = SqlPositionStore::new(sqlite_pool);
+```
+
+The `SqlDatabase` trait abstracts over database differences:
+
+- **Query building**: PostgreSQL vs SQLite syntax via sea-query
+- **Pool types**: `PgPool` vs `SqlitePool`
+- **Feature-specific behavior**: Historical snapshots (PostgreSQL only)
+
+This eliminates ~300 lines of duplicated code while maintaining full type safety.
+
 ## Feature Specifications
 
-The contract each backend must satisfy:
+See the embedded contracts above, or view the full specifications:
 
 - [EventStore](../../tests/interfaces/features/event_store.feature) - Event persistence, sequencing, concurrency control
 - [PositionStore](../../tests/interfaces/features/position_store.feature) - Handler checkpoint tracking

@@ -6,6 +6,9 @@
 #   just client python test         # Test Python client
 #   just client go test             # Test Go client
 #   just client rust test           # Test Rust client
+#   just client java test           # Test Java client
+#   just client csharp test         # Test C# client
+#   just client cpp test            # Test C++ client
 #   just client test-all            # Test all clients
 
 set shell := ["bash", "-c"]
@@ -15,6 +18,9 @@ TOP := `git rev-parse --show-toplevel`
 mod rust "rust/justfile"
 mod python "python/justfile"
 mod go "go/justfile"
+mod java "java/justfile"
+mod csharp "csharp/justfile"
+mod cpp "cpp/justfile"
 
 default:
     @just --list
@@ -24,15 +30,27 @@ build-all:
     just rust build
     just python build
     just go build
+    just java build
+    just csharp build
+    just cpp build
     @echo "All clients built successfully"
 
 # Run tests for all client libraries
 test-all:
+    @echo "=== Testing Rust client library ==="
+    just rust test
+    @echo ""
     @echo "=== Testing Python client library ==="
     just python test
     @echo ""
     @echo "=== Testing Go client library ==="
     just go test
     @echo ""
-    @echo "=== Testing Rust client library ==="
-    just rust test
+    @echo "=== Testing Java client library ==="
+    just java test
+    @echo ""
+    @echo "=== Testing C# client library ==="
+    just csharp test
+    @echo ""
+    @echo "=== Testing C++ client library ==="
+    just cpp test

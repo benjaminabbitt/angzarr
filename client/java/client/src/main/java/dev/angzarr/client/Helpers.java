@@ -118,11 +118,16 @@ public final class Helpers {
         return idx >= 0 ? typeUrl.substring(idx + 1) : typeUrl;
     }
 
+    private static final String TYPE_URL_PREFIX = "type.googleapis.com/";
+
     /**
-     * Check if a type URL ends with the given suffix.
+     * Check if a type URL matches the given fully qualified type name.
+     * @param typeUrl Full type URL (e.g., "type.googleapis.com/examples.CardsDealt")
+     * @param typeName Fully qualified type name (e.g., "examples.CardsDealt")
+     * @return true if typeUrl equals TYPE_URL_PREFIX + typeName
      */
-    public static boolean typeUrlMatches(String typeUrl, String suffix) {
-        return typeUrl.endsWith(suffix);
+    public static boolean typeUrlMatches(String typeUrl, String typeName) {
+        return typeUrl.equals(TYPE_URL_PREFIX + typeName);
     }
 
     /**

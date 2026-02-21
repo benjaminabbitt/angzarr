@@ -2,7 +2,7 @@
 //      Update documentation when making changes to handler patterns.
 package dev.angzarr.examples.player;
 
-import dev.angzarr.Angzarr;
+import dev.angzarr.Notification;
 import dev.angzarr.client.Aggregate;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Applies;
@@ -292,7 +292,7 @@ public class Player extends Aggregate<PlayerState> {
     // docs:start:rejected_handler
 
     @Rejected(domain = "table", command = "JoinTable")
-    public FundsReleased handleJoinRejected(Angzarr.Notification notification) {
+    public FundsReleased handleJoinRejected(Notification notification) {
         var ctx = CompensationContext.from(notification);
 
         logger.warning("Player compensation for JoinTable rejection: reason=" + ctx.getRejectionReason());
@@ -316,7 +316,6 @@ public class Player extends Aggregate<PlayerState> {
                 .setAmount(reservedAmount)
                 .setCurrencyCode("CHIPS"))
             .setTableRoot(com.google.protobuf.ByteString.copyFrom(tableRoot))
-            .setReason("Join failed: " + ctx.getRejectionReason())
             .setNewAvailableBalance(Currency.newBuilder()
                 .setAmount(newAvailable)
                 .setCurrencyCode("CHIPS"))

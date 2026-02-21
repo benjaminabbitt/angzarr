@@ -21,19 +21,8 @@ import java.util.Map;
  */
 public class TablePlayerSaga extends Saga {
 
-    @Override
-    public String getName() {
-        return "saga-table-player";
-    }
-
-    @Override
-    public String getInputDomain() {
-        return "table";
-    }
-
-    @Override
-    public String getOutputDomain() {
-        return "player";
+    public TablePlayerSaga() {
+        super("saga-table-player", "table", "player");
     }
 
     @Prepares(HandEnded.class)

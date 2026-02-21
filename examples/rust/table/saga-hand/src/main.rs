@@ -100,8 +100,8 @@ async fn main() {
     // docs:start:event_router
     let router = EventRouter::new("saga-table-hand")
         .domain("table")
-        .prepare("HandStarted", prepare_hand_started)
-        .on("HandStarted", handle_hand_started);
+        .prepare("examples.HandStarted", prepare_hand_started)
+        .on("examples.HandStarted", handle_hand_started);
     // docs:end:event_router
 
     run_saga_server("saga-table-hand", 50011, router)

@@ -1,17 +1,8 @@
-FROM mcr.microsoft.com/devcontainers/java:17
+# Java client devcontainer
+# Uses custom base image from ghcr.io/angzarr
 
-# Install just
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
-
-# Install protoc
-RUN apt-get update && apt-get install -y protobuf-compiler
-
-# Install modern Gradle (apt version is too old for Kotlin DSL)
-ENV GRADLE_VERSION=8.5
-RUN curl -L https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -o /tmp/gradle.zip && \
-    unzip -d /opt /tmp/gradle.zip && \
-    rm /tmp/gradle.zip && \
-    ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle
+ARG JAVA_IMAGE=ghcr.io/angzarr/angzarr-java:latest
+FROM ${JAVA_IMAGE}
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

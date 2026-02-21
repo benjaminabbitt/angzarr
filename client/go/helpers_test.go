@@ -536,20 +536,20 @@ func TestTypeNameFromURL(t *testing.T) {
 
 func TestTypeURLMatches(t *testing.T) {
 	tests := []struct {
-		name    string
-		typeURL string
-		suffix  string
-		want    bool
+		name     string
+		typeURL  string
+		typeName string
+		want     bool
 	}{
-		{"matches", "type.googleapis.com/examples.CreateCart", "CreateCart", true},
-		{"does not match", "type.googleapis.com/examples.CreateCart", "RemoveItem", false},
-		{"exact match", "CreateCart", "CreateCart", true},
-		{"empty suffix", "type.googleapis.com/examples.CreateCart", "", true},
+		{"fully qualified matches", "type.googleapis.com/examples.CreateCart", "examples.CreateCart", true},
+		{"unqualified does not match", "type.googleapis.com/examples.CreateCart", "CreateCart", false},
+		{"different type does not match", "type.googleapis.com/examples.CreateCart", "examples.RemoveItem", false},
+		{"wrong package does not match", "type.googleapis.com/examples.CreateCart", "other.CreateCart", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := TypeURLMatches(tt.typeURL, tt.suffix)
+			got := TypeURLMatches(tt.typeURL, tt.typeName)
 			if got != tt.want {
 				t.Errorf("got %v, want %v", got, tt.want)
 			}
@@ -636,7 +636,8 @@ func TestDecodeEvent(t *testing.T) {
 			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.Other"}},
 		}
 		var msg mockUnmarshaler
-		got := DecodeEvent(page, "CreateCart", &msg)
+		// Use full type name for exact matching - should not match "examples.Other"
+		got := DecodeEvent(page, "examples.CreateCart", &msg)
 		if got {
 			t.Error("expected false for type mismatch")
 		}
@@ -647,7 +648,8 @@ func TestDecodeEvent(t *testing.T) {
 			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}}},
 		}
 		msg := &mockUnmarshaler{shouldSucceed: true}
-		got := DecodeEvent(page, "CreateCart", msg)
+		// Use full type name for exact matching
+		got := DecodeEvent(page, "examples.CreateCart", msg)
 		if !got {
 			t.Error("expected true for successful decode")
 		}
@@ -658,7 +660,8 @@ func TestDecodeEvent(t *testing.T) {
 			Payload: &pb.EventPage_Event{Event: &anypb.Any{TypeUrl: "type.googleapis.com/examples.CreateCart", Value: []byte{}}},
 		}
 		msg := &mockUnmarshaler{shouldSucceed: false}
-		got := DecodeEvent(page, "CreateCart", msg)
+		// Use full type name for exact matching
+		got := DecodeEvent(page, "examples.CreateCart", msg)
 		if got {
 			t.Error("expected false for unmarshal failure")
 		}

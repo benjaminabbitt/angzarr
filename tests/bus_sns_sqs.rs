@@ -1,10 +1,10 @@
 //! AWS SNS/SQS event bus integration tests using testcontainers.
 //!
-//! Run with: cargo test --test bus_sns_sqs --features sns_sqs -- --nocapture
+//! Run with: cargo test --test bus_sns_sqs --features sns-sqs -- --nocapture
 //!
 //! Uses LocalStack to emulate AWS SNS/SQS locally.
 
-#![cfg(feature = "sns_sqs")]
+#![cfg(feature = "sns-sqs")]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -29,21 +29,24 @@ use tokio::sync::mpsc;
 ///
 /// Returns (container, endpoint_url) where endpoint_url is suitable for AWS SDK connection.
 async fn start_localstack() -> (testcontainers::ContainerAsync<GenericImage>, String) {
-    let image = GenericImage::new("localstack/localstack", "3.0")
+    let image = GenericImage::new("localstack/localstack", "latest")
         .with_exposed_port(4566.tcp())
         .with_wait_for(WaitFor::message_on_stdout("Ready."));
 
     let container = image
         .with_env_var("SERVICES", "sns,sqs")
-        .with_env_var("DEFAULT_REGION", "us-east-1")
+        .with_env_var("AWS_DEFAULT_REGION", "us-east-1")
         .with_env_var("EAGER_SERVICE_LOADING", "1")
-        .with_startup_timeout(Duration::from_secs(120))
+        .with_env_var("DISABLE_EVENTS", "1") // Disable analytics
+        .with_env_var("SKIP_INFRA_DOWNLOADS", "1") // Don't download additional components
+        .with_startup_timeout(Duration::from_secs(180))
         .start()
         .await
         .expect("Failed to start localstack container");
 
     // Give LocalStack time to fully initialize services
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // SNS/SQS services need extra time to be fully ready
+    tokio::time::sleep(Duration::from_secs(10)).await;
 
     let host_port = container
         .get_host_port_ipv4(4566)

@@ -453,7 +453,8 @@ func TestEventPageW_DecodeEvent(t *testing.T) {
 		}
 		wrapper := NewEventPageW(page)
 		msg := &mockUnmarshaler{shouldSucceed: true}
-		if !wrapper.DecodeEvent("CreateCart", msg) {
+		// Use full type name for exact matching
+		if !wrapper.DecodeEvent("examples.CreateCart", msg) {
 			t.Error("expected true for successful decode")
 		}
 	})
@@ -464,7 +465,8 @@ func TestEventPageW_DecodeEvent(t *testing.T) {
 		}
 		wrapper := NewEventPageW(page)
 		msg := &mockUnmarshaler{shouldSucceed: true}
-		if wrapper.DecodeEvent("CreateCart", msg) {
+		// Use full type name for exact matching - should not match "examples.Other"
+		if wrapper.DecodeEvent("examples.CreateCart", msg) {
 			t.Error("expected false for type mismatch")
 		}
 	})

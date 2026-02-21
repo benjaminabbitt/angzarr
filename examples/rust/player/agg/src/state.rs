@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use angzarr_client::proto::event_page::Payload;
 use angzarr_client::proto::examples::{
     FundsDeposited, FundsReleased, FundsReserved, FundsTransferred, FundsWithdrawn,
     PlayerRegistered, PlayerState as ProtoPlayerState, PlayerType,
@@ -96,14 +97,16 @@ fn apply_transferred(state: &mut PlayerState, event: FundsTransferred) {
 }
 
 /// StateRouter for fluent state reconstruction.
+///
+/// Type names are extracted via reflection using `prost::Name::full_name()`.
 static STATE_ROUTER: LazyLock<StateRouter<PlayerState>> = LazyLock::new(|| {
     StateRouter::new()
-        .on::<PlayerRegistered>("PlayerRegistered", apply_registered)
-        .on::<FundsDeposited>("FundsDeposited", apply_deposited)
-        .on::<FundsWithdrawn>("FundsWithdrawn", apply_withdrawn)
-        .on::<FundsReserved>("FundsReserved", apply_reserved)
-        .on::<FundsReleased>("FundsReleased", apply_released)
-        .on::<FundsTransferred>("FundsTransferred", apply_transferred)
+        .on::<PlayerRegistered>(apply_registered)
+        .on::<FundsDeposited>(apply_deposited)
+        .on::<FundsWithdrawn>(apply_withdrawn)
+        .on::<FundsReserved>(apply_reserved)
+        .on::<FundsReleased>(apply_released)
+        .on::<FundsTransferred>(apply_transferred)
 });
 // docs:end:state_router
 
@@ -116,7 +119,7 @@ pub fn rebuild_state(event_book: &EventBook) -> PlayerState {
                 let mut state = apply_snapshot(&proto_state);
                 // Apply events since snapshot
                 for page in &event_book.pages {
-                    if let Some(event) = &page.event {
+                    if let Some(Payload::Event(event)) = &page.payload {
                         STATE_ROUTER.apply_single(&mut state, event);
                     }
                 }

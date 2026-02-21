@@ -1236,29 +1236,29 @@ impl<S: Default + 'static> StateRouter<S> {
         }
     }
 
-    /// Register an event applier for events with the given type suffix.
+    /// Register an event applier for the given protobuf event type.
     ///
     /// The handler receives typed events (auto-decoded from protobuf).
+    /// Type name is extracted via reflection using `prost::Name::full_name()`.
     ///
     /// # Type Parameters
     ///
-    /// - `E`: The protobuf event type (must implement `prost::Message + Default`)
+    /// - `E`: The protobuf event type (must implement `prost::Message + Default + prost::Name`)
     ///
     /// # Arguments
     ///
-    /// - `suffix`: The type URL suffix to match (e.g., "PlayerRegistered")
     /// - `handler`: Function that takes `(&mut S, E)` and mutates state
-    pub fn on<E>(mut self, suffix: impl Into<String>, handler: fn(&mut S, E)) -> Self
+    pub fn on<E>(mut self, handler: fn(&mut S, E)) -> Self
     where
-        E: prost::Message + Default + 'static,
+        E: prost::Message + Default + prost::Name + 'static,
     {
-        let suffix = suffix.into();
+        let type_name = E::full_name();
         let boxed: EventApplier<S> = Box::new(move |state, bytes| {
             if let Ok(event) = E::decode(bytes) {
                 handler(state, event);
             }
         });
-        self.handlers.push((suffix, boxed));
+        self.handlers.push((type_name, boxed));
         self
     }
 
@@ -1281,15 +1281,26 @@ impl<S: Default + 'static> StateRouter<S> {
     }
 
     /// Apply a single event to existing state.
+    ///
+    /// The suffix must match exactly at a word boundary (after '/' or '.').
+    /// For example, suffix "CardsDealt" will NOT match "CommunityCardsDealt".
     pub fn apply_single(&self, state: &mut S, event_any: &Any) {
         let type_url = &event_any.type_url;
         for (suffix, handler) in &self.handlers {
-            if type_url.ends_with(suffix) {
+            if Self::type_matches(type_url, suffix) {
                 handler(state, &event_any.value);
                 return;
             }
         }
         // Unknown event type - silently ignore (forward compatibility)
+    }
+
+    /// Check if type_url exactly matches the given fully qualified type name.
+    ///
+    /// type_name should be fully qualified (e.g., "examples.CardsDealt").
+    /// Compares type_url == "type.googleapis.com/" + type_name.
+    fn type_matches(type_url: &str, type_name: &str) -> bool {
+        type_url == format!("type.googleapis.com/{}", type_name)
     }
 
     /// Convert to a StateRebuilder function for use with CommandRouter.
@@ -1530,6 +1541,61 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    // =========================================================================
+    // StateRouter Tests
+    // =========================================================================
+
+    #[test]
+    fn type_matches_requires_fully_qualified_name() {
+        // Fully qualified name matches
+        assert!(StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.CardsDealt",
+            "examples.CardsDealt"
+        ));
+        // Unqualified name does NOT match (must be fully qualified)
+        assert!(!StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.CardsDealt",
+            "CardsDealt"
+        ));
+    }
+
+    #[test]
+    fn type_matches_rejects_partial_names() {
+        // "CardsDealt" should NOT match "CommunityCardsDealt"
+        assert!(!StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.CommunityCardsDealt",
+            "examples.CardsDealt"
+        ));
+        // Only exact match works
+        assert!(StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.CommunityCardsDealt",
+            "examples.CommunityCardsDealt"
+        ));
+    }
+
+    #[test]
+    fn type_matches_rejects_wrong_package() {
+        // Wrong package does not match
+        assert!(!StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.CardsDealt",
+            "other.CardsDealt"
+        ));
+    }
+
+    #[test]
+    fn type_matches_handles_edge_cases() {
+        // Empty type name does not match
+        assert!(!StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.Test",
+            ""
+        ));
+        // Completely different type does not match
+        assert!(!StateRouter::<()>::type_matches(
+            "type.googleapis.com/examples.Other",
+            "examples.CardsDealt"
+        ));
     }
 
     // =========================================================================

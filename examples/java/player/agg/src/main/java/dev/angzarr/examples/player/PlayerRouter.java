@@ -19,12 +19,12 @@ public final class PlayerRouter {
 
     // docs:start:command_router
     public static CommandRouter<PlayerState> create() {
-        return new CommandRouter<PlayerState>("player", StateBuilder::build)
-            .on("RegisterPlayer", RegisterHandler::handle)
-            .on("DepositFunds", DepositHandler::handle)
-            .on("WithdrawFunds", WithdrawHandler::handle)
-            .on("ReserveFunds", ReserveHandler::handle)
-            .on("ReleaseFunds", ReleaseHandler::handle);
+        return new CommandRouter<PlayerState>("player", StateBuilder::fromEventBook)
+            .on("RegisterPlayer", RegisterPlayer.class, RegisterHandler::handle)
+            .on("DepositFunds", DepositFunds.class, DepositHandler::handle)
+            .on("WithdrawFunds", WithdrawFunds.class, WithdrawHandler::handle)
+            .on("ReserveFunds", ReserveFunds.class, ReserveHandler::handle)
+            .on("ReleaseFunds", ReleaseFunds.class, ReleaseHandler::handle);
     }
     // docs:end:command_router
 }

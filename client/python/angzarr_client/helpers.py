@@ -240,9 +240,17 @@ def type_name_from_url(type_url_str: str) -> str:
     return type_url_str
 
 
-def type_url_matches(type_url_str: str, suffix: str) -> bool:
-    """Check if a type URL ends with the given suffix."""
-    return type_url_str.endswith(suffix)
+def type_url_matches(type_url_str: str, type_name: str) -> bool:
+    """Check if a type URL matches the given fully qualified type name.
+
+    Args:
+        type_url_str: Full type URL (e.g., "type.googleapis.com/examples.CardsDealt")
+        type_name: Fully qualified type name (e.g., "examples.CardsDealt")
+
+    Returns:
+        True if type_url equals TYPE_URL_PREFIX + type_name
+    """
+    return type_url_str == TYPE_URL_PREFIX + type_name
 
 
 # Timestamp helpers

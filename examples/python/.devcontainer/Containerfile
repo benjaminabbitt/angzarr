@@ -1,7 +1,8 @@
-FROM mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+# Python examples devcontainer
+# Uses custom base image from ghcr.io/angzarr
 
-# Install just
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+ARG PYTHON_IMAGE=ghcr.io/angzarr/angzarr-python:latest
+FROM ${PYTHON_IMAGE}
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

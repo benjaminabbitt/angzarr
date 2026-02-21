@@ -1,8 +1,8 @@
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Angzarr;
 using Angzarr.Client;
-using Angzarr.Proto.Angzarr;
-using Angzarr.Proto.Examples;
+using Angzarr.Examples;
 
 namespace Angzarr.Examples.Table.SagaHand;
 

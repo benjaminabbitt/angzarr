@@ -38,6 +38,7 @@ Documentation = "https://github.com/benjaminabbitt/angzarr/tree/main/client/pyth
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-bdd>=7.0.0",
     "pytest-cov>=4.1.0",
     "mutmut>=2.5.0",
     "sqlalchemy>=2.0.0",

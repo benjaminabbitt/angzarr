@@ -21,7 +21,7 @@ sys.path.insert(0, str(root / "player" / "agg" / "handlers"))
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
 
 from handlers.state import PlayerState, build_state

@@ -19,6 +19,18 @@ pip install angzarr-client
 
 ## Client Usage
 
+### Contracts
+
+```gherkin file=client/features/aggregate_client.feature start=docs:start:aggregate_client_contract end=docs:end:aggregate_client_contract
+```
+
+> Source: [`aggregate_client.feature`](../features/aggregate_client.feature)
+
+```gherkin file=client/features/query_client.feature start=docs:start:query_client_contract end=docs:end:query_client_contract
+```
+
+> Source: [`query_client.feature`](../features/query_client.feature)
+
 ```python
 from angzarr_client import DomainClient
 
@@ -159,6 +171,13 @@ def test_deposit_increases_bankroll():
 
 ## Error Handling
 
+### Contract
+
+```gherkin file=client/features/error_handling.feature start=docs:start:error_handling_contract end=docs:end:error_handling_contract
+```
+
+> Source: [`error_handling.feature`](../features/error_handling.feature)
+
 ```python
 from angzarr_client.errors import GRPCError, ConnectionError, ClientError
 
@@ -229,4 +248,4 @@ client.close()
 
 ## License
 
-AGPL-3.0 - See [LICENSE](LICENSE) for details.
+AGPL-3.0-only

@@ -1,7 +1,9 @@
+# docs:start:snapshot_contract
 Feature: SnapshotStore interface
   Snapshots are a performance optimization for aggregates with long histories.
   Loading an aggregate means: fetch snapshot + replay events after snapshot.
   Without snapshots, every load replays from event 0.
+# docs:end:snapshot_contract
 
   Background:
     Given a SnapshotStore backend
@@ -10,6 +12,7 @@ Feature: SnapshotStore interface
   # Snapshot Retrieval
   # ==========================================================================
 
+  # docs:start:snapshot_retrieval
   Scenario: New aggregates have no snapshot - full replay required
     Given an aggregate "player" with no snapshot
     When I get the snapshot for the aggregate
@@ -26,6 +29,7 @@ Feature: SnapshotStore interface
     When I put a snapshot at sequence 5 with data "serialized-player-state"
     And I get the snapshot for the aggregate
     Then the snapshot should have data "serialized-player-state"
+  # docs:end:snapshot_retrieval
 
   # ==========================================================================
   # Snapshot Updates
@@ -106,3 +110,58 @@ Feature: SnapshotStore interface
     Then the snapshot should have sequence 10
     When I get the snapshot for domain "table"
     Then the snapshot should have sequence 20
+
+  # ==========================================================================
+  # Edition Support
+  # ==========================================================================
+
+  Scenario: Snapshots in different editions are isolated
+    Given an aggregate "player" with root "player-001" in edition "main"
+    When I put a snapshot at sequence 10 in edition "main"
+    And I put a snapshot at sequence 5 in edition "speculative"
+    Then the snapshot for "player-001" in edition "main" should have sequence 10
+    And the snapshot for "player-001" in edition "speculative" should have sequence 5
+
+  Scenario: Deleting edition snapshot does not affect main timeline
+    Given an aggregate "player" with root "player-001" in edition "main"
+    When I put a snapshot at sequence 10 in edition "main"
+    And I put a snapshot at sequence 5 in edition "speculative"
+    And I delete the snapshot for "player-001" in edition "speculative"
+    Then the snapshot for "player-001" in edition "main" should have sequence 10
+    And the snapshot for "player-001" in edition "speculative" should not exist
+
+  # ==========================================================================
+  # Retention Modes
+  # ==========================================================================
+
+  Scenario: Transient snapshots are cleaned up by newer snapshots
+    Given an aggregate "player" with no snapshot
+    When I put a transient snapshot at sequence 5
+    And I put a transient snapshot at sequence 10
+    Then only the latest snapshot should exist
+    And the snapshot should have sequence 10
+
+  Scenario: Default retention stores latest snapshot
+    Given an aggregate "player" with no snapshot
+    When I put a default retention snapshot at sequence 5
+    And I put a default retention snapshot at sequence 10
+    When I get the snapshot for the aggregate
+    Then the snapshot should have sequence 10
+
+  Scenario: Persist retention stores snapshot for milestone tracking
+    Given an aggregate "player" with no snapshot
+    When I put a persist snapshot at sequence 5
+    When I get the snapshot for the aggregate
+    Then the snapshot should have sequence 5
+    And the snapshot retention should be PERSIST
+
+  # ==========================================================================
+  # Large State Support
+  # ==========================================================================
+
+  Scenario: Large snapshot state is preserved exactly
+    Given an aggregate "player" with no snapshot
+    When I put a snapshot at sequence 5 with 100KB of data
+    And I get the snapshot for the aggregate
+    Then the snapshot data should be 100KB
+    And the snapshot data should match the original

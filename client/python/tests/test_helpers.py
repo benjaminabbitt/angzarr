@@ -471,12 +471,12 @@ class TestTypeUrlHelpers:
         assert result == "MyMessage"
 
     def test_type_url_matches_true(self) -> None:
-        """type_url_matches returns True for matching suffix."""
-        assert type_url_matches("com.example.OrderCreated", "OrderCreated") is True
+        """type_url_matches returns True for exact match."""
+        assert type_url_matches("type.googleapis.com/com.example.OrderCreated", "com.example.OrderCreated") is True
 
     def test_type_url_matches_false(self) -> None:
-        """type_url_matches returns False for non-matching suffix."""
-        assert type_url_matches("com.example.OrderCreated", "OrderCanceled") is False
+        """type_url_matches returns False for non-matching type name."""
+        assert type_url_matches("type.googleapis.com/com.example.OrderCreated", "com.example.OrderCanceled") is False
 
 
 class TestTimestampHelpers:
@@ -537,7 +537,8 @@ class TestDecodeEvent:
         page = EventPage(sequence=1)
         page.event.Pack(cover)
 
-        result = decode_event(page, "Cover", Cover)
+        # Use full type name for exact matching
+        result = decode_event(page, "angzarr.Cover", Cover)
         assert result is not None
         assert result.domain == "test"
         assert result.correlation_id == "abc"

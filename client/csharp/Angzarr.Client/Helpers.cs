@@ -101,12 +101,17 @@ public static class Helpers
         return idx >= 0 ? typeUrl[(idx + 1)..] : typeUrl;
     }
 
+    private const string TypeUrlPrefix = "type.googleapis.com/";
+
     /// <summary>
-    /// Check if a type URL ends with the given suffix.
+    /// Check if a type URL matches the given fully qualified type name.
     /// </summary>
-    public static bool TypeUrlMatches(string typeUrl, string suffix)
+    /// <param name="typeUrl">Full type URL (e.g., "type.googleapis.com/examples.CardsDealt")</param>
+    /// <param name="typeName">Fully qualified type name (e.g., "examples.CardsDealt")</param>
+    /// <returns>true if typeUrl equals TypeUrlPrefix + typeName</returns>
+    public static bool TypeUrlMatches(string typeUrl, string typeName)
     {
-        return typeUrl.EndsWith(suffix, StringComparison.Ordinal);
+        return typeUrl == TypeUrlPrefix + typeName;
     }
 
     /// <summary>

@@ -92,6 +92,7 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/saga-web-product/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust/web-view/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/client/rust/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/client/rust/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/examples/rust/customer/target" />

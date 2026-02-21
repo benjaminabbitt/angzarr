@@ -1,16 +1,8 @@
-FROM mcr.microsoft.com/devcontainers/cpp:ubuntu-22.04
+# C++ client devcontainer
+# Uses custom base image from ghcr.io/angzarr
 
-# Install just
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
-
-# Install vcpkg dependencies (provides CMake config files)
-# vcpkg is already installed at /usr/local/vcpkg in the devcontainer image
-ENV VCPKG_ROOT=/usr/local/vcpkg
-ENV PATH="${VCPKG_ROOT}:${PATH}"
-RUN vcpkg install grpc protobuf abseil gtest && vcpkg integrate install
-
-# Set CMake toolchain file for vcpkg
-ENV CMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+ARG CPP_IMAGE=ghcr.io/angzarr/angzarr-cpp:latest
+FROM ${CPP_IMAGE}
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

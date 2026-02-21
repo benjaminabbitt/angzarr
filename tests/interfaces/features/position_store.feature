@@ -1,8 +1,10 @@
+# docs:start:position_contract
 Feature: PositionStore interface
   Handlers (projectors, sagas, process managers) must remember where they left
   off. The PositionStore records the last-processed sequence per handler, per
   aggregate. On restart, handlers resume from their checkpoint instead of
   reprocessing the entire event history.
+# docs:end:position_contract
 
   Background:
     Given a PositionStore backend

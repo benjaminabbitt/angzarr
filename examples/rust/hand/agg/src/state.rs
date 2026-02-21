@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use angzarr_client::proto::event_page::Payload;
 use angzarr_client::proto::examples::{
     ActionTaken, ActionType, BettingPhase, BettingRoundComplete, BlindPosted, Card, CardsDealt,
     CommunityCardsDealt, DrawCompleted, GameVariant, HandComplete, HandState as ProtoHandState,
@@ -274,17 +275,19 @@ fn new_hand_state() -> HandState {
 }
 
 /// StateRouter for fluent state reconstruction.
+///
+/// Type names are extracted via reflection using `prost::Name::full_name()`.
 static STATE_ROUTER: LazyLock<StateRouter<HandState>> = LazyLock::new(|| {
     StateRouter::with_factory(new_hand_state)
-        .on::<CardsDealt>("CardsDealt", apply_cards_dealt)
-        .on::<BlindPosted>("BlindPosted", apply_blind_posted)
-        .on::<ActionTaken>("ActionTaken", apply_action_taken)
-        .on::<BettingRoundComplete>("BettingRoundComplete", apply_betting_round_complete)
-        .on::<CommunityCardsDealt>("CommunityCardsDealt", apply_community_cards_dealt)
-        .on::<DrawCompleted>("DrawCompleted", apply_draw_completed)
-        .on::<ShowdownStarted>("ShowdownStarted", apply_showdown_started)
-        .on::<PotAwarded>("PotAwarded", apply_pot_awarded)
-        .on::<HandComplete>("HandComplete", apply_hand_complete)
+        .on::<CardsDealt>(apply_cards_dealt)
+        .on::<BlindPosted>(apply_blind_posted)
+        .on::<ActionTaken>(apply_action_taken)
+        .on::<BettingRoundComplete>(apply_betting_round_complete)
+        .on::<CommunityCardsDealt>(apply_community_cards_dealt)
+        .on::<DrawCompleted>(apply_draw_completed)
+        .on::<ShowdownStarted>(apply_showdown_started)
+        .on::<PotAwarded>(apply_pot_awarded)
+        .on::<HandComplete>(apply_hand_complete)
 });
 
 /// Rebuild hand state from event history.
@@ -296,7 +299,7 @@ pub fn rebuild_state(event_book: &EventBook) -> HandState {
                 let mut state = apply_snapshot(&proto_state);
                 // Apply events since snapshot
                 for page in &event_book.pages {
-                    if let Some(event) = &page.event {
+                    if let Some(Payload::Event(event)) = &page.payload {
                         STATE_ROUTER.apply_single(&mut state, event);
                     }
                 }
@@ -355,5 +358,95 @@ fn apply_snapshot(snapshot: &ProtoHandState) -> HandState {
         small_blind_position: snapshot.small_blind_position,
         big_blind_position: snapshot.big_blind_position,
         status: snapshot.status.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use angzarr_client::pack_event;
+    use angzarr_client::proto::event_page;
+
+    #[test]
+    fn test_community_cards_dealt_applies_correctly() {
+        // Create a CommunityCardsDealt event
+        let event = CommunityCardsDealt {
+            cards: vec![
+                Card { suit: 0, rank: 10 },
+                Card { suit: 1, rank: 11 },
+                Card { suit: 2, rank: 12 },
+            ],
+            phase: BettingPhase::Flop as i32,
+            all_community_cards: vec![
+                Card { suit: 0, rank: 10 },
+                Card { suit: 1, rank: 11 },
+                Card { suit: 2, rank: 12 },
+            ],
+            dealt_at: None,
+        };
+
+        let event_any = pack_event(&event, "examples.CommunityCardsDealt");
+
+        // Verify STATE_ROUTER applies the event correctly
+        let mut state = HandState::default();
+        STATE_ROUTER.apply_single(&mut state, &event_any);
+        assert_eq!(state.community_cards.len(), 3, "STATE_ROUTER apply failed");
+        assert_eq!(state.current_phase, BettingPhase::Flop, "phase not updated");
+    }
+
+    #[test]
+    fn test_rebuild_from_event_book() {
+        use angzarr_client::proto::{EventBook, EventPage, Cover, Uuid};
+
+        // Create CardsDealt event first
+        let cards_dealt = CardsDealt {
+            table_root: vec![1, 2, 3],
+            hand_number: 1,
+            game_variant: GameVariant::TexasHoldem as i32,
+            dealer_position: 0,
+            players: vec![],
+            player_cards: vec![],
+            remaining_deck: (0..52).map(|i| Card { suit: i / 13, rank: i % 13 }).collect(),
+            dealt_at: None,
+        };
+
+        // Create CommunityCardsDealt event
+        let community = CommunityCardsDealt {
+            cards: vec![Card { suit: 0, rank: 10 }],
+            phase: BettingPhase::Flop as i32,
+            all_community_cards: vec![Card { suit: 0, rank: 10 }],
+            dealt_at: None,
+        };
+
+        let event_book = EventBook {
+            cover: Some(Cover {
+                domain: "hand".to_string(),
+                root: Some(Uuid { value: vec![1, 2, 3] }),
+                ..Default::default()
+            }),
+            pages: vec![
+                EventPage {
+                    sequence: 0,
+                    payload: Some(event_page::Payload::Event(
+                        pack_event(&cards_dealt, "examples.CardsDealt")
+                    )),
+                    created_at: None,
+                },
+                EventPage {
+                    sequence: 1,
+                    payload: Some(event_page::Payload::Event(
+                        pack_event(&community, "examples.CommunityCardsDealt")
+                    )),
+                    created_at: None,
+                },
+            ],
+            snapshot: None,
+            next_sequence: 2,
+        };
+
+        let state = rebuild_state(&event_book);
+
+        assert_eq!(state.current_phase, BettingPhase::Flop, "phase should be Flop after community dealt");
+        assert_eq!(state.community_cards.len(), 1, "should have 1 community card");
     }
 }

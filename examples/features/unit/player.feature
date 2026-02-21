@@ -4,35 +4,35 @@
 # docs:start:feature_overview
 Feature: Player aggregate logic
   The Player aggregate manages a player's bankroll and table reservations.
-# docs:end:feature_overview
   It's the source of truth for how much money a player has and where it's allocated.
+# docs:end:feature_overview
 
-  Why this aggregate exists:
-  - Players can only sit at tables if they have funds to reserve
-  - Reserved funds are locked until the table session ends
-  - Withdrawals cannot touch reserved funds (preventing mid-game cashout)
-
-  What breaks if this is wrong:
-  - Players could buy into tables they can't afford
-  - Funds could be double-spent across multiple tables
-  - Players could withdraw chips currently in play
-
-  Patterns enabled by this aggregate:
-  - Two-phase reservation: ReserveFunds locks money, ReleaseFunds returns it. This
-    pattern applies anywhere resources must be held pending confirmation (e-commerce
-    inventory holds, ticket reservations, hotel bookings).
-  - Saga compensation: When JoinTable fails, FundsReserved must be undone via
-    FundsReleased. The player aggregate handles the Notification and compensates.
-  - Balance tracking with allocation: Available vs reserved funds. Same pattern
-    applies to inventory (available vs allocated), accounts (balance vs holds).
-
-  Why poker exercises these patterns well:
-  - Fund reservation is explicit: $500 reserved for Table-1 is clearly separate
-    from the $500 available balance - easy to verify in tests
-  - Compensation is visible: A rejected JoinTable must release exactly the reserved
-    amount - the math is obvious and testable
-  - Multiple concurrent reservations: A player at 3 tables has 3 separate holds,
-    exercising the allocation tracking thoroughly
+  # Why this aggregate exists:
+  # - Players can only sit at tables if they have funds to reserve
+  # - Reserved funds are locked until the table session ends
+  # - Withdrawals cannot touch reserved funds (preventing mid-game cashout)
+  #
+  # What breaks if this is wrong:
+  # - Players could buy into tables they can't afford
+  # - Funds could be double-spent across multiple tables
+  # - Players could withdraw chips currently in play
+  #
+  # Patterns enabled by this aggregate:
+  # - Two-phase reservation: ReserveFunds locks money, ReleaseFunds returns it. This
+  #   pattern applies anywhere resources must be held pending confirmation (e-commerce
+  #   inventory holds, ticket reservations, hotel bookings).
+  # - Saga compensation: When JoinTable fails, FundsReserved must be undone via
+  #   FundsReleased. The player aggregate handles the Notification and compensates.
+  # - Balance tracking with allocation: Available vs reserved funds. Same pattern
+  #   applies to inventory (available vs allocated), accounts (balance vs holds).
+  #
+  # Why poker exercises these patterns well:
+  # - Fund reservation is explicit: $500 reserved for Table-1 is clearly separate
+  #   from the $500 available balance - easy to verify in tests
+  # - Compensation is visible: A rejected JoinTable must release exactly the reserved
+  #   amount - the math is obvious and testable
+  # - Multiple concurrent reservations: A player at 3 tables has 3 separate holds,
+  #   exercising the allocation tracking thoroughly
 
   # ==========================================================================
   # Player Registration

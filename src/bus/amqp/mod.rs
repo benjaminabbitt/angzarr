@@ -336,12 +336,7 @@ impl AmqpEventBus {
 
                 // Call all handlers within the consume span
                 async {
-                    let handlers_guard = handlers.read().await;
-                    for handler in handlers_guard.iter() {
-                        if let Err(e) = handler.handle(Arc::clone(&book)).await {
-                            error!(error = %e, "Handler failed");
-                        }
-                    }
+                    crate::bus::dispatch_to_handlers(handlers, &book).await;
                 }
                 .instrument(consume_span)
                 .await;

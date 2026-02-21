@@ -24,6 +24,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let descriptor_path = out_dir.join("descriptor.bin");
 
+    // Enable prost::Name trait for type reflection
+    let mut prost_config = prost_build::Config::new();
+    prost_config.enable_type_names();
+
     tonic_build::configure()
         .file_descriptor_set_path(&descriptor_path)
         .build_server(true)
@@ -32,7 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".angzarr.BusinessResponse.result",
             "#[allow(clippy::large_enum_variant)]",
         )
-        .compile_protos(
+        .compile_protos_with_config(
+            prost_config,
             &[
                 "proto/angzarr/types.proto",
                 "proto/angzarr/aggregate.proto",

@@ -7,8 +7,13 @@ use crate::proto::{
     command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, MergeStrategy,
     Uuid as ProtoUuid,
 };
+use futures::future::BoxFuture;
 use prost_types::Any;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use uuid::Uuid;
+
+use crate::bus::{BusError, EventHandler};
 
 /// Create a `ProtoUuid` from a random v4 UUID.
 pub fn random_proto_uuid() -> ProtoUuid {
@@ -139,5 +144,58 @@ pub fn make_command_book_correlated(with_correlation: bool) -> CommandBook {
             merge_strategy: MergeStrategy::MergeCommutative as i32,
         }],
         saga_origin: None,
+    }
+}
+
+// ============================================================================
+// Test Handlers
+// ============================================================================
+
+/// A test handler that counts how many times it was called.
+///
+/// Useful for verifying event delivery in bus tests.
+///
+/// # Example
+/// ```ignore
+/// let handler = CountingHandler::new();
+/// let count = handler.count();
+/// bus.subscribe(Box::new(handler)).await?;
+/// // ... publish events ...
+/// assert_eq!(count.load(Ordering::SeqCst), expected_count);
+/// ```
+pub struct CountingHandler {
+    count: Arc<AtomicUsize>,
+}
+
+impl CountingHandler {
+    /// Create a new counting handler.
+    pub fn new() -> Self {
+        Self {
+            count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Get a clone of the counter for checking the count.
+    pub fn count(&self) -> Arc<AtomicUsize> {
+        self.count.clone()
+    }
+}
+
+impl Default for CountingHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EventHandler for CountingHandler {
+    fn handle(
+        &self,
+        _book: Arc<EventBook>,
+    ) -> BoxFuture<'static, std::result::Result<(), BusError>> {
+        let count = self.count.clone();
+        Box::pin(async move {
+            count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
     }
 }

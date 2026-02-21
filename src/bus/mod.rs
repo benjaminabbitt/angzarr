@@ -20,6 +20,7 @@ use crate::proto::{EventBook, Projection};
 #[cfg(feature = "amqp")]
 pub mod amqp;
 pub mod channel;
+mod dispatch;
 #[cfg(unix)]
 pub mod ipc;
 #[cfg(feature = "kafka")]
@@ -61,6 +62,11 @@ pub use outbox::{OutboxConfig, RecoveryTaskHandle, SqliteOutboxEventBus};
 pub use pubsub::{PubSubConfig, PubSubEventBus};
 #[cfg(feature = "sns-sqs")]
 pub use sns_sqs::{SnsSqsConfig, SnsSqsEventBus};
+
+// Dispatch utilities
+pub use dispatch::{
+    dispatch_to_handlers, dispatch_to_handlers_with_domain, process_message, DispatchResult,
+};
 
 // ============================================================================
 // Traits

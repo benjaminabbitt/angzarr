@@ -196,13 +196,13 @@ async fn main() {
     let router = ProcessManagerRouter::new("hand-flow", "hand-flow", rebuild_state)
         .subscribes("table")
         .subscribes("hand")
-        .prepare("HandStarted", prepare_hand_started)
-        .on("HandStarted", handle_hand_started)
-        .on("CardsDealt", handle_cards_dealt)
-        .on("BlindPosted", handle_blind_posted)
-        .on("ActionTaken", handle_action_taken)
-        .on("CommunityCardsDealt", handle_community_dealt)
-        .on("PotAwarded", handle_pot_awarded);
+        .prepare("examples.HandStarted", prepare_hand_started)
+        .on("examples.HandStarted", handle_hand_started)
+        .on("examples.CardsDealt", handle_cards_dealt)
+        .on("examples.BlindPosted", handle_blind_posted)
+        .on("examples.ActionTaken", handle_action_taken)
+        .on("examples.CommunityCardsDealt", handle_community_dealt)
+        .on("examples.PotAwarded", handle_pot_awarded);
 
     run_process_manager_server("hand-flow", 50091, router)
         .await

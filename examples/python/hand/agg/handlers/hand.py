@@ -7,7 +7,7 @@ from typing import Optional, Union, Tuple
 from angzarr_client import Aggregate, handles, now
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.examples import hand_pb2 as hand_proto
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 from .game_rules import get_game_rules
 

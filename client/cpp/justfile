@@ -8,7 +8,7 @@
 # 2. `justfile.container` - mounted over this file inside the container
 #
 # When running outside a devcontainer:
-#   - Builds/uses local devcontainer image with `just` pre-installed
+#   - Uses pre-built angzarr-cpp image from ghcr.io/angzarr
 #   - Podman mounts justfile.container as /workspace/client/cpp/justfile
 #
 # When running inside a devcontainer (DEVCONTAINER=true):
@@ -18,24 +18,20 @@
 set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
-IMAGE := "angzarr-client-cpp-dev"
-
-# Build the devcontainer image
-[private]
-_build-image:
-    podman build -t {{IMAGE}} -f "{{TOP}}/client/cpp/.devcontainer/Containerfile" "{{TOP}}/client/cpp/.devcontainer"
+IMAGE := "ghcr.io/angzarr/angzarr-cpp:latest"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
-_container +ARGS: _build-image
+_container +ARGS:
     #!/usr/bin/env bash
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just {{ARGS}}
     else
-        podman run --rm \
+        podman run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/client/cpp/justfile.container:/workspace/client/cpp/justfile:ro" \
             -w /workspace/client/cpp \
+            -e DEVCONTAINER=true \
             {{IMAGE}} just {{ARGS}}
     fi
 

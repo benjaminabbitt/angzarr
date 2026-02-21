@@ -275,8 +275,18 @@ impl EventBus for PubSubEventBus {
             if !subscription.exists(None).await.map_err(|e| {
                 BusError::Subscribe(format!("Failed to check subscription existence: {}", e))
             })? {
-                // Create subscription
+                // Create topic if needed before creating subscription
                 let topic = client.topic(&topic_name);
+                if !topic.exists(None).await.map_err(|e| {
+                    BusError::Subscribe(format!("Failed to check topic existence: {}", e))
+                })? {
+                    topic.create(None, None).await.map_err(|e| {
+                        BusError::Subscribe(format!("Failed to create topic {}: {}", topic_name, e))
+                    })?;
+                    info!(topic = %topic_name, "Created Pub/Sub topic");
+                }
+
+                // Create subscription
                 let sub_config = SubscriptionConfig::default();
 
                 subscription
@@ -345,26 +355,10 @@ impl EventBus for PubSubEventBus {
                                             domain = %domain);
 
                                         let book = Arc::new(book);
-                                        let handlers_ref = &handlers;
-                                        let book_ref = &book;
 
-                                        let success = async {
-                                            let handlers_guard = handlers_ref.read().await;
-                                            let mut ok = true;
-                                            for handler in handlers_guard.iter() {
-                                                if let Err(e) =
-                                                    handler.handle(Arc::clone(book_ref)).await
-                                                {
-                                                    error!(
-                                                        domain = %domain,
-                                                        error = %e,
-                                                        "Handler failed"
-                                                    );
-                                                    ok = false;
-                                                }
-                                            }
-                                            ok
-                                        }
+                                        let success = crate::bus::dispatch_to_handlers_with_domain(
+                                            &handlers, &book, domain,
+                                        )
                                         .instrument(consume_span)
                                         .await;
 

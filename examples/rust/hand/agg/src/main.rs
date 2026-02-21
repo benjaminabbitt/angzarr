@@ -14,13 +14,13 @@ async fn main() {
         .init();
 
     let router = CommandRouter::new("hand", state::rebuild_state)
-        .on("DealCards", handlers::handle_deal_cards)
-        .on("PostBlind", handlers::handle_post_blind)
-        .on("PlayerAction", handlers::handle_player_action)
-        .on("DealCommunityCards", handlers::handle_deal_community_cards)
-        .on("RequestDraw", handlers::handle_request_draw)
-        .on("RevealCards", handlers::handle_reveal_cards)
-        .on("AwardPot", handlers::handle_award_pot);
+        .on("examples.DealCards", handlers::handle_deal_cards)
+        .on("examples.PostBlind", handlers::handle_post_blind)
+        .on("examples.PlayerAction", handlers::handle_player_action)
+        .on("examples.DealCommunityCards", handlers::handle_deal_community_cards)
+        .on("examples.RequestDraw", handlers::handle_request_draw)
+        .on("examples.RevealCards", handlers::handle_reveal_cards)
+        .on("examples.AwardPot", handlers::handle_award_pot);
 
     run_aggregate_server("hand", 50003, router)
         .await

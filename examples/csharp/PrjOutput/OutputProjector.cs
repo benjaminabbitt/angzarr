@@ -62,7 +62,7 @@ public class OutputProjector
     {
         HandleEventBook(eventBook);
 
-        var seq = eventBook.Pages.LastOrDefault()?.Num ?? 0;
+        var seq = eventBook.Pages.LastOrDefault()?.Sequence ?? 0;
 
         return new Projection
         {

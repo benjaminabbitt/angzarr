@@ -54,7 +54,7 @@ public class PlayerSteps
         var any = Any.Pack(evt, "type.googleapis.com/");
         return new EventPage
         {
-            Num = (uint)seq,
+            Sequence = (uint)seq,
             Event = any
         };
     }

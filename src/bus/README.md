@@ -1,6 +1,20 @@
+---
+title: Event Bus
+sidebar_label: Event Bus
+---
+
 # Event Bus
 
 The EventBus decouples event producers from consumers. Aggregates don't know who's listening; handlers don't know where events originate. This loose coupling enables the reactive architecture that makes event sourcing powerful.
+
+## Contract
+
+The following specification defines the EventBus contract that all transport backends must satisfy:
+
+```gherkin file=tests/interfaces/features/event_bus.feature start=docs:start:bus_contract end=docs:end:bus_contract
+```
+
+> Source: [`event_bus.feature`](../../tests/interfaces/features/event_bus.feature)
 
 ## Why Pub/Sub
 
@@ -69,6 +83,39 @@ Events are wrapped in `Arc<EventBook>` during distribution. This enforces:
 - **Immutability**: Handlers can't modify events (mutations would affect other handlers)
 - **Zero-copy**: Multiple handlers share the same memory, no serialization between threads
 - **Lifetime safety**: The event lives until all handlers finish
+
+## Handler Dispatch Utilities
+
+The `dispatch` module provides common patterns for handler invocation, eliminating duplication across bus implementations:
+
+```rust
+use angzarr::bus::{dispatch_to_handlers, process_message, DispatchResult};
+
+// Dispatch an already-decoded EventBook to handlers
+let success = dispatch_to_handlers(&handlers, &book).await;
+if success {
+    message.ack().await;
+}
+
+// Or use process_message for the full decode → dispatch → result cycle
+match process_message(&payload, &handlers).await {
+    DispatchResult::Success => message.ack().await,
+    DispatchResult::HandlerFailed => message.nack().await,
+    DispatchResult::DecodeError => message.ack().await, // Don't retry malformed messages
+}
+```
+
+### DispatchResult
+
+The `DispatchResult` enum captures the three possible outcomes:
+
+| Variant | Meaning | Recommended Action |
+|---------|---------|-------------------|
+| `Success` | All handlers completed without error | Acknowledge message |
+| `HandlerFailed` | At least one handler returned an error | Nack for retry or send to DLQ |
+| `DecodeError` | Payload couldn't be decoded as EventBook | Acknowledge (retry won't help) |
+
+The `should_ack()` method returns `true` for `Success` and `DecodeError`—malformed messages should not be retried indefinitely.
 
 ## Choosing a Transport
 
@@ -225,7 +272,7 @@ This is the "claim check" pattern. The bus remains fast; storage handles bulk.
 
 ## Feature Specifications
 
-The contract each transport must satisfy:
+See the embedded contract above, or view the full specifications:
 
 - [EventBus](../../tests/interfaces/features/event_bus.feature) - Publish/subscribe, domain filtering, fan-out, payload integrity
 

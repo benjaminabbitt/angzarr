@@ -1,3 +1,4 @@
+# docs:start:bus_contract
 Feature: EventBus interface
   The EventBus distributes committed events to interested subscribers. After
   an aggregate persists events, the bus broadcasts them to sagas, projectors,
@@ -36,6 +37,7 @@ Feature: EventBus interface
   - Projector updates: all domain events flow to the output-projector for display
   - Compensation notification: when commands fail, rejections flow back through
     the bus to notify source aggregates
+# docs:end:bus_contract
 
   Background:
     Given an EventBus backend
@@ -46,6 +48,7 @@ Feature: EventBus interface
   # The core operation: aggregates publish after persisting, handlers subscribe
   # to react. This is how the system becomes reactive rather than procedural.
 
+  # docs:start:bus_pubsub
   Scenario: Events flow from aggregates to handlers
     # A player aggregate commits PlayerRegistered to the EventStore.
     # The player-projector, subscribed to "player", receives it to update read models.
@@ -80,6 +83,7 @@ Feature: EventBus interface
     And a projector subscribed to hand
     When events with sequences 0, 1, 2, 3, 4 are published in order
     Then the projector receives them in sequence order: 0, 1, 2, 3, 4
+  # docs:end:bus_pubsub
 
   # ==========================================================================
   # Domain Filtering
@@ -111,6 +115,7 @@ Feature: EventBus interface
   # One event may trigger multiple reactions. The bus copies events to all
   # interested subscribers - they don't compete for a single copy.
 
+  # docs:start:bus_fanout
   Scenario: Multiple handlers independently process the same event
     # HandComplete triggers:
     # - output-projector: updates the game display
@@ -124,6 +129,7 @@ Feature: EventBus interface
     When a HandComplete event is published
     Then all three handlers receive the event
     And each processes it independently (no competition for the message)
+  # docs:end:bus_fanout
 
   # ==========================================================================
   # Event Data Integrity

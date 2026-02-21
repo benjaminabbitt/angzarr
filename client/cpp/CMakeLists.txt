@@ -149,7 +149,43 @@ target_link_libraries(error_introspection_test
         GTest::gtest_main
 )
 
+add_executable(router_test
+    tests/router_test.cpp
+)
+
+target_link_libraries(router_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
+add_executable(compensation_test
+    tests/compensation_test.cpp
+)
+
+target_link_libraries(compensation_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
+add_executable(state_building_test
+    tests/state_building_test.cpp
+)
+
+target_link_libraries(state_building_test
+    PRIVATE
+        angzarr-client
+        GTest::gtest
+        GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(rejection_handler_response_test)
 gtest_discover_tests(builder_test)
 gtest_discover_tests(error_introspection_test)
+gtest_discover_tests(router_test)
+gtest_discover_tests(compensation_test)
+gtest_discover_tests(state_building_test)

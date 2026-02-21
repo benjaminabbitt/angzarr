@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 import random
 
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 
 @dataclass

@@ -63,12 +63,16 @@ inline std::string type_name_from_url(const std::string& type_url) {
     return pos != std::string::npos ? type_url.substr(pos + 1) : type_url;
 }
 
+constexpr const char* TYPE_URL_PREFIX = "type.googleapis.com/";
+
 /**
- * Check if a type URL ends with the given suffix.
+ * Check if a type URL matches the given fully qualified type name.
+ * @param type_url Full type URL (e.g., "type.googleapis.com/examples.CardsDealt")
+ * @param type_name Fully qualified type name (e.g., "examples.CardsDealt")
+ * @return true if type_url equals TYPE_URL_PREFIX + type_name
  */
-inline bool type_url_matches(const std::string& type_url, const std::string& suffix) {
-    if (suffix.size() > type_url.size()) return false;
-    return type_url.compare(type_url.size() - suffix.size(), suffix.size(), suffix) == 0;
+inline bool type_url_matches(const std::string& type_url, const std::string& type_name) {
+    return type_url == std::string(TYPE_URL_PREFIX) + type_name;
 }
 
 /**

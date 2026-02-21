@@ -1,13 +1,8 @@
-FROM mcr.microsoft.com/devcontainers/rust:1-bookworm
+# Rust examples devcontainer
+# Uses custom base image from ghcr.io/angzarr
 
-# Install build tools and just
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    clang \
-    mold \
-    protobuf-compiler \
-    libprotobuf-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+ARG RUST_IMAGE=ghcr.io/angzarr/angzarr-rust:latest
+FROM ${RUST_IMAGE}
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

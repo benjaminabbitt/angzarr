@@ -7,30 +7,30 @@ default:
     @just --list
 
 proto:
-    pip install uv && cd /workspace/proto && buf generate --template buf.gen.python.yaml && \
+    cd /workspace/proto && buf generate --template buf.gen.python.yaml && \
     find /workspace/client/python/angzarr_client/proto -name "*.py" -exec sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \; && \
     find /workspace/client/python/angzarr_client/proto/examples -name "*.py" -exec sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
 
 test:
-    pip install uv && uv run --extra dev pytest tests/
+    uv run --extra dev pytest tests/
 
 coverage:
-    pip install uv && uv run --extra dev pytest tests/ --cov=angzarr_client --cov-report=term-missing --cov-report=html
+    uv run --extra dev pytest tests/ --cov=angzarr_client --cov-report=term-missing --cov-report=html
 
 mutate:
-    pip install uv && uv run --extra dev mutmut run
+    uv run --extra dev mutmut run
 
 mutate-results:
-    pip install uv && uv run --extra dev mutmut results
+    uv run --extra dev mutmut results
 
 mutate-html:
-    pip install uv && uv run --extra dev mutmut html
+    uv run --extra dev mutmut html
 
 build:
-    pip install uv && uv run --with build python -m build
+    uv run --with build python -m build
 
 publish-test: build
-    pip install uv && uv run --with twine twine upload --repository testpypi dist/*
+    uv run --with twine twine upload --repository testpypi dist/*
 
 publish: build
-    pip install uv && uv run --with twine twine upload dist/*
+    uv run --with twine twine upload dist/*

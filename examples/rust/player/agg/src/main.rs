@@ -14,12 +14,12 @@ async fn main() {
 
     // docs:start:command_router
     let router = CommandRouter::new("player", state::rebuild_state)
-        .on("RegisterPlayer", handlers::handle_register_player)
-        .on("DepositFunds", handlers::handle_deposit_funds)
-        .on("WithdrawFunds", handlers::handle_withdraw_funds)
-        .on("ReserveFunds", handlers::handle_reserve_funds)
-        .on("ReleaseFunds", handlers::handle_release_funds)
-        .on_rejected("table", "JoinTable", handlers::handle_join_rejected);
+        .on("examples.RegisterPlayer", handlers::handle_register_player)
+        .on("examples.DepositFunds", handlers::handle_deposit_funds)
+        .on("examples.WithdrawFunds", handlers::handle_withdraw_funds)
+        .on("examples.ReserveFunds", handlers::handle_reserve_funds)
+        .on("examples.ReleaseFunds", handlers::handle_release_funds)
+        .on_rejected("table", "examples.JoinTable", handlers::handle_join_rejected);
     // docs:end:command_router
 
     run_aggregate_server("player", 50001, router)

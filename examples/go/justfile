@@ -24,7 +24,7 @@ IMAGE := "angzarr-go-dev"
 # Build the devcontainer image
 [private]
 _build-image:
-    podman build -t {{IMAGE}} -f "{{TOP}}/examples/go/.devcontainer/Containerfile" "{{TOP}}/examples/go/.devcontainer"
+    podman build --network=host -t {{IMAGE}} -f "{{TOP}}/examples/go/.devcontainer/Containerfile" "{{TOP}}/examples/go/.devcontainer"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
@@ -33,7 +33,7 @@ _container +ARGS: _build-image
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just {{ARGS}}
     else
-        podman run --rm \
+        podman run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/examples/go/justfile.container:/workspace/examples/go/justfile:ro" \
             -w /workspace/examples/go \

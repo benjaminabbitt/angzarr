@@ -33,6 +33,7 @@ public class CommandBuilder
     private uint _sequence = 0;
     private string? _typeUrl;
     private byte[]? _payload;
+    private Angzarr.MergeStrategy _mergeStrategy = Angzarr.MergeStrategy.MergeCommutative;
     private Exception? _error;
 
     /// <summary>
@@ -84,6 +85,19 @@ public class CommandBuilder
     public CommandBuilder WithSequence(int seq)
     {
         _sequence = (uint)seq;
+        return this;
+    }
+
+    /// <summary>
+    /// Set the merge strategy for conflict resolution.
+    ///
+    /// <para>Defaults to COMMUTATIVE. Use STRICT for strong consistency.</para>
+    /// </summary>
+    /// <param name="strategy">The merge strategy</param>
+    /// <returns>This builder for chaining</returns>
+    public CommandBuilder WithMergeStrategy(Angzarr.MergeStrategy strategy)
+    {
+        _mergeStrategy = strategy;
         return this;
     }
 
@@ -145,7 +159,8 @@ public class CommandBuilder
         var page = new Angzarr.CommandPage
         {
             Sequence = _sequence,
-            Command = commandAny
+            Command = commandAny,
+            MergeStrategy = _mergeStrategy
         };
 
         var book = new Angzarr.CommandBook { Cover = cover };

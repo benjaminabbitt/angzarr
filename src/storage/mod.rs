@@ -41,6 +41,9 @@ pub mod redis;
 pub mod schema;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+// Unified SQL implementations (shared by postgres and sqlite)
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
+pub mod sql;
 
 // Re-exports
 #[cfg(feature = "bigtable")]

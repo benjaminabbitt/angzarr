@@ -4,9 +4,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import dev.angzarr.client.StateRouter;
-import dev.angzarr.proto.examples.CardsDealt;
-import dev.angzarr.proto.examples.FundsDeposited;
-import dev.angzarr.proto.examples.PlayerRegistered;
+import dev.angzarr.examples.CardsDealt;
+import dev.angzarr.examples.FundsDeposited;
+import dev.angzarr.examples.PlayerRegistered;
 
 /**
  * StateRouter pattern for documentation.

@@ -13,8 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="../../../client/rust/proto/angzarr/*.proto" GrpcServices="Both" ProtoRoot="../../../client/rust/proto" />
-    <Protobuf Include="../../../client/rust/proto/examples/*.proto" GrpcServices="Both" ProtoRoot="../../../client/rust/proto" />
+    <Protobuf Include="../../../proto/angzarr/*.proto" GrpcServices="Both" ProtoRoot="../../../proto" />
+    <Protobuf Include="../../../proto/examples/*.proto" GrpcServices="Both" ProtoRoot="../../../proto" />
   </ItemGroup>
 
 </Project>

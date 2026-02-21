@@ -20,7 +20,7 @@ public class TestContext
         var any = Any.Pack(evt, "type.googleapis.com/");
         HandEventBook.Pages.Add(new EventPage
         {
-            Num = (uint)HandEventBook.Pages.Count,
+            Sequence = (uint)HandEventBook.Pages.Count,
             Event = any
         });
     }

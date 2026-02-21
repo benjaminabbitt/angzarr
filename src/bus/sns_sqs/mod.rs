@@ -127,15 +127,17 @@ impl SnsSqsConfig {
     /// Uses dashes instead of dots for AWS compatibility.
     pub fn topic_for_domain(&self, domain: &str) -> String {
         let sanitized = domain.replace('.', "-");
-        format!("{}-events-{}", self.topic_prefix, sanitized)
+        // Use .fifo suffix for FIFO topic support (message_group_id ordering)
+        format!("{}-events-{}.fifo", self.topic_prefix, sanitized)
     }
 
     /// Build the SQS queue name for a domain.
     pub fn queue_for_domain(&self, domain: &str) -> String {
         let sanitized = domain.replace('.', "-");
+        // Use .fifo suffix for FIFO queue support (matches FIFO topics)
         match &self.subscription_id {
-            Some(sub_id) => format!("{}-{}-{}", self.topic_prefix, sub_id, sanitized),
-            None => format!("{}-{}", self.topic_prefix, sanitized),
+            Some(sub_id) => format!("{}-{}-{}.fifo", self.topic_prefix, sub_id, sanitized),
+            None => format!("{}-{}.fifo", self.topic_prefix, sanitized),
         }
     }
 }
@@ -203,11 +205,14 @@ impl SnsSqsEventBus {
             }
         }
 
-        // Create topic (idempotent - returns existing if already exists)
+        // Create FIFO topic (idempotent - returns existing if already exists)
+        // FIFO topics enable message_group_id for aggregate root ordering
         let result = self
             .sns
             .create_topic()
             .name(&topic_name)
+            .attributes("FifoTopic", "true")
+            .attributes("ContentBasedDeduplication", "false") // We provide explicit dedup IDs
             .send()
             .await
             .map_err(|e| BusError::Publish(format!("Failed to create SNS topic: {}", e)))?;
@@ -239,7 +244,8 @@ impl SnsSqsEventBus {
             }
         }
 
-        // Create queue (idempotent - returns existing if already exists)
+        // Create FIFO queue (idempotent - returns existing if already exists)
+        // FIFO queues maintain message ordering by message_group_id
         let result = self
             .sqs
             .create_queue()
@@ -247,6 +253,10 @@ impl SnsSqsEventBus {
             .attributes(
                 aws_sdk_sqs::types::QueueAttributeName::VisibilityTimeout,
                 self.config.visibility_timeout_secs.to_string(),
+            )
+            .attributes(
+                aws_sdk_sqs::types::QueueAttributeName::FifoQueue,
+                "true".to_string(),
             )
             .send()
             .await
@@ -507,25 +517,12 @@ impl EventBus for SnsSqsEventBus {
                                         sqs_extract_trace_context(message, &consume_span);
 
                                         let book = Arc::new(book);
-                                        let handlers_ref = &handlers;
-                                        let book_ref = &book;
 
                                         let success = async {
-                                            let handlers_guard = handlers_ref.read().await;
-                                            let mut ok = true;
-                                            for handler in handlers_guard.iter() {
-                                                if let Err(e) =
-                                                    handler.handle(Arc::clone(book_ref)).await
-                                                {
-                                                    error!(
-                                                        domain = %msg_domain,
-                                                        error = %e,
-                                                        "Handler failed"
-                                                    );
-                                                    ok = false;
-                                                }
-                                            }
-                                            ok
+                                            crate::bus::dispatch_to_handlers_with_domain(
+                                                &handlers, &book, msg_domain,
+                                            )
+                                            .await
                                         }
                                         .instrument(consume_span)
                                         .await;
@@ -655,25 +652,33 @@ mod tests {
     #[test]
     fn test_topic_for_domain() {
         let config = SnsSqsConfig::publisher();
-        assert_eq!(config.topic_for_domain("orders"), "angzarr-events-orders");
+        // FIFO topics require .fifo suffix
+        assert_eq!(
+            config.topic_for_domain("orders"),
+            "angzarr-events-orders.fifo"
+        );
         assert_eq!(
             config.topic_for_domain("game.player0"),
-            "angzarr-events-game-player0"
+            "angzarr-events-game-player0.fifo"
         );
     }
 
     #[test]
     fn test_topic_with_custom_prefix() {
         let config = SnsSqsConfig::publisher().with_topic_prefix("myapp");
-        assert_eq!(config.topic_for_domain("orders"), "myapp-events-orders");
+        assert_eq!(
+            config.topic_for_domain("orders"),
+            "myapp-events-orders.fifo"
+        );
     }
 
     #[test]
     fn test_queue_for_domain() {
         let config = SnsSqsConfig::subscriber("saga-fulfillment", vec![]);
+        // FIFO queues require .fifo suffix (to match FIFO topics)
         assert_eq!(
             config.queue_for_domain("orders"),
-            "angzarr-saga-fulfillment-orders"
+            "angzarr-saga-fulfillment-orders.fifo"
         );
     }
 

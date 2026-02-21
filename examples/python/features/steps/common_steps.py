@@ -8,7 +8,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 # Use regex matchers for flexibility
 use_step_matcher("re")

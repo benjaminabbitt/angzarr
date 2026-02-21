@@ -17,7 +17,7 @@ from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player_proto
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +317,6 @@ class Player(Aggregate[_PlayerState]):
         return player_proto.FundsReleased(
             amount=poker_types.Currency(amount=reserved_amount, currency_code="CHIPS"),
             table_root=table_root,
-            reason=f"Join failed: {ctx.rejection_reason}",
             new_available_balance=poker_types.Currency(
                 amount=new_available, currency_code="CHIPS"
             ),

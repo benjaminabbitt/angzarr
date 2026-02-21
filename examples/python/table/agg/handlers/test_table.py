@@ -4,7 +4,7 @@ import pytest
 
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 from .table import Table
 

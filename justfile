@@ -22,6 +22,7 @@ IMAGE := "angzarr-dev"
 
 mod client "client/justfile"
 mod examples "examples/justfile"
+mod images "build/images/justfile"
 mod tofu "deploy/tofu/justfile"
 
 # Build the devcontainer image
@@ -154,6 +155,56 @@ test-bus-all:
     just _container-dind test-bus-kafka
     just _container-dind test-bus-pubsub
     just _container-dind test-bus-sns-sqs
+
+# Run all local tests (no running K8s cluster required)
+# Includes: core unit tests, interface tests, client libraries, examples unit tests
+test-local:
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Core Unit Tests ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just test
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Interface Contract Tests (SQLite) ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just test-interfaces
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Client Library Tests ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just client test-all
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Examples Unit Tests ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just examples test-unit
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== All Local Tests Complete ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+
+# Run all local tests including testcontainers (requires podman socket)
+# Includes everything in test-local plus PostgreSQL, Redis, and bus tests
+test-local-full: test-local
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Interface Tests (PostgreSQL - testcontainers) ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just test-interfaces-postgres
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Interface Tests (Redis - testcontainers) ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just test-interfaces-redis
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== Bus Tests (testcontainers) ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
+    just test-bus-all
+    @echo ""
+    @echo "═══════════════════════════════════════════════════════════════════"
+    @echo "=== All Local Tests (Full) Complete ==="
+    @echo "═══════════════════════════════════════════════════════════════════"
 
 # Clean build artifacts
 clean:

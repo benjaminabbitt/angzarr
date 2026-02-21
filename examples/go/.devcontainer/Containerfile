@@ -1,7 +1,8 @@
-FROM mcr.microsoft.com/devcontainers/go:1-1.23-bookworm
+# Go examples devcontainer
+# Uses custom base image from ghcr.io/angzarr
 
-# Install just
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+ARG GO_IMAGE=ghcr.io/angzarr/angzarr-go:latest
+FROM ${GO_IMAGE}
 
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true

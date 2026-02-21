@@ -300,15 +300,8 @@ impl KafkaEventBus {
                                 kafka_extract_trace_context(&message, &consume_span);
 
                                 let book = Arc::new(book);
-                                let handlers_ref = &handlers;
-                                let book_ref = &book;
                                 async {
-                                    let handlers_guard = handlers_ref.read().await;
-                                    for handler in handlers_guard.iter() {
-                                        if let Err(e) = handler.handle(Arc::clone(book_ref)).await {
-                                            error!(error = %e, "Handler failed");
-                                        }
-                                    }
+                                    super::dispatch_to_handlers(&handlers, &book).await;
                                 }
                                 .instrument(consume_span)
                                 .await;

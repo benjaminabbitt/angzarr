@@ -1,0 +1,205 @@
+name: Build Base Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'build/images/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'build/images/**'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild all images'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: angzarr/angzarr
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Detect which images need rebuilding
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.filter.outputs.base }}
+      rust: ${{ steps.filter.outputs.rust }}
+      go: ${{ steps.filter.outputs.go }}
+      python: ${{ steps.filter.outputs.python }}
+      java: ${{ steps.filter.outputs.java }}
+      csharp: ${{ steps.filter.outputs.csharp }}
+      cpp: ${{ steps.filter.outputs.cpp }}
+      any_language: ${{ steps.filter.outputs.rust == 'true' || steps.filter.outputs.go == 'true' || steps.filter.outputs.python == 'true' || steps.filter.outputs.java == 'true' || steps.filter.outputs.csharp == 'true' || steps.filter.outputs.cpp == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            base:
+              - 'build/images/base/**'
+            rust:
+              - 'build/images/rust/**'
+            go:
+              - 'build/images/go/**'
+            python:
+              - 'build/images/python/**'
+            java:
+              - 'build/images/java/**'
+            csharp:
+              - 'build/images/csharp/**'
+            cpp:
+              - 'build/images/cpp/**'
+
+  # Build base image first (all others depend on it)
+  build-base:
+    needs: changes
+    if: needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v5
+        with:
+          context: build/images/base
+          file: build/images/base/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
+
+  # Build language-specific images (depend on base)
+  build-language:
+    needs: [changes, build-base]
+    # Run if: (base changed and succeeded) OR (language changed and base didn't change) OR force rebuild
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (
+        needs.changes.outputs.any_language == 'true' ||
+        needs.changes.outputs.base == 'true' ||
+        github.event.inputs.force_rebuild == 'true'
+      )
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: rust
+            changed: ${{ needs.changes.outputs.rust }}
+          - name: go
+            changed: ${{ needs.changes.outputs.go }}
+          - name: python
+            changed: ${{ needs.changes.outputs.python }}
+          - name: java
+            changed: ${{ needs.changes.outputs.java }}
+          - name: csharp
+            changed: ${{ needs.changes.outputs.csharp }}
+          - name: cpp
+            changed: ${{ needs.changes.outputs.cpp }}
+    steps:
+      - name: Skip if not changed
+        if: |
+          matrix.changed != 'true' &&
+          needs.changes.outputs.base != 'true' &&
+          github.event.inputs.force_rebuild != 'true'
+        run: |
+          echo "Skipping ${{ matrix.name }} - no changes detected"
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: |
+          matrix.changed == 'true' ||
+          needs.changes.outputs.base == 'true' ||
+          github.event.inputs.force_rebuild == 'true'
+
+      - name: Set up QEMU
+        if: |
+          matrix.changed == 'true' ||
+          needs.changes.outputs.base == 'true' ||
+          github.event.inputs.force_rebuild == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: |
+          matrix.changed == 'true' ||
+          needs.changes.outputs.base == 'true' ||
+          github.event.inputs.force_rebuild == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: |
+          matrix.changed == 'true' ||
+          needs.changes.outputs.base == 'true' ||
+          github.event.inputs.force_rebuild == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        if: |
+          matrix.changed == 'true' ||
+          needs.changes.outputs.base == 'true' ||
+          github.event.inputs.force_rebuild == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push ${{ matrix.name }} image
+        if: |
+          matrix.changed == 'true' ||
+          needs.changes.outputs.base == 'true' ||
+          github.event.inputs.force_rebuild == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: build/images/${{ matrix.name }}
+          file: build/images/${{ matrix.name }}/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

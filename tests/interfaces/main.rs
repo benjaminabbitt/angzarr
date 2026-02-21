@@ -21,9 +21,16 @@ mod backend;
 mod steps;
 
 use cucumber::World;
+use steps::editions::EditionWorld;
+use steps::event_query_service::EventQueryServiceWorld;
 use steps::event_store::EventStoreWorld;
+use steps::event_stream_service::EventStreamServiceWorld;
+use steps::notification::NotificationWorld;
+use steps::payload_offloading::PayloadWorld;
 use steps::position_store::PositionStoreWorld;
 use steps::snapshot_store::SnapshotStoreWorld;
+use steps::sync_modes::SyncModeWorld;
+use steps::upcasting::UpcasterWorld;
 
 #[tokio::main]
 async fn main() {
@@ -46,5 +53,54 @@ async fn main() {
     PositionStoreWorld::cucumber()
         .fail_on_skipped()
         .run("tests/interfaces/features/position_store.feature")
+        .await;
+
+    // Run EventQueryService tests
+    println!("\n=== Running EventQueryService Interface Tests ===\n");
+    EventQueryServiceWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/event_query_service.feature")
+        .await;
+
+    // Run EventStreamService tests
+    println!("\n=== Running EventStreamService Interface Tests ===\n");
+    EventStreamServiceWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/event_stream_service.feature")
+        .await;
+
+    // Run SyncMode tests
+    println!("\n=== Running SyncMode Interface Tests ===\n");
+    SyncModeWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/sync_modes.feature")
+        .await;
+
+    // Run Edition tests
+    println!("\n=== Running Edition Interface Tests ===\n");
+    EditionWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/editions.feature")
+        .await;
+
+    // Run Upcasting tests
+    println!("\n=== Running Upcasting Interface Tests ===\n");
+    UpcasterWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/upcasting.feature")
+        .await;
+
+    // Run Payload Offloading tests
+    println!("\n=== Running Payload Offloading Interface Tests ===\n");
+    PayloadWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/payload_offloading.feature")
+        .await;
+
+    // Run Notification tests
+    println!("\n=== Running Notification Interface Tests ===\n");
+    NotificationWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/notification.feature")
         .await;
 }

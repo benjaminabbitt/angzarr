@@ -1,11 +1,30 @@
 ## General Rules
-I am not willing to trade speed for correctness.  Correctness is the priority.  Second priority is reducing human reviewer cognitive loading.  
+I am not willing to trade speed for correctness.  Correctness is the priority.  Second priority is reducing human reviewer cognitive loading.
+
+### Fix What You Find
+This is a prototype. Claude is unreliable at finishing work. If you encounter broken things while working (broken links, failing tests, incomplete implementations), don't declare "not my problem" and move on. Instead:
+1. Note the issue
+2. Check with me about whether to fix it now or later
+3. Propose a fix if appropriate
+
+Leave the codebase better than you found it.
 
 Keep the standalone mode as close to distributed mode as possible, excepting that it runs as a few, limited processes rather than on k8s and uses different bus transports and storage.  The implementations only differ where they absolutely must.  Similarly, keep distributed mode as close to standalone mode as possible.
 
-Focus on readability.  The primary costs are developer and AI time.  Optimizing for understanding, minimizing foot-guns, and reducing cognitive load is the primary goal.  Secondary is performance, but that's a secondary goal that can be figured out and optimized for in the future.
+Focus on readability and maintainability. The primary costs are developer and AI time. Priorities:
+1. Understanding — minimize cognitive load, avoid foot-guns
+2. Architectural correctness — make decisions that reduce future churn and enable ease of change
+3. Performance — optimize later when bottlenecks are measured
 
-Plan *everything* and run it by me prior to executing.  If it requires any meaningful decisions, ask. 
+Plan *everything* and run it by me prior to executing.  If it requires any meaningful decisions, ask.
+
+### Definition of Done
+**Nothing is "done" until tests prove it works.** Writing code without runnable tests is incomplete work. This means:
+- Implementation code requires corresponding test code
+- Tests must actually execute (not just exist as specifications)
+- For Gherkin features: step definitions must be implemented and the test runner must pass
+- "Tests pass" means running the actual test command, not just writing test files
+- Mark todo items as "completed" only after tests run green 
 
 ### Enums
 ese enum names, not integer representations, in code
@@ -116,6 +135,100 @@ Test **business behavior** through the full stack. Written in Gherkin, describin
 - Two execution modes via `Backend` trait abstraction:
   - **Standalone** (default): in-process `RuntimeBuilder` with SQLite
   - **Direct** (`ANGZARR_TEST_MODE=direct`): remote gRPC against deployed per-domain aggregate coordinators
+
+### Gherkin Authoring
+
+Gherkin is business-readable specification, not test code. Describe **what** the system does and **why** it matters—never **how**.
+
+**The litmus test:** "Will this wording change if the implementation changes?" If yes, abstract to behavior.
+
+#### Declarative Over Imperative
+
+```gherkin
+# Wrong: UI choreography
+When I click "Add to Cart"
+And I click "Checkout"
+And I fill in "Card Number" with "4111..."
+
+# Right: Business intent
+When I purchase the items in my cart
+```
+
+#### Given-When-Then Semantics
+
+| Keyword | Purpose | Example |
+|---------|---------|---------|
+| Given | Establish context (past state) | `Given a player with $500 in their bankroll` |
+| When | Single triggering action | `When the player reserves $200 for the table` |
+| Then | Verify business outcomes | `Then the player's available balance is $300` |
+
+#### Business Language
+
+| Technical (Avoid) | Business (Prefer) |
+|-------------------|-------------------|
+| API returns 201 | Order is confirmed |
+| Database has record | Customer exists |
+| Event is published | Notification is sent |
+| State machine transitions | Hand progresses to showdown |
+
+Exception: Framework tests (event stores, buses) use technical vocabulary—it's their domain.
+
+#### One Scenario, One Behavior
+
+Each scenario tests exactly one thing. Multiple When-Then pairs = multiple scenarios.
+
+#### Feature Preambles
+
+Open features with context explaining:
+- **What** this capability enables
+- **Why** it matters to the business
+- **What breaks** if it doesn't work
+
+```gherkin
+Feature: Player fund reservation
+
+  Players must reserve funds when joining a table. This ensures:
+  - Players can cover their buy-in before sitting down
+  - Funds are locked and cannot be double-spent across tables
+
+  Without fund reservation, players could join multiple tables with
+  the same bankroll, creating settlement disputes.
+```
+
+#### Error Cases Are First-Class
+
+Don't just test happy paths. Business rules live in constraints:
+
+```gherkin
+Scenario: Cannot reserve more than available balance
+  Given Alice has $500 available
+  When Alice tries to reserve $600
+  Then the request fails with "insufficient funds"
+  And Alice's available balance remains $500
+```
+
+#### Anti-Patterns
+
+- **UI steps**: "click", "fill in", "navigate to"
+- **Technical assertions**: "database has row", "event published"
+- **Conditional logic**: "if valid then X else Y" (use separate scenarios)
+- **Vague outcomes**: "works correctly" (be specific)
+- **Hardcoded test data**: Use meaningful descriptions
+
+#### Cross-Domain Scenarios
+
+Show saga/PM translations explicitly without exposing implementation:
+
+```gherkin
+Scenario: Order completion triggers fulfillment
+  Given an order with items:
+    | sku    | quantity |
+    | WIDGET | 3        |
+  When the order is completed
+  Then a fulfillment request is created with:
+    | sku    | quantity |
+    | WIDGET | 3        |
+```
 
 ## Proto
 When using proto generated code, use extension traits to add functionality to the generated code.  Do not use free functions or explicit wrappers.

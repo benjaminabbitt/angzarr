@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use angzarr::proto::{event_page, EventPage};
+use angzarr::proto::{event_page, EventBook, EventPage};
 use angzarr::storage::EventStore;
 use cucumber::{given, then, when, World};
 use prost_types::Any;
@@ -18,18 +18,22 @@ pub struct EventStoreWorld {
     context: Option<StorageContext>,
     current_domain: String,
     current_root: Uuid,
+    current_edition: String,
     aggregates: HashMap<String, AggregateState>,
     last_events: Vec<EventPage>,
+    last_event_books: Vec<EventBook>,
     last_next_seq: u32,
     last_domains: Vec<String>,
     last_roots: Vec<Uuid>,
     last_error: Option<String>,
+    stored_timestamp: Option<prost_types::Timestamp>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct AggregateState {
     domain: String,
     root: Uuid,
+    edition: String,
     event_count: u32,
 }
 
@@ -40,12 +44,15 @@ impl EventStoreWorld {
             context: None,
             current_domain: String::new(),
             current_root: Uuid::nil(),
+            current_edition: "test".to_string(),
             aggregates: HashMap::new(),
             last_events: Vec::new(),
+            last_event_books: Vec::new(),
             last_next_seq: 0,
             last_domains: Vec::new(),
             last_roots: Vec::new(),
             last_error: None,
+            stored_timestamp: None,
         }
     }
 
@@ -70,6 +77,10 @@ impl EventStoreWorld {
 
     fn agg_key(&self, domain: &str, root: Uuid) -> String {
         format!("{}:{}", domain, root)
+    }
+
+    fn agg_key_with_edition(&self, domain: &str, edition: &str, root: Uuid) -> String {
+        format!("{}:{}:{}", domain, edition, root)
     }
 }
 
@@ -96,6 +107,7 @@ async fn given_aggregate_no_events(world: &mut EventStoreWorld, domain: String) 
         AggregateState {
             domain,
             root,
+            edition: "test".to_string(),
             event_count: 0,
         },
     );
@@ -128,6 +140,7 @@ async fn given_aggregate_with_events(world: &mut EventStoreWorld, domain: String
         AggregateState {
             domain,
             root,
+            edition: "test".to_string(),
             event_count: count,
         },
     );
@@ -168,6 +181,7 @@ async fn given_multiple_aggregates(
             AggregateState {
                 domain: domain.clone(),
                 root,
+                edition: "test".to_string(),
                 event_count,
             },
         );
@@ -205,6 +219,7 @@ async fn given_aggregate_with_root(
         AggregateState {
             domain,
             root,
+            edition: "test".to_string(),
             event_count: count,
         },
     );
@@ -555,4 +570,347 @@ fn then_next_sequence(world: &mut EventStoreWorld, expected: u32) {
         "Expected next sequence {}, got {}",
         expected, world.last_next_seq
     );
+}
+
+// ==========================================================================
+// Edition Support Steps
+// ==========================================================================
+
+#[given(expr = "an aggregate {string} with root {string} in edition {string}")]
+async fn given_aggregate_with_root_edition(
+    world: &mut EventStoreWorld,
+    domain: String,
+    root_name: String,
+    edition: String,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+    world.current_domain = domain.clone();
+    world.current_root = root;
+    world.current_edition = edition.clone();
+
+    // Add an initial event so the aggregate exists in storage
+    let page = world.make_event_page(0, "type.test/InitEvent", vec![0]);
+    world
+        .store()
+        .add(&domain, &edition, root, vec![page], "test-correlation")
+        .await
+        .expect("Failed to add initial event");
+
+    let key = world.agg_key_with_edition(&domain, &edition, root);
+    world.aggregates.insert(
+        key,
+        AggregateState {
+            domain,
+            root,
+            edition,
+            event_count: 1,
+        },
+    );
+}
+
+#[given(expr = "an aggregate {string} with root {string} in edition {string} with {int} events")]
+async fn given_aggregate_with_root_edition_with_events(
+    world: &mut EventStoreWorld,
+    domain: String,
+    root_name: String,
+    edition: String,
+    count: u32,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+    world.current_domain = domain.clone();
+    world.current_root = root;
+    world.current_edition = edition.clone();
+
+    let mut pages = Vec::new();
+    for seq in 0..count {
+        pages.push(world.make_event_page(seq, &format!("type.test/Event{}", seq), vec![seq as u8]));
+    }
+
+    if !pages.is_empty() {
+        world
+            .store()
+            .add(&domain, &edition, root, pages, "test-correlation")
+            .await
+            .expect("Failed to add events");
+    }
+
+    let key = world.agg_key_with_edition(&domain, &edition, root);
+    world.aggregates.insert(
+        key,
+        AggregateState {
+            domain,
+            root,
+            edition,
+            event_count: count,
+        },
+    );
+}
+
+#[when(expr = "I add {int} events to {string} in edition {string}")]
+async fn when_add_events_to_root_edition(
+    world: &mut EventStoreWorld,
+    count: u32,
+    root_name: String,
+    edition: String,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+    let key = world.agg_key_with_edition(&world.current_domain, &edition, root);
+
+    let state = world
+        .aggregates
+        .get(&key)
+        .cloned()
+        .unwrap_or(AggregateState {
+            domain: world.current_domain.clone(),
+            root,
+            edition: edition.clone(),
+            event_count: 0,
+        });
+
+    let start_seq = state.event_count;
+    let mut pages = Vec::new();
+
+    for i in 0..count {
+        let seq = start_seq + i;
+        pages.push(world.make_event_page(seq, &format!("type.test/Event{}", seq), vec![seq as u8]));
+    }
+
+    if !pages.is_empty() {
+        world
+            .store()
+            .add(
+                &world.current_domain,
+                &edition,
+                root,
+                pages,
+                "test-correlation",
+            )
+            .await
+            .expect("Failed to add events");
+    }
+
+    let entry = world.aggregates.entry(key).or_insert(AggregateState {
+        domain: world.current_domain.clone(),
+        root,
+        edition: edition.clone(),
+        event_count: 0,
+    });
+    entry.event_count += count;
+}
+
+#[then(expr = "{string} in edition {string} should have {int} events")]
+async fn then_root_in_edition_has_events(
+    world: &mut EventStoreWorld,
+    root_name: String,
+    edition: String,
+    count: u32,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+
+    let events = world
+        .store()
+        .get(&world.current_domain, &edition, root)
+        .await
+        .expect("Failed to get events");
+
+    assert_eq!(
+        events.len() as u32,
+        count,
+        "Expected {} events in edition {}, got {}",
+        count,
+        edition,
+        events.len()
+    );
+}
+
+#[then(expr = "the next sequence for {string} in edition {string} should be {int}")]
+async fn then_next_seq_for_root_edition(
+    world: &mut EventStoreWorld,
+    root_name: String,
+    edition: String,
+    expected: u32,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+
+    let next_seq = world
+        .store()
+        .get_next_sequence(&world.current_domain, &edition, root)
+        .await
+        .expect("Failed to get next sequence");
+
+    assert_eq!(
+        next_seq, expected,
+        "Expected next sequence {} in edition {}, got {}",
+        expected, edition, next_seq
+    );
+}
+
+#[when(expr = "I list roots for domain {string} in edition {string}")]
+async fn when_list_roots_in_edition(world: &mut EventStoreWorld, domain: String, edition: String) {
+    world.last_roots = world
+        .store()
+        .list_roots(&domain, &edition)
+        .await
+        .expect("Failed to list roots");
+}
+
+// ==========================================================================
+// Correlation ID Steps
+// ==========================================================================
+
+#[given(expr = "an aggregate {string} with root {string} and correlation ID {string}")]
+async fn given_aggregate_with_correlation(
+    world: &mut EventStoreWorld,
+    domain: String,
+    root_name: String,
+    correlation_id: String,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+    world.current_domain = domain.clone();
+    world.current_root = root;
+
+    // Add one event with the correlation ID
+    let page = world.make_event_page(0, "type.test/Event0", vec![0]);
+    world
+        .store()
+        .add(&domain, "test", root, vec![page], &correlation_id)
+        .await
+        .expect("Failed to add event");
+
+    let key = world.agg_key(&domain, root);
+    world.aggregates.insert(
+        key,
+        AggregateState {
+            domain,
+            root,
+            edition: "test".to_string(),
+            event_count: 1,
+        },
+    );
+}
+
+#[when(expr = "I query events by correlation ID {string}")]
+async fn when_query_by_correlation(world: &mut EventStoreWorld, correlation_id: String) {
+    world.last_event_books = world
+        .store()
+        .get_by_correlation(&correlation_id)
+        .await
+        .expect("Failed to query by correlation ID");
+}
+
+#[then(expr = "I should receive events from {int} aggregate")]
+#[then(expr = "I should receive events from {int} aggregates")]
+fn then_receive_from_aggregates(world: &mut EventStoreWorld, count: u32) {
+    assert_eq!(
+        world.last_event_books.len() as u32,
+        count,
+        "Expected {} aggregates, got {}",
+        count,
+        world.last_event_books.len()
+    );
+}
+
+#[given(expr = "an aggregate {string} with root {string} and no events")]
+async fn given_aggregate_with_root_no_events(
+    world: &mut EventStoreWorld,
+    domain: String,
+    root_name: String,
+) {
+    let root = Uuid::new_v5(&Uuid::NAMESPACE_OID, root_name.as_bytes());
+    world.current_domain = domain.clone();
+    world.current_root = root;
+
+    let key = world.agg_key(&domain, root);
+    world.aggregates.insert(
+        key,
+        AggregateState {
+            domain,
+            root,
+            edition: "test".to_string(),
+            event_count: 0,
+        },
+    );
+}
+
+#[when(expr = "I add an event with correlation ID {string}")]
+async fn when_add_event_with_correlation(world: &mut EventStoreWorld, correlation_id: String) {
+    let key = world.agg_key(&world.current_domain, world.current_root);
+    let state = world
+        .aggregates
+        .get(&key)
+        .expect("Aggregate not found")
+        .clone();
+
+    let page = world.make_event_page(state.event_count, "type.test/Event", vec![0]);
+    world
+        .store()
+        .add(
+            &world.current_domain,
+            "test",
+            world.current_root,
+            vec![page],
+            &correlation_id,
+        )
+        .await
+        .expect("Failed to add event");
+
+    let state = world.aggregates.get_mut(&key).unwrap();
+    state.event_count += 1;
+}
+
+// ==========================================================================
+// Timestamp Preservation Steps
+// ==========================================================================
+
+#[when("I add an event with a known timestamp")]
+async fn when_add_event_with_known_timestamp(world: &mut EventStoreWorld) {
+    let key = world.agg_key(&world.current_domain, world.current_root);
+    let state = world
+        .aggregates
+        .get(&key)
+        .expect("Aggregate not found")
+        .clone();
+
+    let timestamp = prost_types::Timestamp::from(std::time::SystemTime::now());
+    world.stored_timestamp = Some(timestamp.clone());
+
+    let page = EventPage {
+        sequence: state.event_count,
+        created_at: Some(timestamp),
+        payload: Some(event_page::Payload::Event(Any {
+            type_url: "type.test/TimestampEvent".to_string(),
+            value: vec![0],
+        })),
+    };
+
+    world
+        .store()
+        .add(
+            &world.current_domain,
+            "test",
+            world.current_root,
+            vec![page],
+            "test-correlation",
+        )
+        .await
+        .expect("Failed to add event");
+
+    let state = world.aggregates.get_mut(&key).unwrap();
+    state.event_count += 1;
+}
+
+#[then("the first event timestamp should match the stored timestamp")]
+fn then_timestamp_matches(world: &mut EventStoreWorld) {
+    let event = world.last_events.first().expect("No events found");
+    let event_ts = event.created_at.as_ref().expect("No timestamp on event");
+    let stored_ts = world
+        .stored_timestamp
+        .as_ref()
+        .expect("No stored timestamp");
+
+    assert_eq!(
+        event_ts.seconds, stored_ts.seconds,
+        "Timestamps should match (seconds)"
+    );
+    // Note: Some stores may not preserve nanosecond precision
 }

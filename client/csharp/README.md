@@ -27,6 +27,13 @@ Or add to your `.csproj`:
 
 ### Sending Commands
 
+#### Contract
+
+```gherkin file=client/features/aggregate_client.feature start=docs:start:aggregate_client_contract end=docs:end:aggregate_client_contract
+```
+
+> Source: [`aggregate_client.feature`](../features/aggregate_client.feature)
+
 ```csharp
 using Angzarr.Client;
 
@@ -45,6 +52,13 @@ Console.WriteLine($"Created order: {rootId}");
 ```
 
 ### Querying Events
+
+#### Contract
+
+```gherkin file=client/features/query_client.feature start=docs:start:query_client_contract end=docs:end:query_client_contract
+```
+
+> Source: [`query_client.feature`](../features/query_client.feature)
 
 ```csharp
 using Angzarr.Client;
@@ -90,6 +104,13 @@ var events = client.QueryEvents("orders", rootId)
 ```
 
 ### Error Handling
+
+#### Contract
+
+```gherkin file=client/features/error_handling.feature start=docs:start:error_handling_contract end=docs:end:error_handling_contract
+```
+
+> Source: [`error_handling.feature`](../features/error_handling.feature)
 
 ```csharp
 using Angzarr.Client;

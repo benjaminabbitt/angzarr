@@ -284,9 +284,10 @@ func TypeNameFromURL(typeURL string) string {
 	return typeURL
 }
 
-// TypeURLMatches checks if a type URL ends with the given suffix.
-func TypeURLMatches(typeURL, suffix string) bool {
-	return strings.HasSuffix(typeURL, suffix)
+// TypeURLMatches checks if a type URL matches the given fully qualified type name.
+// typeName should be fully qualified (e.g., "examples.CardsDealt").
+func TypeURLMatches(typeURL, typeName string) bool {
+	return typeURL == TypeURLPrefix+typeName
 }
 
 // Timestamp helpers

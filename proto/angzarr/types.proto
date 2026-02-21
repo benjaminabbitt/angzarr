@@ -112,7 +112,7 @@ message EventPage {
 }
 // docs:end:event_page
 
-// docs:start:snapshot
+// docs:start:aggregate_snapshot
 // Snapshot of aggregate state at a given sequence number.
 // State must be a protobuf Message to serialize into Any.
 message Snapshot {
@@ -120,7 +120,7 @@ message Snapshot {
   google.protobuf.Any state = 3;
   SnapshotRetention retention = 4; // Controls cleanup behavior
 }
-// docs:end:snapshot
+// docs:end:aggregate_snapshot
 
 // docs:start:event_book
 message EventBook {

@@ -25,6 +25,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         format!("{}/examples/ai_sidecar.proto", proto_root),
     ];
 
+    // Enable prost::Name trait for type reflection
+    let mut prost_config = prost_build::Config::new();
+    prost_config.enable_type_names();
+
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
@@ -32,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".angzarr.BusinessResponse.result",
             "#[allow(clippy::large_enum_variant)]",
         )
-        .compile_protos(&protos, &[proto_root])?;
+        .compile_protos_with_config(prost_config, &protos, &[proto_root])?;
 
     Ok(())
 }

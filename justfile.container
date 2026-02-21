@@ -52,12 +52,14 @@ test-bus-kafka:
     cargo test --test bus_kafka --features kafka
 
 # Run GCP Pub/Sub bus tests (requires podman socket)
+# Uses --test-threads=1 because tests share PUBSUB_EMULATOR_HOST env var
 test-bus-pubsub:
-    cargo test --test bus_pubsub --features pubsub
+    cargo test --test bus_pubsub --features pubsub -- --test-threads=1
 
 # Run AWS SNS/SQS bus tests (requires podman socket)
+# Uses --test-threads=1 because tests start LocalStack containers with port bindings
 test-bus-sns-sqs:
-    cargo test --test bus_sns_sqs --features sns-sqs
+    cargo test --test bus_sns_sqs --features sns-sqs -- --test-threads=1
 
 # Run all bus tests
 test-bus-all: test-bus-amqp test-bus-kafka test-bus-pubsub test-bus-sns-sqs

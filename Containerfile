@@ -8,17 +8,18 @@
 # Release uses musl static target + distroless runtime (smallest images)
 #
 # Multi-arch release: podman build --platform linux/amd64,linux/arm64 --target angzarr-aggregate ...
+#
+# Base images from ghcr.io/angzarr (see build/images/)
+
+ARG RUST_IMAGE=ghcr.io/angzarr/angzarr-rust:latest
 
 # =============================================================================
 # Dev builder - native glibc (fast compilation)
 # Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
 # =============================================================================
-FROM docker.io/library/rust:1.92-bookworm AS builder-dev-deps
+FROM ${RUST_IMAGE} AS builder-dev-deps
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    protobuf-compiler \
-    libprotobuf-dev \
-    && rm -rf /var/lib/apt/lists/*
+# protoc and libs already in base image
 
 WORKDIR /app
 
@@ -91,6 +92,7 @@ RUN protoc --descriptor_set_out=/tmp/descriptors.pb --include_imports \
 # =============================================================================
 # Release builder - musl static, multi-arch (small images, all features)
 # Two-stage build: deps layer (cached) + source layer (rebuilt on changes)
+# For release, we still use Alpine for musl static linking
 # =============================================================================
 FROM docker.io/library/rust:1.92-alpine AS builder-release-deps
 

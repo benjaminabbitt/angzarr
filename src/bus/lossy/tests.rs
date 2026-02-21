@@ -1,21 +1,9 @@
 use super::*;
 use crate::bus::MockEventBus;
-use crate::proto::{Cover, Uuid as ProtoUuid};
-use uuid::Uuid;
+use crate::test_utils::make_event_book;
 
-fn make_event_book(domain: &str) -> Arc<EventBook> {
-    Arc::new(EventBook {
-        cover: Some(Cover {
-            domain: domain.to_string(),
-            root: Some(ProtoUuid {
-                value: Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: String::new(),
-            edition: None,
-        }),
-        pages: vec![],
-        snapshot: None,
-    })
+fn make_test_event_book(domain: &str) -> Arc<EventBook> {
+    Arc::new(make_event_book(domain, vec![]))
 }
 
 #[test]
@@ -54,7 +42,7 @@ async fn test_passthrough_publishes_all() {
     let lossy = LossyEventBus::passthrough(inner);
 
     for _ in 0..10 {
-        lossy.publish(make_event_book("orders")).await.unwrap();
+        lossy.publish(make_test_event_book("orders")).await.unwrap();
     }
 
     let (total, dropped, passed) = lossy.stats().snapshot();
@@ -69,7 +57,7 @@ async fn test_drop_all_drops_everything() {
     let lossy = LossyEventBus::new(inner, LossyConfig::drop_all());
 
     for _ in 0..10 {
-        lossy.publish(make_event_book("orders")).await.unwrap();
+        lossy.publish(make_test_event_book("orders")).await.unwrap();
     }
 
     let (total, dropped, passed) = lossy.stats().snapshot();
@@ -85,7 +73,7 @@ async fn test_partial_drop_rate() {
 
     // Publish many messages to get statistical significance
     for _ in 0..1000 {
-        lossy.publish(make_event_book("orders")).await.unwrap();
+        lossy.publish(make_test_event_book("orders")).await.unwrap();
     }
 
     let (total, dropped, passed) = lossy.stats().snapshot();
@@ -107,7 +95,7 @@ async fn test_stats_reset() {
     let lossy = LossyEventBus::new(inner, LossyConfig::with_drop_rate(0.5).with_logging(false));
 
     for _ in 0..10 {
-        lossy.publish(make_event_book("orders")).await.unwrap();
+        lossy.publish(make_test_event_book("orders")).await.unwrap();
     }
 
     let (total, _, _) = lossy.stats().snapshot();
@@ -140,11 +128,11 @@ async fn test_runtime_rate_change() {
     let mut lossy = LossyEventBus::passthrough(inner);
 
     // Initially pass-through
-    lossy.publish(make_event_book("orders")).await.unwrap();
+    lossy.publish(make_test_event_book("orders")).await.unwrap();
     assert_eq!(lossy.stats().snapshot().2, 1); // passed = 1
 
     // Change to drop-all
     lossy.set_drop_rate(1.0);
-    lossy.publish(make_event_book("orders")).await.unwrap();
+    lossy.publish(make_test_event_book("orders")).await.unwrap();
     assert_eq!(lossy.stats().snapshot().1, 1); // dropped = 1
 }

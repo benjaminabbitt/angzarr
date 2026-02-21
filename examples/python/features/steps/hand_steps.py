@@ -15,7 +15,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import player_pb2 as player
-from angzarr_client.proto.examples import types_pb2 as poker_types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
 
 from hand.agg.handlers import Hand, get_game_rules

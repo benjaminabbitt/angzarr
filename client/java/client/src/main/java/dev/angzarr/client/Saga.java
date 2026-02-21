@@ -189,4 +189,11 @@ public abstract class Saga {
         }
         return List.of();
     }
+
+    /**
+     * Calculate next sequence number from an EventBook.
+     */
+    public static int nextSequence(EventBook eventBook) {
+        return Helpers.nextSequence(eventBook);
+    }
 }

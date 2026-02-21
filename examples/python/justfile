@@ -24,7 +24,7 @@ IMAGE := "angzarr-python-dev"
 # Build the devcontainer image
 [private]
 _build-image:
-    podman build -t {{IMAGE}} -f "{{TOP}}/examples/python/.devcontainer/Containerfile" "{{TOP}}/examples/python/.devcontainer"
+    podman build --network=host -t {{IMAGE}} -f "{{TOP}}/examples/python/.devcontainer/Containerfile" "{{TOP}}/examples/python/.devcontainer"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
@@ -33,7 +33,7 @@ _container +ARGS: _build-image
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just {{ARGS}}
     else
-        podman run --rm \
+        podman run --rm --network=host \
             -v "{{TOP}}:/workspace:Z" \
             -v "{{TOP}}/examples/python/justfile.container:/workspace/examples/python/justfile:ro" \
             -w /workspace/examples/python \

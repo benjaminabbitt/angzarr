@@ -14,11 +14,11 @@ async fn main() {
         .init();
 
     let router = CommandRouter::new("table", state::rebuild_state)
-        .on("CreateTable", handlers::handle_create_table)
-        .on("JoinTable", handlers::handle_join_table)
-        .on("LeaveTable", handlers::handle_leave_table)
-        .on("StartHand", handlers::handle_start_hand)
-        .on("EndHand", handlers::handle_end_hand);
+        .on("examples.CreateTable", handlers::handle_create_table)
+        .on("examples.JoinTable", handlers::handle_join_table)
+        .on("examples.LeaveTable", handlers::handle_leave_table)
+        .on("examples.StartHand", handlers::handle_start_hand)
+        .on("examples.EndHand", handlers::handle_end_hand);
 
     run_aggregate_server("table", 50002, router)
         .await

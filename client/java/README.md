@@ -33,6 +33,13 @@ implementation 'dev.angzarr:angzarr-client:0.1.0'
 
 ### Sending Commands
 
+#### Contract
+
+```gherkin file=client/features/aggregate_client.feature start=docs:start:aggregate_client_contract end=docs:end:aggregate_client_contract
+```
+
+> Source: [`aggregate_client.feature`](../features/aggregate_client.feature)
+
 ```java
 import dev.angzarr.client.DomainClient;
 import dev.angzarr.CommandResponse;
@@ -58,6 +65,13 @@ public class Example {
 ```
 
 ### Querying Events
+
+#### Contract
+
+```gherkin file=client/features/query_client.feature start=docs:start:query_client_contract end=docs:end:query_client_contract
+```
+
+> Source: [`query_client.feature`](../features/query_client.feature)
 
 ```java
 import dev.angzarr.client.DomainClient;
@@ -109,6 +123,13 @@ EventBook events = client.query("orders", rootId)
 ```
 
 ### Error Handling
+
+#### Contract
+
+```gherkin file=client/features/error_handling.feature start=docs:start:error_handling_contract end=docs:end:error_handling_contract
+```
+
+> Source: [`error_handling.feature`](../features/error_handling.feature)
 
 ```java
 import dev.angzarr.client.Errors.*;

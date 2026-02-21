@@ -21,19 +21,8 @@ import java.util.List;
  */
 public class TableHandSaga extends Saga {
 
-    @Override
-    public String getName() {
-        return "saga-table-hand";
-    }
-
-    @Override
-    public String getInputDomain() {
-        return "table";
-    }
-
-    @Override
-    public String getOutputDomain() {
-        return "hand";
+    public TableHandSaga() {
+        super("saga-table-hand", "table", "hand");
     }
 
     @Prepares(HandStarted.class)

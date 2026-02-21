@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use angzarr_client::proto::event_page::Payload;
 use angzarr_client::proto::examples::{
     ChipsAdded, GameVariant, HandEnded, HandStarted, PlayerJoined, PlayerLeft, PlayerSatIn,
     PlayerSatOut, TableCreated, TableState as ProtoTableState,
@@ -159,16 +160,18 @@ fn apply_chips_added(state: &mut TableState, event: ChipsAdded) {
 }
 
 /// StateRouter for fluent state reconstruction.
+///
+/// Type names are extracted via reflection using `prost::Name::full_name()`.
 static STATE_ROUTER: LazyLock<StateRouter<TableState>> = LazyLock::new(|| {
     StateRouter::new()
-        .on::<TableCreated>("TableCreated", apply_table_created)
-        .on::<PlayerJoined>("PlayerJoined", apply_player_joined)
-        .on::<PlayerLeft>("PlayerLeft", apply_player_left)
-        .on::<PlayerSatOut>("PlayerSatOut", apply_player_sat_out)
-        .on::<PlayerSatIn>("PlayerSatIn", apply_player_sat_in)
-        .on::<HandStarted>("HandStarted", apply_hand_started)
-        .on::<HandEnded>("HandEnded", apply_hand_ended)
-        .on::<ChipsAdded>("ChipsAdded", apply_chips_added)
+        .on::<TableCreated>(apply_table_created)
+        .on::<PlayerJoined>(apply_player_joined)
+        .on::<PlayerLeft>(apply_player_left)
+        .on::<PlayerSatOut>(apply_player_sat_out)
+        .on::<PlayerSatIn>(apply_player_sat_in)
+        .on::<HandStarted>(apply_hand_started)
+        .on::<HandEnded>(apply_hand_ended)
+        .on::<ChipsAdded>(apply_chips_added)
 });
 
 /// Rebuild table state from event history.
@@ -180,7 +183,7 @@ pub fn rebuild_state(event_book: &EventBook) -> TableState {
                 let mut state = apply_snapshot(&proto_state);
                 // Apply events since snapshot
                 for page in &event_book.pages {
-                    if let Some(event) = &page.event {
+                    if let Some(Payload::Event(event)) = &page.payload {
                         STATE_ROUTER.apply_single(&mut state, event);
                     }
                 }

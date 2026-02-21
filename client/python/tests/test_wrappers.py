@@ -355,7 +355,8 @@ class TestEventPageW:
         proto.event.Pack(cover)
         wrapper = EventPageW(proto)
 
-        result = wrapper.decode_event("Cover", Cover)
+        # Use full type name for exact matching
+        result = wrapper.decode_event("angzarr.Cover", Cover)
         assert result is not None
         assert result.domain == "test"
         assert result.correlation_id == "abc"

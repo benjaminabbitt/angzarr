@@ -1,9 +1,8 @@
 //! SQLite implementations of storage interfaces.
 
 mod event_store;
-mod position_store;
-mod snapshot_store;
 
 pub use event_store::SqliteEventStore;
-pub use position_store::SqlitePositionStore;
-pub use snapshot_store::SqliteSnapshotStore;
+
+// Position and Snapshot stores use the unified SQL implementation
+pub use super::sql::sqlite::{SqlitePositionStore, SqliteSnapshotStore};

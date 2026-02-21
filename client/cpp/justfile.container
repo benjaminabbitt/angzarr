@@ -1,22 +1,20 @@
 # C++ client library - container version
 # This file is mounted as 'justfile' inside the container
+# Uses system packages for gRPC/protobuf (not vcpkg)
 
 set shell := ["bash", "-c"]
-
-# Use vcpkg toolchain file
-CMAKE_ARGS := "-DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
 
 default:
     @just --list
 
 proto:
-    cd /workspace/client/cpp && cmake -B build {{CMAKE_ARGS}} && cmake --build build --target angzarr-client
+    cd /workspace/client/cpp && cmake -B build && cmake --build build --target angzarr-client
 
 configure:
-    cd /workspace/client/cpp && cmake -B build {{CMAKE_ARGS}} -DCMAKE_BUILD_TYPE=Release
+    cd /workspace/client/cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release
 
 build:
-    cd /workspace/client/cpp && cmake -B build {{CMAKE_ARGS}} && cmake --build build
+    cd /workspace/client/cpp && cmake -B build && cmake --build build
 
 test:
-    cd /workspace/client/cpp && cmake -B build {{CMAKE_ARGS}} && cmake --build build && ctest --test-dir build --output-on-failure
+    cd /workspace/client/cpp && cmake -B build && cmake --build build && ctest --test-dir build --output-on-failure
