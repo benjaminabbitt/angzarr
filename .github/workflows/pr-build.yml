@@ -140,7 +140,7 @@ jobs:
         with:
           context: .
           file: ./Containerfile
-          target: angzarr-aggregate
+          target: angzarr-aggregate-dev
           platforms: linux/amd64
           push: false
           cache-from: type=gha
