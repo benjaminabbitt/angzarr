@@ -39,6 +39,8 @@ async fn start_localstack() -> (testcontainers::ContainerAsync<GenericImage>, St
         .with_env_var("EAGER_SERVICE_LOADING", "1")
         .with_env_var("DISABLE_EVENTS", "1") // Disable analytics
         .with_env_var("SKIP_INFRA_DOWNLOADS", "1") // Don't download additional components
+        .with_env_var("DNS_DISABLED", "true") // Disable DNS to avoid conflicts
+        .with_env_var("LOCALSTACK_HOST", "localhost") // Use localhost for all service URLs
         .with_startup_timeout(Duration::from_secs(180))
         .start()
         .await
@@ -46,7 +48,7 @@ async fn start_localstack() -> (testcontainers::ContainerAsync<GenericImage>, St
 
     // Give LocalStack time to fully initialize services
     // SNS/SQS services need extra time to be fully ready
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let host_port = container
         .get_host_port_ipv4(4566)
