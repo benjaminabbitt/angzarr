@@ -34,37 +34,93 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
+  CARGO_TERM_COLOR: always
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  build-core:
+  # Gate: format check
+  fmt:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: aggregate
-            target_dev: angzarr-aggregate-dev
-            target_release: angzarr-aggregate
-          - name: projector
-            target_dev: angzarr-projector-dev
-            target_release: angzarr-projector
-          - name: saga
-            target_dev: angzarr-saga-dev
-            target_release: angzarr-saga
-          - name: process-manager
-            target_dev: angzarr-process-manager-dev
-            target_release: angzarr-process-manager
-          - name: log
-            target_dev: angzarr-log-dev
-            target_release: angzarr-log
-          - name: stream
-            target_dev: angzarr-stream-dev
-            target_release: angzarr-stream
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
 
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # Gate: clippy lint
+  clippy:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  # Gate: unit tests
+  test-unit:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        run: cargo test --lib
+
+  # Gate: standalone integration tests (framework tests, no external deps)
+  test-integration:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run standalone integration tests
+        run: cargo test --test standalone_integration --features sqlite
+
+  # Build all binaries once, then package into separate images
+  build:
+    needs: [fmt, clippy, test-unit, test-integration]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -92,37 +148,111 @@ jobs:
             echo "type=dev" >> $GITHUB_OUTPUT
           fi
 
-      - name: Set target
-        id: target
+      - name: Set build variables
+        id: vars
         run: |
           if [ "${{ steps.build-type.outputs.type }}" = "release" ]; then
-            echo "target=${{ matrix.target_release }}" >> $GITHUB_OUTPUT
             echo "suffix=" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
           else
-            echo "target=${{ matrix.target_dev }}" >> $GITHUB_OUTPUT
             echo "suffix=-dev" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
           fi
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.name }}${{ steps.target.outputs.suffix }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push ${{ matrix.name }}
+      # Build all images sequentially from shared builder cache
+      # Each final image is tiny (just COPY from cached builder)
+      - name: Build and push aggregate
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Containerfile
-          target: ${{ steps.target.outputs.target }}
-          platforms: ${{ steps.build-type.outputs.type == 'release' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          target: angzarr-aggregate${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate${{ steps.vars.outputs.suffix }}:latest
           build-args: |
             RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
-          cache-from: type=gha,scope=core-${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=core-${{ matrix.name }}
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push projector
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-projector${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector${{ steps.vars.outputs.suffix }}:latest
+          build-args: |
+            RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push saga
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-saga${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga${{ steps.vars.outputs.suffix }}:latest
+          build-args: |
+            RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push process-manager
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-process-manager${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager${{ steps.vars.outputs.suffix }}:latest
+          build-args: |
+            RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push log
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-log${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log${{ steps.vars.outputs.suffix }}:latest
+          build-args: |
+            RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push stream
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-stream${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream${{ steps.vars.outputs.suffix }}:latest
+          build-args: |
+            RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
