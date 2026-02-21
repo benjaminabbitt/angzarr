@@ -207,11 +207,7 @@ impl NatsEventStore {
 
     /// Extract sequence number from an EventPage.
     fn get_sequence(event: &EventPage) -> u32 {
-        match &event.sequence {
-            Some(event_page::Sequence::Num(n)) => *n,
-            Some(event_page::Sequence::Force(_)) => 0,
-            None => 0,
-        }
+        event.sequence
     }
 
     /// Perform composite read for editions (main timeline up to divergence + edition events).

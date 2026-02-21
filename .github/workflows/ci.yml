@@ -389,9 +389,11 @@ jobs:
 
   # Backend unit tests using testcontainers (requires Docker, runs on host)
   test-unit-backends:
-    needs: [changes]
+    needs: [changes, build-rust]
     if: |
-      needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true'
+      always() &&
+      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
+      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
