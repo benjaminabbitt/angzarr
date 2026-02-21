@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use angzarr::bus::nats::NatsEventBus;
 use angzarr::bus::{BusError, EventBus, EventHandler};
-use angzarr::proto::{event_page, Cover, Edition, EventBook, EventPage};
+use angzarr::proto::{Cover, Edition, EventBook, EventPage};
 use angzarr::storage::nats::NatsEventStore;
 use angzarr::storage::EventStore;
 use futures::future::BoxFuture;
@@ -81,13 +81,12 @@ fn make_event_book(domain: &str) -> EventBook {
         }),
         snapshot: None,
         pages: vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(0)),
+            sequence: 0,
             created_at: None,
-            event: Some(Any {
+            payload: Some(angzarr::proto::event_page::Payload::Event(Any {
                 type_url: format!("type.example/{}Event", domain),
                 value: vec![1, 2, 3],
-            }),
-            external_payload: None,
+            })),
         }],
         next_sequence: 1,
     }
@@ -299,13 +298,12 @@ async fn test_consumer_group_load_balancing() {
 fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32) -> EventBook {
     let pages: Vec<EventPage> = (0..count)
         .map(|i| EventPage {
-            sequence: Some(event_page::Sequence::Num(first_seq + i)),
+            sequence: first_seq + i,
             created_at: None,
-            event: Some(Any {
+            payload: Some(angzarr::proto::event_page::Payload::Event(Any {
                 type_url: format!("type.example/{}Event", domain),
                 value: vec![1, 2, 3, (first_seq + i) as u8],
-            }),
-            external_payload: None,
+            })),
         })
         .collect();
 
@@ -333,13 +331,12 @@ fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32
 fn make_event_pages(first_seq: u32, count: u32) -> Vec<EventPage> {
     (0..count)
         .map(|i| EventPage {
-            sequence: Some(event_page::Sequence::Num(first_seq + i)),
+            sequence: first_seq + i,
             created_at: None,
-            event: Some(Any {
+            payload: Some(angzarr::proto::event_page::Payload::Event(Any {
                 type_url: "type.example/TestEvent".to_string(),
                 value: vec![10, 20, 30, (first_seq + i) as u8],
-            }),
-            external_payload: None,
+            })),
         })
         .collect()
 }
@@ -446,11 +443,7 @@ async fn test_eventstore_eventbus_interoperability() {
 
     // Verify sequence ordering
     for (i, event) in all_events.iter().enumerate() {
-        let seq = match &event.sequence {
-            Some(event_page::Sequence::Num(n)) => *n,
-            _ => panic!("Missing sequence"),
-        };
-        assert_eq!(seq, i as u32, "Events should be in sequence order");
+        assert_eq!(event.sequence, i as u32, "Events should be in sequence order");
     }
     println!("    Events are in correct sequence order (0, 1, 2, 3)");
 

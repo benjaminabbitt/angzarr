@@ -232,7 +232,7 @@ fn expand_aggregate(args: AggregateArgs, mut input: ItemImpl) -> TokenStream2 {
             pub fn rebuild(events: &angzarr_client::proto::EventBook) -> #state_ty {
                 let mut state = #state_ty::default();
                 for page in &events.pages {
-                    if let Some(event) = &page.event {
+                    if let Some(angzarr_client::proto::event_page::Payload::Event(event)) = &page.payload {
                         Self::apply_event(&mut state, event);
                     }
                 }
@@ -750,7 +750,7 @@ fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> Toke
             pub fn rebuild(events: &angzarr_client::proto::EventBook) -> #state_ty {
                 let mut state = #state_ty::default();
                 for page in &events.pages {
-                    if let Some(event) = &page.event {
+                    if let Some(angzarr_client::proto::event_page::Payload::Event(event)) = &page.payload {
                         Self::apply_event(&mut state, event);
                     }
                 }
@@ -934,14 +934,12 @@ fn expand_projector(args: ProjectorArgs, mut input: ItemImpl) -> TokenStream2 {
                 let mut last_seq = 0u32;
 
                 for page in &events.pages {
-                    if let Some(event_any) = &page.event {
+                    if let Some(angzarr_client::proto::event_page::Payload::Event(event_any)) = &page.payload {
                         if let Some(projection) = self.handle_event(event_any) {
                             return projection;
                         }
                     }
-                    if let Some(angzarr_client::proto::event_page::Sequence::Num(n)) = &page.sequence {
-                        last_seq = *n;
-                    }
+                    last_seq = page.sequence;
                 }
 
                 // Default projection if no handler matched

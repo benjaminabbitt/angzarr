@@ -14,7 +14,7 @@ use angzarr_client::proto::examples::{
     CreateTable, EndHand, GameVariant, HandEnded, HandStarted, JoinTable, LeaveTable,
     PlayerJoined, PlayerLeft, SeatSnapshot, StartHand, TableCreated,
 };
-use angzarr_client::proto::{CommandBook, EventBook, EventPage, event_page};
+use angzarr_client::proto::{event_page, CommandBook, EventBook, EventPage};
 use angzarr_client::{run_aggregate_server, CommandRejectedError, CommandResult};
 #[allow(unused_imports)]
 use angzarr_macros::{aggregate, applies, handles};
@@ -390,10 +390,9 @@ fn new_event_book<M: prost::Message>(
     EventBook {
         cover: cb.cover.clone(),
         pages: vec![EventPage {
-            sequence: Some(event_page::Sequence::Num(seq)),
-            event: Some(event_any),
+            sequence: seq,
+            payload: Some(event_page::Payload::Event(event_any)),
             created_at: Some(angzarr_client::now()),
-            external_payload: None,
         }],
         snapshot: None,
         next_sequence: 0,

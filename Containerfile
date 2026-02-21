@@ -98,15 +98,8 @@ FROM ${RUST_IMAGE} AS builder-release-deps
 # Build argument for target architecture (set by buildx/podman)
 ARG TARGETARCH
 
-# Install additional deps needed for static OpenSSL linking
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl-dev \
-    pkg-config \
-    cmake \
-    && rm -rf /var/lib/apt/lists/*
-
+# Note: Using full-musl feature which excludes kafka (requires OpenSSL/native libs)
 ENV RUSTFLAGS="-C target-feature=+crt-static"
-ENV OPENSSL_STATIC=1
 
 WORKDIR /app
 
@@ -139,12 +132,13 @@ RUN mkdir -p src/bin client/rust/src client/rust/tests && \
     mkdir -p migrations && touch migrations/.keep
 
 # Build dependencies only (cached until Cargo.toml/Cargo.lock change)
+# Using full-musl feature which excludes kafka (requires native OpenSSL)
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
         TARGET="aarch64-unknown-linux-musl"; \
     else \
         TARGET="x86_64-unknown-linux-musl"; \
     fi && \
-    cargo build --profile production --target $TARGET --features full \
+    cargo build --profile production --target $TARGET --features full-musl \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \
@@ -165,12 +159,13 @@ COPY client/ ./client/
 COPY migrations/ ./migrations/
 
 # Rebuild with real source (deps already compiled in previous stage)
+# Using full-musl feature which excludes kafka (requires native OpenSSL)
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
         TARGET="aarch64-unknown-linux-musl"; \
     else \
         TARGET="x86_64-unknown-linux-musl"; \
     fi && \
-    cargo build --profile production --target $TARGET --features full \
+    cargo build --profile production --target $TARGET --features full-musl \
     --bin angzarr-aggregate \
     --bin angzarr-projector \
     --bin angzarr-saga \

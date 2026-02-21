@@ -203,7 +203,6 @@ async fn test_immudb_correlation_queries() {
 
 #[tokio::test]
 async fn test_immudb_edition_composite_read() {
-    use angzarr::proto::event_page;
     use angzarr::storage::EventStore;
     use uuid::Uuid;
 
@@ -253,9 +252,11 @@ async fn test_immudb_edition_composite_read() {
 
     // Verify sequence continuity
     for (i, event) in events.iter().enumerate() {
-        if let Some(event_page::Sequence::Num(seq)) = event.sequence {
-            assert_eq!(seq, i as u32, "sequence {} should match index {}", seq, i);
-        }
+        assert_eq!(
+            event.sequence, i as u32,
+            "sequence {} should match index {}",
+            event.sequence, i
+        );
     }
 
     println!("  test_edition_composite_read: PASSED");

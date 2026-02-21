@@ -110,6 +110,8 @@ lossy = ["dep:rand"]
 # All Features (for CI/development)
 # =============================================================================
 full = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "kafka", "redis", "immudb", "lossy"]
+# full-musl: For musl static builds - excludes kafka (requires OpenSSL/native libs)
+full-musl = ["standalone", "k8s", "gcp-cloudrun", "gcp-k8s", "aws-k8s", "redis", "immudb", "lossy"]
 
 [dependencies]
 # Client library (proto types, extension traits, client implementations)
