@@ -61,9 +61,6 @@ jobs:
           - name: log
             target_dev: angzarr-log-dev
             target_release: angzarr-log
-          - name: topology
-            target_dev: angzarr-topology-dev
-            target_release: angzarr-topology
           - name: stream
             target_dev: angzarr-stream-dev
             target_release: angzarr-stream

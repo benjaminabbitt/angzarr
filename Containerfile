@@ -32,7 +32,7 @@ COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 RUN mkdir -p src/bin client/rust/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager log topology stream; do \
+    for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
@@ -56,7 +56,6 @@ RUN cargo build --profile container-dev --features otel,topology,sqlite \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
     --bin angzarr-log \
-    --bin angzarr-topology \
     --bin angzarr-stream || true
 
 # =============================================================================
@@ -76,7 +75,6 @@ RUN cargo build --profile container-dev --features otel,topology,sqlite \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
     --bin angzarr-log \
-    --bin angzarr-topology \
     --bin angzarr-stream && \
     cp target/container-dev/angzarr-* /tmp/
 
@@ -130,7 +128,7 @@ COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
 RUN mkdir -p src/bin client/rust/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
-    for bin in aggregate projector saga process_manager log topology stream; do \
+    for bin in aggregate projector saga process_manager log stream upcaster event_projector standalone; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
@@ -159,7 +157,6 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
     --bin angzarr-log \
-    --bin angzarr-topology \
     --bin angzarr-stream || true
 
 # =============================================================================
@@ -186,7 +183,6 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     --bin angzarr-saga \
     --bin angzarr-process-manager \
     --bin angzarr-log \
-    --bin angzarr-topology \
     --bin angzarr-stream && \
     cp target/$TARGET/production/angzarr-* /tmp/
 
@@ -244,11 +240,6 @@ ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
 ENTRYPOINT ["./server"]
 
-FROM runtime-dev-base AS angzarr-topology-dev
-COPY --from=builder-dev /tmp/angzarr-topology ./server
-EXPOSE 9099
-ENTRYPOINT ["./server"]
-
 FROM runtime-dev-base AS angzarr-stream-dev
 COPY --from=builder-dev /tmp/angzarr-stream ./server
 EXPOSE 50051
@@ -281,11 +272,6 @@ COPY --from=builder-release /tmp/angzarr-log ./server
 COPY --from=builder-release /tmp/descriptors.pb ./descriptors.pb
 ENV DESCRIPTOR_PATH=/app/descriptors.pb
 EXPOSE 50051
-ENTRYPOINT ["./server"]
-
-FROM runtime-release-base AS angzarr-topology
-COPY --from=builder-release /tmp/angzarr-topology ./server
-EXPOSE 9099
 ENTRYPOINT ["./server"]
 
 FROM runtime-release-base AS angzarr-stream
