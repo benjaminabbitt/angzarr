@@ -246,7 +246,7 @@ impl AggregateContext for LocalAggregateContext {
             .iter()
             .filter(|p| {
                 let seq = extract_sequence(Some(*p));
-                prior_max_seq.map_or(true, |max| seq > max)
+                prior_max_seq.is_none_or(|max| seq > max)
             })
             .cloned()
             .collect();
@@ -321,7 +321,7 @@ impl AggregateContext for LocalAggregateContext {
                     let last_seq = new_pages
                         .last()
                         .map(|p| extract_sequence(Some(p)))
-                        .or_else(|| prior_max_seq)
+                        .or(prior_max_seq)
                         .unwrap_or(0);
                     let persisted_snapshot = crate::proto::Snapshot {
                         sequence: last_seq,

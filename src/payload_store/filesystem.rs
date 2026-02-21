@@ -265,7 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_older_than() {
-        let (store, temp) = create_temp_store().await;
+        let (store, _temp) = create_temp_store().await;
 
         // Store a payload
         let reference = store.put(b"old payload").await.unwrap();

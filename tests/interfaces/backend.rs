@@ -4,7 +4,6 @@
 
 use std::env;
 use std::sync::Arc;
-use std::time::Duration;
 
 #[cfg(feature = "sqlite")]
 use angzarr::storage::sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};

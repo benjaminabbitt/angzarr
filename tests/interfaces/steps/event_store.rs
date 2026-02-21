@@ -29,6 +29,7 @@ pub struct EventStoreWorld {
     stored_timestamp: Option<prost_types::Timestamp>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 struct AggregateState {
     domain: String,
@@ -872,7 +873,7 @@ async fn when_add_event_with_known_timestamp(world: &mut EventStoreWorld) {
         .clone();
 
     let timestamp = prost_types::Timestamp::from(std::time::SystemTime::now());
-    world.stored_timestamp = Some(timestamp.clone());
+    world.stored_timestamp = Some(timestamp);
 
     let page = EventPage {
         sequence: state.event_count,

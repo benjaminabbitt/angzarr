@@ -27,6 +27,7 @@ pub struct EditionWorld {
     last_delete_count: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 struct AggregateState {
     domain: String,
@@ -540,7 +541,7 @@ async fn when_add_events_to_aggregate_edition(
 async fn then_events_have_sequences(world: &mut EditionWorld, s0: u32, s1: u32, s2: u32) {
     // Get from the last used edition (we need to track this)
     // For now, assume we query the events directly
-    let expected = vec![s0, s1, s2];
+    let expected = [s0, s1, s2];
     world.last_events = world
         .store()
         .get(&world.current_domain, "fresh", world.current_root)

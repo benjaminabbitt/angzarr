@@ -111,6 +111,7 @@ pub trait PMContextFactory: Send + Sync {
 /// 4. Handle: PM produces commands + PM events
 /// 5. Persist PM events (retries on sequence conflict)
 /// 6. Execute commands with saga_origin stamped for compensation routing
+#[allow(clippy::too_many_arguments)]
 #[tracing::instrument(name = "pm.orchestrate", skip_all, fields(%pm_name, %pm_domain, %correlation_id))]
 pub async fn orchestrate_pm(
     ctx: &dyn ProcessManagerContext,

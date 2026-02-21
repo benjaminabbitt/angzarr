@@ -125,7 +125,7 @@ async fn test_multiple_aggregates() {
         let resp = client
             .execute(cmd)
             .await
-            .expect(&format!("{} command failed", domain));
+            .unwrap_or_else(|_| panic!("{} command failed", domain));
         assert!(resp.events.is_some(), "{} should return events", domain);
     }
 
@@ -299,7 +299,7 @@ async fn test_rapid_sequential_commands() {
         client
             .execute(cmd)
             .await
-            .expect(&format!("Command {} failed", i));
+            .unwrap_or_else(|_| panic!("Command {} failed", i));
     }
 
     let events = runtime

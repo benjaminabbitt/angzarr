@@ -61,6 +61,7 @@ impl StandaloneAggregateService {
     }
 
     /// Validate that the command is for this service's domain.
+    #[allow(clippy::result_large_err)]
     fn validate_domain(&self, command: &CommandBook) -> Result<(), Status> {
         let cmd_domain = command.domain();
         if cmd_domain != self.domain {
@@ -152,6 +153,7 @@ impl SingleDomainEventQuery {
     }
 
     /// Validate that the query is for this service's domain.
+    #[allow(clippy::result_large_err)]
     fn validate_domain(&self, query: &Query) -> Result<(), Status> {
         let query_domain = query
             .cover

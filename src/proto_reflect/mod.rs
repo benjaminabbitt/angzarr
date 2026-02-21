@@ -189,7 +189,7 @@ fn diff_map_field(
 
     // Keys removed (in before but not after)
     for key in before_map.keys() {
-        if after_map.get(key).is_none() {
+        if !after_map.contains_key(key) {
             let key_str = format_map_key(key);
             changed.insert(format!("{}[{}]", field.name(), key_str));
         }

@@ -3,12 +3,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use angzarr::bus::{OffloadingConfig, OffloadingEventBus};
-use angzarr::payload_store::{
-    compute_hash, FilesystemPayloadStore, PayloadStore, PayloadStoreError,
-};
+use angzarr::payload_store::{FilesystemPayloadStore, PayloadStore, PayloadStoreError};
 use angzarr::proto::event_page::Payload;
-use angzarr::proto::{EventBook, EventPage, PayloadReference, PayloadStorageType};
+use angzarr::proto::{EventPage, PayloadReference, PayloadStorageType};
 use cucumber::{given, then, when, World};
 use prost::Message;
 use tempfile::TempDir;

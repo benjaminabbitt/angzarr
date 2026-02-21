@@ -11,7 +11,6 @@ use angzarr::utils::saga_compensation::{
     CompensationContext,
 };
 use cucumber::{given, then, when, World};
-use prost::Message;
 use uuid::Uuid;
 
 /// Test context for Notification scenarios.

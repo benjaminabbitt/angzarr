@@ -38,7 +38,7 @@ pub fn require_positive<T: PartialOrd + Default>(
     field_name: &str,
 ) -> Result<(), CommandRejectedError> {
     if value <= T::default() {
-        return Err(CommandRejectedError::new(&format!(
+        return Err(CommandRejectedError::new(format!(
             "{} must be positive",
             field_name
         )));
@@ -52,7 +52,7 @@ pub fn require_non_negative<T: PartialOrd + Default>(
     field_name: &str,
 ) -> Result<(), CommandRejectedError> {
     if value < T::default() {
-        return Err(CommandRejectedError::new(&format!(
+        return Err(CommandRejectedError::new(format!(
             "{} must be non-negative",
             field_name
         )));
@@ -63,7 +63,7 @@ pub fn require_non_negative<T: PartialOrd + Default>(
 /// Require that a string is not empty.
 pub fn require_not_empty_str(value: &str, field_name: &str) -> Result<(), CommandRejectedError> {
     if value.is_empty() {
-        return Err(CommandRejectedError::new(&format!(
+        return Err(CommandRejectedError::new(format!(
             "{} must not be empty",
             field_name
         )));
@@ -74,7 +74,7 @@ pub fn require_not_empty_str(value: &str, field_name: &str) -> Result<(), Comman
 /// Require that a collection is not empty.
 pub fn require_not_empty<T>(items: &[T], field_name: &str) -> Result<(), CommandRejectedError> {
     if items.is_empty() {
-        return Err(CommandRejectedError::new(&format!(
+        return Err(CommandRejectedError::new(format!(
             "{} must not be empty",
             field_name
         )));

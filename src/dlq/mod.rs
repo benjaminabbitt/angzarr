@@ -353,7 +353,7 @@ impl AngzarrDeadLetter {
             payload,
             rejection_reason: self.rejection_reason.clone(),
             rejection_details,
-            occurred_at: self.occurred_at.clone(),
+            occurred_at: self.occurred_at,
             metadata: self.metadata.clone(),
             source_component: self.source_component.clone(),
             source_component_type: self.source_component_type.clone(),

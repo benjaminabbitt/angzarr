@@ -111,6 +111,6 @@ impl CommandPageExt for CommandPage {
     }
 
     fn merge_strategy(&self) -> MergeStrategy {
-        MergeStrategy::try_from(self.merge_strategy()).unwrap_or(MergeStrategy::MergeCommutative)
+        MergeStrategy::try_from(self.merge_strategy).unwrap_or(MergeStrategy::MergeCommutative)
     }
 }

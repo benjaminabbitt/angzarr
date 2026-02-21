@@ -25,6 +25,7 @@ pub struct SnapshotStoreWorld {
     large_data: Option<Vec<u8>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct AggregateState {
     domain: String,

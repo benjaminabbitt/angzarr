@@ -55,6 +55,7 @@ impl std::fmt::Debug for EventQueryServiceWorld {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 struct AggregateState {
     domain: String,

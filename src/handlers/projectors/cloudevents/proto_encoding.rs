@@ -9,6 +9,7 @@ use super::sink::SinkError;
 use super::types::CloudEventEnvelope;
 
 /// Generated CloudEvents protobuf types from io.cloudevents.v1 spec.
+#[allow(clippy::enum_variant_names)]
 pub mod io_cloudevents_v1 {
     tonic::include_proto!("io.cloudevents.v1");
 }

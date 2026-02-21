@@ -151,7 +151,7 @@ impl Runtime {
 
         // Register PM domains as command handlers (PMs are aggregates)
         // This allows Notification commands to route to PMs for compensation
-        for (_, (handler, config)) in &process_managers {
+        for (handler, config) in process_managers.values() {
             if !business.contains_key(&config.domain) {
                 business.insert(
                     config.domain.clone(),
