@@ -2,6 +2,7 @@ package features
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cucumber/godog"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
@@ -19,12 +20,14 @@ type AggregateContext struct {
 	err               error
 	invokedHandlers   []string
 	eventBook         *pb.EventBook
+	commandSequence   uint32 // sequence of incoming command for validation
 }
 
 // MockAggregateRouter simulates CommandRouter behavior
 type MockAggregateRouter struct {
-	handlers map[string]func() *pb.EventBook
-	ctx      *AggregateContext
+	handlers         map[string]func() *pb.EventBook
+	ctx              *AggregateContext
+	expectedSequence uint32 // expected next sequence from aggregate state
 }
 
 // MockEventRouter simulates EventRouter behavior
@@ -54,6 +57,11 @@ func (r *MockAggregateRouter) On(suffix string, handler func() *pb.EventBook) *M
 }
 
 func (r *MockAggregateRouter) Dispatch(commandType string) (*pb.BusinessResponse, error) {
+	// Check sequence validation if expectedSequence is set
+	if r.expectedSequence > 0 && r.ctx.commandSequence != r.expectedSequence {
+		return nil, fmt.Errorf("sequence mismatch: expected %d, got %d", r.expectedSequence, r.ctx.commandSequence)
+	}
+
 	for suffix, handler := range r.handlers {
 		if commandType == suffix || contains(commandType, suffix) {
 			r.ctx.invokedHandlers = append(r.ctx.invokedHandlers, suffix)
@@ -92,7 +100,7 @@ func (r *MockEventRouter) Dispatch(domain, eventType string) {
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[len(s)-len(substr):] == substr
+	return strings.Contains(s, substr)
 }
 
 // Step definitions
@@ -103,6 +111,14 @@ func (c *AggregateContext) anAggregateRouterWithHandlersForAnd(type1, type2 stri
 		return makeTestEventBook(0)
 	})
 	c.aggregateRouter.On(type2, func() *pb.EventBook {
+		return makeTestEventBook(0)
+	})
+	return nil
+}
+
+func (c *AggregateContext) anAggregateRouterWithHandlersFor(handlerType string) error {
+	c.aggregateRouter = NewMockAggregateRouter(c)
+	c.aggregateRouter.On(handlerType, func() *pb.EventBook {
 		return makeTestEventBook(0)
 	})
 	return nil
@@ -133,6 +149,7 @@ func (c *AggregateContext) anAggregateWithExistingEvents() error {
 func (c *AggregateContext) anAggregateAtSequence(seq int) error {
 	// Set up aggregate router for sequence validation tests
 	c.aggregateRouter = NewMockAggregateRouter(c)
+	c.aggregateRouter.expectedSequence = uint32(seq)
 	c.aggregateRouter.On("TestCommand", func() *pb.EventBook {
 		return makeTestEventBook(0)
 	})
@@ -162,6 +179,7 @@ func (c *AggregateContext) iReceiveACommandForThatAggregate() error {
 }
 
 func (c *AggregateContext) iReceiveACommandAtSequence(seq int) error {
+	c.commandSequence = uint32(seq)
 	c.response, c.err = c.aggregateRouter.Dispatch("TestCommand")
 	return nil
 }
@@ -1107,7 +1125,7 @@ func InitAggregateClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^guard should reject$`, c.guardShouldReject)
 	ctx.Step(`^compute should produce events$`, c.computeShouldProduceEvents)
 	ctx.Step(`^events should reflect the state change$`, c.eventsShouldReflectTheStateChange)
-	ctx.Step(`^an aggregate router with handlers for "([^"]*)"$`, c.anAggregateRouterWithHandlersFor)
+	// NOTE: Single-arg router step is registered in InitializeAggregateScenario on AggregateContext
 	ctx.Step(`^a router with handler for protobuf message type$`, c.aRouterWithHandlerForProtobufMessageType)
 	ctx.Step(`^an EventBook should be returned$`, c.anEventBookShouldBeReturned)
 	ctx.Step(`^events: OrderCreated, ItemAdded, ItemAdded$`, c.eventsOrderCreatedItemAddedItemAdded)
@@ -1131,6 +1149,7 @@ func InitializeAggregateScenario(ctx *godog.ScenarioContext) {
 
 	// Aggregate Router
 	ctx.Step(`^an aggregate router with handlers for "([^"]*)" and "([^"]*)"$`, c.anAggregateRouterWithHandlersForAnd)
+	ctx.Step(`^an aggregate router with handlers for "([^"]*)"$`, c.anAggregateRouterWithHandlersFor)
 	ctx.Step(`^an aggregate router$`, c.anAggregateRouter)
 	ctx.Step(`^an aggregate with existing events$`, c.anAggregateWithExistingEvents)
 	ctx.Step(`^an aggregate at sequence (\d+)$`, c.anAggregateAtSequence)
