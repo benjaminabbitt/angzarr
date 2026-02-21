@@ -18,19 +18,19 @@ build:
     concurrency: 1
   artifacts:
     # Dev targets (fast builds)
-    - image: localhost:5001/poker-rust-player
+    - image: ghcr.io/angzarr-io/poker-rust-player
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: agg-player-dev
 
-    - image: localhost:5001/poker-rust-table
+    - image: ghcr.io/angzarr-io/poker-rust-table
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
         target: agg-table-dev
 
-    - image: localhost:5001/poker-rust-hand
+    - image: ghcr.io/angzarr-io/poker-rust-hand
       context: ../..
       docker:
         dockerfile: examples/rust/Containerfile
@@ -48,19 +48,19 @@ deploy:
         setValues:
           # Player aggregate
           applications.business[0].name: poker-player
-          applications.business[0].image.repository: localhost:5001/poker-rust-player
+          applications.business[0].image.repository: ghcr.io/angzarr-io/poker-rust-player
           applications.business[0].image.tag: latest
           applications.business[0].domain: player
           applications.business[0].port: 50001
           # Table aggregate
           applications.business[1].name: poker-table
-          applications.business[1].image.repository: localhost:5001/poker-rust-table
+          applications.business[1].image.repository: ghcr.io/angzarr-io/poker-rust-table
           applications.business[1].image.tag: latest
           applications.business[1].domain: table
           applications.business[1].port: 50002
           # Hand aggregate
           applications.business[2].name: poker-hand
-          applications.business[2].image.repository: localhost:5001/poker-rust-hand
+          applications.business[2].image.repository: ghcr.io/angzarr-io/poker-rust-hand
           applications.business[2].image.tag: latest
           applications.business[2].domain: hand
           applications.business[2].port: 50003
@@ -70,19 +70,19 @@ profiles:
   - name: release
     build:
       artifacts:
-        - image: localhost:5001/poker-rust-player
+        - image: ghcr.io/angzarr-io/poker-rust-player
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
             target: agg-player
 
-        - image: localhost:5001/poker-rust-table
+        - image: ghcr.io/angzarr-io/poker-rust-table
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile
             target: agg-table
 
-        - image: localhost:5001/poker-rust-hand
+        - image: ghcr.io/angzarr-io/poker-rust-hand
           context: ../..
           docker:
             dockerfile: examples/rust/Containerfile

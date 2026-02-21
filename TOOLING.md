@@ -267,8 +267,8 @@ just skaffold-init
 ```
 
 This configures:
-- Container runtime to trust the local registry (insecure for localhost:5001)
-- Skaffold default repository to point to the local registry
+- Container runtime to authenticate with GHCR (ghcr.io/angzarr-io)
+- Skaffold default repository to use GHCR
 
 ### Cluster Lifecycle
 
@@ -308,7 +308,7 @@ Skaffold handles the full development loop:
 
 1. **Build**: Builds container images using your container runtime (Podman or Docker)
 2. **Tag**: Uses content-addressable tags (git SHA) to avoid cache issues
-3. **Push**: Pushes to the local registry (localhost:5001)
+3. **Push**: Pushes to GHCR (ghcr.io/angzarr-io)
 4. **Deploy**: Applies Helm charts to the Kind cluster
 
 The `just dev` command runs Skaffold in watch mode—file changes trigger automatic rebuilds and redeployments.

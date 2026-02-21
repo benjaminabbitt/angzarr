@@ -44,12 +44,14 @@ test-interfaces-redis:
 # These tests verify event bus implementations using testcontainers.
 
 # Run AMQP/RabbitMQ bus tests (requires podman socket)
+# Uses --test-threads=1 to avoid parallel container starts causing resource contention
 test-bus-amqp:
-    cargo test --test bus_amqp --features amqp
+    cargo test --test bus_amqp --features amqp -- --test-threads=1
 
 # Run Kafka bus tests (requires podman socket)
+# Uses --test-threads=1 to avoid parallel container starts causing resource contention
 test-bus-kafka:
-    cargo test --test bus_kafka --features kafka
+    cargo test --test bus_kafka --features kafka -- --test-threads=1
 
 # Run GCP Pub/Sub bus tests (requires podman socket)
 # Uses --test-threads=1 because tests share PUBSUB_EMULATOR_HOST env var
@@ -61,8 +63,12 @@ test-bus-pubsub:
 test-bus-sns-sqs:
     cargo test --test bus_sns_sqs --features sns-sqs -- --test-threads=1
 
-# Run all bus tests
-test-bus-all: test-bus-amqp test-bus-kafka test-bus-pubsub test-bus-sns-sqs
+# Clean up any zombie containers from failed test runs
+clean-containers:
+    podman container prune -f || true
+
+# Run all bus tests (with container cleanup between runs)
+test-bus-all: clean-containers test-bus-amqp clean-containers test-bus-kafka clean-containers test-bus-pubsub clean-containers test-bus-sns-sqs
 
 clean:
     cargo clean

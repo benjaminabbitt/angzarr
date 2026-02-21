@@ -17,19 +17,19 @@ build:
     useBuildkit: false
     concurrency: 1
   artifacts:
-    - image: localhost:5001/poker-go-player
+    - image: ghcr.io/angzarr-io/poker-go-player
       context: ../..
       docker:
         dockerfile: examples/go/Containerfile
         target: agg-player
 
-    - image: localhost:5001/poker-go-table
+    - image: ghcr.io/angzarr-io/poker-go-table
       context: ../..
       docker:
         dockerfile: examples/go/Containerfile
         target: agg-table
 
-    - image: localhost:5001/poker-go-hand
+    - image: ghcr.io/angzarr-io/poker-go-hand
       context: ../..
       docker:
         dockerfile: examples/go/Containerfile
@@ -47,19 +47,19 @@ deploy:
         setValues:
           # Player aggregate
           applications.business[0].name: poker-player
-          applications.business[0].image.repository: localhost:5001/poker-go-player
+          applications.business[0].image.repository: ghcr.io/angzarr-io/poker-go-player
           applications.business[0].image.tag: latest
           applications.business[0].domain: player
           applications.business[0].port: 50201
           # Table aggregate
           applications.business[1].name: poker-table
-          applications.business[1].image.repository: localhost:5001/poker-go-table
+          applications.business[1].image.repository: ghcr.io/angzarr-io/poker-go-table
           applications.business[1].image.tag: latest
           applications.business[1].domain: table
           applications.business[1].port: 50202
           # Hand aggregate
           applications.business[2].name: poker-hand
-          applications.business[2].image.repository: localhost:5001/poker-go-hand
+          applications.business[2].image.repository: ghcr.io/angzarr-io/poker-go-hand
           applications.business[2].image.tag: latest
           applications.business[2].domain: hand
           applications.business[2].port: 50203

@@ -26,35 +26,35 @@ replicaCount: 1
 # Angzarr sidecar images (using local registry)
 images:
   aggregate:
-    repository: localhost:5001/angzarr-aggregate
+    repository: ghcr.io/angzarr-io/angzarr-aggregate
     pullPolicy: IfNotPresent
     tag: "latest"
   projector:
-    repository: localhost:5001/angzarr-projector
+    repository: ghcr.io/angzarr-io/angzarr-projector
     pullPolicy: IfNotPresent
     tag: "latest"
   saga:
-    repository: localhost:5001/angzarr-saga
+    repository: ghcr.io/angzarr-io/angzarr-saga
     pullPolicy: IfNotPresent
     tag: "latest"
   processManager:
-    repository: localhost:5001/angzarr-process-manager
+    repository: ghcr.io/angzarr-io/angzarr-process-manager
     pullPolicy: IfNotPresent
     tag: "latest"
   stream:
-    repository: localhost:5001/angzarr-stream
+    repository: ghcr.io/angzarr-io/angzarr-stream
     pullPolicy: IfNotPresent
     tag: "latest"
   gateway:
-    repository: localhost:5001/angzarr-gateway
+    repository: ghcr.io/angzarr-io/angzarr-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
   log:
-    repository: localhost:5001/angzarr-log
+    repository: ghcr.io/angzarr-io/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
   topology:
-    repository: localhost:5001/angzarr-topology
+    repository: ghcr.io/angzarr-io/angzarr-topology
     pullPolicy: IfNotPresent
     tag: "latest"
 
@@ -197,7 +197,7 @@ applications:
     # E-commerce Domain Aggregates (Go: 50100-50199)
     - name: agg-order-go
       image:
-        repository: localhost:5001/agg-order-go
+        repository: ghcr.io/angzarr-io/agg-order-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
@@ -205,7 +205,7 @@ applications:
 
     - name: agg-inventory-go
       image:
-        repository: localhost:5001/agg-inventory-go
+        repository: ghcr.io/angzarr-io/agg-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
@@ -213,7 +213,7 @@ applications:
 
     - name: agg-fulfillment-go
       image:
-        repository: localhost:5001/agg-fulfillment-go
+        repository: ghcr.io/angzarr-io/agg-fulfillment-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
@@ -223,7 +223,7 @@ applications:
     # Inventory Projector - logs inventory stock changes
     - name: prj-inventory-go
       image:
-        repository: localhost:5001/prj-inventory-go
+        repository: ghcr.io/angzarr-io/prj-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
@@ -235,7 +235,7 @@ applications:
     # Order-Fulfillment Saga - creates shipments when orders complete
     - name: sag-order-fulfillment-go
       image:
-        repository: localhost:5001/sag-order-fulfillment-go
+        repository: ghcr.io/angzarr-io/sag-order-fulfillment-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-order-fulfillment"
@@ -246,7 +246,7 @@ applications:
     # Order-Inventory Saga - reserves stock when orders are created
     - name: sag-order-inventory-go
       image:
-        repository: localhost:5001/sag-order-inventory-go
+        repository: ghcr.io/angzarr-io/sag-order-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-order-inventory"
@@ -257,7 +257,7 @@ applications:
     # Fulfillment-Inventory Saga - commits inventory when shipments ship
     - name: sag-fulfillment-inventory-go
       image:
-        repository: localhost:5001/sag-fulfillment-inventory-go
+        repository: ghcr.io/angzarr-io/sag-fulfillment-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-fulfillment-inventory"
@@ -269,7 +269,7 @@ applications:
     # Order Fulfillment PM - fan-in: payment + inventory + fulfillment -> Ship
     - name: pmg-fulfillment-go
       image:
-        repository: localhost:5001/pmg-fulfillment-go
+        repository: ghcr.io/angzarr-io/pmg-fulfillment-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "pmg-fulfillment"

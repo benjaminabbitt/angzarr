@@ -24,7 +24,7 @@ applications:
       domain: player
       port: 50001
       image:
-        repository: localhost:5001/poker-rust-player
+        repository: ghcr.io/angzarr-io/poker-rust-player
         tag: latest
         pullPolicy: IfNotPresent
 
@@ -32,7 +32,7 @@ applications:
       domain: table
       port: 50002
       image:
-        repository: localhost:5001/poker-rust-table
+        repository: ghcr.io/angzarr-io/poker-rust-table
         tag: latest
         pullPolicy: IfNotPresent
 
@@ -40,7 +40,7 @@ applications:
       domain: hand
       port: 50003
       image:
-        repository: localhost:5001/poker-rust-hand
+        repository: ghcr.io/angzarr-io/poker-rust-hand
         tag: latest
         pullPolicy: IfNotPresent
 

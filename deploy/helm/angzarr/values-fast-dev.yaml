@@ -1,5 +1,5 @@
 # Fast development values for angzarr
-# Uses local registry (localhost:5001) for faster image loading
+# Uses local registry (ghcr.io/angzarr-io) for faster image loading
 # Create cluster with: just kind-create-registry
 # Deploy with: just deploy-fast
 
@@ -7,7 +7,7 @@ replicaCount: 1
 
 # Global image registry prefix for local registry
 global:
-  imageRegistry: "localhost:5001"
+  imageRegistry: "ghcr.io/angzarr-io"
   # Allow non-bitnami images (required for local registry)
   security:
     allowInsecureImages: true
@@ -19,23 +19,23 @@ image:
 
 images:
   aggregate:
-    repository: localhost:5001/angzarr-aggregate
+    repository: ghcr.io/angzarr-io/angzarr-aggregate
     pullPolicy: Always
     tag: "dev"
   projector:
-    repository: localhost:5001/angzarr-projector
+    repository: ghcr.io/angzarr-io/angzarr-projector
     pullPolicy: Always
     tag: "dev"
   saga:
-    repository: localhost:5001/angzarr-saga
+    repository: ghcr.io/angzarr-io/angzarr-saga
     pullPolicy: Always
     tag: "dev"
   stream:
-    repository: localhost:5001/angzarr-stream
+    repository: ghcr.io/angzarr-io/angzarr-stream
     pullPolicy: Always
     tag: "dev"
   gateway:
-    repository: localhost:5001/angzarr-gateway
+    repository: ghcr.io/angzarr-io/angzarr-gateway
     pullPolicy: Always
     tag: "dev"
 
@@ -110,7 +110,7 @@ applications:
   business:
     - name: entity-customer-rs
       image:
-        repository: localhost:5001/entity-customer-rs
+        repository: ghcr.io/angzarr-io/entity-customer-rs
         tag: "dev"
         pullPolicy: Always
       domain: "customer"
@@ -118,7 +118,7 @@ applications:
 
     - name: entity-transaction-rs
       image:
-        repository: localhost:5001/entity-transaction-rs
+        repository: ghcr.io/angzarr-io/entity-transaction-rs
         tag: "dev"
         pullPolicy: Always
       domain: "transaction"
@@ -127,7 +127,7 @@ applications:
   projectors:
     - name: projector-receipt-rs
       image:
-        repository: localhost:5001/projector-receipt-rs
+        repository: ghcr.io/angzarr-io/projector-receipt-rs
         tag: "dev"
         pullPolicy: Always
       port: 50055
@@ -136,7 +136,7 @@ applications:
 
     - name: projector-log-customer-rs
       image:
-        repository: localhost:5001/projector-log-customer-rs
+        repository: ghcr.io/angzarr-io/projector-log-customer-rs
         tag: "dev"
         pullPolicy: Always
       port: 50056
@@ -145,7 +145,7 @@ applications:
 
     - name: projector-log-transaction-rs
       image:
-        repository: localhost:5001/projector-log-transaction-rs
+        repository: ghcr.io/angzarr-io/projector-log-transaction-rs
         tag: "dev"
         pullPolicy: Always
       port: 50057
@@ -155,7 +155,7 @@ applications:
   sagas:
     - name: saga-loyalty-rs
       image:
-        repository: localhost:5001/saga-loyalty-rs
+        repository: ghcr.io/angzarr-io/saga-loyalty-rs
         tag: "dev"
         pullPolicy: Always
       port: 50054

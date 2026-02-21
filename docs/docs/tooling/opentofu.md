@@ -168,7 +168,7 @@ flowchart TB
         end
         PG & RMQ --- NS
     end
-    Registry[(Registry<br/>localhost:5001)]
+    Registry[(GHCR<br/>ghcr.io/angzarr-io)]
     Kind --- Registry
 ```
 

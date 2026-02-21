@@ -27,17 +27,15 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
-COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin client/rust/src examples/rust/common/src && \
+RUN mkdir -p src/bin client/rust/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log topology stream; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    echo "pub fn stub() {}" > examples/rust/common/src/lib.rs && \
     mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
@@ -67,7 +65,6 @@ FROM builder-dev-deps AS builder-dev
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
 COPY client/ ./client/
-COPY examples/rust examples/rust/
 COPY migrations/ ./migrations/
 
 # Rebuild with real source (deps already compiled in previous stage)
@@ -126,17 +123,15 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto/ ./proto/
 COPY client/rust/Cargo.toml ./client/rust/Cargo.toml
-COPY examples/rust/common/Cargo.toml ./examples/rust/common/Cargo.toml
 
 # Create minimal source stubs to satisfy cargo
-RUN mkdir -p src/bin client/rust/src examples/rust/common/src && \
+RUN mkdir -p src/bin client/rust/src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn stub() {}" > src/lib.rs && \
     for bin in aggregate projector saga process_manager log topology stream; do \
       echo "fn main() {}" > src/bin/angzarr_$bin.rs; \
     done && \
     echo "pub fn stub() {}" > client/rust/src/lib.rs && \
-    echo "pub fn stub() {}" > examples/rust/common/src/lib.rs && \
     mkdir -p tests/integration && \
     for f in acceptance container_integration mongodb_debug \
              storage_mongodb storage_redis storage_postgres storage_sqlite \
@@ -173,7 +168,6 @@ ARG TARGETARCH
 # Copy real source (invalidates layer when source changes)
 COPY src/ ./src/
 COPY client/ ./client/
-COPY examples/rust examples/rust/
 COPY migrations/ ./migrations/
 
 # Rebuild with real source (deps already compiled in previous stage)

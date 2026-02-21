@@ -26,43 +26,43 @@ build:
     concurrency: 1
   artifacts:
     # Dev targets (default) - fast native builds
-    - image: localhost:5001/angzarr-aggregate
+    - image: ghcr.io/angzarr-io/angzarr-aggregate
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-aggregate-dev
 
-    - image: localhost:5001/angzarr-projector
+    - image: ghcr.io/angzarr-io/angzarr-projector
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-projector-dev
 
-    - image: localhost:5001/angzarr-saga
+    - image: ghcr.io/angzarr-io/angzarr-saga
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-saga-dev
 
-    - image: localhost:5001/angzarr-process-manager
+    - image: ghcr.io/angzarr-io/angzarr-process-manager
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-process-manager-dev
 
-    - image: localhost:5001/angzarr-log
+    - image: ghcr.io/angzarr-io/angzarr-log
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-log-dev
 
-    - image: localhost:5001/angzarr-topology
+    - image: ghcr.io/angzarr-io/angzarr-topology
       context: .
       docker:
         dockerfile: Containerfile
         target: angzarr-topology-dev
 
-    - image: localhost:5001/angzarr-stream
+    - image: ghcr.io/angzarr-io/angzarr-stream
       context: .
       docker:
         dockerfile: Containerfile
@@ -73,43 +73,43 @@ profiles:
   - name: release
     build:
       artifacts:
-        - image: localhost:5001/angzarr-aggregate
+        - image: ghcr.io/angzarr-io/angzarr-aggregate
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-aggregate
 
-        - image: localhost:5001/angzarr-projector
+        - image: ghcr.io/angzarr-io/angzarr-projector
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-projector
 
-        - image: localhost:5001/angzarr-saga
+        - image: ghcr.io/angzarr-io/angzarr-saga
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-saga
 
-        - image: localhost:5001/angzarr-process-manager
+        - image: ghcr.io/angzarr-io/angzarr-process-manager
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-process-manager
 
-        - image: localhost:5001/angzarr-log
+        - image: ghcr.io/angzarr-io/angzarr-log
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-log
 
-        - image: localhost:5001/angzarr-topology
+        - image: ghcr.io/angzarr-io/angzarr-topology
           context: .
           docker:
             dockerfile: Containerfile
             target: angzarr-topology
 
-        - image: localhost:5001/angzarr-stream
+        - image: ghcr.io/angzarr-io/angzarr-stream
           context: .
           docker:
             dockerfile: Containerfile

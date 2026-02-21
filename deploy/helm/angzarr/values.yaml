@@ -182,6 +182,11 @@ infrastructure:
         cpu: 100m
         memory: 128Mi
 
+# Mock services for testing
+mockServices:
+  fraud:
+    enabled: false
+
 ingress:
   enabled: false
   className: ""

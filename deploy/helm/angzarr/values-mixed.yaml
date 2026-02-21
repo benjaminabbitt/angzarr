@@ -22,35 +22,35 @@ replicaCount: 1
 # Angzarr sidecar images (using local registry)
 images:
   aggregate:
-    repository: localhost:5001/angzarr-aggregate
+    repository: ghcr.io/angzarr-io/angzarr-aggregate
     pullPolicy: IfNotPresent
     tag: "latest"
   projector:
-    repository: localhost:5001/angzarr-projector
+    repository: ghcr.io/angzarr-io/angzarr-projector
     pullPolicy: IfNotPresent
     tag: "latest"
   saga:
-    repository: localhost:5001/angzarr-saga
+    repository: ghcr.io/angzarr-io/angzarr-saga
     pullPolicy: IfNotPresent
     tag: "latest"
   processManager:
-    repository: localhost:5001/angzarr-process-manager
+    repository: ghcr.io/angzarr-io/angzarr-process-manager
     pullPolicy: IfNotPresent
     tag: "latest"
   stream:
-    repository: localhost:5001/angzarr-stream
+    repository: ghcr.io/angzarr-io/angzarr-stream
     pullPolicy: IfNotPresent
     tag: "latest"
   gateway:
-    repository: localhost:5001/angzarr-gateway
+    repository: ghcr.io/angzarr-io/angzarr-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
   log:
-    repository: localhost:5001/angzarr-log
+    repository: ghcr.io/angzarr-io/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
   topology:
-    repository: localhost:5001/angzarr-topology
+    repository: ghcr.io/angzarr-io/angzarr-topology
     pullPolicy: IfNotPresent
     tag: "latest"
 
@@ -196,7 +196,7 @@ applications:
     # Order aggregate - Rust (port 50000)
     - name: agg-order-rs
       image:
-        repository: localhost:5001/agg-order-rs
+        repository: ghcr.io/angzarr-io/agg-order-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
@@ -205,7 +205,7 @@ applications:
     # Inventory aggregate - Go (port 50103)
     - name: agg-inventory-go
       image:
-        repository: localhost:5001/agg-inventory-go
+        repository: ghcr.io/angzarr-io/agg-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
@@ -214,7 +214,7 @@ applications:
     # Fulfillment aggregate - Python (port 50206)
     - name: agg-fulfillment-py
       image:
-        repository: localhost:5001/agg-fulfillment-py
+        repository: ghcr.io/angzarr-io/agg-fulfillment-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
@@ -224,7 +224,7 @@ applications:
     # Inventory Projector - Rust (port 50033)
     - name: prj-inventory-rs
       image:
-        repository: localhost:5001/prj-inventory-rs
+        repository: ghcr.io/angzarr-io/prj-inventory-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
@@ -236,7 +236,7 @@ applications:
     # Order-Fulfillment Saga - Rust (port 50018)
     - name: sag-order-fulfillment-rs
       image:
-        repository: localhost:5001/sag-order-fulfillment-rs
+        repository: ghcr.io/angzarr-io/sag-order-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-order-fulfillment"
@@ -247,7 +247,7 @@ applications:
     # Order-Inventory Saga - Go (port 50121)
     - name: sag-order-inventory-go
       image:
-        repository: localhost:5001/sag-order-inventory-go
+        repository: ghcr.io/angzarr-io/sag-order-inventory-go
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-order-inventory"
@@ -258,7 +258,7 @@ applications:
     # Fulfillment-Inventory Saga - Python (port 50224)
     - name: sag-fulfillment-inventory-py
       image:
-        repository: localhost:5001/sag-fulfillment-inventory-py
+        repository: ghcr.io/angzarr-io/sag-fulfillment-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-fulfillment-inventory"
@@ -270,7 +270,7 @@ applications:
     # Order Fulfillment PM - Rust (port 50039)
     - name: pmg-fulfillment-rs
       image:
-        repository: localhost:5001/pmg-fulfillment-rs
+        repository: ghcr.io/angzarr-io/pmg-fulfillment-rs
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "pmg-fulfillment"

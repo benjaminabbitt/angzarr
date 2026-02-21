@@ -28,35 +28,35 @@ replicaCount: 1
 # pullPolicy: IfNotPresent works because new content = new sha256 tag = K8s pulls
 images:
   aggregate:
-    repository: localhost:5001/angzarr-aggregate
+    repository: ghcr.io/angzarr-io/angzarr-aggregate
     pullPolicy: IfNotPresent
     tag: "latest"
   projector:
-    repository: localhost:5001/angzarr-projector
+    repository: ghcr.io/angzarr-io/angzarr-projector
     pullPolicy: IfNotPresent
     tag: "latest"
   saga:
-    repository: localhost:5001/angzarr-saga
+    repository: ghcr.io/angzarr-io/angzarr-saga
     pullPolicy: IfNotPresent
     tag: "latest"
   processManager:
-    repository: localhost:5001/angzarr-process-manager
+    repository: ghcr.io/angzarr-io/angzarr-process-manager
     pullPolicy: IfNotPresent
     tag: "latest"
   stream:
-    repository: localhost:5001/angzarr-stream
+    repository: ghcr.io/angzarr-io/angzarr-stream
     pullPolicy: IfNotPresent
     tag: "latest"
   gateway:
-    repository: localhost:5001/angzarr-gateway
+    repository: ghcr.io/angzarr-io/angzarr-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
   log:
-    repository: localhost:5001/angzarr-log
+    repository: ghcr.io/angzarr-io/angzarr-log
     pullPolicy: IfNotPresent
     tag: "latest"
   topology:
-    repository: localhost:5001/angzarr-topology
+    repository: ghcr.io/angzarr-io/angzarr-topology
     pullPolicy: IfNotPresent
     tag: "latest"
 
@@ -199,7 +199,7 @@ applications:
     # E-commerce Domain Aggregates (Python: 50200-50299)
     - name: agg-order-py
       image:
-        repository: localhost:5001/agg-order-py
+        repository: ghcr.io/angzarr-io/agg-order-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "order"
@@ -207,7 +207,7 @@ applications:
 
     - name: agg-inventory-py
       image:
-        repository: localhost:5001/agg-inventory-py
+        repository: ghcr.io/angzarr-io/agg-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
@@ -215,7 +215,7 @@ applications:
 
     - name: agg-fulfillment-py
       image:
-        repository: localhost:5001/agg-fulfillment-py
+        repository: ghcr.io/angzarr-io/agg-fulfillment-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "fulfillment"
@@ -225,7 +225,7 @@ applications:
     # Inventory Projector - logs inventory stock changes
     - name: prj-inventory-py
       image:
-        repository: localhost:5001/prj-inventory-py
+        repository: ghcr.io/angzarr-io/prj-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "inventory"
@@ -237,7 +237,7 @@ applications:
     # Order-Fulfillment Saga - creates shipments when orders complete
     - name: sag-order-fulfillment-py
       image:
-        repository: localhost:5001/sag-order-fulfillment-py
+        repository: ghcr.io/angzarr-io/sag-order-fulfillment-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-order-fulfillment"
@@ -248,7 +248,7 @@ applications:
     # Order-Inventory Saga - reserves stock when orders are created
     - name: sag-order-inventory-py
       image:
-        repository: localhost:5001/sag-order-inventory-py
+        repository: ghcr.io/angzarr-io/sag-order-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-order-inventory"
@@ -259,7 +259,7 @@ applications:
     # Fulfillment-Inventory Saga - commits inventory when shipments ship
     - name: sag-fulfillment-inventory-py
       image:
-        repository: localhost:5001/sag-fulfillment-inventory-py
+        repository: ghcr.io/angzarr-io/sag-fulfillment-inventory-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "sag-fulfillment-inventory"
@@ -271,7 +271,7 @@ applications:
     # Order Fulfillment PM - fan-in: payment + inventory + fulfillment -> Ship
     - name: pmg-fulfillment-py
       image:
-        repository: localhost:5001/pmg-fulfillment-py
+        repository: ghcr.io/angzarr-io/pmg-fulfillment-py
         tag: "latest"
         pullPolicy: IfNotPresent
       domain: "pmg-fulfillment"

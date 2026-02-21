@@ -24,7 +24,7 @@ applications:
       domain: player
       port: 50201
       image:
-        repository: localhost:5001/poker-go-player
+        repository: ghcr.io/angzarr-io/poker-go-player
         tag: latest
         pullPolicy: IfNotPresent
 
@@ -32,7 +32,7 @@ applications:
       domain: table
       port: 50202
       image:
-        repository: localhost:5001/poker-go-table
+        repository: ghcr.io/angzarr-io/poker-go-table
         tag: latest
         pullPolicy: IfNotPresent
 
@@ -40,7 +40,7 @@ applications:
       domain: hand
       port: 50203
       image:
-        repository: localhost:5001/poker-go-hand
+        repository: ghcr.io/angzarr-io/poker-go-hand
         tag: latest
         pullPolicy: IfNotPresent
 

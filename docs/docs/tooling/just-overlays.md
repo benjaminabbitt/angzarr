@@ -131,10 +131,10 @@ Angzarr uses overlays for container runtime differences:
 ```just
 # justfile.container
 # Inside devcontainer, use different registry access
-registry := "host.docker.internal:5001"
+registry := "ghcr.io/angzarr-io"
 
 # justfile (base)
-registry := "localhost:5001"
+registry := "ghcr.io/angzarr-io"
 ```
 
 ---
