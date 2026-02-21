@@ -4,7 +4,7 @@
 
 set shell := ["bash", "-c"]
 
-TOP := "../.."
+TOP := `git rev-parse --show-toplevel`
 
 default:
     @just --list

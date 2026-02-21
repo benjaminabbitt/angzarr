@@ -4,6 +4,7 @@
 
 set shell := ["bash", "-c"]
 
+TOP := `git rev-parse --show-toplevel`
 BUILD_DIR := "build"
 
 default:

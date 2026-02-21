@@ -4,11 +4,13 @@
 
 set shell := ["bash", "-c"]
 
+TOP := `git rev-parse --show-toplevel`
+
 default:
     @just --list
 
 proto:
-    cd ../../proto && buf generate --template buf.gen.go.yaml
+    cd {{TOP}}/proto && buf generate --template buf.gen.go.yaml
 
 build:
     go build ./...

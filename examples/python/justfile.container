@@ -4,36 +4,38 @@
 
 set shell := ["bash", "-c"]
 
+TOP := `git rev-parse --show-toplevel`
+
 default:
     @just --list
 
 build:
-    pip install uv && uv sync
+    uv sync
 
 install: build
 
-test-unit:
-    pip install uv && uv run pytest -v
+test-unit: build
+    uv run pytest -v
 
-test-acceptance:
-    pip install uv && uv run behave features/
+test-acceptance: build
+    uv run behave features/
 
 test: test-unit test-acceptance
 
 fmt:
-    pip install uv && uv run black .
+    uv run black .
 
 lint:
-    pip install uv && uv run ruff check .
+    uv run ruff check .
 
 typecheck:
-    pip install uv && uv run mypy . --ignore-missing-imports
+    uv run mypy . --ignore-missing-imports
 
-run-player:
-    pip install uv && cd player/agg && uv run python main.py
+run-player: build
+    cd player/agg && uv run python main.py
 
-run-table:
-    pip install uv && cd table/agg && uv run python main.py
+run-table: build
+    cd table/agg && uv run python main.py
 
-run-hand:
-    pip install uv && cd hand/agg && uv run python main.py
+run-hand: build
+    cd hand/agg && uv run python main.py

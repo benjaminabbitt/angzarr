@@ -5,6 +5,8 @@
 
 set shell := ["bash", "-c"]
 
+TOP := `git rev-parse --show-toplevel`
+
 default:
     @just --list
 
@@ -22,5 +24,5 @@ test:
 
 # Create release archive with checksums
 archive VERSION:
-    cd ../.. && git archive --format=tar.gz --prefix=angzarr-client-cpp-{{VERSION}}/ -o client/cpp/angzarr-client-cpp-{{VERSION}}.tar.gz HEAD:client/cpp
+    cd {{TOP}} && git archive --format=tar.gz --prefix=angzarr-client-cpp-{{VERSION}}/ -o client/cpp/angzarr-client-cpp-{{VERSION}}.tar.gz HEAD:client/cpp
     sha512sum angzarr-client-cpp-{{VERSION}}.tar.gz > angzarr-client-cpp-{{VERSION}}.tar.gz.sha512

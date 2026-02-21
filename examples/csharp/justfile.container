@@ -4,6 +4,7 @@
 
 set shell := ["bash", "-c"]
 
+TOP := `git rev-parse --show-toplevel`
 SLN := "Angzarr.Examples.sln"
 
 default:

@@ -1,7 +1,10 @@
 # Java poker examples - container version
 # This file is mounted as 'justfile' inside the container
+# Also used directly in CI container jobs
 
 set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
 
 default:
     @just --list
