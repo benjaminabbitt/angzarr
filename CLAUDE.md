@@ -98,10 +98,19 @@ Three levels of testing:
 
 ### Unit Tests
 
-No external dependencies. Tests interact only with the system under test — no I/O, no concurrency, no infrastructure. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.
+Two categories:
+
+**Pure unit tests**: No external dependencies. Tests interact only with the system under test. Mock prior state where needed (e.g. `EventBook`). Direct invocation of domain logic.
 
 - Angzarr core: inline `#[cfg(test)]` modules
 - Examples: `test_*_logic.py`, `*_test.go`, inline Rust tests
+- Run with: `cargo test --lib`
+
+**Backend unit tests**: Storage and bus backend tests using **testcontainers** to automatically provision real databases/message brokers in Docker containers. Tests the actual backend implementations against real services.
+
+- Storage: `tests/storage_postgres.rs`, `tests/storage_redis.rs`, `tests/storage_immudb.rs`
+- Bus: `tests/bus_nats.rs`, `tests/bus_amqp.rs`, `tests/bus_kafka.rs`, etc.
+- Run with: `cargo test --test storage_postgres --features postgres`
 
 ### Integration Tests
 
@@ -119,8 +128,7 @@ Uses `RuntimeBuilder` in-process with real SQLite, real channels, real named pip
 
 - Location: `tests/standalone_integration/`
 - Scope: Angzarr framework only, not example business domains
-
-Storage backend tests (PostgreSQL, Redis, immudb) use **testcontainers** to automatically provision real databases in Docker containers during test execution. See [docs/testing.md](docs/testing.md) for patterns.
+- Run with: `cargo test --test standalone_integration --features sqlite`
 
 ### Writing Documentation
 

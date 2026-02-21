@@ -387,6 +387,46 @@ jobs:
       - name: Run standalone integration tests
         run: cargo test --test standalone_integration --features sqlite
 
+  # Backend unit tests using testcontainers (requires Docker, runs on host)
+  test-unit-backends:
+    needs: [changes]
+    if: |
+      needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: postgres
+            test: storage_postgres
+            features: postgres
+          - name: redis
+            test: storage_redis
+            features: redis
+          - name: nats
+            test: bus_nats
+            features: nats
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-backend-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run ${{ matrix.name }} tests
+        run: cargo test --test ${{ matrix.test }} --features ${{ matrix.features }} -- --nocapture
+
   # ==========================================================================
   # Phase 4: Build and package core binaries into runtime images
   # ==========================================================================
