@@ -8,23 +8,15 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_IMAGE: ghcr.io/angzarr/angzarr-rust:latest
 
 jobs:
   # Lint and format check
   lint:
     runs-on: ubuntu-latest
+    container: ghcr.io/angzarr/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -44,16 +36,9 @@ jobs:
   # Unit tests
   test:
     runs-on: ubuntu-latest
+    container: ghcr.io/angzarr/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
 
       - name: Cache cargo registry
         uses: actions/cache@v4

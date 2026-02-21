@@ -27,16 +27,9 @@ jobs:
   # Build core framework (shared by all language tests)
   build-framework:
     runs-on: ubuntu-latest
+    container: ghcr.io/angzarr/angzarr-rust:latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mold linker
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mold
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -100,7 +93,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Language-specific setup
+      # Language-specific setup (needs Docker access, can't use container)
       - name: Set up Rust
         if: matrix.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
