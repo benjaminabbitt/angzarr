@@ -1,0 +1,530 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type for core images'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - release
+      force_rebuild:
+        description: 'Force rebuild all images'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ==========================================================================
+  # Phase 1: Detect changes to determine what to build
+  # ==========================================================================
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.filter.outputs.base }}
+      rust: ${{ steps.filter.outputs.rust }}
+      go: ${{ steps.filter.outputs.go }}
+      python: ${{ steps.filter.outputs.python }}
+      java: ${{ steps.filter.outputs.java }}
+      csharp: ${{ steps.filter.outputs.csharp }}
+      cpp: ${{ steps.filter.outputs.cpp }}
+      core: ${{ steps.filter.outputs.core }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            base:
+              - 'build/images/base/**'
+            rust:
+              - 'build/images/rust/**'
+            go:
+              - 'build/images/go/**'
+            python:
+              - 'build/images/python/**'
+            java:
+              - 'build/images/java/**'
+            csharp:
+              - 'build/images/csharp/**'
+            cpp:
+              - 'build/images/cpp/**'
+            core:
+              - 'src/**'
+              - 'client/rust/**'
+              - 'proto/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'Containerfile'
+
+  # ==========================================================================
+  # Phase 2: Build support images (base first, then language-specific)
+  # ==========================================================================
+  build-base:
+    needs: changes
+    if: needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v5
+        with:
+          context: build/images/base
+          file: build/images/base/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
+
+  build-rust:
+    needs: [changes, build-base]
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (
+        needs.changes.outputs.rust == 'true' ||
+        needs.changes.outputs.base == 'true' ||
+        needs.changes.outputs.core == 'true' ||
+        github.event.inputs.force_rebuild == 'true'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push rust image
+        uses: docker/build-push-action@v5
+        with:
+          context: build/images/rust
+          file: build/images/rust/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=rust
+          cache-to: type=gha,mode=max,scope=rust
+
+  # Build other language images in parallel (only if changed)
+  build-go:
+    needs: [changes, build-base]
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (needs.changes.outputs.go == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: build/images/go
+          file: build/images/go/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:latest
+          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=go
+          cache-to: type=gha,mode=max,scope=go
+
+  build-python:
+    needs: [changes, build-base]
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (needs.changes.outputs.python == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: build/images/python
+          file: build/images/python/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:latest
+          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=python
+          cache-to: type=gha,mode=max,scope=python
+
+  build-java:
+    needs: [changes, build-base]
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (needs.changes.outputs.java == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: build/images/java
+          file: build/images/java/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:latest
+          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=java
+          cache-to: type=gha,mode=max,scope=java
+
+  build-csharp:
+    needs: [changes, build-base]
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (needs.changes.outputs.csharp == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: build/images/csharp
+          file: build/images/csharp/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:latest
+          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=csharp
+          cache-to: type=gha,mode=max,scope=csharp
+
+  build-cpp:
+    needs: [changes, build-base]
+    if: |
+      always() &&
+      (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') &&
+      (needs.changes.outputs.cpp == 'true' || needs.changes.outputs.base == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: build/images/cpp
+          file: build/images/cpp/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:latest
+          build-args: BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-base:latest
+          cache-from: type=gha,scope=cpp
+          cache-to: type=gha,mode=max,scope=cpp
+
+  # ==========================================================================
+  # Phase 3: Test core code (requires rust image to be ready)
+  # ==========================================================================
+  fmt:
+    needs: [changes, build-rust]
+    if: |
+      always() &&
+      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
+      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    needs: [changes, build-rust]
+    if: |
+      always() &&
+      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
+      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  test-unit:
+    needs: [changes, build-rust]
+    if: |
+      always() &&
+      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
+      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run unit tests
+        run: cargo test --lib
+
+  test-integration:
+    needs: [changes, build-rust]
+    if: |
+      always() &&
+      (needs.build-rust.result == 'success' || needs.build-rust.result == 'skipped') &&
+      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/angzarr-rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run standalone integration tests
+        run: cargo test --test standalone_integration --features sqlite
+
+  # ==========================================================================
+  # Phase 4: Build and package core binaries into runtime images
+  # ==========================================================================
+  build-core:
+    needs: [changes, build-rust, fmt, clippy, test-unit, test-integration]
+    if: |
+      always() &&
+      needs.fmt.result == 'success' &&
+      needs.clippy.result == 'success' &&
+      needs.test-unit.result == 'success' &&
+      needs.test-integration.result == 'success' &&
+      (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine build type
+        id: build-type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=${{ inputs.build_type }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "type=release" >> $GITHUB_OUTPUT
+          else
+            echo "type=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set build variables
+        id: vars
+        run: |
+          if [ "${{ steps.build-type.outputs.type }}" = "release" ]; then
+            echo "suffix=" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+          else
+            echo "suffix=-dev" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+          fi
+
+      # Build all images sequentially from shared builder cache
+      - name: Build and push aggregate
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-aggregate${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-aggregate${{ steps.vars.outputs.suffix }}:latest
+          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push projector
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-projector${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-projector${{ steps.vars.outputs.suffix }}:latest
+          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push saga
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-saga${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-saga${{ steps.vars.outputs.suffix }}:latest
+          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push process-manager
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-process-manager${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-process-manager${{ steps.vars.outputs.suffix }}:latest
+          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push log
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-log${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-log${{ steps.vars.outputs.suffix }}:latest
+          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
+
+      - name: Build and push stream
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          target: angzarr-stream${{ steps.vars.outputs.suffix }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream${{ steps.vars.outputs.suffix }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-stream${{ steps.vars.outputs.suffix }}:latest
+          build-args: RUST_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
+          cache-from: type=gha,scope=core-builder
+          cache-to: type=gha,mode=max,scope=core-builder
