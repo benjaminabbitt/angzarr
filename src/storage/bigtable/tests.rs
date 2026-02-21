@@ -118,38 +118,24 @@ mod row_key_tests {
 
 mod sequence_tests {
     use super::*;
-    use crate::proto::event_page::Sequence;
     use crate::proto::EventPage;
 
     #[test]
-    fn test_get_sequence_from_num() {
+    fn test_get_sequence() {
         let event = EventPage {
-            sequence: Some(Sequence::Num(42)),
-            event: None,
+            sequence: 42,
+            payload: None,
             created_at: None,
-            external_payload: None,
         };
         assert_eq!(BigtableEventStore::get_sequence(&event), 42);
     }
 
     #[test]
-    fn test_get_sequence_from_force() {
+    fn test_get_sequence_zero() {
         let event = EventPage {
-            sequence: Some(Sequence::Force(true)),
-            event: None,
+            sequence: 0,
+            payload: None,
             created_at: None,
-            external_payload: None,
-        };
-        assert_eq!(BigtableEventStore::get_sequence(&event), 0);
-    }
-
-    #[test]
-    fn test_get_sequence_none() {
-        let event = EventPage {
-            sequence: None,
-            event: None,
-            created_at: None,
-            external_payload: None,
         };
         assert_eq!(BigtableEventStore::get_sequence(&event), 0);
     }
@@ -211,17 +197,17 @@ mod mutation_tests {
 
     #[test]
     fn test_build_event_mutations() {
+        use crate::proto::event_page;
         let event = EventPage {
-            sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-            event: Some(prost_types::Any {
+            sequence: 0,
+            payload: Some(event_page::Payload::Event(prost_types::Any {
                 type_url: "test.Event".to_string(),
                 value: vec![1, 2, 3],
-            }),
+            })),
             created_at: Some(prost_types::Timestamp {
                 seconds: 1705315800,
                 nanos: 0,
             }),
-            external_payload: None,
         };
 
         let mutations = BigtableEventStore::build_event_mutations(&event, "corr-123");

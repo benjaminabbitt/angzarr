@@ -69,11 +69,7 @@ impl DynamoEventStore {
 
     /// Get sequence from EventPage.
     fn get_sequence(event: &EventPage) -> u32 {
-        match &event.sequence {
-            Some(crate::proto::event_page::Sequence::Num(n)) => *n,
-            Some(crate::proto::event_page::Sequence::Force(_)) => 0,
-            None => 0,
-        }
+        event.sequence
     }
 
     /// Query events for a specific edition.

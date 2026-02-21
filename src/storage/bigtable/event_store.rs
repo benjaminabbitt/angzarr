@@ -113,11 +113,7 @@ impl BigtableEventStore {
 
     /// Get sequence from EventPage.
     pub fn get_sequence(event: &EventPage) -> u32 {
-        match &event.sequence {
-            Some(crate::proto::event_page::Sequence::Num(n)) => *n,
-            Some(crate::proto::event_page::Sequence::Force(_)) => 0,
-            None => 0,
-        }
+        event.sequence
     }
 
     /// Parse ISO 8601 timestamp string to (seconds, nanos).

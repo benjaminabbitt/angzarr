@@ -13,7 +13,7 @@ use tracing::debug;
 use uuid::Uuid;
 
 use crate::orchestration::aggregate::DEFAULT_EDITION;
-use crate::proto::{event_page, Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
+use crate::proto::{Cover, Edition, EventBook, EventPage, Uuid as ProtoUuid};
 use crate::storage::helpers::is_main_timeline;
 use crate::storage::{EventStore, Result, StorageError};
 

@@ -30,13 +30,13 @@ mod tests {
         // Create test events
         let events = vec![
             crate::proto::EventPage {
-                sequence: Some(crate::proto::event_page::Sequence::Num(0)),
-                event: None,
+                sequence: 0,
+                payload: None,
                 created_at: None,
             },
             crate::proto::EventPage {
-                sequence: Some(crate::proto::event_page::Sequence::Num(1)),
-                event: None,
+                sequence: 1,
+                payload: None,
                 created_at: None,
             },
         ];
