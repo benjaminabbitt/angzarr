@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	github.com/benjaminabbitt/angzarr/client/go v0.0.0
-	github.com/cucumber/godog v0.14.1
+	github.com/cucumber/godog v0.15.1
 	github.com/google/uuid v1.6.0
 	google.golang.org/protobuf v1.36.6
 )
@@ -16,7 +16,7 @@ require (
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-memdb v1.3.4 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.7 // indirect
 	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect

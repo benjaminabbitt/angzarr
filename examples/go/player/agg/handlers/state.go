@@ -124,8 +124,9 @@ func RebuildState(eventBook *pb.EventBook) PlayerState {
 				state := applySnapshot(&snapshot)
 				// Apply events since snapshot
 				for _, page := range eventBook.Pages {
-					if page.Event != nil {
-						stateRouter.ApplySingle(&state, page.Event)
+					event := page.GetEvent()
+					if event != nil {
+						stateRouter.ApplySingle(&state, event)
 					}
 				}
 				return state
@@ -133,7 +134,15 @@ func RebuildState(eventBook *pb.EventBook) PlayerState {
 		}
 	}
 
-	return stateRouter.WithEventBook(eventBook)
+	// Apply events using the state router
+	state := NewPlayerState()
+	for _, page := range eventBook.Pages {
+		event := page.GetEvent()
+		if event != nil {
+			stateRouter.ApplySingle(&state, event)
+		}
+	}
+	return state
 }
 
 func applySnapshot(snapshot *examples.PlayerState) PlayerState {

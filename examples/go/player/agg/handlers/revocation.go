@@ -45,7 +45,15 @@ func HandleTableJoinRejected(notification *pb.Notification, state PlayerState) *
 	}
 
 	eventAny, _ := anypb.New(event)
-	return angzarr.EmitCompensationEvents(angzarr.NewEventBookFromNotification(notification, eventAny))
+	eventBook := &pb.EventBook{
+		Cover: notification.Cover,
+		Pages: []*pb.EventPage{
+			{
+				Payload: &pb.EventPage_Event{Event: eventAny},
+			},
+		},
+	}
+	return angzarr.EmitCompensationEvents(eventBook)
 }
 
 // docs:end:rejected_handler
