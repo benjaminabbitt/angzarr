@@ -40,6 +40,9 @@ examples/cpp/build/
 
 # Java build artifacts
 **/build/
+!/build/
+!/build/images/
+!/build/images/**
 .gradle/
 
 # Generated proto files

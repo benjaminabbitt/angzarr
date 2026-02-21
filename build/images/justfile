@@ -1,0 +1,78 @@
+# Base image build commands
+# Usage from root: just images <target>
+
+set shell := ["bash", "-c"]
+
+REGISTRY := "ghcr.io/angzarr"
+TOP := `git rev-parse --show-toplevel`
+
+default:
+    @just --list
+
+# Build all images (base + all languages)
+build-all: build-base build-languages
+
+# Build base image
+build-base:
+    podman build --network=host \
+        -t {{REGISTRY}}/angzarr-base:latest \
+        -f "{{TOP}}/build/images/base/Containerfile" \
+        "{{TOP}}/build/images/base"
+
+# Build all language-specific images
+build-languages: build-base
+    #!/usr/bin/env bash
+    set -e
+    for lang in rust go python java csharp cpp; do
+        echo "=== Building $lang image ==="
+        just build "$lang"
+    done
+
+# Build specific language image
+build LANG: build-base
+    podman build --network=host \
+        --build-arg BASE_IMAGE={{REGISTRY}}/angzarr-base:latest \
+        -t {{REGISTRY}}/angzarr-{{LANG}}:latest \
+        -f "{{TOP}}/build/images/{{LANG}}/Containerfile" \
+        "{{TOP}}/build/images/{{LANG}}"
+
+# Push all images to registry
+push-all: push-base push-languages
+
+# Push base image
+push-base:
+    podman push {{REGISTRY}}/angzarr-base:latest
+
+# Push all language images
+push-languages:
+    #!/usr/bin/env bash
+    set -e
+    for lang in rust go python java csharp cpp; do
+        echo "=== Pushing $lang image ==="
+        just push "$lang"
+    done
+
+# Push specific language image
+push LANG:
+    podman push {{REGISTRY}}/angzarr-{{LANG}}:latest
+
+# Pull all images from registry
+pull-all:
+    #!/usr/bin/env bash
+    set -e
+    for img in base rust go python java csharp cpp; do
+        echo "=== Pulling $img image ==="
+        podman pull {{REGISTRY}}/angzarr-$img:latest
+    done
+
+# Pull specific image
+pull IMAGE:
+    podman pull {{REGISTRY}}/angzarr-{{IMAGE}}:latest
+
+# List all local angzarr images
+list:
+    @podman images --filter "reference={{REGISTRY}}/angzarr-*" --format "table {{{{.Repository}}}}:{{{{.Tag}}}}\t{{{{.Size}}}}\t{{{{.Created}}}}"
+
+# Remove all local angzarr images
+clean:
+    @podman images --filter "reference={{REGISTRY}}/angzarr-*" -q | xargs -r podman rmi -f

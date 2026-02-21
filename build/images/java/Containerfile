@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.4
+# Java build image for angzarr
+#
+# Build: podman build -t ghcr.io/angzarr/angzarr-java .
+#
+# Provides: JDK 21, Gradle 8.5
+# Based on: ghcr.io/angzarr/angzarr-base
+
+ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+FROM ${BASE_IMAGE}
+
+ARG JAVA_VERSION=17
+ARG GRADLE_VERSION=8.5
+
+# Install OpenJDK, protoc, and set JAVA_HOME
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-${JAVA_VERSION}-jdk-headless \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "export JAVA_HOME=/usr/lib/jvm/java-${JAVA_VERSION}-openjdk-$(dpkg --print-architecture)" >> /etc/profile.d/java.sh
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH=${JAVA_HOME}/bin:${PATH}
+
+# Install Gradle
+RUN curl -Lo /tmp/gradle.zip \
+        "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" && \
+    unzip -d /opt /tmp/gradle.zip && \
+    ln -s /opt/gradle-${GRADLE_VERSION} /opt/gradle && \
+    rm /tmp/gradle.zip
+
+ENV PATH=/opt/gradle/bin:$PATH
+
+# Verify installations
+RUN java -version && gradle --version
+
+WORKDIR /workspace

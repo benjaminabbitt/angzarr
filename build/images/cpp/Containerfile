@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.4
+# C++ build image for angzarr
+#
+# Build: podman build -t ghcr.io/angzarr/angzarr-cpp .
+#
+# Provides: CMake, gRPC, protobuf, abseil, gtest (system packages)
+# Based on: ghcr.io/angzarr/angzarr-base
+
+ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+FROM ${BASE_IMAGE}
+
+ARG CMAKE_VERSION=3.31.4
+
+# Install C++ build dependencies and libraries from system packages
+# Using system packages instead of vcpkg for faster builds
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ninja-build \
+    zip \
+    unzip \
+    tar \
+    protobuf-compiler \
+    libprotobuf-dev \
+    libgrpc++-dev \
+    libgrpc-dev \
+    protobuf-compiler-grpc \
+    libabsl-dev \
+    libgtest-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CMake (newer version than apt provides)
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+        amd64) CMAKE_ARCH="x86_64" ;; \
+        arm64) CMAKE_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -Lo /tmp/cmake.tar.gz \
+        "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${CMAKE_ARCH}.tar.gz" && \
+    tar -xzf /tmp/cmake.tar.gz -C /usr/local --strip-components=1 && \
+    rm /tmp/cmake.tar.gz
+
+# Verify installations
+RUN cmake --version && protoc --version && grpc_cpp_plugin --version || true
+
+WORKDIR /workspace

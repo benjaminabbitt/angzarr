@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.4
+# Python build image for angzarr
+#
+# Build: podman build -t ghcr.io/angzarr/angzarr-python .
+#
+# Provides: Python 3.12, pip, uv, grpcio-tools
+# Based on: ghcr.io/angzarr/angzarr-base
+
+ARG BASE_IMAGE=ghcr.io/angzarr/angzarr-base:latest
+FROM ${BASE_IMAGE}
+
+ARG PYTHON_VERSION=3.11
+ARG UV_VERSION=0.5.14
+
+# Install Python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
+
+# Install uv (fast Python package manager)
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh
+ENV PATH=/root/.local/bin:$PATH
+
+# Install grpcio-tools for protobuf code generation
+RUN pip install --no-cache-dir --break-system-packages grpcio-tools
+
+# Verify installations
+RUN python --version && uv --version && python -c "import grpc_tools.protoc"
+
+WORKDIR /workspace
