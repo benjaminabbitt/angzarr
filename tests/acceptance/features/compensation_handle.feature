@@ -62,8 +62,8 @@ Feature: Compensation Flow - Components Handle Notification
     And a @rejected handler that returns FundsReleased event
     When the handler processes a table rejection (reason: table_full)
     Then FundsReleased is emitted with:
-      | amount | 500                        | # release what was reserved
-      | reason | Join failed: table_full    | # audit trail
+      | amount | 500                     |
+      | reason | Join failed: table_full |
     # Player's available balance is restored
 
   @handle @aggregate @oo
@@ -81,9 +81,9 @@ Feature: Compensation Flow - Components Handle Notification
     # An aggregate may participate in multiple workflows, each potentially failing.
     # Table join failure needs different compensation than hand start failure.
     Given Player has @rejected handlers for:
-      | domain | command   | handler                 |
-      | table  | JoinTable | handle_join_rejected    | # release reserved buy-in
-      | hand   | PostBlind | handle_blind_rejected   | # restore stack
+      | domain | command   | handler               |
+      | table  | JoinTable | handle_join_rejected  |
+      | hand   | PostBlind | handle_blind_rejected |
     When a rejection arrives for table/JoinTable
     Then handle_join_rejected is called (correct handler)
     And handle_blind_rejected is NOT called (wrong domain)

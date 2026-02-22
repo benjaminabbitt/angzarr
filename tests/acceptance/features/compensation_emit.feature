@@ -53,9 +53,9 @@ Feature: Compensation Flow - Framework Emits Notification
     And a table-player-saga listening for FundsReserved, issuing JoinTable to table domain
     When the Table aggregate rejects JoinTable with "table_full"
     Then the framework creates a Notification containing:
-      | issuer_name     | saga-table-player | # who issued the failed command
-      | rejection_reason| table_full        | # why it failed
-      | rejected_command| JoinTable         | # what failed
+      | issuer_name      | saga-table-player |
+      | rejection_reason | table_full        |
+      | rejected_command | JoinTable         |
     # This Notification will be routed back to Player for compensation
 
   @emit @saga
@@ -94,8 +94,8 @@ Feature: Compensation Flow - Framework Emits Notification
     And HandFlowPM reacts by issuing DealCards to Hand
     When Hand rejects with "invalid_player_count"
     Then a Notification is created identifying:
-      | issuer_name     | pmg-hand-flow        | # the PM that issued the command
-      | rejection_reason| invalid_player_count | # why Hand refused
+      | issuer_name      | pmg-hand-flow        |
+      | rejection_reason | invalid_player_count |
     # The PM can now transition to a "failed" or "retry" state
 
   @emit @pm
@@ -159,10 +159,10 @@ Feature: Compensation Flow - Framework Emits Notification
       | 3    | Hand aggregate   | rejects (bad config) |
     When the framework creates the Notification
     Then it contains the full provenance:
-      | source_event_type | HandStarted    | # what started the chain
-      | rejected_command  | DealCards      | # what failed
-      | issuer_type       | process_manager| # saga vs PM
-      | issuer_name       | pmg-hand-flow  | # which component
+      | source_event_type | HandStarted     |
+      | rejected_command  | DealCards       |
+      | issuer_type       | process_manager |
+      | issuer_name       | pmg-hand-flow   |
 
   # ============================================================================
   # Edge cases
