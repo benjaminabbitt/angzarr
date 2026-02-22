@@ -279,7 +279,7 @@ tempfile = "3"
 cucumber = "0.21"
 futures = "0.3"
 serial_test = "3"
-testcontainers = "0.23"
+testcontainers = "0.27"
 hex = "0.4"
 
 [[test]]
