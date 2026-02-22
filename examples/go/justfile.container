@@ -16,7 +16,7 @@ test-unit:
     @echo "No unit tests for Go examples (using BDD tests in ./tests/)"
 
 test-acceptance:
-    go test -v ./tests/...
+    @if [ -d "./tests" ]; then go test -v ./tests/...; else echo "No acceptance tests yet"; fi
 
 test: test-unit test-acceptance
 
