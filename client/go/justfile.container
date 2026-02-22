@@ -12,7 +12,7 @@ default:
 proto:
     cd {{TOP}}/proto && buf generate --template buf.gen.go.yaml
 
-build:
+build: proto
     go build ./...
 
 test:

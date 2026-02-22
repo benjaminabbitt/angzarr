@@ -14,7 +14,7 @@ proto:
     find {{TOP}}/client/python/angzarr_client/proto -name "*.py" -exec sed -i 's/from angzarr import/from angzarr_client.proto.angzarr import/g' {} \; && \
     find {{TOP}}/client/python/angzarr_client/proto/examples -name "*.py" -exec sed -i 's/from examples import/from angzarr_client.proto.examples import/g' {} \;
 
-test:
+test: proto
     uv run --extra dev pytest tests/
 
 coverage:
@@ -29,7 +29,7 @@ mutate-results:
 mutate-html:
     uv run --extra dev mutmut html
 
-build:
+build: proto
     uv run --with build python -m build
 
 publish-test: build

@@ -44,8 +44,28 @@ examples/cpp/build/
 !/build/images/**
 .gradle/
 
-# Generated proto files
+# Generated proto files (regenerated during build)
 /generated/
+
+# Go - protoc-gen-go output
+**/*.pb.go
+
+# Python - grpcio-tools output
+**/*_pb2.py
+**/*_pb2_grpc.py
+
+# C++ - protoc output (kept in build/ dirs which are already ignored)
+# **/*.pb.cc
+# **/*.pb.h
+
+# TypeScript/JavaScript - protoc-gen-ts output
+**/*_pb.js
+**/*_pb.d.ts
+**/*_grpc_pb.js
+**/*_grpc_pb.d.ts
+
+# Java/Kotlin - protoc output goes to build/ (already ignored via **/build/)
+# C# - protoc output goes to obj/ (already ignored via **/obj/)
 
 # Example proto copies (canonical source: proto/)
 examples/go/proto/
