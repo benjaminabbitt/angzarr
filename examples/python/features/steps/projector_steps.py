@@ -457,7 +457,7 @@ def step_given_event_book_with_two_events(context):
 def step_given_unknown_event(context, type_url):
     """Create an unknown event type."""
     context.event_page_override = types.EventPage(
-        num=0,
+        sequence=0,
         event=ProtoAny(type_url=type_url),
         created_at=make_timestamp(),
     )
