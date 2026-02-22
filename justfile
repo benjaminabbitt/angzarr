@@ -374,9 +374,23 @@ acceptance: _cluster-ready
 
 # === Vector Search ===
 
-# Rebuild vector index for semantic codebase search (used by MCP qdrant server)
-reindex:
-    uv run "{{TOP}}/scripts/index_codebase.py"
+# Start Qdrant container for semantic search
+qdrant-start:
+    @mkdir -p "{{TOP}}/.vectors/qdrant-data"
+    @podman start qdrant 2>/dev/null || \
+        podman run -d --name qdrant \
+            -p 6333:6333 -p 6334:6334 \
+            -v "{{TOP}}/.vectors/qdrant-data:/qdrant/storage:Z" \
+            docker.io/qdrant/qdrant:latest
+    @echo "Qdrant running at http://127.0.0.1:6333"
+
+# Stop Qdrant container
+qdrant-stop:
+    @podman stop qdrant 2>/dev/null || true
+
+# Rebuild vector index for semantic codebase search (uses containerized Qdrant)
+reindex: qdrant-start
+    uv run "{{TOP}}/scripts/index_codebase.py" --url http://127.0.0.1:6333
 
 # === Internal Helpers ===
 

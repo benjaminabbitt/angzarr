@@ -196,10 +196,15 @@ def detect_domain(rel_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def index_codebase(repo_root: Path, collection_name: str, db_path: str) -> int:
+def index_codebase(
+    repo_root: Path, collection_name: str, db_path: str, url: str | None = None
+) -> int:
     """Index all discovered files into Qdrant.  Returns document count."""
-    db_abs = str((repo_root / db_path).resolve())
-    client = QdrantClient(path=db_abs)
+    if url:
+        client = QdrantClient(url=url)
+    else:
+        db_abs = str((repo_root / db_path).resolve())
+        client = QdrantClient(path=db_abs)
     client.set_model(EMBEDDING_MODEL)
 
     # Recreate collection
@@ -314,6 +319,11 @@ def main() -> int:
         default=".vectors/qdrant",
         help="Path to local Qdrant database relative to repo root (default: .vectors/qdrant)",
     )
+    parser.add_argument(
+        "--url",
+        default=None,
+        help="Qdrant server URL (e.g., http://localhost:6333). If provided, ignores --db-path.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(args.path) if args.path else find_repo_root()
@@ -323,10 +333,13 @@ def main() -> int:
 
     print(f"Indexing codebase at {repo_root}")
     print(f"  Collection: {args.collection}")
-    print(f"  Database: {repo_root / args.db_path}")
+    if args.url:
+        print(f"  Server: {args.url}")
+    else:
+        print(f"  Database: {repo_root / args.db_path}")
 
     start = time.monotonic()
-    count = index_codebase(repo_root, args.collection, args.db_path)
+    count = index_codebase(repo_root, args.collection, args.db_path, args.url)
     elapsed = time.monotonic() - start
 
     print(f"  Indexed {count} chunks in {elapsed:.1f}s")
