@@ -9,8 +9,12 @@ TOP := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-build:
-    go build ./...
+# Generate protos for client library (required before build)
+client-proto:
+    cd {{TOP}}/proto && buf generate --template buf.gen.go.yaml
+
+build: client-proto
+    go mod tidy && go build ./...
 
 test-unit:
     @echo "No unit tests for Go examples (using BDD tests in ./tests/)"
