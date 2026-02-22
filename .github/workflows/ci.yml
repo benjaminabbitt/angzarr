@@ -106,26 +106,32 @@ jobs:
               - 'proto/**'
             examples-rust:
               - 'examples/rust/**'
+              - 'examples/features/**'
               - 'client/rust/**'
               - 'proto/**'
             examples-python:
               - 'examples/python/**'
+              - 'examples/features/**'
               - 'client/python/**'
               - 'proto/**'
             examples-go:
               - 'examples/go/**'
+              - 'examples/features/**'
               - 'client/go/**'
               - 'proto/**'
             examples-java:
               - 'examples/java/**'
+              - 'examples/features/**'
               - 'client/java/**'
               - 'proto/**'
             examples-csharp:
               - 'examples/csharp/**'
+              - 'examples/features/**'
               - 'client/csharp/**'
               - 'proto/**'
             examples-cpp:
               - 'examples/cpp/**'
+              - 'examples/features/**'
               - 'client/cpp/**'
               - 'proto/**'
 
