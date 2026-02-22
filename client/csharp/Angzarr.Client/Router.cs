@@ -20,7 +20,8 @@ public delegate Angzarr.EventBook CommandHandler<TState>(
     Angzarr.CommandBook commandBook,
     Any commandAny,
     TState state,
-    int seq);
+    int seq
+);
 
 /// <summary>
 /// Delegate for state rebuild functions.
@@ -48,13 +49,15 @@ public class RejectionHandlerResponse
 /// </summary>
 public delegate RejectionHandlerResponse RejectionHandler<TState>(
     Angzarr.Notification notification,
-    TState state);
+    TState state
+);
 
 /// <summary>
 /// DRY command dispatcher for aggregates.
 /// Matches command type_url suffixes and dispatches to registered handlers.
 /// </summary>
-public class CommandRouter<TState> where TState : new()
+public class CommandRouter<TState>
+    where TState : new()
 {
     private readonly string _domain;
     private StateRebuilder<TState>? _rebuild;
@@ -89,7 +92,11 @@ public class CommandRouter<TState> where TState : new()
     /// <summary>
     /// Register a rejection handler for compensation.
     /// </summary>
-    public CommandRouter<TState> OnRejected(string domain, string command, RejectionHandler<TState> handler)
+    public CommandRouter<TState> OnRejected(
+        string domain,
+        string command,
+        RejectionHandler<TState> handler
+    )
     {
         _rejectionHandlers[$"{domain}/{command}"] = handler;
         return this;
@@ -135,7 +142,10 @@ public class CommandRouter<TState> where TState : new()
         throw new InvalidArgumentError($"{ErrorMessages.UnknownCommand}: {typeUrl}");
     }
 
-    private Angzarr.BusinessResponse DispatchRejection(Angzarr.Notification notification, TState state)
+    private Angzarr.BusinessResponse DispatchRejection(
+        Angzarr.Notification notification,
+        TState state
+    )
     {
         var rejection = notification.Payload?.Unpack<Angzarr.RejectionNotification>();
         var domain = "";
@@ -171,8 +181,8 @@ public class CommandRouter<TState> where TState : new()
                     Revocation = new Angzarr.RevocationResponse
                     {
                         EmitSystemRevocation = false,
-                        Reason = $"Aggregate {_domain} handled rejection for {key}"
-                    }
+                        Reason = $"Aggregate {_domain} handled rejection for {key}",
+                    },
                 };
             }
         }
@@ -182,8 +192,9 @@ public class CommandRouter<TState> where TState : new()
             Revocation = new Angzarr.RevocationResponse
             {
                 EmitSystemRevocation = true,
-                Reason = $"Aggregate {_domain} has no custom compensation for {domain}/{commandSuffix}"
-            }
+                Reason =
+                    $"Aggregate {_domain} has no custom compensation for {domain}/{commandSuffix}",
+            },
         };
     }
 
@@ -194,7 +205,8 @@ public class CommandRouter<TState> where TState : new()
         if (_rebuild != null)
             return _rebuild(eventBook);
         throw new InvalidOperationException(
-            "CommandRouter requires either rebuild function or StateRouter via WithState()");
+            "CommandRouter requires either rebuild function or StateRouter via WithState()"
+        );
     }
 }
 
@@ -205,7 +217,8 @@ public delegate List<Angzarr.CommandBook> EventHandler(
     Any eventAny,
     byte[]? root,
     string correlationId,
-    List<Angzarr.EventBook>? destinations);
+    List<Angzarr.EventBook>? destinations
+);
 
 /// <summary>
 /// Delegate for prepare handlers in two-phase protocol.
@@ -245,8 +258,10 @@ public class EventRouter
 {
     private readonly string _name;
     private string? _currentDomain;
-    private readonly Dictionary<string, List<(string Suffix, EventHandler Handler)>> _handlers = new();
-    private readonly Dictionary<string, Dictionary<string, PrepareHandler>> _prepareHandlers = new();
+    private readonly Dictionary<string, List<(string Suffix, EventHandler Handler)>> _handlers =
+        new();
+    private readonly Dictionary<string, Dictionary<string, PrepareHandler>> _prepareHandlers =
+        new();
 
     public EventRouter(string name)
     {
@@ -259,7 +274,8 @@ public class EventRouter
     /// <param name="name">Component name</param>
     /// <param name="inputDomain">Single input domain (deprecated, use Domain() instead)</param>
     [Obsolete("Use new EventRouter(name).Domain(inputDomain) instead")]
-    public EventRouter(string name, string inputDomain) : this(name)
+    public EventRouter(string name, string inputDomain)
+        : this(name)
     {
         if (!string.IsNullOrEmpty(inputDomain))
             Domain(inputDomain);
@@ -332,7 +348,8 @@ public class EventRouter
 
         foreach (var page in book.Pages)
         {
-            if (page.Event == null) continue;
+            if (page.Event == null)
+                continue;
             foreach (var (suffix, handler) in domainHandlers)
             {
                 if (page.Event.TypeUrl.EndsWith(suffix))
@@ -351,7 +368,8 @@ public class EventRouter
     /// </summary>
     public List<Angzarr.CommandBook> Dispatch(
         Angzarr.EventBook book,
-        List<Angzarr.EventBook>? destinations = null)
+        List<Angzarr.EventBook>? destinations = null
+    )
     {
         var sourceDomain = book.Cover?.Domain ?? "";
         if (!_handlers.TryGetValue(sourceDomain, out var domainHandlers))
@@ -363,7 +381,8 @@ public class EventRouter
 
         foreach (var page in book.Pages)
         {
-            if (page.Event == null) continue;
+            if (page.Event == null)
+                continue;
             foreach (var (suffix, handler) in domainHandlers)
             {
                 if (page.Event.TypeUrl.EndsWith(suffix))
@@ -381,7 +400,6 @@ public class EventRouter
     /// </summary>
     [Obsolete("Use Subscriptions() instead")]
     public string InputDomain() => _handlers.Keys.FirstOrDefault() ?? "";
-
 }
 
 /// <summary>
@@ -392,21 +410,27 @@ public delegate void StateApplier<TState>(TState state, IMessage eventMessage);
 /// <summary>
 /// Fluent state reconstruction from events.
 /// </summary>
-public class StateRouter<TState> where TState : new()
+public class StateRouter<TState>
+    where TState : new()
 {
-    private readonly Dictionary<string, (Type EventType, Action<TState, Any> Applier)> _appliers = new();
+    private readonly Dictionary<string, (Type EventType, Action<TState, Any> Applier)> _appliers =
+        new();
 
     /// <summary>
     /// Register an event applier.
     /// </summary>
-    public StateRouter<TState> On<TEvent>(Action<TState, TEvent> applier) where TEvent : IMessage, new()
+    public StateRouter<TState> On<TEvent>(Action<TState, TEvent> applier)
+        where TEvent : IMessage, new()
     {
         var suffix = typeof(TEvent).Name;
-        _appliers[suffix] = (typeof(TEvent), (state, any) =>
-        {
-            var evt = any.Unpack<TEvent>();
-            applier(state, evt);
-        });
+        _appliers[suffix] = (
+            typeof(TEvent),
+            (state, any) =>
+            {
+                var evt = any.Unpack<TEvent>();
+                applier(state, evt);
+            }
+        );
         return this;
     }
 
@@ -416,11 +440,13 @@ public class StateRouter<TState> where TState : new()
     public TState WithEventBook(Angzarr.EventBook? book)
     {
         var state = new TState();
-        if (book == null) return state;
+        if (book == null)
+            return state;
 
         foreach (var page in book.Pages)
         {
-            if (page.Event == null) continue;
+            if (page.Event == null)
+                continue;
             ApplyEvent(state, page.Event);
         }
         return state;
@@ -492,7 +518,7 @@ public class UpcasterRouter
                     {
                         Event = newEvent,
                         Sequence = page.Sequence,
-                        CreatedAt = page.CreatedAt
+                        CreatedAt = page.CreatedAt,
                     };
                     result.Add(newPage);
                     transformed = true;

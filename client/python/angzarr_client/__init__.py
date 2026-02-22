@@ -1,117 +1,15 @@
 """Angzarr Python client library for gRPC services."""
 
+from .aggregate import Aggregate, applies, handles
+from .aggregate_handler import AggregateHandler, run_aggregate_server
+from .builder import CommandBuilder, QueryBuilder
 from .client import (
     AggregateClient,
+    Client,
+    DomainClient,
     QueryClient,
     SpeculativeClient,
-    DomainClient,
-    Client,
 )
-from .errors import (
-    ClientError,
-    ConnectionError,
-    TransportError,
-    GRPCError,
-    InvalidArgumentError,
-    InvalidTimestampError,
-    CommandRejectedError,
-)
-from .helpers import (
-    domain,
-    correlation_id,
-    has_correlation_id,
-    root_uuid,
-    root_id_hex,
-    edition,
-    next_sequence,
-    uuid_to_proto,
-    proto_to_uuid,
-    type_url,
-    type_name_from_url,
-    type_url_matches,
-    now,
-    parse_timestamp,
-)
-from .builder import CommandBuilder, QueryBuilder
-from .wrappers import (
-    CoverW,
-    EventBookW,
-    CommandBookW,
-    QueryW,
-    EventPageW,
-    CommandPageW,
-    CommandResponseW,
-)
-from .router import (
-    CommandRouter,
-    EventRouter,
-    ERRMSG_UNKNOWN_COMMAND,
-    ERRMSG_NO_COMMAND_PAGES,
-    next_sequence as router_next_sequence,
-    command_handler,
-    event_handler,
-    validate_command_handler,
-    prepares,
-    reacts_to,
-    projects,
-    rejected,
-)
-from .server import (
-    configure_logging,
-    get_transport_config,
-    create_server,
-    run_server,
-    cleanup_socket,
-)
-from .aggregate_handler import AggregateHandler, run_aggregate_server
-from .saga_handler import SagaHandler, run_saga_server, PrepareFunc, ExecuteFunc
-from .process_manager_handler import (
-    ProcessManagerHandler,
-    run_process_manager_server,
-    PMPrepareFunc,
-    PMHandleFunc,
-)
-from .projector_handler import (
-    ProjectorHandler,
-    run_projector_server,
-    ProjectorHandleFunc,
-)
-from .validation import (
-    require_exists,
-    require_not_exists,
-    require_positive,
-    require_non_negative,
-    require_not_empty,
-    require_status,
-    require_status_not,
-)
-from .identity import (
-    INVENTORY_PRODUCT_NAMESPACE,
-    compute_root,
-    inventory_product_root,
-    customer_root,
-    product_root,
-    order_root,
-    inventory_root,
-    cart_root,
-    fulfillment_root,
-    to_proto_bytes,
-)
-from .event_packing import pack_event, pack_events, new_event_book, new_event_book_multi
-from .state_builder import (
-    StateBuilder,
-    StateRouter,
-    StateApplier,
-    SnapshotLoader,
-    StateFactory,
-)
-from .aggregate import Aggregate, handles, applies
-from .saga import Saga
-from .process_manager import ProcessManager
-from .projector import Projector
-from .upcaster import Upcaster, upcasts
-from .upcaster_handler import UpcasterHandler, run_upcaster_server, UpcasterHandleFunc
-from .router import upcaster, UpcasterRouter
 from .compensation import (
     CompensationContext,
     RejectionHandlerResponse,
@@ -119,6 +17,111 @@ from .compensation import (
     emit_compensation_events,
     pm_delegate_to_framework,
     pm_emit_compensation_events,
+)
+from .errors import (
+    ClientError,
+    CommandRejectedError,
+    ConnectionError,
+    GRPCError,
+    InvalidArgumentError,
+    InvalidTimestampError,
+    TransportError,
+)
+from .event_packing import new_event_book, new_event_book_multi, pack_event, pack_events
+from .helpers import (
+    correlation_id,
+    domain,
+    edition,
+    has_correlation_id,
+    next_sequence,
+    now,
+    parse_timestamp,
+    proto_to_uuid,
+    root_id_hex,
+    root_uuid,
+    type_name_from_url,
+    type_url,
+    type_url_matches,
+    uuid_to_proto,
+)
+from .identity import (
+    INVENTORY_PRODUCT_NAMESPACE,
+    cart_root,
+    compute_root,
+    customer_root,
+    fulfillment_root,
+    inventory_product_root,
+    inventory_root,
+    order_root,
+    product_root,
+    to_proto_bytes,
+)
+from .process_manager import ProcessManager
+from .process_manager_handler import (
+    PMHandleFunc,
+    PMPrepareFunc,
+    ProcessManagerHandler,
+    run_process_manager_server,
+)
+from .projector import Projector
+from .projector_handler import (
+    ProjectorHandleFunc,
+    ProjectorHandler,
+    run_projector_server,
+)
+from .router import (
+    ERRMSG_NO_COMMAND_PAGES,
+    ERRMSG_UNKNOWN_COMMAND,
+    CommandRouter,
+    EventRouter,
+    UpcasterRouter,
+    command_handler,
+    event_handler,
+    prepares,
+    projects,
+    reacts_to,
+    rejected,
+    upcaster,
+    validate_command_handler,
+)
+from .router import (
+    next_sequence as router_next_sequence,
+)
+from .saga import Saga
+from .saga_handler import ExecuteFunc, PrepareFunc, SagaHandler, run_saga_server
+from .server import (
+    cleanup_socket,
+    configure_logging,
+    create_server,
+    get_transport_config,
+    run_server,
+)
+from .state_builder import (
+    SnapshotLoader,
+    StateApplier,
+    StateBuilder,
+    StateFactory,
+    StateRouter,
+)
+from .upcaster import Upcaster, upcasts
+from .upcaster_handler import UpcasterHandleFunc, UpcasterHandler, run_upcaster_server
+from .validation import (
+    require_exists,
+    require_non_negative,
+    require_not_empty,
+    require_not_exists,
+    require_positive,
+    require_status,
+    require_status_not,
+)
+from .wrappers import (
+    CommandBookW,
+    CommandPageW,
+    CommandResponseW,
+    CoverW,
+    EventBookW,
+    EventPageW,
+    QueryW,
 )
 
 __all__ = [

@@ -19,11 +19,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "client" / "python"))
 
 from angzarr_client import ProcessManager, prepares, reacts_to, rejected
-from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.process_manager_handler import (
     ProcessManagerHandler,
     run_process_manager_server,
 )
+from angzarr_client.proto.angzarr import types_pb2 as types
 
 structlog.configure(
     processors=[

@@ -15,17 +15,29 @@ namespace Angzarr.Client;
 /// - Optionally decorate prepare handlers with [Prepares(typeof(EventType))]
 /// - Optionally decorate rejection handlers with [Rejected("domain", "command")]
 /// </summary>
-public abstract class ProcessManager<TState> where TState : class
+public abstract class ProcessManager<TState>
+    where TState : class
 {
     private Angzarr.EventBook _eventBook;
     private TState? _state;
     private readonly List<Any> _newEvents = new();
 
     // Dispatch tables built via reflection on first use
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type EventType, string? InputDomain, string? OutputDomain)>> _dispatchTables = new();
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type EventType)>> _prepareTables = new();
-    private static readonly Dictionary<Type, Dictionary<string, MethodInfo>> _rejectionTables = new();
-    private static readonly Dictionary<Type, Dictionary<string, List<string>>> _inputDomains = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<
+            string,
+            (MethodInfo Method, Type EventType, string? InputDomain, string? OutputDomain)
+        >
+    > _dispatchTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type EventType)>
+    > _prepareTables = new();
+    private static readonly Dictionary<Type, Dictionary<string, MethodInfo>> _rejectionTables =
+        new();
+    private static readonly Dictionary<Type, Dictionary<string, List<string>>> _inputDomains =
+        new();
 
     /// <summary>
     /// The name of this process manager.
@@ -51,22 +63,33 @@ public abstract class ProcessManager<TState> where TState : class
     private void EnsureDispatchTablesBuilt()
     {
         var type = GetType();
-        if (_dispatchTables.ContainsKey(type)) return;
+        if (_dispatchTables.ContainsKey(type))
+            return;
 
         lock (_dispatchTables)
         {
-            if (_dispatchTables.ContainsKey(type)) return;
+            if (_dispatchTables.ContainsKey(type))
+                return;
 
             var dispatch = new Dictionary<string, (MethodInfo, Type, string?, string?)>();
             var domains = new Dictionary<string, List<string>>();
 
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<ReactsToAttribute>();
                 if (attr != null)
                 {
                     var suffix = attr.EventType.Name;
-                    dispatch[suffix] = (method, attr.EventType, attr.InputDomain, attr.OutputDomain);
+                    dispatch[suffix] = (
+                        method,
+                        attr.EventType,
+                        attr.InputDomain,
+                        attr.OutputDomain
+                    );
 
                     // Track input domains
                     if (!string.IsNullOrEmpty(attr.InputDomain))
@@ -85,7 +108,11 @@ public abstract class ProcessManager<TState> where TState : class
 
             // Build prepare handler dispatch table
             var prepares = new Dictionary<string, (MethodInfo, Type)>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<PreparesAttribute>();
                 if (attr != null)
@@ -98,7 +125,11 @@ public abstract class ProcessManager<TState> where TState : class
 
             // Build rejection handler dispatch table
             var rejections = new Dictionary<string, MethodInfo>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<RejectedAttribute>();
                 if (attr != null)
@@ -116,7 +147,9 @@ public abstract class ProcessManager<TState> where TState : class
     /// </summary>
     public static List<Angzarr.Cover> PrepareDestinations<T>(
         Angzarr.EventBook trigger,
-        Angzarr.EventBook processState) where T : ProcessManager<TState>, new()
+        Angzarr.EventBook processState
+    )
+        where T : ProcessManager<TState>, new()
     {
         var pm = (T)Activator.CreateInstance(typeof(T), processState)!;
         var destinations = new List<Angzarr.Cover>();
@@ -136,7 +169,9 @@ public abstract class ProcessManager<TState> where TState : class
     public static (List<Angzarr.CommandBook> Commands, Angzarr.EventBook ProcessEvents) Handle<T>(
         Angzarr.EventBook trigger,
         Angzarr.EventBook processState,
-        List<Angzarr.EventBook>? destinations = null) where T : ProcessManager<TState>, new()
+        List<Angzarr.EventBook>? destinations = null
+    )
+        where T : ProcessManager<TState>, new()
     {
         var pm = (T)Activator.CreateInstance(typeof(T), processState)!;
         var root = trigger.Cover?.Root?.Value.ToByteArray();
@@ -178,7 +213,8 @@ public abstract class ProcessManager<TState> where TState : class
         Any eventAny,
         byte[]? root = null,
         string correlationId = "",
-        List<Angzarr.EventBook>? destinations = null)
+        List<Angzarr.EventBook>? destinations = null
+    )
     {
         var dispatchTable = _dispatchTables[GetType()];
         foreach (var (suffix, (method, eventType, _, outputDomain)) in dispatchTable)
@@ -193,7 +229,10 @@ public abstract class ProcessManager<TState> where TState : class
                 object? result;
                 if (parameters.Any(p => p.Name == "destinations"))
                 {
-                    result = method.Invoke(this, new object?[] { evt, destinations ?? new List<Angzarr.EventBook>() });
+                    result = method.Invoke(
+                        this,
+                        new object?[] { evt, destinations ?? new List<Angzarr.EventBook>() }
+                    );
                 }
                 else
                 {
@@ -243,7 +282,7 @@ public abstract class ProcessManager<TState> where TState : class
                 var processEvents = ProcessEvents();
                 return new RejectionHandlerResponse
                 {
-                    Events = processEvents.Pages.Count > 0 ? processEvents : null
+                    Events = processEvents.Pages.Count > 0 ? processEvents : null,
                 };
             }
         }
@@ -300,7 +339,8 @@ public abstract class ProcessManager<TState> where TState : class
 
     private void HandleResult(object? result)
     {
-        if (result == null) return;
+        if (result == null)
+            return;
 
         if (result is System.Collections.IEnumerable enumerable && result is not IMessage)
         {
@@ -320,9 +360,11 @@ public abstract class ProcessManager<TState> where TState : class
         object? result,
         string? outputDomain,
         byte[]? root,
-        string correlationId)
+        string correlationId
+    )
     {
-        if (result == null) return new List<Angzarr.CommandBook>();
+        if (result == null)
+            return new List<Angzarr.CommandBook>();
 
         // Handle pre-packed CommandBooks
         if (result is Angzarr.CommandBook book)
@@ -344,24 +386,27 @@ public abstract class ProcessManager<TState> where TState : class
             commands.Add(message);
         }
 
-        return commands.Select(cmd => PackCommand(cmd, outputDomain ?? "", root, correlationId)).ToList();
+        return commands
+            .Select(cmd => PackCommand(cmd, outputDomain ?? "", root, correlationId))
+            .ToList();
     }
 
-    private Angzarr.CommandBook PackCommand(IMessage cmd, string domain, byte[]? root, string correlationId)
+    private Angzarr.CommandBook PackCommand(
+        IMessage cmd,
+        string domain,
+        byte[]? root,
+        string correlationId
+    )
     {
         var cmdAny = Any.Pack(cmd, "type.googleapis.com/");
-        var cover = new Angzarr.Cover
-        {
-            Domain = domain,
-            CorrelationId = correlationId
-        };
+        var cover = new Angzarr.Cover { Domain = domain, CorrelationId = correlationId };
         if (root != null)
             cover.Root = new Angzarr.UUID { Value = Google.Protobuf.ByteString.CopyFrom(root) };
 
         return new Angzarr.CommandBook
         {
             Cover = cover,
-            Pages = { new Angzarr.CommandPage { Command = cmdAny } }
+            Pages = { new Angzarr.CommandPage { Command = cmdAny } },
         };
     }
 }

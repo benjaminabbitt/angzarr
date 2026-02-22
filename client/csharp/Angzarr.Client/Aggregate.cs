@@ -15,15 +15,23 @@ namespace Angzarr.Client;
 /// - Decorate event appliers with [Applies(typeof(EventType))]
 /// - Optionally decorate rejection handlers with [Rejected("domain", "command")]
 /// </summary>
-public abstract class Aggregate<TState> where TState : class
+public abstract class Aggregate<TState>
+    where TState : class
 {
     private Angzarr.EventBook _eventBook;
     private TState? _state;
 
     // Dispatch tables built via reflection on first use
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type CmdType)>> _dispatchTables = new();
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type EventType)>> _applierTables = new();
-    private static readonly Dictionary<Type, Dictionary<string, MethodInfo>> _rejectionTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type CmdType)>
+    > _dispatchTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type EventType)>
+    > _applierTables = new();
+    private static readonly Dictionary<Type, Dictionary<string, MethodInfo>> _rejectionTables =
+        new();
 
     /// <summary>
     /// The domain this aggregate belongs to.
@@ -44,15 +52,21 @@ public abstract class Aggregate<TState> where TState : class
     private void EnsureDispatchTablesBuilt()
     {
         var type = GetType();
-        if (_dispatchTables.ContainsKey(type)) return;
+        if (_dispatchTables.ContainsKey(type))
+            return;
 
         lock (_dispatchTables)
         {
-            if (_dispatchTables.ContainsKey(type)) return;
+            if (_dispatchTables.ContainsKey(type))
+                return;
 
             // Build command handler dispatch table
             var dispatch = new Dictionary<string, (MethodInfo, Type)>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<HandlesAttribute>();
                 if (attr != null)
@@ -65,7 +79,11 @@ public abstract class Aggregate<TState> where TState : class
 
             // Build event applier dispatch table
             var appliers = new Dictionary<string, (MethodInfo, Type)>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<AppliesAttribute>();
                 if (attr != null)
@@ -78,7 +96,11 @@ public abstract class Aggregate<TState> where TState : class
 
             // Build rejection handler dispatch table
             var rejections = new Dictionary<string, MethodInfo>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<RejectedAttribute>();
                 if (attr != null)
@@ -94,7 +116,8 @@ public abstract class Aggregate<TState> where TState : class
     /// <summary>
     /// Handle a gRPC request.
     /// </summary>
-    public static Angzarr.BusinessResponse Handle<T>(Angzarr.ContextualCommand request) where T : Aggregate<TState>, new()
+    public static Angzarr.BusinessResponse Handle<T>(Angzarr.ContextualCommand request)
+        where T : Aggregate<TState>, new()
     {
         var priorEvents = request.Events;
         var agg = (T)Activator.CreateInstance(typeof(T), priorEvents)!;
@@ -173,14 +196,16 @@ public abstract class Aggregate<TState> where TState : class
             Revocation = new Angzarr.RevocationResponse
             {
                 EmitSystemRevocation = true,
-                Reason = $"Aggregate {Domain} has no custom compensation for {domain}/{commandSuffix}"
-            }
+                Reason =
+                    $"Aggregate {Domain} has no custom compensation for {domain}/{commandSuffix}",
+            },
         };
     }
 
     private void HandleResult(object? result)
     {
-        if (result == null) return;
+        if (result == null)
+            return;
 
         if (result is System.Collections.IEnumerable enumerable && result is not IMessage)
         {

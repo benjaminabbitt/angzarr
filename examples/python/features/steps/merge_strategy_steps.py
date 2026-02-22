@@ -4,7 +4,7 @@ These steps test the client-library aspects of merge strategy handling.
 Full coordinator integration tests are in tests/standalone_integration/merge_strategy.rs
 """
 
-from behave import given, when, then, use_step_matcher
+from behave import given, then, use_step_matcher, when
 from google.protobuf.any_pb2 import Any as ProtoAny
 
 from angzarr_client.proto.angzarr import types_pb2 as types

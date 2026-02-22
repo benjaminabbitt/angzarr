@@ -8,21 +8,21 @@ Tests both:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from behave import given, when, then, use_step_matcher
+from behave import given, then, use_step_matcher, when
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr_client import (
     Aggregate,
-    ProcessManager,
+    CommandRejectedError,
     CommandRouter,
+    ProcessManager,
     handles,
     reacts_to,
     rejected,
-    CommandRejectedError,
 )
-from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+from angzarr_client.proto.angzarr import types_pb2 as types
 
 # Use regex matchers for flexibility
 use_step_matcher("re")

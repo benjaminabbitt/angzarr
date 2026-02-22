@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.SagaTable;
 
@@ -28,8 +28,8 @@ public static class HandTableSaga
             new Cover
             {
                 Domain = "table",
-                Root = new UUID { Value = evt.TableRoot }
-            }
+                Root = new UUID { Value = evt.TableRoot },
+            },
         };
     }
 
@@ -37,13 +37,15 @@ public static class HandTableSaga
     {
         var destSeq = EventRouter.NextSequence(destinations.FirstOrDefault());
 
-        var results = evt.Winners.Select(winner => new PotResult
-        {
-            WinnerRoot = winner.PlayerRoot,
-            Amount = winner.Amount,
-            PotType = winner.PotType,
-            WinningHand = winner.WinningHand
-        }).ToList();
+        var results = evt
+            .Winners.Select(winner => new PotResult
+            {
+                WinnerRoot = winner.PlayerRoot,
+                Amount = winner.Amount,
+                PotType = winner.PotType,
+                WinningHand = winner.WinningHand,
+            })
+            .ToList();
 
         var endHand = new EndHand();
         endHand.Results.AddRange(results);
@@ -55,9 +57,12 @@ public static class HandTableSaga
             Cover = new Cover
             {
                 Domain = "table",
-                Root = new UUID { Value = evt.TableRoot }
+                Root = new UUID { Value = evt.TableRoot },
             },
-            Pages = { new CommandPage { Sequence = destSeq, Command = cmdAny } }
+            Pages =
+            {
+                new CommandPage { Sequence = destSeq, Command = cmdAny },
+            },
         };
     }
 }

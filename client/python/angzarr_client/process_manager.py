@@ -50,10 +50,10 @@ from typing import Generic, TypeVar
 
 from google.protobuf.any_pb2 import Any
 
+from .compensation import RejectionHandlerResponse
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
-from .compensation import RejectionHandlerResponse
 from .router import _pack_any, prepares, reacts_to, rejected
 
 # Re-export decorators

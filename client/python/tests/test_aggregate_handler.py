@@ -6,9 +6,9 @@ import grpc
 import pytest
 from google.protobuf import any_pb2
 
-from angzarr_client.proto.angzarr import types_pb2 as angzarr
 from angzarr_client.aggregate_handler import AggregateHandler
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.proto.angzarr import types_pb2 as angzarr
 from angzarr_client.router import CommandRouter
 
 # ============================================================================
@@ -172,6 +172,7 @@ class TestAggregateHandlerWithAggregateClass:
 
     def test_aggregate_class_dispatch(self):
         from dataclasses import dataclass
+
         from angzarr_client import Aggregate, handles
 
         class FakeCommand:
@@ -229,6 +230,7 @@ class TestAggregateHandlerWithAggregateClass:
 
     def test_aggregate_class_domain_property(self):
         from dataclasses import dataclass
+
         from angzarr_client import Aggregate
 
         @dataclass
@@ -253,6 +255,7 @@ class TestAggregateHandlerReplay:
 
     def test_replay_with_aggregate_class(self):
         from google.protobuf import any_pb2
+
         from angzarr_client import Aggregate, handles
         from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
 

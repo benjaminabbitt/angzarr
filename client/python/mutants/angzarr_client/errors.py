@@ -1,13 +1,9 @@
 """Error types for the Angzarr client library."""
 
-from typing import Optional
+from inspect import signature as _mutmut_signature
+from typing import Annotated, Callable, ClassVar, Optional
 
 import grpc
-from inspect import signature as _mutmut_signature
-from typing import Annotated
-from typing import Callable
-from typing import ClassVar
-
 
 MutantDict = Annotated[dict[str, Callable], "Mutant"]
 

@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg;
 
@@ -79,157 +79,182 @@ public class HandState
     /// StateRouter for fluent state reconstruction.
     /// </summary>
     public static readonly StateRouter<HandState> Router = new StateRouter<HandState>(() =>
-        {
-            var s = new HandState();
-            s.Pots.Add(new PotInfo { PotType = "main" });
-            return s;
-        })
-        .On<CardsDealt>((state, evt) =>
-        {
-            state.HandId = $"{Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant()}_{evt.HandNumber}";
-            state.TableRoot = evt.TableRoot;
-            state.HandNumber = evt.HandNumber;
-            state.GameVariant = evt.GameVariant;
-            state.DealerPosition = evt.DealerPosition;
-            state.Status = "betting";
-            state.CurrentPhase = BettingPhase.Preflop;
-
-            foreach (var player in evt.Players)
+    {
+        var s = new HandState();
+        s.Pots.Add(new PotInfo { PotType = "main" });
+        return s;
+    })
+        .On<CardsDealt>(
+            (state, evt) =>
             {
-                state.Players[player.Position] = new PlayerHandInfo
-                {
-                    PlayerRoot = player.PlayerRoot,
-                    Position = player.Position,
-                    Stack = player.Stack
-                };
-            }
+                state.HandId =
+                    $"{Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant()}_{evt.HandNumber}";
+                state.TableRoot = evt.TableRoot;
+                state.HandNumber = evt.HandNumber;
+                state.GameVariant = evt.GameVariant;
+                state.DealerPosition = evt.DealerPosition;
+                state.Status = "betting";
+                state.CurrentPhase = BettingPhase.Preflop;
 
-            var dealtCards = new HashSet<(Suit, Rank)>();
-            foreach (var pc in evt.PlayerCards)
-            {
-                var playerInfo = state.Players.Values.FirstOrDefault(p => p.PlayerRoot.Equals(pc.PlayerRoot));
-                if (playerInfo != null)
+                foreach (var player in evt.Players)
                 {
-                    playerInfo.HoleCards.Clear();
-                    foreach (var c in pc.Cards)
+                    state.Players[player.Position] = new PlayerHandInfo
                     {
-                        playerInfo.HoleCards.Add((c.Suit, c.Rank));
-                        dealtCards.Add((c.Suit, c.Rank));
+                        PlayerRoot = player.PlayerRoot,
+                        Position = player.Position,
+                        Stack = player.Stack,
+                    };
+                }
+
+                var dealtCards = new HashSet<(Suit, Rank)>();
+                foreach (var pc in evt.PlayerCards)
+                {
+                    var playerInfo = state.Players.Values.FirstOrDefault(p =>
+                        p.PlayerRoot.Equals(pc.PlayerRoot)
+                    );
+                    if (playerInfo != null)
+                    {
+                        playerInfo.HoleCards.Clear();
+                        foreach (var c in pc.Cards)
+                        {
+                            playerInfo.HoleCards.Add((c.Suit, c.Rank));
+                            dealtCards.Add((c.Suit, c.Rank));
+                        }
                     }
                 }
-            }
 
-            // Build remaining deck
-            state.RemainingDeck.Clear();
-            foreach (Suit suit in new[] { Suit.Clubs, Suit.Diamonds, Suit.Hearts, Suit.Spades })
-            {
-                for (var rank = Rank.Two; rank <= Rank.Ace; rank++)
+                // Build remaining deck
+                state.RemainingDeck.Clear();
+                foreach (Suit suit in new[] { Suit.Clubs, Suit.Diamonds, Suit.Hearts, Suit.Spades })
                 {
-                    if (!dealtCards.Contains((suit, rank)))
-                        state.RemainingDeck.Add((suit, rank));
-                }
-            }
-
-            state.Pots.Clear();
-            state.Pots.Add(new PotInfo { Amount = 0, PotType = "main" });
-            foreach (var p in state.Players.Values)
-                state.Pots[0].EligiblePlayers.Add(p.PlayerRoot);
-        })
-        .On<BlindPosted>((state, evt) =>
-        {
-            var player = state.GetPlayer(evt.PlayerRoot);
-            if (player != null)
-            {
-                player.Stack = evt.PlayerStack;
-                player.BetThisRound = evt.Amount;
-                player.TotalInvested += evt.Amount;
-                if (evt.BlindType == "small")
-                {
-                    state.SmallBlindPosition = player.Position;
-                    state.SmallBlind = evt.Amount;
-                }
-                else if (evt.BlindType == "big")
-                {
-                    state.BigBlindPosition = player.Position;
-                    state.BigBlind = evt.Amount;
-                    state.CurrentBet = evt.Amount;
-                    state.MinRaise = evt.Amount;
-                }
-            }
-            if (state.Pots.Count > 0)
-                state.Pots[0].Amount = evt.PotTotal;
-            state.Status = "betting";
-        })
-        .On<ActionTaken>((state, evt) =>
-        {
-            var player = state.GetPlayer(evt.PlayerRoot);
-            if (player != null)
-            {
-                player.Stack = evt.PlayerStack;
-                player.HasActed = true;
-                if (evt.Action == ActionType.Fold)
-                {
-                    player.HasFolded = true;
-                }
-                else if (evt.Action == ActionType.Call || evt.Action == ActionType.Bet || evt.Action == ActionType.Raise)
-                {
-                    player.BetThisRound += evt.Amount;
-                    player.TotalInvested += evt.Amount;
-                }
-                else if (evt.Action == ActionType.AllIn)
-                {
-                    player.IsAllIn = true;
-                    player.BetThisRound += evt.Amount;
-                    player.TotalInvested += evt.Amount;
-                }
-                if (evt.Action == ActionType.Bet || evt.Action == ActionType.Raise || evt.Action == ActionType.AllIn)
-                {
-                    if (player.BetThisRound > state.CurrentBet)
+                    for (var rank = Rank.Two; rank <= Rank.Ace; rank++)
                     {
-                        var raiseAmount = player.BetThisRound - state.CurrentBet;
-                        state.CurrentBet = player.BetThisRound;
-                        state.MinRaise = Math.Max(state.MinRaise, raiseAmount);
+                        if (!dealtCards.Contains((suit, rank)))
+                            state.RemainingDeck.Add((suit, rank));
                     }
                 }
+
+                state.Pots.Clear();
+                state.Pots.Add(new PotInfo { Amount = 0, PotType = "main" });
+                foreach (var p in state.Players.Values)
+                    state.Pots[0].EligiblePlayers.Add(p.PlayerRoot);
             }
-            if (state.Pots.Count > 0)
-                state.Pots[0].Amount = evt.PotTotal;
-            state.ActionOnPosition = -1;
-        })
-        .On<CommunityCardsDealt>((state, evt) =>
-        {
-            foreach (var card in evt.Cards)
+        )
+        .On<BlindPosted>(
+            (state, evt) =>
             {
-                var cardTuple = (card.Suit, card.Rank);
-                state.CommunityCards.Add(cardTuple);
-                state.RemainingDeck.Remove(cardTuple);
-            }
-            state.CurrentPhase = evt.Phase;
-            state.Status = "betting";
-            foreach (var p in state.Players.Values)
-            {
-                p.BetThisRound = 0;
-                p.HasActed = false;
-            }
-            state.CurrentBet = 0;
-        })
-        .On<ShowdownStarted>((state, _) =>
-        {
-            state.Status = "showdown";
-        })
-        .On<PotAwarded>((state, evt) =>
-        {
-            foreach (var winner in evt.Winners)
-            {
-                var player = state.GetPlayer(winner.PlayerRoot);
+                var player = state.GetPlayer(evt.PlayerRoot);
                 if (player != null)
-                    player.Stack += winner.Amount;
+                {
+                    player.Stack = evt.PlayerStack;
+                    player.BetThisRound = evt.Amount;
+                    player.TotalInvested += evt.Amount;
+                    if (evt.BlindType == "small")
+                    {
+                        state.SmallBlindPosition = player.Position;
+                        state.SmallBlind = evt.Amount;
+                    }
+                    else if (evt.BlindType == "big")
+                    {
+                        state.BigBlindPosition = player.Position;
+                        state.BigBlind = evt.Amount;
+                        state.CurrentBet = evt.Amount;
+                        state.MinRaise = evt.Amount;
+                    }
+                }
+                if (state.Pots.Count > 0)
+                    state.Pots[0].Amount = evt.PotTotal;
+                state.Status = "betting";
             }
-        })
-        .On<HandComplete>((state, _) =>
-        {
-            state.Status = "complete";
-        });
+        )
+        .On<ActionTaken>(
+            (state, evt) =>
+            {
+                var player = state.GetPlayer(evt.PlayerRoot);
+                if (player != null)
+                {
+                    player.Stack = evt.PlayerStack;
+                    player.HasActed = true;
+                    if (evt.Action == ActionType.Fold)
+                    {
+                        player.HasFolded = true;
+                    }
+                    else if (
+                        evt.Action == ActionType.Call
+                        || evt.Action == ActionType.Bet
+                        || evt.Action == ActionType.Raise
+                    )
+                    {
+                        player.BetThisRound += evt.Amount;
+                        player.TotalInvested += evt.Amount;
+                    }
+                    else if (evt.Action == ActionType.AllIn)
+                    {
+                        player.IsAllIn = true;
+                        player.BetThisRound += evt.Amount;
+                        player.TotalInvested += evt.Amount;
+                    }
+                    if (
+                        evt.Action == ActionType.Bet
+                        || evt.Action == ActionType.Raise
+                        || evt.Action == ActionType.AllIn
+                    )
+                    {
+                        if (player.BetThisRound > state.CurrentBet)
+                        {
+                            var raiseAmount = player.BetThisRound - state.CurrentBet;
+                            state.CurrentBet = player.BetThisRound;
+                            state.MinRaise = Math.Max(state.MinRaise, raiseAmount);
+                        }
+                    }
+                }
+                if (state.Pots.Count > 0)
+                    state.Pots[0].Amount = evt.PotTotal;
+                state.ActionOnPosition = -1;
+            }
+        )
+        .On<CommunityCardsDealt>(
+            (state, evt) =>
+            {
+                foreach (var card in evt.Cards)
+                {
+                    var cardTuple = (card.Suit, card.Rank);
+                    state.CommunityCards.Add(cardTuple);
+                    state.RemainingDeck.Remove(cardTuple);
+                }
+                state.CurrentPhase = evt.Phase;
+                state.Status = "betting";
+                foreach (var p in state.Players.Values)
+                {
+                    p.BetThisRound = 0;
+                    p.HasActed = false;
+                }
+                state.CurrentBet = 0;
+            }
+        )
+        .On<ShowdownStarted>(
+            (state, _) =>
+            {
+                state.Status = "showdown";
+            }
+        )
+        .On<PotAwarded>(
+            (state, evt) =>
+            {
+                foreach (var winner in evt.Winners)
+                {
+                    var player = state.GetPlayer(winner.PlayerRoot);
+                    if (player != null)
+                        player.Stack += winner.Amount;
+                }
+            }
+        )
+        .On<HandComplete>(
+            (state, _) =>
+            {
+                state.Status = "complete";
+            }
+        );
 
     /// <summary>
     /// Build state from an EventBook by applying all events.

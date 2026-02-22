@@ -72,3 +72,4 @@ test-bus-all: clean-containers test-bus-amqp clean-containers test-bus-kafka cle
 
 clean:
     cargo clean
+

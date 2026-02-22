@@ -6,21 +6,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Constants matching Rust proto_ext::constants
 const (
-	UnknownDomain         = "unknown"
-	WildcardDomain        = "*"
-	DefaultEdition        = "angzarr"
-	MetaAngzarrDomain     = "_angzarr"
+	UnknownDomain          = "unknown"
+	WildcardDomain         = "*"
+	DefaultEdition         = "angzarr"
+	MetaAngzarrDomain      = "_angzarr"
 	ProjectionDomainPrefix = "projection:"
-	CorrelationIDHeader   = "x-correlation-id"
-	TypeURLPrefix         = "type.googleapis.com/"
+	CorrelationIDHeader    = "x-correlation-id"
+	TypeURLPrefix          = "type.googleapis.com/"
 )
 
 // Cover accessors - work with any type that has a Cover field

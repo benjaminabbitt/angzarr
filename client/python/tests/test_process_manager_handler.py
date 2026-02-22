@@ -1,8 +1,8 @@
 """Tests for ProcessManagerHandler."""
 
+from angzarr_client.process_manager_handler import ProcessManagerHandler
 from angzarr_client.proto.angzarr import process_manager_pb2 as pm
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.process_manager_handler import ProcessManagerHandler
 
 
 def _trigger() -> types.EventBook:

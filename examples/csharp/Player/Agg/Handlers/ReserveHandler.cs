@@ -1,9 +1,9 @@
 // DOC: This file is referenced in docs/docs/examples/aggregates.mdx
 //      Update documentation when making changes to handler patterns.
 
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg.Handlers;
 
@@ -39,7 +39,7 @@ public static class ReserveHandler
             TableRoot = cmd.TableRoot,
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
-            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

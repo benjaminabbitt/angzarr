@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING, Callable, Union
 import grpc
 
 from .aggregate import Aggregate
+from .errors import CommandRejectedError
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import aggregate_pb2_grpc
 from .proto.angzarr import types_pb2 as types
-from .errors import CommandRejectedError
 from .router import CommandRouter
 from .server import run_server
 

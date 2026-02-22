@@ -1,12 +1,12 @@
-using FluentAssertions;
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using TechTalk.SpecFlow;
-using TechTalk.SpecFlow.Assist;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using FluentAssertions;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Table.Agg;
+using TechTalk.SpecFlow;
+using TechTalk.SpecFlow.Assist;
 
 namespace Tests.Steps;
 
@@ -73,11 +73,7 @@ public class TableSteps
     private EventPage MakeEventPage(IMessage evt, int seq)
     {
         var any = Any.Pack(evt, "type.googleapis.com/");
-        return new EventPage
-        {
-            Sequence = (uint)seq,
-            Event = any
-        };
+        return new EventPage { Sequence = (uint)seq, Event = any };
     }
 
     private EventBook MakeEventBook()
@@ -87,8 +83,8 @@ public class TableSteps
             Cover = new Cover
             {
                 Domain = "table",
-                Root = new UUID { Value = ByteString.CopyFromUtf8("table-123") }
-            }
+                Root = new UUID { Value = ByteString.CopyFromUtf8("table-123") },
+            },
         };
         book.Pages.AddRange(Events);
         return book;
@@ -140,7 +136,7 @@ public class TableSteps
             MaxBuyIn = 1000,
             MaxPlayers = MaxPlayers,
             ActionTimeoutSeconds = 30,
-            CreatedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            CreatedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(evt, Events.Count));
     }
@@ -166,9 +162,14 @@ public class TableSteps
     }
 
     [Given(@"a PlayerJoined event for player ""(.*)"" at seat (\d+) with stack (\d+)")]
-    public void GivenAPlayerJoinedEventForPlayerAtSeatWithStack(string playerId, int seat, int stack)
+    public void GivenAPlayerJoinedEventForPlayerAtSeatWithStack(
+        string playerId,
+        int seat,
+        int stack
+    )
     {
-        if (Events == null) Events = new List<EventPage>();
+        if (Events == null)
+            Events = new List<EventPage>();
 
         var evt = new PlayerJoined
         {
@@ -176,7 +177,7 @@ public class TableSteps
             SeatPosition = seat,
             BuyInAmount = stack,
             Stack = stack,
-            JoinedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            JoinedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(evt, Events.Count));
     }
@@ -190,7 +191,8 @@ public class TableSteps
     [Given(@"a HandStarted event for hand (\d+) with dealer at seat (\d+)")]
     public void GivenAHandStartedEventForHandWithDealerAtSeat(int handNumber, int dealerSeat)
     {
-        if (Events == null) Events = new List<EventPage>();
+        if (Events == null)
+            Events = new List<EventPage>();
 
         var handRoot = $"hand-{handNumber}";
         CurrentHandRoot = handRoot;
@@ -203,7 +205,7 @@ public class TableSteps
             GameVariant = GameVariant.TexasHoldem,
             SmallBlind = 5,
             BigBlind = 10,
-            StartedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            StartedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(evt, Events.Count));
     }
@@ -211,12 +213,13 @@ public class TableSteps
     [Given(@"a HandEnded event for hand (\d+)")]
     public void GivenAHandEndedEventForHand(int handNumber)
     {
-        if (Events == null) Events = new List<EventPage>();
+        if (Events == null)
+            Events = new List<EventPage>();
 
         var evt = new HandEnded
         {
             HandRoot = ByteString.CopyFromUtf8($"hand_{handNumber}"),
-            EndedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            EndedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(evt, Events.Count));
     }
@@ -224,7 +227,11 @@ public class TableSteps
     // --- When steps ---
 
     [When(@"I handle a CreateTable command with name ""(.*)"" and variant ""(.*)"":")]
-    public void WhenIHandleACreateTableCommandWithNameAndVariant(string name, string variant, TechTalk.SpecFlow.Table table)
+    public void WhenIHandleACreateTableCommandWithNameAndVariant(
+        string name,
+        string variant,
+        TechTalk.SpecFlow.Table table
+    )
     {
         var row = table.Rows[0];
         var gameVariant = variant.ToUpper() switch
@@ -232,7 +239,7 @@ public class TableSteps
             "TEXAS_HOLDEM" => GameVariant.TexasHoldem,
             "OMAHA" => GameVariant.Omaha,
             "FIVE_CARD_DRAW" => GameVariant.FiveCardDraw,
-            _ => GameVariant.Unspecified
+            _ => GameVariant.Unspecified,
         };
 
         var cmd = new CreateTable
@@ -243,19 +250,23 @@ public class TableSteps
             BigBlind = int.Parse(row["big_blind"]),
             MinBuyIn = int.Parse(row["min_buy_in"]),
             MaxBuyIn = int.Parse(row["max_buy_in"]),
-            MaxPlayers = int.Parse(row["max_players"])
+            MaxPlayers = int.Parse(row["max_players"]),
         };
         ExecuteCommand(cmd);
     }
 
     [When(@"I handle a JoinTable command for player ""(.*)"" at seat (-?\d+) with buy-in (\d+)")]
-    public void WhenIHandleAJoinTableCommandForPlayerAtSeatWithBuyIn(string playerId, int seat, int buyIn)
+    public void WhenIHandleAJoinTableCommandForPlayerAtSeatWithBuyIn(
+        string playerId,
+        int seat,
+        int buyIn
+    )
     {
         var cmd = new JoinTable
         {
             PlayerRoot = ByteString.CopyFromUtf8(playerId),
             PreferredSeat = seat,
-            BuyInAmount = buyIn
+            BuyInAmount = buyIn,
         };
         ExecuteCommand(cmd);
     }
@@ -263,10 +274,7 @@ public class TableSteps
     [When(@"I handle a LeaveTable command for player ""(.*)""")]
     public void WhenIHandleALeaveTableCommandForPlayer(string playerId)
     {
-        var cmd = new LeaveTable
-        {
-            PlayerRoot = ByteString.CopyFromUtf8(playerId)
-        };
+        var cmd = new LeaveTable { PlayerRoot = ByteString.CopyFromUtf8(playerId) };
         ExecuteCommand(cmd);
     }
 
@@ -281,16 +289,15 @@ public class TableSteps
     public void WhenIHandleAnEndHandCommandWithWinnerWinning(string winnerId, int amount)
     {
         var handRoot = CurrentHandRoot ?? "current_hand";
-        var cmd = new EndHand
-        {
-            HandRoot = ByteString.CopyFromUtf8(handRoot)
-        };
-        cmd.Results.Add(new PotResult
-        {
-            PotType = "main",
-            WinnerRoot = ByteString.CopyFromUtf8(winnerId),
-            Amount = amount
-        });
+        var cmd = new EndHand { HandRoot = ByteString.CopyFromUtf8(handRoot) };
+        cmd.Results.Add(
+            new PotResult
+            {
+                PotType = "main",
+                WinnerRoot = ByteString.CopyFromUtf8(winnerId),
+                Amount = amount,
+            }
+        );
         ExecuteCommand(cmd);
     }
 
@@ -329,7 +336,7 @@ public class TableSteps
             "TEXAS_HOLDEM" => GameVariant.TexasHoldem,
             "OMAHA" => GameVariant.Omaha,
             "FIVE_CARD_DRAW" => GameVariant.FiveCardDraw,
-            _ => GameVariant.Unspecified
+            _ => GameVariant.Unspecified,
         };
         evt.GameVariant.Should().Be(expected);
     }
@@ -395,11 +402,12 @@ public class TableSteps
     {
         var evt = ResultEventAny!.Unpack<HandEnded>();
         // StackChanges is a map<string, long> where key is player_root_hex
-        var playerKey = Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(playerId)).ToLowerInvariant();
+        var playerKey = Convert
+            .ToHexString(System.Text.Encoding.UTF8.GetBytes(playerId))
+            .ToLowerInvariant();
         evt.StackChanges.Should().ContainKey(playerKey);
         evt.StackChanges[playerKey].Should().Be(amount);
     }
-
 
     // State assertions
     [Then(@"the table state has (\d+) players")]

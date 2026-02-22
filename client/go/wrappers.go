@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/google/uuid"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"github.com/google/uuid"
 )
 
 // CoverW wraps a Cover proto with extension methods.

@@ -15,7 +15,10 @@ namespace Angzarr.Client;
 public abstract class Projector
 {
     // Dispatch table built via reflection on first use
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type EventType)>> _dispatchTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type EventType)>
+    > _dispatchTables = new();
 
     /// <summary>
     /// The name of this projector (e.g., "projector-inventory-stock").
@@ -35,14 +38,20 @@ public abstract class Projector
     private void EnsureDispatchTableBuilt()
     {
         var type = GetType();
-        if (_dispatchTables.ContainsKey(type)) return;
+        if (_dispatchTables.ContainsKey(type))
+            return;
 
         lock (_dispatchTables)
         {
-            if (_dispatchTables.ContainsKey(type)) return;
+            if (_dispatchTables.ContainsKey(type))
+                return;
 
             var dispatch = new Dictionary<string, (MethodInfo, Type)>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<ProjectsAttribute>();
                 if (attr != null)
@@ -58,7 +67,8 @@ public abstract class Projector
     /// <summary>
     /// Process an EventBook and return projection from last handled event.
     /// </summary>
-    public static Angzarr.Projection Handle<T>(Angzarr.EventBook source) where T : Projector, new()
+    public static Angzarr.Projection Handle<T>(Angzarr.EventBook source)
+        where T : Projector, new()
     {
         var projector = new T();
         var lastProjection = new Angzarr.Projection();

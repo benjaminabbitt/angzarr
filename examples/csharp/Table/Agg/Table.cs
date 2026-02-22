@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg;
 
@@ -74,7 +74,7 @@ public class TableAggregate : Aggregate<TableState>
             MaxBuyIn = cmd.MaxBuyIn != 0 ? cmd.MaxBuyIn : cmd.BigBlind * 100,
             MaxPlayers = cmd.MaxPlayers != 0 ? cmd.MaxPlayers : 9,
             ActionTimeoutSeconds = cmd.ActionTimeoutSeconds != 0 ? cmd.ActionTimeoutSeconds : 30,
-            CreatedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            CreatedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -104,7 +104,7 @@ public class TableAggregate : Aggregate<TableState>
             SeatPosition = seatPosition,
             BuyInAmount = cmd.BuyInAmount,
             Stack = cmd.BuyInAmount,
-            JoinedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            JoinedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -127,7 +127,7 @@ public class TableAggregate : Aggregate<TableState>
             PlayerRoot = cmd.PlayerRoot,
             SeatPosition = seat.Position,
             ChipsCashedOut = seat.Stack,
-            LeftAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            LeftAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -144,7 +144,7 @@ public class TableAggregate : Aggregate<TableState>
         return new PlayerSatOut
         {
             PlayerRoot = cmd.PlayerRoot,
-            SatOutAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            SatOutAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -161,7 +161,7 @@ public class TableAggregate : Aggregate<TableState>
         return new PlayerSatIn
         {
             PlayerRoot = cmd.PlayerRoot,
-            SatInAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            SatInAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -179,16 +179,18 @@ public class TableAggregate : Aggregate<TableState>
         var handRoot = GenerateHandRoot(TableId, handNumber);
         var dealerPosition = State.NextDealerPosition();
 
-        var activePositions = Seats.Values
-            .Where(s => !s.IsSittingOut)
+        var activePositions = Seats
+            .Values.Where(s => !s.IsSittingOut)
             .Select(s => s.Position)
             .OrderBy(p => p)
             .ToList();
 
         var dealerIdx = activePositions.IndexOf(dealerPosition);
-        if (dealerIdx < 0) dealerIdx = 0;
+        if (dealerIdx < 0)
+            dealerIdx = 0;
 
-        int sbPosition, bbPosition;
+        int sbPosition,
+            bbPosition;
         if (activePositions.Count == 2)
         {
             sbPosition = activePositions[dealerIdx];
@@ -200,16 +202,18 @@ public class TableAggregate : Aggregate<TableState>
             bbPosition = activePositions[(dealerIdx + 2) % activePositions.Count];
         }
 
-        var activePlayers = activePositions.Select(pos =>
-        {
-            var seat = Seats[pos];
-            return new SeatSnapshot
+        var activePlayers = activePositions
+            .Select(pos =>
             {
-                Position = pos,
-                PlayerRoot = seat.PlayerRoot,
-                Stack = seat.Stack
-            };
-        }).ToList();
+                var seat = Seats[pos];
+                return new SeatSnapshot
+                {
+                    Position = pos,
+                    PlayerRoot = seat.PlayerRoot,
+                    Stack = seat.Stack,
+                };
+            })
+            .ToList();
 
         var evt = new HandStarted
         {
@@ -221,7 +225,7 @@ public class TableAggregate : Aggregate<TableState>
             GameVariant = GameVariant,
             SmallBlind = SmallBlind,
             BigBlind = BigBlind,
-            StartedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            StartedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.ActivePlayers.AddRange(activePlayers);
 
@@ -250,7 +254,7 @@ public class TableAggregate : Aggregate<TableState>
         var evt = new HandEnded
         {
             HandRoot = cmd.HandRoot,
-            EndedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            EndedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.Results.AddRange(cmd.Results);
         foreach (var kvp in stackChanges)
@@ -277,7 +281,7 @@ public class TableAggregate : Aggregate<TableState>
             PlayerRoot = cmd.PlayerRoot,
             Amount = cmd.Amount,
             NewStack = newStack,
-            AddedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            AddedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 

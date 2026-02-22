@@ -45,6 +45,7 @@ public class OutputProjector
     private static string FormatCards(IEnumerable<Card> cards) =>
         string.Join(" ", cards.Select(c => $"{c.Rank}{c.Suit}"));
 }
+
 // docs:end:projector_oo
 
 // docs:start:state_router
@@ -57,15 +58,18 @@ public static class OutputProjectorRouter
         return new StateRouter("prj-output")
             .Subscribes("player", new[] { "PlayerRegistered", "FundsDeposited" })
             .Subscribes("hand", new[] { "CardsDealt", "ActionTaken", "PotAwarded" })
-            .On<PlayerRegistered>(evt => {
+            .On<PlayerRegistered>(evt =>
+            {
                 playerNames[evt.PlayerId] = evt.DisplayName;
                 Console.WriteLine($"[Player] {evt.DisplayName} registered");
             })
-            .On<FundsDeposited>(evt => {
+            .On<FundsDeposited>(evt =>
+            {
                 var name = playerNames.GetValueOrDefault(evt.PlayerId, evt.PlayerId);
                 Console.WriteLine($"[Player] {name} deposited ${evt.Amount?.Amount / 100.0:F2}");
             })
-            .On<CardsDealt>(evt => {
+            .On<CardsDealt>(evt =>
+            {
                 foreach (var player in evt.PlayerCards)
                 {
                     var name = playerNames.GetValueOrDefault(player.PlayerId, player.PlayerId);

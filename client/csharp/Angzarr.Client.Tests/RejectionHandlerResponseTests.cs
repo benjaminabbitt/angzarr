@@ -32,10 +32,7 @@ public class RejectionHandlerResponseTests
     {
         var eventBook = MakeEventBook();
 
-        var response = new RejectionHandlerResponse
-        {
-            Events = eventBook
-        };
+        var response = new RejectionHandlerResponse { Events = eventBook };
 
         response.Events.Should().NotBeNull();
         response.Events!.Pages.Count.Should().Be(1);
@@ -47,10 +44,7 @@ public class RejectionHandlerResponseTests
     {
         var notification = MakeNotification("inventory", "ReserveStock", "out of stock");
 
-        var response = new RejectionHandlerResponse
-        {
-            Notification = notification
-        };
+        var response = new RejectionHandlerResponse { Notification = notification };
 
         response.Events.Should().BeNull();
         response.Notification.Should().NotBeNull();
@@ -65,7 +59,7 @@ public class RejectionHandlerResponseTests
         var response = new RejectionHandlerResponse
         {
             Events = eventBook,
-            Notification = notification
+            Notification = notification,
         };
 
         response.Events.Should().NotBeNull();
@@ -76,19 +70,20 @@ public class RejectionHandlerResponseTests
     public void ResponseEventsAreAccessible()
     {
         var eventBook = new EventBook();
-        eventBook.Pages.Add(new EventPage
-        {
-            Event = Any.Pack(new RejectionNotification { RejectionReason = "test1" })
-        });
-        eventBook.Pages.Add(new EventPage
-        {
-            Event = Any.Pack(new RejectionNotification { RejectionReason = "test2" })
-        });
+        eventBook.Pages.Add(
+            new EventPage
+            {
+                Event = Any.Pack(new RejectionNotification { RejectionReason = "test1" }),
+            }
+        );
+        eventBook.Pages.Add(
+            new EventPage
+            {
+                Event = Any.Pack(new RejectionNotification { RejectionReason = "test2" }),
+            }
+        );
 
-        var response = new RejectionHandlerResponse
-        {
-            Events = eventBook
-        };
+        var response = new RejectionHandlerResponse { Events = eventBook };
 
         response.Events!.Pages.Count.Should().Be(2);
     }
@@ -105,8 +100,10 @@ public class RejectionHandlerResponseTests
     [Fact]
     public void CommandRouter_OnRejected_ReturnsEvents()
     {
-        var router = new CommandRouter<TestState>("test", _ => new TestState())
-            .OnRejected("inventory", "ReserveStock", (notification, state) =>
+        var router = new CommandRouter<TestState>("test", _ => new TestState()).OnRejected(
+            "inventory",
+            "ReserveStock",
+            (notification, state) =>
             {
                 return new RejectionHandlerResponse
                 {
@@ -116,22 +113,23 @@ public class RejectionHandlerResponseTests
                         {
                             new EventPage
                             {
-                                Event = new Any { TypeUrl = "type.googleapis.com/test.Compensated" }
-                            }
-                        }
-                    }
+                                Event = new Any
+                                {
+                                    TypeUrl = "type.googleapis.com/test.Compensated",
+                                },
+                            },
+                        },
+                    },
                 };
-            });
+            }
+        );
 
         var notification = MakeNotification("inventory", "ReserveStock", "out of stock");
         var notificationAny = Any.Pack(notification);
 
         var cmd = new ContextualCommand
         {
-            Command = new CommandBook
-            {
-                Pages = { new CommandPage { Command = notificationAny } }
-            }
+            Command = new CommandBook { Pages = { new CommandPage { Command = notificationAny } } },
         };
 
         var response = router.Dispatch(cmd);
@@ -143,24 +141,21 @@ public class RejectionHandlerResponseTests
     [Fact]
     public void CommandRouter_OnRejected_ReturnsNotification()
     {
-        var router = new CommandRouter<TestState>("test", _ => new TestState())
-            .OnRejected("payment", "Charge", (notification, state) =>
+        var router = new CommandRouter<TestState>("test", _ => new TestState()).OnRejected(
+            "payment",
+            "Charge",
+            (notification, state) =>
             {
-                return new RejectionHandlerResponse
-                {
-                    Notification = notification
-                };
-            });
+                return new RejectionHandlerResponse { Notification = notification };
+            }
+        );
 
         var notification = MakeNotification("payment", "Charge", "declined");
         var notificationAny = Any.Pack(notification);
 
         var cmd = new ContextualCommand
         {
-            Command = new CommandBook
-            {
-                Pages = { new CommandPage { Command = notificationAny } }
-            }
+            Command = new CommandBook { Pages = { new CommandPage { Command = notificationAny } } },
         };
 
         var response = router.Dispatch(cmd);
@@ -179,10 +174,7 @@ public class RejectionHandlerResponseTests
 
         var cmd = new ContextualCommand
         {
-            Command = new CommandBook
-            {
-                Pages = { new CommandPage { Command = notificationAny } }
-            }
+            Command = new CommandBook { Pages = { new CommandPage { Command = notificationAny } } },
         };
 
         var response = router.Dispatch(cmd);
@@ -199,35 +191,30 @@ public class RejectionHandlerResponseTests
     private static EventBook MakeEventBook()
     {
         var eventBook = new EventBook();
-        eventBook.Pages.Add(new EventPage
-        {
-            Event = new Any { TypeUrl = "type.googleapis.com/test.TestEvent" }
-        });
+        eventBook.Pages.Add(
+            new EventPage { Event = new Any { TypeUrl = "type.googleapis.com/test.TestEvent" } }
+        );
         return eventBook;
     }
 
     private static Notification MakeNotification(string domain, string commandType, string reason)
     {
-        var rejectedCommand = new CommandBook
-        {
-            Cover = new Cover { Domain = domain }
-        };
-        rejectedCommand.Pages.Add(new CommandPage
-        {
-            Command = new Any { TypeUrl = $"type.googleapis.com/test.{commandType}" }
-        });
+        var rejectedCommand = new CommandBook { Cover = new Cover { Domain = domain } };
+        rejectedCommand.Pages.Add(
+            new CommandPage
+            {
+                Command = new Any { TypeUrl = $"type.googleapis.com/test.{commandType}" },
+            }
+        );
 
         var rejection = new RejectionNotification
         {
             IssuerName = "test-saga",
             IssuerType = "saga",
             RejectionReason = reason,
-            RejectedCommand = rejectedCommand
+            RejectedCommand = rejectedCommand,
         };
 
-        return new Notification
-        {
-            Payload = Any.Pack(rejection)
-        };
+        return new Notification { Payload = Any.Pack(rejection) };
     }
 }

@@ -1,22 +1,21 @@
 """Behave step definitions for process manager tests."""
 
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-from behave import given, when, then, use_step_matcher
+from behave import given, then, use_step_matcher, when
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
-from angzarr_client.proto.examples import table_pb2 as table
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-
-import sys
-from pathlib import Path
+from angzarr_client.proto.examples import table_pb2 as table
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "hand-flow"))
 
-from hand_process import HandProcess, HandProcessManager, HandPhase, PlayerState
+from hand_process import HandPhase, HandProcess, HandProcessManager, PlayerState
 
 # Use regex matchers for flexibility
 use_step_matcher("re")
@@ -198,9 +197,9 @@ def step_given_blind_posted_event(context, blind_type):
         player_root=b"player-1" if blind_type == "small" else b"player-2",
         blind_type=blind_type,
         amount=amount,
-        pot_total=amount
-        if blind_type == "small"
-        else amount + context.process.small_blind,
+        pot_total=(
+            amount if blind_type == "small" else amount + context.process.small_blind
+        ),
         player_stack=500 - amount,
     )
 
@@ -225,9 +224,11 @@ def step_given_action_taken_event(context, pos, action):
         amount=0 if action in ("FOLD", "CHECK") else 10,
         pot_total=context.process.pot_total
         + (10 if action not in ("FOLD", "CHECK") else 0),
-        player_stack=player.stack - (10 if action not in ("FOLD", "CHECK") else 0)
-        if player
-        else 490,
+        player_stack=(
+            player.stack - (10 if action not in ("FOLD", "CHECK") else 0)
+            if player
+            else 490
+        ),
     )
 
 

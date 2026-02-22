@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg.Handlers;
 
@@ -38,7 +38,7 @@ public static class JoinHandler
             SeatPosition = seatPosition,
             BuyInAmount = cmd.BuyInAmount,
             Stack = cmd.BuyInAmount,
-            JoinedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            JoinedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

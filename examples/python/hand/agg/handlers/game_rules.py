@@ -1,9 +1,9 @@
 """Polymorphic game rules for different poker variants."""
 
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
-import random
 
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 

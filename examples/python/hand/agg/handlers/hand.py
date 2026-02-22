@@ -2,7 +2,7 @@
 
 import random
 from dataclasses import dataclass, field
-from typing import Optional, Union, Tuple
+from typing import Optional, Tuple, Union
 
 from angzarr_client import Aggregate, handles, now
 from angzarr_client.errors import CommandRejectedError

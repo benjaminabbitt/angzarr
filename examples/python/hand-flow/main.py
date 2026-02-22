@@ -15,16 +15,16 @@ import structlog
 # Add paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import hand_pb2 as hand
+from hand_process import HandProcessManager
+
+from angzarr_client.client import AggregateClient
 from angzarr_client.process_manager_handler import (
     ProcessManagerHandler,
     run_process_manager_server,
 )
-from angzarr_client.client import AggregateClient
-
-from hand_process import HandProcessManager
+from angzarr_client.proto.angzarr import types_pb2 as types
+from angzarr_client.proto.examples import hand_pb2 as hand
+from angzarr_client.proto.examples import table_pb2 as table
 
 structlog.configure(
     processors=[
@@ -61,9 +61,11 @@ class HandFlowProcessManager:
             logger.info(
                 "command_would_send",
                 domain=cmd_book.cover.domain,
-                root=cmd_book.cover.root.value.hex()[:8]
-                if cmd_book.cover.root.value
-                else "none",
+                root=(
+                    cmd_book.cover.root.value.hex()[:8]
+                    if cmd_book.cover.root.value
+                    else "none"
+                ),
             )
 
     def _handle_timeout(self, hand_id: bytes, player_position: int) -> None:

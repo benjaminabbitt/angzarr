@@ -3,24 +3,24 @@ package features
 import (
 	"fmt"
 
-	"github.com/cucumber/godog"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"github.com/cucumber/godog"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // SpeculativeClientContext holds state for speculative execution scenarios
 type SpeculativeClientContext struct {
-	eventBooks            map[string]*pb.EventBook
-	lastResult            *pb.EventBook
-	lastCommands          []*pb.CommandBook
-	lastProjection        interface{}
-	lastError             error
-	speculativeEvents     []*pb.EventPage
-	rejectionReason       string
-	serviceUnavailable    bool
-	editionCreated        bool
-	missingCorrelationID  bool
+	eventBooks           map[string]*pb.EventBook
+	lastResult           *pb.EventBook
+	lastCommands         []*pb.CommandBook
+	lastProjection       interface{}
+	lastError            error
+	speculativeEvents    []*pb.EventPage
+	rejectionReason      string
+	serviceUnavailable   bool
+	editionCreated       bool
+	missingCorrelationID bool
 }
 
 func newSpeculativeClientContext() *SpeculativeClientContext {

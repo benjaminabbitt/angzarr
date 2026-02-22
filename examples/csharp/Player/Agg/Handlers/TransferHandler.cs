@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg.Handlers;
 
@@ -26,7 +26,7 @@ public static class TransferHandler
             HandRoot = cmd.HandRoot,
             Reason = cmd.Reason,
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            TransferredAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            TransferredAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

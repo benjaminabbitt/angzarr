@@ -1,8 +1,7 @@
 """Error handling step definitions."""
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
-
+from pytest_bdd import given, parsers, scenarios, then, when
 
 # Link to feature file
 scenarios("../../../../features/error_handling.feature")

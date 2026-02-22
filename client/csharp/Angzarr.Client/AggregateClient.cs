@@ -28,7 +28,11 @@ public sealed class AggregateClient : IDisposable
     private readonly GrpcChannel? _channel;
     private readonly bool _ownsChannel;
 
-    private AggregateClient(GrpcChannel? channel, Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient stub, bool ownsChannel)
+    private AggregateClient(
+        GrpcChannel? channel,
+        Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient stub,
+        bool ownsChannel
+    )
     {
         _channel = channel;
         _stub = stub;
@@ -46,7 +50,9 @@ public sealed class AggregateClient : IDisposable
         try
         {
             var channel = GrpcChannel.ForAddress(FormatEndpoint(endpoint));
-            var stub = new Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient(channel);
+            var stub = new Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient(
+                channel
+            );
             return new AggregateClient(channel, stub, true);
         }
         catch (Exception e)
@@ -76,7 +82,9 @@ public sealed class AggregateClient : IDisposable
     /// <returns>A new AggregateClient that does not own the channel</returns>
     public static AggregateClient FromChannel(GrpcChannel channel)
     {
-        var stub = new Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient(channel);
+        var stub = new Angzarr.AggregateCoordinatorService.AggregateCoordinatorServiceClient(
+            channel
+        );
         return new AggregateClient(channel, stub, false);
     }
 

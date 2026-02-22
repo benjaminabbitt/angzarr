@@ -7,7 +7,6 @@ from angzarr_client import Aggregate, handles
 from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import types_pb2 as types
 
-
 # =============================================================================
 # Test fixtures - minimal protobuf-like messages for testing
 # =============================================================================

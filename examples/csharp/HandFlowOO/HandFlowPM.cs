@@ -26,9 +26,11 @@ public class HandFlowPM : ProcessManager<PMState>
 {
     public override string Name => "hand-flow";
 
-    public HandFlowPM() : base() { }
+    public HandFlowPM()
+        : base() { }
 
-    public HandFlowPM(EventBook? processState) : base(processState) { }
+    public HandFlowPM(EventBook? processState)
+        : base(processState) { }
 
     protected override PMState CreateEmptyState() => new();
 
@@ -48,8 +50,8 @@ public class HandFlowPM : ProcessManager<PMState>
             new Cover
             {
                 Domain = "hand",
-                Root = new Angzarr.UUID { Value = evt.HandRoot }
-            }
+                Root = new Angzarr.UUID { Value = evt.HandRoot },
+            },
         };
     }
 
@@ -107,7 +109,10 @@ public class HandFlowPM : ProcessManager<PMState>
     /// Start new betting round after community cards.
     /// </summary>
     [ReactsTo(typeof(CommunityCardsDealt), InputDomain = "hand")]
-    public List<CommandBook> HandleCommunityDealt(CommunityCardsDealt evt, List<EventBook> destinations)
+    public List<CommandBook> HandleCommunityDealt(
+        CommunityCardsDealt evt,
+        List<EventBook> destinations
+    )
     {
         return new List<CommandBook>();
     }

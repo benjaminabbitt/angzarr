@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg.Handlers;
 
@@ -17,7 +17,10 @@ public static class ReleaseHandler
 
         // Validate
         var tableKey = Convert.ToHexString(cmd.TableRoot.ToByteArray()).ToLowerInvariant();
-        if (!state.TableReservations.TryGetValue(tableKey, out var reservedForTable) || reservedForTable == 0)
+        if (
+            !state.TableReservations.TryGetValue(tableKey, out var reservedForTable)
+            || reservedForTable == 0
+        )
             throw CommandRejectedError.PreconditionFailed("No funds reserved for this table");
 
         // Compute
@@ -29,7 +32,7 @@ public static class ReleaseHandler
             TableRoot = cmd.TableRoot,
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
-            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

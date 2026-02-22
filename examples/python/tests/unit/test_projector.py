@@ -1,14 +1,14 @@
 """Projector unit tests."""
 
 import sys
-from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
+from pytest_bdd import given, parsers, scenarios, then, when
 
 # Add paths
 root = Path(__file__).parent.parent.parent
@@ -16,15 +16,14 @@ prj_output = root / "prj-output"
 sys.path.insert(0, str(root))
 sys.path.insert(0, str(prj_output))
 
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.examples import player_pb2 as player
-from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import hand_pb2 as hand
-from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-
 from projector import OutputProjector
 from renderer import TextRenderer, format_card, format_cards
 
+from angzarr_client.proto.angzarr import types_pb2 as types
+from angzarr_client.proto.examples import hand_pb2 as hand
+from angzarr_client.proto.examples import player_pb2 as player
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
+from angzarr_client.proto.examples import table_pb2 as table
 from tests.conftest import make_cover, make_timestamp, pack_event
 
 # Load scenarios

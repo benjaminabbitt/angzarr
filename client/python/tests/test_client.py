@@ -1,33 +1,33 @@
 """Tests for client classes."""
 
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import grpc
 import pytest
 
+from angzarr_client.client import (
+    AggregateClient,
+    Client,
+    DomainClient,
+    QueryClient,
+    SpeculativeClient,
+)
+from angzarr_client.errors import GRPCError
 from angzarr_client.proto.angzarr import (
     CommandBook,
     CommandResponse,
-    SyncCommandBook,
-    SpeculateAggregateRequest,
     EventBook,
-    Query,
-    Projection,
-    SagaResponse,
     ProcessManagerHandleResponse,
+    Projection,
+    Query,
+    SagaResponse,
+    SpeculateAggregateRequest,
+    SpeculatePmRequest,
     SpeculateProjectorRequest,
     SpeculateSagaRequest,
-    SpeculatePmRequest,
+    SyncCommandBook,
 )
-from angzarr_client.client import (
-    QueryClient,
-    AggregateClient,
-    SpeculativeClient,
-    DomainClient,
-    Client,
-)
-from angzarr_client.errors import GRPCError
 
 
 class MockRpcError(grpc.RpcError):

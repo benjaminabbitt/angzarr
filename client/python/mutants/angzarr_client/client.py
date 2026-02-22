@@ -1,33 +1,29 @@
 """Client implementations for Angzarr gRPC services."""
 
 import os
-from typing import Optional
+from inspect import signature as _mutmut_signature
+from typing import Annotated, Callable, ClassVar, Optional
 
 import grpc
 
+from .errors import GRPCError, TransportError
 from .proto.angzarr import (
     AggregateCoordinatorServiceStub,
-    EventQueryServiceStub,
-    SpeculativeServiceStub,
     CommandBook,
     CommandResponse,
-    SyncCommandBook,
     DryRunRequest,
     EventBook,
-    Query,
-    Projection,
-    SagaResponse,
+    EventQueryServiceStub,
     ProcessManagerHandleResponse,
+    Projection,
+    Query,
+    SagaResponse,
+    SpeculatePmRequest,
     SpeculateProjectorRequest,
     SpeculateSagaRequest,
-    SpeculatePmRequest,
+    SpeculativeServiceStub,
+    SyncCommandBook,
 )
-from .errors import GRPCError, TransportError
-from inspect import signature as _mutmut_signature
-from typing import Annotated
-from typing import Callable
-from typing import ClassVar
-
 
 MutantDict = Annotated[dict[str, Callable], "Mutant"]
 

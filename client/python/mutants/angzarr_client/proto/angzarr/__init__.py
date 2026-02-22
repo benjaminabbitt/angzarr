@@ -1,38 +1,38 @@
 """Angzarr proto definitions."""
 
-from .types_pb2 import (
-    UUID,
-    Cover,
-    Edition,
-    DomainDivergence,
-    EventPage,
-    EventBook,
-    Snapshot,
-    CommandPage,
-    CommandBook,
-    CommandResponse,
-    SyncCommandBook,
-    SyncEventBook,
-    Query,
-    SequenceRange,
-    SequenceSet,
-    TemporalQuery,
-    Projection,
-    SyncMode,
-    DryRunRequest,
-    SagaResponse,
-)
 from .aggregate_pb2 import (
+    SpeculatePmRequest,
     SpeculateProjectorRequest,
     SpeculateSagaRequest,
-    SpeculatePmRequest,
 )
 from .aggregate_pb2_grpc import (
     AggregateCoordinatorServiceStub,
     SpeculativeServiceStub,
 )
-from .query_pb2_grpc import EventQueryServiceStub
 from .process_manager_pb2 import ProcessManagerHandleResponse
+from .query_pb2_grpc import EventQueryServiceStub
+from .types_pb2 import (
+    UUID,
+    CommandBook,
+    CommandPage,
+    CommandResponse,
+    Cover,
+    DomainDivergence,
+    DryRunRequest,
+    Edition,
+    EventBook,
+    EventPage,
+    Projection,
+    Query,
+    SagaResponse,
+    SequenceRange,
+    SequenceSet,
+    Snapshot,
+    SyncCommandBook,
+    SyncEventBook,
+    SyncMode,
+    TemporalQuery,
+)
 
 __all__ = [
     # Types

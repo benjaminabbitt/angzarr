@@ -33,7 +33,6 @@ from .fixtures import (
     StockUpdated,
 )
 
-
 # =============================================================================
 # SQLAlchemy Core schema definitions
 # =============================================================================
@@ -144,13 +143,11 @@ class PlayerStatsProjector(Projector):
         with self._engine.connect() as conn:
             # Update existing player stats
             conn.execute(
-                text(
-                    """
+                text("""
                     UPDATE player_stats
                     SET total_score = :new_total, games_played = games_played + 1
                     WHERE player_id = :player_id
-                    """
-                ),
+                    """),
                 {"new_total": event.new_total, "player_id": event.player_id},
             )
             conn.commit()

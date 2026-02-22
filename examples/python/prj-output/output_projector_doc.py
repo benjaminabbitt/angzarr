@@ -7,8 +7,8 @@ demonstrating both OO-style and StateRouter patterns.
 from typing import Dict
 
 from angzarr_client import Projector, StateRouter
-from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import hand_pb2 as hand
+from angzarr_client.proto.examples import player_pb2 as player
 
 
 # docs:start:projector_oo

@@ -1,7 +1,7 @@
+using System.Reflection;
+using Angzarr;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Angzarr;
-using System.Reflection;
 
 namespace Angzarr.Client;
 
@@ -25,12 +25,15 @@ namespace Angzarr.Client;
 /// }
 /// </code>
 /// </example>
-public abstract class Aggregate<TState> where TState : class, new()
+public abstract class Aggregate<TState>
+    where TState : class, new()
 {
     private TState _state = new();
     private readonly Dictionary<System.Type, MethodInfo> _handlers = new();
-    private readonly Dictionary<(string domain, string command), MethodInfo> _rejectionHandlers = new();
-    private readonly Dictionary<string, (MethodInfo method, System.Type eventType)> _appliers = new();
+    private readonly Dictionary<(string domain, string command), MethodInfo> _rejectionHandlers =
+        new();
+    private readonly Dictionary<string, (MethodInfo method, System.Type eventType)> _appliers =
+        new();
 
     protected Aggregate()
     {
@@ -116,7 +119,8 @@ public abstract class Aggregate<TState> where TState : class, new()
 
     private void DiscoverHandlers()
     {
-        var methods = GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var methods = GetType()
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
         foreach (var method in methods)
         {

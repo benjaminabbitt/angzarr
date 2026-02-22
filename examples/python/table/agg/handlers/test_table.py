@@ -3,8 +3,8 @@
 import pytest
 
 from angzarr_client.errors import CommandRejectedError
-from angzarr_client.proto.examples import table_pb2 as table
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
+from angzarr_client.proto.examples import table_pb2 as table
 
 from .table import Table
 
@@ -450,6 +450,7 @@ class TestStateAccessors:
     def test_active_player_count_excludes_sitting_out(self):
         """active_player_count tested via start_hand minimum players check."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         # Build table with a sat-out player
@@ -496,6 +497,7 @@ class TestEventHandlers:
     def test_player_sat_in_after_sat_out(self):
         """PlayerSatIn event restores player to active."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -543,6 +545,7 @@ class TestEventHandlers:
     def test_chips_added_updates_stack(self):
         """ChipsAdded event from re-buy/add-on."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -583,6 +586,7 @@ class TestEventHandlers:
     def test_hand_ended_updates_stacks(self):
         """HandEnded event applies stack_changes."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()

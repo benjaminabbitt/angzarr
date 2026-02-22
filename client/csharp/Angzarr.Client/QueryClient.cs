@@ -28,7 +28,11 @@ public sealed class QueryClient : IDisposable
     private readonly GrpcChannel? _channel;
     private readonly bool _ownsChannel;
 
-    private QueryClient(GrpcChannel? channel, Angzarr.EventQueryService.EventQueryServiceClient stub, bool ownsChannel)
+    private QueryClient(
+        GrpcChannel? channel,
+        Angzarr.EventQueryService.EventQueryServiceClient stub,
+        bool ownsChannel
+    )
     {
         _channel = channel;
         _stub = stub;

@@ -3,9 +3,9 @@
 import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
 
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
 from angzarr_client import Aggregate, rejected
+from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+from angzarr_client.proto.angzarr import types_pb2 as types
 
 
 # Test fixtures

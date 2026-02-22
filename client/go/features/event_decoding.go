@@ -1,8 +1,8 @@
 package features
 
 import (
-	"github.com/cucumber/godog"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"github.com/cucumber/godog"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -120,11 +120,11 @@ func (d *DecodeContext) makeExternalPage(seq uint32, uri string) *pb.EventPage {
 		CreatedAt: timestamppb.Now(),
 		Payload: &pb.EventPage_External{
 			External: &pb.PayloadReference{
-				StorageType: pb.PayloadStorageType_PAYLOAD_STORAGE_TYPE_S3,
-				Uri:         uri,
-				ContentHash: []byte("abc123"),
+				StorageType:  pb.PayloadStorageType_PAYLOAD_STORAGE_TYPE_S3,
+				Uri:          uri,
+				ContentHash:  []byte("abc123"),
 				OriginalSize: 1024,
-				StoredAt:    timestamppb.Now(),
+				StoredAt:     timestamppb.Now(),
 			},
 		},
 	}

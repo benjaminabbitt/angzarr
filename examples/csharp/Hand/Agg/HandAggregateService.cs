@@ -1,9 +1,9 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using Grpc.Core;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 
 namespace Hand.Agg;
 
@@ -19,53 +19,70 @@ public class HandAggregateService : AggregateService.AggregateServiceBase
         _router = router;
     }
 
-    public override Task<BusinessResponse> Handle(ContextualCommand request, ServerCallContext context)
+    public override Task<BusinessResponse> Handle(
+        ContextualCommand request,
+        ServerCallContext context
+    )
     {
         try
         {
             var commandAny = request.Command?.Pages.FirstOrDefault()?.Command;
             if (commandAny == null)
             {
-                return Task.FromResult(new BusinessResponse
-                {
-                    Revocation = new RevocationResponse { Reason = "No command in request", Abort = true }
-                });
+                return Task.FromResult(
+                    new BusinessResponse
+                    {
+                        Revocation = new RevocationResponse
+                        {
+                            Reason = "No command in request",
+                            Abort = true,
+                        },
+                    }
+                );
             }
 
             var command = UnpackCommand(commandAny);
             if (command == null)
             {
-                return Task.FromResult(new BusinessResponse
-                {
-                    Revocation = new RevocationResponse { Reason = $"Unknown command type: {commandAny.TypeUrl}", Abort = true }
-                });
+                return Task.FromResult(
+                    new BusinessResponse
+                    {
+                        Revocation = new RevocationResponse
+                        {
+                            Reason = $"Unknown command type: {commandAny.TypeUrl}",
+                            Abort = true,
+                        },
+                    }
+                );
             }
 
             var eventMessage = _router.Handle(command, request.Events);
 
             var eventBook = new EventBook();
             var eventAny = Any.Pack(eventMessage, "type.googleapis.com/");
-            eventBook.Pages.Add(new EventPage
-            {
-                Sequence = request.Events.NextSequence,
-                Event = eventAny
-            });
+            eventBook.Pages.Add(
+                new EventPage { Sequence = request.Events.NextSequence, Event = eventAny }
+            );
 
             return Task.FromResult(new BusinessResponse { Events = eventBook });
         }
         catch (CommandRejectedError ex)
         {
-            return Task.FromResult(new BusinessResponse
-            {
-                Revocation = new RevocationResponse { Reason = ex.Message, Abort = true }
-            });
+            return Task.FromResult(
+                new BusinessResponse
+                {
+                    Revocation = new RevocationResponse { Reason = ex.Message, Abort = true },
+                }
+            );
         }
         catch (Exception ex)
         {
-            return Task.FromResult(new BusinessResponse
-            {
-                Revocation = new RevocationResponse { Reason = ex.Message, Abort = true }
-            });
+            return Task.FromResult(
+                new BusinessResponse
+                {
+                    Revocation = new RevocationResponse { Reason = ex.Message, Abort = true },
+                }
+            );
         }
     }
 
@@ -96,7 +113,7 @@ public class HandAggregateService : AggregateService.AggregateServiceBase
             "examples.RequestDraw" => commandAny.Unpack<RequestDraw>(),
             "examples.RevealCards" => commandAny.Unpack<RevealCards>(),
             "examples.AwardPot" => commandAny.Unpack<AwardPot>(),
-            _ => null
+            _ => null,
         };
     }
 }

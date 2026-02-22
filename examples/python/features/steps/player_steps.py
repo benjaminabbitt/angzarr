@@ -8,17 +8,15 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from behave import given, when, then, use_step_matcher
+from behave import given, then, use_step_matcher, when
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
+from player.agg.handlers import Player
 
+from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-from angzarr_client.errors import CommandRejectedError
-
-from player.agg.handlers import Player
-
 
 # Use regex matchers for flexibility
 use_step_matcher("re")

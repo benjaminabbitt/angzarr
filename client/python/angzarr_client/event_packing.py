@@ -10,8 +10,8 @@ from google.protobuf.any_pb2 import Any
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from .proto.angzarr import types_pb2 as angzarr
 from .helpers import now
+from .proto.angzarr import types_pb2 as angzarr
 
 
 def _now_timestamp() -> Timestamp:

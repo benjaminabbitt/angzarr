@@ -20,11 +20,7 @@ public class EventDecodingSteps
     [Given(@"an EventPage with inline payload")]
     public void GivenEventPageWithInlinePayload()
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) };
     }
 
     [Given(@"an EventPage with external payload reference")]
@@ -37,25 +33,20 @@ public class EventDecodingSteps
             External = new Angzarr.PayloadReference
             {
                 StorageType = Angzarr.PayloadStorageType.S3,
-                ContentHash = Google.Protobuf.ByteString.CopyFromUtf8("abc123")
-            }
+                ContentHash = Google.Protobuf.ByteString.CopyFromUtf8("abc123"),
+            },
         };
     }
 
     [Given(@"an EventBook with (.*) pages")]
     public void GivenEventBookWithPages(int count)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -111,17 +102,10 @@ public class EventDecodingSteps
     [Given(@"an EventPage with type_url ""(.*)""")]
     public void GivenEventPageWithTypeUrl(string typeUrl)
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty(), typeUrl)
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty(), typeUrl) };
 
         // Create event book and share via context for StateBuildingSteps
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         _eventBook.Pages.Add(_eventPage);
         _ctx["shared_eventbook"] = _eventBook;
     }
@@ -153,7 +137,7 @@ public class EventDecodingSteps
         _eventPage = new Angzarr.EventPage
         {
             Sequence = (uint)sequence,
-            Event = Any.Pack(new Empty())
+            Event = Any.Pack(new Empty()),
         };
     }
 
@@ -173,8 +157,13 @@ public class EventDecodingSteps
     public void ThenEventBookShouldIncludeSnapshot()
     {
         // Check local event book or context-shared event book
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         eventBook.Should().NotBeNull();
         eventBook!.Snapshot.Should().NotBeNull();
     }
@@ -194,9 +183,13 @@ public class EventDecodingSteps
     [Then(@"only the event pages should be returned")]
     public void ThenOnlyEventPagesShouldBeReturned()
     {
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook
-            : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         eventBook!.Pages.Count.Should().BeGreaterThan(0);
     }
 
@@ -210,7 +203,9 @@ public class EventDecodingSteps
     public void ThenRawBytesShouldBeDeserialized()
     {
         // Check local or context-shared decoded event
-        var decoded = _decodedEvent ?? (_ctx.ContainsKey("decoded_event") ? _ctx["decoded_event"] as Any : null);
+        var decoded =
+            _decodedEvent
+            ?? (_ctx.ContainsKey("decoded_event") ? _ctx["decoded_event"] as Any : null);
         decoded.Should().NotBeNull();
     }
 
@@ -231,11 +226,7 @@ public class EventDecodingSteps
     [Given(@"an EventPage with Event payload")]
     public void GivenAnEventPageWithEventPayload()
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) };
     }
 
     [Given(@"an EventPage with offloaded payload")]
@@ -247,39 +238,28 @@ public class EventDecodingSteps
             External = new Angzarr.PayloadReference
             {
                 StorageType = Angzarr.PayloadStorageType.S3,
-                ContentHash = ByteString.CopyFromUtf8("hash123")
-            }
+                ContentHash = ByteString.CopyFromUtf8("hash123"),
+            },
         };
     }
 
     [Given(@"an EventPage with payload = None")]
     public void GivenAnEventPageWithPayloadNone()
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1 };
     }
 
     [Given(@"an EventPage with timestamp")]
     public void GivenAnEventPageWithTimestamp()
     {
         // EventPage doesn't have a Timestamp field, using Event instead
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) };
     }
 
     [Given(@"an Event Any with empty value")]
     public void GivenAnEventAnyWithEmptyValue()
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) };
     }
 
     [Given(@"an event with type_url ""(.*)""")]
@@ -288,18 +268,11 @@ public class EventDecodingSteps
         _eventPage = new Angzarr.EventPage
         {
             Sequence = 1,
-            Event = new Any
-            {
-                TypeUrl = typeUrl,
-                Value = new Empty().ToByteString()
-            }
+            Event = new Any { TypeUrl = typeUrl, Value = new Empty().ToByteString() },
         };
 
         // Create event book and share via context for StateBuildingSteps
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         _eventBook.Pages.Add(_eventPage);
         _ctx["shared_eventbook"] = _eventBook;
     }
@@ -310,18 +283,14 @@ public class EventDecodingSteps
         _eventPage = new Angzarr.EventPage
         {
             Sequence = 1,
-            Event = Any.Pack(new Empty(), $"type.googleapis.com/{suffix}")
+            Event = Any.Pack(new Empty(), $"type.googleapis.com/{suffix}"),
         };
     }
 
     [Given(@"an event with properly encoded payload")]
     public void GivenAnEventWithProperlyEncodedPayload()
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) };
     }
 
     [Given(@"an event with empty payload bytes")]
@@ -330,13 +299,9 @@ public class EventDecodingSteps
         var anyMsg = new Any
         {
             TypeUrl = "type.googleapis.com/google.protobuf.Empty",
-            Value = ByteString.Empty
+            Value = ByteString.Empty,
         };
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = anyMsg
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = anyMsg };
     }
 
     [Given(@"an event with corrupted payload bytes")]
@@ -345,13 +310,9 @@ public class EventDecodingSteps
         var anyMsg = new Any
         {
             TypeUrl = "type.googleapis.com/google.protobuf.Empty",
-            Value = ByteString.CopyFromUtf8("corrupted-bytes")
+            Value = ByteString.CopyFromUtf8("corrupted-bytes"),
         };
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = anyMsg
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = anyMsg };
         // Share via context for other step classes
         _ctx["corrupted_event_page"] = _eventPage;
     }
@@ -359,11 +320,7 @@ public class EventDecodingSteps
     [Given(@"an event missing a required field")]
     public void GivenAnEventMissingARequiredField()
     {
-        _eventPage = new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        };
+        _eventPage = new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) };
     }
 
     [When(@"I access the event\.payload")]
@@ -478,8 +435,13 @@ public class EventDecodingSteps
     public void ThenEachShouldHaveCorrectData()
     {
         // Check local event book or context-shared event book
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         eventBook.Should().NotBeNull();
         eventBook!.Pages.Should().NotBeEmpty();
     }
@@ -520,7 +482,13 @@ public class EventDecodingSteps
     [When(@"I decode each as ItemAdded")]
     public void WhenIDecodeEachAsItemAdded()
     {
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         foreach (var page in book!.Pages)
         {
             _ctx[$"decoded_{page.Sequence}"] = page.Event;
@@ -676,16 +644,14 @@ public class EventDecodingSteps
     [When(@"I process two events with same type")]
     public void WhenIProcessTwoEventsWithSameType()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty()) });
 
         // Build state for stateless verification - each event processed independently
-        var stateRouter = new StateRouter<TestEventProcessingState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestEventProcessingState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
         var state = stateRouter.WithEventBook(_eventBook);
         _ctx["built_state"] = state;
         _ctx["shared_eventbook"] = _eventBook;
@@ -694,17 +660,12 @@ public class EventDecodingSteps
     [When(@"I process events from sequence (\d+) to (\d+)")]
     public void WhenIProcessEventsFromSequenceTo(int from, int to)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = from; i <= to; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)i,
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -742,7 +703,9 @@ public class EventDecodingSteps
         }
         else
         {
-            throw new InvalidOperationException("No event page or notification available for type URL check");
+            throw new InvalidOperationException(
+                "No event page or notification available for type URL check"
+            );
         }
     }
 
@@ -777,9 +740,9 @@ public class EventDecodingSteps
     [Then(@"the event should be unpacked")]
     public void ThenTheEventShouldBeUnpacked()
     {
-        var decodedEvent = _decodedEvent ?? (_ctx.ContainsKey("decoded_event")
-            ? _ctx["decoded_event"] as Any
-            : null);
+        var decodedEvent =
+            _decodedEvent
+            ?? (_ctx.ContainsKey("decoded_event") ? _ctx["decoded_event"] as Any : null);
         decodedEvent.Should().NotBeNull();
     }
 
@@ -787,7 +750,13 @@ public class EventDecodingSteps
     public void ThenTheEventBookShouldBeUnchanged()
     {
         // Check local or context-shared EventBook
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         book.Should().NotBeNull();
     }
 
@@ -795,14 +764,26 @@ public class EventDecodingSteps
     public void ThenTheEventBookEventsShouldStillBePresent()
     {
         // Check local or context-shared EventBook
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         book!.Pages.Should().NotBeEmpty();
     }
 
     [Then(@"the projector should process all (\d+) events in order")]
     public void ThenTheProjectorShouldProcessAllEventsInOrder(int count)
     {
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         book!.Pages.Should().HaveCount(count);
     }
 
@@ -836,8 +817,7 @@ public class EventDecodingSteps
     public void ThenTheAnyWrapperShouldBeUnpacked()
     {
         // Check local or context-shared decoded event
-        _decodedEvent ??= _ctx.ContainsKey("decoded_event")
-            ? _ctx["decoded_event"] as Any : null;
+        _decodedEvent ??= _ctx.ContainsKey("decoded_event") ? _ctx["decoded_event"] as Any : null;
         _decodedEvent.Should().NotBeNull();
     }
 
@@ -851,7 +831,13 @@ public class EventDecodingSteps
     public void ThenBothShouldBeItemAddedType()
     {
         // Check local or context-shared EventBook
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         book!.Pages.Should().HaveCountGreaterOrEqualTo(2);
     }
 
@@ -883,7 +869,13 @@ public class EventDecodingSteps
     public void ThenIShouldGetASliceListOfEventPagesLocal()
     {
         // Check local or context-shared EventBook
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         book!.Pages.Should().NotBeNull();
     }
 

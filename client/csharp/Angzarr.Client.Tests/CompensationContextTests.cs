@@ -19,7 +19,7 @@ public class CompensationContextTests
             IssuerName = "saga-order-fulfill",
             IssuerType = "saga",
             SourceEventSequence = 7,
-            RejectionReason = "out of stock"
+            RejectionReason = "out of stock",
         };
 
         var notification = CreateNotificationWith(rejectionNotification);
@@ -42,18 +42,20 @@ public class CompensationContextTests
         {
             IssuerName = "saga-test",
             IssuerType = "saga",
-            RejectionReason = "invalid"
+            RejectionReason = "invalid",
         };
 
         var command = new CommandBook();
-        command.Pages.Add(new CommandPage
-        {
-            Command = new Any
+        command.Pages.Add(
+            new CommandPage
             {
-                TypeUrl = "type.googleapis.com/inventory.ReserveStock",
-                Value = ByteString.Empty
+                Command = new Any
+                {
+                    TypeUrl = "type.googleapis.com/inventory.ReserveStock",
+                    Value = ByteString.Empty,
+                },
             }
-        });
+        );
         rejectionNotification.RejectedCommand = command;
 
         var notification = CreateNotificationWith(rejectionNotification);
@@ -75,10 +77,7 @@ public class CompensationContextTests
             IssuerName = "saga-test",
             IssuerType = "saga",
             RejectionReason = "test",
-            SourceAggregate = new Cover
-            {
-                Domain = "inventory"
-            }
+            SourceAggregate = new Cover { Domain = "inventory" },
         };
 
         var notification = CreateNotificationWith(rejectionNotification);
@@ -99,7 +98,7 @@ public class CompensationContextTests
         {
             IssuerName = "saga-test",
             IssuerType = "saga",
-            RejectionReason = "timeout"
+            RejectionReason = "timeout",
             // No RejectedCommand set
         };
 
@@ -118,10 +117,7 @@ public class CompensationContextTests
     public void FromNotification_WithEmptyPayload_ShouldReturnDefaultValues()
     {
         // Given a Notification with empty payload
-        var notification = new Notification
-        {
-            Payload = new Any()
-        };
+        var notification = new Notification { Payload = new Any() };
 
         // When I create a CompensationContext from the Notification
         var context = CompensationContext.FromNotification(notification);

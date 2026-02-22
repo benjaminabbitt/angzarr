@@ -1,8 +1,8 @@
+using Angzarr;
+using Angzarr.Examples;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
-using Angzarr;
-using Angzarr.Examples;
 
 namespace HandFlow;
 
@@ -18,7 +18,10 @@ public class HandFlowService : ProcessManagerService.ProcessManagerServiceBase
         _pm = pm;
     }
 
-    public override Task<ProcessManagerPrepareResponse> Prepare(ProcessManagerPrepareRequest request, ServerCallContext context)
+    public override Task<ProcessManagerPrepareResponse> Prepare(
+        ProcessManagerPrepareRequest request,
+        ServerCallContext context
+    )
     {
         var covers = _pm.Prepare(request.Trigger, request.ProcessState);
 
@@ -27,9 +30,16 @@ public class HandFlowService : ProcessManagerService.ProcessManagerServiceBase
         return Task.FromResult(response);
     }
 
-    public override Task<ProcessManagerHandleResponse> Handle(ProcessManagerHandleRequest request, ServerCallContext context)
+    public override Task<ProcessManagerHandleResponse> Handle(
+        ProcessManagerHandleRequest request,
+        ServerCallContext context
+    )
     {
-        var (commands, events) = _pm.Handle(request.Trigger, request.ProcessState, request.Destinations.ToList());
+        var (commands, events) = _pm.Handle(
+            request.Trigger,
+            request.ProcessState,
+            request.Destinations.ToList()
+        );
 
         var response = new ProcessManagerHandleResponse();
         response.Commands.AddRange(commands);

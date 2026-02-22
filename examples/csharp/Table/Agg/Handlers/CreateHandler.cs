@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg.Handlers;
 
@@ -38,7 +38,7 @@ public static class CreateHandler
             MaxBuyIn = cmd.MaxBuyIn != 0 ? cmd.MaxBuyIn : cmd.BigBlind * 100,
             MaxPlayers = cmd.MaxPlayers != 0 ? cmd.MaxPlayers : 9,
             ActionTimeoutSeconds = cmd.ActionTimeoutSeconds != 0 ? cmd.ActionTimeoutSeconds : 30,
-            CreatedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            CreatedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

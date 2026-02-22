@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "angzarr"))
 from angzarr_client import UpcasterHandler, UpcasterRouter, run_upcaster_server
 from angzarr_client.proto.angzarr import types_pb2 as types
 
-
 structlog.configure(
     processors=[
         structlog.stdlib.add_log_level,

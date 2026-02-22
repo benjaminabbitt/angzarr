@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Demo script showing full event-sourced poker flow with all commands/events."""
 
-import sys
 import argparse
-from pathlib import Path
+import sys
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 # Add paths for proto imports
 sys.path.insert(0, str(Path(__file__).parent / "agg-player"))
 sys.path.insert(0, str(Path(__file__).parent / "agg-hand"))
 
-from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-from handlers.game_rules import get_game_rules, FiveCardDrawRules
 from handlers.ai import PokerAI
 from handlers.betting import BettingRound, DrawRound, PlayerState
+from handlers.game_rules import FiveCardDrawRules, get_game_rules
+
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 # Card symbols
 SUIT_SYMBOLS = {

@@ -116,7 +116,6 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 	})
 }
 
-
 func TestEventRouter_Dispatch(t *testing.T) {
 	t.Run("dispatches to matching handler", func(t *testing.T) {
 		called := false
@@ -206,4 +205,3 @@ func TestEventRouter_Dispatch(t *testing.T) {
 		}
 	})
 }
-

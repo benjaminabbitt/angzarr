@@ -4,10 +4,10 @@ DOC: This file is referenced in docs/docs/examples/aggregates.mdx
      Update documentation when making changes to handler patterns.
 """
 
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 
-from angzarr_client import Aggregate, handles, applies, now, rejected
+from angzarr_client import Aggregate, applies, handles, now, rejected
 from angzarr_client.compensation import (
     CompensationContext,
     delegate_to_framework,

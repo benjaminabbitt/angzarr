@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg.Handlers;
 
@@ -41,7 +41,7 @@ public static class PostBlindHandler
             Amount = actualAmount,
             PlayerStack = newStack,
             PotTotal = newPotTotal,
-            PostedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            PostedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

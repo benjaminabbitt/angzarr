@@ -5,8 +5,11 @@ namespace Angzarr.Client;
 /// </summary>
 public class ClientError : Exception
 {
-    public ClientError(string message) : base(message) { }
-    public ClientError(string message, Exception inner) : base(message, inner) { }
+    public ClientError(string message)
+        : base(message) { }
+
+    public ClientError(string message, Exception inner)
+        : base(message, inner) { }
 
     /// <summary>
     /// Returns true if this is a "not found" error.
@@ -35,7 +38,8 @@ public class ClientError : Exception
 /// </summary>
 public class CommandRejectedError : ClientError
 {
-    public CommandRejectedError(string message) : base(message) { }
+    public CommandRejectedError(string message)
+        : base(message) { }
 
     public override bool IsPreconditionFailed() => true;
 }
@@ -55,7 +59,8 @@ public class GrpcError : ClientError
 
     public override bool IsNotFound() => StatusCode == Grpc.Core.StatusCode.NotFound;
 
-    public override bool IsPreconditionFailed() => StatusCode == Grpc.Core.StatusCode.FailedPrecondition;
+    public override bool IsPreconditionFailed() =>
+        StatusCode == Grpc.Core.StatusCode.FailedPrecondition;
 
     public override bool IsInvalidArgument() => StatusCode == Grpc.Core.StatusCode.InvalidArgument;
 
@@ -67,8 +72,11 @@ public class GrpcError : ClientError
 /// </summary>
 public class ConnectionError : ClientError
 {
-    public ConnectionError(string message) : base(message) { }
-    public ConnectionError(string message, Exception inner) : base(message, inner) { }
+    public ConnectionError(string message)
+        : base(message) { }
+
+    public ConnectionError(string message, Exception inner)
+        : base(message, inner) { }
 
     public override bool IsConnectionError() => true;
 }
@@ -78,8 +86,11 @@ public class ConnectionError : ClientError
 /// </summary>
 public class TransportError : ClientError
 {
-    public TransportError(string message) : base(message) { }
-    public TransportError(string message, Exception inner) : base(message, inner) { }
+    public TransportError(string message)
+        : base(message) { }
+
+    public TransportError(string message, Exception inner)
+        : base(message, inner) { }
 
     public override bool IsConnectionError() => true;
 }
@@ -89,7 +100,8 @@ public class TransportError : ClientError
 /// </summary>
 public class InvalidArgumentError : ClientError
 {
-    public InvalidArgumentError(string message) : base(message) { }
+    public InvalidArgumentError(string message)
+        : base(message) { }
 
     public override bool IsInvalidArgument() => true;
 }
@@ -99,5 +111,6 @@ public class InvalidArgumentError : ClientError
 /// </summary>
 public class InvalidTimestampError : ClientError
 {
-    public InvalidTimestampError(string message) : base(message) { }
+    public InvalidTimestampError(string message)
+        : base(message) { }
 }

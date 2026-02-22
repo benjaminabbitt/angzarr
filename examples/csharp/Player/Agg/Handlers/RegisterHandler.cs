@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg.Handlers;
 
@@ -28,7 +28,7 @@ public static class RegisterHandler
             Email = cmd.Email,
             PlayerType = cmd.PlayerType,
             AiModelId = cmd.AiModelId,
-            RegisteredAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            RegisteredAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

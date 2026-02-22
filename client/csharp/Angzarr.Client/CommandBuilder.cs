@@ -141,26 +141,18 @@ public class CommandBuilder
         if (string.IsNullOrEmpty(correlationId))
             correlationId = Guid.NewGuid().ToString();
 
-        var cover = new Angzarr.Cover
-        {
-            Domain = _domain,
-            CorrelationId = correlationId
-        };
+        var cover = new Angzarr.Cover { Domain = _domain, CorrelationId = correlationId };
 
         if (_root.HasValue)
             cover.Root = Helpers.UuidToProto(_root.Value);
 
-        var commandAny = new Any
-        {
-            TypeUrl = _typeUrl,
-            Value = ByteString.CopyFrom(_payload)
-        };
+        var commandAny = new Any { TypeUrl = _typeUrl, Value = ByteString.CopyFrom(_payload) };
 
         var page = new Angzarr.CommandPage
         {
             Sequence = _sequence,
             Command = commandAny,
-            MergeStrategy = _mergeStrategy
+            MergeStrategy = _mergeStrategy,
         };
 
         var book = new Angzarr.CommandBook { Cover = cover };

@@ -1,7 +1,7 @@
 """Tests for ProjectorHandler."""
 
-from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.projector_handler import ProjectorHandler
+from angzarr_client.proto.angzarr import types_pb2 as types
 
 
 def _event_book() -> types.EventBook:

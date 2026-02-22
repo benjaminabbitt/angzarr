@@ -1,10 +1,10 @@
 """Shared pytest fixtures for poker tests."""
 
 import sys
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
-from uuid import UUID, uuid5, NAMESPACE_DNS
+from uuid import NAMESPACE_DNS, UUID, uuid5
 
 import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
@@ -17,13 +17,12 @@ sys.path.insert(0, str(root / "player" / "agg"))
 sys.path.insert(0, str(root / "table" / "agg"))
 sys.path.insert(0, str(root / "hand" / "agg"))
 
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.examples import player_pb2 as player
-from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import hand_pb2 as hand
-from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
-
+from angzarr_client.proto.angzarr import types_pb2 as types
+from angzarr_client.proto.examples import hand_pb2 as hand
+from angzarr_client.proto.examples import player_pb2 as player
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
+from angzarr_client.proto.examples import table_pb2 as table
 
 # Namespace for test UUIDs - consistent across all tests
 TEST_UUID_NAMESPACE = UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")

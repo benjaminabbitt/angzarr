@@ -243,7 +243,7 @@ type PrepareHandler func(source *pb.EventBook, event *anypb.Any) []*pb.Cover
 type EventRouter struct {
 	name            string
 	currentDomain   string
-	handlers        map[string][]eventRegistration  // domain -> handlers
+	handlers        map[string][]eventRegistration   // domain -> handlers
 	prepareHandlers map[string][]prepareRegistration // domain -> prepare handlers
 }
 

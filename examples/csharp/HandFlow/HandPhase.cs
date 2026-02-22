@@ -13,5 +13,5 @@ public enum HandPhase
     Draw,
     Showdown,
     AwardingPot,
-    Complete
+    Complete,
 }

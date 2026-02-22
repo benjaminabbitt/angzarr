@@ -276,10 +276,10 @@ type PMRevocationFunc func(notification *pb.Notification, processState *pb.Event
 // ProcessManagerHandler wraps functions for the gRPC ProcessManager service.
 type ProcessManagerHandler struct {
 	pb.UnimplementedProcessManagerServiceServer
-	name          string
-	prepareFn     PMPrepareFunc
-	handleFn      PMHandleFunc
-	revocationFn  PMRevocationFunc
+	name         string
+	prepareFn    PMPrepareFunc
+	handleFn     PMHandleFunc
+	revocationFn PMRevocationFunc
 }
 
 // NewProcessManagerHandler creates a new process manager handler.

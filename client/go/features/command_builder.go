@@ -1,9 +1,9 @@
 package features
 
 import (
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 

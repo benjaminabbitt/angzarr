@@ -1,9 +1,9 @@
 package features
 
 import (
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -22,9 +22,9 @@ type CompensationContext struct {
 
 // SagaOrigin represents saga origin details
 type SagaOrigin struct {
-	SagaName                  string
-	TriggeringAggregate       string
-	TriggeringEventSequence   uint32
+	SagaName                string
+	TriggeringAggregate     string
+	TriggeringEventSequence uint32
 }
 
 // CompensationCtx represents a compensation context
@@ -37,12 +37,12 @@ type CompensationCtx struct {
 
 // RejectionNotification represents a rejection notification
 type RejectionNotification struct {
-	RejectedCommand      *pb.CommandBook
-	RejectionReason      string
-	IssuerName           string
-	IssuerType           string
-	SourceAggregate      string
-	SourceEventSequence  uint32
+	RejectedCommand     *pb.CommandBook
+	RejectionReason     string
+	IssuerName          string
+	IssuerType          string
+	SourceAggregate     string
+	SourceEventSequence uint32
 }
 
 func newCompensationContext() *CompensationContext {

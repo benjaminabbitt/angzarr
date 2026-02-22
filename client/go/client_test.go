@@ -42,9 +42,9 @@ func (m *mockEventQueryServiceClient) GetAggregateRoots(ctx context.Context, in 
 }
 
 type mockAggregateCoordinatorServiceClient struct {
-	handleFn                 func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	handleSyncFn             func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
-	handleSyncSpeculativeFn  func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleFn                func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleSyncFn            func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleSyncSpeculativeFn func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
 }
 
 func (m *mockAggregateCoordinatorServiceClient) Handle(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {

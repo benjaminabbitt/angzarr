@@ -20,12 +20,13 @@ public class StateBuildingSteps
     [Given(@"a StateRouter configured for aggregate state")]
     public void GivenStateRouterConfiguredForAggregateState()
     {
-        _stateRouter = new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) =>
+        _stateRouter = new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) =>
             {
                 state.Counter++;
                 state.LastEventType = "Empty";
-            });
+            }
+        );
     }
 
     [Given(@"an EventBook with (.*) events")]
@@ -36,16 +37,14 @@ public class StateBuildingSteps
             Cover = new Angzarr.Cover
             {
                 Domain = "test",
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -57,7 +56,7 @@ public class StateBuildingSteps
         {
             Sequence = (uint)seq,
             State = Any.Pack(new Empty()), // Simplified for test
-            Retention = Angzarr.SnapshotRetention.RetentionDefault
+            Retention = Angzarr.SnapshotRetention.RetentionDefault,
         };
         _ctx["snapshot"] = _snapshot;
         _ctx["snapshot_sequence"] = seq;
@@ -108,7 +107,10 @@ public class StateBuildingSteps
             uint snapshotSeq = _eventBook.Snapshot?.Sequence ?? 0;
             foreach (var page in _eventBook.Pages)
             {
-                if ((snapshotSeq == 0 || page.Sequence > snapshotSeq) && _ctx.ContainsKey($"event_{page.Sequence}_type"))
+                if (
+                    (snapshotSeq == 0 || page.Sequence > snapshotSeq)
+                    && _ctx.ContainsKey($"event_{page.Sequence}_type")
+                )
                 {
                     var eventType = _ctx[$"event_{page.Sequence}_type"] as string;
                     if (eventType == "ItemAdded")
@@ -134,16 +136,18 @@ public class StateBuildingSteps
     public void WhenBuildStateFromEmptyEventBook()
     {
         _eventBook = new Angzarr.EventBook();
-        _stateRouter ??= new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) => state.Counter++);
+        _stateRouter ??= new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) => state.Counter++
+        );
         _state = _stateRouter.WithEventBook(_eventBook);
     }
 
     [When(@"I build state from null EventBook")]
     public void WhenBuildStateFromNullEventBook()
     {
-        _stateRouter ??= new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) => state.Counter++);
+        _stateRouter ??= new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) => state.Counter++
+        );
         _state = _stateRouter.WithEventBook(null);
     }
 
@@ -169,15 +173,14 @@ public class StateBuildingSteps
     [Given(@"an EventBook with unknown event types")]
     public void GivenEventBookWithUnknownEventTypes()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Duration(), "type.googleapis.com/unknown.EventType")
-        });
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 1,
+                Event = Any.Pack(new Duration(), "type.googleapis.com/unknown.EventType"),
+            }
+        );
     }
 
     [When(@"I build state with unknown events")]
@@ -221,25 +224,26 @@ public class StateBuildingSteps
     [Given(@"a build_state function")]
     public void GivenABuildStateFunction()
     {
-        _stateRouter = new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) => { state.Counter++; });
+        _stateRouter = new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) =>
+            {
+                state.Counter++;
+            }
+        );
     }
 
     [Given(@"an _apply_event function")]
     public void GivenAnApplyEventFunction()
     {
-        _stateRouter = new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) => { state.Counter++; });
+        _stateRouter = new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) =>
+            {
+                state.Counter++;
+            }
+        );
         // Create an event book with test events for _apply_event scenario
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         _ctx["shared_eventbook"] = _eventBook;
         // Share the decoded event for assertions
         _ctx["decoded_event"] = _eventBook.Pages[0].Event;
@@ -256,13 +260,13 @@ public class StateBuildingSteps
     {
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover { Domain = "test", Root = Helpers.UuidToProto(Guid.NewGuid()) }
+            Cover = new Angzarr.Cover
+            {
+                Domain = "test",
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
     }
 
     [Given(@"an EventBook with:")]
@@ -270,7 +274,11 @@ public class StateBuildingSteps
     {
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover { Domain = "test", Root = Helpers.UuidToProto(Guid.NewGuid()) }
+            Cover = new Angzarr.Cover
+            {
+                Domain = "test",
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
 
         // In Reqnroll, the first row is treated as headers, so we need to access
@@ -307,7 +315,7 @@ public class StateBuildingSteps
             _eventBook!.Snapshot = new Angzarr.Snapshot
             {
                 Sequence = (uint)snapSeq,
-                State = Any.Pack(new Empty())
+                State = Any.Pack(new Empty()),
             };
             _ctx["snapshot_sequence"] = snapSeq;
         }
@@ -317,11 +325,9 @@ public class StateBuildingSteps
             var seqs = value.Replace("seq ", "").Split(',').Select(s => int.Parse(s.Trim()));
             foreach (var seq in seqs)
             {
-                _eventBook!.Pages.Add(new Angzarr.EventPage
-                {
-                    Sequence = (uint)seq,
-                    Event = Any.Pack(new Empty())
-                });
+                _eventBook!.Pages.Add(
+                    new Angzarr.EventPage { Sequence = (uint)seq, Event = Any.Pack(new Empty()) }
+                );
             }
         }
     }
@@ -331,7 +337,11 @@ public class StateBuildingSteps
     {
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover { Domain = "test", Root = Helpers.UuidToProto(Guid.NewGuid()) }
+            Cover = new Angzarr.Cover
+            {
+                Domain = "test",
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
 
         foreach (var row in table.Rows)
@@ -340,11 +350,9 @@ public class StateBuildingSteps
             var type = row["type"];
             // Use Any.Pack for proper type URL that StateRouter can process
             // Store original type in context for assertions that need it
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = seq,
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = seq, Event = Any.Pack(new Empty()) }
+            );
             _ctx[$"event_{seq}_type"] = type;
         }
     }
@@ -352,25 +360,39 @@ public class StateBuildingSteps
     [Given(@"an EventBook with events in order: A, B, C")]
     public void GivenAnEventBookWithEventsInOrder()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty(), "type.googleapis.com/A") });
-        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty(), "type.googleapis.com/B") });
-        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 3, Event = Any.Pack(new Empty(), "type.googleapis.com/C") });
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 1,
+                Event = Any.Pack(new Empty(), "type.googleapis.com/A"),
+            }
+        );
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 2,
+                Event = Any.Pack(new Empty(), "type.googleapis.com/B"),
+            }
+        );
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 3,
+                Event = Any.Pack(new Empty(), "type.googleapis.com/C"),
+            }
+        );
     }
 
     [Given(@"an EventBook with events up to sequence (\d+)")]
     public void GivenAnEventBookWithEventsUpToSequence(int seq)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = 1; i <= seq; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
         // Share via context for other step classes
         _ctx["shared_eventbook"] = _eventBook;
@@ -379,27 +401,23 @@ public class StateBuildingSteps
     [Given(@"an EventBook with (\d+) event of type ""(.*)""")]
     public void GivenAnEventBookWithEventOfType(int count, string type)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty(), $"type.googleapis.com/{type}")
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage
+                {
+                    Sequence = (uint)(i + 1),
+                    Event = Any.Pack(new Empty(), $"type.googleapis.com/{type}"),
+                }
+            );
         }
     }
 
     [Given(@"an EventBook with no events and no snapshot")]
     public void GivenAnEventBookWithNoEventsAndNoSnapshot()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
     }
 
     [Given(@"an EventBook with a snapshot at sequence (\d+)")]
@@ -408,7 +426,7 @@ public class StateBuildingSteps
         _eventBook = new Angzarr.EventBook
         {
             Cover = new Angzarr.Cover { Domain = "test" },
-            Snapshot = new Angzarr.Snapshot { Sequence = (uint)seq, State = Any.Pack(new Empty()) }
+            Snapshot = new Angzarr.Snapshot { Sequence = (uint)seq, State = Any.Pack(new Empty()) },
         };
         _ctx["shared_eventbook"] = _eventBook;
     }
@@ -419,7 +437,7 @@ public class StateBuildingSteps
         _eventBook = new Angzarr.EventBook
         {
             Cover = new Angzarr.Cover { Domain = "test" },
-            Snapshot = new Angzarr.Snapshot { Sequence = (uint)seq, State = Any.Pack(new Empty()) }
+            Snapshot = new Angzarr.Snapshot { Sequence = (uint)seq, State = Any.Pack(new Empty()) },
         };
         _ctx["shared_eventbook"] = _eventBook;
     }
@@ -430,11 +448,17 @@ public class StateBuildingSteps
         _eventBook = new Angzarr.EventBook
         {
             Cover = new Angzarr.Cover { Domain = "test" },
-            Snapshot = new Angzarr.Snapshot { Sequence = (uint)snapSeq, State = Any.Pack(new Empty()) }
+            Snapshot = new Angzarr.Snapshot
+            {
+                Sequence = (uint)snapSeq,
+                State = Any.Pack(new Empty()),
+            },
         };
         for (int i = snapSeq + 1; i <= eventSeq; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
         // Share via context for other step classes
         _ctx["shared_eventbook"] = _eventBook;
@@ -443,32 +467,28 @@ public class StateBuildingSteps
     [Given(@"an EventBook with an event of unknown type")]
     public void GivenAnEventBookWithAnEventOfUnknownType()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty(), "type.googleapis.com/unknown.Type")
-        });
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 1,
+                Event = Any.Pack(new Empty(), "type.googleapis.com/unknown.Type"),
+            }
+        );
     }
 
     [Given(@"an event that increments field by (\d+)")]
     public void GivenAnEventThatIncrementsFieldBy(int amount)
     {
-        _stateRouter = new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) => { state.Counter += amount; });
+        _stateRouter = new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) =>
+            {
+                state.Counter += amount;
+            }
+        );
         // Create event book with one event for the "apply event" step
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         _ctx["shared_eventbook"] = _eventBook;
     }
 
@@ -478,11 +498,12 @@ public class StateBuildingSteps
         _state = new AggregateState();
         // Register Empty handler - events are processed and their original types
         // tracked in context for item counting
-        _stateRouter = new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) =>
+        _stateRouter = new StateRouter<AggregateState>().On<Empty>(
+            (state, evt) =>
             {
                 state.Counter++;
-            });
+            }
+        );
         // Store flag to track items from context
         _ctx["track_items_from_context"] = true;
     }
@@ -504,7 +525,8 @@ public class StateBuildingSteps
     {
         // Check context for shared event book
         _eventBook ??= _ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook : null;
+            ? _ctx["shared_eventbook"] as Angzarr.EventBook
+            : null;
 
         // Track invoked handlers by extracting type URL suffix from events
         var invokedHandlers = new List<string>();
@@ -526,8 +548,7 @@ public class StateBuildingSteps
         }
 
         // Create state router with generic handler
-        _stateRouter = new StateRouter<AggregateState>()
-            .On<Empty>((state, evt) => state.Counter++);
+        _stateRouter = new StateRouter<AggregateState>().On<Empty>((state, evt) => state.Counter++);
 
         _state = _stateRouter.WithEventBook(_eventBook) ?? new AggregateState();
 
@@ -672,8 +693,8 @@ public class StateBuildingSteps
             : null;
 
         // Create a state router that handles any event type, increments counter, and adds items
-        _stateRouter ??= new StateRouter<AggregateState>()
-            .On<Empty>((state, _) =>
+        _stateRouter ??= new StateRouter<AggregateState>().On<Empty>(
+            (state, _) =>
             {
                 state.Counter++;
                 // Add item for ItemAdded-like events (all events after first)
@@ -681,7 +702,8 @@ public class StateBuildingSteps
                 {
                     state.Items.Add($"item-{state.Counter - 1}");
                 }
-            });
+            }
+        );
 
         _state = _stateRouter.WithEventBook(_eventBook) ?? new AggregateState();
         _ctx["built_state"] = _state;
@@ -729,8 +751,8 @@ public class StateBuildingSteps
             var increments = new[] { inc1, inc2, inc3 };
             var eventIndexWrapper = new int[] { 0 }; // Use array to allow mutation in closure
 
-            _stateRouter = new StateRouter<AggregateState>()
-                .On<Empty>((state, evt) =>
+            _stateRouter = new StateRouter<AggregateState>().On<Empty>(
+                (state, evt) =>
                 {
                     if (eventIndexWrapper[0] < increments.Length)
                     {
@@ -740,12 +762,14 @@ public class StateBuildingSteps
                     {
                         state.Counter++;
                     }
-                });
+                }
+            );
         }
         else
         {
-            _stateRouter ??= new StateRouter<AggregateState>()
-                .On<Empty>((state, evt) => state.Counter++);
+            _stateRouter ??= new StateRouter<AggregateState>().On<Empty>(
+                (state, evt) => state.Counter++
+            );
         }
 
         _state = _stateRouter.WithEventBook(_eventBook);
@@ -904,9 +928,9 @@ public class StateBuildingSteps
     public void ThenOnlyEventsAtSeqXAndYShouldBeApplied(int s1, int s2)
     {
         // Prefer context state since step class instances may differ
-        var state = _state ?? (_ctx.ContainsKey("built_state")
-            ? _ctx["built_state"] as AggregateState
-            : null);
+        var state =
+            _state
+            ?? (_ctx.ContainsKey("built_state") ? _ctx["built_state"] as AggregateState : null);
         state!.Counter.Should().Be(2);
     }
 

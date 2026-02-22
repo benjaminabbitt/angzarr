@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from angzarr_client import next_sequence
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.examples import table_pb2 as table
 from angzarr_client.proto.examples import hand_pb2 as hand
+from angzarr_client.proto.examples import table_pb2 as table
 from angzarr_client.router import EventRouter
 from angzarr_client.saga_handler import SagaHandler, run_saga_server
 

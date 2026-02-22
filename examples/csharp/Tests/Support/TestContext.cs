@@ -1,6 +1,6 @@
+using Angzarr;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Angzarr;
 using Hand.Agg;
 
 namespace Tests.Support;
@@ -18,10 +18,8 @@ public class TestContext
     public void AddHandEvent(IMessage evt)
     {
         var any = Any.Pack(evt, "type.googleapis.com/");
-        HandEventBook.Pages.Add(new EventPage
-        {
-            Sequence = (uint)HandEventBook.Pages.Count,
-            Event = any
-        });
+        HandEventBook.Pages.Add(
+            new EventPage { Sequence = (uint)HandEventBook.Pages.Count, Event = any }
+        );
     }
 }

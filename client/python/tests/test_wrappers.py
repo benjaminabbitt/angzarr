@@ -6,33 +6,33 @@ import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
+from angzarr_client.helpers import (
+    DEFAULT_EDITION,
+    UNKNOWN_DOMAIN,
+    proto_to_uuid,
+    uuid_to_proto,
+)
 from angzarr_client.proto.angzarr import (
     UUID,
-    Cover,
-    Edition,
-    DomainDivergence,
-    EventBook,
-    EventPage,
     CommandBook,
     CommandPage,
-    Query,
     CommandResponse,
+    Cover,
+    DomainDivergence,
+    Edition,
+    EventBook,
+    EventPage,
+    Query,
     SyncEventBook,
 )
 from angzarr_client.wrappers import (
-    EventBookW,
     CommandBookW,
-    CoverW,
-    QueryW,
-    EventPageW,
     CommandPageW,
     CommandResponseW,
-)
-from angzarr_client.helpers import (
-    UNKNOWN_DOMAIN,
-    DEFAULT_EDITION,
-    uuid_to_proto,
-    proto_to_uuid,
+    CoverW,
+    EventBookW,
+    EventPageW,
+    QueryW,
 )
 
 

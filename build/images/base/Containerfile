@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libprotobuf-dev \
     # Compression (needed by various build systems)
     zlib1g-dev \
+    # Code formatting
+    clang-format \
     && rm -rf /var/lib/apt/lists/*
 
 # Install just (command runner)

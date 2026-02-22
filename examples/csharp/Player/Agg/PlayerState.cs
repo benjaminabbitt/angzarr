@@ -1,11 +1,11 @@
 // DOC: This file is referenced in docs/docs/examples/aggregates.mdx
 //      Update documentation when making changes to StateRouter patterns.
 
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg;
 
@@ -33,59 +33,72 @@ public class PlayerState
     /// </summary>
     // docs:start:state_router
     public static readonly StateRouter<PlayerState> Router = new StateRouter<PlayerState>()
-        .On<PlayerRegistered>((state, evt) =>
-        {
-            state.PlayerId = $"player_{evt.Email}";
-            state.DisplayName = evt.DisplayName;
-            state.Email = evt.Email;
-            state.PlayerType = evt.PlayerType;
-            state.AiModelId = evt.AiModelId;
-            state.Status = "active";
-            state.Bankroll = 0;
-            state.ReservedFunds = 0;
-        })
-        .On<FundsDeposited>((state, evt) =>
-        {
-            if (evt.NewBalance != null)
+        .On<PlayerRegistered>(
+            (state, evt) =>
             {
-                state.Bankroll = evt.NewBalance.Amount;
+                state.PlayerId = $"player_{evt.Email}";
+                state.DisplayName = evt.DisplayName;
+                state.Email = evt.Email;
+                state.PlayerType = evt.PlayerType;
+                state.AiModelId = evt.AiModelId;
+                state.Status = "active";
+                state.Bankroll = 0;
+                state.ReservedFunds = 0;
             }
-        })
-        .On<FundsWithdrawn>((state, evt) =>
-        {
-            if (evt.NewBalance != null)
+        )
+        .On<FundsDeposited>(
+            (state, evt) =>
             {
-                state.Bankroll = evt.NewBalance.Amount;
+                if (evt.NewBalance != null)
+                {
+                    state.Bankroll = evt.NewBalance.Amount;
+                }
             }
-        })
-        .On<FundsReserved>((state, evt) =>
-        {
-            if (evt.NewReservedBalance != null)
+        )
+        .On<FundsWithdrawn>(
+            (state, evt) =>
             {
-                state.ReservedFunds = evt.NewReservedBalance.Amount;
+                if (evt.NewBalance != null)
+                {
+                    state.Bankroll = evt.NewBalance.Amount;
+                }
             }
-            var tableKey = Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant();
-            if (evt.Amount != null)
+        )
+        .On<FundsReserved>(
+            (state, evt) =>
             {
-                state.TableReservations[tableKey] = evt.Amount.Amount;
+                if (evt.NewReservedBalance != null)
+                {
+                    state.ReservedFunds = evt.NewReservedBalance.Amount;
+                }
+                var tableKey = Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant();
+                if (evt.Amount != null)
+                {
+                    state.TableReservations[tableKey] = evt.Amount.Amount;
+                }
             }
-        })
-        .On<FundsReleased>((state, evt) =>
-        {
-            if (evt.NewReservedBalance != null)
+        )
+        .On<FundsReleased>(
+            (state, evt) =>
             {
-                state.ReservedFunds = evt.NewReservedBalance.Amount;
+                if (evt.NewReservedBalance != null)
+                {
+                    state.ReservedFunds = evt.NewReservedBalance.Amount;
+                }
+                var tableKey = Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant();
+                state.TableReservations.Remove(tableKey);
             }
-            var tableKey = Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant();
-            state.TableReservations.Remove(tableKey);
-        })
-        .On<FundsTransferred>((state, evt) =>
-        {
-            if (evt.NewBalance != null)
+        )
+        .On<FundsTransferred>(
+            (state, evt) =>
             {
-                state.Bankroll = evt.NewBalance.Amount;
+                if (evt.NewBalance != null)
+                {
+                    state.Bankroll = evt.NewBalance.Amount;
+                }
             }
-        });
+        );
+
     // docs:end:state_router
 
     /// <summary>

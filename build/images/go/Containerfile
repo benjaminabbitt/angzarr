@@ -30,7 +30,10 @@ ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH \
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.0 && \
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
+# Install goimports (formatter)
+RUN go install golang.org/x/tools/cmd/goimports@latest
+
 # Verify installations
-RUN go version && protoc-gen-go --version
+RUN go version && protoc-gen-go --version && goimports -h 2>&1 | head -1
 
 WORKDIR /workspace

@@ -235,7 +235,9 @@ public class QueryBuilderSteps
     public void ThenBuiltQueryShouldHaveNoEdition()
     {
         BuildQuery();
-        (_query!.Cover.Edition == null || string.IsNullOrEmpty(_query.Cover.Edition.Name)).Should().BeTrue();
+        (_query!.Cover.Edition == null || string.IsNullOrEmpty(_query.Cover.Edition.Name))
+            .Should()
+            .BeTrue();
     }
 
     [Then(@"the built query should have range selection")]
@@ -291,7 +293,9 @@ public class QueryBuilderSteps
     public void ThenQueryShouldTargetMainTimeline()
     {
         BuildQuery();
-        (_query!.Cover.Edition == null || string.IsNullOrEmpty(_query.Cover.Edition.Name)).Should().BeTrue();
+        (_query!.Cover.Edition == null || string.IsNullOrEmpty(_query.Cover.Edition.Name))
+            .Should()
+            .BeTrue();
     }
 
     [Then(@"the query should have temporal selection \(last set\)")]
@@ -326,10 +330,12 @@ public class QueryBuilderSteps
 
     private void BuildQuery()
     {
-        if (_query != null) return;
+        if (_query != null)
+            return;
         // Check local builder or context-shared builder
-        var builder = _builder ?? (_ctx.ContainsKey("query_builder")
-            ? _ctx["query_builder"] as QueryBuilder : null);
+        var builder =
+            _builder
+            ?? (_ctx.ContainsKey("query_builder") ? _ctx["query_builder"] as QueryBuilder : null);
         _query = builder?.Build();
     }
 
@@ -409,8 +415,7 @@ public class QueryBuilderSteps
     public void WhenIQueryEventsForRootAsOfSequence(string domain, string root, int seq)
     {
         var guid = ParseGuid(root);
-        _builder = new QueryBuilder(null!, domain, guid)
-            .AsOfSequence(seq);
+        _builder = new QueryBuilder(null!, domain, guid).AsOfSequence(seq);
         BuildQuery();
     }
 
@@ -423,7 +428,7 @@ public class QueryBuilderSteps
         // Simulate get_pages() by creating a mock EventBook with pages only (no cover/snapshot)
         var eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
         eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty()) });
@@ -439,7 +444,7 @@ public class QueryBuilderSteps
         // Simulate get_events() by creating a mock EventBook with full metadata
         var eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
         eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty()) });

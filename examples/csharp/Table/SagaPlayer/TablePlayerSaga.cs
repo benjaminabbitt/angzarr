@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.SagaPlayer;
 
@@ -23,15 +23,17 @@ public static class TablePlayerSaga
 
     private static List<Cover> PrepareHandEnded(HandEnded evt)
     {
-        return evt.StackChanges.Keys.Select(playerHex =>
-        {
-            var playerRoot = ByteString.CopyFrom(Convert.FromHexString(playerHex));
-            return new Cover
+        return evt
+            .StackChanges.Keys.Select(playerHex =>
             {
-                Domain = "player",
-                Root = new UUID { Value = playerRoot }
-            };
-        }).ToList();
+                var playerRoot = ByteString.CopyFrom(Convert.FromHexString(playerHex));
+                return new Cover
+                {
+                    Domain = "player",
+                    Root = new UUID { Value = playerRoot },
+                };
+            })
+            .ToList();
     }
 
     private static object HandleHandEnded(HandEnded evt, List<EventBook> destinations)
@@ -52,22 +54,24 @@ public static class TablePlayerSaga
                 ? EventRouter.NextSequence(dest)
                 : 0;
 
-            var releaseFunds = new ReleaseFunds
-            {
-                TableRoot = evt.HandRoot
-            };
+            var releaseFunds = new ReleaseFunds { TableRoot = evt.HandRoot };
 
             var cmdAny = EventRouter.PackCommand(releaseFunds);
 
-            commands.Add(new CommandBook
-            {
-                Cover = new Cover
+            commands.Add(
+                new CommandBook
                 {
-                    Domain = "player",
-                    Root = new UUID { Value = playerRoot }
-                },
-                Pages = { new CommandPage { Sequence = destSeq, Command = cmdAny } }
-            });
+                    Cover = new Cover
+                    {
+                        Domain = "player",
+                        Root = new UUID { Value = playerRoot },
+                    },
+                    Pages =
+                    {
+                        new CommandPage { Sequence = destSeq, Command = cmdAny },
+                    },
+                }
+            );
         }
 
         return commands;

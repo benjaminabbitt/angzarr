@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg.Handlers;
 
@@ -28,7 +28,7 @@ public static class WithdrawHandler
         {
             Amount = cmd.Amount,
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            WithdrawnAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            WithdrawnAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

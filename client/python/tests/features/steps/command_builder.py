@@ -1,13 +1,12 @@
 """Command builder step definitions."""
 
 import uuid
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from angzarr_client.proto.angzarr import types_pb2
-
 
 # Link to feature file
 scenarios("../../../../features/command_builder.feature")

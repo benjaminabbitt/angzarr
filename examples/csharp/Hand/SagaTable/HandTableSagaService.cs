@@ -1,9 +1,9 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using Grpc.Core;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 
 namespace Hand.SagaTable;
 
@@ -19,7 +19,10 @@ public class HandTableSagaService : SagaService.SagaServiceBase
         _router = router;
     }
 
-    public override Task<SagaPrepareResponse> Prepare(SagaPrepareRequest request, ServerCallContext context)
+    public override Task<SagaPrepareResponse> Prepare(
+        SagaPrepareRequest request,
+        ServerCallContext context
+    )
     {
         var response = new SagaPrepareResponse();
 
@@ -36,14 +39,18 @@ public class HandTableSagaService : SagaService.SagaServiceBase
         return Task.FromResult(response);
     }
 
-    public override Task<SagaResponse> Execute(SagaExecuteRequest request, ServerCallContext context)
+    public override Task<SagaResponse> Execute(
+        SagaExecuteRequest request,
+        ServerCallContext context
+    )
     {
         var response = new SagaResponse();
 
         foreach (var page in request.Source.Pages)
         {
             var eventMessage = UnpackEvent(page.Event);
-            if (eventMessage == null) continue;
+            if (eventMessage == null)
+                continue;
 
             var result = _router.DoHandle(eventMessage, request.Destinations.ToList());
 
@@ -68,7 +75,7 @@ public class HandTableSagaService : SagaService.SagaServiceBase
         return typeName switch
         {
             "examples.HandComplete" => eventAny.Unpack<HandComplete>(),
-            _ => null
+            _ => null,
         };
     }
 }

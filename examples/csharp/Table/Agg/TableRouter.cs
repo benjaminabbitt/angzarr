@@ -1,7 +1,7 @@
-using Google.Protobuf;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
 using Table.Agg.Handlers;
 
 namespace Table.Agg;

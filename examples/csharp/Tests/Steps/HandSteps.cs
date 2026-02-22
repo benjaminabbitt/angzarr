@@ -1,11 +1,11 @@
-using FluentAssertions;
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using TechTalk.SpecFlow;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using FluentAssertions;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Hand.Agg;
+using TechTalk.SpecFlow;
 using Tests.Support;
 
 namespace Tests.Steps;
@@ -47,10 +47,24 @@ public class HandSteps
             HandNumber = 1,
             GameVariant = GameVariant.TexasHoldem,
             DealerPosition = pos1,
-            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
-        evt.Players.Add(new PlayerInHand { PlayerRoot = player1, Position = pos1, Stack = 1000 });
-        evt.Players.Add(new PlayerInHand { PlayerRoot = player2, Position = pos2, Stack = 1000 });
+        evt.Players.Add(
+            new PlayerInHand
+            {
+                PlayerRoot = player1,
+                Position = pos1,
+                Stack = 1000,
+            }
+        );
+        evt.Players.Add(
+            new PlayerInHand
+            {
+                PlayerRoot = player2,
+                Position = pos2,
+                Stack = 1000,
+            }
+        );
         evt.PlayerCards.Add(pc1);
         evt.PlayerCards.Add(pc2);
 
@@ -70,17 +84,19 @@ public class HandSteps
             GameVariant = GameVariant.TexasHoldem,
             DealerPosition = 0,
             SmallBlind = 5,
-            BigBlind = 10
+            BigBlind = 10,
         };
 
         for (var i = 0; i < playerCount; i++)
         {
-            cmd.Players.Add(new PlayerInHand
-            {
-                PlayerRoot = ByteString.CopyFromUtf8($"player_{i}"),
-                Position = i,
-                Stack = 1000
-            });
+            cmd.Players.Add(
+                new PlayerInHand
+                {
+                    PlayerRoot = ByteString.CopyFromUtf8($"player_{i}"),
+                    Position = i,
+                    Stack = 1000,
+                }
+            );
         }
 
         ExecuteHandCommand(cmd);
@@ -95,7 +111,7 @@ public class HandSteps
         {
             PlayerRoot = playerRoot,
             BlindType = "small",
-            Amount = amount
+            Amount = amount,
         };
 
         ExecuteHandCommand(cmd);
@@ -110,7 +126,7 @@ public class HandSteps
         {
             PlayerRoot = playerRoot,
             BlindType = "big",
-            Amount = amount
+            Amount = amount,
         };
 
         ExecuteHandCommand(cmd);
@@ -125,7 +141,7 @@ public class HandSteps
         {
             PlayerRoot = playerRoot,
             Action = ActionType.Fold,
-            Amount = 0
+            Amount = 0,
         };
 
         ExecuteHandCommand(cmd);
@@ -140,7 +156,9 @@ public class HandSteps
         {
             PlayerRoot = playerRoot,
             Action = ActionType.Call,
-            Amount = 10 // Assuming BB
+            Amount =
+                10 // Assuming BB
+            ,
         };
 
         ExecuteHandCommand(cmd);
@@ -164,10 +182,14 @@ public class HandSteps
         _context.LastEvent.Should().BeOfType<ActionTaken>();
     }
 
-    [Then(@"the result is a (CardsDealt|BlindPosted|ActionTaken|CommunityCardsDealt|DrawCompleted|CardsRevealed|CardsMucked|PotAwarded) event")]
+    [Then(
+        @"the result is a (CardsDealt|BlindPosted|ActionTaken|CommunityCardsDealt|DrawCompleted|CardsRevealed|CardsMucked|PotAwarded) event"
+    )]
     public void ThenTheResultIsAHandEvent(string eventType)
     {
-        _context.LastException.Should().BeNull($"Expected {eventType} event but got error: {_context.LastException?.Message}");
+        _context
+            .LastException.Should()
+            .BeNull($"Expected {eventType} event but got error: {_context.LastException?.Message}");
         _context.LastEvent.Should().NotBeNull();
         _context.LastEvent!.GetType().Name.Should().Be(eventType);
     }
@@ -192,7 +214,7 @@ public class HandSteps
             "bet" => ActionType.Bet,
             "raise" => ActionType.Raise,
             "all-in" => ActionType.AllIn,
-            _ => ActionType.ActionUnspecified
+            _ => ActionType.ActionUnspecified,
         };
         evt!.Action.Should().Be(expectedAction);
     }
@@ -207,7 +229,9 @@ public class HandSteps
             _context.HandAggregate ??= new HandAggregate();
             _context.HandAggregate.Rehydrate(_context.HandEventBook);
 
-            var result = _context.HandAggregate.HandleCommand(cmd as Google.Protobuf.IMessage ?? throw new InvalidOperationException());
+            var result = _context.HandAggregate.HandleCommand(
+                cmd as Google.Protobuf.IMessage ?? throw new InvalidOperationException()
+            );
             _context.LastEvent = result;
             _context.AddHandEvent(result);
         }

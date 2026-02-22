@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 import grpc
 from google.protobuf import any_pb2
 
-from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.angzarr import saga_pb2 as saga
+from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.router import EventRouter
 from angzarr_client.saga_handler import SagaHandler
 

@@ -51,10 +51,13 @@ public class RouterSteps
     [When(@"I register handler for event ""(.*)""")]
     public void WhenRegisterHandlerForEvent(string eventType)
     {
-        _eventRouter!.On(eventType, (eventAny, root, correlationId, destinations) =>
-        {
-            return new List<Angzarr.CommandBook>();
-        });
+        _eventRouter!.On(
+            eventType,
+            (eventAny, root, correlationId, destinations) =>
+            {
+                return new List<Angzarr.CommandBook>();
+            }
+        );
     }
 
     [When(@"I dispatch an EventBook with event ""(.*)"" from domain ""(.*)""")]
@@ -87,25 +90,29 @@ public class RouterSteps
     [Given(@"a CommandRouter for domain ""(.*)""")]
     public void GivenCommandRouterForDomain(string domain)
     {
-        _stateRouter = new StateRouter<TestState>()
-            .On<Empty>((state, evt) => { state.Value = "updated"; });
-        _commandRouter = new CommandRouter<TestState>(domain)
-            .WithState(_stateRouter);
+        _stateRouter = new StateRouter<TestState>().On<Empty>(
+            (state, evt) =>
+            {
+                state.Value = "updated";
+            }
+        );
+        _commandRouter = new CommandRouter<TestState>(domain).WithState(_stateRouter);
     }
 
     [When(@"I register command handler for ""(.*)""")]
     public void WhenRegisterCommandHandler(string commandType)
     {
-        _commandRouter!.On(commandType, (commandBook, commandAny, state, seq) =>
-        {
-            var eventBook = new Angzarr.EventBook();
-            eventBook.Pages.Add(new Angzarr.EventPage
+        _commandRouter!.On(
+            commandType,
+            (commandBook, commandAny, state, seq) =>
             {
-                Sequence = (uint)seq,
-                Event = Any.Pack(new Empty())
-            });
-            return eventBook;
-        });
+                var eventBook = new Angzarr.EventBook();
+                eventBook.Pages.Add(
+                    new Angzarr.EventPage { Sequence = (uint)seq, Event = Any.Pack(new Empty()) }
+                );
+                return eventBook;
+            }
+        );
     }
 
     [When(@"I dispatch a ContextualCommand with command ""(.*)""")]
@@ -140,19 +147,19 @@ public class RouterSteps
     [Given(@"a StateRouter for TestState")]
     public void GivenStateRouterForTestState()
     {
-        _stateRouter = new StateRouter<TestState>()
-            .On<Empty>((state, evt) => { state.Value = "applied"; });
+        _stateRouter = new StateRouter<TestState>().On<Empty>(
+            (state, evt) =>
+            {
+                state.Value = "applied";
+            }
+        );
     }
 
     [When(@"I apply events to build state")]
     public void WhenApplyEventsToBuildState()
     {
         var eventBook = new Angzarr.EventBook();
-        eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         var state = _stateRouter!.WithEventBook(eventBook);
         _ctx["state"] = state;
     }
@@ -172,14 +179,16 @@ public class RouterSteps
             {
                 Domain = domain,
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty(), "type.googleapis.com/" + eventType)
-        });
+        eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 1,
+                Event = Any.Pack(new Empty(), "type.googleapis.com/" + eventType),
+            }
+        );
         return eventBook;
     }
 
@@ -191,19 +200,21 @@ public class RouterSteps
             {
                 Domain = "test",
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 1,
-            Command = Any.Pack(new Empty(), "type.googleapis.com/" + commandType)
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage
+            {
+                Sequence = 1,
+                Command = Any.Pack(new Empty(), "type.googleapis.com/" + commandType),
+            }
+        );
 
         return new Angzarr.ContextualCommand
         {
             Command = commandBook,
-            Events = new Angzarr.EventBook()
+            Events = new Angzarr.EventBook(),
         };
     }
 
@@ -212,15 +223,13 @@ public class RouterSteps
     [Given(@"a saga router handling rejections")]
     public void GivenASagaRouterHandlingRejections()
     {
-        _eventRouter = new EventRouter("rejection-saga")
-            .Domain("test");
+        _eventRouter = new EventRouter("rejection-saga").Domain("test");
     }
 
     [Given(@"a saga ""(.*)"" triggered by ""(.*)"" aggregate at sequence (\d+)")]
     public void GivenASagaTriggeredByAggregateAtSequence(string sagaName, string domain, int seq)
     {
-        _eventRouter = new EventRouter(sagaName)
-            .Domain(domain);
+        _eventRouter = new EventRouter(sagaName).Domain(domain);
 
         // Create a rejection notification with saga origin details for compensation tests
         var commandBook = new Angzarr.CommandBook
@@ -228,14 +237,12 @@ public class RouterSteps
             Cover = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 1,
-            Command = Any.Pack(new Empty())
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage { Sequence = 1, Command = Any.Pack(new Empty()) }
+        );
 
         var rejectionNotification = new Angzarr.RejectionNotification
         {
@@ -247,15 +254,12 @@ public class RouterSteps
             SourceAggregate = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
         _ctx["rejection_notification"] = rejectionNotification;
 
-        var notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(rejectionNotification)
-        };
+        var notification = new Angzarr.Notification { Payload = Any.Pack(rejectionNotification) };
         _ctx["notification"] = notification;
     }
 
@@ -272,14 +276,12 @@ public class RouterSteps
             {
                 Domain = "test",
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = correlationId
-            }
+                CorrelationId = correlationId,
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 1,
-            Command = Any.Pack(new Empty())
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage { Sequence = 1, Command = Any.Pack(new Empty()) }
+        );
 
         var rejectionNotification = new Angzarr.RejectionNotification
         {
@@ -288,15 +290,12 @@ public class RouterSteps
             SourceAggregate = new Angzarr.Cover
             {
                 Domain = "test",
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
         _ctx["rejection_notification"] = rejectionNotification;
 
-        var notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(rejectionNotification)
-        };
+        var notification = new Angzarr.Notification { Payload = Any.Pack(rejectionNotification) };
         _ctx["notification"] = notification;
     }
 
@@ -377,10 +376,7 @@ public class RouterSteps
     [Given(@"no events for the aggregate")]
     public void GivenNoEventsForTheAggregate()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
     }
 
     [Given(@"no events in the EventBook")]
@@ -436,14 +432,12 @@ public class RouterSteps
             {
                 Domain = "test",
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 1,
-            Command = Any.Pack(new Empty())
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage { Sequence = 1, Command = Any.Pack(new Empty()) }
+        );
 
         var rejectionNotification = new Angzarr.RejectionNotification
         {
@@ -454,8 +448,8 @@ public class RouterSteps
             SourceAggregate = new Angzarr.Cover
             {
                 Domain = "test",
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
         _ctx["rejection_notification"] = rejectionNotification;
     }
@@ -482,9 +476,13 @@ public class RouterSteps
     [Then(@"the response should be returned")]
     public void ThenTheResponseShouldBeReturned()
     {
-        var response = _response ?? (_ctx.ContainsKey("business_response")
-            ? _ctx["business_response"] as Angzarr.BusinessResponse
-            : null);
+        var response =
+            _response
+            ?? (
+                _ctx.ContainsKey("business_response")
+                    ? _ctx["business_response"] as Angzarr.BusinessResponse
+                    : null
+            );
         response.Should().NotBeNull();
     }
 
@@ -523,11 +521,10 @@ public class RouterSteps
     [Given(@"a saga router with a rejected command")]
     public void GivenASagaRouterWithARejectedCommand()
     {
-        _eventRouter = new EventRouter("rejection-saga")
-            .Domain("test");
+        _eventRouter = new EventRouter("rejection-saga").Domain("test");
         _rejection = new Angzarr.RevocationResponse
         {
-            Reason = "Command rejected by target aggregate"
+            Reason = "Command rejected by target aggregate",
         };
         _ctx["rejection"] = _rejection;
     }

@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg;
 
@@ -36,6 +36,7 @@ public class HandAggregate : Aggregate<HandState>
     public List<(Suit Suit, Rank Rank)> RemainingDeck => State.RemainingDeck;
 
     public long GetPotTotal() => State.GetPotTotal();
+
     public PlayerHandInfo? GetPlayer(ByteString playerRoot) => State.GetPlayer(playerRoot);
 
     // --- Command handlers ---
@@ -58,7 +59,7 @@ public class HandAggregate : Aggregate<HandState>
             HandNumber = cmd.HandNumber,
             GameVariant = cmd.GameVariant,
             DealerPosition = cmd.DealerPosition,
-            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.PlayerCards.AddRange(playerCards);
         evt.Players.AddRange(cmd.Players);
@@ -95,7 +96,7 @@ public class HandAggregate : Aggregate<HandState>
             Amount = actualAmount,
             PlayerStack = newStack,
             PotTotal = newPotTotal,
-            PostedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            PostedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -128,7 +129,9 @@ public class HandAggregate : Aggregate<HandState>
                 break;
             case ActionType.Check:
                 if (callAmount > 0)
-                    throw CommandRejectedError.PreconditionFailed("Cannot check when there is a bet to call");
+                    throw CommandRejectedError.PreconditionFailed(
+                        "Cannot check when there is a bet to call"
+                    );
                 amount = 0;
                 break;
             case ActionType.Call:
@@ -140,7 +143,9 @@ public class HandAggregate : Aggregate<HandState>
                 break;
             case ActionType.Bet:
                 if (CurrentBet > 0)
-                    throw CommandRejectedError.PreconditionFailed("Cannot bet when there is already a bet");
+                    throw CommandRejectedError.PreconditionFailed(
+                        "Cannot bet when there is already a bet"
+                    );
                 if (amount < BigBlind)
                     throw CommandRejectedError.InvalidArgument($"Bet must be at least {BigBlind}");
                 if (amount > player.Stack)
@@ -150,11 +155,15 @@ public class HandAggregate : Aggregate<HandState>
                 break;
             case ActionType.Raise:
                 if (CurrentBet == 0)
-                    throw CommandRejectedError.PreconditionFailed("Cannot raise when there is no bet");
+                    throw CommandRejectedError.PreconditionFailed(
+                        "Cannot raise when there is no bet"
+                    );
                 var totalBet = player.BetThisRound + amount;
                 var raiseAmount = totalBet - CurrentBet;
                 if (raiseAmount < MinRaise && amount < player.Stack)
-                    throw CommandRejectedError.InvalidArgument($"Raise must be at least {MinRaise}");
+                    throw CommandRejectedError.InvalidArgument(
+                        $"Raise must be at least {MinRaise}"
+                    );
                 if (amount > player.Stack)
                     throw CommandRejectedError.InvalidArgument("Raise exceeds stack");
                 if (player.Stack - amount == 0)
@@ -178,7 +187,7 @@ public class HandAggregate : Aggregate<HandState>
             PlayerStack = newStack,
             PotTotal = newPotTotal,
             AmountToCall = Math.Max(CurrentBet, player.BetThisRound + amount) - player.BetThisRound,
-            ActionAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ActionAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -193,13 +202,17 @@ public class HandAggregate : Aggregate<HandState>
             throw CommandRejectedError.InvalidArgument("Must deal at least 1 card");
 
         if (GameVariant == GameVariant.FiveCardDraw)
-            throw CommandRejectedError.PreconditionFailed("Five card draw doesn't have community cards");
+            throw CommandRejectedError.PreconditionFailed(
+                "Five card draw doesn't have community cards"
+            );
 
         var (nextPhase, expectedCards) = GetNextPhase(CurrentPhase);
         if (nextPhase == BettingPhase.Unspecified)
             throw CommandRejectedError.PreconditionFailed("No more phases");
         if (expectedCards != cmd.Count)
-            throw CommandRejectedError.InvalidArgument($"Expected {expectedCards} cards for this phase");
+            throw CommandRejectedError.InvalidArgument(
+                $"Expected {expectedCards} cards for this phase"
+            );
         if (RemainingDeck.Count < cmd.Count)
             throw CommandRejectedError.PreconditionFailed("Not enough cards in deck");
 
@@ -209,7 +222,7 @@ public class HandAggregate : Aggregate<HandState>
         var evt = new CommunityCardsDealt
         {
             Phase = nextPhase,
-            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         foreach (var (suit, rank) in newCards)
             evt.Cards.Add(new Card { Suit = suit, Rank = rank });
@@ -238,30 +251,36 @@ public class HandAggregate : Aggregate<HandState>
                 throw CommandRejectedError.PreconditionFailed("Folded player cannot win pot");
         }
 
-        var winners = cmd.Awards.Select(a => new PotWinner
-        {
-            PlayerRoot = a.PlayerRoot,
-            Amount = a.Amount,
-            PotType = a.PotType
-        }).ToList();
-
-        var finalStacks = Players.Values.Select(p =>
-        {
-            var winAmount = cmd.Awards.Where(a => a.PlayerRoot.Equals(p.PlayerRoot)).Sum(a => a.Amount);
-            return new PlayerStackSnapshot
+        var winners = cmd
+            .Awards.Select(a => new PotWinner
             {
-                PlayerRoot = p.PlayerRoot,
-                Stack = p.Stack + winAmount,
-                IsAllIn = p.IsAllIn,
-                HasFolded = p.HasFolded
-            };
-        }).ToList();
+                PlayerRoot = a.PlayerRoot,
+                Amount = a.Amount,
+                PotType = a.PotType,
+            })
+            .ToList();
+
+        var finalStacks = Players
+            .Values.Select(p =>
+            {
+                var winAmount = cmd
+                    .Awards.Where(a => a.PlayerRoot.Equals(p.PlayerRoot))
+                    .Sum(a => a.Amount);
+                return new PlayerStackSnapshot
+                {
+                    PlayerRoot = p.PlayerRoot,
+                    Stack = p.Stack + winAmount,
+                    IsAllIn = p.IsAllIn,
+                    HasFolded = p.HasFolded,
+                };
+            })
+            .ToList();
 
         var completeEvent = new HandComplete
         {
             TableRoot = TableRoot,
             HandNumber = HandNumber,
-            CompletedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            CompletedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         completeEvent.Winners.AddRange(winners);
         completeEvent.FinalStacks.AddRange(finalStacks);
@@ -269,7 +288,11 @@ public class HandAggregate : Aggregate<HandState>
         return completeEvent;
     }
 
-    private static List<PlayerHoleCards> DealHoleCards(GameVariant variant, List<PlayerInHand> players, ByteString? seed)
+    private static List<PlayerHoleCards> DealHoleCards(
+        GameVariant variant,
+        List<PlayerInHand> players,
+        ByteString? seed
+    )
     {
         var cardsPerPlayer = variant switch
         {
@@ -277,7 +300,7 @@ public class HandAggregate : Aggregate<HandState>
             GameVariant.Omaha => 4,
             GameVariant.FiveCardDraw => 5,
             GameVariant.SevenCardStud => 7,
-            _ => 2
+            _ => 2,
         };
 
         var deck = BuildDeck(seed);
@@ -308,9 +331,10 @@ public class HandAggregate : Aggregate<HandState>
             }
         }
 
-        var rng = seed != null && !seed.IsEmpty
-            ? new Random(BitConverter.ToInt32(seed.ToByteArray().Take(4).ToArray(), 0))
-            : new Random();
+        var rng =
+            seed != null && !seed.IsEmpty
+                ? new Random(BitConverter.ToInt32(seed.ToByteArray().Take(4).ToArray(), 0))
+                : new Random();
 
         for (var i = cards.Count - 1; i > 0; i--)
         {
@@ -329,7 +353,7 @@ public class HandAggregate : Aggregate<HandState>
             BettingPhase.Flop => (BettingPhase.Turn, 1),
             BettingPhase.Turn => (BettingPhase.River, 1),
             BettingPhase.River => (BettingPhase.Showdown, 0),
-            _ => (BettingPhase.Unspecified, 0)
+            _ => (BettingPhase.Unspecified, 0),
         };
     }
 }

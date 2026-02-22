@@ -1,5 +1,5 @@
-using Google.Protobuf;
 using Angzarr.Examples;
+using Google.Protobuf;
 
 namespace HandFlow;
 

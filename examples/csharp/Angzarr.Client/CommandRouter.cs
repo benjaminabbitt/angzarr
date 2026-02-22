@@ -1,6 +1,6 @@
+using Angzarr;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Angzarr;
 using Type = System.Type;
 
 namespace Angzarr.Client;
@@ -24,7 +24,8 @@ public class CommandRouter
     /// <summary>
     /// Register a command handler.
     /// </summary>
-    public CommandRouter On<TCommand>(Func<TCommand, object, IMessage> handler) where TCommand : IMessage
+    public CommandRouter On<TCommand>(Func<TCommand, object, IMessage> handler)
+        where TCommand : IMessage
     {
         _handlers[typeof(TCommand)] = handler;
         return this;
@@ -33,7 +34,11 @@ public class CommandRouter
     /// <summary>
     /// Register a rejection handler.
     /// </summary>
-    public CommandRouter OnRejected(string domain, string command, Func<Notification, object, IMessage?> handler)
+    public CommandRouter OnRejected(
+        string domain,
+        string command,
+        Func<Notification, object, IMessage?> handler
+    )
     {
         _rejectionHandlers[(domain, command)] = handler;
         return this;

@@ -6,7 +6,7 @@ for external consumption via HTTP webhooks or Kafka.
 
 from google.protobuf.any_pb2 import Any
 
-from angzarr_client import CloudEventsProjector, CloudEventsRouter, CloudEvent
+from angzarr_client import CloudEvent, CloudEventsProjector, CloudEventsRouter
 from angzarr_client.proto.examples import player_pb2 as player
 
 

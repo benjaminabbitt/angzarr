@@ -9,10 +9,10 @@ from angzarr_client.router import (
     ERRMSG_UNKNOWN_COMMAND,
     CommandRouter,
     EventRouter,
-    next_sequence,
-    command_handler,
-    _pack_events,
     _pack_any,
+    _pack_events,
+    command_handler,
+    next_sequence,
 )
 
 # ============================================================================

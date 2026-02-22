@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg.Handlers;
 
@@ -40,7 +40,9 @@ public static class ActionHandler
                 break;
             case ActionType.Check:
                 if (callAmount > 0)
-                    throw CommandRejectedError.PreconditionFailed("Cannot check when there is a bet to call");
+                    throw CommandRejectedError.PreconditionFailed(
+                        "Cannot check when there is a bet to call"
+                    );
                 amount = 0;
                 break;
             case ActionType.Call:
@@ -52,9 +54,13 @@ public static class ActionHandler
                 break;
             case ActionType.Bet:
                 if (state.CurrentBet > 0)
-                    throw CommandRejectedError.PreconditionFailed("Cannot bet when there is already a bet");
+                    throw CommandRejectedError.PreconditionFailed(
+                        "Cannot bet when there is already a bet"
+                    );
                 if (amount < state.BigBlind)
-                    throw CommandRejectedError.InvalidArgument($"Bet must be at least {state.BigBlind}");
+                    throw CommandRejectedError.InvalidArgument(
+                        $"Bet must be at least {state.BigBlind}"
+                    );
                 if (amount > player.Stack)
                     throw CommandRejectedError.InvalidArgument("Bet exceeds stack");
                 if (player.Stack - amount == 0)
@@ -62,11 +68,15 @@ public static class ActionHandler
                 break;
             case ActionType.Raise:
                 if (state.CurrentBet == 0)
-                    throw CommandRejectedError.PreconditionFailed("Cannot raise when there is no bet");
+                    throw CommandRejectedError.PreconditionFailed(
+                        "Cannot raise when there is no bet"
+                    );
                 var totalBet = player.BetThisRound + amount;
                 var raiseAmount = totalBet - state.CurrentBet;
                 if (raiseAmount < state.MinRaise && amount < player.Stack)
-                    throw CommandRejectedError.InvalidArgument($"Raise must be at least {state.MinRaise}");
+                    throw CommandRejectedError.InvalidArgument(
+                        $"Raise must be at least {state.MinRaise}"
+                    );
                 if (amount > player.Stack)
                     throw CommandRejectedError.InvalidArgument("Raise exceeds stack");
                 if (player.Stack - amount == 0)
@@ -90,8 +100,9 @@ public static class ActionHandler
             Amount = amount,
             PlayerStack = newStack,
             PotTotal = newPotTotal,
-            AmountToCall = Math.Max(state.CurrentBet, player.BetThisRound + amount) - player.BetThisRound,
-            ActionAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            AmountToCall =
+                Math.Max(state.CurrentBet, player.BetThisRound + amount) - player.BetThisRound,
+            ActionAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

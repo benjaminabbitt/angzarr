@@ -4,10 +4,9 @@ import uuid
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from angzarr_client.proto.angzarr import types_pb2
-
 
 # Link to feature file
 scenarios("../../../../features/router.feature")

@@ -12,7 +12,14 @@ namespace Angzarr.Examples.PmgHandFlow;
 /// </summary>
 
 // docs:start:pm_state
-public enum HandPhase { AwaitingDeal, Dealing, Blinds, Betting, Complete }
+public enum HandPhase
+{
+    AwaitingDeal,
+    Dealing,
+    Blinds,
+    Betting,
+    Complete,
+}
 
 public class HandFlowState
 {
@@ -20,6 +27,7 @@ public class HandFlowState
     public HandPhase Phase { get; set; } = HandPhase.AwaitingDeal;
     public int PlayerCount { get; set; } = 0;
 }
+
 // docs:end:pm_state
 
 // docs:start:pm_handler
@@ -32,11 +40,10 @@ public class HandFlowPM : ProcessManager<HandFlowState>
         state.Phase = HandPhase.Dealing;
         state.PlayerCount = evt.PlayerCount;
 
-        yield return BuildCommand("hand", new DealCards
-        {
-            HandId = evt.HandId,
-            PlayerCount = evt.PlayerCount
-        });
+        yield return BuildCommand(
+            "hand",
+            new DealCards { HandId = evt.HandId, PlayerCount = evt.PlayerCount }
+        );
     }
 
     [ReactsTo(typeof(CardsDealt))]
@@ -50,11 +57,10 @@ public class HandFlowPM : ProcessManager<HandFlowState>
     public IEnumerable<CommandBook> HandleHandComplete(HandComplete evt, HandFlowState state)
     {
         state.Phase = HandPhase.Complete;
-        yield return BuildCommand("table", new EndHand
-        {
-            HandId = state.HandId,
-            WinnerId = evt.WinnerId
-        });
+        yield return BuildCommand(
+            "table",
+            new EndHand { HandId = state.HandId, WinnerId = evt.WinnerId }
+        );
     }
 }
 // docs:end:pm_handler

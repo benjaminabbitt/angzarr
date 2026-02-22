@@ -89,7 +89,10 @@ public static class Validation
     /// <summary>
     /// Require that a collection is not empty.
     /// </summary>
-    public static void RequireNotEmpty<T>(IEnumerable<T>? collection, string fieldName = "collection")
+    public static void RequireNotEmpty<T>(
+        IEnumerable<T>? collection,
+        string fieldName = "collection"
+    )
     {
         if (collection == null || !collection.Any())
             throw new CommandRejectedError($"{fieldName} must not be empty");

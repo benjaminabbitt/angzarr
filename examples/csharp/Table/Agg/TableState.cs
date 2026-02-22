@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg;
 
@@ -64,7 +64,8 @@ public class TableState
 
     public int NextDealerPosition()
     {
-        if (Seats.Count == 0) return 0;
+        if (Seats.Count == 0)
+            return 0;
         var positions = Seats.Keys.OrderBy(p => p).ToList();
         var currentIdx = 0;
         for (var i = 0; i < positions.Count; i++)
@@ -83,65 +84,93 @@ public class TableState
     /// StateRouter for fluent state reconstruction.
     /// </summary>
     public static readonly StateRouter<TableState> Router = new StateRouter<TableState>()
-        .On<TableCreated>((state, evt) =>
-        {
-            state.TableId = $"table_{evt.TableName}";
-            state.TableName = evt.TableName;
-            state.GameVariant = evt.GameVariant;
-            state.SmallBlind = evt.SmallBlind;
-            state.BigBlind = evt.BigBlind;
-            state.MinBuyIn = evt.MinBuyIn;
-            state.MaxBuyIn = evt.MaxBuyIn;
-            state.MaxPlayers = evt.MaxPlayers;
-            state.ActionTimeoutSeconds = evt.ActionTimeoutSeconds;
-            state.Status = "waiting";
-        })
-        .On<PlayerJoined>((state, evt) =>
-        {
-            state.Seats[evt.SeatPosition] = new SeatState
+        .On<TableCreated>(
+            (state, evt) =>
             {
-                Position = evt.SeatPosition,
-                PlayerRoot = evt.PlayerRoot,
-                Stack = evt.Stack
-            };
-        })
-        .On<PlayerLeft>((state, evt) =>
-        {
-            state.Seats.Remove(evt.SeatPosition);
-        })
-        .On<PlayerSatOut>((state, evt) =>
-        {
-            var seat = state.Seats.Values.FirstOrDefault(s => s.PlayerRoot.Equals(evt.PlayerRoot));
-            if (seat != null) seat.IsSittingOut = true;
-        })
-        .On<PlayerSatIn>((state, evt) =>
-        {
-            var seat = state.Seats.Values.FirstOrDefault(s => s.PlayerRoot.Equals(evt.PlayerRoot));
-            if (seat != null) seat.IsSittingOut = false;
-        })
-        .On<HandStarted>((state, evt) =>
-        {
-            state.HandCount = evt.HandNumber;
-            state.CurrentHandRoot = evt.HandRoot;
-            state.DealerPosition = evt.DealerPosition;
-            state.Status = "in_hand";
-        })
-        .On<HandEnded>((state, evt) =>
-        {
-            state.CurrentHandRoot = ByteString.Empty;
-            state.Status = "waiting";
-            foreach (var kvp in evt.StackChanges)
-            {
-                var playerRoot = ByteString.CopyFrom(Convert.FromHexString(kvp.Key));
-                var seat = state.Seats.Values.FirstOrDefault(s => s.PlayerRoot.Equals(playerRoot));
-                if (seat != null) seat.Stack += kvp.Value;
+                state.TableId = $"table_{evt.TableName}";
+                state.TableName = evt.TableName;
+                state.GameVariant = evt.GameVariant;
+                state.SmallBlind = evt.SmallBlind;
+                state.BigBlind = evt.BigBlind;
+                state.MinBuyIn = evt.MinBuyIn;
+                state.MaxBuyIn = evt.MaxBuyIn;
+                state.MaxPlayers = evt.MaxPlayers;
+                state.ActionTimeoutSeconds = evt.ActionTimeoutSeconds;
+                state.Status = "waiting";
             }
-        })
-        .On<ChipsAdded>((state, evt) =>
-        {
-            var seat = state.Seats.Values.FirstOrDefault(s => s.PlayerRoot.Equals(evt.PlayerRoot));
-            if (seat != null) seat.Stack = evt.NewStack;
-        });
+        )
+        .On<PlayerJoined>(
+            (state, evt) =>
+            {
+                state.Seats[evt.SeatPosition] = new SeatState
+                {
+                    Position = evt.SeatPosition,
+                    PlayerRoot = evt.PlayerRoot,
+                    Stack = evt.Stack,
+                };
+            }
+        )
+        .On<PlayerLeft>(
+            (state, evt) =>
+            {
+                state.Seats.Remove(evt.SeatPosition);
+            }
+        )
+        .On<PlayerSatOut>(
+            (state, evt) =>
+            {
+                var seat = state.Seats.Values.FirstOrDefault(s =>
+                    s.PlayerRoot.Equals(evt.PlayerRoot)
+                );
+                if (seat != null)
+                    seat.IsSittingOut = true;
+            }
+        )
+        .On<PlayerSatIn>(
+            (state, evt) =>
+            {
+                var seat = state.Seats.Values.FirstOrDefault(s =>
+                    s.PlayerRoot.Equals(evt.PlayerRoot)
+                );
+                if (seat != null)
+                    seat.IsSittingOut = false;
+            }
+        )
+        .On<HandStarted>(
+            (state, evt) =>
+            {
+                state.HandCount = evt.HandNumber;
+                state.CurrentHandRoot = evt.HandRoot;
+                state.DealerPosition = evt.DealerPosition;
+                state.Status = "in_hand";
+            }
+        )
+        .On<HandEnded>(
+            (state, evt) =>
+            {
+                state.CurrentHandRoot = ByteString.Empty;
+                state.Status = "waiting";
+                foreach (var kvp in evt.StackChanges)
+                {
+                    var playerRoot = ByteString.CopyFrom(Convert.FromHexString(kvp.Key));
+                    var seat = state.Seats.Values.FirstOrDefault(s =>
+                        s.PlayerRoot.Equals(playerRoot)
+                    );
+                    if (seat != null)
+                        seat.Stack += kvp.Value;
+                }
+            }
+        )
+        .On<ChipsAdded>(
+            (state, evt) =>
+            {
+                var seat = state.Seats.Values.FirstOrDefault(s =>
+                    s.PlayerRoot.Equals(evt.PlayerRoot)
+                );
+                if (seat != null)
+                    seat.Stack = evt.NewStack;
+            }
+        );
 
     /// <summary>
     /// Build state from an EventBook by applying all events.

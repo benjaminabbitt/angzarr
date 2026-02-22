@@ -4,13 +4,11 @@ import uuid
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
-
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from angzarr_client.proto.angzarr import types_pb2
-
 
 # Link to feature file
 scenarios("../../../../features/compensation.feature")
@@ -59,12 +57,12 @@ class CompensationContext:
             rejection_reason=self.rejection_reason,
             issuer_name=self.saga_origin.saga_name if self.saga_origin else "",
             issuer_type="saga",
-            source_aggregate=self.saga_origin.triggering_aggregate
-            if self.saga_origin
-            else "",
-            source_event_sequence=self.saga_origin.triggering_event_sequence
-            if self.saga_origin
-            else 0,
+            source_aggregate=(
+                self.saga_origin.triggering_aggregate if self.saga_origin else ""
+            ),
+            source_event_sequence=(
+                self.saga_origin.triggering_event_sequence if self.saga_origin else 0
+            ),
         )
 
 

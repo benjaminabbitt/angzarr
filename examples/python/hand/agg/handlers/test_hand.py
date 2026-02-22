@@ -1168,6 +1168,7 @@ class TestReveal:
     def _setup_showdown(self):
         """Setup hand at showdown."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1428,6 +1429,7 @@ class TestEventHandlers:
     def test_pot_awarded_updates_stacks(self):
         """PotAwarded event from saga updates player stacks."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1478,6 +1480,7 @@ class TestEventHandlers:
     def test_hand_complete_sets_status(self):
         """HandComplete event sets status to complete."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1562,6 +1565,7 @@ class TestMoreEdgeCases:
     def test_post_blind_on_complete_hand(self):
         """Cannot post blind after hand is complete."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1598,6 +1602,7 @@ class TestMoreEdgeCases:
     def test_post_blind_by_folded_player(self):
         """Folded player cannot post blind."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1640,6 +1645,7 @@ class TestMoreEdgeCases:
     def test_action_not_in_betting_phase(self):
         """Cannot take action outside betting phase."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1774,6 +1780,7 @@ class TestMoreEdgeCases:
     def test_deal_community_on_complete_hand(self):
         """Cannot deal community cards after hand complete."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1804,6 +1811,7 @@ class TestMoreEdgeCases:
     def test_reveal_by_folded_player(self):
         """Folded player cannot reveal cards."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         event_book = types.EventBook()
@@ -1909,6 +1917,7 @@ class TestMoreEdgeCases:
     def test_no_more_phases_after_showdown(self):
         """Cannot deal community cards in showdown phase."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         # Build a hand already in showdown
@@ -1944,6 +1953,7 @@ class TestMoreEdgeCases:
     def test_not_enough_cards_in_deck(self):
         """Cannot deal if deck is exhausted."""
         from google.protobuf.any_pb2 import Any
+
         from angzarr_client.proto.angzarr import types_pb2 as types
 
         # Build a hand with minimal remaining deck

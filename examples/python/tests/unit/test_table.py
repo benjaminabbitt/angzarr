@@ -1,19 +1,19 @@
 """Table aggregate unit tests."""
 
-import sys
 import importlib
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
 from google.protobuf.any_pb2 import Any as ProtoAny
+from pytest_bdd import given, parsers, scenarios, then, when
 
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.proto.examples import table_pb2 as table
-from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.proto.angzarr import types_pb2 as types
+from angzarr_client.proto.examples import poker_types_pb2 as poker_types
+from angzarr_client.proto.examples import table_pb2 as table
 
 
 # Load table handlers as unique modules to avoid collision with other aggregates
@@ -83,8 +83,8 @@ sys.path.insert(0, str(root))
 
 from tests.conftest import (
     ScenarioContext,
-    make_cover,
     make_command_book,
+    make_cover,
     make_timestamp,
     pack_event,
 )

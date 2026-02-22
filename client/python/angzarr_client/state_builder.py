@@ -8,7 +8,7 @@ StateRouter: Higher-level, auto-unpacks events to typed handlers.
 
 from __future__ import annotations
 
-from typing import Callable, Generic, TypeVar, List
+from typing import Callable, Generic, List, TypeVar
 
 from google.protobuf.any_pb2 import Any as AnyProto
 

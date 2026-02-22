@@ -1,7 +1,8 @@
 // Saga: Table → Hand
 //
 // DOC: This file is referenced in docs/docs/examples/sagas.mdx
-//      Update documentation when making changes to saga patterns.
+//
+//	Update documentation when making changes to saga patterns.
 //
 // Reacts to HandStarted events from Table domain.
 // Sends DealCards commands to Hand domain.
@@ -92,6 +93,7 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 		},
 	}, nil
 }
+
 // docs:end:saga_handler
 
 func main() {

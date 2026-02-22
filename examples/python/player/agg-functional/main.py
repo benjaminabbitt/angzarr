@@ -11,27 +11,25 @@ Contrasts with the OO pattern in player/agg/ which uses:
 """
 
 import structlog
-
-from angzarr_client import run_aggregate_server, CommandRouter, StateRouter
-from angzarr_client.proto.examples import player_pb2 as player
-
 from state import (
     PlayerState,
-    apply_registered,
     apply_deposited,
-    apply_withdrawn,
-    apply_reserved,
+    apply_registered,
     apply_released,
+    apply_reserved,
     apply_transferred,
-)
-from handlers import (
-    handle_register,
-    handle_deposit,
-    handle_withdraw,
-    handle_reserve,
-    handle_release,
+    apply_withdrawn,
 )
 
+from angzarr_client import CommandRouter, StateRouter, run_aggregate_server
+from angzarr_client.proto.examples import player_pb2 as player
+from handlers import (
+    handle_deposit,
+    handle_register,
+    handle_release,
+    handle_reserve,
+    handle_withdraw,
+)
 
 structlog.configure(
     processors=[

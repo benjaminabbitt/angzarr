@@ -39,7 +39,8 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import TypeVar, Generic, Callable, Any as TypingAny
+from typing import Any as TypingAny
+from typing import Callable, Generic, TypeVar
 
 from google.protobuf.any_pb2 import Any
 
@@ -400,9 +401,9 @@ class Aggregate(Generic[StateT], ABC):
         """
         # Create aggregate with events from request
         event_book = types.EventBook(
-            snapshot=request.base_snapshot
-            if request.HasField("base_snapshot")
-            else None,
+            snapshot=(
+                request.base_snapshot if request.HasField("base_snapshot") else None
+            ),
             pages=list(request.events),
         )
         agg = cls(event_book)

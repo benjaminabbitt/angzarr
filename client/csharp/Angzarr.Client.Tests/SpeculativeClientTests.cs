@@ -29,7 +29,10 @@ public class SpeculativeClientTests
     public void Class_ShouldHaveFromEnvMethod()
     {
         // Verify FromEnv factory method exists
-        var method = typeof(SpeculativeClient).GetMethod("FromEnv", new[] { typeof(string), typeof(string) });
+        var method = typeof(SpeculativeClient).GetMethod(
+            "FromEnv",
+            new[] { typeof(string), typeof(string) }
+        );
         method.Should().NotBeNull();
         method!.ReturnType.Should().Be(typeof(SpeculativeClient));
     }

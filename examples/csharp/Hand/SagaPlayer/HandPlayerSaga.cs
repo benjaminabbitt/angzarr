@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.SagaPlayer;
 
@@ -23,11 +23,13 @@ public static class HandPlayerSaga
 
     private static List<Cover> PreparePotAwarded(PotAwarded evt)
     {
-        return evt.Winners.Select(winner => new Cover
-        {
-            Domain = "player",
-            Root = new UUID { Value = winner.PlayerRoot }
-        }).ToList();
+        return evt
+            .Winners.Select(winner => new Cover
+            {
+                Domain = "player",
+                Root = new UUID { Value = winner.PlayerRoot },
+            })
+            .ToList();
     }
 
     private static object HandlePotAwarded(PotAwarded evt, List<EventBook> destinations)
@@ -50,20 +52,25 @@ public static class HandPlayerSaga
 
             var depositFunds = new DepositFunds
             {
-                Amount = new Currency { Amount = winner.Amount, CurrencyCode = "CHIPS" }
+                Amount = new Currency { Amount = winner.Amount, CurrencyCode = "CHIPS" },
             };
 
             var cmdAny = EventRouter.PackCommand(depositFunds);
 
-            commands.Add(new CommandBook
-            {
-                Cover = new Cover
+            commands.Add(
+                new CommandBook
                 {
-                    Domain = "player",
-                    Root = new UUID { Value = winner.PlayerRoot }
-                },
-                Pages = { new CommandPage { Sequence = destSeq, Command = cmdAny } }
-            });
+                    Cover = new Cover
+                    {
+                        Domain = "player",
+                        Root = new UUID { Value = winner.PlayerRoot },
+                    },
+                    Pages =
+                    {
+                        new CommandPage { Sequence = destSeq, Command = cmdAny },
+                    },
+                }
+            );
         }
 
         return commands;

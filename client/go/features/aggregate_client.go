@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cucumber/godog"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"github.com/cucumber/godog"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -36,9 +36,9 @@ type MockAggregateRouter struct {
 
 // MockEventRouter simulates EventRouter behavior
 type MockEventRouter struct {
-	domains  map[string]map[string]func()
-	ctx      *AggregateContext
-	current  string
+	domains map[string]map[string]func()
+	ctx     *AggregateContext
+	current string
 }
 
 func NewMockAggregateRouter(ctx *AggregateContext) *MockAggregateRouter {

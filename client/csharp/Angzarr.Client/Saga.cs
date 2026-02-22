@@ -16,8 +16,14 @@ namespace Angzarr.Client;
 public abstract class Saga
 {
     // Dispatch tables built via reflection on first use
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type EventType)>> _dispatchTables = new();
-    private static readonly Dictionary<Type, Dictionary<string, (MethodInfo Method, Type EventType)>> _prepareTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type EventType)>
+    > _dispatchTables = new();
+    private static readonly Dictionary<
+        Type,
+        Dictionary<string, (MethodInfo Method, Type EventType)>
+    > _prepareTables = new();
 
     /// <summary>
     /// The name of this saga (e.g., "saga-order-fulfillment").
@@ -42,15 +48,21 @@ public abstract class Saga
     private void EnsureDispatchTablesBuilt()
     {
         var type = GetType();
-        if (_dispatchTables.ContainsKey(type)) return;
+        if (_dispatchTables.ContainsKey(type))
+            return;
 
         lock (_dispatchTables)
         {
-            if (_dispatchTables.ContainsKey(type)) return;
+            if (_dispatchTables.ContainsKey(type))
+                return;
 
             // Build event handler dispatch table
             var dispatch = new Dictionary<string, (MethodInfo, Type)>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<ReactsToAttribute>();
                 if (attr != null)
@@ -63,7 +75,11 @@ public abstract class Saga
 
             // Build prepare handler dispatch table
             var prepares = new Dictionary<string, (MethodInfo, Type)>();
-            foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            foreach (
+                var method in type.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                )
+            )
             {
                 var attr = method.GetCustomAttribute<PreparesAttribute>();
                 if (attr != null)
@@ -79,7 +95,8 @@ public abstract class Saga
     /// <summary>
     /// Phase 1: Declare destination aggregates needed.
     /// </summary>
-    public static List<Angzarr.Cover> PrepareDestinations<T>(Angzarr.EventBook source) where T : Saga, new()
+    public static List<Angzarr.Cover> PrepareDestinations<T>(Angzarr.EventBook source)
+        where T : Saga, new()
     {
         var saga = new T();
         var destinations = new List<Angzarr.Cover>();
@@ -98,7 +115,9 @@ public abstract class Saga
     /// </summary>
     public static List<Angzarr.CommandBook> Execute<T>(
         Angzarr.EventBook source,
-        List<Angzarr.EventBook>? destinations = null) where T : Saga, new()
+        List<Angzarr.EventBook>? destinations = null
+    )
+        where T : Saga, new()
     {
         var saga = new T();
         var root = source.Cover?.Root?.Value.ToByteArray();
@@ -140,7 +159,8 @@ public abstract class Saga
         Any eventAny,
         byte[]? root = null,
         string correlationId = "",
-        List<Angzarr.EventBook>? destinations = null)
+        List<Angzarr.EventBook>? destinations = null
+    )
     {
         var dispatchTable = _dispatchTables[GetType()];
         foreach (var (suffix, (method, eventType)) in dispatchTable)
@@ -155,7 +175,10 @@ public abstract class Saga
                 object? result;
                 if (parameters.Any(p => p.Name == "destinations"))
                 {
-                    result = method.Invoke(this, new object?[] { evt, destinations ?? new List<Angzarr.EventBook>() });
+                    result = method.Invoke(
+                        this,
+                        new object?[] { evt, destinations ?? new List<Angzarr.EventBook>() }
+                    );
                 }
                 else
                 {
@@ -168,9 +191,14 @@ public abstract class Saga
         return new List<Angzarr.CommandBook>();
     }
 
-    private List<Angzarr.CommandBook> PackCommands(object? result, byte[]? root, string correlationId)
+    private List<Angzarr.CommandBook> PackCommands(
+        object? result,
+        byte[]? root,
+        string correlationId
+    )
     {
-        if (result == null) return new List<Angzarr.CommandBook>();
+        if (result == null)
+            return new List<Angzarr.CommandBook>();
 
         // Handle pre-packed CommandBooks
         if (result is Angzarr.CommandBook book)
@@ -198,18 +226,14 @@ public abstract class Saga
     private Angzarr.CommandBook PackCommand(IMessage cmd, byte[]? root, string correlationId)
     {
         var cmdAny = Any.Pack(cmd, "type.googleapis.com/");
-        var cover = new Angzarr.Cover
-        {
-            Domain = OutputDomain,
-            CorrelationId = correlationId
-        };
+        var cover = new Angzarr.Cover { Domain = OutputDomain, CorrelationId = correlationId };
         if (root != null)
             cover.Root = new Angzarr.UUID { Value = Google.Protobuf.ByteString.CopyFrom(root) };
 
         return new Angzarr.CommandBook
         {
             Cover = cover,
-            Pages = { new Angzarr.CommandPage { Command = cmdAny } }
+            Pages = { new Angzarr.CommandPage { Command = cmdAny } },
         };
     }
 }

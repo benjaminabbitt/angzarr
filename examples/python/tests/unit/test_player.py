@@ -9,8 +9,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
 from google.protobuf.any_pb2 import Any as ProtoAny
+from pytest_bdd import given, parsers, scenarios, then, when
+
 # docs:end:bdd_imports
 
 # Add paths
@@ -19,12 +20,12 @@ sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "player" / "agg"))
 sys.path.insert(0, str(root / "player" / "agg" / "handlers"))
 
+from handlers.state import PlayerState, build_state
+
+from angzarr_client.errors import CommandRejectedError
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
-from angzarr_client.errors import CommandRejectedError
-
-from handlers.state import PlayerState, build_state
 
 
 def state_from_event_book(event_book):
@@ -36,16 +37,16 @@ def state_from_event_book(event_book):
     return build_state(state, events)
 
 
-from handlers.register_player import handle_register_player
 from handlers.deposit_funds import handle_deposit_funds
-from handlers.withdraw_funds import handle_withdraw_funds
-from handlers.reserve_funds import handle_reserve_funds
+from handlers.register_player import handle_register_player
 from handlers.release_funds import handle_release_funds
+from handlers.reserve_funds import handle_reserve_funds
+from handlers.withdraw_funds import handle_withdraw_funds
 
 from tests.conftest import (
     ScenarioContext,
-    make_cover,
     make_command_book,
+    make_cover,
     make_timestamp,
     pack_event,
 )

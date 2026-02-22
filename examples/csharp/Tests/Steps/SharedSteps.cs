@@ -1,6 +1,6 @@
+using Angzarr.Client;
 using FluentAssertions;
 using TechTalk.SpecFlow;
-using Angzarr.Client;
 using Tests.Support;
 
 namespace Tests.Steps;
@@ -20,9 +20,15 @@ public class SharedSteps
     private Exception? GetError()
     {
         // Check all domain-specific error context keys
-        if (_scenarioContext.TryGetValue("error", out CommandRejectedError? playerError) && playerError != null)
+        if (
+            _scenarioContext.TryGetValue("error", out CommandRejectedError? playerError)
+            && playerError != null
+        )
             return playerError;
-        if (_scenarioContext.TryGetValue("tableError", out CommandRejectedError? tableError) && tableError != null)
+        if (
+            _scenarioContext.TryGetValue("tableError", out CommandRejectedError? tableError)
+            && tableError != null
+        )
             return tableError;
         // Hand uses TestContext.LastException
         if (_testContext.LastException != null)

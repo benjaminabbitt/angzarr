@@ -1,6 +1,6 @@
+using Angzarr;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Angzarr;
 using Type = System.Type;
 
 namespace Angzarr.Client;
@@ -42,7 +42,8 @@ public class EventRouter
     /// Register a prepare handler.
     /// Must be called after Domain() to set context.
     /// </summary>
-    public EventRouter Prepare<TEvent>(Func<TEvent, List<Cover>> handler) where TEvent : IMessage
+    public EventRouter Prepare<TEvent>(Func<TEvent, List<Cover>> handler)
+        where TEvent : IMessage
     {
         if (_currentDomain == null)
             throw new InvalidOperationException("Must call Domain() before Prepare()");
@@ -54,7 +55,8 @@ public class EventRouter
     /// Register an event reaction handler.
     /// Must be called after Domain() to set context.
     /// </summary>
-    public EventRouter On<TEvent>(Func<TEvent, List<EventBook>, object> handler) where TEvent : IMessage
+    public EventRouter On<TEvent>(Func<TEvent, List<EventBook>, object> handler)
+        where TEvent : IMessage
     {
         if (_currentDomain == null)
             throw new InvalidOperationException("Must call Domain() before On()");
@@ -93,7 +95,8 @@ public class EventRouter
     /// </summary>
     public static uint NextSequence(EventBook? eventBook)
     {
-        if (eventBook == null) return 0;
+        if (eventBook == null)
+            return 0;
         return eventBook.NextSequence;
     }
 

@@ -8,10 +8,10 @@ import pytest
 from angzarr_client.errors import (
     ClientError,
     ConnectionError,
-    TransportError,
     GRPCError,
     InvalidArgumentError,
     InvalidTimestampError,
+    TransportError,
 )
 
 

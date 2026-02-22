@@ -161,12 +161,12 @@ func TestCompensationContext(t *testing.T) {
 		},
 	}
 	rejection := &pb.RejectionNotification{
-		IssuerName:           "saga-order-inventory",
-		IssuerType:           "saga",
-		SourceEventSequence:  5,
-		RejectionReason:      "insufficient stock",
-		RejectedCommand:      rejectedCmd,
-		SourceAggregate:      &pb.Cover{Domain: "order"},
+		IssuerName:          "saga-order-inventory",
+		IssuerType:          "saga",
+		SourceEventSequence: 5,
+		RejectionReason:     "insufficient stock",
+		RejectedCommand:     rejectedCmd,
+		SourceAggregate:     &pb.Cover{Domain: "order"},
 	}
 	rejectionBytes, _ := proto.Marshal(rejection)
 

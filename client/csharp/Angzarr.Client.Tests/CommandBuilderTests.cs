@@ -42,8 +42,10 @@ public class CommandBuilderTests
     public void Build_WithoutCorrelationId_ShouldAutoGenerateOne()
     {
         // When I build a command without specifying correlation_id
-        var builder = new CommandBuilder(null!, "test")
-            .WithCommand("type.googleapis.com/test.TestCommand", TestMessage);
+        var builder = new CommandBuilder(null!, "test").WithCommand(
+            "type.googleapis.com/test.TestCommand",
+            TestMessage
+        );
 
         var command = builder.Build();
 
@@ -56,8 +58,10 @@ public class CommandBuilderTests
     public void Build_ForNewAggregate_ShouldHaveNoRootUUID()
     {
         // When I build a command for domain "test" without specifying root
-        var builder = new CommandBuilder(null!, "test")
-            .WithCommand("type.googleapis.com/test.TestCommand", TestMessage);
+        var builder = new CommandBuilder(null!, "test").WithCommand(
+            "type.googleapis.com/test.TestCommand",
+            TestMessage
+        );
 
         var command = builder.Build();
 
@@ -70,8 +74,10 @@ public class CommandBuilderTests
     public void Build_WithoutSequence_ShouldDefaultToZero()
     {
         // When I build a command without specifying sequence
-        var builder = new CommandBuilder(null!, "test")
-            .WithCommand("type.googleapis.com/test.TestCommand", TestMessage);
+        var builder = new CommandBuilder(null!, "test").WithCommand(
+            "type.googleapis.com/test.TestCommand",
+            TestMessage
+        );
 
         var command = builder.Build();
 
@@ -104,8 +110,7 @@ public class CommandBuilderTests
         // When I build a command with a protobuf message
         var typeUrl = "type.googleapis.com/google.protobuf.Empty";
 
-        var builder = new CommandBuilder(null!, "test")
-            .WithCommand(typeUrl, TestMessage);
+        var builder = new CommandBuilder(null!, "test").WithCommand(typeUrl, TestMessage);
 
         var command = builder.Build();
 

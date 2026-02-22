@@ -29,7 +29,11 @@ ENV PATH=/root/.local/bin:$PATH
 # Install grpcio-tools for protobuf code generation
 RUN pip install --no-cache-dir --break-system-packages grpcio-tools
 
+# Install formatters (black, ruff)
+RUN uv tool install black && uv tool install ruff
+
 # Verify installations
-RUN python --version && uv --version && python -c "import grpc_tools.protoc"
+RUN python --version && uv --version && python -c "import grpc_tools.protoc" && \
+    black --version && ruff --version
 
 WORKDIR /workspace

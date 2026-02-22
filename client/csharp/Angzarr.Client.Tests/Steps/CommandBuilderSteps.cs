@@ -115,8 +115,10 @@ public class CommandBuilderSteps
     [When(@"I build a command without specifying merge strategy")]
     public void WhenBuildWithoutMergeStrategy()
     {
-        _builder = new CommandBuilder(null!, "test")
-            .WithCommand("type.googleapis.com/test.TestCommand", _testPayload);
+        _builder = new CommandBuilder(null!, "test").WithCommand(
+            "type.googleapis.com/test.TestCommand",
+            _testPayload
+        );
     }
 
     [When(@"I build a command with merge strategy (.*)")]
@@ -126,7 +128,7 @@ public class CommandBuilderSteps
         {
             "STRICT" => Angzarr.MergeStrategy.MergeStrict,
             "COMMUTATIVE" => Angzarr.MergeStrategy.MergeCommutative,
-            _ => Angzarr.MergeStrategy.MergeCommutative
+            _ => Angzarr.MergeStrategy.MergeCommutative,
         };
         _builder = new CommandBuilder(null!, "test")
             .WithMergeStrategy(mergeStrategy)
@@ -276,7 +278,7 @@ public class CommandBuilderSteps
         {
             "MERGE_COMMUTATIVE" => Angzarr.MergeStrategy.MergeCommutative,
             "MERGE_STRICT" => Angzarr.MergeStrategy.MergeStrict,
-            _ => Angzarr.MergeStrategy.MergeCommutative
+            _ => Angzarr.MergeStrategy.MergeCommutative,
         };
         _command!.Pages[0].MergeStrategy.Should().Be(expectedStrategy);
     }
@@ -370,8 +372,10 @@ public class CommandBuilderSteps
     [When(@"I use the builder to execute directly:")]
     public void WhenIUseTheBuilderToExecuteDirectly(string _)
     {
-        _builder = new CommandBuilder(null!, "orders", Guid.NewGuid())
-            .WithCommand("type.googleapis.com/CreateOrder", _testPayload);
+        _builder = new CommandBuilder(null!, "orders", Guid.NewGuid()).WithCommand(
+            "type.googleapis.com/CreateOrder",
+            _testPayload
+        );
         _command = _builder.Build();
     }
 
@@ -390,10 +394,14 @@ public class CommandBuilderSteps
     [When(@"I create two commands with different roots")]
     public void WhenICreateTwoCommandsWithDifferentRoots()
     {
-        var builder1 = new CommandBuilder(null!, "test", Guid.NewGuid())
-            .WithCommand("type.googleapis.com/test.Command", _testPayload);
-        var builder2 = new CommandBuilder(null!, "test", Guid.NewGuid())
-            .WithCommand("type.googleapis.com/test.Command", _testPayload);
+        var builder1 = new CommandBuilder(null!, "test", Guid.NewGuid()).WithCommand(
+            "type.googleapis.com/test.Command",
+            _testPayload
+        );
+        var builder2 = new CommandBuilder(null!, "test", Guid.NewGuid()).WithCommand(
+            "type.googleapis.com/test.Command",
+            _testPayload
+        );
 
         _ctx["command1"] = builder1.Build();
         _ctx["command2"] = builder2.Build();
@@ -411,8 +419,10 @@ public class CommandBuilderSteps
     [When(@"I build and execute a command for domain ""(.*)""")]
     public void WhenIBuildAndExecuteACommandForDomain(string domain)
     {
-        _builder = new CommandBuilder(null!, domain)
-            .WithCommand("type.googleapis.com/test.Command", _testPayload);
+        _builder = new CommandBuilder(null!, domain).WithCommand(
+            "type.googleapis.com/test.Command",
+            _testPayload
+        );
         _command = _builder.Build();
         // Simulate execution by creating a mock response and sharing via context
         var response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
@@ -449,45 +459,65 @@ public class CommandBuilderSteps
     public void ThenTheCommandBookShouldTargetTheSourceAggregate()
     {
         // Check context for notification command book from CompensationSteps
-        var cmd = _command ?? (_ctx.ContainsKey("notification_command_book")
-            ? _ctx["notification_command_book"] as Angzarr.CommandBook
-            : null);
+        var cmd =
+            _command
+            ?? (
+                _ctx.ContainsKey("notification_command_book")
+                    ? _ctx["notification_command_book"] as Angzarr.CommandBook
+                    : null
+            );
         cmd!.Cover.Should().NotBeNull();
     }
 
     [Then(@"the command book should preserve correlation ID")]
     public void ThenTheCommandBookShouldPreserveCorrelationId()
     {
-        var cmd = _command ?? (_ctx.ContainsKey("notification_command_book")
-            ? _ctx["notification_command_book"] as Angzarr.CommandBook
-            : null);
+        var cmd =
+            _command
+            ?? (
+                _ctx.ContainsKey("notification_command_book")
+                    ? _ctx["notification_command_book"] as Angzarr.CommandBook
+                    : null
+            );
         cmd!.Cover.CorrelationId.Should().NotBeNullOrEmpty();
     }
 
     [Then(@"the command book should have MERGE_COMMUTATIVE strategy")]
     public void ThenTheCommandBookShouldHaveMergeCommutativeStrategy()
     {
-        var cmd = _command ?? (_ctx.ContainsKey("notification_command_book")
-            ? _ctx["notification_command_book"] as Angzarr.CommandBook
-            : null);
+        var cmd =
+            _command
+            ?? (
+                _ctx.ContainsKey("notification_command_book")
+                    ? _ctx["notification_command_book"] as Angzarr.CommandBook
+                    : null
+            );
         cmd!.Pages[0].MergeStrategy.Should().Be(Angzarr.MergeStrategy.MergeCommutative);
     }
 
     [Then(@"the command book cover should have root ""(.*)""")]
     public void ThenTheCommandBookCoverShouldHaveRoot(string root)
     {
-        var cmd = _command ?? (_ctx.ContainsKey("notification_command_book")
-            ? _ctx["notification_command_book"] as Angzarr.CommandBook
-            : null);
+        var cmd =
+            _command
+            ?? (
+                _ctx.ContainsKey("notification_command_book")
+                    ? _ctx["notification_command_book"] as Angzarr.CommandBook
+                    : null
+            );
         cmd!.Cover.Root.Should().NotBeNull();
     }
 
     [Then(@"the command book cover should have domain ""(.*)""")]
     public void ThenTheCommandBookCoverShouldHaveDomain(string domain)
     {
-        var cmd = _command ?? (_ctx.ContainsKey("notification_command_book")
-            ? _ctx["notification_command_book"] as Angzarr.CommandBook
-            : null);
+        var cmd =
+            _command
+            ?? (
+                _ctx.ContainsKey("notification_command_book")
+                    ? _ctx["notification_command_book"] as Angzarr.CommandBook
+                    : null
+            );
         cmd!.Cover.Domain.Should().Be(domain);
     }
 

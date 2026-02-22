@@ -1,6 +1,6 @@
+using Angzarr;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Angzarr;
 using Type = System.Type;
 
 namespace Angzarr.Client;
@@ -30,7 +30,8 @@ namespace Angzarr.Client;
 /// var state = stateRouter.WithEventBook(eventBook);
 /// </code>
 /// </example>
-public class StateRouter<TState> where TState : class, new()
+public class StateRouter<TState>
+    where TState : class, new()
 {
     private readonly List<(string suffix, Type eventType, Delegate applier)> _handlers = new();
     private readonly Func<TState>? _factory;
@@ -55,7 +56,8 @@ public class StateRouter<TState> where TState : class, new()
     /// <summary>
     /// Register an event applier for a specific event type.
     /// </summary>
-    public StateRouter<TState> On<TEvent>(Action<TState, TEvent> applier) where TEvent : IMessage, new()
+    public StateRouter<TState> On<TEvent>(Action<TState, TEvent> applier)
+        where TEvent : IMessage, new()
     {
         var suffix = typeof(TEvent).Name;
         _handlers.Add((suffix, typeof(TEvent), applier));

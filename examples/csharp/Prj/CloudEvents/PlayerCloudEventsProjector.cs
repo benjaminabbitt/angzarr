@@ -1,7 +1,7 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Proto.Angzarr;
 using Angzarr.Proto.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Angzarr.Examples.PrjCloudEvents;
 
@@ -25,30 +25,28 @@ public class PlayerCloudEventsProjector : CloudEventsProjector
         var publicEvent = new PublicPlayerRegistered
         {
             DisplayName = @event.DisplayName,
-            PlayerType = @event.PlayerType
+            PlayerType = @event.PlayerType,
         };
         return new CloudEvent
         {
             Type = "com.poker.player.registered",
-            Data = Any.Pack(publicEvent)
+            Data = Any.Pack(publicEvent),
         };
     }
 
     [Publishes(typeof(FundsDeposited))]
     public CloudEvent? OnFundsDeposited(FundsDeposited @event)
     {
-        var publicEvent = new PublicFundsDeposited
-        {
-            Amount = @event.Amount
-        };
+        var publicEvent = new PublicFundsDeposited { Amount = @event.Amount };
         return new CloudEvent
         {
             Type = "com.poker.player.deposited",
             Data = Any.Pack(publicEvent),
-            Extensions = { ["priority"] = "normal" }
+            Extensions = { ["priority"] = "normal" },
         };
     }
 }
+
 // docs:end:cloudevents_oo
 
 // docs:start:cloudevents_router
@@ -59,26 +57,23 @@ public static class PlayerCloudEventsHandlers
         var publicEvent = new PublicPlayerRegistered
         {
             DisplayName = @event.DisplayName,
-            PlayerType = @event.PlayerType
+            PlayerType = @event.PlayerType,
         };
         return new CloudEvent
         {
             Type = "com.poker.player.registered",
-            Data = Any.Pack(publicEvent)
+            Data = Any.Pack(publicEvent),
         };
     }
 
     public static CloudEvent? HandleFundsDeposited(FundsDeposited @event)
     {
-        var publicEvent = new PublicFundsDeposited
-        {
-            Amount = @event.Amount
-        };
+        var publicEvent = new PublicFundsDeposited { Amount = @event.Amount };
         return new CloudEvent
         {
             Type = "com.poker.player.deposited",
             Data = Any.Pack(publicEvent),
-            Extensions = { ["priority"] = "normal" }
+            Extensions = { ["priority"] = "normal" },
         };
     }
 

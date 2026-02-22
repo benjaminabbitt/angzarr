@@ -119,11 +119,7 @@ public class QueryBuilder
     /// <returns>This builder for chaining</returns>
     public QueryBuilder RangeTo(int lower, int upper)
     {
-        _rangeSelect = new Angzarr.SequenceRange
-        {
-            Lower = (uint)lower,
-            Upper = (uint)upper
-        };
+        _rangeSelect = new Angzarr.SequenceRange { Lower = (uint)lower, Upper = (uint)upper };
         return this;
     }
 
@@ -136,10 +132,7 @@ public class QueryBuilder
     /// <returns>This builder for chaining</returns>
     public QueryBuilder AsOfSequence(int seq)
     {
-        _temporal = new Angzarr.TemporalQuery
-        {
-            AsOfSequence = (uint)seq
-        };
+        _temporal = new Angzarr.TemporalQuery { AsOfSequence = (uint)seq };
         return this;
     }
 

@@ -1,11 +1,11 @@
 // DOC: This file is referenced in docs/docs/examples/sagas.mdx
 //      Update documentation when making changes to saga patterns.
 
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.SagaHand;
 
@@ -24,6 +24,7 @@ public static class TableHandSaga
             .Prepare<HandStarted>(PrepareHandStarted)
             .On<HandStarted>(HandleHandStarted);
     }
+
     // docs:end:event_router
 
     private static List<Cover> PrepareHandStarted(HandStarted evt)
@@ -33,8 +34,8 @@ public static class TableHandSaga
             new Cover
             {
                 Domain = "hand",
-                Root = new UUID { Value = evt.HandRoot }
-            }
+                Root = new UUID { Value = evt.HandRoot },
+            },
         };
     }
 
@@ -43,12 +44,14 @@ public static class TableHandSaga
     {
         var destSeq = EventRouter.NextSequence(destinations.FirstOrDefault());
 
-        var players = evt.ActivePlayers.Select(seat => new PlayerInHand
-        {
-            PlayerRoot = seat.PlayerRoot,
-            Position = seat.Position,
-            Stack = seat.Stack
-        }).ToList();
+        var players = evt
+            .ActivePlayers.Select(seat => new PlayerInHand
+            {
+                PlayerRoot = seat.PlayerRoot,
+                Position = seat.Position,
+                Stack = seat.Stack,
+            })
+            .ToList();
 
         var dealCards = new DealCards
         {
@@ -57,7 +60,7 @@ public static class TableHandSaga
             GameVariant = evt.GameVariant,
             DealerPosition = evt.DealerPosition,
             SmallBlind = evt.SmallBlind,
-            BigBlind = evt.BigBlind
+            BigBlind = evt.BigBlind,
         };
         dealCards.Players.AddRange(players);
 
@@ -68,9 +71,12 @@ public static class TableHandSaga
             Cover = new Cover
             {
                 Domain = "hand",
-                Root = new UUID { Value = evt.HandRoot }
+                Root = new UUID { Value = evt.HandRoot },
             },
-            Pages = { new CommandPage { Sequence = destSeq, Command = cmdAny } }
+            Pages =
+            {
+                new CommandPage { Sequence = destSeq, Command = cmdAny },
+            },
         };
     }
     // docs:end:saga_handler

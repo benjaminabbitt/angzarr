@@ -39,7 +39,9 @@ public class SpeculativeClient : IDisposable
         _aggregateStub = new AggregateCoordinatorService.AggregateCoordinatorServiceClient(channel);
         _sagaStub = new SagaCoordinatorService.SagaCoordinatorServiceClient(channel);
         _projectorStub = new ProjectorCoordinatorService.ProjectorCoordinatorServiceClient(channel);
-        _pmStub = new ProcessManagerCoordinatorService.ProcessManagerCoordinatorServiceClient(channel);
+        _pmStub = new ProcessManagerCoordinatorService.ProcessManagerCoordinatorServiceClient(
+            channel
+        );
     }
 
     /// <summary>

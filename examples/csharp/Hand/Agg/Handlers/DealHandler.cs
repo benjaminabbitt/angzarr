@@ -1,7 +1,7 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg.Handlers;
 
@@ -31,7 +31,7 @@ public static class DealHandler
             HandNumber = cmd.HandNumber,
             GameVariant = cmd.GameVariant,
             DealerPosition = cmd.DealerPosition,
-            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.PlayerCards.AddRange(playerCards);
         evt.Players.AddRange(cmd.Players);
@@ -39,7 +39,11 @@ public static class DealHandler
         return evt;
     }
 
-    private static List<PlayerHoleCards> DealHoleCards(GameVariant variant, List<PlayerInHand> players, ByteString? seed)
+    private static List<PlayerHoleCards> DealHoleCards(
+        GameVariant variant,
+        List<PlayerInHand> players,
+        ByteString? seed
+    )
     {
         var cardsPerPlayer = variant switch
         {
@@ -47,7 +51,7 @@ public static class DealHandler
             GameVariant.Omaha => 4,
             GameVariant.FiveCardDraw => 5,
             GameVariant.SevenCardStud => 7,
-            _ => 2
+            _ => 2,
         };
 
         var deck = BuildDeck(seed);
@@ -78,9 +82,10 @@ public static class DealHandler
             }
         }
 
-        var rng = seed != null && !seed.IsEmpty
-            ? new Random(BitConverter.ToInt32(seed.ToByteArray().Take(4).ToArray(), 0))
-            : new Random();
+        var rng =
+            seed != null && !seed.IsEmpty
+                ? new Random(BitConverter.ToInt32(seed.ToByteArray().Take(4).ToArray(), 0))
+                : new Random();
 
         for (var i = cards.Count - 1; i > 0; i--)
         {

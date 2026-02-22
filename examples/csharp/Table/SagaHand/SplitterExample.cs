@@ -1,8 +1,8 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Angzarr.Examples.Table.SagaHand;
 
@@ -21,11 +21,7 @@ public static class SplitterExample
         // Split one event into commands for multiple player aggregates
         foreach (var payout in @event.Payouts)
         {
-            var cmd = new TransferFunds
-            {
-                TableRoot = @event.TableRoot,
-                Amount = payout.Amount
-            };
+            var cmd = new TransferFunds { TableRoot = @event.TableRoot, Amount = payout.Amount };
 
             var targetSeq = ctx.GetSequence("player", payout.PlayerRoot);
 
@@ -34,15 +30,12 @@ public static class SplitterExample
                 Cover = new Cover
                 {
                     Domain = "player",
-                    Root = new UUID { Value = payout.PlayerRoot }
+                    Root = new UUID { Value = payout.PlayerRoot },
                 },
-                Pages = {
-                    new CommandPage
-                    {
-                        Num = (uint)targetSeq,
-                        Command = Any.Pack(cmd)
-                    }
-                }
+                Pages =
+                {
+                    new CommandPage { Num = (uint)targetSeq, Command = Any.Pack(cmd) },
+                },
             };
         }
         // One CommandBook per player

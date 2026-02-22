@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg.Handlers;
 
@@ -21,13 +21,17 @@ public static class DealCommunityHandler
         if (cmd.Count <= 0)
             throw CommandRejectedError.InvalidArgument("Must deal at least 1 card");
         if (state.GameVariant == GameVariant.FiveCardDraw)
-            throw CommandRejectedError.PreconditionFailed("Five card draw doesn't have community cards");
+            throw CommandRejectedError.PreconditionFailed(
+                "Five card draw doesn't have community cards"
+            );
 
         var (nextPhase, expectedCards) = GetNextPhase(state.CurrentPhase);
         if (nextPhase == BettingPhase.Unspecified)
             throw CommandRejectedError.PreconditionFailed("No more phases");
         if (expectedCards != cmd.Count)
-            throw CommandRejectedError.InvalidArgument($"Expected {expectedCards} cards for this phase");
+            throw CommandRejectedError.InvalidArgument(
+                $"Expected {expectedCards} cards for this phase"
+            );
         if (state.RemainingDeck.Count < cmd.Count)
             throw CommandRejectedError.PreconditionFailed("Not enough cards in deck");
 
@@ -38,7 +42,7 @@ public static class DealCommunityHandler
         var evt = new CommunityCardsDealt
         {
             Phase = nextPhase,
-            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DealtAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         foreach (var (suit, rank) in newCards)
             evt.Cards.Add(new Card { Suit = suit, Rank = rank });
@@ -56,7 +60,7 @@ public static class DealCommunityHandler
             BettingPhase.Flop => (BettingPhase.Turn, 1),
             BettingPhase.Turn => (BettingPhase.River, 1),
             BettingPhase.River => (BettingPhase.Showdown, 0),
-            _ => (BettingPhase.Unspecified, 0)
+            _ => (BettingPhase.Unspecified, 0),
         };
     }
 }

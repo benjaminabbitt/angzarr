@@ -87,9 +87,9 @@ func GetTransportConfig() TransportConfig {
 
 // ServerOptions configures the gRPC server.
 type ServerOptions struct {
-	ServiceName    string
-	Domain         string
-	DefaultPort    string
+	ServiceName      string
+	Domain           string
+	DefaultPort      string
 	EnableReflection bool
 }
 

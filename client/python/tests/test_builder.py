@@ -1,19 +1,13 @@
 """Tests for builder classes."""
 
-from unittest.mock import Mock, MagicMock
-from uuid import UUID as PyUUID, uuid4
+from unittest.mock import MagicMock, Mock
+from uuid import UUID as PyUUID
+from uuid import uuid4
 
 import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.wrappers_pb2 import StringValue
 
-from angzarr_client.proto.angzarr import (
-    CommandBook,
-    CommandResponse,
-    EventBook,
-    EventPage,
-    Query,
-)
 from angzarr_client.builder import (
     CommandBuilder,
     QueryBuilder,
@@ -24,6 +18,13 @@ from angzarr_client.builder import (
 )
 from angzarr_client.errors import InvalidArgumentError, InvalidTimestampError
 from angzarr_client.helpers import proto_to_uuid
+from angzarr_client.proto.angzarr import (
+    CommandBook,
+    CommandResponse,
+    EventBook,
+    EventPage,
+    Query,
+)
 
 
 class TestCommandBuilder:

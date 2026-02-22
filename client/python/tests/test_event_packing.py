@@ -2,8 +2,8 @@
 
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from angzarr_client.proto.angzarr import types_pb2 as angzarr
 from angzarr_client.event_packing import pack_event, pack_events
+from angzarr_client.proto.angzarr import types_pb2 as angzarr
 
 
 def _cover() -> angzarr.Cover:

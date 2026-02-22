@@ -30,36 +30,47 @@ public class AggregateClientSteps
     [Given(@"an aggregate router with handlers for ""(.*)"" and ""(.*)""")]
     public void GivenAggregateRouterWithHandlers(string type1, string type2)
     {
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
 
         _aggregateRouter = new CommandRouter<TestAggregateState>("test")
             .WithState(stateRouter)
-            .On(type1, (book, any, state, seq) =>
-            {
-                _invokedHandlers.Add(type1);
-                return MakeEventBook(seq);
-            })
-            .On(type2, (book, any, state, seq) =>
-            {
-                _invokedHandlers.Add(type2);
-                return MakeEventBook(seq);
-            });
+            .On(
+                type1,
+                (book, any, state, seq) =>
+                {
+                    _invokedHandlers.Add(type1);
+                    return MakeEventBook(seq);
+                }
+            )
+            .On(
+                type2,
+                (book, any, state, seq) =>
+                {
+                    _invokedHandlers.Add(type2);
+                    return MakeEventBook(seq);
+                }
+            );
     }
 
     [Given(@"an aggregate router")]
     public void GivenAnAggregateRouter()
     {
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
 
         _aggregateRouter = new CommandRouter<TestAggregateState>("test")
             .WithState(stateRouter)
-            .On("TestCommand", (book, any, state, seq) =>
-            {
-                _invokedHandlers.Add("TestCommand");
-                return MakeEventBook(seq);
-            });
+            .On(
+                "TestCommand",
+                (book, any, state, seq) =>
+                {
+                    _invokedHandlers.Add("TestCommand");
+                    return MakeEventBook(seq);
+                }
+            );
     }
 
     [Given(@"an aggregate with existing events")]
@@ -68,11 +79,9 @@ public class AggregateClientSteps
         _eventBook = new Angzarr.EventBook();
         for (int i = 0; i < 3; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)i,
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -82,11 +91,9 @@ public class AggregateClientSteps
         _eventBook = new Angzarr.EventBook();
         for (int i = 0; i < seq; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)i,
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -120,10 +127,7 @@ public class AggregateClientSteps
         {
             _error = e;
             // Still set response for test validation
-            _response = new Angzarr.BusinessResponse
-            {
-                Events = MakeEventBook(1)
-            };
+            _response = new Angzarr.BusinessResponse { Events = MakeEventBook(1) };
         }
     }
 
@@ -144,25 +148,26 @@ public class AggregateClientSteps
         {
             // Sequence mismatch - don't invoke handlers, set rejection response
             _error = new GrpcError("Sequence mismatch", Grpc.Core.StatusCode.FailedPrecondition);
-            _response = new Angzarr.BusinessResponse
-            {
-                Events = new Angzarr.EventBook()
-            };
+            _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
             return;
         }
 
         // If no router is set up, create a default one
         if (_aggregateRouter == null)
         {
-            var stateRouter = new StateRouter<TestAggregateState>()
-                .On<Empty>((state, _) => state.Counter++);
+            var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+                (state, _) => state.Counter++
+            );
             _aggregateRouter = new CommandRouter<TestAggregateState>("test")
                 .WithState(stateRouter)
-                .On("TestCommand", (book, any, state, s) =>
-                {
-                    _invokedHandlers.Add("TestCommand");
-                    return MakeEventBook(s);
-                });
+                .On(
+                    "TestCommand",
+                    (book, any, state, s) =>
+                    {
+                        _invokedHandlers.Add("TestCommand");
+                        return MakeEventBook(s);
+                    }
+                );
         }
 
         try
@@ -173,10 +178,7 @@ public class AggregateClientSteps
         {
             _error = e;
             // For other errors, set a rejection response
-            _response = new Angzarr.BusinessResponse
-            {
-                Events = new Angzarr.EventBook()
-            };
+            _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
         }
     }
 
@@ -192,19 +194,24 @@ public class AggregateClientSteps
         var stateRouter = new StateRouter<TestAggregateState>();
         _aggregateRouter = new CommandRouter<TestAggregateState>("test")
             .WithState(stateRouter)
-            .On("MultiEmit", (book, any, state, seq) =>
-            {
-                var events = new Angzarr.EventBook();
-                for (int i = 0; i < count; i++)
+            .On(
+                "MultiEmit",
+                (book, any, state, seq) =>
                 {
-                    events.Pages.Add(new Angzarr.EventPage
+                    var events = new Angzarr.EventBook();
+                    for (int i = 0; i < count; i++)
                     {
-                        Sequence = (uint)(seq + i),
-                        Event = Any.Pack(new Empty())
-                    });
+                        events.Pages.Add(
+                            new Angzarr.EventPage
+                            {
+                                Sequence = (uint)(seq + i),
+                                Event = Any.Pack(new Empty()),
+                            }
+                        );
+                    }
+                    return events;
                 }
-                return events;
-            });
+            );
 
         var ctx = MakeContextualCommand("MultiEmit");
         _response = _aggregateRouter.Dispatch(ctx);
@@ -289,16 +296,22 @@ public class AggregateClientSteps
     {
         _sagaRouter = new EventRouter("saga-test")
             .Domain("orders")
-            .On(type1, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type1);
-                return new List<Angzarr.CommandBook>();
-            })
-            .On(type2, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type2);
-                return new List<Angzarr.CommandBook>();
-            });
+            .On(
+                type1,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type1);
+                    return new List<Angzarr.CommandBook>();
+                }
+            )
+            .On(
+                type2,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type2);
+                    return new List<Angzarr.CommandBook>();
+                }
+            );
     }
 
     [Given(@"a saga router")]
@@ -306,11 +319,14 @@ public class AggregateClientSteps
     {
         _sagaRouter = new EventRouter("saga-test")
             .Domain("orders")
-            .On("OrderCreated", (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add("OrderCreated");
-                return new List<Angzarr.CommandBook>();
-            });
+            .On(
+                "OrderCreated",
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add("OrderCreated");
+                    return new List<Angzarr.CommandBook>();
+                }
+            );
     }
 
     [When(@"I receive an ""(.*)"" event")]
@@ -341,11 +357,14 @@ public class AggregateClientSteps
     {
         _projectorRouter = new EventRouter("prj-test")
             .Domain("orders")
-            .On(eventType, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(eventType);
-                return new List<Angzarr.CommandBook>();
-            });
+            .On(
+                eventType,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(eventType);
+                    return new List<Angzarr.CommandBook>();
+                }
+            );
     }
 
     [Given(@"a projector router")]
@@ -363,17 +382,23 @@ public class AggregateClientSteps
     {
         _pmRouter = new EventRouter("pmg-test")
             .Domain("orders")
-            .On(type1, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type1);
-                return new List<Angzarr.CommandBook>();
-            })
+            .On(
+                type1,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type1);
+                    return new List<Angzarr.CommandBook>();
+                }
+            )
             .Domain("inventory")
-            .On(type2, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type2);
-                return new List<Angzarr.CommandBook>();
-            });
+            .On(
+                type2,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type2);
+                    return new List<Angzarr.CommandBook>();
+                }
+            );
     }
 
     [Given(@"a PM router")]
@@ -416,33 +441,47 @@ public class AggregateClientSteps
     [When(@"I register handler for type ""(.*)""")]
     public void WhenRegisterHandlerForType(string eventType)
     {
-        _sagaRouter!.Domain("test")
-            .On(eventType, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(eventType);
-                return new List<Angzarr.CommandBook>();
-            });
+        _sagaRouter!
+            .Domain("test")
+            .On(
+                eventType,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(eventType);
+                    return new List<Angzarr.CommandBook>();
+                }
+            );
     }
 
     [When(@"I register handlers for ""(.*)"", ""(.*)"", and ""(.*)""")]
     public void WhenRegisterMultipleHandlers(string type1, string type2, string type3)
     {
-        _sagaRouter!.Domain("test")
-            .On(type1, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type1);
-                return new List<Angzarr.CommandBook>();
-            })
-            .On(type2, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type2);
-                return new List<Angzarr.CommandBook>();
-            })
-            .On(type3, (eventAny, root, corrId, dests) =>
-            {
-                _invokedHandlers.Add(type3);
-                return new List<Angzarr.CommandBook>();
-            });
+        _sagaRouter!
+            .Domain("test")
+            .On(
+                type1,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type1);
+                    return new List<Angzarr.CommandBook>();
+                }
+            )
+            .On(
+                type2,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type2);
+                    return new List<Angzarr.CommandBook>();
+                }
+            )
+            .On(
+                type3,
+                (eventAny, root, corrId, dests) =>
+                {
+                    _invokedHandlers.Add(type3);
+                    return new List<Angzarr.CommandBook>();
+                }
+            );
     }
 
     [Then(@"events ending with ""(.*)"" should match")]
@@ -480,30 +519,45 @@ public class AggregateClientSteps
     public void GivenAggregateClientConnectedToTestBackend()
     {
         // Set up a default aggregate router for command execution tests
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
         _aggregateRouter = new CommandRouter<TestAggregateState>("test")
             .WithState(stateRouter)
-            .On("CreateOrder", (cmdBook, cmdAny, state, seq) =>
-            {
-                var eventBook = new Angzarr.EventBook { Cover = cmdBook.Cover };
-                eventBook.Pages.Add(new Angzarr.EventPage
+            .On(
+                "CreateOrder",
+                (cmdBook, cmdAny, state, seq) =>
                 {
-                    Sequence = (uint)seq,
-                    Event = new Any { TypeUrl = "type.googleapis.com/OrderCreated", Value = new Empty().ToByteString() }
-                });
-                return eventBook;
-            })
-            .On("TestCommand", (cmdBook, cmdAny, state, seq) =>
-            {
-                var eventBook = new Angzarr.EventBook { Cover = cmdBook.Cover };
-                eventBook.Pages.Add(new Angzarr.EventPage
+                    var eventBook = new Angzarr.EventBook { Cover = cmdBook.Cover };
+                    eventBook.Pages.Add(
+                        new Angzarr.EventPage
+                        {
+                            Sequence = (uint)seq,
+                            Event = new Any
+                            {
+                                TypeUrl = "type.googleapis.com/OrderCreated",
+                                Value = new Empty().ToByteString(),
+                            },
+                        }
+                    );
+                    return eventBook;
+                }
+            )
+            .On(
+                "TestCommand",
+                (cmdBook, cmdAny, state, seq) =>
                 {
-                    Sequence = (uint)seq,
-                    Event = Any.Pack(new Empty())
-                });
-                return eventBook;
-            });
+                    var eventBook = new Angzarr.EventBook { Cover = cmdBook.Cover };
+                    eventBook.Pages.Add(
+                        new Angzarr.EventPage
+                        {
+                            Sequence = (uint)seq,
+                            Event = Any.Pack(new Empty()),
+                        }
+                    );
+                    return eventBook;
+                }
+            );
     }
 
     [Given(@"a new aggregate root in domain ""(.*)""")]
@@ -514,8 +568,8 @@ public class AggregateClientSteps
             Cover = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
     }
 
@@ -584,16 +638,14 @@ public class AggregateClientSteps
             Cover = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
         for (int i = 0; i < seq; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)i,
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -655,28 +707,19 @@ public class AggregateClientSteps
     [When(@"I execute a command asynchronously")]
     public void WhenExecuteCommandAsynchronously()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = MakeEventBook(1)
-        };
+        _response = new Angzarr.BusinessResponse { Events = MakeEventBook(1) };
     }
 
     [When(@"I execute a command with sync mode SIMPLE")]
     public void WhenExecuteCommandWithSyncModeSimple()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = MakeEventBook(1)
-        };
+        _response = new Angzarr.BusinessResponse { Events = MakeEventBook(1) };
     }
 
     [When(@"I execute a command with sync mode CASCADE")]
     public void WhenExecuteCommandWithSyncModeCascade()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = MakeEventBook(1)
-        };
+        _response = new Angzarr.BusinessResponse { Events = MakeEventBook(1) };
     }
 
     [Then(@"the response should return without waiting for projectors")]
@@ -810,8 +853,8 @@ public class AggregateClientSteps
             Cover = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
     }
 
@@ -939,39 +982,47 @@ public class AggregateClientSteps
     [Given(@"an aggregate handler")]
     public void GivenAnAggregateHandler()
     {
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
-        _aggregateRouter = new CommandRouter<TestAggregateState>("test")
-            .WithState(stateRouter);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
+        _aggregateRouter = new CommandRouter<TestAggregateState>("test").WithState(stateRouter);
     }
 
     [Given(@"an aggregate handler with validation")]
     public void GivenAnAggregateHandlerWithValidation()
     {
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
         _aggregateRouter = new CommandRouter<TestAggregateState>("test")
             .WithState(stateRouter)
-            .On("ValidatedCommand", (book, any, state, seq) =>
-            {
-                if (state.Counter < 0)
-                    throw new InvalidArgumentError("Counter cannot be negative");
-                return MakeEventBook(seq);
-            });
+            .On(
+                "ValidatedCommand",
+                (book, any, state, seq) =>
+                {
+                    if (state.Counter < 0)
+                        throw new InvalidArgumentError("Counter cannot be negative");
+                    return MakeEventBook(seq);
+                }
+            );
     }
 
     [Given(@"an aggregate router with handlers for ""([^""]+)""$")]
     public void GivenAnAggregateRouterWithHandlersFor(string type)
     {
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
         _aggregateRouter = new CommandRouter<TestAggregateState>("test")
             .WithState(stateRouter)
-            .On(type, (book, any, state, seq) =>
-            {
-                _invokedHandlers.Add(type);
-                return MakeEventBook(seq);
-            });
+            .On(
+                type,
+                (book, any, state, seq) =>
+                {
+                    _invokedHandlers.Add(type);
+                    return MakeEventBook(seq);
+                }
+            );
     }
 
     [Given(@"an aggregate ""(.*)"" with root ""(.*)"" has (\d+) events")]
@@ -980,19 +1031,13 @@ public class AggregateClientSteps
         var guid = Guid.TryParse(root, out var g) ? g : Guid.NewGuid();
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -1002,30 +1047,35 @@ public class AggregateClientSteps
         GivenAnAggregateWithRootHasEvents(domain, root, count);
     }
 
-    [Given(@"an aggregate ""(.*)"" with root ""(.*)"" has a snapshot at sequence (\d+) and (\d+) events")]
-    public void GivenAnAggregateWithRootHasSnapshotAndEvents(string domain, string root, int snapSeq, int eventCount)
+    [Given(
+        @"an aggregate ""(.*)"" with root ""(.*)"" has a snapshot at sequence (\d+) and (\d+) events"
+    )]
+    public void GivenAnAggregateWithRootHasSnapshotAndEvents(
+        string domain,
+        string root,
+        int snapSeq,
+        int eventCount
+    )
     {
         var guid = Guid.TryParse(root, out var g) ? g : Guid.NewGuid();
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            },
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
             Snapshot = new Angzarr.Snapshot
             {
                 Sequence = (uint)snapSeq,
-                State = Any.Pack(new Empty())
-            }
+                State = Any.Pack(new Empty()),
+            },
         };
         for (int i = 0; i < eventCount; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(snapSeq + i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage
+                {
+                    Sequence = (uint)(snapSeq + i + 1),
+                    Event = Any.Pack(new Empty()),
+                }
+            );
         }
         // Share via context for other step classes
         _ctx["shared_eventbook"] = _eventBook;
@@ -1037,21 +1087,15 @@ public class AggregateClientSteps
         var guid = Guid.TryParse(root, out var g) ? g : Guid.NewGuid();
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
         var baseTime = DateTime.UtcNow.AddDays(-1);
         for (int i = 0; i < 5; i++)
         {
             // EventPage doesn't have timestamp field, but Cover does
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
@@ -1076,19 +1120,13 @@ public class AggregateClientSteps
     [Given(@"a CommandResponse with events")]
     public void GivenACommandResponseWithEvents()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = MakeEventBook(1)
-        };
+        _response = new Angzarr.BusinessResponse { Events = MakeEventBook(1) };
     }
 
     [Given(@"a CommandResponse with no events")]
     public void GivenACommandResponseWithNoEvents()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [Given(@"a process manager router")]
@@ -1102,7 +1140,10 @@ public class AggregateClientSteps
     {
         _sagaRouter = new EventRouter("test-saga")
             .Domain("test")
-            .On("google.protobuf.Empty", (evt, root, corr, dest) => new List<Angzarr.CommandBook>());
+            .On(
+                "google.protobuf.Empty",
+                (evt, root, corr, dest) => new List<Angzarr.CommandBook>()
+            );
     }
 
     [Given(@"a saga command that was rejected")]
@@ -1116,14 +1157,12 @@ public class AggregateClientSteps
             {
                 Domain = "test",
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 1,
-            Command = Any.Pack(new Empty())
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage { Sequence = 1, Command = Any.Pack(new Empty()) }
+        );
 
         var rejectionNotification = new Angzarr.RejectionNotification
         {
@@ -1132,8 +1171,8 @@ public class AggregateClientSteps
             SourceAggregate = new Angzarr.Cover
             {
                 Domain = "test",
-                Root = Helpers.UuidToProto(Guid.NewGuid())
-            }
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
         _ctx["rejection_notification"] = rejectionNotification;
     }
@@ -1153,10 +1192,7 @@ public class AggregateClientSteps
     [When(@"the handler produces events")]
     public void WhenTheHandlerProducesEvents()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = MakeEventBook(1)
-        };
+        _response = new Angzarr.BusinessResponse { Events = MakeEventBook(1) };
     }
 
     [When(@"the handler produces commands")]
@@ -1207,34 +1243,34 @@ public class AggregateClientSteps
             {
                 Domain = "test",
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 0,
-            Command = new Any
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage
             {
-                TypeUrl = $"type.googleapis.com/{commandType}",
-                Value = new Empty().ToByteString()
+                Sequence = 0,
+                Command = new Any
+                {
+                    TypeUrl = $"type.googleapis.com/{commandType}",
+                    Value = new Empty().ToByteString(),
+                },
             }
-        });
+        );
 
         return new Angzarr.ContextualCommand
         {
             Command = commandBook,
-            Events = new Angzarr.EventBook()
+            Events = new Angzarr.EventBook(),
         };
     }
 
     private Angzarr.EventBook MakeEventBook(int seq)
     {
         var eventBook = new Angzarr.EventBook();
-        eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = (uint)seq,
-            Event = Any.Pack(new Empty())
-        });
+        eventBook.Pages.Add(
+            new Angzarr.EventPage { Sequence = (uint)seq, Event = Any.Pack(new Empty()) }
+        );
         return eventBook;
     }
 
@@ -1246,18 +1282,20 @@ public class AggregateClientSteps
             {
                 Domain = domain,
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "test-correlation"
-            }
+                CorrelationId = "test-correlation",
+            },
         };
-        eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = new Any
+        eventBook.Pages.Add(
+            new Angzarr.EventPage
             {
-                TypeUrl = $"type.googleapis.com/{eventType}",
-                Value = new Empty().ToByteString()
+                Sequence = 1,
+                Event = new Any
+                {
+                    TypeUrl = $"type.googleapis.com/{eventType}",
+                    Value = new Empty().ToByteString(),
+                },
             }
-        });
+        );
         return eventBook;
     }
 
@@ -1286,8 +1324,13 @@ public class AggregateClientSteps
     public void WhenIGetNextSequence()
     {
         // Check local or context-shared event book
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
 
         // Calculate next sequence considering snapshot
         uint nextSeq = 0;
@@ -1326,7 +1369,13 @@ public class AggregateClientSteps
     public void WhenIBuildState()
     {
         // Get event book from context if local is null
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
 
         _state = new TestAggregateState();
         if (eventBook != null)
@@ -1356,7 +1405,7 @@ public class AggregateClientSteps
                 var eventPage = _ctx["corrupted_event_page"] as Angzarr.EventPage;
                 _eventBook = new Angzarr.EventBook
                 {
-                    Cover = new Angzarr.Cover { Domain = "test" }
+                    Cover = new Angzarr.Cover { Domain = "test" },
                 };
                 if (eventPage != null)
                 {
@@ -1370,7 +1419,9 @@ public class AggregateClientSteps
                         var valueStr = eventAny.Value.ToStringUtf8();
                         if (valueStr.Contains("corrupted"))
                         {
-                            throw new InvalidOperationException("Deserialization failed: corrupted payload bytes");
+                            throw new InvalidOperationException(
+                                "Deserialization failed: corrupted payload bytes"
+                            );
                         }
                     }
                 }
@@ -1401,7 +1452,9 @@ public class AggregateClientSteps
     [Then(@"only apply events (\d+), (\d+), (\d+)")]
     public void ThenOnlyApplyEventsAgg(int e1, int e2, int e3)
     {
-        var state = _state ?? (_ctx.ContainsKey("built_state") ? _ctx["built_state"] as TestAggregateState : null);
+        var state =
+            _state
+            ?? (_ctx.ContainsKey("built_state") ? _ctx["built_state"] as TestAggregateState : null);
         state!.Counter.Should().Be(3);
     }
 
@@ -1415,21 +1468,17 @@ public class AggregateClientSteps
     [When(@"I receive (\d+) events in a batch")]
     public void WhenIReceiveEventsInABatch(int count)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
         // Build state from the events
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
         _state = stateRouter.WithEventBook(_eventBook);
         // Share via context
         _ctx["shared_eventbook"] = _eventBook;
@@ -1442,8 +1491,9 @@ public class AggregateClientSteps
         _eventBook = MakeEventBookWithEvent("test", "TestEvent");
         _eventBook.Cover.CorrelationId = correlationId;
         // Build state from the event book for PM state maintenance tests
-        var stateRouter = new StateRouter<TestAggregateState>()
-            .On<Empty>((state, _) => state.Counter++);
+        var stateRouter = new StateRouter<TestAggregateState>().On<Empty>(
+            (state, _) => state.Counter++
+        );
         _state = stateRouter.WithEventBook(_eventBook);
         // Share state via context for other step classes
         _ctx["pm_state"] = _state;
@@ -1464,19 +1514,18 @@ public class AggregateClientSteps
     [When(@"I receive an event with invalid payload")]
     public void WhenIReceiveAnEventWithInvalidPayload()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = new Any
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
             {
-                TypeUrl = "type.googleapis.com/invalid",
-                Value = ByteString.CopyFromUtf8("corrupted")
+                Sequence = 1,
+                Event = new Any
+                {
+                    TypeUrl = "type.googleapis.com/invalid",
+                    Value = ByteString.CopyFromUtf8("corrupted"),
+                },
             }
-        });
+        );
         // Simulate deserialization error when router processes invalid payload
         _error = new InvalidOperationException("Deserialization failed: invalid payload bytes");
         _ctx["error"] = _error;
@@ -1505,10 +1554,7 @@ public class AggregateClientSteps
     public void WhenISendCommandToNonExistentAggregate()
     {
         // Sending to non-existent aggregate creates it at sequence 0
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = MakeEventBook(0)
-        };
+        _response = new Angzarr.BusinessResponse { Events = MakeEventBook(0) };
     }
 
     [Then(@"the state should have (\d+) items")]

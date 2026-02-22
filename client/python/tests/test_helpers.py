@@ -7,73 +7,73 @@ import pytest
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.timestamp_pb2 import Timestamp
 
+from angzarr_client.errors import InvalidTimestampError
+from angzarr_client.helpers import (
+    CORRELATION_ID_HEADER,
+    DEFAULT_EDITION,
+    META_ANGZARR_DOMAIN,
+    PROJECTION_DOMAIN_PREFIX,
+    TYPE_URL_PREFIX,
+    # Constants
+    UNKNOWN_DOMAIN,
+    WILDCARD_DOMAIN,
+    cache_key,
+    # CommandBook helpers
+    command_pages,
+    correlation_id,
+    # Cover functions
+    cover_of,
+    # Event decoding
+    decode_event,
+    divergence_for,
+    domain,
+    edition,
+    edition_opt,
+    event_pages,
+    # CommandResponse helpers
+    events_from_response,
+    explicit_edition,
+    has_correlation_id,
+    implicit_edition,
+    is_main_timeline,
+    # Edition helpers
+    main_timeline,
+    new_command_book,
+    new_command_page,
+    # Construction helpers
+    new_cover,
+    # EventBook helpers
+    next_sequence,
+    # Timestamp helpers
+    now,
+    parse_timestamp,
+    proto_to_uuid,
+    range_selection,
+    root_id_hex,
+    root_uuid,
+    routing_key,
+    temporal_by_sequence,
+    temporal_by_time,
+    type_name_from_url,
+    # Type URL helpers
+    type_url,
+    type_url_matches,
+    # UUID conversion
+    uuid_to_proto,
+)
 from angzarr_client.proto.angzarr import (
     UUID,
-    Cover,
-    Edition,
-    DomainDivergence,
-    EventBook,
-    EventPage,
     CommandBook,
     CommandPage,
+    Cover,
+    DomainDivergence,
+    Edition,
+    EventBook,
+    EventPage,
     Query,
     SequenceRange,
     TemporalQuery,
 )
-from angzarr_client.helpers import (
-    # Constants
-    UNKNOWN_DOMAIN,
-    WILDCARD_DOMAIN,
-    DEFAULT_EDITION,
-    META_ANGZARR_DOMAIN,
-    PROJECTION_DOMAIN_PREFIX,
-    CORRELATION_ID_HEADER,
-    TYPE_URL_PREFIX,
-    # Cover functions
-    cover_of,
-    domain,
-    correlation_id,
-    has_correlation_id,
-    root_uuid,
-    root_id_hex,
-    edition,
-    edition_opt,
-    routing_key,
-    cache_key,
-    # UUID conversion
-    uuid_to_proto,
-    proto_to_uuid,
-    # Edition helpers
-    main_timeline,
-    implicit_edition,
-    explicit_edition,
-    is_main_timeline,
-    divergence_for,
-    # EventBook helpers
-    next_sequence,
-    event_pages,
-    # CommandBook helpers
-    command_pages,
-    # CommandResponse helpers
-    events_from_response,
-    # Type URL helpers
-    type_url,
-    type_name_from_url,
-    type_url_matches,
-    # Timestamp helpers
-    now,
-    parse_timestamp,
-    # Event decoding
-    decode_event,
-    # Construction helpers
-    new_cover,
-    new_command_page,
-    new_command_book,
-    range_selection,
-    temporal_by_sequence,
-    temporal_by_time,
-)
-from angzarr_client.errors import InvalidTimestampError
 
 
 class TestConstants:

@@ -108,11 +108,11 @@ func DelegateToFrameworkWithOptions(reason string, emitSystemEvent, sendToDLQ, e
 	return &pb.BusinessResponse{
 		Result: &pb.BusinessResponse_Revocation{
 			Revocation: &pb.RevocationResponse{
-				EmitSystemRevocation:   emitSystemEvent,
-				SendToDeadLetterQueue:  sendToDLQ,
-				Escalate:               escalate,
-				Abort:                  abort,
-				Reason:                 reason,
+				EmitSystemRevocation:  emitSystemEvent,
+				SendToDeadLetterQueue: sendToDLQ,
+				Escalate:              escalate,
+				Abort:                 abort,
+				Reason:                reason,
 			},
 		},
 	}

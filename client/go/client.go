@@ -166,11 +166,11 @@ func (c *AggregateClient) Close() error {
 // SpeculativeClient wraps coordinator services for speculative execution.
 // Speculative execution runs commands/events against temporal state without persistence.
 type SpeculativeClient struct {
-	aggregateStub  pb.AggregateCoordinatorServiceClient
-	sagaStub       pb.SagaCoordinatorServiceClient
-	projectorStub  pb.ProjectorCoordinatorServiceClient
-	pmStub         pb.ProcessManagerCoordinatorServiceClient
-	conn           *grpc.ClientConn
+	aggregateStub pb.AggregateCoordinatorServiceClient
+	sagaStub      pb.SagaCoordinatorServiceClient
+	projectorStub pb.ProjectorCoordinatorServiceClient
+	pmStub        pb.ProcessManagerCoordinatorServiceClient
+	conn          *grpc.ClientConn
 }
 
 // NewSpeculativeClient connects to coordinator services at the given endpoint.
@@ -180,11 +180,11 @@ func NewSpeculativeClient(endpoint string) (*SpeculativeClient, error) {
 		return nil, TransportError(err)
 	}
 	return &SpeculativeClient{
-		aggregateStub:  pb.NewAggregateCoordinatorServiceClient(conn),
-		sagaStub:       pb.NewSagaCoordinatorServiceClient(conn),
-		projectorStub:  pb.NewProjectorCoordinatorServiceClient(conn),
-		pmStub:         pb.NewProcessManagerCoordinatorServiceClient(conn),
-		conn:           conn,
+		aggregateStub: pb.NewAggregateCoordinatorServiceClient(conn),
+		sagaStub:      pb.NewSagaCoordinatorServiceClient(conn),
+		projectorStub: pb.NewProjectorCoordinatorServiceClient(conn),
+		pmStub:        pb.NewProcessManagerCoordinatorServiceClient(conn),
+		conn:          conn,
 	}, nil
 }
 
@@ -200,11 +200,11 @@ func SpeculativeClientFromEnv(envVar, defaultEndpoint string) (*SpeculativeClien
 // SpeculativeClientFromConn creates a client from an existing connection.
 func SpeculativeClientFromConn(conn *grpc.ClientConn) *SpeculativeClient {
 	return &SpeculativeClient{
-		aggregateStub:  pb.NewAggregateCoordinatorServiceClient(conn),
-		sagaStub:       pb.NewSagaCoordinatorServiceClient(conn),
-		projectorStub:  pb.NewProjectorCoordinatorServiceClient(conn),
-		pmStub:         pb.NewProcessManagerCoordinatorServiceClient(conn),
-		conn:           conn,
+		aggregateStub: pb.NewAggregateCoordinatorServiceClient(conn),
+		sagaStub:      pb.NewSagaCoordinatorServiceClient(conn),
+		projectorStub: pb.NewProjectorCoordinatorServiceClient(conn),
+		pmStub:        pb.NewProcessManagerCoordinatorServiceClient(conn),
+		conn:          conn,
 	}
 }
 

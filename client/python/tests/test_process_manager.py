@@ -15,12 +15,11 @@ from angzarr_client.router import EventRouter, event_handler
 
 from .fixtures import (
     CreateShipment,
-    OrderCreated,
     OrderCompleted,
+    OrderCreated,
     ReserveStock,
     StockReserved,
 )
-
 
 # =============================================================================
 # Shared state for OO pattern

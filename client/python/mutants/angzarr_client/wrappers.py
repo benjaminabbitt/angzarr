@@ -4,30 +4,27 @@ Each wrapper takes a protobuf message in its constructor and provides
 extension methods as instance methods.
 """
 
-from typing import Optional, List, Type, TypeVar
+from typing import List, Optional, Type, TypeVar
 from uuid import UUID as PyUUID
 
+from .helpers import (
+    DEFAULT_EDITION,
+    UNKNOWN_DOMAIN,
+    type_url_matches,
+)
 from .proto.angzarr import (
-    Cover,
-    EventBook,
     CommandBook,
-    Query,
-    EventPage,
     CommandPage,
     CommandResponse,
-)
-from .helpers import (
-    UNKNOWN_DOMAIN,
-    DEFAULT_EDITION,
-    type_url_matches,
+    Cover,
+    EventBook,
+    EventPage,
+    Query,
 )
 
 T = TypeVar("T")
 from inspect import signature as _mutmut_signature
-from typing import Annotated
-from typing import Callable
-from typing import ClassVar
-
+from typing import Annotated, Callable, ClassVar
 
 MutantDict = Annotated[dict[str, Callable], "Mutant"]
 

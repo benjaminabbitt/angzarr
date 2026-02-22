@@ -8,8 +8,8 @@ import pytest
 from google.protobuf import any_pb2
 
 from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.saga import Saga, reacts_to
 from angzarr_client.router import EventRouter, event_handler
+from angzarr_client.saga import Saga, reacts_to
 
 from .fixtures import (
     CreateShipment,
@@ -17,7 +17,6 @@ from .fixtures import (
     ReserveStock,
     StockReserved,
 )
-
 
 # =============================================================================
 # Additional fixture for type hint mismatch testing

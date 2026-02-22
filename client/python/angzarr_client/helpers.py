@@ -4,23 +4,23 @@ from datetime import datetime
 from typing import Optional, Union
 from uuid import UUID as PyUUID
 
-from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
+from google.protobuf.timestamp_pb2 import Timestamp
 
+from .errors import InvalidTimestampError
 from .proto.angzarr import (
     UUID,
-    Cover,
-    Edition,
-    DomainDivergence,
-    EventBook,
     CommandBook,
-    Query,
-    EventPage,
     CommandPage,
+    Cover,
+    DomainDivergence,
+    Edition,
+    EventBook,
+    EventPage,
+    Query,
     SequenceRange,
     TemporalQuery,
 )
-from .errors import InvalidTimestampError
 
 # Constants matching Rust proto_ext::constants
 UNKNOWN_DOMAIN = "unknown"

@@ -3,7 +3,7 @@
 
 set shell := ["bash", "-c"]
 
-REGISTRY := "ghcr.io/angzarr"
+REGISTRY := "ghcr.io/angzarr-io"
 TOP := `git rev-parse --show-toplevel`
 
 default:

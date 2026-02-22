@@ -28,25 +28,24 @@ public class CompensationSteps
             {
                 Domain = domain,
                 Root = Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = "compensation-test"
-            }
+                CorrelationId = "compensation-test",
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            Sequence = 1,
-            Command = Any.Pack(new Empty(), $"type.googleapis.com/{commandType}")
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage
+            {
+                Sequence = 1,
+                Command = Any.Pack(new Empty(), $"type.googleapis.com/{commandType}"),
+            }
+        );
 
         _rejectionNotification = new Angzarr.RejectionNotification
         {
             RejectionReason = "Test rejection",
-            RejectedCommand = commandBook
+            RejectedCommand = commandBook,
         };
 
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
     }
 
     [Given(@"a CompensationContext from the notification")]
@@ -61,16 +60,27 @@ public class CompensationSteps
         var stateRouter = new StateRouter<CompensationTestState>();
         _commandRouter = new CommandRouter<CompensationTestState>("test")
             .WithState(stateRouter)
-            .OnRejected(domain, commandType, (notification, state) =>
-            {
-                return new RejectionHandlerResponse
+            .OnRejected(
+                domain,
+                commandType,
+                (notification, state) =>
                 {
-                    Events = new Angzarr.EventBook
+                    return new RejectionHandlerResponse
                     {
-                        Pages = { new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) } }
-                    }
-                };
-            });
+                        Events = new Angzarr.EventBook
+                        {
+                            Pages =
+                            {
+                                new Angzarr.EventPage
+                                {
+                                    Sequence = 1,
+                                    Event = Any.Pack(new Empty()),
+                                },
+                            },
+                        },
+                    };
+                }
+            );
     }
 
     [When(@"I get the rejected command")]
@@ -99,12 +109,18 @@ public class CompensationSteps
             Command = new Angzarr.CommandBook
             {
                 Cover = new Angzarr.Cover { Domain = "test" },
-                Pages = { new Angzarr.CommandPage
+                Pages =
                 {
-                    Command = Any.Pack(_notification!, "type.googleapis.com/angzarr.Notification")
-                }}
+                    new Angzarr.CommandPage
+                    {
+                        Command = Any.Pack(
+                            _notification!,
+                            "type.googleapis.com/angzarr.Notification"
+                        ),
+                    },
+                },
             },
-            Events = new Angzarr.EventBook()
+            Events = new Angzarr.EventBook(),
         };
         _businessResponse = _commandRouter!.Dispatch(contextualCommand);
     }
@@ -149,13 +165,14 @@ public class CompensationSteps
         var stateRouter = new StateRouter<CompensationTestState>();
         _commandRouter = new CommandRouter<CompensationTestState>("test")
             .WithState(stateRouter)
-            .OnRejected("inventory", "ReserveStock", (notification, state) =>
-            {
-                return new RejectionHandlerResponse
+            .OnRejected(
+                "inventory",
+                "ReserveStock",
+                (notification, state) =>
                 {
-                    Notification = notification
-                };
-            });
+                    return new RejectionHandlerResponse { Notification = notification };
+                }
+            );
     }
 
     [Given(@"a rejection handler that emits compensation events")]
@@ -164,20 +181,30 @@ public class CompensationSteps
         var stateRouter = new StateRouter<CompensationTestState>();
         _commandRouter = new CommandRouter<CompensationTestState>("test")
             .WithState(stateRouter)
-            .OnRejected("inventory", "ReserveStock", (notification, state) =>
-            {
-                return new RejectionHandlerResponse
+            .OnRejected(
+                "inventory",
+                "ReserveStock",
+                (notification, state) =>
                 {
-                    Events = new Angzarr.EventBook
+                    return new RejectionHandlerResponse
                     {
-                        Pages = { new Angzarr.EventPage
+                        Events = new Angzarr.EventBook
                         {
-                            Sequence = 1,
-                            Event = Any.Pack(new Empty(), "type.googleapis.com/test.StockReservationCancelled")
-                        }}
-                    }
-                };
-            });
+                            Pages =
+                            {
+                                new Angzarr.EventPage
+                                {
+                                    Sequence = 1,
+                                    Event = Any.Pack(
+                                        new Empty(),
+                                        "type.googleapis.com/test.StockReservationCancelled"
+                                    ),
+                                },
+                            },
+                        },
+                    };
+                }
+            );
     }
 
     // Additional compensation steps
@@ -191,13 +218,10 @@ public class CompensationSteps
             IssuerType = issuerType,
             RejectedCommand = new Angzarr.CommandBook
             {
-                Cover = new Angzarr.Cover { Domain = "test" }
-            }
+                Cover = new Angzarr.Cover { Domain = "test" },
+            },
         };
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
         _compensationContext = CompensationContext.FromNotification(_notification);
     }
 
@@ -256,10 +280,7 @@ public class CompensationSteps
     [Given(@"a notification payload")]
     public void GivenNotificationPayload()
     {
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(new Empty())
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(new Empty()) };
     }
 
     [When(@"I create a CompensationContext")]
@@ -291,14 +312,15 @@ public class CompensationSteps
             RejectionReason = "Test rejection",
             RejectedCommand = new Angzarr.CommandBook
             {
-                Cover = new Angzarr.Cover { Domain = "test", CorrelationId = "corr-123" }
+                Cover = new Angzarr.Cover { Domain = "test", CorrelationId = "corr-123" },
             },
-            SourceAggregate = new Angzarr.Cover { Domain = "test", Root = Helpers.UuidToProto(Guid.NewGuid()) }
+            SourceAggregate = new Angzarr.Cover
+            {
+                Domain = "test",
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
         _compensationContext = CompensationContext.FromNotification(_notification);
     }
 
@@ -312,13 +334,10 @@ public class CompensationSteps
             IssuerType = "saga",
             RejectedCommand = new Angzarr.CommandBook
             {
-                Cover = new Angzarr.Cover { Domain = "test" }
-            }
+                Cover = new Angzarr.Cover { Domain = "test" },
+            },
         };
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
         _compensationContext = CompensationContext.FromNotification(_notification);
     }
 
@@ -333,17 +352,14 @@ public class CompensationSteps
             SourceAggregate = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(Guid.NewGuid())
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
             },
             RejectedCommand = new Angzarr.CommandBook
             {
-                Cover = new Angzarr.Cover { Domain = domain }
-            }
+                Cover = new Angzarr.Cover { Domain = domain },
+            },
         };
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
         _compensationContext = CompensationContext.FromNotification(_notification);
     }
 
@@ -357,21 +373,14 @@ public class CompensationSteps
             SourceAggregate = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = Helpers.UuidToProto(rootId)
+                Root = Helpers.UuidToProto(rootId),
             },
             RejectedCommand = new Angzarr.CommandBook
             {
-                Cover = new Angzarr.Cover
-                {
-                    Domain = domain,
-                    Root = Helpers.UuidToProto(rootId)
-                }
-            }
+                Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(rootId) },
+            },
         };
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
         _compensationContext = CompensationContext.FromNotification(_notification);
     }
 
@@ -391,7 +400,9 @@ public class CompensationSteps
     public void WhenIBuildARejectionNotification()
     {
         // Check context for rejection reason (from ErrorHandlingSteps.GivenACommandRejectedWithReason)
-        var contextReason = _ctx.ContainsKey("rejection_reason") ? _ctx["rejection_reason"] as string : null;
+        var contextReason = _ctx.ContainsKey("rejection_reason")
+            ? _ctx["rejection_reason"] as string
+            : null;
 
         // Preserve existing rejection notification context (from compensation context setup steps)
         // and add missing fields for building
@@ -410,7 +421,7 @@ public class CompensationSteps
             {
                 _rejectionNotification.RejectedCommand = new Angzarr.CommandBook
                 {
-                    Cover = new Angzarr.Cover { Domain = "test" }
+                    Cover = new Angzarr.Cover { Domain = "test" },
                 };
             }
         }
@@ -423,14 +434,11 @@ public class CompensationSteps
                 IssuerType = "saga",
                 RejectedCommand = new Angzarr.CommandBook
                 {
-                    Cover = new Angzarr.Cover { Domain = "test" }
-                }
+                    Cover = new Angzarr.Cover { Domain = "test" },
+                },
             };
         }
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
     }
 
     [When(@"I extract the rejected command")]
@@ -487,7 +495,8 @@ public class CompensationSteps
     {
         // Prefer context notification (e.g., from saga command with correlation ID) over local field
         _notification = _ctx.ContainsKey("notification")
-            ? _ctx["notification"] as Angzarr.Notification : _notification;
+            ? _ctx["notification"] as Angzarr.Notification
+            : _notification;
         _compensationContext = CompensationContext.FromNotification(_notification!);
     }
 
@@ -511,11 +520,17 @@ public class CompensationSteps
             RejectionReason = "test rejection",
             RejectedCommand = new Angzarr.CommandBook
             {
-                Cover = new Angzarr.Cover { Domain = "orders", CorrelationId = "corr-123" }
+                Cover = new Angzarr.Cover { Domain = "orders", CorrelationId = "corr-123" },
             },
-            SourceAggregate = new Angzarr.Cover { Domain = "orders", Root = Helpers.UuidToProto(Guid.NewGuid()) }
+            SourceAggregate = new Angzarr.Cover
+            {
+                Domain = "orders",
+                Root = Helpers.UuidToProto(Guid.NewGuid()),
+            },
         };
-        _rejectionNotification.RejectedCommand.Pages.Add(new Angzarr.CommandPage { MergeStrategy = Angzarr.MergeStrategy.MergeCommutative });
+        _rejectionNotification.RejectedCommand.Pages.Add(
+            new Angzarr.CommandPage { MergeStrategy = Angzarr.MergeStrategy.MergeCommutative }
+        );
 
         // Build command book targeting source aggregate for notification routing
         var commandBook = new Angzarr.CommandBook
@@ -523,15 +538,20 @@ public class CompensationSteps
             Cover = new Angzarr.Cover
             {
                 Domain = _rejectionNotification.SourceAggregate?.Domain ?? "orders",
-                Root = _rejectionNotification.SourceAggregate?.Root ?? Helpers.UuidToProto(Guid.NewGuid()),
-                CorrelationId = _rejectionNotification.RejectedCommand?.Cover?.CorrelationId ?? "corr-123"
-            }
+                Root =
+                    _rejectionNotification.SourceAggregate?.Root
+                    ?? Helpers.UuidToProto(Guid.NewGuid()),
+                CorrelationId =
+                    _rejectionNotification.RejectedCommand?.Cover?.CorrelationId ?? "corr-123",
+            },
         };
-        commandBook.Pages.Add(new Angzarr.CommandPage
-        {
-            MergeStrategy = Angzarr.MergeStrategy.MergeCommutative,
-            Command = Any.Pack(_rejectionNotification)
-        });
+        commandBook.Pages.Add(
+            new Angzarr.CommandPage
+            {
+                MergeStrategy = Angzarr.MergeStrategy.MergeCommutative,
+                Command = Any.Pack(_rejectionNotification),
+            }
+        );
 
         // Share via context for CommandBuilderSteps assertions
         _ctx["notification_command_book"] = commandBook;
@@ -547,10 +567,7 @@ public class CompensationSteps
         _rejectionNotification.Should().NotBeNull();
 
         // Wrap in Notification and create CompensationContext
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification) };
         _compensationContext = CompensationContext.FromNotification(_notification);
     }
 
@@ -569,20 +586,14 @@ public class CompensationSteps
     [When(@"I build a Notification from the context")]
     public void WhenIBuildANotificationFromTheContext()
     {
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification!)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification!) };
         _ctx["built_notification"] = _notification;
     }
 
     [When(@"I build a Notification from a CompensationContext")]
     public void WhenIBuildANotificationFromACompensationContext()
     {
-        _notification = new Angzarr.Notification
-        {
-            Payload = Any.Pack(_rejectionNotification!)
-        };
+        _notification = new Angzarr.Notification { Payload = Any.Pack(_rejectionNotification!) };
     }
 
     [Then(@"the triggering_event_sequence should be (\d+)")]
@@ -590,7 +601,8 @@ public class CompensationSteps
     {
         // Prefer context (from RouterSteps) over local field
         var notification = _ctx.ContainsKey("rejection_notification")
-            ? _ctx["rejection_notification"] as Angzarr.RejectionNotification : _rejectionNotification;
+            ? _ctx["rejection_notification"] as Angzarr.RejectionNotification
+            : _rejectionNotification;
         notification!.SourceEventSequence.Should().Be((uint)expected);
     }
 
@@ -599,7 +611,8 @@ public class CompensationSteps
     {
         // Prefer context (from RouterSteps) over local field
         var notification = _ctx.ContainsKey("rejection_notification")
-            ? _ctx["rejection_notification"] as Angzarr.RejectionNotification : _rejectionNotification;
+            ? _ctx["rejection_notification"] as Angzarr.RejectionNotification
+            : _rejectionNotification;
         notification!.SourceAggregate.Domain.Should().Be(expected);
     }
 
@@ -608,7 +621,8 @@ public class CompensationSteps
     {
         // Prefer context (from RouterSteps) over local field
         var notification = _ctx.ContainsKey("rejection_notification")
-            ? _ctx["rejection_notification"] as Angzarr.RejectionNotification : _rejectionNotification;
+            ? _ctx["rejection_notification"] as Angzarr.RejectionNotification
+            : _rejectionNotification;
         notification!.IssuerName.Should().Be(expected);
     }
 

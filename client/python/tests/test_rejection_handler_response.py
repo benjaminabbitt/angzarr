@@ -9,7 +9,6 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from angzarr_client.compensation import RejectionHandlerResponse
 from angzarr_client.proto.angzarr import types_pb2 as types
 
-
 # =============================================================================
 # Test Fixtures
 # =============================================================================

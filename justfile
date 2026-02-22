@@ -19,6 +19,7 @@ set shell := ["bash", "-c"]
 
 TOP := `git rev-parse --show-toplevel`
 IMAGE := "angzarr-dev"
+REGISTRY := "ghcr.io/angzarr-io"
 
 mod client "client/justfile"
 mod examples "examples/justfile"
@@ -72,6 +73,51 @@ _container-dind +ARGS: _build-image
 
 default:
     @just --list
+
+# === Formatting ===
+
+# Run command in language-specific CI image
+[private]
+_lang-container LANG +ARGS:
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        {{ARGS}}
+    else
+        podman run --rm --network=host \
+            -v "{{TOP}}:/workspace:Z" \
+            -w /workspace \
+            {{REGISTRY}}/angzarr-{{LANG}}:latest \
+            {{ARGS}}
+    fi
+
+# Install and enable pre-commit hooks (lefthook only - formatters run in container)
+hooks-install:
+    @which lefthook > /dev/null || go install github.com/evilmartians/lefthook@latest
+    lefthook install
+
+# Format all code (runs in language-specific containers)
+fmt-all: fmt fmt-python fmt-go fmt-csharp fmt-java fmt-cpp
+
+# Format Python code (runs in angzarr-python container)
+fmt-python:
+    just _lang-container python black examples/python client/python scripts/
+    just _lang-container python ruff check --fix --select I examples/python client/python scripts/
+
+# Format Go code (runs in angzarr-go container)
+fmt-go:
+    just _lang-container go goimports -w examples/go client/go
+
+# Format C# code (runs in angzarr-csharp container)
+fmt-csharp:
+    just _lang-container csharp dotnet csharpier examples/csharp client/csharp
+
+# Format Java code (runs in angzarr-java container)
+fmt-java:
+    just _lang-container java sh -c "cd examples/java && ./gradlew spotlessApply"
+
+# Format C++ code (runs in angzarr-base container - has clang-format)
+fmt-cpp:
+    just _lang-container base sh -c "find examples/cpp client/cpp -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | xargs clang-format -i"
 
 # === Buf Schema Registry ===
 

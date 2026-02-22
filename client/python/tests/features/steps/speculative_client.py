@@ -1,8 +1,8 @@
 """Step definitions for speculative client scenarios."""
 
-from pytest_bdd import given, when, then, parsers
 from google.protobuf.any_pb2 import Any
 from google.protobuf.empty_pb2 import Empty
+from pytest_bdd import given, parsers, then, when
 
 from angzarr_client.proto.angzarr import types_pb2
 

@@ -28,11 +28,7 @@ public class SpeculativeClientSteps
         var guid = ParseGuid(root);
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
     }
 
@@ -42,17 +38,9 @@ public class SpeculativeClientSteps
         var guid = ParseGuid(root);
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
     }
 
     [Given(@"(\d+) events for ""(.*)"" root ""(.*)""")]
@@ -61,19 +49,13 @@ public class SpeculativeClientSteps
         var guid = ParseGuid(root);
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
         _ctx["shared_eventbook"] = _eventBook;
     }
@@ -81,33 +63,22 @@ public class SpeculativeClientSteps
     [When(@"I speculatively execute a command against ""(.*)"" root ""(.*)""")]
     public void WhenISpeculativelyExecuteCommandAgainst(string domain, string root)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
-        _response.Events.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
+        _response.Events.Pages.Add(
+            new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) }
+        );
     }
 
     [When(@"I speculatively execute a command")]
     public void WhenISpeculativelyExecuteCommand()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [When(@"I speculatively execute a command as of sequence (\d+)")]
     public void WhenISpeculativelyExecuteCommandAsOfSequence(int seq)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [When(@"I speculatively execute a ""(.*)"" command")]
@@ -120,16 +91,13 @@ public class SpeculativeClientSteps
             {
                 Revocation = new Angzarr.RevocationResponse
                 {
-                    Reason = "cannot cancel shipped order"
-                }
+                    Reason = "cannot cancel shipped order",
+                },
             };
         }
         else
         {
-            _response = new Angzarr.BusinessResponse
-            {
-                Events = new Angzarr.EventBook()
-            };
+            _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
         }
     }
 
@@ -142,28 +110,19 @@ public class SpeculativeClientSteps
     [When(@"I speculatively execute projector ""(.*)"" against those events")]
     public void WhenISpeculativelyExecuteProjector(string projectorName)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [When(@"I speculatively execute saga ""(.*)"" against an event")]
     public void WhenISpeculativelyExecuteSaga(string sagaName)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [When(@"I speculatively execute PM ""(.*)"" against correlated events")]
     public void WhenISpeculativelyExecutePM(string pmName)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [Then(@"the response should contain the projected events")]
@@ -274,10 +233,7 @@ public class SpeculativeClientSteps
     [When(@"I speculatively execute saga ""(.*)""")]
     public void WhenISpeculativelyExecuteSagaNamed(string sagaName)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [When(@"I speculatively execute process manager ""(.*)""")]
@@ -290,24 +246,16 @@ public class SpeculativeClientSteps
             _ctx["error"] = _error;
             return;
         }
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
     }
 
     [When(@"I speculatively execute command A")]
     public void WhenISpeculativelyExecuteCommandA()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
-        _response.Events.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
+        _response.Events.Pages.Add(
+            new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) }
+        );
         // Track speculative results for independence verification
         if (!_ctx.ContainsKey("speculative_results"))
         {
@@ -319,15 +267,10 @@ public class SpeculativeClientSteps
     [When(@"I speculatively execute command B")]
     public void WhenISpeculativelyExecuteCommandB()
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
-        _response.Events.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 2,
-            Event = Any.Pack(new Empty())
-        });
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
+        _response.Events.Pages.Add(
+            new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty()) }
+        );
         // Track speculative results for independence verification
         if (!_ctx.ContainsKey("speculative_results"))
         {
@@ -339,37 +282,35 @@ public class SpeculativeClientSteps
     [When(@"I speculatively execute a command producing (\d+) events")]
     public void WhenISpeculativelyExecuteACommandProducingEvents(int count)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
         for (int i = 0; i < count; i++)
         {
-            _response.Events.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _response.Events.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
     }
 
     [When(@"I speculatively execute projector ""(.*)""")]
     public void WhenISpeculativelyExecuteProjectorNamed(string projectorName)
     {
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = new Angzarr.EventBook()
-        };
+        _response = new Angzarr.BusinessResponse { Events = new Angzarr.EventBook() };
 
         // Build state from events for projector execution
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
 
         if (eventBook != null)
         {
             // Simulate projector processing events by building state
-            var stateRouter = new StateRouter<TestState>()
-                .On<Empty>((state, _) => state.Value = "processed");
+            var stateRouter = new StateRouter<TestState>().On<Empty>(
+                (state, _) => state.Value = "processed"
+            );
             var state = stateRouter.WithEventBook(eventBook);
             _ctx["built_state"] = state;
         }
@@ -398,23 +339,28 @@ public class SpeculativeClientSteps
     }
 
     [Given(@"a speculative aggregate ""(.*)"" with root ""(.*)"" has (\d+) events")]
-    public void GivenASpeculativeAggregateWithRootHasEvents(string domain, string root, int eventCount)
+    public void GivenASpeculativeAggregateWithRootHasEvents(
+        string domain,
+        string root,
+        int eventCount
+    )
     {
         _eventBook = new Angzarr.EventBook
         {
             Cover = new Angzarr.Cover
             {
                 Domain = domain,
-                Root = new Angzarr.UUID { Value = Google.Protobuf.ByteString.CopyFrom(ParseGuid(root).ToByteArray()) }
-            }
+                Root = new Angzarr.UUID
+                {
+                    Value = Google.Protobuf.ByteString.CopyFrom(ParseGuid(root).ToByteArray()),
+                },
+            },
         };
         for (int i = 0; i < eventCount; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)i,
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
         _ctx["speculative_base_events"] = eventCount;
     }
@@ -423,9 +369,6 @@ public class SpeculativeClientSteps
     public void WhenIVerifyTheRealEventsForRoot(string domain, string root)
     {
         // Verify the real (non-speculative) events - should match base event count
-        _response = new Angzarr.BusinessResponse
-        {
-            Events = _eventBook
-        };
+        _response = new Angzarr.BusinessResponse { Events = _eventBook };
     }
 }

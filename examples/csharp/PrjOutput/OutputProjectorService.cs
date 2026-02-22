@@ -1,8 +1,8 @@
+using Angzarr;
+using Angzarr.Examples;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
-using Angzarr;
-using Angzarr.Examples;
 
 namespace PrjOutput;
 
@@ -19,11 +19,14 @@ public class OutputProjectorService : ProjectorService.ProjectorServiceBase
         if (!string.IsNullOrEmpty(logPath))
         {
             _logFile = new StreamWriter(logPath, append: true);
-            _projector = new OutputProjector(line =>
-            {
-                _logFile.WriteLine(line);
-                _logFile.Flush();
-            }, showTimestamps: true);
+            _projector = new OutputProjector(
+                line =>
+                {
+                    _logFile.WriteLine(line);
+                    _logFile.Flush();
+                },
+                showTimestamps: true
+            );
         }
         else
         {

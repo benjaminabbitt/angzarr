@@ -1,7 +1,7 @@
-using Google.Protobuf;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
 using Hand.Agg.Handlers;
 
 namespace Hand.Agg;
@@ -17,7 +17,9 @@ public static class HandRouter
             .On<DealCards>((cmd, state) => DealHandler.Handle(cmd, (HandState)state))
             .On<PostBlind>((cmd, state) => PostBlindHandler.Handle(cmd, (HandState)state))
             .On<PlayerAction>((cmd, state) => ActionHandler.Handle(cmd, (HandState)state))
-            .On<DealCommunityCards>((cmd, state) => DealCommunityHandler.Handle(cmd, (HandState)state))
+            .On<DealCommunityCards>(
+                (cmd, state) => DealCommunityHandler.Handle(cmd, (HandState)state)
+            )
             .On<AwardPot>((cmd, state) => AwardPotHandler.Handle(cmd, (HandState)state));
     }
 }

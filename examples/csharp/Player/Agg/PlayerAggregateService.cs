@@ -1,9 +1,9 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using Grpc.Core;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 
 namespace Player.Agg;
 
@@ -19,7 +19,10 @@ public class PlayerAggregateService : AggregateService.AggregateServiceBase
         _router = router;
     }
 
-    public override Task<BusinessResponse> Handle(ContextualCommand request, ServerCallContext context)
+    public override Task<BusinessResponse> Handle(
+        ContextualCommand request,
+        ServerCallContext context
+    )
     {
         try
         {
@@ -27,27 +30,31 @@ public class PlayerAggregateService : AggregateService.AggregateServiceBase
             var commandAny = request.Command?.Pages.FirstOrDefault()?.Command;
             if (commandAny == null)
             {
-                return Task.FromResult(new BusinessResponse
-                {
-                    Revocation = new RevocationResponse
+                return Task.FromResult(
+                    new BusinessResponse
                     {
-                        Reason = "No command in request",
-                        Abort = true
+                        Revocation = new RevocationResponse
+                        {
+                            Reason = "No command in request",
+                            Abort = true,
+                        },
                     }
-                });
+                );
             }
 
             var command = UnpackCommand(commandAny);
             if (command == null)
             {
-                return Task.FromResult(new BusinessResponse
-                {
-                    Revocation = new RevocationResponse
+                return Task.FromResult(
+                    new BusinessResponse
                     {
-                        Reason = $"Unknown command type: {commandAny.TypeUrl}",
-                        Abort = true
+                        Revocation = new RevocationResponse
+                        {
+                            Reason = $"Unknown command type: {commandAny.TypeUrl}",
+                            Abort = true,
+                        },
                     }
-                });
+                );
             }
 
             // Handle the command
@@ -56,38 +63,29 @@ public class PlayerAggregateService : AggregateService.AggregateServiceBase
             // Build response
             var eventBook = new EventBook();
             var eventAny = Any.Pack(eventMessage, "type.googleapis.com/");
-            eventBook.Pages.Add(new EventPage
-            {
-                Sequence = request.Events.NextSequence,
-                Event = eventAny
-            });
+            eventBook.Pages.Add(
+                new EventPage { Sequence = request.Events.NextSequence, Event = eventAny }
+            );
 
-            return Task.FromResult(new BusinessResponse
-            {
-                Events = eventBook
-            });
+            return Task.FromResult(new BusinessResponse { Events = eventBook });
         }
         catch (CommandRejectedError ex)
         {
-            return Task.FromResult(new BusinessResponse
-            {
-                Revocation = new RevocationResponse
+            return Task.FromResult(
+                new BusinessResponse
                 {
-                    Reason = ex.Message,
-                    Abort = true
+                    Revocation = new RevocationResponse { Reason = ex.Message, Abort = true },
                 }
-            });
+            );
         }
         catch (Exception ex)
         {
-            return Task.FromResult(new BusinessResponse
-            {
-                Revocation = new RevocationResponse
+            return Task.FromResult(
+                new BusinessResponse
                 {
-                    Reason = ex.Message,
-                    Abort = true
+                    Revocation = new RevocationResponse { Reason = ex.Message, Abort = true },
                 }
-            });
+            );
         }
     }
 
@@ -118,7 +116,7 @@ public class PlayerAggregateService : AggregateService.AggregateServiceBase
             "examples.ReleaseFunds" => commandAny.Unpack<ReleaseFunds>(),
             "examples.TransferFunds" => commandAny.Unpack<TransferFunds>(),
             "examples.RequestAction" => commandAny.Unpack<RequestAction>(),
-            _ => null
+            _ => null,
         };
     }
 }

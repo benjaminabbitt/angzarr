@@ -94,7 +94,7 @@ public class CompensationContext
             SourceEventSequence = rejection.SourceEventSequence,
             RejectionReason = rejection.RejectionReason ?? "",
             RejectedCommand = rejection.RejectedCommand,
-            SourceAggregate = rejection.SourceAggregate
+            SourceAggregate = rejection.SourceAggregate,
         };
     }
 

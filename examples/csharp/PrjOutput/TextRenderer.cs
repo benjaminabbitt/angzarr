@@ -1,5 +1,5 @@
-using Google.Protobuf;
 using Angzarr.Examples;
+using Google.Protobuf;
 
 namespace PrjOutput;
 
@@ -42,7 +42,7 @@ public class TextRenderer
             "CommunityCardsDealt" => RenderCommunityCardsDealt((CommunityCardsDealt)evt),
             "PotAwarded" => RenderPotAwarded((PotAwarded)evt),
             "HandComplete" => RenderHandComplete((HandComplete)evt),
-            _ => $"[{eventType}]"
+            _ => $"[{eventType}]",
         };
     }
 
@@ -120,7 +120,7 @@ public class TextRenderer
             ActionType.Bet => $"bets {evt.Amount}",
             ActionType.Raise => $"raises to {evt.Amount}",
             ActionType.AllIn => $"all-in for {evt.Amount}",
-            _ => evt.Action.ToString()
+            _ => evt.Action.ToString(),
         };
         return $"{player} {action} (pot: {evt.PotTotal})";
     }
@@ -164,7 +164,7 @@ public class TextRenderer
             Rank.Queen => "Q",
             Rank.King => "K",
             Rank.Ace => "A",
-            _ => "?"
+            _ => "?",
         };
         var suit = card.Suit switch
         {
@@ -172,7 +172,7 @@ public class TextRenderer
             Suit.Diamonds => "d",
             Suit.Hearts => "h",
             Suit.Spades => "s",
-            _ => "?"
+            _ => "?",
         };
         return rank + suit;
     }

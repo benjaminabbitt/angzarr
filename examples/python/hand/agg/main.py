@@ -7,20 +7,19 @@ import structlog
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "angzarr"))
 
-from angzarr_client import run_aggregate_server
-from angzarr_client.protoname import name
-from angzarr_client import CommandRouter
+from handlers.state import HandState, build_state
 
+from angzarr_client import CommandRouter, run_aggregate_server
+from angzarr_client.protoname import name
 from handlers import (
+    handle_award_pot,
     handle_deal_cards,
-    handle_post_blind,
-    handle_player_action,
     handle_deal_community_cards,
+    handle_player_action,
+    handle_post_blind,
     handle_request_draw,
     handle_reveal_cards,
-    handle_award_pot,
 )
-from handlers.state import HandState, build_state
 
 
 def state_from_event_book(event_book):

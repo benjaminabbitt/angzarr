@@ -1,7 +1,7 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace PrjOutput;
 
@@ -68,7 +68,7 @@ public class OutputProjector
         {
             Cover = eventBook.Cover,
             Projector = "output",
-            Sequence = seq
+            Sequence = seq,
         };
     }
 
@@ -92,7 +92,7 @@ public class OutputProjector
             "CommunityCardsDealt" => eventAny.Unpack<CommunityCardsDealt>(),
             "PotAwarded" => eventAny.Unpack<PotAwarded>(),
             "HandComplete" => eventAny.Unpack<HandComplete>(),
-            _ => null
+            _ => null,
         };
     }
 }

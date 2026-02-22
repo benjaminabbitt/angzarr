@@ -5,16 +5,16 @@ Starts angzarr-standalone, then runs a complete poker game with 6 AI players
 until one player remains.
 """
 
+import argparse
 import os
-import sys
-import time
+import random
 import signal
 import subprocess
-import argparse
-import random
-from pathlib import Path
+import sys
+import time
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 # Add paths for imports
 root = Path(__file__).parent
@@ -23,8 +23,9 @@ sys.path.insert(0, str(root / "angzarr"))
 sys.path.insert(0, str(root / "agg-player"))  # Contains proto/poker stubs
 
 import grpc
+
+from angzarr_client.proto.examples import hand_pb2, player_pb2, table_pb2, types_pb2
 from client import GatewayClient, derive_root
-from angzarr_client.proto.examples import player_pb2, table_pb2, hand_pb2, types_pb2
 
 # Card display
 SUIT_SYMBOLS = {
@@ -481,9 +482,11 @@ class PokerGame:
             cmd = hand_pb2.PlayerAction(
                 player_root=player.root,
                 action=action,
-                amount=amount
-                if action in (types_pb2.CALL, types_pb2.RAISE, types_pb2.BET)
-                else 0,
+                amount=(
+                    amount
+                    if action in (types_pb2.CALL, types_pb2.RAISE, types_pb2.BET)
+                    else 0
+                ),
             )
 
             action_name = types_pb2.ActionType.Name(action)

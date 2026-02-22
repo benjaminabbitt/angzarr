@@ -25,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "angzarr"))
 
 from angzarr_client import Upcaster, UpcasterHandler, run_upcaster_server
 
-
 structlog.configure(
     processors=[
         structlog.stdlib.add_log_level,

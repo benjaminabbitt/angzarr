@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg.Handlers;
 
@@ -27,16 +27,18 @@ public static class StartHandHandler
         var handRoot = GenerateHandRoot(state.TableId, handNumber);
         var dealerPosition = state.NextDealerPosition();
 
-        var activePositions = state.Seats.Values
-            .Where(s => !s.IsSittingOut)
+        var activePositions = state
+            .Seats.Values.Where(s => !s.IsSittingOut)
             .Select(s => s.Position)
             .OrderBy(p => p)
             .ToList();
 
         var dealerIdx = activePositions.IndexOf(dealerPosition);
-        if (dealerIdx < 0) dealerIdx = 0;
+        if (dealerIdx < 0)
+            dealerIdx = 0;
 
-        int sbPosition, bbPosition;
+        int sbPosition,
+            bbPosition;
         if (activePositions.Count == 2)
         {
             sbPosition = activePositions[dealerIdx];
@@ -48,16 +50,18 @@ public static class StartHandHandler
             bbPosition = activePositions[(dealerIdx + 2) % activePositions.Count];
         }
 
-        var activePlayers = activePositions.Select(pos =>
-        {
-            var seat = state.Seats[pos];
-            return new SeatSnapshot
+        var activePlayers = activePositions
+            .Select(pos =>
             {
-                Position = pos,
-                PlayerRoot = seat.PlayerRoot,
-                Stack = seat.Stack
-            };
-        }).ToList();
+                var seat = state.Seats[pos];
+                return new SeatSnapshot
+                {
+                    Position = pos,
+                    PlayerRoot = seat.PlayerRoot,
+                    Stack = seat.Stack,
+                };
+            })
+            .ToList();
 
         var evt = new HandStarted
         {
@@ -69,7 +73,7 @@ public static class StartHandHandler
             GameVariant = state.GameVariant,
             SmallBlind = state.SmallBlind,
             BigBlind = state.BigBlind,
-            StartedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            StartedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.ActivePlayers.AddRange(activePlayers);
 

@@ -13,10 +13,10 @@ import structlog
 # Add paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from angzarr_client.proto.angzarr import types_pb2 as types
-from angzarr_client.projector_handler import ProjectorHandler, run_projector_server
-
 from projector import OutputProjector
+
+from angzarr_client.projector_handler import ProjectorHandler, run_projector_server
+from angzarr_client.proto.angzarr import types_pb2 as types
 
 structlog.configure(
     processors=[

@@ -5,26 +5,26 @@ from typing import Optional
 
 import grpc
 
+from .errors import GRPCError, TransportError
 from .proto.angzarr import (
     AggregateCoordinatorServiceStub,
-    SagaCoordinatorServiceStub,
-    ProjectorCoordinatorServiceStub,
-    ProcessManagerCoordinatorServiceStub,
-    EventQueryServiceStub,
     CommandBook,
     CommandResponse,
-    SyncCommandBook,
-    SpeculateAggregateRequest,
     EventBook,
-    Query,
-    Projection,
-    SagaResponse,
+    EventQueryServiceStub,
+    ProcessManagerCoordinatorServiceStub,
     ProcessManagerHandleResponse,
+    Projection,
+    ProjectorCoordinatorServiceStub,
+    Query,
+    SagaCoordinatorServiceStub,
+    SagaResponse,
+    SpeculateAggregateRequest,
+    SpeculatePmRequest,
     SpeculateProjectorRequest,
     SpeculateSagaRequest,
-    SpeculatePmRequest,
+    SyncCommandBook,
 )
-from .errors import GRPCError, TransportError
 
 
 def _create_channel(endpoint: str) -> grpc.Channel:

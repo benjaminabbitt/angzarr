@@ -37,11 +37,7 @@ public class QueryClientSteps
             var guid = ParseGuid(root);
             _eventBook = new Angzarr.EventBook
             {
-                Cover = new Angzarr.Cover
-                {
-                    Domain = domain,
-                    Root = Helpers.UuidToProto(guid)
-                }
+                Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
             };
         }
         // Share via context for other step classes
@@ -87,20 +83,18 @@ public class QueryClientSteps
             var guid = ParseGuid(root);
             _eventBook = new Angzarr.EventBook
             {
-                Cover = new Angzarr.Cover
-                {
-                    Domain = domain,
-                    Root = Helpers.UuidToProto(guid)
-                }
+                Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
             };
             // Add some events up to the timestamp
             for (int i = 0; i < 3; i++)
             {
-                _eventBook.Pages.Add(new Angzarr.EventPage
-                {
-                    Sequence = (uint)(i + 1),
-                    Event = Any.Pack(new Empty())
-                });
+                _eventBook.Pages.Add(
+                    new Angzarr.EventPage
+                    {
+                        Sequence = (uint)(i + 1),
+                        Event = Any.Pack(new Empty()),
+                    }
+                );
             }
         }
     }
@@ -183,8 +177,13 @@ public class QueryClientSteps
     public void ThenTheSnapshotShouldBeAtSequence(int expected)
     {
         // Check local event book or context-shared event book
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         eventBook!.Snapshot.Sequence.Should().Be((uint)expected);
     }
 
@@ -231,22 +230,25 @@ public class QueryClientSteps
     }
 
     [Given(@"an aggregate ""(.*)"" with root ""(.*)"" has event ""(.*)"" with data ""(.*)""")]
-    public void GivenAnAggregateWithRootHasEventWithData(string domain, string root, string eventType, string data)
+    public void GivenAnAggregateWithRootHasEventWithData(
+        string domain,
+        string root,
+        string eventType,
+        string data
+    )
     {
         var guid = ParseGuid(root);
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty(), $"type.googleapis.com/{eventType}")
-        });
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 1,
+                Event = Any.Pack(new Empty(), $"type.googleapis.com/{eventType}"),
+            }
+        );
     }
 
     [Given(@"an aggregate ""(.*)"" with root ""(.*)"" in edition ""(.*)""")]
@@ -255,39 +257,30 @@ public class QueryClientSteps
         var guid = ParseGuid(root);
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty())
-        });
+        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         _ctx["edition"] = edition;
     }
 
     [Given(@"an aggregate ""(.*)"" with root ""(.*)"" has (\d+) events in edition ""(.*)""")]
-    public void GivenAnAggregateWithRootHasEventsInEdition(string domain, string root, int count, string edition)
+    public void GivenAnAggregateWithRootHasEventsInEdition(
+        string domain,
+        string root,
+        int count,
+        string edition
+    )
     {
         var guid = ParseGuid(root);
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = domain,
-                Root = Helpers.UuidToProto(guid)
-            }
+            Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
         };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty())
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)(i + 1), Event = Any.Pack(new Empty()) }
+            );
         }
         _ctx[$"edition_{edition}_count"] = count;
     }
@@ -302,19 +295,17 @@ public class QueryClientSteps
             var guid = ParseGuid(root);
             _eventBook = new Angzarr.EventBook
             {
-                Cover = new Angzarr.Cover
-                {
-                    Domain = domain,
-                    Root = Helpers.UuidToProto(guid)
-                }
+                Cover = new Angzarr.Cover { Domain = domain, Root = Helpers.UuidToProto(guid) },
             };
             for (int i = 0; i < count; i++)
             {
-                _eventBook.Pages.Add(new Angzarr.EventPage
-                {
-                    Sequence = (uint)(i + 1),
-                    Event = Any.Pack(new Empty())
-                });
+                _eventBook.Pages.Add(
+                    new Angzarr.EventPage
+                    {
+                        Sequence = (uint)(i + 1),
+                        Event = Any.Pack(new Empty()),
+                    }
+                );
             }
         }
     }
@@ -324,11 +315,7 @@ public class QueryClientSteps
     {
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = "test",
-                CorrelationId = correlationId
-            }
+            Cover = new Angzarr.Cover { Domain = "test", CorrelationId = correlationId },
         };
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
     }
@@ -356,10 +343,7 @@ public class QueryClientSteps
     [Given(@"the aggregate does not exist")]
     public void GivenTheAggregateDoesNotExist()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         // Mark that aggregate doesn't exist for subsequent steps
         _ctx["aggregate_does_not_exist"] = true;
     }
@@ -367,10 +351,7 @@ public class QueryClientSteps
     [Given(@"events: OrderCreated, ItemAdded, ItemAdded")]
     public void GivenEventsOrderCreatedItemAddedItemAdded()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         // Use proper Any.Pack so type URL matches "Empty" suffix
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty()) });
@@ -381,10 +362,7 @@ public class QueryClientSteps
     [Given(@"events: OrderCreated, ItemAdded, ItemAdded, OrderShipped")]
     public void GivenEventsOrderCreatedItemAddedItemAddedOrderShipped()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         // Use proper Any.Pack so type URL matches "Empty" suffix
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 2, Event = Any.Pack(new Empty()) });
@@ -396,31 +374,33 @@ public class QueryClientSteps
     [Given(@"events (\d+), (\d+), (\d+)")]
     public void GivenEventsSequences(int seq1, int seq2, int seq3)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         // Include snapshot from context if available
         if (_ctx.ContainsKey("snapshot"))
         {
             _eventBook.Snapshot = _ctx["snapshot"] as Angzarr.Snapshot;
         }
-        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = (uint)seq1, Event = Any.Pack(new Empty()) });
-        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = (uint)seq2, Event = Any.Pack(new Empty()) });
-        _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = (uint)seq3, Event = Any.Pack(new Empty()) });
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage { Sequence = (uint)seq1, Event = Any.Pack(new Empty()) }
+        );
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage { Sequence = (uint)seq2, Event = Any.Pack(new Empty()) }
+        );
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage { Sequence = (uint)seq3, Event = Any.Pack(new Empty()) }
+        );
         _ctx["shared_eventbook"] = _eventBook;
     }
 
     [Given(@"events that increment by (\d+), (\d+), and (\d+)")]
     public void GivenEventsThatIncrementBy(int inc1, int inc2, int inc3)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = 1; i <= 3; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage { Sequence = (uint)i, Event = Any.Pack(new Empty()) }
+            );
         }
         // Share event book and increment amounts via context
         _ctx["shared_eventbook"] = _eventBook;
@@ -433,40 +413,34 @@ public class QueryClientSteps
     [Given(@"events with type_urls:")]
     public void GivenEventsWithTypeUrls(DataTable table)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
 
         for (int i = 0; i < table.Rows.Count; i++)
         {
             var typeUrl = table.Rows[i][0];
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = new Any
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage
                 {
-                    TypeUrl = typeUrl,
-                    Value = new Empty().ToByteString()
+                    Sequence = (uint)(i + 1),
+                    Event = new Any { TypeUrl = typeUrl, Value = new Empty().ToByteString() },
                 }
-            });
+            );
         }
     }
 
     [Given(@"(\d+) events all of type ""(.*)""")]
     public void GivenEventsAllOfType(int count, string type)
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         for (int i = 0; i < count; i++)
         {
-            _eventBook.Pages.Add(new Angzarr.EventPage
-            {
-                Sequence = (uint)(i + 1),
-                Event = Any.Pack(new Empty(), $"type.googleapis.com/{type}")
-            });
+            _eventBook.Pages.Add(
+                new Angzarr.EventPage
+                {
+                    Sequence = (uint)(i + 1),
+                    Event = Any.Pack(new Empty(), $"type.googleapis.com/{type}"),
+                }
+            );
         }
         _ctx["shared_eventbook"] = _eventBook;
     }
@@ -480,15 +454,14 @@ public class QueryClientSteps
     [Given(@"valid protobuf bytes for OrderCreated")]
     public void GivenValidProtobufBytesForOrderCreated()
     {
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
-        _eventBook.Pages.Add(new Angzarr.EventPage
-        {
-            Sequence = 1,
-            Event = Any.Pack(new Empty(), "type.googleapis.com/OrderCreated")
-        });
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
+        _eventBook.Pages.Add(
+            new Angzarr.EventPage
+            {
+                Sequence = 1,
+                Event = Any.Pack(new Empty(), "type.googleapis.com/OrderCreated"),
+            }
+        );
     }
 
     [When(@"I query events")]
@@ -539,7 +512,13 @@ public class QueryClientSteps
     public void ThenAllEventsShouldBeProcessedInOrder(int count)
     {
         // Check local or context-shared event book
-        var book = _eventBook ?? (_ctx.ContainsKey("shared_eventbook") ? _ctx["shared_eventbook"] as Angzarr.EventBook : null);
+        var book =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         book!.Pages.Should().HaveCount(count);
     }
 
@@ -580,11 +559,7 @@ public class QueryClientSteps
     {
         _eventBook = new Angzarr.EventBook
         {
-            Cover = new Angzarr.Cover
-            {
-                Domain = "test",
-                CorrelationId = correlationId
-            }
+            Cover = new Angzarr.Cover { Domain = "test", CorrelationId = correlationId },
         };
     }
 
@@ -608,10 +583,7 @@ public class QueryClientSteps
     public void WhenICallEventsFromResponseResponse()
     {
         // Extract events from response
-        _eventBook = new Angzarr.EventBook
-        {
-            Cover = new Angzarr.Cover { Domain = "test" }
-        };
+        _eventBook = new Angzarr.EventBook { Cover = new Angzarr.Cover { Domain = "test" } };
         // Add sample pages
         _eventBook.Pages.Add(new Angzarr.EventPage { Sequence = 1, Event = Any.Pack(new Empty()) });
         // Share via context
@@ -621,9 +593,13 @@ public class QueryClientSteps
     [Then(@"an EventBook should be returned")]
     public void ThenAnEventBookShouldBeReturned()
     {
-        var eventBook = _eventBook ?? (_ctx.ContainsKey("shared_eventbook")
-            ? _ctx["shared_eventbook"] as Angzarr.EventBook
-            : null);
+        var eventBook =
+            _eventBook
+            ?? (
+                _ctx.ContainsKey("shared_eventbook")
+                    ? _ctx["shared_eventbook"] as Angzarr.EventBook
+                    : null
+            );
         eventBook.Should().NotBeNull();
     }
 

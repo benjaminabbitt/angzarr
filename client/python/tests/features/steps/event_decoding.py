@@ -4,13 +4,11 @@ import uuid
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import scenarios, given, when, then, parsers
-
 from google.protobuf.any_pb2 import Any
 from google.protobuf.timestamp_pb2 import Timestamp
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from angzarr_client.proto.angzarr import types_pb2
-
 
 # Link to feature file
 scenarios("../../../../features/event_decoding.feature")

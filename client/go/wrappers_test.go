@@ -3,8 +3,8 @@ package angzarr
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 

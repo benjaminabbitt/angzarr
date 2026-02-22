@@ -1,7 +1,7 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace HandFlow;
 
@@ -24,11 +24,13 @@ public class HandFlowProcessManager
             if (typeUrl.Contains("HandStarted"))
             {
                 var evt = page.Event.Unpack<HandStarted>();
-                destinations.Add(new Cover
-                {
-                    Domain = "hand",
-                    Root = new UUID { Value = evt.HandRoot }
-                });
+                destinations.Add(
+                    new Cover
+                    {
+                        Domain = "hand",
+                        Root = new UUID { Value = evt.HandRoot },
+                    }
+                );
             }
         }
 
@@ -38,7 +40,8 @@ public class HandFlowProcessManager
     public (List<CommandBook> Commands, EventBook? Events) Handle(
         EventBook trigger,
         EventBook processState,
-        List<EventBook> destinations)
+        List<EventBook> destinations
+    )
     {
         var commands = new List<CommandBook>();
 
@@ -51,31 +54,36 @@ public class HandFlowProcessManager
             {
                 var evt = eventAny.Unpack<HandStarted>();
                 var cmd = HandleHandStarted(evt);
-                if (cmd != null) commands.Add(cmd);
+                if (cmd != null)
+                    commands.Add(cmd);
             }
             else if (typeUrl.Contains("CardsDealt"))
             {
                 var evt = eventAny.Unpack<CardsDealt>();
                 var cmd = HandleCardsDealt(evt);
-                if (cmd != null) commands.Add(cmd);
+                if (cmd != null)
+                    commands.Add(cmd);
             }
             else if (typeUrl.Contains("BlindPosted"))
             {
                 var evt = eventAny.Unpack<BlindPosted>();
                 var cmd = HandleBlindPosted(evt);
-                if (cmd != null) commands.Add(cmd);
+                if (cmd != null)
+                    commands.Add(cmd);
             }
             else if (typeUrl.Contains("ActionTaken"))
             {
                 var evt = eventAny.Unpack<ActionTaken>();
                 var cmd = HandleActionTaken(evt);
-                if (cmd != null) commands.Add(cmd);
+                if (cmd != null)
+                    commands.Add(cmd);
             }
             else if (typeUrl.Contains("CommunityCardsDealt"))
             {
                 var evt = eventAny.Unpack<CommunityCardsDealt>();
                 var cmd = HandleCommunityCardsDealt(evt);
-                if (cmd != null) commands.Add(cmd);
+                if (cmd != null)
+                    commands.Add(cmd);
             }
             else if (typeUrl.Contains("PotAwarded"))
             {
@@ -89,7 +97,8 @@ public class HandFlowProcessManager
 
     private CommandBook? HandleHandStarted(HandStarted evt)
     {
-        var handId = $"{Convert.ToHexString(evt.HandRoot.ToByteArray()).ToLowerInvariant()}_{evt.HandNumber}";
+        var handId =
+            $"{Convert.ToHexString(evt.HandRoot.ToByteArray()).ToLowerInvariant()}_{evt.HandNumber}";
 
         var process = new HandProcess
         {
@@ -102,7 +111,7 @@ public class HandFlowProcessManager
             BigBlindPosition = evt.BigBlindPosition,
             SmallBlind = evt.SmallBlind,
             BigBlind = evt.BigBlind,
-            Phase = HandPhase.Dealing
+            Phase = HandPhase.Dealing,
         };
 
         foreach (var player in evt.ActivePlayers)
@@ -111,7 +120,7 @@ public class HandFlowProcessManager
             {
                 PlayerRoot = player.PlayerRoot,
                 Position = player.Position,
-                Stack = player.Stack
+                Stack = player.Stack,
             };
             process.ActivePositions.Add(player.Position);
         }
@@ -124,7 +133,8 @@ public class HandFlowProcessManager
 
     private CommandBook? HandleCardsDealt(CardsDealt evt)
     {
-        var handId = $"{Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant()}_{evt.HandNumber}";
+        var handId =
+            $"{Convert.ToHexString(evt.TableRoot.ToByteArray()).ToLowerInvariant()}_{evt.HandNumber}";
         if (!_processes.TryGetValue(handId, out var process))
             return null;
 
@@ -240,7 +250,8 @@ public class HandFlowProcessManager
     private CommandBook? HandleCommunityCardsDealt(CommunityCardsDealt evt)
     {
         var process = _processes.Values.FirstOrDefault(p =>
-            p.CommunityCardCount + evt.Cards.Count == evt.AllCommunityCards.Count);
+            p.CommunityCardCount + evt.Cards.Count == evt.AllCommunityCards.Count
+        );
         if (process == null)
             return null;
 
@@ -271,9 +282,7 @@ public class HandFlowProcessManager
 
     private bool IsBettingComplete(HandProcess process)
     {
-        var activePlayers = process.Players.Values
-            .Where(p => !p.HasFolded && !p.IsAllIn)
-            .ToList();
+        var activePlayers = process.Players.Values.Where(p => !p.HasFolded && !p.IsAllIn).ToList();
 
         if (activePlayers.Count <= 1)
             return true;
@@ -314,10 +323,10 @@ public class HandFlowProcessManager
         int cardsToDealt = process.BettingPhase switch
         {
             BettingPhase.Preflop => 3, // Flop
-            BettingPhase.Flop => 1,     // Turn
-            BettingPhase.Turn => 1,     // River
-            BettingPhase.River => 0,    // Showdown
-            _ => 0
+            BettingPhase.Flop => 1, // Turn
+            BettingPhase.Turn => 1, // River
+            BettingPhase.River => 0, // Showdown
+            _ => 0,
         };
 
         if (cardsToDealt > 0)
@@ -331,13 +340,18 @@ public class HandFlowProcessManager
         return BuildAwardPotCommand(process, playersInHand);
     }
 
-    private CommandBook BuildPostBlindCommand(HandProcess process, PlayerProcessState player, string blindType, long amount)
+    private CommandBook BuildPostBlindCommand(
+        HandProcess process,
+        PlayerProcessState player,
+        string blindType,
+        long amount
+    )
     {
         var cmd = new PostBlind
         {
             PlayerRoot = player.PlayerRoot,
             BlindType = blindType,
-            Amount = amount
+            Amount = amount,
         };
 
         var cmdAny = Any.Pack(cmd, "type.googleapis.com/");
@@ -348,9 +362,9 @@ public class HandFlowProcessManager
             Cover = new Cover
             {
                 Domain = "hand",
-                Root = new UUID { Value = handRoot }
+                Root = new UUID { Value = handRoot },
             },
-            Pages = { new CommandPage { Command = cmdAny } }
+            Pages = { new CommandPage { Command = cmdAny } },
         };
     }
 
@@ -365,9 +379,9 @@ public class HandFlowProcessManager
             Cover = new Cover
             {
                 Domain = "hand",
-                Root = new UUID { Value = handRoot }
+                Root = new UUID { Value = handRoot },
             },
-            Pages = { new CommandPage { Command = cmdAny } }
+            Pages = { new CommandPage { Command = cmdAny } },
         };
     }
 
@@ -378,12 +392,17 @@ public class HandFlowProcessManager
         var split = process.PotTotal / winners.Count;
         var remainder = process.PotTotal % winners.Count;
 
-        var awards = winners.Select((w, i) => new PotAward
-        {
-            PlayerRoot = w.PlayerRoot,
-            Amount = split + (i < remainder ? 1 : 0),
-            PotType = "main"
-        }).ToList();
+        var awards = winners
+            .Select(
+                (w, i) =>
+                    new PotAward
+                    {
+                        PlayerRoot = w.PlayerRoot,
+                        Amount = split + (i < remainder ? 1 : 0),
+                        PotType = "main",
+                    }
+            )
+            .ToList();
 
         var cmd = new AwardPot();
         cmd.Awards.AddRange(awards);
@@ -396,15 +415,16 @@ public class HandFlowProcessManager
             Cover = new Cover
             {
                 Domain = "hand",
-                Root = new UUID { Value = handRoot }
+                Root = new UUID { Value = handRoot },
             },
-            Pages = { new CommandPage { Command = cmdAny } }
+            Pages = { new CommandPage { Command = cmdAny } },
         };
     }
 
     private HandProcess? FindProcessByPlayer(ByteString playerRoot)
     {
         return _processes.Values.FirstOrDefault(p =>
-            p.Players.Values.Any(pl => pl.PlayerRoot.Equals(playerRoot)));
+            p.Players.Values.Any(pl => pl.PlayerRoot.Equals(playerRoot))
+        );
     }
 }

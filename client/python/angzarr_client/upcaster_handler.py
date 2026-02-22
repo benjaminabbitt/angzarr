@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Callable
 
 import grpc
 
+from .proto.angzarr import types_pb2 as types
 from .proto.angzarr import upcaster_pb2 as upcaster
 from .proto.angzarr import upcaster_pb2_grpc
-from .proto.angzarr import types_pb2 as types
 from .server import run_server
 
 if TYPE_CHECKING:

@@ -9,7 +9,6 @@ Domains:
 
 from dataclasses import dataclass, field, fields
 
-
 # =============================================================================
 # Base class for test proto messages
 # =============================================================================

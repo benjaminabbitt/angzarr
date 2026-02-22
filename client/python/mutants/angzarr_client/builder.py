@@ -1,31 +1,28 @@
 """Fluent builders for commands and queries."""
 
-from typing import Optional
-from uuid import UUID as PyUUID, uuid4
+from inspect import signature as _mutmut_signature
+from typing import Annotated, Callable, ClassVar, Optional
+from uuid import UUID as PyUUID
+from uuid import uuid4
 
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message
 
+from .client import AggregateClient, QueryClient
+from .errors import InvalidArgumentError
+from .helpers import implicit_edition, parse_timestamp, uuid_to_proto
 from .proto.angzarr import (
-    Cover,
-    Edition,
     CommandBook,
     CommandPage,
     CommandResponse,
+    Cover,
+    Edition,
+    EventBook,
+    EventPage,
     Query,
     SequenceRange,
     TemporalQuery,
-    EventBook,
-    EventPage,
 )
-from .client import AggregateClient, QueryClient
-from .helpers import uuid_to_proto, implicit_edition, parse_timestamp
-from .errors import InvalidArgumentError
-from inspect import signature as _mutmut_signature
-from typing import Annotated
-from typing import Callable
-from typing import ClassVar
-
 
 MutantDict = Annotated[dict[str, Callable], "Mutant"]
 

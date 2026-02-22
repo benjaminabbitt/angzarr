@@ -39,7 +39,11 @@ public class ConnectionSteps
             _useTls = true;
             _connected = true;
         }
-        else if (!endpoint.Contains("://") && !endpoint.Contains(":") && !endpoint.Contains("localhost"))
+        else if (
+            !endpoint.Contains("://")
+            && !endpoint.Contains(":")
+            && !endpoint.Contains("localhost")
+        )
         {
             // Invalid endpoint format (e.g., "not a valid endpoint")
             _connectionError = new InvalidArgumentError("Invalid endpoint format");

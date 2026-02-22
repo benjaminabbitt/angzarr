@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg.Handlers;
 
@@ -31,7 +31,7 @@ public static class LeaveHandler
             PlayerRoot = cmd.PlayerRoot,
             SeatPosition = seat.Position,
             ChipsCashedOut = seat.Stack,
-            LeftAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            LeftAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 }

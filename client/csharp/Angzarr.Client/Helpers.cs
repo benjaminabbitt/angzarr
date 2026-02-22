@@ -62,7 +62,8 @@ public static class Helpers
     public static string RootIdHex(Angzarr.EventBook book)
     {
         var root = book.Cover?.Root;
-        if (root == null) return "";
+        if (root == null)
+            return "";
         return Convert.ToHexString(root.Value.ToByteArray()).ToLowerInvariant();
     }
 

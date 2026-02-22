@@ -1,11 +1,11 @@
 // DOC: This file is referenced in docs/docs/examples/aggregates.mdx
 //      Update documentation when making changes to handler patterns.
 
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg;
 
@@ -117,7 +117,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
             Email = cmd.Email,
             PlayerType = cmd.PlayerType,
             AiModelId = cmd.AiModelId,
-            RegisteredAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            RegisteredAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -136,7 +136,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
         {
             Amount = cmd.Amount,
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -157,7 +157,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
         {
             Amount = cmd.Amount,
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            WithdrawnAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            WithdrawnAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -186,9 +186,10 @@ public class PlayerAggregate : Aggregate<PlayerState>
             TableRoot = cmd.TableRoot,
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
-            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
+
     // docs:end:reserve_funds_oo
 
     [Handles(typeof(ReleaseFunds))]
@@ -198,7 +199,10 @@ public class PlayerAggregate : Aggregate<PlayerState>
             throw CommandRejectedError.PreconditionFailed("Player does not exist");
 
         var tableKey = Convert.ToHexString(cmd.TableRoot.ToByteArray()).ToLowerInvariant();
-        if (!TableReservations.TryGetValue(tableKey, out var reservedForTable) || reservedForTable == 0)
+        if (
+            !TableReservations.TryGetValue(tableKey, out var reservedForTable)
+            || reservedForTable == 0
+        )
             throw CommandRejectedError.PreconditionFailed("No funds reserved for this table");
 
         var newReserved = ReservedFunds - reservedForTable;
@@ -209,7 +213,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
             TableRoot = cmd.TableRoot,
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
-            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 
@@ -229,9 +233,10 @@ public class PlayerAggregate : Aggregate<PlayerState>
             HandRoot = cmd.HandRoot,
             Reason = cmd.Reason,
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            TransferredAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            TransferredAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
+
     // docs:end:annotation_handlers
 
     // --- Saga/PM Compensation ---
@@ -242,7 +247,9 @@ public class PlayerAggregate : Aggregate<PlayerState>
     {
         var ctx = CompensationContext.From(notification);
 
-        Console.WriteLine($"Player compensation for JoinTable rejection: reason={ctx.RejectionReason}");
+        Console.WriteLine(
+            $"Player compensation for JoinTable rejection: reason={ctx.RejectionReason}"
+        );
 
         // Extract table_root from the rejected command
         var tableRoot = ctx.RejectedCommand?.Cover?.Root?.Value ?? ByteString.Empty;
@@ -259,7 +266,7 @@ public class PlayerAggregate : Aggregate<PlayerState>
             TableRoot = tableRoot,
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
-            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ReleasedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
 

@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Player.Agg.Handlers;
 
@@ -15,6 +15,7 @@ public static class DepositHandler
         if (!state.Exists)
             throw CommandRejectedError.PreconditionFailed("Player does not exist");
     }
+
     // docs:end:deposit_guard
 
     // docs:start:deposit_validate
@@ -25,6 +26,7 @@ public static class DepositHandler
             throw CommandRejectedError.InvalidArgument("amount must be positive");
         return amount;
     }
+
     // docs:end:deposit_validate
 
     // docs:start:deposit_compute
@@ -35,9 +37,10 @@ public static class DepositHandler
         {
             Amount = cmd.Amount,
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
     }
+
     // docs:end:deposit_compute
 
     public static FundsDeposited Handle(DepositFunds cmd, PlayerState state)

@@ -1,7 +1,7 @@
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Hand.Agg.Handlers;
 
@@ -32,30 +32,36 @@ public static class AwardPotHandler
         }
 
         // Compute
-        var winners = cmd.Awards.Select(a => new PotWinner
-        {
-            PlayerRoot = a.PlayerRoot,
-            Amount = a.Amount,
-            PotType = a.PotType
-        }).ToList();
-
-        var finalStacks = state.Players.Values.Select(p =>
-        {
-            var winAmount = cmd.Awards.Where(a => a.PlayerRoot.Equals(p.PlayerRoot)).Sum(a => a.Amount);
-            return new PlayerStackSnapshot
+        var winners = cmd
+            .Awards.Select(a => new PotWinner
             {
-                PlayerRoot = p.PlayerRoot,
-                Stack = p.Stack + winAmount,
-                IsAllIn = p.IsAllIn,
-                HasFolded = p.HasFolded
-            };
-        }).ToList();
+                PlayerRoot = a.PlayerRoot,
+                Amount = a.Amount,
+                PotType = a.PotType,
+            })
+            .ToList();
+
+        var finalStacks = state
+            .Players.Values.Select(p =>
+            {
+                var winAmount = cmd
+                    .Awards.Where(a => a.PlayerRoot.Equals(p.PlayerRoot))
+                    .Sum(a => a.Amount);
+                return new PlayerStackSnapshot
+                {
+                    PlayerRoot = p.PlayerRoot,
+                    Stack = p.Stack + winAmount,
+                    IsAllIn = p.IsAllIn,
+                    HasFolded = p.HasFolded,
+                };
+            })
+            .ToList();
 
         var evt = new HandComplete
         {
             TableRoot = state.TableRoot,
             HandNumber = state.HandNumber,
-            CompletedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            CompletedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.Winners.AddRange(winners);
         evt.FinalStacks.AddRange(finalStacks);

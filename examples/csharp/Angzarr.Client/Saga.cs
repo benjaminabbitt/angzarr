@@ -1,7 +1,7 @@
+using System.Reflection;
+using Angzarr;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Angzarr;
-using System.Reflection;
 
 namespace Angzarr.Client;
 
@@ -65,7 +65,8 @@ public abstract class Saga
     /// </summary>
     public static uint NextSequence(EventBook? eventBook)
     {
-        if (eventBook == null) return 0;
+        if (eventBook == null)
+            return 0;
         return eventBook.NextSequence;
     }
 
@@ -79,7 +80,8 @@ public abstract class Saga
 
     private void DiscoverHandlers()
     {
-        var methods = GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var methods = GetType()
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
         foreach (var method in methods)
         {

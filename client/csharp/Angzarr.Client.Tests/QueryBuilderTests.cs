@@ -26,8 +26,7 @@ public class QueryBuilderTests
     public void Build_WithRangeTo_ShouldSetBothBounds()
     {
         // When I build a query with range from 5 to 10
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .RangeTo(5, 10);
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).RangeTo(5, 10);
 
         var query = builder.Build();
 
@@ -41,8 +40,7 @@ public class QueryBuilderTests
     public void Build_WithRangeOpenEnded_ShouldOnlySetLowerBound()
     {
         // When I build a query with range from 5
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .Range(5);
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).Range(5);
 
         var query = builder.Build();
 
@@ -56,8 +54,7 @@ public class QueryBuilderTests
     public void Build_AsOfSequence_ShouldSetTemporalSequence()
     {
         // When I build a query as_of_sequence 42
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .AsOfSequence(42);
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).AsOfSequence(42);
 
         var query = builder.Build();
 
@@ -70,8 +67,9 @@ public class QueryBuilderTests
     public void Build_AsOfTime_ShouldParseTimestamp()
     {
         // When I build a query as_of_time "2024-01-15T10:30:00Z"
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .AsOfTime("2024-01-15T10:30:00Z");
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).AsOfTime(
+            "2024-01-15T10:30:00Z"
+        );
 
         var query = builder.Build();
 
@@ -79,7 +77,15 @@ public class QueryBuilderTests
         query.Temporal.Should().NotBeNull();
         query.Temporal.AsOfTime.Should().NotBeNull();
         // January 15, 2024 10:30:00 UTC
-        var expected = new DateTimeOffset(2024, 1, 15, 10, 30, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        var expected = new DateTimeOffset(
+            2024,
+            1,
+            15,
+            10,
+            30,
+            0,
+            TimeSpan.Zero
+        ).ToUnixTimeSeconds();
         query.Temporal.AsOfTime.Seconds.Should().Be(expected);
     }
 
@@ -87,8 +93,7 @@ public class QueryBuilderTests
     public void Build_ByCorrelationId_ShouldClearRoot()
     {
         // When I build a query by_correlation_id "corr-456"
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .ByCorrelationId("corr-456");
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).ByCorrelationId("corr-456");
 
         var query = builder.Build();
 
@@ -102,8 +107,7 @@ public class QueryBuilderTests
     public void Build_WithEdition_ShouldSetEditionName()
     {
         // When I build a query with_edition "v2"
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .WithEdition("v2");
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).WithEdition("v2");
 
         var query = builder.Build();
 
@@ -116,8 +120,7 @@ public class QueryBuilderTests
     public void Build_InvalidTimestamp_ShouldThrowOnBuild()
     {
         // When I build a query with an invalid timestamp
-        var builder = new QueryBuilder(null!, "test", Guid.NewGuid())
-            .AsOfTime("not-a-timestamp");
+        var builder = new QueryBuilder(null!, "test", Guid.NewGuid()).AsOfTime("not-a-timestamp");
 
         // Then Build should throw
         var act = () => builder.Build();
@@ -128,8 +131,7 @@ public class QueryBuilderTests
     public void Build_WithDomainOnly_ShouldNotRequireRoot()
     {
         // When I build a query with domain only (for correlation ID queries)
-        var builder = new QueryBuilder(null!, "test")
-            .ByCorrelationId("corr-123");
+        var builder = new QueryBuilder(null!, "test").ByCorrelationId("corr-123");
 
         var query = builder.Build();
 

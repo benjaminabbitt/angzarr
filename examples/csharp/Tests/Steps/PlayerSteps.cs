@@ -1,11 +1,11 @@
-using FluentAssertions;
-using Google.Protobuf;
-using Google.Protobuf.WellKnownTypes;
-using TechTalk.SpecFlow;
 using Angzarr;
 using Angzarr.Client;
 using Angzarr.Examples;
+using FluentAssertions;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Player.Agg;
+using TechTalk.SpecFlow;
 
 namespace Tests.Steps;
 
@@ -60,11 +60,7 @@ public class PlayerSteps
     private EventPage MakeEventPage(IMessage evt, int seq)
     {
         var any = Any.Pack(evt, "type.googleapis.com/");
-        return new EventPage
-        {
-            Sequence = (uint)seq,
-            Event = any
-        };
+        return new EventPage { Sequence = (uint)seq, Event = any };
     }
 
     private EventBook MakeEventBook()
@@ -74,8 +70,8 @@ public class PlayerSteps
             Cover = new Cover
             {
                 Domain = "player",
-                Root = new UUID { Value = ByteString.CopyFromUtf8("player-123") }
-            }
+                Root = new UUID { Value = ByteString.CopyFromUtf8("player-123") },
+            },
         };
         book.Pages.AddRange(Events);
         return book;
@@ -117,14 +113,15 @@ public class PlayerSteps
     [Given(@"a PlayerRegistered event for ""(.*)""")]
     public void GivenAPlayerRegisteredEventFor(string name)
     {
-        if (Events == null) Events = new List<EventPage>();
+        if (Events == null)
+            Events = new List<EventPage>();
 
         var evt = new PlayerRegistered
         {
             DisplayName = name,
             Email = $"{name.ToLower()}@example.com",
             PlayerType = PlayerType.Human,
-            RegisteredAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            RegisteredAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(evt, Events.Count));
     }
@@ -132,7 +129,8 @@ public class PlayerSteps
     [Given(@"a FundsDeposited event with amount (\d+)")]
     public void GivenAFundsDepositedEventWithAmount(int amount)
     {
-        if (Events == null) Events = new List<EventPage>();
+        if (Events == null)
+            Events = new List<EventPage>();
 
         // Calculate prior balance
         long priorBalance = 0;
@@ -151,7 +149,7 @@ public class PlayerSteps
         {
             Amount = new Currency { Amount = amount, CurrencyCode = "CHIPS" },
             NewBalance = new Currency { Amount = newBalance, CurrencyCode = "CHIPS" },
-            DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            DepositedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(depositEvt, Events.Count));
     }
@@ -159,7 +157,8 @@ public class PlayerSteps
     [Given(@"a FundsReserved event with amount (\d+) for table ""(.*)""")]
     public void GivenAFundsReservedEventWithAmountForTable(int amount, string tableId)
     {
-        if (Events == null) Events = new List<EventPage>();
+        if (Events == null)
+            Events = new List<EventPage>();
 
         // Calculate balances
         long totalDeposited = 0;
@@ -189,7 +188,7 @@ public class PlayerSteps
             TableRoot = ByteString.CopyFromUtf8(tableId),
             NewAvailableBalance = new Currency { Amount = newAvailable, CurrencyCode = "CHIPS" },
             NewReservedBalance = new Currency { Amount = newReserved, CurrencyCode = "CHIPS" },
-            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            ReservedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         Events.Add(MakeEventPage(reserveEvt, Events.Count));
     }
@@ -203,7 +202,7 @@ public class PlayerSteps
         {
             DisplayName = name,
             Email = email,
-            PlayerType = PlayerType.Human
+            PlayerType = PlayerType.Human,
         };
         ExecuteCommand(cmd);
     }
@@ -216,7 +215,7 @@ public class PlayerSteps
             DisplayName = name,
             Email = email,
             PlayerType = PlayerType.Ai,
-            AiModelId = "gpt-4"
+            AiModelId = "gpt-4",
         };
         ExecuteCommand(cmd);
     }
@@ -226,7 +225,7 @@ public class PlayerSteps
     {
         var cmd = new DepositFunds
         {
-            Amount = new Currency { Amount = amount, CurrencyCode = "CHIPS" }
+            Amount = new Currency { Amount = amount, CurrencyCode = "CHIPS" },
         };
         ExecuteCommand(cmd);
     }
@@ -236,7 +235,7 @@ public class PlayerSteps
     {
         var cmd = new WithdrawFunds
         {
-            Amount = new Currency { Amount = amount, CurrencyCode = "CHIPS" }
+            Amount = new Currency { Amount = amount, CurrencyCode = "CHIPS" },
         };
         ExecuteCommand(cmd);
     }
@@ -247,7 +246,7 @@ public class PlayerSteps
         var cmd = new ReserveFunds
         {
             Amount = new Currency { Amount = amount, CurrencyCode = "CHIPS" },
-            TableRoot = ByteString.CopyFromUtf8(tableId)
+            TableRoot = ByteString.CopyFromUtf8(tableId),
         };
         ExecuteCommand(cmd);
     }
@@ -255,10 +254,7 @@ public class PlayerSteps
     [When(@"I handle a ReleaseFunds command for table ""(.*)""")]
     public void WhenIHandleAReleaseFundsCommandForTable(string tableId)
     {
-        var cmd = new ReleaseFunds
-        {
-            TableRoot = ByteString.CopyFromUtf8(tableId)
-        };
+        var cmd = new ReleaseFunds { TableRoot = ByteString.CopyFromUtf8(tableId) };
         ExecuteCommand(cmd);
     }
 
@@ -273,7 +269,9 @@ public class PlayerSteps
 
     // --- Then steps ---
 
-    [Then(@"the result is a (PlayerRegistered|FundsDeposited|FundsWithdrawn|FundsReserved|FundsReleased) event")]
+    [Then(
+        @"the result is a (PlayerRegistered|FundsDeposited|FundsWithdrawn|FundsReserved|FundsReleased) event"
+    )]
     public void ThenTheResultIsAEvent(string eventType)
     {
         Error.Should().BeNull($"Expected {eventType} event but got error: {Error?.Message}");
@@ -296,7 +294,7 @@ public class PlayerSteps
         {
             "HUMAN" => PlayerType.Human,
             "AI" => PlayerType.Ai,
-            _ => PlayerType.Unspecified
+            _ => PlayerType.Unspecified,
         };
         evt.PlayerType.Should().Be(expected);
     }
@@ -370,10 +368,11 @@ public class PlayerSteps
         }
         else
         {
-            throw new InvalidOperationException($"Unknown event type for new_available_balance: {typeUrl}");
+            throw new InvalidOperationException(
+                $"Unknown event type for new_available_balance: {typeUrl}"
+            );
         }
     }
-
 
     [Then(@"the player state has bankroll (\d+)")]
     public void ThenThePlayerStateHasBankroll(int amount)

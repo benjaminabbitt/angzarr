@@ -60,11 +60,11 @@ type HandProcess struct {
 	LastAggressor      int32
 
 	// Betting state
-	SmallBlind   int64
-	BigBlind     int64
-	CurrentBet   int64
-	MinRaise     int64
-	PotTotal     int64
+	SmallBlind int64
+	BigBlind   int64
+	CurrentBet int64
+	MinRaise   int64
+	PotTotal   int64
 
 	// Blind posting progress
 	SmallBlindPosted bool

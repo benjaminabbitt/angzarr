@@ -1,6 +1,6 @@
-using Google.Protobuf.WellKnownTypes;
 using Angzarr.Client;
 using Angzarr.Examples;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Table.Agg.Handlers;
 
@@ -32,7 +32,7 @@ public static class EndHandHandler
         var evt = new HandEnded
         {
             HandRoot = cmd.HandRoot,
-            EndedAt = Timestamp.FromDateTime(DateTime.UtcNow)
+            EndedAt = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         evt.Results.AddRange(cmd.Results);
         foreach (var kvp in stackChanges)

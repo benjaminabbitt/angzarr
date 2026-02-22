@@ -114,6 +114,7 @@ func NewHand(eventBook *pb.EventBook) *Hand {
 
 	return h
 }
+
 // docs:end:oo_handlers
 
 // --- Event Appliers ---
