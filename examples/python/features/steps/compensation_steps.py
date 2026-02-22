@@ -2359,12 +2359,6 @@ def step_router_builds_key(context):
     pass
 
 
-@when("a ResourceReleased compensation event is emitted")
-def step_resource_released_emitted(context):
-    """ResourceReleased compensation event emitted."""
-    pass
-
-
 # --- Then Steps: Handle Scenarios ---
 
 @then("the matching @rejected handler is invoked")
