@@ -1,3 +1,4 @@
+@wip
 Feature: Projector logic
   The OutputProjector transforms domain events into human-readable text.
   It's a read-model builder that enables observability without coupling
