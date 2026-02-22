@@ -309,8 +309,19 @@ public class TableSteps {
     public void playerStackChangeIs(String playerId, int change) {
         assertThat(resultEvent).isInstanceOf(HandEnded.class);
         HandEnded event = (HandEnded) resultEvent;
-        long actualChange = event.getStackChangesOrDefault(playerId, 0L);
+        // The map key is hex-encoded player_root bytes
+        String playerHex = bytesToHex(playerId.getBytes(StandardCharsets.UTF_8));
+        long actualChange = event.getStackChangesOrDefault(playerHex, 0L);
         assertThat(actualChange).isEqualTo((long) change);
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     @Then("the table state has {int} players")

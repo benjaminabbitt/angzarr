@@ -197,12 +197,12 @@ public class Table extends Aggregate<TableState> {
             throw Errors.CommandRejectedError.preconditionFailed("Table is full");
         }
         if (getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray()) != null) {
-            throw Errors.CommandRejectedError.preconditionFailed("Player already at table");
+            throw Errors.CommandRejectedError.preconditionFailed("Player already seated at this table");
         }
 
         long buyIn = cmd.getBuyInAmount();
         if (buyIn < getState().getMinBuyIn() || buyIn > getState().getMaxBuyIn()) {
-            throw Errors.CommandRejectedError.invalidArgument("Buy-in must be between min and max");
+            throw Errors.CommandRejectedError.invalidArgument("Buy-in must be at least " + getState().getMinBuyIn());
         }
 
         int seatPosition = cmd.getPreferredSeat();
@@ -235,10 +235,10 @@ public class Table extends Aggregate<TableState> {
         }
         SeatState seat = getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray());
         if (seat == null) {
-            throw Errors.CommandRejectedError.preconditionFailed("Player not at table");
+            throw Errors.CommandRejectedError.preconditionFailed("Player is not seated at this table");
         }
         if (isInHand()) {
-            throw Errors.CommandRejectedError.preconditionFailed("Cannot leave during active hand");
+            throw Errors.CommandRejectedError.preconditionFailed("Cannot leave during a hand");
         }
 
         return PlayerLeft.newBuilder()
@@ -256,7 +256,7 @@ public class Table extends Aggregate<TableState> {
         }
         SeatState seat = getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray());
         if (seat == null) {
-            throw Errors.CommandRejectedError.preconditionFailed("Player not at table");
+            throw Errors.CommandRejectedError.preconditionFailed("Player is not seated at this table");
         }
         if (seat.isSittingOut()) {
             throw Errors.CommandRejectedError.preconditionFailed("Player already sitting out");
@@ -275,7 +275,7 @@ public class Table extends Aggregate<TableState> {
         }
         SeatState seat = getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray());
         if (seat == null) {
-            throw Errors.CommandRejectedError.preconditionFailed("Player not at table");
+            throw Errors.CommandRejectedError.preconditionFailed("Player is not seated at this table");
         }
         if (!seat.isSittingOut()) {
             throw Errors.CommandRejectedError.preconditionFailed("Player not sitting out");
@@ -296,7 +296,7 @@ public class Table extends Aggregate<TableState> {
             throw Errors.CommandRejectedError.preconditionFailed("Hand already in progress");
         }
         if (getActivePlayerCount() < 2) {
-            throw Errors.CommandRejectedError.preconditionFailed("Need at least 2 active players");
+            throw Errors.CommandRejectedError.preconditionFailed("Not enough players to start a hand");
         }
 
         long handNumber = getState().getHandCount() + 1;
@@ -343,9 +343,18 @@ public class Table extends Aggregate<TableState> {
             throw Errors.CommandRejectedError.preconditionFailed("No hand in progress");
         }
 
+        // Calculate stack changes from results
+        java.util.Map<String, Long> stackChanges = new java.util.HashMap<>();
+        for (PotResult result : cmd.getResultsList()) {
+            String playerHex = bytesToHex(result.getWinnerRoot().toByteArray());
+            long currentChange = stackChanges.getOrDefault(playerHex, 0L);
+            stackChanges.put(playerHex, currentChange + result.getAmount());
+        }
+
         return HandEnded.newBuilder()
             .setHandRoot(cmd.getHandRoot())
             .addAllResults(cmd.getResultsList())
+            .putAllStackChanges(stackChanges)
             .setEndedAt(now())
             .build();
     }
@@ -357,7 +366,7 @@ public class Table extends Aggregate<TableState> {
         }
         SeatState seat = getState().findSeatByPlayer(cmd.getPlayerRoot().toByteArray());
         if (seat == null) {
-            throw Errors.CommandRejectedError.preconditionFailed("Player not at table");
+            throw Errors.CommandRejectedError.preconditionFailed("Player is not seated at this table");
         }
         if (cmd.getAmount() <= 0) {
             throw Errors.CommandRejectedError.invalidArgument("amount must be positive");

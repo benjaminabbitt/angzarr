@@ -11,6 +11,7 @@ import dev.angzarr.examples.hand.state.PlayerHandState;
 import dev.angzarr.examples.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Hand aggregate with event sourcing (OO pattern).
@@ -36,7 +37,15 @@ public class Hand extends Aggregate<HandState> {
         String typeUrl = eventAny.getTypeUrl();
 
         try {
-            if (typeUrl.endsWith("CardsDealt")) {
+            // Note: CommunityCardsDealt must be checked before CardsDealt since both end with "CardsDealt"
+            if (typeUrl.endsWith("CommunityCardsDealt")) {
+                CommunityCardsDealt event = eventAny.unpack(CommunityCardsDealt.class);
+                for (Card c : event.getCardsList()) {
+                    state.getCommunityCards().add(cardToBytes(c));
+                }
+                state.setCurrentPhase(event.getPhaseValue());
+
+            } else if (typeUrl.endsWith("CardsDealt")) {
                 CardsDealt event = eventAny.unpack(CardsDealt.class);
                 state.setHandId("hand_" + event.getHandNumber());
                 state.setTableRoot(event.getTableRoot().toByteArray());
@@ -63,6 +72,11 @@ public class Hand extends Aggregate<HandState> {
                             pState.getHoleCards().add(cardToBytes(c));
                         }
                     }
+                }
+
+                // Store remaining deck
+                for (Card c : event.getRemainingDeckList()) {
+                    state.getRemainingDeck().add(cardToBytes(c));
                 }
 
             } else if (typeUrl.endsWith("BlindPosted")) {
@@ -103,13 +117,6 @@ public class Hand extends Aggregate<HandState> {
                     p.setHasActed(false);
                 }
 
-            } else if (typeUrl.endsWith("CommunityCardsDealt")) {
-                CommunityCardsDealt event = eventAny.unpack(CommunityCardsDealt.class);
-                for (Card c : event.getCardsList()) {
-                    state.getCommunityCards().add(cardToBytes(c));
-                }
-                state.setCurrentPhase(event.getPhaseValue());
-
             } else if (typeUrl.endsWith("HandComplete")) {
                 state.setStatus("complete");
 
@@ -120,6 +127,32 @@ public class Hand extends Aggregate<HandState> {
                     if (pState != null) {
                         pState.setStack(pState.getStack() + winner.getAmount());
                     }
+                }
+                state.setStatus("complete");
+
+            } else if (typeUrl.endsWith("DrawCompleted")) {
+                DrawCompleted event = eventAny.unpack(DrawCompleted.class);
+                PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
+                if (pState != null) {
+                    // Replace discarded cards with new cards
+                    pState.getHoleCards().clear();
+                    for (Card c : event.getNewCardsList()) {
+                        pState.getHoleCards().add(cardToBytes(c));
+                    }
+                }
+
+            } else if (typeUrl.endsWith("ShowdownStarted")) {
+                state.setStatus("showdown");
+                state.setCurrentPhase(BettingPhase.SHOWDOWN_VALUE);
+
+            } else if (typeUrl.endsWith("CardsRevealed")) {
+                // No state change needed - just records revealed cards
+
+            } else if (typeUrl.endsWith("CardsMucked")) {
+                CardsMucked event = eventAny.unpack(CardsMucked.class);
+                PlayerHandState pState = state.getPlayer(event.getPlayerRoot().toByteArray());
+                if (pState != null) {
+                    pState.setHasFolded(true);  // Muck is effectively a fold at showdown
                 }
             }
         } catch (InvalidProtocolBufferException e) {
@@ -171,10 +204,10 @@ public class Hand extends Aggregate<HandState> {
     @Handles(DealCards.class)
     public CardsDealt dealCards(DealCards cmd) {
         if (exists()) {
-            throw Errors.CommandRejectedError.preconditionFailed("Hand already exists");
+            throw Errors.CommandRejectedError.preconditionFailed("Cards already dealt");
         }
-        if (cmd.getPlayersList().isEmpty()) {
-            throw Errors.CommandRejectedError.invalidArgument("players required");
+        if (cmd.getPlayersCount() < 2) {
+            throw Errors.CommandRejectedError.invalidArgument("Requires at least 2 players");
         }
 
         // Generate hole cards for each player
@@ -264,6 +297,11 @@ public class Hand extends Aggregate<HandState> {
             case BET:
             case RAISE:
                 amount = cmd.getAmount();
+                // Minimum bet is the big blind (typically current_bet when opening)
+                long minBet = getState().getMinRaise() > 0 ? getState().getMinRaise() : 10;
+                if (amount < minBet && amount < player.getStack()) {
+                    throw Errors.CommandRejectedError.invalidArgument("Bet must be at least " + minBet);
+                }
                 if (amount > player.getStack()) {
                     amount = player.getStack();
                     action = ActionType.ALL_IN;
@@ -295,6 +333,9 @@ public class Hand extends Aggregate<HandState> {
     public CommunityCardsDealt dealCommunityCards(DealCommunityCards cmd) {
         if (!exists()) {
             throw Errors.CommandRejectedError.preconditionFailed("Hand does not exist");
+        }
+        if (getState().getGameVariant() == GameVariant.FIVE_CARD_DRAW_VALUE) {
+            throw Errors.CommandRejectedError.invalidArgument("Five Card Draw does not use community cards");
         }
 
         List<byte[]> remaining = getState().getRemainingDeck();
@@ -337,6 +378,95 @@ public class Hand extends Aggregate<HandState> {
         return PotAwarded.newBuilder()
             .addAllWinners(winners)
             .setAwardedAt(now())
+            .build();
+    }
+
+    @Handles(RequestDraw.class)
+    public DrawCompleted requestDraw(RequestDraw cmd) {
+        if (!exists()) {
+            throw Errors.CommandRejectedError.preconditionFailed("Hand does not exist");
+        }
+        if (getState().getGameVariant() != GameVariant.FIVE_CARD_DRAW_VALUE) {
+            throw Errors.CommandRejectedError.invalidArgument("Draw not supported in this game variant");
+        }
+        PlayerHandState player = getState().getPlayer(cmd.getPlayerRoot().toByteArray());
+        if (player == null) {
+            throw Errors.CommandRejectedError.preconditionFailed("Player not in hand");
+        }
+
+        int discardCount = cmd.getCardIndicesCount();
+        List<byte[]> remaining = getState().getRemainingDeck();
+        List<Card> newCards = new ArrayList<>();
+
+        // Get new cards from remaining deck
+        for (int i = 0; i < discardCount && i < remaining.size(); i++) {
+            newCards.add(bytesToCard(remaining.get(i)));
+        }
+
+        // Build full hand with replacements
+        List<Card> fullHand = new ArrayList<>();
+        Set<Integer> discardSet = new HashSet<>();
+        for (int idx : cmd.getCardIndicesList()) {
+            discardSet.add(idx);
+        }
+
+        int newCardIndex = 0;
+        for (int i = 0; i < player.getHoleCards().size(); i++) {
+            if (discardSet.contains(i)) {
+                if (newCardIndex < newCards.size()) {
+                    fullHand.add(newCards.get(newCardIndex++));
+                }
+            } else {
+                fullHand.add(bytesToCard(player.getHoleCards().get(i)));
+            }
+        }
+
+        return DrawCompleted.newBuilder()
+            .setPlayerRoot(cmd.getPlayerRoot())
+            .setCardsDiscarded(discardCount)
+            .setCardsDrawn(newCards.size())
+            .addAllNewCards(fullHand)
+            .setDrawnAt(now())
+            .build();
+    }
+
+    @Handles(RevealCards.class)
+    public com.google.protobuf.Message revealCards(RevealCards cmd) {
+        if (!exists()) {
+            throw Errors.CommandRejectedError.preconditionFailed("Hand does not exist");
+        }
+        PlayerHandState player = getState().getPlayer(cmd.getPlayerRoot().toByteArray());
+        if (player == null) {
+            throw Errors.CommandRejectedError.preconditionFailed("Player not in hand");
+        }
+
+        if (cmd.getMuck()) {
+            return CardsMucked.newBuilder()
+                .setPlayerRoot(cmd.getPlayerRoot())
+                .setMuckedAt(now())
+                .build();
+        }
+
+        // Get player's hole cards
+        List<Card> holeCards = new ArrayList<>();
+        for (byte[] cardBytes : player.getHoleCards()) {
+            holeCards.add(bytesToCard(cardBytes));
+        }
+
+        // Get community cards
+        List<Card> communityCards = new ArrayList<>();
+        for (byte[] cardBytes : getState().getCommunityCards()) {
+            communityCards.add(bytesToCard(cardBytes));
+        }
+
+        // Evaluate hand
+        HandRanking ranking = evaluateHand(holeCards, communityCards);
+
+        return CardsRevealed.newBuilder()
+            .setPlayerRoot(cmd.getPlayerRoot())
+            .addAllCards(holeCards)
+            .setRanking(ranking)
+            .setRevealedAt(now())
             .build();
     }
 
@@ -395,5 +525,191 @@ public class Hand extends Aggregate<HandState> {
             result = (result << 8) | (bytes[i] & 0xFF);
         }
         return result;
+    }
+
+    // --- Hand Evaluation ---
+
+    private HandRanking evaluateHand(List<Card> holeCards, List<Card> communityCards) {
+        List<Card> allCards = new ArrayList<>();
+        allCards.addAll(holeCards);
+        allCards.addAll(communityCards);
+
+        // Sort by rank descending
+        allCards.sort((a, b) -> b.getRankValue() - a.getRankValue());
+
+        // Group by suit and rank
+        Map<Suit, List<Card>> bySuit = new HashMap<>();
+        Map<Integer, List<Card>> byRank = new HashMap<>();
+        for (Card c : allCards) {
+            bySuit.computeIfAbsent(c.getSuit(), k -> new ArrayList<>()).add(c);
+            byRank.computeIfAbsent(c.getRankValue(), k -> new ArrayList<>()).add(c);
+        }
+
+        // Check for flush
+        List<Card> flushCards = null;
+        for (List<Card> suited : bySuit.values()) {
+            if (suited.size() >= 5) {
+                flushCards = suited.subList(0, 5);
+                break;
+            }
+        }
+
+        // Check for straight
+        List<Card> straightCards = findStraight(allCards);
+
+        // Check for straight flush / royal flush
+        if (flushCards != null) {
+            List<Card> straightFlush = findStraight(flushCards);
+            if (straightFlush != null || (straightCards != null && isSameSuit(straightCards))) {
+                List<Card> sfCards = straightFlush != null ? straightFlush : straightCards;
+                if (sfCards.get(0).getRankValue() == Rank.ACE_VALUE) {
+                    return HandRanking.newBuilder()
+                        .setRankType(HandRankType.ROYAL_FLUSH)
+                        .setScore(1000)
+                        .build();
+                }
+                return HandRanking.newBuilder()
+                    .setRankType(HandRankType.STRAIGHT_FLUSH)
+                    .addKickers(sfCards.get(0).getRank())
+                    .setScore(900 + sfCards.get(0).getRankValue())
+                    .build();
+            }
+        }
+
+        // Count pairs, trips, quads
+        List<Integer> quads = new ArrayList<>();
+        List<Integer> trips = new ArrayList<>();
+        List<Integer> pairs = new ArrayList<>();
+        for (Map.Entry<Integer, List<Card>> entry : byRank.entrySet()) {
+            int count = entry.getValue().size();
+            if (count == 4) quads.add(entry.getKey());
+            else if (count == 3) trips.add(entry.getKey());
+            else if (count == 2) pairs.add(entry.getKey());
+        }
+        quads.sort(Collections.reverseOrder());
+        trips.sort(Collections.reverseOrder());
+        pairs.sort(Collections.reverseOrder());
+
+        // Four of a kind
+        if (!quads.isEmpty()) {
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.FOUR_OF_A_KIND)
+                .addKickers(Rank.forNumber(quads.get(0)))
+                .setScore(800 + quads.get(0))
+                .build();
+        }
+
+        // Full house
+        if (!trips.isEmpty() && (!pairs.isEmpty() || trips.size() > 1)) {
+            int pairRank = !pairs.isEmpty() ? pairs.get(0) :
+                           (trips.size() > 1 ? trips.get(1) : 0);
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.FULL_HOUSE)
+                .addKickers(Rank.forNumber(trips.get(0)))
+                .addKickers(Rank.forNumber(pairRank))
+                .setScore(700 + trips.get(0) * 10 + pairRank)
+                .build();
+        }
+
+        // Flush
+        if (flushCards != null) {
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.FLUSH)
+                .addKickers(flushCards.get(0).getRank())
+                .setScore(600 + flushCards.get(0).getRankValue())
+                .build();
+        }
+
+        // Straight
+        if (straightCards != null) {
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.STRAIGHT)
+                .addKickers(straightCards.get(0).getRank())
+                .setScore(500 + straightCards.get(0).getRankValue())
+                .build();
+        }
+
+        // Three of a kind
+        if (!trips.isEmpty()) {
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.THREE_OF_A_KIND)
+                .addKickers(Rank.forNumber(trips.get(0)))
+                .setScore(400 + trips.get(0))
+                .build();
+        }
+
+        // Two pair
+        if (pairs.size() >= 2) {
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.TWO_PAIR)
+                .addKickers(Rank.forNumber(pairs.get(0)))
+                .addKickers(Rank.forNumber(pairs.get(1)))
+                .setScore(300 + pairs.get(0) * 10 + pairs.get(1))
+                .build();
+        }
+
+        // Pair
+        if (!pairs.isEmpty()) {
+            return HandRanking.newBuilder()
+                .setRankType(HandRankType.PAIR)
+                .addKickers(Rank.forNumber(pairs.get(0)))
+                .setScore(200 + pairs.get(0))
+                .build();
+        }
+
+        // High card
+        return HandRanking.newBuilder()
+            .setRankType(HandRankType.HIGH_CARD)
+            .addKickers(allCards.get(0).getRank())
+            .setScore(100 + allCards.get(0).getRankValue())
+            .build();
+    }
+
+    private List<Card> findStraight(List<Card> cards) {
+        if (cards.size() < 5) return null;
+
+        // Get unique ranks sorted descending
+        List<Integer> ranks = cards.stream()
+            .map(Card::getRankValue)
+            .distinct()
+            .sorted(Collections.reverseOrder())
+            .collect(Collectors.toList());
+
+        // Check for wheel (A-2-3-4-5)
+        if (ranks.contains(Rank.ACE_VALUE) && ranks.contains(2) &&
+            ranks.contains(3) && ranks.contains(4) && ranks.contains(5)) {
+            return cards.stream()
+                .filter(c -> c.getRankValue() == 5 || c.getRankValue() == 4 ||
+                           c.getRankValue() == 3 || c.getRankValue() == 2 ||
+                           c.getRankValue() == Rank.ACE_VALUE)
+                .limit(5)
+                .collect(Collectors.toList());
+        }
+
+        // Check for regular straight
+        for (int i = 0; i <= ranks.size() - 5; i++) {
+            boolean isStraight = true;
+            for (int j = 0; j < 4; j++) {
+                if (ranks.get(i + j) - ranks.get(i + j + 1) != 1) {
+                    isStraight = false;
+                    break;
+                }
+            }
+            if (isStraight) {
+                int highRank = ranks.get(i);
+                return cards.stream()
+                    .filter(c -> c.getRankValue() >= highRank - 4 && c.getRankValue() <= highRank)
+                    .limit(5)
+                    .collect(Collectors.toList());
+            }
+        }
+
+        return null;
+    }
+
+    private boolean isSameSuit(List<Card> cards) {
+        if (cards == null || cards.isEmpty()) return false;
+        Suit first = cards.get(0).getSuit();
+        return cards.stream().allMatch(c -> c.getSuit() == first);
     }
 }

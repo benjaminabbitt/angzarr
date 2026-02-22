@@ -55,13 +55,30 @@ public class HandSteps {
             .setGameVariant(GameVariant.TEXAS_HOLDEM)
             .setDealerPosition(0);
 
+        List<Card> deck = createDeck();
+        int cardIndex = 0;
+
         for (int i = 0; i < playerCount; i++) {
             String playerId = "player-" + (i + 1);
+            ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
             builder.addPlayers(PlayerInHand.newBuilder()
-                .setPlayerRoot(ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8)))
+                .setPlayerRoot(playerRoot)
                 .setPosition(i)
                 .setStack(500)
                 .build());
+
+            // Add hole cards for this player
+            PlayerHoleCards.Builder holeCardsBuilder = PlayerHoleCards.newBuilder()
+                .setPlayerRoot(playerRoot);
+            for (int j = 0; j < 2; j++) {
+                holeCardsBuilder.addCards(deck.get(cardIndex++));
+            }
+            builder.addPlayerCards(holeCardsBuilder.build());
+        }
+
+        // Add remaining deck
+        for (int i = cardIndex; i < deck.size(); i++) {
+            builder.addRemainingDeck(deck.get(i));
         }
 
         addEvent(builder.build());
@@ -81,17 +98,55 @@ public class HandSteps {
             .setGameVariant(gameVariant)
             .setDealerPosition(0);
 
+        // Create a deck and deal cards
+        List<Card> deck = createDeck();
+        int cardIndex = 0;
+        int cardsPerPlayer = getHoleCardCount(gameVariant);
+
         for (int i = 0; i < playerCount; i++) {
             String playerId = "player-" + (i + 1);
+            ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
             builder.addPlayers(PlayerInHand.newBuilder()
-                .setPlayerRoot(ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8)))
+                .setPlayerRoot(playerRoot)
                 .setPosition(i)
                 .setStack(stack)
                 .build());
+
+            // Add hole cards for this player
+            PlayerHoleCards.Builder holeCardsBuilder = PlayerHoleCards.newBuilder()
+                .setPlayerRoot(playerRoot);
+            for (int j = 0; j < cardsPerPlayer; j++) {
+                holeCardsBuilder.addCards(deck.get(cardIndex++));
+            }
+            builder.addPlayerCards(holeCardsBuilder.build());
+        }
+
+        // Add remaining deck
+        for (int i = cardIndex; i < deck.size(); i++) {
+            builder.addRemainingDeck(deck.get(i));
         }
 
         addEvent(builder.build());
         rehydrateHand();
+    }
+
+    private int getHoleCardCount(GameVariant variant) {
+        switch (variant) {
+            case OMAHA: return 4;
+            case FIVE_CARD_DRAW: return 5;
+            default: return 2;
+        }
+    }
+
+    private List<Card> createDeck() {
+        List<Card> deck = new ArrayList<>();
+        Suit[] suits = {Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES};
+        for (Suit suit : suits) {
+            for (int rank = 2; rank <= 14; rank++) {
+                deck.add(Card.newBuilder().setSuit(suit).setRank(Rank.forNumber(rank)).build());
+            }
+        }
+        return deck;
     }
 
     @Given("a CardsDealt event for {word} with {int} players")
@@ -166,8 +221,22 @@ public class HandSteps {
     @Given("a CommunityCardsDealt event for {word}")
     public void communityCardsDealtEvent(String phase) {
         BettingPhase bettingPhase = BettingPhase.valueOf(phase.toUpperCase());
+        List<Card> newCards = new ArrayList<>();
+        int count = (bettingPhase == BettingPhase.FLOP) ? 3 : 1;
+
+        // Generate cards for this phase
+        List<Card> deck = createDeck();
+        int startIdx = 10; // Start after hole cards
+        if (bettingPhase == BettingPhase.TURN) startIdx = 13;
+        if (bettingPhase == BettingPhase.RIVER) startIdx = 14;
+
+        for (int i = 0; i < count; i++) {
+            newCards.add(deck.get(startIdx + i));
+        }
+
         CommunityCardsDealt event = CommunityCardsDealt.newBuilder()
             .setPhase(bettingPhase)
+            .addAllCards(newCards)
             .build();
         addEvent(event);
         rehydrateHand();
@@ -239,18 +308,112 @@ public class HandSteps {
     }
 
     @Given("a hand at showdown with player {string} holding {string} and community {string}")
-    public void handAtShowdownWithCards(String playerId, String holeCards, String communityCards) {
-        // Set up a hand at showdown with specific cards
-        cardsDealtEventForVariantWithStacks("TEXAS_HOLDEM", 2, 500);
+    public void handAtShowdownWithCards(String playerId, String holeCardsStr, String communityCardsStr) {
+        // Parse hole cards
+        List<Card> holeCards = parseCards(holeCardsStr);
+        List<Card> communityCardsList = parseCards(communityCardsStr);
+
+        // Create CardsDealt event with specific hole cards
+        ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
+        ByteString player2Root = ByteString.copyFrom("player-2".getBytes(StandardCharsets.UTF_8));
+
+        CardsDealt cardsDealt = CardsDealt.newBuilder()
+            .setHandNumber(1)
+            .setGameVariant(GameVariant.TEXAS_HOLDEM)
+            .setDealerPosition(0)
+            .addPlayers(PlayerInHand.newBuilder()
+                .setPlayerRoot(playerRoot)
+                .setPosition(0)
+                .setStack(500))
+            .addPlayers(PlayerInHand.newBuilder()
+                .setPlayerRoot(player2Root)
+                .setPosition(1)
+                .setStack(500))
+            .addPlayerCards(PlayerHoleCards.newBuilder()
+                .setPlayerRoot(playerRoot)
+                .addAllCards(holeCards))
+            .addPlayerCards(PlayerHoleCards.newBuilder()
+                .setPlayerRoot(player2Root)
+                .addCards(Card.newBuilder().setSuit(Suit.CLUBS).setRank(Rank.TWO))
+                .addCards(Card.newBuilder().setSuit(Suit.DIAMONDS).setRank(Rank.THREE)))
+            .build();
+        addEvent(cardsDealt);
+
+        // Add blinds
         blindsPostedWithPot(15);
-        bettingRoundCompleteEvent("preflop");
-        communityCardsDealtEvent("FLOP");
-        bettingRoundCompleteEvent("flop");
-        communityCardsDealtEvent("TURN");
-        bettingRoundCompleteEvent("turn");
-        communityCardsDealtEvent("RIVER");
+
+        // Add community cards phase by phase
+        if (communityCardsList.size() >= 3) {
+            bettingRoundCompleteEvent("preflop");
+            CommunityCardsDealt flop = CommunityCardsDealt.newBuilder()
+                .setPhase(BettingPhase.FLOP)
+                .addAllCards(communityCardsList.subList(0, 3))
+                .build();
+            addEvent(flop);
+        }
+        if (communityCardsList.size() >= 4) {
+            bettingRoundCompleteEvent("flop");
+            CommunityCardsDealt turn = CommunityCardsDealt.newBuilder()
+                .setPhase(BettingPhase.TURN)
+                .addCards(communityCardsList.get(3))
+                .build();
+            addEvent(turn);
+        }
+        if (communityCardsList.size() >= 5) {
+            bettingRoundCompleteEvent("turn");
+            CommunityCardsDealt river = CommunityCardsDealt.newBuilder()
+                .setPhase(BettingPhase.RIVER)
+                .addCards(communityCardsList.get(4))
+                .build();
+            addEvent(river);
+        }
+
         bettingRoundCompleteEvent("river");
         showdownStartedEvent();
+        rehydrateHand();
+    }
+
+    private List<Card> parseCards(String cardsStr) {
+        List<Card> cards = new ArrayList<>();
+        String[] cardTokens = cardsStr.trim().split("\\s+");
+        for (String token : cardTokens) {
+            if (token.isEmpty()) continue;
+            cards.add(parseCard(token));
+        }
+        return cards;
+    }
+
+    private Card parseCard(String cardStr) {
+        // Parse format: "Ah", "Kd", "9s", "Tc" etc.
+        if (cardStr.length() < 2) {
+            throw new IllegalArgumentException("Invalid card: " + cardStr);
+        }
+        char rankChar = cardStr.charAt(0);
+        char suitChar = Character.toLowerCase(cardStr.charAt(1));
+
+        Rank rank;
+        switch (rankChar) {
+            case 'A': rank = Rank.ACE; break;
+            case 'K': rank = Rank.KING; break;
+            case 'Q': rank = Rank.QUEEN; break;
+            case 'J': rank = Rank.JACK; break;
+            case 'T': rank = Rank.TEN; break;
+            default:
+                int value = Character.getNumericValue(rankChar);
+                rank = Rank.forNumber(value);
+        }
+
+        Suit suit;
+        switch (suitChar) {
+            case 'h': suit = Suit.HEARTS; break;
+            case 'd': suit = Suit.DIAMONDS; break;
+            case 'c': suit = Suit.CLUBS; break;
+            case 's': suit = Suit.SPADES; break;
+            default:
+                throw new IllegalArgumentException("Invalid suit: " + suitChar);
+        }
+
+        return Card.newBuilder().setRank(rank).setSuit(suit).build();
     }
 
     @Given("a showdown with player hands:")
@@ -395,12 +558,16 @@ public class HandSteps {
         handleCommand(cmd);
     }
 
-    @When("I handle a RequestDraw command for player {string} discarding indices {}")
-    public void handleRequestDrawCommand(String playerId, List<Integer> indices) {
+    @When("^I handle a RequestDraw command for player \"([^\"]*)\" discarding indices \\[(.*)\\]$")
+    public void handleRequestDrawCommand(String playerId, String indicesStr) {
         RequestDraw.Builder builder = RequestDraw.newBuilder()
             .setPlayerRoot(ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8)));
-        for (Integer idx : indices) {
-            builder.addCardIndices(idx);
+
+        if (indicesStr != null && !indicesStr.isEmpty()) {
+            String[] parts = indicesStr.split(",\\s*");
+            for (String part : parts) {
+                builder.addCardIndices(Integer.parseInt(part.trim()));
+            }
         }
         handleCommand(builder.build());
     }
@@ -621,7 +788,7 @@ public class HandSteps {
         assertThat(((ActionTaken) resultEvent).getPlayerStack()).isEqualTo(stack);
     }
 
-    @Then("the event has {int} cards dealt")
+    @Then("the event has {int} card(s) dealt")
     public void eventHasCardsDealt(int count) {
         assertThat(resultEvent).isInstanceOf(CommunityCardsDealt.class);
         assertThat(((CommunityCardsDealt) resultEvent).getCardsCount()).isEqualTo(count);
@@ -630,7 +797,8 @@ public class HandSteps {
     @Then("the event has phase {string}")
     public void eventHasPhase(String phase) {
         assertThat(resultEvent).isInstanceOf(CommunityCardsDealt.class);
-        assertThat(((CommunityCardsDealt) resultEvent).getPhase()).isEqualTo(phase);
+        BettingPhase expected = BettingPhase.valueOf(phase);
+        assertThat(((CommunityCardsDealt) resultEvent).getPhase()).isEqualTo(expected);
     }
 
     @Then("the remaining deck decreases by {int}")
