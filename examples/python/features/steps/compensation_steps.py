@@ -2397,12 +2397,6 @@ def step_resource_released_persisted(context):
     pass
 
 
-@then("handle_target_rejected is called")
-def step_target_handler_called(context):
-    """Target handler is called."""
-    pass
-
-
 @then("handle_other_rejected is NOT called")
 def step_other_handler_not_called(context):
     """Other handler is not called."""
@@ -2487,12 +2481,6 @@ def step_resource_released_will_be_persisted(context):
 @then("BusinessResponse has emit_system_revocation = true")
 def step_business_response_emit_true(context):
     """BusinessResponse has emit_system_revocation true."""
-    pass
-
-
-@then("handle_target is called")
-def step_handle_target_called(context):
-    """handle_target is called."""
     pass
 
 
