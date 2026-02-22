@@ -52,8 +52,28 @@ def make_card(rank: int, suit: int):
 
 def parse_card(card_str: str):
     """Parse card string like 'As', 'Kh', '7s' into rank and suit."""
-    rank_map = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "T": 10, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14}
-    suit_map = {"s": poker_types.SPADES, "h": poker_types.HEARTS, "d": poker_types.DIAMONDS, "c": poker_types.CLUBS}
+    rank_map = {
+        "2": 2,
+        "3": 3,
+        "4": 4,
+        "5": 5,
+        "6": 6,
+        "7": 7,
+        "8": 8,
+        "9": 9,
+        "T": 10,
+        "10": 10,
+        "J": 11,
+        "Q": 12,
+        "K": 13,
+        "A": 14,
+    }
+    suit_map = {
+        "s": poker_types.SPADES,
+        "h": poker_types.HEARTS,
+        "d": poker_types.DIAMONDS,
+        "c": poker_types.CLUBS,
+    }
     # Handle both "As" and "10s" formats
     rank_char = card_str[:-1] if len(card_str) > 2 else card_str[0]
     suit_char = card_str[-1].lower()
@@ -67,6 +87,7 @@ def parse_card(card_str: str):
 
 
 # --- Given steps ---
+
 
 @given("an OutputProjector")
 def step_given_output_projector(context):
@@ -131,7 +152,9 @@ def step_given_player_registered_with_name(context, name):
     )
 
 
-@given("a FundsDeposited event with amount (?P<amount>\\d+) and new_balance (?P<balance>\\d+)")
+@given(
+    "a FundsDeposited event with amount (?P<amount>\\d+) and new_balance (?P<balance>\\d+)"
+)
 def step_given_funds_deposited_with_balance(context, amount, balance):
     """Create a FundsDeposited event with specific balance."""
     context.event = player.FundsDeposited(
@@ -140,7 +163,9 @@ def step_given_funds_deposited_with_balance(context, amount, balance):
     )
 
 
-@given("a FundsWithdrawn event with amount (?P<amount>\\d+) and new_balance (?P<balance>\\d+)")
+@given(
+    "a FundsWithdrawn event with amount (?P<amount>\\d+) and new_balance (?P<balance>\\d+)"
+)
 def step_given_funds_withdrawn_with_balance(context, amount, balance):
     """Create a FundsWithdrawn event with specific balance."""
     context.event = player.FundsWithdrawn(
@@ -161,7 +186,10 @@ def step_given_funds_reserved_event(context, amount):
 @given("a TableCreated event with:")
 def step_given_table_created_with_table(context):
     """Create a TableCreated event from datatable."""
-    row = {context.table.headings[i]: context.table[0][i] for i in range(len(context.table.headings))}
+    row = {
+        context.table.headings[i]: context.table[0][i]
+        for i in range(len(context.table.headings))
+    }
     variant = getattr(poker_types, row.get("game_variant", "TEXAS_HOLDEM"))
 
     context.event = table.TableCreated(
@@ -202,7 +230,9 @@ def step_given_player_left_cashed(context, amount):
 # to avoid duplication
 
 
-@given('active players "(?P<player1>[^"]+)", "(?P<player2>[^"]+)", "(?P<player3>[^"]+)" at seats (?P<seats>.+)')
+@given(
+    'active players "(?P<player1>[^"]+)", "(?P<player2>[^"]+)", "(?P<player3>[^"]+)" at seats (?P<seats>.+)'
+)
 def step_given_active_players_three(context, player1, player2, player3, seats):
     """Add three active players from inline list."""
     player_names = [player1, player2, player3]
@@ -211,15 +241,17 @@ def step_given_active_players_three(context, player1, player2, player3, seats):
     for i, (name, seat) in enumerate(zip(player_names, seat_nums)):
         context.hand_started.active_players.append(
             table.SeatSnapshot(
-                player_root=f"player-{i+1}".encode(),
+                player_root=f"player-{i + 1}".encode(),
                 position=seat,
                 stack=500,
             )
         )
-        context.projector.set_player_name(f"player-{i+1}".encode(), name)
+        context.projector.set_player_name(f"player-{i + 1}".encode(), name)
 
 
-@given('active players "(?P<player1>[^"]+)" and "(?P<player2>[^"]+)" at seats (?P<seats>.+)')
+@given(
+    'active players "(?P<player1>[^"]+)" and "(?P<player2>[^"]+)" at seats (?P<seats>.+)'
+)
 def step_given_active_players_two(context, player1, player2, seats):
     """Add two active players from inline list."""
     player_names = [player1, player2]
@@ -228,12 +260,12 @@ def step_given_active_players_two(context, player1, player2, seats):
     for i, (name, seat) in enumerate(zip(player_names, seat_nums)):
         context.hand_started.active_players.append(
             table.SeatSnapshot(
-                player_root=f"player-{i+1}".encode(),
+                player_root=f"player-{i + 1}".encode(),
                 position=seat,
                 stack=500,
             )
         )
-        context.projector.set_player_name(f"player-{i+1}".encode(), name)
+        context.projector.set_player_name(f"player-{i + 1}".encode(), name)
 
 
 @given('a HandEnded event with winner "(?P<winner>[^"]+)" amount (?P<amount>\\d+)')
@@ -273,7 +305,9 @@ def step_given_cards_dealt_for_player(context, player_name, cards):
     context.projector.set_player_name(b"player-1", player_name)
 
 
-@given('a BlindPosted event for "(?P<player>[^"]+)" type "(?P<blind_type>[^"]+)" amount (?P<amount>\\d+)')
+@given(
+    'a BlindPosted event for "(?P<player>[^"]+)" type "(?P<blind_type>[^"]+)" amount (?P<amount>\\d+)'
+)
 def step_given_blind_posted_event(context, player, blind_type, amount):
     """Create a BlindPosted event."""
     context.event = hand.BlindPosted(
@@ -298,7 +332,9 @@ def step_given_action_taken_fold(context, player, action):
     )
 
 
-@given('an ActionTaken event for "(?P<player>[^"]+)" action (?P<action>\\w+) amount (?P<amount>\\d+) pot_total (?P<pot>\\d+)')
+@given(
+    'an ActionTaken event for "(?P<player>[^"]+)" action (?P<action>\\w+) amount (?P<amount>\\d+) pot_total (?P<pot>\\d+)'
+)
 def step_given_action_taken_with_amount(context, player, action, amount, pot):
     """Create an ActionTaken event with amount."""
     action_enum = getattr(poker_types, action)
@@ -336,7 +372,9 @@ def step_given_showdown_started(context):
     context.event = hand.ShowdownStarted()
 
 
-@given('a CardsRevealed event for "(?P<player>[^"]+)" with cards (?P<cards>\\w+ \\w+) and ranking (?P<ranking>\\w+)')
+@given(
+    'a CardsRevealed event for "(?P<player>[^"]+)" with cards (?P<cards>\\w+ \\w+) and ranking (?P<ranking>\\w+)'
+)
 def step_given_cards_revealed(context, player, cards, ranking):
     """Create a CardsRevealed event."""
     card_list = [parse_card(c.strip()) for c in cards.split()]
@@ -375,9 +413,12 @@ def step_given_hand_complete_with_stacks(context):
     event = hand.HandComplete(table_root=b"table-1")
 
     for i, row in enumerate(context.table):
-        row_dict = {context.table.headings[j]: row[j] for j in range(len(context.table.headings))}
-        player_name = row_dict.get("player", f"Player{i+1}")
-        player_root = f"player-{i+1}".encode()
+        row_dict = {
+            context.table.headings[j]: row[j]
+            for j in range(len(context.table.headings))
+        }
+        player_name = row_dict.get("player", f"Player{i + 1}")
+        player_root = f"player-{i + 1}".encode()
         has_folded_str = row_dict.get("has_folded", "false").lower()
         has_folded = has_folded_str in ("true", "yes", "1")
         event.final_stacks.append(
@@ -391,7 +432,9 @@ def step_given_hand_complete_with_stacks(context):
     context.event = event
 
 
-@given('a PlayerTimedOut event for "(?P<player>[^"]+)" with default_action (?P<action>\\w+)')
+@given(
+    'a PlayerTimedOut event for "(?P<player>[^"]+)" with default_action (?P<action>\\w+)'
+)
 def step_given_player_timed_out(context, player, action):
     """Create a PlayerTimedOut event."""
     action_enum = getattr(poker_types, action, poker_types.FOLD)
@@ -408,7 +451,7 @@ def step_given_player_registered_as(context, player_id, name):
     context.projector.set_player_name(player_id.encode(), name)
 
 
-@given('an event with created_at (?P<time>\\d+:\\d+:\\d+)')
+@given("an event with created_at (?P<time>\\d+:\\d+:\\d+)")
 def step_given_event_with_time(context, time):
     """Create a simple event with specific created_at timestamp."""
     context.event = player.PlayerRegistered(
@@ -435,20 +478,24 @@ def step_given_event_book_with_two_events(context):
     context.event_book = types.EventBook(
         cover=types.Cover(root=types.UUID(value=b"player-1"), domain="table"),
         pages=[
-            make_event_page(table.PlayerJoined(
-                player_root=b"player-1",
-                seat_position=1,
-                stack=500,
-                buy_in_amount=500,
-                joined_at=make_timestamp(),
-            )),
-            make_event_page(hand.BlindPosted(
-                player_root=b"player-1",
-                blind_type="small",
-                amount=5,
-                pot_total=5,
-                player_stack=495,
-            )),
+            make_event_page(
+                table.PlayerJoined(
+                    player_root=b"player-1",
+                    seat_position=1,
+                    stack=500,
+                    buy_in_amount=500,
+                    joined_at=make_timestamp(),
+                )
+            ),
+            make_event_page(
+                hand.BlindPosted(
+                    player_root=b"player-1",
+                    blind_type="small",
+                    amount=5,
+                    pot_total=5,
+                    player_stack=495,
+                )
+            ),
         ],
     )
 
@@ -464,6 +511,7 @@ def step_given_unknown_event(context, type_url):
 
 
 # --- When steps ---
+
 
 @when("the projector handles the event")
 def step_when_projector_handles_event(context):
@@ -488,7 +536,10 @@ def step_when_formatting_cards(context):
     """Format cards from datatable."""
     context.cards_output = ""
     for row in context.table:
-        row_dict = {context.table.headings[i]: row[i] for i in range(len(context.table.headings))}
+        row_dict = {
+            context.table.headings[i]: row[i]
+            for i in range(len(context.table.headings))
+        }
         rank = int(row_dict.get("rank", 2))
         suit_name = row_dict.get("suit", "SPADES")
         suit = getattr(poker_types, suit_name)
@@ -545,6 +596,7 @@ def step_when_event_references_unknown(context, player_id):
 
 # --- Then steps ---
 
+
 @then('the output contains "(?P<text>[^"]+)"')
 def step_then_output_contains(context, text):
     """Verify output contains text."""
@@ -559,7 +611,9 @@ def step_then_output_contains(context, text):
 def step_then_output_starts_with(context, prefix):
     """Verify output starts with prefix."""
     if context.output_lines:
-        assert context.output_lines[0].startswith(prefix), f"Expected start '{prefix}' in:\n{context.output_lines[0]}"
+        assert context.output_lines[0].startswith(prefix), (
+            f"Expected start '{prefix}' in:\n{context.output_lines[0]}"
+        )
     else:
         raise AssertionError("No output produced")
 
@@ -602,7 +656,9 @@ def step_then_output_uses_name_prefix(context, name):
 @then('the formatted output contains "(?P<text>[^"]+)" symbols')
 def step_then_output_contains_symbols(context, text):
     """Verify formatted output contains symbols."""
-    assert text in context.cards_output or any(s in context.cards_output for s in ["♠", "♥", "♦", "♣"])
+    assert text in context.cards_output or any(
+        s in context.cards_output for s in ["♠", "♥", "♦", "♣"]
+    )
 
 
 @then("ranks 2-9 display as digits")

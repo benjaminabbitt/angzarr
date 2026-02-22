@@ -28,6 +28,7 @@ scenarios("../../../features/unit/process_manager.feature")
 
 # --- Test context ---
 
+
 @dataclass
 class PMTestContext:
     """Test context for process manager scenarios."""
@@ -51,6 +52,7 @@ def ctx():
 
 
 # --- Helper functions ---
+
 
 def make_hand_started_event(
     hand_number: int = 1,
@@ -127,6 +129,7 @@ def get_command_type(cmd_book: types.CommandBook) -> str:
 
 
 # --- Given steps ---
+
 
 @given("a HandProcessManager")
 def given_hand_process_manager(ctx):
@@ -220,7 +223,9 @@ def given_active_process_player_count(ctx, count):
     ctx.process.phase = HandPhase.BETTING
 
 
-@given(parsers.parse('an active hand process with player "{player_id}" at stack {stack:d}'))
+@given(
+    parsers.parse('an active hand process with player "{player_id}" at stack {stack:d}')
+)
 def given_active_process_player_stack(ctx, player_id, stack):
     """Create active process with specific player stack."""
     event = make_hand_started_event()
@@ -261,7 +266,11 @@ def given_small_blind_posted(ctx):
 @given(parsers.parse("a BlindPosted event for {blind_type} blind"))
 def given_blind_posted_event(ctx, blind_type):
     """Create BlindPosted event."""
-    pos = ctx.process.small_blind_position if blind_type == "small" else ctx.process.big_blind_position
+    pos = (
+        ctx.process.small_blind_position
+        if blind_type == "small"
+        else ctx.process.big_blind_position
+    )
     player = ctx.process.players.get(pos)
     amount = ctx.process.small_blind if blind_type == "small" else ctx.process.big_blind
 
@@ -269,7 +278,8 @@ def given_blind_posted_event(ctx, blind_type):
         player_root=player.player_root if player else uuid_for("player-1"),
         blind_type=blind_type,
         amount=amount,
-        pot_total=amount + (ctx.process.small_blind if ctx.process.small_blind_posted else 0),
+        pot_total=amount
+        + (ctx.process.small_blind if ctx.process.small_blind_posted else 0),
         player_stack=500 - amount,
     )
 
@@ -280,7 +290,11 @@ def given_action_on(ctx, pos):
     ctx.process.action_on = pos
 
 
-@given(parsers.parse("an ActionTaken event for player at position {pos:d} with action {action}"))
+@given(
+    parsers.parse(
+        "an ActionTaken event for player at position {pos:d} with action {action}"
+    )
+)
 def given_action_taken_at_position(ctx, pos, action):
     """Create ActionTaken event for position."""
     player = ctx.process.players.get(pos)
@@ -386,7 +400,9 @@ def given_community_cards_event(ctx, phase):
     )
 
 
-@given(parsers.parse("a series of BlindPosted and ActionTaken events totaling {total:d}"))
+@given(
+    parsers.parse("a series of BlindPosted and ActionTaken events totaling {total:d}")
+)
 def given_events_totaling(ctx, total):
     """Track events totaling amount."""
     ctx.process.pot_total = total
@@ -419,6 +435,7 @@ def given_pot_awarded_event(ctx):
 
 
 # --- When steps ---
+
 
 @when("the process manager starts the hand")
 def when_start_hand(ctx):
@@ -471,6 +488,7 @@ def when_all_events_processed(ctx):
 
 
 # --- Then steps ---
+
 
 @then(parsers.parse("a HandProcess is created with phase {phase}"))
 def then_process_created_with_phase(ctx, phase):
@@ -564,7 +582,8 @@ def then_advances_next_phase(ctx):
 def then_deal_community_sent(ctx, count):
     """Verify DealCommunityCards command."""
     deal_cmds = [
-        cmd for cmd in ctx.commands_sent
+        cmd
+        for cmd in ctx.commands_sent
         if get_command_type(cmd) == "DealCommunityCards"
     ]
     assert len(deal_cmds) > 0
@@ -579,8 +598,7 @@ def then_deal_community_sent(ctx, count):
 def then_award_pot_sent(ctx):
     """Verify AwardPot command."""
     award_cmds = [
-        cmd for cmd in ctx.commands_sent
-        if get_command_type(cmd) == "AwardPot"
+        cmd for cmd in ctx.commands_sent if get_command_type(cmd) == "AwardPot"
     ]
     assert len(award_cmds) > 0
 
@@ -589,8 +607,7 @@ def then_award_pot_sent(ctx):
 def then_award_pot_to_remaining(ctx):
     """Verify AwardPot command to remaining player."""
     award_cmds = [
-        cmd for cmd in ctx.commands_sent
-        if get_command_type(cmd) == "AwardPot"
+        cmd for cmd in ctx.commands_sent if get_command_type(cmd) == "AwardPot"
     ]
     assert len(award_cmds) > 0
 
@@ -624,8 +641,7 @@ def then_player_excluded_from_betting(ctx):
 def then_pm_sends_action(ctx, action):
     """Verify process manager sends PlayerAction."""
     action_cmds = [
-        cmd for cmd in ctx.commands_sent
-        if get_command_type(cmd) == "PlayerAction"
+        cmd for cmd in ctx.commands_sent if get_command_type(cmd) == "PlayerAction"
     ]
     assert len(action_cmds) > 0
 
@@ -692,6 +708,7 @@ def then_timeout_cancelled(ctx):
 
 # --- Standalone tests for datatable scenarios ---
 
+
 class TestProcessManagerDatatables:
     """Standalone tests for scenarios that use datatables."""
 
@@ -735,7 +752,9 @@ class TestProcessManagerDatatables:
         # In heads-up, dealer (position 0) is small blind, position 1 is big blind
         # So small blind player is player-1 at position 0
         blind_event = hand.BlindPosted(
-            player_root=uuid_for("player-1"),  # Player at small_blind_position (0 in heads-up)
+            player_root=uuid_for(
+                "player-1"
+            ),  # Player at small_blind_position (0 in heads-up)
             blind_type="small",
             amount=5,
             pot_total=5,
@@ -746,8 +765,7 @@ class TestProcessManagerDatatables:
 
         # Should send PostBlind command for big blind
         post_blind_cmds = [
-            cmd for cmd in commands_sent
-            if get_command_type(cmd) == "PostBlind"
+            cmd for cmd in commands_sent if get_command_type(cmd) == "PostBlind"
         ]
         assert len(post_blind_cmds) > 0
 
@@ -779,8 +797,7 @@ class TestProcessManagerDatatables:
 
         # Should send AwardPot command
         award_cmds = [
-            cmd for cmd in commands_sent
-            if get_command_type(cmd) == "AwardPot"
+            cmd for cmd in commands_sent if get_command_type(cmd) == "AwardPot"
         ]
         assert len(award_cmds) > 0
 
@@ -801,8 +818,7 @@ class TestProcessManagerDatatables:
 
         # Should send PlayerAction with FOLD
         action_cmds = [
-            cmd for cmd in commands_sent
-            if get_command_type(cmd) == "PlayerAction"
+            cmd for cmd in commands_sent if get_command_type(cmd) == "PlayerAction"
         ]
         assert len(action_cmds) > 0
 
@@ -823,8 +839,7 @@ class TestProcessManagerDatatables:
 
         # Should send PlayerAction with CHECK
         action_cmds = [
-            cmd for cmd in commands_sent
-            if get_command_type(cmd) == "PlayerAction"
+            cmd for cmd in commands_sent if get_command_type(cmd) == "PlayerAction"
         ]
         assert len(action_cmds) > 0
 

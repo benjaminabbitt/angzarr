@@ -4,18 +4,15 @@
 # source: examples/inventory.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'examples/inventory.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "examples/inventory.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -25,40 +22,44 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x65xamples/inventory.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\"|\n\x0fInitializeStock\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12.\n\x13low_stock_threshold\x18\x03 \x01(\x05R\x11lowStockThreshold\"H\n\x0cReceiveStock\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x1c\n\treference\x18\x02 \x01(\tR\treference\"E\n\x0cReserveStock\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x19\n\x08order_id\x18\x02 \x01(\tR\x07orderId\"/\n\x12ReleaseReservation\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\".\n\x11\x43ommitReservation\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\"\xc0\x01\n\x10StockInitialized\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12.\n\x13low_stock_threshold\x18\x03 \x01(\x05R\x11lowStockThreshold\x12\x41\n\x0einitialized_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\rinitializedAt\"\xa6\x01\n\rStockReceived\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x1e\n\x0bnew_on_hand\x18\x02 \x01(\x05R\tnewOnHand\x12\x1c\n\treference\x18\x03 \x01(\tR\treference\x12;\n\x0breceived_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreceivedAt\"\xeb\x01\n\rStockReserved\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x19\n\x08order_id\x18\x02 \x01(\tR\x07orderId\x12#\n\rnew_available\x18\x03 \x01(\x05R\x0cnewAvailable\x12;\n\x0breserved_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreservedAt\x12!\n\x0cnew_reserved\x18\x05 \x01(\x05R\x0bnewReserved\x12\x1e\n\x0bnew_on_hand\x18\x06 \x01(\x05R\tnewOnHand\"\xf1\x01\n\x13ReservationReleased\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12#\n\rnew_available\x18\x03 \x01(\x05R\x0cnewAvailable\x12;\n\x0breleased_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreleasedAt\x12!\n\x0cnew_reserved\x18\x05 \x01(\x05R\x0bnewReserved\x12\x1e\n\x0bnew_on_hand\x18\x06 \x01(\x05R\tnewOnHand\"\xcf\x01\n\x14ReservationCommitted\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12\x1e\n\x0bnew_on_hand\x18\x03 \x01(\x05R\tnewOnHand\x12=\n\x0c\x63ommitted_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ommittedAt\x12!\n\x0cnew_reserved\x18\x05 \x01(\x05R\x0bnewReserved\"\xa5\x01\n\rLowStockAlert\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x1c\n\tavailable\x18\x02 \x01(\x05R\tavailable\x12\x1c\n\tthreshold\x18\x03 \x01(\x05R\tthreshold\x12\x39\n\nalerted_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\talertedAt\"\xa5\x02\n\x0eInventoryState\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x17\n\x07on_hand\x18\x02 \x01(\x05R\x06onHand\x12\x1a\n\x08reserved\x18\x03 \x01(\x05R\x08reserved\x12.\n\x13low_stock_threshold\x18\x04 \x01(\x05R\x11lowStockThreshold\x12N\n\x0creservations\x18\x05 \x03(\x0b\x32*.examples.InventoryState.ReservationsEntryR\x0creservations\x1a?\n\x11ReservationsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x05R\x05value:\x02\x38\x01\x42\x92\x01\n\x0c\x63om.examplesB\x0eInventoryProtoP\x01Z2github.com/angzarr/angzarr/proto/examples;examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x18\x65xamples/inventory.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto"|\n\x0fInitializeStock\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12.\n\x13low_stock_threshold\x18\x03 \x01(\x05R\x11lowStockThreshold"H\n\x0cReceiveStock\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x1c\n\treference\x18\x02 \x01(\tR\treference"E\n\x0cReserveStock\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x19\n\x08order_id\x18\x02 \x01(\tR\x07orderId"/\n\x12ReleaseReservation\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId".\n\x11\x43ommitReservation\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId"\xc0\x01\n\x10StockInitialized\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12.\n\x13low_stock_threshold\x18\x03 \x01(\x05R\x11lowStockThreshold\x12\x41\n\x0einitialized_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\rinitializedAt"\xa6\x01\n\rStockReceived\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x1e\n\x0bnew_on_hand\x18\x02 \x01(\x05R\tnewOnHand\x12\x1c\n\treference\x18\x03 \x01(\tR\treference\x12;\n\x0breceived_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreceivedAt"\xeb\x01\n\rStockReserved\x12\x1a\n\x08quantity\x18\x01 \x01(\x05R\x08quantity\x12\x19\n\x08order_id\x18\x02 \x01(\tR\x07orderId\x12#\n\rnew_available\x18\x03 \x01(\x05R\x0cnewAvailable\x12;\n\x0breserved_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreservedAt\x12!\n\x0cnew_reserved\x18\x05 \x01(\x05R\x0bnewReserved\x12\x1e\n\x0bnew_on_hand\x18\x06 \x01(\x05R\tnewOnHand"\xf1\x01\n\x13ReservationReleased\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12#\n\rnew_available\x18\x03 \x01(\x05R\x0cnewAvailable\x12;\n\x0breleased_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nreleasedAt\x12!\n\x0cnew_reserved\x18\x05 \x01(\x05R\x0bnewReserved\x12\x1e\n\x0bnew_on_hand\x18\x06 \x01(\x05R\tnewOnHand"\xcf\x01\n\x14ReservationCommitted\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x1a\n\x08quantity\x18\x02 \x01(\x05R\x08quantity\x12\x1e\n\x0bnew_on_hand\x18\x03 \x01(\x05R\tnewOnHand\x12=\n\x0c\x63ommitted_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ommittedAt\x12!\n\x0cnew_reserved\x18\x05 \x01(\x05R\x0bnewReserved"\xa5\x01\n\rLowStockAlert\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x1c\n\tavailable\x18\x02 \x01(\x05R\tavailable\x12\x1c\n\tthreshold\x18\x03 \x01(\x05R\tthreshold\x12\x39\n\nalerted_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\talertedAt"\xa5\x02\n\x0eInventoryState\x12\x1d\n\nproduct_id\x18\x01 \x01(\tR\tproductId\x12\x17\n\x07on_hand\x18\x02 \x01(\x05R\x06onHand\x12\x1a\n\x08reserved\x18\x03 \x01(\x05R\x08reserved\x12.\n\x13low_stock_threshold\x18\x04 \x01(\x05R\x11lowStockThreshold\x12N\n\x0creservations\x18\x05 \x03(\x0b\x32*.examples.InventoryState.ReservationsEntryR\x0creservations\x1a?\n\x11ReservationsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x05R\x05value:\x02\x38\x01\x42\x92\x01\n\x0c\x63om.examplesB\x0eInventoryProtoP\x01Z2github.com/angzarr/angzarr/proto/examples;examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.inventory_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "examples.inventory_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\016InventoryProtoP\001Z2github.com/angzarr/angzarr/proto/examples;examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
-  _globals['_INVENTORYSTATE_RESERVATIONSENTRY']._loaded_options = None
-  _globals['_INVENTORYSTATE_RESERVATIONSENTRY']._serialized_options = b'8\001'
-  _globals['_INITIALIZESTOCK']._serialized_start=71
-  _globals['_INITIALIZESTOCK']._serialized_end=195
-  _globals['_RECEIVESTOCK']._serialized_start=197
-  _globals['_RECEIVESTOCK']._serialized_end=269
-  _globals['_RESERVESTOCK']._serialized_start=271
-  _globals['_RESERVESTOCK']._serialized_end=340
-  _globals['_RELEASERESERVATION']._serialized_start=342
-  _globals['_RELEASERESERVATION']._serialized_end=389
-  _globals['_COMMITRESERVATION']._serialized_start=391
-  _globals['_COMMITRESERVATION']._serialized_end=437
-  _globals['_STOCKINITIALIZED']._serialized_start=440
-  _globals['_STOCKINITIALIZED']._serialized_end=632
-  _globals['_STOCKRECEIVED']._serialized_start=635
-  _globals['_STOCKRECEIVED']._serialized_end=801
-  _globals['_STOCKRESERVED']._serialized_start=804
-  _globals['_STOCKRESERVED']._serialized_end=1039
-  _globals['_RESERVATIONRELEASED']._serialized_start=1042
-  _globals['_RESERVATIONRELEASED']._serialized_end=1283
-  _globals['_RESERVATIONCOMMITTED']._serialized_start=1286
-  _globals['_RESERVATIONCOMMITTED']._serialized_end=1493
-  _globals['_LOWSTOCKALERT']._serialized_start=1496
-  _globals['_LOWSTOCKALERT']._serialized_end=1661
-  _globals['_INVENTORYSTATE']._serialized_start=1664
-  _globals['_INVENTORYSTATE']._serialized_end=1957
-  _globals['_INVENTORYSTATE_RESERVATIONSENTRY']._serialized_start=1894
-  _globals['_INVENTORYSTATE_RESERVATIONSENTRY']._serialized_end=1957
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\014com.examplesB\016InventoryProtoP\001Z2github.com/angzarr/angzarr/proto/examples;examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples"
+    _globals["_INVENTORYSTATE_RESERVATIONSENTRY"]._loaded_options = None
+    _globals["_INVENTORYSTATE_RESERVATIONSENTRY"]._serialized_options = b"8\001"
+    _globals["_INITIALIZESTOCK"]._serialized_start = 71
+    _globals["_INITIALIZESTOCK"]._serialized_end = 195
+    _globals["_RECEIVESTOCK"]._serialized_start = 197
+    _globals["_RECEIVESTOCK"]._serialized_end = 269
+    _globals["_RESERVESTOCK"]._serialized_start = 271
+    _globals["_RESERVESTOCK"]._serialized_end = 340
+    _globals["_RELEASERESERVATION"]._serialized_start = 342
+    _globals["_RELEASERESERVATION"]._serialized_end = 389
+    _globals["_COMMITRESERVATION"]._serialized_start = 391
+    _globals["_COMMITRESERVATION"]._serialized_end = 437
+    _globals["_STOCKINITIALIZED"]._serialized_start = 440
+    _globals["_STOCKINITIALIZED"]._serialized_end = 632
+    _globals["_STOCKRECEIVED"]._serialized_start = 635
+    _globals["_STOCKRECEIVED"]._serialized_end = 801
+    _globals["_STOCKRESERVED"]._serialized_start = 804
+    _globals["_STOCKRESERVED"]._serialized_end = 1039
+    _globals["_RESERVATIONRELEASED"]._serialized_start = 1042
+    _globals["_RESERVATIONRELEASED"]._serialized_end = 1283
+    _globals["_RESERVATIONCOMMITTED"]._serialized_start = 1286
+    _globals["_RESERVATIONCOMMITTED"]._serialized_end = 1493
+    _globals["_LOWSTOCKALERT"]._serialized_start = 1496
+    _globals["_LOWSTOCKALERT"]._serialized_end = 1661
+    _globals["_INVENTORYSTATE"]._serialized_start = 1664
+    _globals["_INVENTORYSTATE"]._serialized_end = 1957
+    _globals["_INVENTORYSTATE_RESERVATIONSENTRY"]._serialized_start = 1894
+    _globals["_INVENTORYSTATE_RESERVATIONSENTRY"]._serialized_end = 1957
 # @@protoc_insertion_point(module_scope)

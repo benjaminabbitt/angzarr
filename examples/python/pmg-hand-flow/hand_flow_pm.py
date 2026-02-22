@@ -26,6 +26,8 @@ class HandFlowState:
     hand_id: str = ""
     phase: HandPhase = HandPhase.AWAITING_DEAL
     player_count: int = 0
+
+
 # docs:end:pm_state
 
 
@@ -38,10 +40,12 @@ class HandFlowPM(ProcessManager):
         state.player_count = event.player_count
 
         # Emit command to hand domain
-        return [hand.DealCards(
-            hand_id=event.hand_id,
-            player_count=event.player_count,
-        )]
+        return [
+            hand.DealCards(
+                hand_id=event.hand_id,
+                player_count=event.player_count,
+            )
+        ]
 
     def handle_cards_dealt(self, event: hand.CardsDealt, state: HandFlowState):
         # Transition: DEALING -> BLINDS
@@ -53,8 +57,12 @@ class HandFlowPM(ProcessManager):
         state.phase = HandPhase.COMPLETE
 
         # Signal table domain
-        return [table.EndHand(
-            hand_id=state.hand_id,
-            winner_id=event.winner_id,
-        )]
+        return [
+            table.EndHand(
+                hand_id=state.hand_id,
+                winner_id=event.winner_id,
+            )
+        ]
+
+
 # docs:end:pm_handler

@@ -150,9 +150,9 @@ class TextRenderer:
 
     def _render_HandStarted(self, event: table.HandStarted) -> str:
         lines = [
-            f"\n{'='*60}",
+            f"\n{'=' * 60}",
             f"HAND #{event.hand_number}",
-            f"{'='*60}",
+            f"{'=' * 60}",
             f"Dealer: Seat {event.dealer_position}",
             f"Blinds: {format_chips(event.small_blind)}/{format_chips(event.big_blind)}",
             "",
@@ -177,7 +177,7 @@ class TextRenderer:
         for result in event.results:
             name = self.get_player_name(result.winner_root)
             lines.append(f"  {name} wins {format_chips(result.amount)}")
-        lines.append(f"{'='*60}\n")
+        lines.append(f"{'=' * 60}\n")
         return "\n".join(lines)
 
     # Hand events

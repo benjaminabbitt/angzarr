@@ -28,6 +28,8 @@ def state_from_event_book(event_book):
         return state
     events = [page.event for page in event_book.pages if page.event]
     return build_state(state, events)
+
+
 from angzarr_client.proto.examples import table_pb2 as table
 
 structlog.configure(

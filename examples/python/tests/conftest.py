@@ -46,6 +46,7 @@ def uuid_str_for(name: str) -> str:
 def make_timestamp() -> Timestamp:
     """Create a timestamp for now."""
     from datetime import datetime, timezone
+
     return Timestamp(seconds=int(datetime.now(timezone.utc).timestamp()))
 
 
@@ -70,7 +71,9 @@ def make_event_book(cover: types.Cover, pages: list = None) -> types.EventBook:
     )
 
 
-def make_command_book(cover: types.Cover, command_any: ProtoAny, seq: int = 0) -> types.CommandBook:
+def make_command_book(
+    cover: types.Cover, command_any: ProtoAny, seq: int = 0
+) -> types.CommandBook:
     """Create a CommandBook."""
     return types.CommandBook(
         cover=cover,
@@ -105,11 +108,13 @@ class ScenarioContext:
         """Build EventBook from events."""
         pages = []
         for i, event_any in enumerate(self.events):
-            pages.append(types.EventPage(
-                num=i,
-                event=event_any,
-                created_at=make_timestamp(),
-            ))
+            pages.append(
+                types.EventPage(
+                    num=i,
+                    event=event_any,
+                    created_at=make_timestamp(),
+                )
+            )
         return types.EventBook(
             cover=make_cover(self.domain, self.root),
             pages=pages,

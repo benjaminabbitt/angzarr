@@ -69,7 +69,9 @@ class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
     @reacts_to(StockReserved, input_domain="inventory", output_domain="fulfillment")
     def on_stock_reserved(self, event: StockReserved) -> CreateShipment:
         state = self._get_state()
-        return CreateShipment(order_id=event.order_id, address=f"customer-{state.customer_id}")
+        return CreateShipment(
+            order_id=event.order_id, address=f"customer-{state.customer_id}"
+        )
 
 
 class NoopPM(ProcessManager[OrderWorkflowState]):
@@ -339,8 +341,6 @@ class TestProcessManagerHandle:
         assert commands[0].cover.correlation_id == "corr-abc"
 
 
-
-
 # =============================================================================
 # Tests for function-based pattern (router)
 # =============================================================================
@@ -382,6 +382,7 @@ class TestFunctionBasedRouter:
         assert len(commands) == 1
         assert commands[0].cover.domain == "fulfillment"
 
+
 # =============================================================================
 # Tests comparing both patterns produce equivalent output
 # =============================================================================
@@ -410,4 +411,8 @@ class TestPatternEquivalence:
         # Both produce one command to inventory domain
         assert len(oo_commands) == len(fn_commands) == 1
         assert oo_commands[0].cover.domain == fn_commands[0].cover.domain == "inventory"
-        assert oo_commands[0].cover.correlation_id == fn_commands[0].cover.correlation_id == "corr-eq"
+        assert (
+            oo_commands[0].cover.correlation_id
+            == fn_commands[0].cover.correlation_id
+            == "corr-eq"
+        )

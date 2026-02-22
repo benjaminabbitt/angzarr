@@ -30,8 +30,13 @@ class TestPlayerAggregate(Aggregate[PlayerState]):
         return None
 
 
-def make_notification(issuer_name: str, issuer_type: str, rejection_reason: str,
-                      rejected_domain: str, rejected_command: str) -> types.Notification:
+def make_notification(
+    issuer_name: str,
+    issuer_type: str,
+    rejection_reason: str,
+    rejected_domain: str,
+    rejected_command: str,
+) -> types.Notification:
     """Create a Notification with RejectionNotification payload."""
     cmd_any = ProtoAny(
         type_url=f"type.googleapis.com/test.{rejected_command}",
@@ -64,10 +69,10 @@ class TestNotificationCompensation:
             rejected_domain="payment",
             rejected_command="ProcessPayment",
         )
-        
+
         assert notif.HasField("payload")
         assert "RejectionNotification" in notif.payload.type_url
-        
+
         rejection = types.RejectionNotification()
         notif.payload.Unpack(rejection)
         assert rejection.issuer_name == "saga-payment"
@@ -78,7 +83,7 @@ class TestNotificationCompensation:
         """Aggregate routes Notification to @rejected handler."""
         event_book = types.EventBook()
         agg = TestPlayerAggregate(event_book)
-        
+
         notif = make_notification(
             issuer_name="saga-payment",
             issuer_type="saga",
@@ -86,23 +91,28 @@ class TestNotificationCompensation:
             rejected_domain="payment",
             rejected_command="ProcessPayment",
         )
-        
+
         response = agg.handle_revocation(notif)
-        
+
         assert hasattr(agg, "_rejection_handled")
         assert agg._rejection_handled is True
         assert agg._rejection_context == notif
 
     def test_aggregate_delegates_when_no_handler(self):
         """Aggregate delegates to framework when no @rejected handler matches."""
+
         class PlayerNoHandlers(Aggregate[PlayerState]):
             domain = "player"
-            def _create_empty_state(self): return PlayerState()
-            def _apply_event(self, state, event): pass
-        
+
+            def _create_empty_state(self):
+                return PlayerState()
+
+            def _apply_event(self, state, event):
+                pass
+
         event_book = types.EventBook()
         agg = PlayerNoHandlers(event_book)
-        
+
         notif = make_notification(
             issuer_name="saga-unknown",
             issuer_type="saga",
@@ -110,9 +120,9 @@ class TestNotificationCompensation:
             rejected_domain="unknown",
             rejected_command="UnknownCommand",
         )
-        
+
         response = agg.handle_revocation(notif)
-        
+
         assert response.HasField("revocation")
         assert response.revocation.emit_system_revocation is True
         assert "no custom compensation" in response.revocation.reason.lower()
@@ -126,12 +136,14 @@ class TestNotificationCompensation:
             rejected_domain="inventory",
             rejected_command="ReserveInventory",
         )
-        
+
         rejection = types.RejectionNotification()
         notif.payload.Unpack(rejection)
-        
+
         assert rejection.issuer_name == "pmg-order-workflow"
         assert rejection.issuer_type == "process_manager"
         assert rejection.rejection_reason == "out_of_stock"
         assert rejection.rejected_command.cover.domain == "inventory"
-        assert "ReserveInventory" in rejection.rejected_command.pages[0].command.type_url
+        assert (
+            "ReserveInventory" in rejection.rejected_command.pages[0].command.type_url
+        )

@@ -27,12 +27,17 @@ def update_cargo_toml(repo_root: Path, version: str) -> bool:
     # Match version in [package] section (after [package] but before next section)
     # This pattern finds: version = "x.y.z" in the package section
     pattern = r'(\[package\].*?version\s*=\s*")[^"]+(")'
-    replacement = rf'\g<1>{version}\g<2>'
+    replacement = rf"\g<1>{version}\g<2>"
 
-    new_content, count = re.subn(pattern, replacement, content, count=1, flags=re.DOTALL)
+    new_content, count = re.subn(
+        pattern, replacement, content, count=1, flags=re.DOTALL
+    )
 
     if count == 0:
-        print("Warning: Could not find version in Cargo.toml [package] section", file=sys.stderr)
+        print(
+            "Warning: Could not find version in Cargo.toml [package] section",
+            file=sys.stderr,
+        )
         return False
 
     cargo_file.write_text(new_content)
@@ -50,10 +55,14 @@ def update_chart_yaml(repo_root: Path, version: str) -> bool:
     content = chart_file.read_text()
 
     # Update version field
-    content = re.sub(r'^version:\s*.+$', f'version: {version}', content, flags=re.MULTILINE)
+    content = re.sub(
+        r"^version:\s*.+$", f"version: {version}", content, flags=re.MULTILINE
+    )
 
     # Update appVersion field
-    content = re.sub(r'^appVersion:\s*.+$', f'appVersion: "{version}"', content, flags=re.MULTILINE)
+    content = re.sub(
+        r"^appVersion:\s*.+$", f'appVersion: "{version}"', content, flags=re.MULTILINE
+    )
 
     chart_file.write_text(content)
     print(f"Updated Chart.yaml to version {version}")

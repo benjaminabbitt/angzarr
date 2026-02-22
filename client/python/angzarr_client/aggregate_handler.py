@@ -38,7 +38,9 @@ class AggregateHandler(aggregate_pb2_grpc.AggregateServiceServicer):
     def __init__(self, handler: Union[type[Aggregate], CommandRouter]) -> None:
         if isinstance(handler, type) and issubclass(handler, Aggregate):
             self._handle = handler.handle
-            self._replay: Callable[[aggregate.ReplayRequest], aggregate.ReplayResponse] | None = handler.replay
+            self._replay: (
+                Callable[[aggregate.ReplayRequest], aggregate.ReplayResponse] | None
+            ) = handler.replay
             self._domain = handler.domain
         else:
             self._handle = handler.dispatch

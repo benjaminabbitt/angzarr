@@ -89,7 +89,9 @@ class OutputProjector(Projector):
     @projects(hand.BlindPosted)
     def project_blind_posted(self, event: hand.BlindPosted) -> types.Projection:
         player_id = truncate_id(event.player_root)
-        write_log(f"HAND player {player_id} posted {event.blind_type} blind: {event.amount}")
+        write_log(
+            f"HAND player {player_id} posted {event.blind_type} blind: {event.amount}"
+        )
         return types.Projection(projector=self.name)
 
     @projects(hand.ActionTaken)

@@ -15,6 +15,7 @@ from angzarr_client.proto.angzarr import types_pb2 as types
 
 class FakeCommand:
     """Fake command message for testing."""
+
     DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
 
     def __init__(self, value: str = ""):
@@ -26,6 +27,7 @@ class FakeCommand:
 
 class AnotherCommand:
     """Another fake command for testing."""
+
     DESCRIPTOR = type("Descriptor", (), {"full_name": "test.AnotherCommand"})()
 
     def __init__(self, name: str = ""):
@@ -37,6 +39,7 @@ class AnotherCommand:
 
 class FakeEvent:
     """Fake event message for testing."""
+
     DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeEvent"})()
 
     def __init__(self, result: str = ""):
@@ -118,18 +121,21 @@ class TestHandlesDecorator:
 
     def test_decorator_validates_missing_param(self):
         with pytest.raises(TypeError, match="must have cmd parameter"):
+
             @handles(FakeCommand)
             def bad_method(self):
                 pass
 
     def test_decorator_validates_missing_type_hint(self):
         with pytest.raises(TypeError, match="missing type hint"):
+
             @handles(FakeCommand)
             def bad_method(self, cmd):
                 pass
 
     def test_decorator_validates_type_hint_mismatch(self):
         with pytest.raises(TypeError, match="doesn't match type hint"):
+
             @handles(FakeCommand)
             def bad_method(self, cmd: AnotherCommand):
                 pass
@@ -306,6 +312,7 @@ class TestAggregateSubclassValidation:
 
     def test_missing_domain_raises(self):
         with pytest.raises(TypeError, match="must define 'domain'"):
+
             class BadAggregate(Aggregate[AggState]):
                 def _create_empty_state(self):
                     return AggState()
@@ -315,6 +322,7 @@ class TestAggregateSubclassValidation:
 
     def test_duplicate_handler_raises(self):
         with pytest.raises(TypeError, match="duplicate handler"):
+
             class DuplicateAggregate(Aggregate[AggState]):
                 domain = "dup"
 

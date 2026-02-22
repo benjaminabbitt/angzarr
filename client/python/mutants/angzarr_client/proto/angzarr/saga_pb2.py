@@ -4,18 +4,15 @@
 # source: angzarr/saga.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'angzarr/saga.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "angzarr/saga.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -25,16 +22,20 @@ _sym_db = _symbol_database.Default()
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61ngzarr/saga.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto2\xe0\x01\n\x0bSagaService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12\x44\n\x07Prepare\x12\x1b.angzarr.SagaPrepareRequest\x1a\x1c.angzarr.SagaPrepareResponse\x12=\n\x07\x45xecute\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponse2b\n\x16SagaCoordinatorService\x12H\n\x12\x45xecuteSpeculative\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponseB~\n\x0b\x63om.angzarrB\tSagaProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b"\n\x12\x61ngzarr/saga.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto2\xe0\x01\n\x0bSagaService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12\x44\n\x07Prepare\x12\x1b.angzarr.SagaPrepareRequest\x1a\x1c.angzarr.SagaPrepareResponse\x12=\n\x07\x45xecute\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponse2b\n\x16SagaCoordinatorService\x12H\n\x12\x45xecuteSpeculative\x12\x1b.angzarr.SagaExecuteRequest\x1a\x15.angzarr.SagaResponseB~\n\x0b\x63om.angzarrB\tSagaProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3"
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.saga_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "angzarr.saga_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\tSagaProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_SAGASERVICE']._serialized_start=53
-  _globals['_SAGASERVICE']._serialized_end=277
-  _globals['_SAGACOORDINATORSERVICE']._serialized_start=279
-  _globals['_SAGACOORDINATORSERVICE']._serialized_end=377
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\013com.angzarrB\tSagaProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr"
+    _globals["_SAGASERVICE"]._serialized_start = 53
+    _globals["_SAGASERVICE"]._serialized_end = 277
+    _globals["_SAGACOORDINATORSERVICE"]._serialized_start = 279
+    _globals["_SAGACOORDINATORSERVICE"]._serialized_end = 377
 # @@protoc_insertion_point(module_scope)

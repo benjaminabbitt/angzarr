@@ -4,18 +4,15 @@
 # source: angzarr/aggregate.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'angzarr/aggregate.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "angzarr/aggregate.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -23,27 +20,33 @@ _sym_db = _symbol_database.Default()
 
 
 from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
-from angzarr_client.proto.angzarr import process_manager_pb2 as angzarr_dot_process__manager__pb2
+from angzarr_client.proto.angzarr import (
+    process_manager_pb2 as angzarr_dot_process__manager__pb2,
+)
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ngzarr/aggregate.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1d\x61ngzarr/process_manager.proto\"n\n\x19SpeculateProjectorRequest\x12%\n\x0eprojector_name\x18\x01 \x01(\tR\rprojectorName\x12*\n\x06\x65vents\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\"\x97\x01\n\x14SpeculateSagaRequest\x12\x1b\n\tsaga_name\x18\x01 \x01(\tR\x08sagaName\x12*\n\x06source\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x06source\x12\x36\n\x0c\x64\x65stinations\x18\x03 \x03(\x0b\x32\x12.angzarr.EventBookR\x0c\x64\x65stinations\"\xcc\x01\n\x12SpeculatePmRequest\x12\x17\n\x07pm_name\x18\x01 \x01(\tR\x06pmName\x12,\n\x07trigger\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x07trigger\x12\x37\n\rprocess_state\x18\x03 \x01(\x0b\x32\x12.angzarr.EventBookR\x0cprocessState\x12\x36\n\x0c\x64\x65stinations\x18\x04 \x03(\x0b\x32\x12.angzarr.EventBookR\x0c\x64\x65stinations2\xa1\x01\n\x10\x41ggregateService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse2\xdb\x01\n\x1b\x41ggregateCoordinatorService\x12\x38\n\x06Handle\x12\x14.angzarr.CommandBook\x1a\x18.angzarr.CommandResponse\x12@\n\nHandleSync\x12\x18.angzarr.SyncCommandBook\x1a\x18.angzarr.CommandResponse\x12@\n\x0c\x44ryRunHandle\x12\x16.angzarr.DryRunRequest\x1a\x18.angzarr.CommandResponse2\xcc\x02\n\x12SpeculativeService\x12\x41\n\rDryRunCommand\x12\x16.angzarr.DryRunRequest\x1a\x18.angzarr.CommandResponse\x12M\n\x12SpeculateProjector\x12\".angzarr.SpeculateProjectorRequest\x1a\x13.angzarr.Projection\x12\x45\n\rSpeculateSaga\x12\x1d.angzarr.SpeculateSagaRequest\x1a\x15.angzarr.SagaResponse\x12]\n\x17SpeculateProcessManager\x12\x1b.angzarr.SpeculatePmRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x83\x01\n\x0b\x63om.angzarrB\x0e\x41ggregateProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x17\x61ngzarr/aggregate.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1d\x61ngzarr/process_manager.proto"n\n\x19SpeculateProjectorRequest\x12%\n\x0eprojector_name\x18\x01 \x01(\tR\rprojectorName\x12*\n\x06\x65vents\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents"\x97\x01\n\x14SpeculateSagaRequest\x12\x1b\n\tsaga_name\x18\x01 \x01(\tR\x08sagaName\x12*\n\x06source\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x06source\x12\x36\n\x0c\x64\x65stinations\x18\x03 \x03(\x0b\x32\x12.angzarr.EventBookR\x0c\x64\x65stinations"\xcc\x01\n\x12SpeculatePmRequest\x12\x17\n\x07pm_name\x18\x01 \x01(\tR\x06pmName\x12,\n\x07trigger\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x07trigger\x12\x37\n\rprocess_state\x18\x03 \x01(\x0b\x32\x12.angzarr.EventBookR\x0cprocessState\x12\x36\n\x0c\x64\x65stinations\x18\x04 \x03(\x0b\x32\x12.angzarr.EventBookR\x0c\x64\x65stinations2\xa1\x01\n\x10\x41ggregateService\x12L\n\rGetDescriptor\x12\x1d.angzarr.GetDescriptorRequest\x1a\x1c.angzarr.ComponentDescriptor\x12?\n\x06Handle\x12\x1a.angzarr.ContextualCommand\x1a\x19.angzarr.BusinessResponse2\xdb\x01\n\x1b\x41ggregateCoordinatorService\x12\x38\n\x06Handle\x12\x14.angzarr.CommandBook\x1a\x18.angzarr.CommandResponse\x12@\n\nHandleSync\x12\x18.angzarr.SyncCommandBook\x1a\x18.angzarr.CommandResponse\x12@\n\x0c\x44ryRunHandle\x12\x16.angzarr.DryRunRequest\x1a\x18.angzarr.CommandResponse2\xcc\x02\n\x12SpeculativeService\x12\x41\n\rDryRunCommand\x12\x16.angzarr.DryRunRequest\x1a\x18.angzarr.CommandResponse\x12M\n\x12SpeculateProjector\x12".angzarr.SpeculateProjectorRequest\x1a\x13.angzarr.Projection\x12\x45\n\rSpeculateSaga\x12\x1d.angzarr.SpeculateSagaRequest\x1a\x15.angzarr.SagaResponse\x12]\n\x17SpeculateProcessManager\x12\x1b.angzarr.SpeculatePmRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x83\x01\n\x0b\x63om.angzarrB\x0e\x41ggregateProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.aggregate_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "angzarr.aggregate_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\016AggregateProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_SPECULATEPROJECTORREQUEST']._serialized_start=88
-  _globals['_SPECULATEPROJECTORREQUEST']._serialized_end=198
-  _globals['_SPECULATESAGAREQUEST']._serialized_start=201
-  _globals['_SPECULATESAGAREQUEST']._serialized_end=352
-  _globals['_SPECULATEPMREQUEST']._serialized_start=355
-  _globals['_SPECULATEPMREQUEST']._serialized_end=559
-  _globals['_AGGREGATESERVICE']._serialized_start=562
-  _globals['_AGGREGATESERVICE']._serialized_end=723
-  _globals['_AGGREGATECOORDINATORSERVICE']._serialized_start=726
-  _globals['_AGGREGATECOORDINATORSERVICE']._serialized_end=945
-  _globals['_SPECULATIVESERVICE']._serialized_start=948
-  _globals['_SPECULATIVESERVICE']._serialized_end=1280
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\013com.angzarrB\016AggregateProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr"
+    _globals["_SPECULATEPROJECTORREQUEST"]._serialized_start = 88
+    _globals["_SPECULATEPROJECTORREQUEST"]._serialized_end = 198
+    _globals["_SPECULATESAGAREQUEST"]._serialized_start = 201
+    _globals["_SPECULATESAGAREQUEST"]._serialized_end = 352
+    _globals["_SPECULATEPMREQUEST"]._serialized_start = 355
+    _globals["_SPECULATEPMREQUEST"]._serialized_end = 559
+    _globals["_AGGREGATESERVICE"]._serialized_start = 562
+    _globals["_AGGREGATESERVICE"]._serialized_end = 723
+    _globals["_AGGREGATECOORDINATORSERVICE"]._serialized_start = 726
+    _globals["_AGGREGATECOORDINATORSERVICE"]._serialized_end = 945
+    _globals["_SPECULATIVESERVICE"]._serialized_start = 948
+    _globals["_SPECULATIVESERVICE"]._serialized_end = 1280
 # @@protoc_insertion_point(module_scope)

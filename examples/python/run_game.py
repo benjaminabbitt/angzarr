@@ -35,8 +35,19 @@ SUIT_SYMBOLS = {
 }
 
 RANK_SYMBOLS = {
-    2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9",
-    10: "T", 11: "J", 12: "Q", 13: "K", 14: "A",
+    2: "2",
+    3: "3",
+    4: "4",
+    5: "5",
+    6: "6",
+    7: "7",
+    8: "8",
+    9: "9",
+    10: "T",
+    11: "J",
+    12: "Q",
+    13: "K",
+    14: "A",
 }
 
 HAND_NAMES = {
@@ -76,6 +87,7 @@ def chips(amount: int) -> str:
 @dataclass
 class Player:
     """Track player state locally."""
+
     name: str
     root: bytes
     stack: int
@@ -119,10 +131,10 @@ class PokerGame:
         self._log_file = None
         if log_file:
             self._log_file = open(log_file, "w", encoding="utf-8")
-            self._log_file.write(f"{'='*60}\n")
+            self._log_file.write(f"{'=' * 60}\n")
             self._log_file.write(f"  ANGZARR POKER - {variant.value.upper()}\n")
             self._log_file.write(f"  Blinds: ${small_blind}/${big_blind}\n")
-            self._log_file.write(f"{'='*60}\n\n")
+            self._log_file.write(f"{'=' * 60}\n\n")
             self._log_file.flush()
 
     def log(self, msg: str):
@@ -143,7 +155,8 @@ class PokerGame:
         self.table_root = derive_root("table", name.lower().replace(" ", "-"))
 
         variant_proto = (
-            types_pb2.TEXAS_HOLDEM if self.variant == GameVariant.TEXAS_HOLDEM
+            types_pb2.TEXAS_HOLDEM
+            if self.variant == GameVariant.TEXAS_HOLDEM
             else types_pb2.FIVE_CARD_DRAW
         )
 
@@ -228,7 +241,9 @@ class PokerGame:
         self.log(f"\n┌─ COMMAND: JoinTable")
         self.log(f"│  player: {player.name}, seat: {seat}")
 
-        resp = self.client.execute("table", self.table_root, cmd, sequence=self.table_sequence)
+        resp = self.client.execute(
+            "table", self.table_root, cmd, sequence=self.table_sequence
+        )
         self.table_sequence = resp.events.next_sequence
 
         self.log(f"└─ EVENT: PlayerJoined")
@@ -274,9 +289,11 @@ class PokerGame:
             idx = seats.index(self.dealer_seat) if self.dealer_seat in seats else 0
             self.dealer_seat = seats[(idx + 1) % len(seats)]
 
-        self.log(f"\n{'='*60}")
-        self.log(f"HAND #{self.hand_num} - Dealer: {self.players[self.dealer_seat].name}")
-        self.log(f"{'='*60}")
+        self.log(f"\n{'=' * 60}")
+        self.log(
+            f"HAND #{self.hand_num} - Dealer: {self.players[self.dealer_seat].name}"
+        )
+        self.log(f"{'=' * 60}")
 
         # Create hand root
         self.hand_root = derive_root("hand", f"table-main-{self.hand_num}")
@@ -284,7 +301,8 @@ class PokerGame:
 
         # Build player list for deal
         variant_proto = (
-            types_pb2.TEXAS_HOLDEM if self.variant == GameVariant.TEXAS_HOLDEM
+            types_pb2.TEXAS_HOLDEM
+            if self.variant == GameVariant.TEXAS_HOLDEM
             else types_pb2.FIVE_CARD_DRAW
         )
 
@@ -358,7 +376,9 @@ class PokerGame:
         self.log(f"\n┌─ COMMAND: PostBlind (small)")
         self.log(f"│  {sb_player.name}: {chips(sb_amount)}")
 
-        resp = self.client.execute("hand", self.hand_root, cmd, sequence=self.hand_sequence)
+        resp = self.client.execute(
+            "hand", self.hand_root, cmd, sequence=self.hand_sequence
+        )
         self.hand_sequence = resp.events.next_sequence
 
         sb_player.stack -= sb_amount
@@ -380,7 +400,9 @@ class PokerGame:
         self.log(f"\n┌─ COMMAND: PostBlind (big)")
         self.log(f"│  {bb_player.name}: {chips(bb_amount)}")
 
-        resp = self.client.execute("hand", self.hand_root, cmd, sequence=self.hand_sequence)
+        resp = self.client.execute(
+            "hand", self.hand_root, cmd, sequence=self.hand_sequence
+        )
         self.hand_sequence = resp.events.next_sequence
 
         bb_player.stack -= bb_amount
@@ -396,7 +418,11 @@ class PokerGame:
 
         if to_call == 0:
             # Can check or bet
-            if random.random() < 0.2 and player.stack >= self.big_blind and self.current_bet == 0:
+            if (
+                random.random() < 0.2
+                and player.stack >= self.big_blind
+                and self.current_bet == 0
+            ):
                 bet_amount = min(self.big_blind * 2, player.stack)
                 return types_pb2.BET, bet_amount
             return types_pb2.CHECK, 0
@@ -440,7 +466,11 @@ class PokerGame:
                 continue
 
             # Check if round is complete
-            active_not_allin = [s for s in seats if not self.players[s].folded and not self.players[s].all_in]
+            active_not_allin = [
+                s
+                for s in seats
+                if not self.players[s].folded and not self.players[s].all_in
+            ]
             if len(active_not_allin) <= 1:
                 break
             if seat in acted and (last_raiser is None or seat == last_raiser):
@@ -451,14 +481,21 @@ class PokerGame:
             cmd = hand_pb2.PlayerAction(
                 player_root=player.root,
                 action=action,
-                amount=amount if action in (types_pb2.CALL, types_pb2.RAISE, types_pb2.BET) else 0,
+                amount=amount
+                if action in (types_pb2.CALL, types_pb2.RAISE, types_pb2.BET)
+                else 0,
             )
 
             action_name = types_pb2.ActionType.Name(action)
             self.log(f"\n┌─ COMMAND: PlayerAction")
-            self.log(f"│  {player.name}: {action_name}" + (f" {chips(amount)}" if amount else ""))
+            self.log(
+                f"│  {player.name}: {action_name}"
+                + (f" {chips(amount)}" if amount else "")
+            )
 
-            resp = self.client.execute("hand", self.hand_root, cmd, sequence=self.hand_sequence)
+            resp = self.client.execute(
+                "hand", self.hand_root, cmd, sequence=self.hand_sequence
+            )
             self.hand_sequence = resp.events.next_sequence
 
             self.log(f"└─ EVENT: ActionTaken")
@@ -487,7 +524,11 @@ class PokerGame:
             idx += 1
 
             # Remove folded from active
-            seats = [s for s in sorted(self.players.keys()) if not self.players[s].folded and not self.players[s].all_in]
+            seats = [
+                s
+                for s in sorted(self.players.keys())
+                if not self.players[s].folded and not self.players[s].all_in
+            ]
             if len(seats) < 2:
                 break
 
@@ -497,7 +538,9 @@ class PokerGame:
 
         self.log(f"\n┌─ COMMAND: DealCommunityCards ({phase_name})")
 
-        resp = self.client.execute("hand", self.hand_root, cmd, sequence=self.hand_sequence)
+        resp = self.client.execute(
+            "hand", self.hand_root, cmd, sequence=self.hand_sequence
+        )
         self.hand_sequence = resp.events.next_sequence
 
         # Parse dealt cards
@@ -539,7 +582,9 @@ class PokerGame:
         self.log(f"\n┌─ COMMAND: AwardPot")
         self.log(f"│  {winner.name}: {chips(self.pot)}")
 
-        resp = self.client.execute("hand", self.hand_root, cmd, sequence=self.hand_sequence)
+        resp = self.client.execute(
+            "hand", self.hand_root, cmd, sequence=self.hand_sequence
+        )
         self.hand_sequence = resp.events.next_sequence
 
         self.log(f"└─ EVENT: PotAwarded")
@@ -617,13 +662,13 @@ class PokerGame:
 
         if len(self.players) == 1:
             winner = list(self.players.values())[0]
-            self.log(f"\n{'='*60}")
+            self.log(f"\n{'=' * 60}")
             self.log(f"TOURNAMENT WINNER: {winner.name} with {chips(winner.stack)}")
-            self.log(f"{'='*60}")
+            self.log(f"{'=' * 60}")
         else:
-            self.log(f"\n{'='*60}")
+            self.log(f"\n{'=' * 60}")
             self.log(f"Tournament ended after {max_hands} hands")
-            self.log(f"{'='*60}")
+            self.log(f"{'=' * 60}")
 
 
 def start_standalone() -> subprocess.Popen:
@@ -698,7 +743,11 @@ def main():
         proc = start_standalone()
 
     try:
-        variant = GameVariant.TEXAS_HOLDEM if args.variant == "holdem" else GameVariant.FIVE_CARD_DRAW
+        variant = (
+            GameVariant.TEXAS_HOLDEM
+            if args.variant == "holdem"
+            else GameVariant.FIVE_CARD_DRAW
+        )
 
         with GatewayClient("localhost:9084") as client:
             game = PokerGame(client, variant=variant)

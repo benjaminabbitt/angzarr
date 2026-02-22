@@ -91,7 +91,11 @@ def then_query_select_all(query_context):
     query = query_context["built_query"]
     assert query is not None
     # Query without range/sequences/temporal selects all events
-    assert not query.HasField("range") and not query.HasField("sequences") and not query.HasField("temporal")
+    assert (
+        not query.HasField("range")
+        and not query.HasField("sequences")
+        and not query.HasField("temporal")
+    )
 
 
 @then("the query should succeed")

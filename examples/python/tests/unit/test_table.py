@@ -34,8 +34,7 @@ def _load_handler_package(agg_path: Path, pkg_name: str) -> dict:
         full_name = f"{pkg_name}.{module_name}"
 
         spec = importlib.util.spec_from_file_location(
-            full_name, file_path,
-            submodule_search_locations=[str(handlers_path)]
+            full_name, file_path, submodule_search_locations=[str(handlers_path)]
         )
         module = importlib.util.module_from_spec(spec)
         module.__package__ = pkg_name
@@ -70,6 +69,8 @@ def state_from_event_book(event_book):
         return state
     events = [page.event for page in event_book.pages if page.event]
     return build_state(state, events)
+
+
 handle_create_table = _mods["create_table"].handle_create_table
 handle_join_table = _mods["join_table"].handle_join_table
 handle_leave_table = _mods["leave_table"].handle_leave_table
@@ -81,7 +82,11 @@ root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root))
 
 from tests.conftest import (
-    ScenarioContext, make_cover, make_command_book, make_timestamp, pack_event
+    ScenarioContext,
+    make_cover,
+    make_command_book,
+    make_timestamp,
+    pack_event,
 )
 
 # Load scenarios from feature file
@@ -127,6 +132,7 @@ def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
 
 # --- Given steps ---
 
+
 @given("no prior events for the table aggregate")
 def no_prior_events(ctx):
     """Start with empty event history."""
@@ -150,7 +156,9 @@ def table_created_event(ctx, name):
     ctx.add_event(event)
 
 
-@given(parsers.parse('a TableCreated event for "{name}" with min_buy_in {min_buy_in:d}'))
+@given(
+    parsers.parse('a TableCreated event for "{name}" with min_buy_in {min_buy_in:d}')
+)
 def table_created_with_min_buy_in(ctx, name, min_buy_in):
     """Add a TableCreated event with specific min_buy_in."""
     event = table.TableCreated(
@@ -167,7 +175,9 @@ def table_created_with_min_buy_in(ctx, name, min_buy_in):
     ctx.add_event(event)
 
 
-@given(parsers.parse('a TableCreated event for "{name}" with max_players {max_players:d}'))
+@given(
+    parsers.parse('a TableCreated event for "{name}" with max_players {max_players:d}')
+)
 def table_created_with_max_players(ctx, name, max_players):
     """Add a TableCreated event with specific max_players."""
     event = table.TableCreated(
@@ -197,7 +207,11 @@ def player_joined_event(ctx, player_id, seat):
     ctx.add_event(event)
 
 
-@given(parsers.parse('a PlayerJoined event for player "{player_id}" at seat {seat:d} with stack {stack:d}'))
+@given(
+    parsers.parse(
+        'a PlayerJoined event for player "{player_id}" at seat {seat:d} with stack {stack:d}'
+    )
+)
 def player_joined_with_stack(ctx, player_id, seat, stack):
     """Add a PlayerJoined event with specific stack."""
     event = table.PlayerJoined(
@@ -222,7 +236,11 @@ def hand_started_event(ctx, hand_num):
     ctx.add_event(event)
 
 
-@given(parsers.parse("a HandStarted event for hand {hand_num:d} with dealer at seat {dealer:d}"))
+@given(
+    parsers.parse(
+        "a HandStarted event for hand {hand_num:d} with dealer at seat {dealer:d}"
+    )
+)
 def hand_started_with_dealer(ctx, hand_num, dealer):
     """Add a HandStarted event with specific dealer."""
     event = table.HandStarted(
@@ -246,7 +264,12 @@ def hand_ended_event(ctx, hand_num):
 
 # --- When steps ---
 
-@when(parsers.parse('I handle a CreateTable command with name "{name}" and variant "{variant}":'))
+
+@when(
+    parsers.parse(
+        'I handle a CreateTable command with name "{name}" and variant "{variant}":'
+    )
+)
 def handle_create_table_cmd(ctx, name, variant, datatable):
     """Handle CreateTable command with config from datatable."""
     # datatable is a list of lists: [headers, row1, row2...]
@@ -254,7 +277,11 @@ def handle_create_table_cmd(ctx, name, variant, datatable):
     values = datatable[1]
     row = dict(zip(headers, values))
 
-    variant_enum = poker_types.TEXAS_HOLDEM if variant == "TEXAS_HOLDEM" else poker_types.FIVE_CARD_DRAW
+    variant_enum = (
+        poker_types.TEXAS_HOLDEM
+        if variant == "TEXAS_HOLDEM"
+        else poker_types.FIVE_CARD_DRAW
+    )
 
     cmd = table.CreateTable(
         table_name=name,
@@ -269,7 +296,11 @@ def handle_create_table_cmd(ctx, name, variant, datatable):
     _handle_command(ctx, cmd, handle_create_table)
 
 
-@when(parsers.parse('I handle a JoinTable command for player "{player_id}" at seat {seat:d} with buy-in {buy_in:d}'))
+@when(
+    parsers.parse(
+        'I handle a JoinTable command for player "{player_id}" at seat {seat:d} with buy-in {buy_in:d}'
+    )
+)
 def handle_join_table_cmd(ctx, player_id, seat, buy_in):
     """Handle JoinTable command."""
     cmd = table.JoinTable(
@@ -296,7 +327,11 @@ def handle_start_hand_cmd(ctx):
     _handle_command(ctx, cmd, handle_start_hand)
 
 
-@when(parsers.parse('I handle an EndHand command with winner "{winner_id}" winning {amount:d}'))
+@when(
+    parsers.parse(
+        'I handle an EndHand command with winner "{winner_id}" winning {amount:d}'
+    )
+)
 def handle_end_hand_cmd(ctx, winner_id, amount):
     """Handle EndHand command."""
     # Need hand root from state
@@ -321,6 +356,7 @@ def rebuild_table_state(ctx):
 
 
 # --- Then steps ---
+
 
 @then("the result is a TableCreated event")
 def result_is_table_created(ctx):
@@ -378,7 +414,11 @@ def event_has_game_variant(ctx, variant):
     event_any = ctx.result.pages[0].event
     event = table.TableCreated()
     event_any.Unpack(event)
-    expected = poker_types.TEXAS_HOLDEM if variant == "TEXAS_HOLDEM" else poker_types.FIVE_CARD_DRAW
+    expected = (
+        poker_types.TEXAS_HOLDEM
+        if variant == "TEXAS_HOLDEM"
+        else poker_types.FIVE_CARD_DRAW
+    )
     assert event.game_variant == expected
 
 

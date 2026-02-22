@@ -100,10 +100,7 @@ def given_aggregate_with_events(router_context):
 
 @given(parsers.parse("an aggregate at sequence {seq:d}"))
 def given_aggregate_at_sequence(router_context, seq):
-    pages = [
-        make_event_page(i, f"type.googleapis.com/test.Event")
-        for i in range(seq)
-    ]
+    pages = [make_event_page(i, f"type.googleapis.com/test.Event") for i in range(seq)]
     router_context["event_book"] = make_event_book("orders", pages)
 
 

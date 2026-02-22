@@ -26,6 +26,7 @@ try:
     from sagas.base import Saga, SagaContext, SagaRouter
     from sagas.table_sync_saga import TableSyncSaga
     from sagas.hand_results_saga import HandResultsSaga
+
     SAGAS_AVAILABLE = True
 except ImportError:
     SAGAS_AVAILABLE = False
@@ -38,10 +39,13 @@ except ImportError:
 from tests.conftest import make_cover, make_timestamp, pack_event, uuid_for
 
 # Skip all tests in this module if sagas not available
-pytestmark = pytest.mark.skipif(not SAGAS_AVAILABLE, reason="sagas module not implemented")
+pytestmark = pytest.mark.skipif(
+    not SAGAS_AVAILABLE, reason="sagas module not implemented"
+)
 
 
 # --- Test context ---
+
 
 class SagaTestContext:
     """Test context for saga scenarios."""
@@ -63,15 +67,18 @@ def ctx():
 
 # --- Helper functions ---
 
+
 def make_event_book(domain: str, root: bytes, events: list) -> types.EventBook:
     """Create an EventBook with events."""
     pages = []
     for i, event_any in enumerate(events):
-        pages.append(types.EventPage(
-            num=i,
-            event=event_any,
-            created_at=make_timestamp(),
-        ))
+        pages.append(
+            types.EventPage(
+                num=i,
+                event=event_any,
+                created_at=make_timestamp(),
+            )
+        )
     return types.EventBook(
         cover=make_cover(domain, root),
         pages=pages,
@@ -87,6 +94,7 @@ def _extract_event_type(type_url: str) -> str:
 
 
 # --- Unit tests (not using feature files due to datatable limitations) ---
+
 
 class TestTableSyncSaga:
     """Tests for TableSyncSaga."""
@@ -288,7 +296,9 @@ class TestSagaRouter:
                 game_variant=poker_types.TEXAS_HOLDEM,
             )
             event.active_players.append(
-                table.SeatSnapshot(player_root=uuid_for("player-1"), position=0, stack=500)
+                table.SeatSnapshot(
+                    player_root=uuid_for("player-1"), position=0, stack=500
+                )
             )
             events.append(pack_event(event))
 
@@ -336,7 +346,8 @@ class TestSagaRouter:
 
         # TableSyncSaga should still emit its command
         deal_commands = [
-            cmd for cmd in commands
+            cmd
+            for cmd in commands
             if cmd.pages[0].command.type_url.endswith("DealCards")
         ]
         assert len(deal_commands) == 1

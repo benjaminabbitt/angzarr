@@ -1,4 +1,5 @@
 """Step definitions for aggregate client and router scenarios."""
+
 import pytest
 from pytest_bdd import given, when, then, parsers
 from google.protobuf.any_pb2 import Any
@@ -160,19 +161,24 @@ def when_handler_emits_events(aggregate_context, count):
 
 @then(parsers.parse("the {handler_name} handler should be invoked"))
 def then_handler_should_be_invoked(aggregate_context, handler_name):
-    assert handler_name in aggregate_context["invoked_handlers"], \
+    assert handler_name in aggregate_context["invoked_handlers"], (
         f"Handler {handler_name} was not invoked. Invoked: {aggregate_context['invoked_handlers']}"
+    )
 
 
 @then(parsers.parse("the {handler_name} handler should NOT be invoked"))
 def then_handler_should_not_be_invoked(aggregate_context, handler_name):
-    assert handler_name not in aggregate_context["invoked_handlers"], \
+    assert handler_name not in aggregate_context["invoked_handlers"], (
         f"Handler {handler_name} was invoked but should not have been"
+    )
 
 
 @then("the router should load the EventBook first")
 def then_router_should_load_event_book(aggregate_context):
-    assert aggregate_context["response"] is not None or aggregate_context["error"] is not None
+    assert (
+        aggregate_context["response"] is not None
+        or aggregate_context["error"] is not None
+    )
 
 
 @then("the handler should receive the reconstructed state")
@@ -251,7 +257,9 @@ def given_pm_router_with_handlers(aggregate_context, type1, type2):
 
 @given("a PM router")
 def given_pm_router(aggregate_context):
-    given_pm_router_with_handlers(aggregate_context, "OrderCreated", "InventoryReserved")
+    given_pm_router_with_handlers(
+        aggregate_context, "OrderCreated", "InventoryReserved"
+    )
 
 
 @when(parsers.parse('I receive an "{event_type}" event from domain "{domain}"'))
@@ -308,7 +316,9 @@ def when_register_handler_for_type(aggregate_context, event_type):
 @when(parsers.parse('I register handlers for "{type1}", "{type2}", and "{type3}"'))
 def when_register_multiple_handlers(aggregate_context, type1, type2, type3):
     router = aggregate_context["saga_router"]
-    router.domain("test").on(type1, lambda: None).on(type2, lambda: None).on(type3, lambda: None)
+    router.domain("test").on(type1, lambda: None).on(type2, lambda: None).on(
+        type3, lambda: None
+    )
 
 
 @then(parsers.parse('events ending with "{suffix}" should match'))
@@ -366,7 +376,9 @@ def when_router_processes_rejection(aggregate_context):
 
 @then("the router projection state should be returned")
 def then_router_projection_state_should_be_returned(aggregate_context):
-    state = aggregate_context.get("built_state") or aggregate_context.get("last_projection")
+    state = aggregate_context.get("built_state") or aggregate_context.get(
+        "last_projection"
+    )
     assert state is not None, "Expected projection state to be returned"
 
 

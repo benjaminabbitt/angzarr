@@ -229,6 +229,7 @@ class TestCommandRouterMetadata:
         router = CommandRouter(DOMAIN_ORDER, dummy_rebuild)
         assert router.domain == DOMAIN_ORDER
 
+
 # ============================================================================
 # next_sequence tests
 # ============================================================================
@@ -315,8 +316,10 @@ class TestEventRouterDispatch:
         assert commands[0].cover.root.value == ROOT_BYTES_A
 
     def test_skips_unmatched_event(self):
-        router = EventRouter(SAGA_TEST).domain(DOMAIN_ORDER).on(
-            SUFFIX_ORDER_COMPLETED, saga_handler
+        router = (
+            EventRouter(SAGA_TEST)
+            .domain(DOMAIN_ORDER)
+            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
         )
 
         book = make_event_book(TYPE_URL_OTHER_EVENT, CORR_ID_1, ROOT_BYTES_A)
@@ -331,14 +334,18 @@ class TestEventRouterDispatch:
             .on(SUFFIX_QTY_UPDATED, multi_command_handler)
         )
 
-        book = make_event_book(TYPE_URL_QTY_UPDATED, CORR_ID_2, ROOT_BYTES_B, DOMAIN_CART)
+        book = make_event_book(
+            TYPE_URL_QTY_UPDATED, CORR_ID_2, ROOT_BYTES_B, DOMAIN_CART
+        )
         commands = router.dispatch(book)
 
         assert len(commands) == 2
 
     def test_multiple_pages(self):
-        router = EventRouter(SAGA_TEST).domain(DOMAIN_ORDER).on(
-            SUFFIX_ORDER_COMPLETED, saga_handler
+        router = (
+            EventRouter(SAGA_TEST)
+            .domain(DOMAIN_ORDER)
+            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
         )
 
         book = angzarr.EventBook(
@@ -365,6 +372,7 @@ class TestEventRouterMetadata:
     def test_input_domain(self):
         router = EventRouter(SAGA_FULFILLMENT).domain(DOMAIN_ORDER)
         assert router.input_domain == DOMAIN_ORDER
+
 
 # ============================================================================
 # @command_handler decorator tests

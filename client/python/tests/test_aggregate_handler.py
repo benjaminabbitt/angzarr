@@ -176,15 +176,19 @@ class TestAggregateHandlerWithAggregateClass:
 
         class FakeCommand:
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
+
             def __init__(self, value: str = ""):
                 self.value = value
+
             def SerializeToString(self, deterministic=None):
                 return self.value.encode()
 
         class FakeEvent:
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeEvent"})()
+
             def __init__(self, result: str = ""):
                 self.result = result
+
             def SerializeToString(self, deterministic=None):
                 return self.result.encode()
 
@@ -243,6 +247,7 @@ class TestAggregateHandlerWithAggregateClass:
         handler = AggregateHandler(TestAgg)
         assert handler.domain == "myagg"
 
+
 class TestAggregateHandlerReplay:
     """Test Replay RPC for Aggregate class handlers."""
 
@@ -253,18 +258,22 @@ class TestAggregateHandlerReplay:
 
         class FakeCommand:
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeCommand"})()
+
             def SerializeToString(self, deterministic=None):
                 return b""
 
         class FakeEvent:
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.FakeEvent"})()
+
             def __init__(self, result: str = ""):
                 self.result = result
+
             def SerializeToString(self, deterministic=None):
                 return self.result.encode()
 
         class TestState:
             """Protobuf-like state for Pack() compatibility."""
+
             DESCRIPTOR = type("Descriptor", (), {"full_name": "test.TestState"})()
 
             def __init__(self, initialized: bool = False):
@@ -310,6 +319,7 @@ class TestAggregateHandlerReplay:
         context.abort.side_effect = grpc.RpcError()
 
         from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
+
         request = aggregate.ReplayRequest()
 
         with pytest.raises(grpc.RpcError):

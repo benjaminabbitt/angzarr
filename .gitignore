@@ -76,6 +76,9 @@ examples/go/*/proto/
 
 .scm/sessions/
 
+# Vector database (local Qdrant storage for MCP semantic search)
+.vectors/
+
 # Docusaurus
 docs/node_modules/
 docs/build/

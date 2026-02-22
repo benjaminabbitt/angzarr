@@ -34,7 +34,9 @@ def compensation_context():
 class SagaOrigin:
     """Test saga origin details."""
 
-    def __init__(self, saga_name="", triggering_aggregate="", triggering_event_sequence=0):
+    def __init__(
+        self, saga_name="", triggering_aggregate="", triggering_event_sequence=0
+    ):
         self.saga_name = saga_name
         self.triggering_aggregate = triggering_aggregate
         self.triggering_event_sequence = triggering_event_sequence
@@ -47,7 +49,9 @@ class CompensationContext:
         self.rejected_command = command
         self.rejection_reason = reason
         self.saga_origin = saga_origin
-        self.correlation_id = command.cover.correlation_id if command and command.cover else ""
+        self.correlation_id = (
+            command.cover.correlation_id if command and command.cover else ""
+        )
 
     def build_rejection_notification(self):
         return RejectionNotification(
@@ -55,16 +59,27 @@ class CompensationContext:
             rejection_reason=self.rejection_reason,
             issuer_name=self.saga_origin.saga_name if self.saga_origin else "",
             issuer_type="saga",
-            source_aggregate=self.saga_origin.triggering_aggregate if self.saga_origin else "",
-            source_event_sequence=self.saga_origin.triggering_event_sequence if self.saga_origin else 0,
+            source_aggregate=self.saga_origin.triggering_aggregate
+            if self.saga_origin
+            else "",
+            source_event_sequence=self.saga_origin.triggering_event_sequence
+            if self.saga_origin
+            else 0,
         )
 
 
 class RejectionNotification:
     """Test rejection notification."""
 
-    def __init__(self, rejected_command=None, rejection_reason="", issuer_name="",
-                 issuer_type="saga", source_aggregate="", source_event_sequence=0):
+    def __init__(
+        self,
+        rejected_command=None,
+        rejection_reason="",
+        issuer_name="",
+        issuer_type="saga",
+        source_aggregate="",
+        source_event_sequence=0,
+    ):
         self.rejected_command = rejected_command
         self.rejection_reason = rejection_reason
         self.issuer_name = issuer_name
@@ -73,8 +88,12 @@ class RejectionNotification:
         self.source_event_sequence = source_event_sequence
 
 
-def make_command_book(domain, type_url="type.googleapis.com/test.Command",
-                      correlation_id="", root_bytes=None):
+def make_command_book(
+    domain,
+    type_url="type.googleapis.com/test.Command",
+    correlation_id="",
+    root_bytes=None,
+):
     """Create a test CommandBook."""
     cover = types_pb2.Cover(
         domain=domain,
@@ -110,7 +129,11 @@ def given_saga_command_rejected(compensation_context):
     compensation_context["rejection_reason"] = "precondition_failed"
 
 
-@given(parsers.parse('a saga "{saga_name}" triggered by "{aggregate}" aggregate at sequence {seq:d}'))
+@given(
+    parsers.parse(
+        'a saga "{saga_name}" triggered by "{aggregate}" aggregate at sequence {seq:d}'
+    )
+)
 def given_saga_triggered(compensation_context, saga_name, aggregate, seq):
     compensation_context["saga_origin"] = SagaOrigin(
         saga_name=saga_name,
@@ -153,7 +176,11 @@ def given_compensation_ctx_for_rejected(compensation_context):
     )
 
 
-@given(parsers.parse('a CompensationContext from "{aggregate}" aggregate at sequence {seq:d}'))
+@given(
+    parsers.parse(
+        'a CompensationContext from "{aggregate}" aggregate at sequence {seq:d}'
+    )
+)
 def given_compensation_from_aggregate(compensation_context, aggregate, seq):
     compensation_context["saga_origin"] = SagaOrigin(
         saga_name="test-saga",
@@ -194,7 +221,9 @@ def given_command_with_reason(compensation_context, reason):
 @given("a command rejected with structured reason")
 def given_structured_reason(compensation_context):
     compensation_context["rejected_command"] = make_command_book("orders")
-    compensation_context["rejection_reason"] = '{"code": "INSUFFICIENT_FUNDS", "details": "balance too low"}'
+    compensation_context["rejection_reason"] = (
+        '{"code": "INSUFFICIENT_FUNDS", "details": "balance too low"}'
+    )
 
 
 @given("a saga command with specific payload")
@@ -230,7 +259,9 @@ def given_pm_router(compensation_context):
     pass
 
 
-@given(parsers.parse('a CompensationContext from "{aggregate}" aggregate root "{root}"'))
+@given(
+    parsers.parse('a CompensationContext from "{aggregate}" aggregate root "{root}"')
+)
 def given_compensation_with_root(compensation_context, aggregate, root):
     try:
         root_uuid = uuid.UUID(root)

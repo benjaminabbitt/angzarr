@@ -154,7 +154,7 @@ class TestDomain:
 
     def test_returns_unknown_for_none(self) -> None:
         """Returns UNKNOWN_DOMAIN for invalid input."""
-        assert domain("invalid")  == UNKNOWN_DOMAIN  # type: ignore
+        assert domain("invalid") == UNKNOWN_DOMAIN  # type: ignore
 
 
 class TestCorrelationId:
@@ -434,12 +434,14 @@ class TestEventsFromResponse:
     def test_returns_empty_for_no_events_field(self) -> None:
         """Returns empty list when events field not set."""
         from angzarr_client.proto.angzarr import CommandResponse
+
         resp = CommandResponse()
         assert events_from_response(resp) == []
 
     def test_returns_pages_when_present(self) -> None:
         """Returns event pages when present."""
         from angzarr_client.proto.angzarr import CommandResponse, SyncEventBook
+
         resp = CommandResponse()
         resp.events.pages.add(sequence=1)
         resp.events.pages.add(sequence=2)
@@ -472,11 +474,23 @@ class TestTypeUrlHelpers:
 
     def test_type_url_matches_true(self) -> None:
         """type_url_matches returns True for exact match."""
-        assert type_url_matches("type.googleapis.com/com.example.OrderCreated", "com.example.OrderCreated") is True
+        assert (
+            type_url_matches(
+                "type.googleapis.com/com.example.OrderCreated",
+                "com.example.OrderCreated",
+            )
+            is True
+        )
 
     def test_type_url_matches_false(self) -> None:
         """type_url_matches returns False for non-matching type name."""
-        assert type_url_matches("type.googleapis.com/com.example.OrderCreated", "com.example.OrderCanceled") is False
+        assert (
+            type_url_matches(
+                "type.googleapis.com/com.example.OrderCreated",
+                "com.example.OrderCanceled",
+            )
+            is False
+        )
 
 
 class TestTimestampHelpers:
@@ -513,17 +527,20 @@ class TestDecodeEvent:
     def test_returns_none_for_none_page(self) -> None:
         """Returns None for None page."""
         from angzarr_client.proto.angzarr import Cover
+
         assert decode_event(None, "Cover", Cover) is None
 
     def test_returns_none_for_no_event_field(self) -> None:
         """Returns None when event field not set."""
         from angzarr_client.proto.angzarr import Cover
+
         page = EventPage(sequence=1)
         assert decode_event(page, "Cover", Cover) is None
 
     def test_returns_none_for_type_mismatch(self) -> None:
         """Returns None when type URL doesn't match."""
         from angzarr_client.proto.angzarr import Cover
+
         page = EventPage(sequence=1)
         page.event.type_url = "type.googleapis.com/some.OtherType"
         page.event.value = b""
@@ -532,6 +549,7 @@ class TestDecodeEvent:
     def test_returns_decoded_message(self) -> None:
         """Returns decoded message when type matches."""
         from angzarr_client.proto.angzarr import Cover
+
         # Create a cover and pack it
         cover = Cover(domain="test", correlation_id="abc")
         page = EventPage(sequence=1)
@@ -546,6 +564,7 @@ class TestDecodeEvent:
     def test_returns_none_for_decode_failure(self) -> None:
         """Returns None when decoding fails."""
         from angzarr_client.proto.angzarr import Cover
+
         # Create page with matching type URL but invalid data
         page = EventPage(sequence=1)
         page.event.type_url = "type.googleapis.com/angzarr.Cover"

@@ -92,8 +92,10 @@ class TestSagaHandlerSimpleMode:
         assert resp.commands[0].cover.correlation_id == CORR_ID_1
 
     def test_execute_no_match_returns_empty(self):
-        router = EventRouter(SAGA_NAME).domain(DOMAIN_SOURCE).on(
-            SUFFIX_EVENT_A, saga_event_handler
+        router = (
+            EventRouter(SAGA_NAME)
+            .domain(DOMAIN_SOURCE)
+            .on(SUFFIX_EVENT_A, saga_event_handler)
         )
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -111,8 +113,10 @@ class TestSagaHandlerSimpleMode:
 
 class TestSagaHandlerCustomMode:
     def test_custom_prepare(self):
-        router = EventRouter(SAGA_NAME).domain(DOMAIN_SOURCE).on(
-            SUFFIX_EVENT_A, saga_event_handler
+        router = (
+            EventRouter(SAGA_NAME)
+            .domain(DOMAIN_SOURCE)
+            .on(SUFFIX_EVENT_A, saga_event_handler)
         )
 
         def custom_prepare(source):
@@ -128,8 +132,10 @@ class TestSagaHandlerCustomMode:
         assert resp.destinations[0].domain == DOMAIN_TARGET
 
     def test_custom_execute(self):
-        router = EventRouter(SAGA_NAME).domain(DOMAIN_SOURCE).on(
-            SUFFIX_EVENT_A, saga_event_handler
+        router = (
+            EventRouter(SAGA_NAME)
+            .domain(DOMAIN_SOURCE)
+            .on(SUFFIX_EVENT_A, saga_event_handler)
         )
 
         def custom_execute(source, destinations):
@@ -153,5 +159,3 @@ class TestSagaHandlerCustomMode:
 
         assert len(resp.commands) == 1
         assert resp.commands[0].cover.domain == "custom"
-
-

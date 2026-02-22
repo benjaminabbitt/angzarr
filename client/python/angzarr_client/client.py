@@ -257,5 +257,3 @@ class Client:
     def close(self) -> None:
         """Close the underlying channel."""
         self._channel.close()
-
-

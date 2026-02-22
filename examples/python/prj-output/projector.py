@@ -91,7 +91,9 @@ class OutputProjector:
             if self.show_timestamps and event_page.created_at:
                 from datetime import datetime, timezone
 
-                ts = datetime.fromtimestamp(event_page.created_at.seconds, tz=timezone.utc)
+                ts = datetime.fromtimestamp(
+                    event_page.created_at.seconds, tz=timezone.utc
+                )
                 text = f"[{ts.strftime('%H:%M:%S')}] {text}"
             self.output_fn(text)
 
@@ -108,4 +110,6 @@ class OutputProjector:
         """
         for event_book in event_stream:
             self.handle_event_book(event_book)
+
+
 # docs:end:projector_functional

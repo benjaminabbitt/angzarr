@@ -43,23 +43,26 @@ from typing import ClassVar
 MutantDict = Annotated[dict[str, Callable], "Mutant"]
 
 
-def _mutmut_trampoline(orig, mutants, call_args, call_kwargs, self_arg = None):
+def _mutmut_trampoline(orig, mutants, call_args, call_kwargs, self_arg=None):
     """Forward call to original or mutated function, depending on the environment"""
     import os
-    mutant_under_test = os.environ['MUTANT_UNDER_TEST']
-    if mutant_under_test == 'fail':
+
+    mutant_under_test = os.environ["MUTANT_UNDER_TEST"]
+    if mutant_under_test == "fail":
         from mutmut.__main__ import MutmutProgrammaticFailException
-        raise MutmutProgrammaticFailException('Failed programmatically')      
-    elif mutant_under_test == 'stats':
+
+        raise MutmutProgrammaticFailException("Failed programmatically")
+    elif mutant_under_test == "stats":
         from mutmut.__main__ import record_trampoline_hit
-        record_trampoline_hit(orig.__module__ + '.' + orig.__name__)
+
+        record_trampoline_hit(orig.__module__ + "." + orig.__name__)
         result = orig(*call_args, **call_kwargs)
         return result
-    prefix = orig.__module__ + '.' + orig.__name__ + '__mutmut_'
+    prefix = orig.__module__ + "." + orig.__name__ + "__mutmut_"
     if not mutant_under_test.startswith(prefix):
         result = orig(*call_args, **call_kwargs)
         return result
-    mutant_name = mutant_under_test.rpartition('.')[-1]
+    mutant_name = mutant_under_test.rpartition(".")[-1]
     if self_arg is not None:
         # call to a class method where self is not bound
         result = mutants[mutant_name](self_arg, *call_args, **call_kwargs)
@@ -108,7 +111,9 @@ def x_cover_of__mutmut_4(obj: CoverBearer) -> Optional[Cover]:
     """Extract the Cover from various proto types."""
     if isinstance(obj, Cover):
         return obj
-    if hasattr(obj, ):
+    if hasattr(
+        obj,
+    ):
         return obj.cover
     return None
 
@@ -130,21 +135,26 @@ def x_cover_of__mutmut_6(obj: CoverBearer) -> Optional[Cover]:
         return obj.cover
     return None
 
-x_cover_of__mutmut_mutants : ClassVar[MutantDict] = {
-'x_cover_of__mutmut_1': x_cover_of__mutmut_1, 
-    'x_cover_of__mutmut_2': x_cover_of__mutmut_2, 
-    'x_cover_of__mutmut_3': x_cover_of__mutmut_3, 
-    'x_cover_of__mutmut_4': x_cover_of__mutmut_4, 
-    'x_cover_of__mutmut_5': x_cover_of__mutmut_5, 
-    'x_cover_of__mutmut_6': x_cover_of__mutmut_6
+
+x_cover_of__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_cover_of__mutmut_1": x_cover_of__mutmut_1,
+    "x_cover_of__mutmut_2": x_cover_of__mutmut_2,
+    "x_cover_of__mutmut_3": x_cover_of__mutmut_3,
+    "x_cover_of__mutmut_4": x_cover_of__mutmut_4,
+    "x_cover_of__mutmut_5": x_cover_of__mutmut_5,
+    "x_cover_of__mutmut_6": x_cover_of__mutmut_6,
 }
 
+
 def cover_of(*args, **kwargs):
-    result = _mutmut_trampoline(x_cover_of__mutmut_orig, x_cover_of__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_cover_of__mutmut_orig, x_cover_of__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 cover_of.__signature__ = _mutmut_signature(x_cover_of__mutmut_orig)
-x_cover_of__mutmut_orig.__name__ = 'x_cover_of'
+x_cover_of__mutmut_orig.__name__ = "x_cover_of"
 
 
 def x_domain__mutmut_orig(obj: CoverBearer) -> str:
@@ -194,20 +204,25 @@ def x_domain__mutmut_5(obj: CoverBearer) -> str:
         return UNKNOWN_DOMAIN
     return c.domain
 
-x_domain__mutmut_mutants : ClassVar[MutantDict] = {
-'x_domain__mutmut_1': x_domain__mutmut_1, 
-    'x_domain__mutmut_2': x_domain__mutmut_2, 
-    'x_domain__mutmut_3': x_domain__mutmut_3, 
-    'x_domain__mutmut_4': x_domain__mutmut_4, 
-    'x_domain__mutmut_5': x_domain__mutmut_5
+
+x_domain__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_domain__mutmut_1": x_domain__mutmut_1,
+    "x_domain__mutmut_2": x_domain__mutmut_2,
+    "x_domain__mutmut_3": x_domain__mutmut_3,
+    "x_domain__mutmut_4": x_domain__mutmut_4,
+    "x_domain__mutmut_5": x_domain__mutmut_5,
 }
 
+
 def domain(*args, **kwargs):
-    result = _mutmut_trampoline(x_domain__mutmut_orig, x_domain__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_domain__mutmut_orig, x_domain__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 domain.__signature__ = _mutmut_signature(x_domain__mutmut_orig)
-x_domain__mutmut_orig.__name__ = 'x_domain'
+x_domain__mutmut_orig.__name__ = "x_domain"
 
 
 def x_correlation_id__mutmut_orig(obj: CoverBearer) -> str:
@@ -249,19 +264,24 @@ def x_correlation_id__mutmut_4(obj: CoverBearer) -> str:
         return "XXXX"
     return c.correlation_id
 
-x_correlation_id__mutmut_mutants : ClassVar[MutantDict] = {
-'x_correlation_id__mutmut_1': x_correlation_id__mutmut_1, 
-    'x_correlation_id__mutmut_2': x_correlation_id__mutmut_2, 
-    'x_correlation_id__mutmut_3': x_correlation_id__mutmut_3, 
-    'x_correlation_id__mutmut_4': x_correlation_id__mutmut_4
+
+x_correlation_id__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_correlation_id__mutmut_1": x_correlation_id__mutmut_1,
+    "x_correlation_id__mutmut_2": x_correlation_id__mutmut_2,
+    "x_correlation_id__mutmut_3": x_correlation_id__mutmut_3,
+    "x_correlation_id__mutmut_4": x_correlation_id__mutmut_4,
 }
 
+
 def correlation_id(*args, **kwargs):
-    result = _mutmut_trampoline(x_correlation_id__mutmut_orig, x_correlation_id__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_correlation_id__mutmut_orig, x_correlation_id__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 correlation_id.__signature__ = _mutmut_signature(x_correlation_id__mutmut_orig)
-x_correlation_id__mutmut_orig.__name__ = 'x_correlation_id'
+x_correlation_id__mutmut_orig.__name__ = "x_correlation_id"
 
 
 def x_has_correlation_id__mutmut_orig(obj: CoverBearer) -> bool:
@@ -278,17 +298,25 @@ def x_has_correlation_id__mutmut_2(obj: CoverBearer) -> bool:
     """Return True if the correlation_id is present and non-empty."""
     return bool(correlation_id(None))
 
-x_has_correlation_id__mutmut_mutants : ClassVar[MutantDict] = {
-'x_has_correlation_id__mutmut_1': x_has_correlation_id__mutmut_1, 
-    'x_has_correlation_id__mutmut_2': x_has_correlation_id__mutmut_2
+
+x_has_correlation_id__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_has_correlation_id__mutmut_1": x_has_correlation_id__mutmut_1,
+    "x_has_correlation_id__mutmut_2": x_has_correlation_id__mutmut_2,
 }
 
+
 def has_correlation_id(*args, **kwargs):
-    result = _mutmut_trampoline(x_has_correlation_id__mutmut_orig, x_has_correlation_id__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_has_correlation_id__mutmut_orig,
+        x_has_correlation_id__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 has_correlation_id.__signature__ = _mutmut_signature(x_has_correlation_id__mutmut_orig)
-x_has_correlation_id__mutmut_orig.__name__ = 'x_has_correlation_id'
+x_has_correlation_id__mutmut_orig.__name__ = "x_has_correlation_id"
 
 
 def x_root_uuid__mutmut_orig(obj: CoverBearer) -> Optional[PyUUID]:
@@ -400,24 +428,29 @@ def x_root_uuid__mutmut_9(obj: CoverBearer) -> Optional[PyUUID]:
     except ValueError:
         return None
 
-x_root_uuid__mutmut_mutants : ClassVar[MutantDict] = {
-'x_root_uuid__mutmut_1': x_root_uuid__mutmut_1, 
-    'x_root_uuid__mutmut_2': x_root_uuid__mutmut_2, 
-    'x_root_uuid__mutmut_3': x_root_uuid__mutmut_3, 
-    'x_root_uuid__mutmut_4': x_root_uuid__mutmut_4, 
-    'x_root_uuid__mutmut_5': x_root_uuid__mutmut_5, 
-    'x_root_uuid__mutmut_6': x_root_uuid__mutmut_6, 
-    'x_root_uuid__mutmut_7': x_root_uuid__mutmut_7, 
-    'x_root_uuid__mutmut_8': x_root_uuid__mutmut_8, 
-    'x_root_uuid__mutmut_9': x_root_uuid__mutmut_9
+
+x_root_uuid__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_root_uuid__mutmut_1": x_root_uuid__mutmut_1,
+    "x_root_uuid__mutmut_2": x_root_uuid__mutmut_2,
+    "x_root_uuid__mutmut_3": x_root_uuid__mutmut_3,
+    "x_root_uuid__mutmut_4": x_root_uuid__mutmut_4,
+    "x_root_uuid__mutmut_5": x_root_uuid__mutmut_5,
+    "x_root_uuid__mutmut_6": x_root_uuid__mutmut_6,
+    "x_root_uuid__mutmut_7": x_root_uuid__mutmut_7,
+    "x_root_uuid__mutmut_8": x_root_uuid__mutmut_8,
+    "x_root_uuid__mutmut_9": x_root_uuid__mutmut_9,
 }
 
+
 def root_uuid(*args, **kwargs):
-    result = _mutmut_trampoline(x_root_uuid__mutmut_orig, x_root_uuid__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_root_uuid__mutmut_orig, x_root_uuid__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 root_uuid.__signature__ = _mutmut_signature(x_root_uuid__mutmut_orig)
-x_root_uuid__mutmut_orig.__name__ = 'x_root_uuid'
+x_root_uuid__mutmut_orig.__name__ = "x_root_uuid"
 
 
 def x_root_id_hex__mutmut_orig(obj: CoverBearer) -> str:
@@ -499,24 +532,29 @@ def x_root_id_hex__mutmut_9(obj: CoverBearer) -> str:
         return "XXXX"
     return c.root.value.hex()
 
-x_root_id_hex__mutmut_mutants : ClassVar[MutantDict] = {
-'x_root_id_hex__mutmut_1': x_root_id_hex__mutmut_1, 
-    'x_root_id_hex__mutmut_2': x_root_id_hex__mutmut_2, 
-    'x_root_id_hex__mutmut_3': x_root_id_hex__mutmut_3, 
-    'x_root_id_hex__mutmut_4': x_root_id_hex__mutmut_4, 
-    'x_root_id_hex__mutmut_5': x_root_id_hex__mutmut_5, 
-    'x_root_id_hex__mutmut_6': x_root_id_hex__mutmut_6, 
-    'x_root_id_hex__mutmut_7': x_root_id_hex__mutmut_7, 
-    'x_root_id_hex__mutmut_8': x_root_id_hex__mutmut_8, 
-    'x_root_id_hex__mutmut_9': x_root_id_hex__mutmut_9
+
+x_root_id_hex__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_root_id_hex__mutmut_1": x_root_id_hex__mutmut_1,
+    "x_root_id_hex__mutmut_2": x_root_id_hex__mutmut_2,
+    "x_root_id_hex__mutmut_3": x_root_id_hex__mutmut_3,
+    "x_root_id_hex__mutmut_4": x_root_id_hex__mutmut_4,
+    "x_root_id_hex__mutmut_5": x_root_id_hex__mutmut_5,
+    "x_root_id_hex__mutmut_6": x_root_id_hex__mutmut_6,
+    "x_root_id_hex__mutmut_7": x_root_id_hex__mutmut_7,
+    "x_root_id_hex__mutmut_8": x_root_id_hex__mutmut_8,
+    "x_root_id_hex__mutmut_9": x_root_id_hex__mutmut_9,
 }
 
+
 def root_id_hex(*args, **kwargs):
-    result = _mutmut_trampoline(x_root_id_hex__mutmut_orig, x_root_id_hex__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_root_id_hex__mutmut_orig, x_root_id_hex__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 root_id_hex.__signature__ = _mutmut_signature(x_root_id_hex__mutmut_orig)
-x_root_id_hex__mutmut_orig.__name__ = 'x_root_id_hex'
+x_root_id_hex__mutmut_orig.__name__ = "x_root_id_hex"
 
 
 def x_edition__mutmut_orig(obj: CoverBearer) -> str:
@@ -606,25 +644,30 @@ def x_edition__mutmut_10(obj: CoverBearer) -> str:
         return DEFAULT_EDITION
     return c.edition.name
 
-x_edition__mutmut_mutants : ClassVar[MutantDict] = {
-'x_edition__mutmut_1': x_edition__mutmut_1, 
-    'x_edition__mutmut_2': x_edition__mutmut_2, 
-    'x_edition__mutmut_3': x_edition__mutmut_3, 
-    'x_edition__mutmut_4': x_edition__mutmut_4, 
-    'x_edition__mutmut_5': x_edition__mutmut_5, 
-    'x_edition__mutmut_6': x_edition__mutmut_6, 
-    'x_edition__mutmut_7': x_edition__mutmut_7, 
-    'x_edition__mutmut_8': x_edition__mutmut_8, 
-    'x_edition__mutmut_9': x_edition__mutmut_9, 
-    'x_edition__mutmut_10': x_edition__mutmut_10
+
+x_edition__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_edition__mutmut_1": x_edition__mutmut_1,
+    "x_edition__mutmut_2": x_edition__mutmut_2,
+    "x_edition__mutmut_3": x_edition__mutmut_3,
+    "x_edition__mutmut_4": x_edition__mutmut_4,
+    "x_edition__mutmut_5": x_edition__mutmut_5,
+    "x_edition__mutmut_6": x_edition__mutmut_6,
+    "x_edition__mutmut_7": x_edition__mutmut_7,
+    "x_edition__mutmut_8": x_edition__mutmut_8,
+    "x_edition__mutmut_9": x_edition__mutmut_9,
+    "x_edition__mutmut_10": x_edition__mutmut_10,
 }
 
+
 def edition(*args, **kwargs):
-    result = _mutmut_trampoline(x_edition__mutmut_orig, x_edition__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_edition__mutmut_orig, x_edition__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 edition.__signature__ = _mutmut_signature(x_edition__mutmut_orig)
-x_edition__mutmut_orig.__name__ = 'x_edition'
+x_edition__mutmut_orig.__name__ = "x_edition"
 
 
 def x_edition_opt__mutmut_orig(obj: CoverBearer) -> Optional[str]:
@@ -714,25 +757,30 @@ def x_edition_opt__mutmut_10(obj: CoverBearer) -> Optional[str]:
         return None
     return c.edition.name
 
-x_edition_opt__mutmut_mutants : ClassVar[MutantDict] = {
-'x_edition_opt__mutmut_1': x_edition_opt__mutmut_1, 
-    'x_edition_opt__mutmut_2': x_edition_opt__mutmut_2, 
-    'x_edition_opt__mutmut_3': x_edition_opt__mutmut_3, 
-    'x_edition_opt__mutmut_4': x_edition_opt__mutmut_4, 
-    'x_edition_opt__mutmut_5': x_edition_opt__mutmut_5, 
-    'x_edition_opt__mutmut_6': x_edition_opt__mutmut_6, 
-    'x_edition_opt__mutmut_7': x_edition_opt__mutmut_7, 
-    'x_edition_opt__mutmut_8': x_edition_opt__mutmut_8, 
-    'x_edition_opt__mutmut_9': x_edition_opt__mutmut_9, 
-    'x_edition_opt__mutmut_10': x_edition_opt__mutmut_10
+
+x_edition_opt__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_edition_opt__mutmut_1": x_edition_opt__mutmut_1,
+    "x_edition_opt__mutmut_2": x_edition_opt__mutmut_2,
+    "x_edition_opt__mutmut_3": x_edition_opt__mutmut_3,
+    "x_edition_opt__mutmut_4": x_edition_opt__mutmut_4,
+    "x_edition_opt__mutmut_5": x_edition_opt__mutmut_5,
+    "x_edition_opt__mutmut_6": x_edition_opt__mutmut_6,
+    "x_edition_opt__mutmut_7": x_edition_opt__mutmut_7,
+    "x_edition_opt__mutmut_8": x_edition_opt__mutmut_8,
+    "x_edition_opt__mutmut_9": x_edition_opt__mutmut_9,
+    "x_edition_opt__mutmut_10": x_edition_opt__mutmut_10,
 }
 
+
 def edition_opt(*args, **kwargs):
-    result = _mutmut_trampoline(x_edition_opt__mutmut_orig, x_edition_opt__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_edition_opt__mutmut_orig, x_edition_opt__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 edition_opt.__signature__ = _mutmut_signature(x_edition_opt__mutmut_orig)
-x_edition_opt__mutmut_orig.__name__ = 'x_edition_opt'
+x_edition_opt__mutmut_orig.__name__ = "x_edition_opt"
 
 
 def x_routing_key__mutmut_orig(obj: CoverBearer) -> str:
@@ -744,16 +792,21 @@ def x_routing_key__mutmut_1(obj: CoverBearer) -> str:
     """Compute the bus routing key for a Cover-bearing type."""
     return domain(None)
 
-x_routing_key__mutmut_mutants : ClassVar[MutantDict] = {
-'x_routing_key__mutmut_1': x_routing_key__mutmut_1
+
+x_routing_key__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_routing_key__mutmut_1": x_routing_key__mutmut_1
 }
 
+
 def routing_key(*args, **kwargs):
-    result = _mutmut_trampoline(x_routing_key__mutmut_orig, x_routing_key__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_routing_key__mutmut_orig, x_routing_key__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 routing_key.__signature__ = _mutmut_signature(x_routing_key__mutmut_orig)
-x_routing_key__mutmut_orig.__name__ = 'x_routing_key'
+x_routing_key__mutmut_orig.__name__ = "x_routing_key"
 
 
 def x_cache_key__mutmut_orig(obj: CoverBearer) -> str:
@@ -770,17 +823,22 @@ def x_cache_key__mutmut_2(obj: CoverBearer) -> str:
     """Generate a cache key based on domain + root."""
     return f"{domain(obj)}:{root_id_hex(None)}"
 
-x_cache_key__mutmut_mutants : ClassVar[MutantDict] = {
-'x_cache_key__mutmut_1': x_cache_key__mutmut_1, 
-    'x_cache_key__mutmut_2': x_cache_key__mutmut_2
+
+x_cache_key__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_cache_key__mutmut_1": x_cache_key__mutmut_1,
+    "x_cache_key__mutmut_2": x_cache_key__mutmut_2,
 }
 
+
 def cache_key(*args, **kwargs):
-    result = _mutmut_trampoline(x_cache_key__mutmut_orig, x_cache_key__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_cache_key__mutmut_orig, x_cache_key__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 cache_key.__signature__ = _mutmut_signature(x_cache_key__mutmut_orig)
-x_cache_key__mutmut_orig.__name__ = 'x_cache_key'
+x_cache_key__mutmut_orig.__name__ = "x_cache_key"
 
 
 # UUID conversion
@@ -798,16 +856,21 @@ def x_uuid_to_proto__mutmut_1(u: PyUUID) -> UUID:
     """Convert a Python UUID to a proto UUID."""
     return UUID(value=None)
 
-x_uuid_to_proto__mutmut_mutants : ClassVar[MutantDict] = {
-'x_uuid_to_proto__mutmut_1': x_uuid_to_proto__mutmut_1
+
+x_uuid_to_proto__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_uuid_to_proto__mutmut_1": x_uuid_to_proto__mutmut_1
 }
 
+
 def uuid_to_proto(*args, **kwargs):
-    result = _mutmut_trampoline(x_uuid_to_proto__mutmut_orig, x_uuid_to_proto__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_uuid_to_proto__mutmut_orig, x_uuid_to_proto__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 uuid_to_proto.__signature__ = _mutmut_signature(x_uuid_to_proto__mutmut_orig)
-x_uuid_to_proto__mutmut_orig.__name__ = 'x_uuid_to_proto'
+x_uuid_to_proto__mutmut_orig.__name__ = "x_uuid_to_proto"
 
 
 def x_proto_to_uuid__mutmut_orig(u: UUID) -> PyUUID:
@@ -819,16 +882,21 @@ def x_proto_to_uuid__mutmut_1(u: UUID) -> PyUUID:
     """Convert a proto UUID to Python UUID."""
     return PyUUID(bytes=None)
 
-x_proto_to_uuid__mutmut_mutants : ClassVar[MutantDict] = {
-'x_proto_to_uuid__mutmut_1': x_proto_to_uuid__mutmut_1
+
+x_proto_to_uuid__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_proto_to_uuid__mutmut_1": x_proto_to_uuid__mutmut_1
 }
 
+
 def proto_to_uuid(*args, **kwargs):
-    result = _mutmut_trampoline(x_proto_to_uuid__mutmut_orig, x_proto_to_uuid__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_proto_to_uuid__mutmut_orig, x_proto_to_uuid__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 proto_to_uuid.__signature__ = _mutmut_signature(x_proto_to_uuid__mutmut_orig)
-x_proto_to_uuid__mutmut_orig.__name__ = 'x_proto_to_uuid'
+x_proto_to_uuid__mutmut_orig.__name__ = "x_proto_to_uuid"
 
 
 # Edition helpers
@@ -846,16 +914,21 @@ def x_main_timeline__mutmut_1() -> Edition:
     """Return an Edition representing the main timeline."""
     return Edition(name=None)
 
-x_main_timeline__mutmut_mutants : ClassVar[MutantDict] = {
-'x_main_timeline__mutmut_1': x_main_timeline__mutmut_1
+
+x_main_timeline__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_main_timeline__mutmut_1": x_main_timeline__mutmut_1
 }
 
+
 def main_timeline(*args, **kwargs):
-    result = _mutmut_trampoline(x_main_timeline__mutmut_orig, x_main_timeline__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_main_timeline__mutmut_orig, x_main_timeline__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 main_timeline.__signature__ = _mutmut_signature(x_main_timeline__mutmut_orig)
-x_main_timeline__mutmut_orig.__name__ = 'x_main_timeline'
+x_main_timeline__mutmut_orig.__name__ = "x_main_timeline"
 
 
 def x_implicit_edition__mutmut_orig(name: str) -> Edition:
@@ -867,55 +940,83 @@ def x_implicit_edition__mutmut_1(name: str) -> Edition:
     """Create an edition with the given name but no divergences."""
     return Edition(name=None)
 
-x_implicit_edition__mutmut_mutants : ClassVar[MutantDict] = {
-'x_implicit_edition__mutmut_1': x_implicit_edition__mutmut_1
+
+x_implicit_edition__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_implicit_edition__mutmut_1": x_implicit_edition__mutmut_1
 }
 
+
 def implicit_edition(*args, **kwargs):
-    result = _mutmut_trampoline(x_implicit_edition__mutmut_orig, x_implicit_edition__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_implicit_edition__mutmut_orig,
+        x_implicit_edition__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 implicit_edition.__signature__ = _mutmut_signature(x_implicit_edition__mutmut_orig)
-x_implicit_edition__mutmut_orig.__name__ = 'x_implicit_edition'
+x_implicit_edition__mutmut_orig.__name__ = "x_implicit_edition"
 
 
-def x_explicit_edition__mutmut_orig(name: str, divergences: list[DomainDivergence]) -> Edition:
+def x_explicit_edition__mutmut_orig(
+    name: str, divergences: list[DomainDivergence]
+) -> Edition:
     """Create an edition with divergence points."""
     return Edition(name=name, divergences=divergences)
 
 
-def x_explicit_edition__mutmut_1(name: str, divergences: list[DomainDivergence]) -> Edition:
+def x_explicit_edition__mutmut_1(
+    name: str, divergences: list[DomainDivergence]
+) -> Edition:
     """Create an edition with divergence points."""
     return Edition(name=None, divergences=divergences)
 
 
-def x_explicit_edition__mutmut_2(name: str, divergences: list[DomainDivergence]) -> Edition:
+def x_explicit_edition__mutmut_2(
+    name: str, divergences: list[DomainDivergence]
+) -> Edition:
     """Create an edition with divergence points."""
     return Edition(name=name, divergences=None)
 
 
-def x_explicit_edition__mutmut_3(name: str, divergences: list[DomainDivergence]) -> Edition:
+def x_explicit_edition__mutmut_3(
+    name: str, divergences: list[DomainDivergence]
+) -> Edition:
     """Create an edition with divergence points."""
     return Edition(divergences=divergences)
 
 
-def x_explicit_edition__mutmut_4(name: str, divergences: list[DomainDivergence]) -> Edition:
+def x_explicit_edition__mutmut_4(
+    name: str, divergences: list[DomainDivergence]
+) -> Edition:
     """Create an edition with divergence points."""
-    return Edition(name=name, )
+    return Edition(
+        name=name,
+    )
 
-x_explicit_edition__mutmut_mutants : ClassVar[MutantDict] = {
-'x_explicit_edition__mutmut_1': x_explicit_edition__mutmut_1, 
-    'x_explicit_edition__mutmut_2': x_explicit_edition__mutmut_2, 
-    'x_explicit_edition__mutmut_3': x_explicit_edition__mutmut_3, 
-    'x_explicit_edition__mutmut_4': x_explicit_edition__mutmut_4
+
+x_explicit_edition__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_explicit_edition__mutmut_1": x_explicit_edition__mutmut_1,
+    "x_explicit_edition__mutmut_2": x_explicit_edition__mutmut_2,
+    "x_explicit_edition__mutmut_3": x_explicit_edition__mutmut_3,
+    "x_explicit_edition__mutmut_4": x_explicit_edition__mutmut_4,
 }
 
+
 def explicit_edition(*args, **kwargs):
-    result = _mutmut_trampoline(x_explicit_edition__mutmut_orig, x_explicit_edition__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_explicit_edition__mutmut_orig,
+        x_explicit_edition__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 explicit_edition.__signature__ = _mutmut_signature(x_explicit_edition__mutmut_orig)
-x_explicit_edition__mutmut_orig.__name__ = 'x_explicit_edition'
+x_explicit_edition__mutmut_orig.__name__ = "x_explicit_edition"
 
 
 def x_is_main_timeline__mutmut_orig(e: Optional[Edition]) -> bool:
@@ -947,20 +1048,28 @@ def x_is_main_timeline__mutmut_5(e: Optional[Edition]) -> bool:
     """Check if an edition represents the main timeline."""
     return e is None or not e.name or e.name != DEFAULT_EDITION
 
-x_is_main_timeline__mutmut_mutants : ClassVar[MutantDict] = {
-'x_is_main_timeline__mutmut_1': x_is_main_timeline__mutmut_1, 
-    'x_is_main_timeline__mutmut_2': x_is_main_timeline__mutmut_2, 
-    'x_is_main_timeline__mutmut_3': x_is_main_timeline__mutmut_3, 
-    'x_is_main_timeline__mutmut_4': x_is_main_timeline__mutmut_4, 
-    'x_is_main_timeline__mutmut_5': x_is_main_timeline__mutmut_5
+
+x_is_main_timeline__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_is_main_timeline__mutmut_1": x_is_main_timeline__mutmut_1,
+    "x_is_main_timeline__mutmut_2": x_is_main_timeline__mutmut_2,
+    "x_is_main_timeline__mutmut_3": x_is_main_timeline__mutmut_3,
+    "x_is_main_timeline__mutmut_4": x_is_main_timeline__mutmut_4,
+    "x_is_main_timeline__mutmut_5": x_is_main_timeline__mutmut_5,
 }
 
+
 def is_main_timeline(*args, **kwargs):
-    result = _mutmut_trampoline(x_is_main_timeline__mutmut_orig, x_is_main_timeline__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_is_main_timeline__mutmut_orig,
+        x_is_main_timeline__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 is_main_timeline.__signature__ = _mutmut_signature(x_is_main_timeline__mutmut_orig)
-x_is_main_timeline__mutmut_orig.__name__ = 'x_is_main_timeline'
+x_is_main_timeline__mutmut_orig.__name__ = "x_is_main_timeline"
 
 
 def x_divergence_for__mutmut_orig(e: Optional[Edition], domain_name: str) -> int:
@@ -1032,21 +1141,26 @@ def x_divergence_for__mutmut_6(e: Optional[Edition], domain_name: str) -> int:
             return d.sequence
     return -2
 
-x_divergence_for__mutmut_mutants : ClassVar[MutantDict] = {
-'x_divergence_for__mutmut_1': x_divergence_for__mutmut_1, 
-    'x_divergence_for__mutmut_2': x_divergence_for__mutmut_2, 
-    'x_divergence_for__mutmut_3': x_divergence_for__mutmut_3, 
-    'x_divergence_for__mutmut_4': x_divergence_for__mutmut_4, 
-    'x_divergence_for__mutmut_5': x_divergence_for__mutmut_5, 
-    'x_divergence_for__mutmut_6': x_divergence_for__mutmut_6
+
+x_divergence_for__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_divergence_for__mutmut_1": x_divergence_for__mutmut_1,
+    "x_divergence_for__mutmut_2": x_divergence_for__mutmut_2,
+    "x_divergence_for__mutmut_3": x_divergence_for__mutmut_3,
+    "x_divergence_for__mutmut_4": x_divergence_for__mutmut_4,
+    "x_divergence_for__mutmut_5": x_divergence_for__mutmut_5,
+    "x_divergence_for__mutmut_6": x_divergence_for__mutmut_6,
 }
 
+
 def divergence_for(*args, **kwargs):
-    result = _mutmut_trampoline(x_divergence_for__mutmut_orig, x_divergence_for__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_divergence_for__mutmut_orig, x_divergence_for__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 divergence_for.__signature__ = _mutmut_signature(x_divergence_for__mutmut_orig)
-x_divergence_for__mutmut_orig.__name__ = 'x_divergence_for'
+x_divergence_for__mutmut_orig.__name__ = "x_divergence_for"
 
 
 # EventBook helpers
@@ -1087,17 +1201,22 @@ def x_next_sequence__mutmut_2(book: EventBook) -> int:
         return 1
     return book.next_sequence
 
-x_next_sequence__mutmut_mutants : ClassVar[MutantDict] = {
-'x_next_sequence__mutmut_1': x_next_sequence__mutmut_1, 
-    'x_next_sequence__mutmut_2': x_next_sequence__mutmut_2
+
+x_next_sequence__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_next_sequence__mutmut_1": x_next_sequence__mutmut_1,
+    "x_next_sequence__mutmut_2": x_next_sequence__mutmut_2,
 }
 
+
 def next_sequence(*args, **kwargs):
-    result = _mutmut_trampoline(x_next_sequence__mutmut_orig, x_next_sequence__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_next_sequence__mutmut_orig, x_next_sequence__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 next_sequence.__signature__ = _mutmut_signature(x_next_sequence__mutmut_orig)
-x_next_sequence__mutmut_orig.__name__ = 'x_next_sequence'
+x_next_sequence__mutmut_orig.__name__ = "x_next_sequence"
 
 
 def x_event_pages__mutmut_orig(book: Optional[EventBook]) -> list[EventPage]:
@@ -1120,17 +1239,22 @@ def x_event_pages__mutmut_2(book: Optional[EventBook]) -> list[EventPage]:
         return []
     return list(None)
 
-x_event_pages__mutmut_mutants : ClassVar[MutantDict] = {
-'x_event_pages__mutmut_1': x_event_pages__mutmut_1, 
-    'x_event_pages__mutmut_2': x_event_pages__mutmut_2
+
+x_event_pages__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_event_pages__mutmut_1": x_event_pages__mutmut_1,
+    "x_event_pages__mutmut_2": x_event_pages__mutmut_2,
 }
 
+
 def event_pages(*args, **kwargs):
-    result = _mutmut_trampoline(x_event_pages__mutmut_orig, x_event_pages__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_event_pages__mutmut_orig, x_event_pages__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 event_pages.__signature__ = _mutmut_signature(x_event_pages__mutmut_orig)
-x_event_pages__mutmut_orig.__name__ = 'x_event_pages'
+x_event_pages__mutmut_orig.__name__ = "x_event_pages"
 
 
 # CommandBook helpers
@@ -1162,17 +1286,22 @@ def x_command_pages__mutmut_2(book: Optional[CommandBook]) -> list[CommandPage]:
         return []
     return list(None)
 
-x_command_pages__mutmut_mutants : ClassVar[MutantDict] = {
-'x_command_pages__mutmut_1': x_command_pages__mutmut_1, 
-    'x_command_pages__mutmut_2': x_command_pages__mutmut_2
+
+x_command_pages__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_command_pages__mutmut_1": x_command_pages__mutmut_1,
+    "x_command_pages__mutmut_2": x_command_pages__mutmut_2,
 }
 
+
 def command_pages(*args, **kwargs):
-    result = _mutmut_trampoline(x_command_pages__mutmut_orig, x_command_pages__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_command_pages__mutmut_orig, x_command_pages__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 command_pages.__signature__ = _mutmut_signature(x_command_pages__mutmut_orig)
-x_command_pages__mutmut_orig.__name__ = 'x_command_pages'
+x_command_pages__mutmut_orig.__name__ = "x_command_pages"
 
 
 # CommandResponse helpers
@@ -1254,22 +1383,32 @@ def x_events_from_response__mutmut_7(resp) -> list[EventPage]:
         return []
     return list(None)
 
-x_events_from_response__mutmut_mutants : ClassVar[MutantDict] = {
-'x_events_from_response__mutmut_1': x_events_from_response__mutmut_1, 
-    'x_events_from_response__mutmut_2': x_events_from_response__mutmut_2, 
-    'x_events_from_response__mutmut_3': x_events_from_response__mutmut_3, 
-    'x_events_from_response__mutmut_4': x_events_from_response__mutmut_4, 
-    'x_events_from_response__mutmut_5': x_events_from_response__mutmut_5, 
-    'x_events_from_response__mutmut_6': x_events_from_response__mutmut_6, 
-    'x_events_from_response__mutmut_7': x_events_from_response__mutmut_7
+
+x_events_from_response__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_events_from_response__mutmut_1": x_events_from_response__mutmut_1,
+    "x_events_from_response__mutmut_2": x_events_from_response__mutmut_2,
+    "x_events_from_response__mutmut_3": x_events_from_response__mutmut_3,
+    "x_events_from_response__mutmut_4": x_events_from_response__mutmut_4,
+    "x_events_from_response__mutmut_5": x_events_from_response__mutmut_5,
+    "x_events_from_response__mutmut_6": x_events_from_response__mutmut_6,
+    "x_events_from_response__mutmut_7": x_events_from_response__mutmut_7,
 }
 
-def events_from_response(*args, **kwargs):
-    result = _mutmut_trampoline(x_events_from_response__mutmut_orig, x_events_from_response__mutmut_mutants, args, kwargs)
-    return result 
 
-events_from_response.__signature__ = _mutmut_signature(x_events_from_response__mutmut_orig)
-x_events_from_response__mutmut_orig.__name__ = 'x_events_from_response'
+def events_from_response(*args, **kwargs):
+    result = _mutmut_trampoline(
+        x_events_from_response__mutmut_orig,
+        x_events_from_response__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
+
+events_from_response.__signature__ = _mutmut_signature(
+    x_events_from_response__mutmut_orig
+)
+x_events_from_response__mutmut_orig.__name__ = "x_events_from_response"
 
 
 # Type URL helpers
@@ -1337,7 +1476,9 @@ def x_type_name_from_url__mutmut_5(type_url_str: str) -> str:
 def x_type_name_from_url__mutmut_6(type_url_str: str) -> str:
     """Extract the type name from a type URL."""
     if "." in type_url_str:
-        return type_url_str.rsplit(".", )[1]
+        return type_url_str.rsplit(
+            ".",
+        )[1]
     if "/" in type_url_str:
         return type_url_str.rsplit("/", 1)[1]
     return type_url_str
@@ -1429,7 +1570,9 @@ def x_type_name_from_url__mutmut_16(type_url_str: str) -> str:
     if "." in type_url_str:
         return type_url_str.rsplit(".", 1)[1]
     if "/" in type_url_str:
-        return type_url_str.rsplit("/", )[1]
+        return type_url_str.rsplit(
+            "/",
+        )[1]
     return type_url_str
 
 
@@ -1468,35 +1611,43 @@ def x_type_name_from_url__mutmut_20(type_url_str: str) -> str:
         return type_url_str.rsplit("/", 1)[2]
     return type_url_str
 
-x_type_name_from_url__mutmut_mutants : ClassVar[MutantDict] = {
-'x_type_name_from_url__mutmut_1': x_type_name_from_url__mutmut_1, 
-    'x_type_name_from_url__mutmut_2': x_type_name_from_url__mutmut_2, 
-    'x_type_name_from_url__mutmut_3': x_type_name_from_url__mutmut_3, 
-    'x_type_name_from_url__mutmut_4': x_type_name_from_url__mutmut_4, 
-    'x_type_name_from_url__mutmut_5': x_type_name_from_url__mutmut_5, 
-    'x_type_name_from_url__mutmut_6': x_type_name_from_url__mutmut_6, 
-    'x_type_name_from_url__mutmut_7': x_type_name_from_url__mutmut_7, 
-    'x_type_name_from_url__mutmut_8': x_type_name_from_url__mutmut_8, 
-    'x_type_name_from_url__mutmut_9': x_type_name_from_url__mutmut_9, 
-    'x_type_name_from_url__mutmut_10': x_type_name_from_url__mutmut_10, 
-    'x_type_name_from_url__mutmut_11': x_type_name_from_url__mutmut_11, 
-    'x_type_name_from_url__mutmut_12': x_type_name_from_url__mutmut_12, 
-    'x_type_name_from_url__mutmut_13': x_type_name_from_url__mutmut_13, 
-    'x_type_name_from_url__mutmut_14': x_type_name_from_url__mutmut_14, 
-    'x_type_name_from_url__mutmut_15': x_type_name_from_url__mutmut_15, 
-    'x_type_name_from_url__mutmut_16': x_type_name_from_url__mutmut_16, 
-    'x_type_name_from_url__mutmut_17': x_type_name_from_url__mutmut_17, 
-    'x_type_name_from_url__mutmut_18': x_type_name_from_url__mutmut_18, 
-    'x_type_name_from_url__mutmut_19': x_type_name_from_url__mutmut_19, 
-    'x_type_name_from_url__mutmut_20': x_type_name_from_url__mutmut_20
+
+x_type_name_from_url__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_type_name_from_url__mutmut_1": x_type_name_from_url__mutmut_1,
+    "x_type_name_from_url__mutmut_2": x_type_name_from_url__mutmut_2,
+    "x_type_name_from_url__mutmut_3": x_type_name_from_url__mutmut_3,
+    "x_type_name_from_url__mutmut_4": x_type_name_from_url__mutmut_4,
+    "x_type_name_from_url__mutmut_5": x_type_name_from_url__mutmut_5,
+    "x_type_name_from_url__mutmut_6": x_type_name_from_url__mutmut_6,
+    "x_type_name_from_url__mutmut_7": x_type_name_from_url__mutmut_7,
+    "x_type_name_from_url__mutmut_8": x_type_name_from_url__mutmut_8,
+    "x_type_name_from_url__mutmut_9": x_type_name_from_url__mutmut_9,
+    "x_type_name_from_url__mutmut_10": x_type_name_from_url__mutmut_10,
+    "x_type_name_from_url__mutmut_11": x_type_name_from_url__mutmut_11,
+    "x_type_name_from_url__mutmut_12": x_type_name_from_url__mutmut_12,
+    "x_type_name_from_url__mutmut_13": x_type_name_from_url__mutmut_13,
+    "x_type_name_from_url__mutmut_14": x_type_name_from_url__mutmut_14,
+    "x_type_name_from_url__mutmut_15": x_type_name_from_url__mutmut_15,
+    "x_type_name_from_url__mutmut_16": x_type_name_from_url__mutmut_16,
+    "x_type_name_from_url__mutmut_17": x_type_name_from_url__mutmut_17,
+    "x_type_name_from_url__mutmut_18": x_type_name_from_url__mutmut_18,
+    "x_type_name_from_url__mutmut_19": x_type_name_from_url__mutmut_19,
+    "x_type_name_from_url__mutmut_20": x_type_name_from_url__mutmut_20,
 }
 
+
 def type_name_from_url(*args, **kwargs):
-    result = _mutmut_trampoline(x_type_name_from_url__mutmut_orig, x_type_name_from_url__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_type_name_from_url__mutmut_orig,
+        x_type_name_from_url__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 type_name_from_url.__signature__ = _mutmut_signature(x_type_name_from_url__mutmut_orig)
-x_type_name_from_url__mutmut_orig.__name__ = 'x_type_name_from_url'
+x_type_name_from_url__mutmut_orig.__name__ = "x_type_name_from_url"
 
 
 def x_type_url_matches__mutmut_orig(type_url_str: str, suffix: str) -> bool:
@@ -1508,16 +1659,24 @@ def x_type_url_matches__mutmut_1(type_url_str: str, suffix: str) -> bool:
     """Check if a type URL ends with the given suffix."""
     return type_url_str.endswith(None)
 
-x_type_url_matches__mutmut_mutants : ClassVar[MutantDict] = {
-'x_type_url_matches__mutmut_1': x_type_url_matches__mutmut_1
+
+x_type_url_matches__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_type_url_matches__mutmut_1": x_type_url_matches__mutmut_1
 }
 
+
 def type_url_matches(*args, **kwargs):
-    result = _mutmut_trampoline(x_type_url_matches__mutmut_orig, x_type_url_matches__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_type_url_matches__mutmut_orig,
+        x_type_url_matches__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 type_url_matches.__signature__ = _mutmut_signature(x_type_url_matches__mutmut_orig)
-x_type_url_matches__mutmut_orig.__name__ = 'x_type_url_matches'
+x_type_url_matches__mutmut_orig.__name__ = "x_type_url_matches"
 
 
 # Timestamp helpers
@@ -1539,16 +1698,17 @@ def x_now__mutmut_1() -> Timestamp:
     ts.GetCurrentTime()
     return ts
 
-x_now__mutmut_mutants : ClassVar[MutantDict] = {
-'x_now__mutmut_1': x_now__mutmut_1
-}
+
+x_now__mutmut_mutants: ClassVar[MutantDict] = {"x_now__mutmut_1": x_now__mutmut_1}
+
 
 def now(*args, **kwargs):
     result = _mutmut_trampoline(x_now__mutmut_orig, x_now__mutmut_mutants, args, kwargs)
-    return result 
+    return result
+
 
 now.__signature__ = _mutmut_signature(x_now__mutmut_orig)
-x_now__mutmut_orig.__name__ = 'x_now'
+x_now__mutmut_orig.__name__ = "x_now"
 
 
 def x_parse_timestamp__mutmut_orig(rfc3339: str) -> Timestamp:
@@ -1600,25 +1760,32 @@ def x_parse_timestamp__mutmut_4(rfc3339: str) -> Timestamp:
     except ValueError as e:
         raise InvalidTimestampError(str(None)) from e
 
-x_parse_timestamp__mutmut_mutants : ClassVar[MutantDict] = {
-'x_parse_timestamp__mutmut_1': x_parse_timestamp__mutmut_1, 
-    'x_parse_timestamp__mutmut_2': x_parse_timestamp__mutmut_2, 
-    'x_parse_timestamp__mutmut_3': x_parse_timestamp__mutmut_3, 
-    'x_parse_timestamp__mutmut_4': x_parse_timestamp__mutmut_4
+
+x_parse_timestamp__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_parse_timestamp__mutmut_1": x_parse_timestamp__mutmut_1,
+    "x_parse_timestamp__mutmut_2": x_parse_timestamp__mutmut_2,
+    "x_parse_timestamp__mutmut_3": x_parse_timestamp__mutmut_3,
+    "x_parse_timestamp__mutmut_4": x_parse_timestamp__mutmut_4,
 }
 
+
 def parse_timestamp(*args, **kwargs):
-    result = _mutmut_trampoline(x_parse_timestamp__mutmut_orig, x_parse_timestamp__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_parse_timestamp__mutmut_orig, x_parse_timestamp__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 parse_timestamp.__signature__ = _mutmut_signature(x_parse_timestamp__mutmut_orig)
-x_parse_timestamp__mutmut_orig.__name__ = 'x_parse_timestamp'
+x_parse_timestamp__mutmut_orig.__name__ = "x_parse_timestamp"
 
 
 # Event decoding
 
 
-def x_decode_event__mutmut_orig(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_orig(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1644,7 +1811,9 @@ def x_decode_event__mutmut_orig(page: EventPage, type_suffix: str, msg_class) ->
 # Event decoding
 
 
-def x_decode_event__mutmut_1(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_1(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1670,7 +1839,9 @@ def x_decode_event__mutmut_1(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_2(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_2(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1696,7 +1867,9 @@ def x_decode_event__mutmut_2(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_3(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_3(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1722,7 +1895,9 @@ def x_decode_event__mutmut_3(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_4(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_4(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1748,7 +1923,9 @@ def x_decode_event__mutmut_4(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_5(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_5(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1774,7 +1951,9 @@ def x_decode_event__mutmut_5(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_6(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_6(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1800,7 +1979,9 @@ def x_decode_event__mutmut_6(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_7(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_7(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1826,7 +2007,9 @@ def x_decode_event__mutmut_7(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_8(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_8(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1852,7 +2035,9 @@ def x_decode_event__mutmut_8(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_9(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_9(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1878,7 +2063,9 @@ def x_decode_event__mutmut_9(page: EventPage, type_suffix: str, msg_class) -> Op
 # Event decoding
 
 
-def x_decode_event__mutmut_10(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_10(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1904,7 +2091,9 @@ def x_decode_event__mutmut_10(page: EventPage, type_suffix: str, msg_class) -> O
 # Event decoding
 
 
-def x_decode_event__mutmut_11(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_11(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1917,7 +2106,9 @@ def x_decode_event__mutmut_11(page: EventPage, type_suffix: str, msg_class) -> O
     """
     if page is None or not page.HasField("event"):
         return None
-    if not type_url_matches(page.event.type_url, ):
+    if not type_url_matches(
+        page.event.type_url,
+    ):
         return None
     try:
         msg = msg_class()
@@ -1930,7 +2121,9 @@ def x_decode_event__mutmut_11(page: EventPage, type_suffix: str, msg_class) -> O
 # Event decoding
 
 
-def x_decode_event__mutmut_12(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_12(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1956,7 +2149,9 @@ def x_decode_event__mutmut_12(page: EventPage, type_suffix: str, msg_class) -> O
 # Event decoding
 
 
-def x_decode_event__mutmut_13(page: EventPage, type_suffix: str, msg_class) -> Optional[object]:
+def x_decode_event__mutmut_13(
+    page: EventPage, type_suffix: str, msg_class
+) -> Optional[object]:
     """Attempt to decode an event payload if the type URL matches.
 
     Args:
@@ -1978,28 +2173,33 @@ def x_decode_event__mutmut_13(page: EventPage, type_suffix: str, msg_class) -> O
     except Exception:
         return None
 
-x_decode_event__mutmut_mutants : ClassVar[MutantDict] = {
-'x_decode_event__mutmut_1': x_decode_event__mutmut_1, 
-    'x_decode_event__mutmut_2': x_decode_event__mutmut_2, 
-    'x_decode_event__mutmut_3': x_decode_event__mutmut_3, 
-    'x_decode_event__mutmut_4': x_decode_event__mutmut_4, 
-    'x_decode_event__mutmut_5': x_decode_event__mutmut_5, 
-    'x_decode_event__mutmut_6': x_decode_event__mutmut_6, 
-    'x_decode_event__mutmut_7': x_decode_event__mutmut_7, 
-    'x_decode_event__mutmut_8': x_decode_event__mutmut_8, 
-    'x_decode_event__mutmut_9': x_decode_event__mutmut_9, 
-    'x_decode_event__mutmut_10': x_decode_event__mutmut_10, 
-    'x_decode_event__mutmut_11': x_decode_event__mutmut_11, 
-    'x_decode_event__mutmut_12': x_decode_event__mutmut_12, 
-    'x_decode_event__mutmut_13': x_decode_event__mutmut_13
+
+x_decode_event__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_decode_event__mutmut_1": x_decode_event__mutmut_1,
+    "x_decode_event__mutmut_2": x_decode_event__mutmut_2,
+    "x_decode_event__mutmut_3": x_decode_event__mutmut_3,
+    "x_decode_event__mutmut_4": x_decode_event__mutmut_4,
+    "x_decode_event__mutmut_5": x_decode_event__mutmut_5,
+    "x_decode_event__mutmut_6": x_decode_event__mutmut_6,
+    "x_decode_event__mutmut_7": x_decode_event__mutmut_7,
+    "x_decode_event__mutmut_8": x_decode_event__mutmut_8,
+    "x_decode_event__mutmut_9": x_decode_event__mutmut_9,
+    "x_decode_event__mutmut_10": x_decode_event__mutmut_10,
+    "x_decode_event__mutmut_11": x_decode_event__mutmut_11,
+    "x_decode_event__mutmut_12": x_decode_event__mutmut_12,
+    "x_decode_event__mutmut_13": x_decode_event__mutmut_13,
 }
 
+
 def decode_event(*args, **kwargs):
-    result = _mutmut_trampoline(x_decode_event__mutmut_orig, x_decode_event__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_decode_event__mutmut_orig, x_decode_event__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 decode_event.__signature__ = _mutmut_signature(x_decode_event__mutmut_orig)
-x_decode_event__mutmut_orig.__name__ = 'x_decode_event'
+x_decode_event__mutmut_orig.__name__ = "x_decode_event"
 
 
 # Construction helpers
@@ -2169,7 +2369,7 @@ def x_new_cover__mutmut_8(
     cover = Cover(
         domain=domain_name,
         root=uuid_to_proto(root),
-        )
+    )
     if edition_val is not None:
         cover.edition.CopyFrom(edition_val)
     return cover
@@ -2234,26 +2434,31 @@ def x_new_cover__mutmut_11(
         cover.edition.CopyFrom(None)
     return cover
 
-x_new_cover__mutmut_mutants : ClassVar[MutantDict] = {
-'x_new_cover__mutmut_1': x_new_cover__mutmut_1, 
-    'x_new_cover__mutmut_2': x_new_cover__mutmut_2, 
-    'x_new_cover__mutmut_3': x_new_cover__mutmut_3, 
-    'x_new_cover__mutmut_4': x_new_cover__mutmut_4, 
-    'x_new_cover__mutmut_5': x_new_cover__mutmut_5, 
-    'x_new_cover__mutmut_6': x_new_cover__mutmut_6, 
-    'x_new_cover__mutmut_7': x_new_cover__mutmut_7, 
-    'x_new_cover__mutmut_8': x_new_cover__mutmut_8, 
-    'x_new_cover__mutmut_9': x_new_cover__mutmut_9, 
-    'x_new_cover__mutmut_10': x_new_cover__mutmut_10, 
-    'x_new_cover__mutmut_11': x_new_cover__mutmut_11
+
+x_new_cover__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_new_cover__mutmut_1": x_new_cover__mutmut_1,
+    "x_new_cover__mutmut_2": x_new_cover__mutmut_2,
+    "x_new_cover__mutmut_3": x_new_cover__mutmut_3,
+    "x_new_cover__mutmut_4": x_new_cover__mutmut_4,
+    "x_new_cover__mutmut_5": x_new_cover__mutmut_5,
+    "x_new_cover__mutmut_6": x_new_cover__mutmut_6,
+    "x_new_cover__mutmut_7": x_new_cover__mutmut_7,
+    "x_new_cover__mutmut_8": x_new_cover__mutmut_8,
+    "x_new_cover__mutmut_9": x_new_cover__mutmut_9,
+    "x_new_cover__mutmut_10": x_new_cover__mutmut_10,
+    "x_new_cover__mutmut_11": x_new_cover__mutmut_11,
 }
 
+
 def new_cover(*args, **kwargs):
-    result = _mutmut_trampoline(x_new_cover__mutmut_orig, x_new_cover__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_new_cover__mutmut_orig, x_new_cover__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 new_cover.__signature__ = _mutmut_signature(x_new_cover__mutmut_orig)
-x_new_cover__mutmut_orig.__name__ = 'x_new_cover'
+x_new_cover__mutmut_orig.__name__ = "x_new_cover"
 
 
 def x_new_command_page__mutmut_orig(sequence: int, command: ProtoAny) -> CommandPage:
@@ -2283,21 +2488,31 @@ def x_new_command_page__mutmut_3(sequence: int, command: ProtoAny) -> CommandPag
     page.command.CopyFrom(None)
     return page
 
-x_new_command_page__mutmut_mutants : ClassVar[MutantDict] = {
-'x_new_command_page__mutmut_1': x_new_command_page__mutmut_1, 
-    'x_new_command_page__mutmut_2': x_new_command_page__mutmut_2, 
-    'x_new_command_page__mutmut_3': x_new_command_page__mutmut_3
+
+x_new_command_page__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_new_command_page__mutmut_1": x_new_command_page__mutmut_1,
+    "x_new_command_page__mutmut_2": x_new_command_page__mutmut_2,
+    "x_new_command_page__mutmut_3": x_new_command_page__mutmut_3,
 }
 
+
 def new_command_page(*args, **kwargs):
-    result = _mutmut_trampoline(x_new_command_page__mutmut_orig, x_new_command_page__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_new_command_page__mutmut_orig,
+        x_new_command_page__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 new_command_page.__signature__ = _mutmut_signature(x_new_command_page__mutmut_orig)
-x_new_command_page__mutmut_orig.__name__ = 'x_new_command_page'
+x_new_command_page__mutmut_orig.__name__ = "x_new_command_page"
 
 
-def x_new_command_book__mutmut_orig(cover: Cover, pages: list[CommandPage]) -> CommandBook:
+def x_new_command_book__mutmut_orig(
+    cover: Cover, pages: list[CommandPage]
+) -> CommandBook:
     """Create a CommandBook with the given cover and pages."""
     book = CommandBook()
     book.cover.CopyFrom(cover)
@@ -2328,21 +2543,31 @@ def x_new_command_book__mutmut_3(cover: Cover, pages: list[CommandPage]) -> Comm
     book.pages.extend(None)
     return book
 
-x_new_command_book__mutmut_mutants : ClassVar[MutantDict] = {
-'x_new_command_book__mutmut_1': x_new_command_book__mutmut_1, 
-    'x_new_command_book__mutmut_2': x_new_command_book__mutmut_2, 
-    'x_new_command_book__mutmut_3': x_new_command_book__mutmut_3
+
+x_new_command_book__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_new_command_book__mutmut_1": x_new_command_book__mutmut_1,
+    "x_new_command_book__mutmut_2": x_new_command_book__mutmut_2,
+    "x_new_command_book__mutmut_3": x_new_command_book__mutmut_3,
 }
 
+
 def new_command_book(*args, **kwargs):
-    result = _mutmut_trampoline(x_new_command_book__mutmut_orig, x_new_command_book__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_new_command_book__mutmut_orig,
+        x_new_command_book__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 new_command_book.__signature__ = _mutmut_signature(x_new_command_book__mutmut_orig)
-x_new_command_book__mutmut_orig.__name__ = 'x_new_command_book'
+x_new_command_book__mutmut_orig.__name__ = "x_new_command_book"
 
 
-def x_range_selection__mutmut_orig(lower: int, upper: Optional[int] = None) -> SequenceRange:
+def x_range_selection__mutmut_orig(
+    lower: int, upper: Optional[int] = None
+) -> SequenceRange:
     """Create a sequence range selection."""
     r = SequenceRange(lower=lower)
     if upper is not None:
@@ -2350,7 +2575,9 @@ def x_range_selection__mutmut_orig(lower: int, upper: Optional[int] = None) -> S
     return r
 
 
-def x_range_selection__mutmut_1(lower: int, upper: Optional[int] = None) -> SequenceRange:
+def x_range_selection__mutmut_1(
+    lower: int, upper: Optional[int] = None
+) -> SequenceRange:
     """Create a sequence range selection."""
     r = None
     if upper is not None:
@@ -2358,7 +2585,9 @@ def x_range_selection__mutmut_1(lower: int, upper: Optional[int] = None) -> Sequ
     return r
 
 
-def x_range_selection__mutmut_2(lower: int, upper: Optional[int] = None) -> SequenceRange:
+def x_range_selection__mutmut_2(
+    lower: int, upper: Optional[int] = None
+) -> SequenceRange:
     """Create a sequence range selection."""
     r = SequenceRange(lower=None)
     if upper is not None:
@@ -2366,7 +2595,9 @@ def x_range_selection__mutmut_2(lower: int, upper: Optional[int] = None) -> Sequ
     return r
 
 
-def x_range_selection__mutmut_3(lower: int, upper: Optional[int] = None) -> SequenceRange:
+def x_range_selection__mutmut_3(
+    lower: int, upper: Optional[int] = None
+) -> SequenceRange:
     """Create a sequence range selection."""
     r = SequenceRange(lower=lower)
     if upper is None:
@@ -2374,26 +2605,33 @@ def x_range_selection__mutmut_3(lower: int, upper: Optional[int] = None) -> Sequ
     return r
 
 
-def x_range_selection__mutmut_4(lower: int, upper: Optional[int] = None) -> SequenceRange:
+def x_range_selection__mutmut_4(
+    lower: int, upper: Optional[int] = None
+) -> SequenceRange:
     """Create a sequence range selection."""
     r = SequenceRange(lower=lower)
     if upper is not None:
         r.upper = None
     return r
 
-x_range_selection__mutmut_mutants : ClassVar[MutantDict] = {
-'x_range_selection__mutmut_1': x_range_selection__mutmut_1, 
-    'x_range_selection__mutmut_2': x_range_selection__mutmut_2, 
-    'x_range_selection__mutmut_3': x_range_selection__mutmut_3, 
-    'x_range_selection__mutmut_4': x_range_selection__mutmut_4
+
+x_range_selection__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_range_selection__mutmut_1": x_range_selection__mutmut_1,
+    "x_range_selection__mutmut_2": x_range_selection__mutmut_2,
+    "x_range_selection__mutmut_3": x_range_selection__mutmut_3,
+    "x_range_selection__mutmut_4": x_range_selection__mutmut_4,
 }
 
+
 def range_selection(*args, **kwargs):
-    result = _mutmut_trampoline(x_range_selection__mutmut_orig, x_range_selection__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_range_selection__mutmut_orig, x_range_selection__mutmut_mutants, args, kwargs
+    )
+    return result
+
 
 range_selection.__signature__ = _mutmut_signature(x_range_selection__mutmut_orig)
-x_range_selection__mutmut_orig.__name__ = 'x_range_selection'
+x_range_selection__mutmut_orig.__name__ = "x_range_selection"
 
 
 def x_temporal_by_sequence__mutmut_orig(seq: int) -> TemporalQuery:
@@ -2405,16 +2643,26 @@ def x_temporal_by_sequence__mutmut_1(seq: int) -> TemporalQuery:
     """Create a temporal selection as-of a sequence."""
     return TemporalQuery(as_of_sequence=None)
 
-x_temporal_by_sequence__mutmut_mutants : ClassVar[MutantDict] = {
-'x_temporal_by_sequence__mutmut_1': x_temporal_by_sequence__mutmut_1
+
+x_temporal_by_sequence__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_temporal_by_sequence__mutmut_1": x_temporal_by_sequence__mutmut_1
 }
 
-def temporal_by_sequence(*args, **kwargs):
-    result = _mutmut_trampoline(x_temporal_by_sequence__mutmut_orig, x_temporal_by_sequence__mutmut_mutants, args, kwargs)
-    return result 
 
-temporal_by_sequence.__signature__ = _mutmut_signature(x_temporal_by_sequence__mutmut_orig)
-x_temporal_by_sequence__mutmut_orig.__name__ = 'x_temporal_by_sequence'
+def temporal_by_sequence(*args, **kwargs):
+    result = _mutmut_trampoline(
+        x_temporal_by_sequence__mutmut_orig,
+        x_temporal_by_sequence__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
+
+temporal_by_sequence.__signature__ = _mutmut_signature(
+    x_temporal_by_sequence__mutmut_orig
+)
+x_temporal_by_sequence__mutmut_orig.__name__ = "x_temporal_by_sequence"
 
 
 def x_temporal_by_time__mutmut_orig(ts: Timestamp) -> TemporalQuery:
@@ -2437,14 +2685,22 @@ def x_temporal_by_time__mutmut_2(ts: Timestamp) -> TemporalQuery:
     tq.as_of_time.CopyFrom(None)
     return tq
 
-x_temporal_by_time__mutmut_mutants : ClassVar[MutantDict] = {
-'x_temporal_by_time__mutmut_1': x_temporal_by_time__mutmut_1, 
-    'x_temporal_by_time__mutmut_2': x_temporal_by_time__mutmut_2
+
+x_temporal_by_time__mutmut_mutants: ClassVar[MutantDict] = {
+    "x_temporal_by_time__mutmut_1": x_temporal_by_time__mutmut_1,
+    "x_temporal_by_time__mutmut_2": x_temporal_by_time__mutmut_2,
 }
 
+
 def temporal_by_time(*args, **kwargs):
-    result = _mutmut_trampoline(x_temporal_by_time__mutmut_orig, x_temporal_by_time__mutmut_mutants, args, kwargs)
-    return result 
+    result = _mutmut_trampoline(
+        x_temporal_by_time__mutmut_orig,
+        x_temporal_by_time__mutmut_mutants,
+        args,
+        kwargs,
+    )
+    return result
+
 
 temporal_by_time.__signature__ = _mutmut_signature(x_temporal_by_time__mutmut_orig)
-x_temporal_by_time__mutmut_orig.__name__ = 'x_temporal_by_time'
+x_temporal_by_time__mutmut_orig.__name__ = "x_temporal_by_time"

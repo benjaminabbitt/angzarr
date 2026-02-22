@@ -36,6 +36,9 @@ Use helm for all deployments.  Do not use kustomize.
 ### Python's Role
 Python is to be used for support files and general scripting.  Things like manage secrets, initializing a registry, and waiting for grpc health checks.  The author prefers python for this role over shell.
 
+### Vector Search (MCP)
+A Qdrant-based MCP server provides semantic search over the codebase via `qdrant-find` and `qdrant-store` tools. Backed by local fastembed embeddings (no API key). Data stored in `.vectors/qdrant/` (gitignored). Rebuild the index after significant changes with `just reindex`.
+
 ### Skaffold (CRITICAL)
 **ALL image builds and deployments MUST go through skaffold.** Never bypass with manual `podman build` + `helm upgrade` workflows.
 

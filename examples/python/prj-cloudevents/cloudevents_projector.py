@@ -39,6 +39,8 @@ class PlayerCloudEventsProjector(CloudEventsProjector):
             data=data,
             extensions={"priority": "normal"},
         )
+
+
 # docs:end:cloudevents_oo
 
 

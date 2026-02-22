@@ -119,9 +119,13 @@ class Saga(ABC):
         if not getattr(cls, "name", None):
             raise TypeError(f"{cls.__name__} must define 'name' class attribute")
         if not getattr(cls, "input_domain", None):
-            raise TypeError(f"{cls.__name__} must define 'input_domain' class attribute")
+            raise TypeError(
+                f"{cls.__name__} must define 'input_domain' class attribute"
+            )
         if not getattr(cls, "output_domain", None):
-            raise TypeError(f"{cls.__name__} must define 'output_domain' class attribute")
+            raise TypeError(
+                f"{cls.__name__} must define 'output_domain' class attribute"
+            )
 
         cls._dispatch_table = cls._build_dispatch_table()
         cls._prepare_table = cls._build_prepare_table()
@@ -150,13 +154,13 @@ class Saga(ABC):
                 event_type = attr._event_type
                 suffix = event_type.__name__
                 if suffix in table:
-                    raise TypeError(f"{cls.__name__}: duplicate prepare handler for {suffix}")
+                    raise TypeError(
+                        f"{cls.__name__}: duplicate prepare handler for {suffix}"
+                    )
                 table[suffix] = (attr_name, event_type)
         return table
 
-    def prepare(
-        self, event_any: Any
-    ) -> list[types.Cover]:
+    def prepare(self, event_any: Any) -> list[types.Cover]:
         """Prepare destinations for an event.
 
         Dispatches to @prepares decorated method if one exists.
@@ -238,7 +242,11 @@ class Saga(ABC):
         # Handle pre-packed CommandBooks (advanced usage)
         if isinstance(result, types.CommandBook):
             return [result]
-        if isinstance(result, list) and result and isinstance(result[0], types.CommandBook):
+        if (
+            isinstance(result, list)
+            and result
+            and isinstance(result[0], types.CommandBook)
+        ):
             return result
 
         commands = result if isinstance(result, tuple) else (result,)
@@ -310,4 +318,3 @@ class Saga(ABC):
                 )
 
         return commands
-

@@ -164,7 +164,9 @@ class StateRouter(Generic[S]):
         self._handlers: List[tuple[str, type, Callable[[S, object], None]]] = []
         self._snapshot_loader: SnapshotLoader[S] | None = None
 
-    def on(self, event_type: type, handler: Callable[[S, object], None]) -> StateRouter[S]:
+    def on(
+        self, event_type: type, handler: Callable[[S, object], None]
+    ) -> StateRouter[S]:
         """Register a handler for an event type.
 
         The handler receives typed events (auto-unpacked from Any).

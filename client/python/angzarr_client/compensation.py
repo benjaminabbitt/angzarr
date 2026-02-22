@@ -88,7 +88,9 @@ class CompensationContext:
     """Cover of the aggregate that triggered the flow."""
 
     @classmethod
-    def from_notification(cls, notification: types.Notification) -> "CompensationContext":
+    def from_notification(
+        cls, notification: types.Notification
+    ) -> "CompensationContext":
         """Extract compensation context from a Notification.
 
         Args:
@@ -106,8 +108,12 @@ class CompensationContext:
             issuer_type=rejection.issuer_type,
             source_event_sequence=rejection.source_event_sequence,
             rejection_reason=rejection.rejection_reason,
-            rejected_command=rejection.rejected_command if rejection.HasField("rejected_command") else None,
-            source_aggregate=rejection.source_aggregate if rejection.HasField("source_aggregate") else None,
+            rejected_command=rejection.rejected_command
+            if rejection.HasField("rejected_command")
+            else None,
+            source_aggregate=rejection.source_aggregate
+            if rejection.HasField("source_aggregate")
+            else None,
         )
 
     @property

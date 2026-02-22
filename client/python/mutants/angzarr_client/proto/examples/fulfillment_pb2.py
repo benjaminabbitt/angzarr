@@ -4,18 +4,15 @@
 # source: examples/fulfillment.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'examples/fulfillment.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "examples/fulfillment.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -26,34 +23,40 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 from examples import order_pb2 as examples_dot_order__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x65xamples/fulfillment.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14\x65xamples/order.proto\"U\n\x0e\x43reateShipment\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12(\n\x05items\x18\x02 \x03(\x0b\x32\x12.examples.LineItemR\x05items\")\n\nMarkPicked\x12\x1b\n\tpicker_id\x18\x01 \x01(\tR\x08pickerId\")\n\nMarkPacked\x12\x1b\n\tpacker_id\x18\x01 \x01(\tR\x08packerId\"I\n\x04Ship\x12\x18\n\x07\x63\x61rrier\x18\x01 \x01(\tR\x07\x63\x61rrier\x12\'\n\x0ftracking_number\x18\x02 \x01(\tR\x0etrackingNumber\".\n\x0eRecordDelivery\x12\x1c\n\tsignature\x18\x01 \x01(\tR\tsignature\"\xa9\x01\n\x0fShipmentCreated\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x16\n\x06status\x18\x02 \x01(\tR\x06status\x12\x39\n\ncreated_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12(\n\x05items\x18\x04 \x03(\x0b\x32\x12.examples.LineItemR\x05items\"c\n\x0bItemsPicked\x12\x1b\n\tpicker_id\x18\x01 \x01(\tR\x08pickerId\x12\x37\n\tpicked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08pickedAt\"c\n\x0bItemsPacked\x12\x1b\n\tpacker_id\x18\x01 \x01(\tR\x08packerId\x12\x37\n\tpacked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08packedAt\"\xcc\x01\n\x07Shipped\x12\x18\n\x07\x63\x61rrier\x18\x01 \x01(\tR\x07\x63\x61rrier\x12\'\n\x0ftracking_number\x18\x02 \x01(\tR\x0etrackingNumber\x12\x39\n\nshipped_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tshippedAt\x12(\n\x05items\x18\x04 \x03(\x0b\x32\x12.examples.LineItemR\x05items\x12\x19\n\x08order_id\x18\x05 \x01(\tR\x07orderId\"h\n\tDelivered\x12\x1c\n\tsignature\x18\x01 \x01(\tR\tsignature\x12=\n\x0c\x64\x65livered_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x64\x65liveredAt\"\x8a\x02\n\x10\x46ulfillmentState\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x16\n\x06status\x18\x02 \x01(\tR\x06status\x12\'\n\x0ftracking_number\x18\x03 \x01(\tR\x0etrackingNumber\x12\x18\n\x07\x63\x61rrier\x18\x04 \x01(\tR\x07\x63\x61rrier\x12\x1b\n\tpicker_id\x18\x05 \x01(\tR\x08pickerId\x12\x1b\n\tpacker_id\x18\x06 \x01(\tR\x08packerId\x12\x1c\n\tsignature\x18\x07 \x01(\tR\tsignature\x12(\n\x05items\x18\x08 \x03(\x0b\x32\x12.examples.LineItemR\x05itemsB\x94\x01\n\x0c\x63om.examplesB\x10\x46ulfillmentProtoP\x01Z2github.com/angzarr/angzarr/proto/examples;examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x1a\x65xamples/fulfillment.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14\x65xamples/order.proto"U\n\x0e\x43reateShipment\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12(\n\x05items\x18\x02 \x03(\x0b\x32\x12.examples.LineItemR\x05items")\n\nMarkPicked\x12\x1b\n\tpicker_id\x18\x01 \x01(\tR\x08pickerId")\n\nMarkPacked\x12\x1b\n\tpacker_id\x18\x01 \x01(\tR\x08packerId"I\n\x04Ship\x12\x18\n\x07\x63\x61rrier\x18\x01 \x01(\tR\x07\x63\x61rrier\x12\'\n\x0ftracking_number\x18\x02 \x01(\tR\x0etrackingNumber".\n\x0eRecordDelivery\x12\x1c\n\tsignature\x18\x01 \x01(\tR\tsignature"\xa9\x01\n\x0fShipmentCreated\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x16\n\x06status\x18\x02 \x01(\tR\x06status\x12\x39\n\ncreated_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12(\n\x05items\x18\x04 \x03(\x0b\x32\x12.examples.LineItemR\x05items"c\n\x0bItemsPicked\x12\x1b\n\tpicker_id\x18\x01 \x01(\tR\x08pickerId\x12\x37\n\tpicked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08pickedAt"c\n\x0bItemsPacked\x12\x1b\n\tpacker_id\x18\x01 \x01(\tR\x08packerId\x12\x37\n\tpacked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08packedAt"\xcc\x01\n\x07Shipped\x12\x18\n\x07\x63\x61rrier\x18\x01 \x01(\tR\x07\x63\x61rrier\x12\'\n\x0ftracking_number\x18\x02 \x01(\tR\x0etrackingNumber\x12\x39\n\nshipped_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tshippedAt\x12(\n\x05items\x18\x04 \x03(\x0b\x32\x12.examples.LineItemR\x05items\x12\x19\n\x08order_id\x18\x05 \x01(\tR\x07orderId"h\n\tDelivered\x12\x1c\n\tsignature\x18\x01 \x01(\tR\tsignature\x12=\n\x0c\x64\x65livered_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x64\x65liveredAt"\x8a\x02\n\x10\x46ulfillmentState\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x16\n\x06status\x18\x02 \x01(\tR\x06status\x12\'\n\x0ftracking_number\x18\x03 \x01(\tR\x0etrackingNumber\x12\x18\n\x07\x63\x61rrier\x18\x04 \x01(\tR\x07\x63\x61rrier\x12\x1b\n\tpicker_id\x18\x05 \x01(\tR\x08pickerId\x12\x1b\n\tpacker_id\x18\x06 \x01(\tR\x08packerId\x12\x1c\n\tsignature\x18\x07 \x01(\tR\tsignature\x12(\n\x05items\x18\x08 \x03(\x0b\x32\x12.examples.LineItemR\x05itemsB\x94\x01\n\x0c\x63om.examplesB\x10\x46ulfillmentProtoP\x01Z2github.com/angzarr/angzarr/proto/examples;examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.fulfillment_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(
+    DESCRIPTOR, "examples.fulfillment_pb2", _globals
+)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\020FulfillmentProtoP\001Z2github.com/angzarr/angzarr/proto/examples;examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
-  _globals['_CREATESHIPMENT']._serialized_start=95
-  _globals['_CREATESHIPMENT']._serialized_end=180
-  _globals['_MARKPICKED']._serialized_start=182
-  _globals['_MARKPICKED']._serialized_end=223
-  _globals['_MARKPACKED']._serialized_start=225
-  _globals['_MARKPACKED']._serialized_end=266
-  _globals['_SHIP']._serialized_start=268
-  _globals['_SHIP']._serialized_end=341
-  _globals['_RECORDDELIVERY']._serialized_start=343
-  _globals['_RECORDDELIVERY']._serialized_end=389
-  _globals['_SHIPMENTCREATED']._serialized_start=392
-  _globals['_SHIPMENTCREATED']._serialized_end=561
-  _globals['_ITEMSPICKED']._serialized_start=563
-  _globals['_ITEMSPICKED']._serialized_end=662
-  _globals['_ITEMSPACKED']._serialized_start=664
-  _globals['_ITEMSPACKED']._serialized_end=763
-  _globals['_SHIPPED']._serialized_start=766
-  _globals['_SHIPPED']._serialized_end=970
-  _globals['_DELIVERED']._serialized_start=972
-  _globals['_DELIVERED']._serialized_end=1076
-  _globals['_FULFILLMENTSTATE']._serialized_start=1079
-  _globals['_FULFILLMENTSTATE']._serialized_end=1345
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\014com.examplesB\020FulfillmentProtoP\001Z2github.com/angzarr/angzarr/proto/examples;examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples"
+    _globals["_CREATESHIPMENT"]._serialized_start = 95
+    _globals["_CREATESHIPMENT"]._serialized_end = 180
+    _globals["_MARKPICKED"]._serialized_start = 182
+    _globals["_MARKPICKED"]._serialized_end = 223
+    _globals["_MARKPACKED"]._serialized_start = 225
+    _globals["_MARKPACKED"]._serialized_end = 266
+    _globals["_SHIP"]._serialized_start = 268
+    _globals["_SHIP"]._serialized_end = 341
+    _globals["_RECORDDELIVERY"]._serialized_start = 343
+    _globals["_RECORDDELIVERY"]._serialized_end = 389
+    _globals["_SHIPMENTCREATED"]._serialized_start = 392
+    _globals["_SHIPMENTCREATED"]._serialized_end = 561
+    _globals["_ITEMSPICKED"]._serialized_start = 563
+    _globals["_ITEMSPICKED"]._serialized_end = 662
+    _globals["_ITEMSPACKED"]._serialized_start = 664
+    _globals["_ITEMSPACKED"]._serialized_end = 763
+    _globals["_SHIPPED"]._serialized_start = 766
+    _globals["_SHIPPED"]._serialized_end = 970
+    _globals["_DELIVERED"]._serialized_start = 972
+    _globals["_DELIVERED"]._serialized_end = 1076
+    _globals["_FULFILLMENTSTATE"]._serialized_start = 1079
+    _globals["_FULFILLMENTSTATE"]._serialized_end = 1345
 # @@protoc_insertion_point(module_scope)

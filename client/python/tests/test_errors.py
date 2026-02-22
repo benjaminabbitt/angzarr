@@ -95,26 +95,20 @@ class MockRpcError(grpc.RpcError):
 class TestGRPCError:
     """Tests for GRPCError."""
 
-    def _mock_rpc_error(
-        self, code: grpc.StatusCode, details: str
-    ) -> grpc.RpcError:
+    def _mock_rpc_error(self, code: grpc.StatusCode, details: str) -> grpc.RpcError:
         """Create a mock RpcError with code() and details() methods."""
         return MockRpcError(code, details)
 
     def test_wraps_rpc_error(self) -> None:
         """GRPCError wraps an RpcError."""
-        rpc_error = self._mock_rpc_error(
-            grpc.StatusCode.INTERNAL, "server error"
-        )
+        rpc_error = self._mock_rpc_error(grpc.StatusCode.INTERNAL, "server error")
         err = GRPCError(rpc_error)
         assert "grpc error" in str(err)
         assert err.cause is rpc_error
 
     def test_code_property(self) -> None:
         """Code property returns the gRPC status code."""
-        rpc_error = self._mock_rpc_error(
-            grpc.StatusCode.NOT_FOUND, "not found"
-        )
+        rpc_error = self._mock_rpc_error(grpc.StatusCode.NOT_FOUND, "not found")
         err = GRPCError(rpc_error)
         assert err.code == grpc.StatusCode.NOT_FOUND
 

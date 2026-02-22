@@ -110,7 +110,9 @@ class TestWithdraw:
         p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
         p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=500)))
 
-        event = p.withdraw(player.WithdrawFunds(amount=poker_types.Currency(amount=200)))
+        event = p.withdraw(
+            player.WithdrawFunds(amount=poker_types.Currency(amount=200))
+        )
 
         assert p.bankroll == 300
         assert event.new_balance.amount == 300
@@ -168,10 +170,12 @@ class TestRelease:
         p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=1000)))
 
         table_root = b"\x01\x02\x03\x04"
-        p.reserve(player.ReserveFunds(
-            table_root=table_root,
-            amount=poker_types.Currency(amount=200),
-        ))
+        p.reserve(
+            player.ReserveFunds(
+                table_root=table_root,
+                amount=poker_types.Currency(amount=200),
+            )
+        )
 
         p.release(player.ReleaseFunds(table_root=table_root))
 
@@ -197,11 +201,13 @@ class TestStateAccessors:
 
     def test_player_type_returns_enum(self):
         p = Player()
-        p.register(player.RegisterPlayer(
-            display_name="Bot",
-            email="bot@ai.local",
-            player_type=poker_types.PlayerType.AI,
-        ))
+        p.register(
+            player.RegisterPlayer(
+                display_name="Bot",
+                email="bot@ai.local",
+                player_type=poker_types.PlayerType.AI,
+            )
+        )
         assert p.player_type == poker_types.PlayerType.AI
 
     def test_status_after_register(self):
@@ -263,30 +269,36 @@ class TestEdgeCases:
     def test_reserve_requires_existing_player(self):
         p = Player()
         with pytest.raises(CommandRejectedError, match="does not exist"):
-            p.reserve(player.ReserveFunds(
-                table_root=b"\x01\x02",
-                amount=poker_types.Currency(amount=100),
-            ))
+            p.reserve(
+                player.ReserveFunds(
+                    table_root=b"\x01\x02",
+                    amount=poker_types.Currency(amount=100),
+                )
+            )
 
     def test_reserve_requires_positive_amount(self):
         p = Player()
         p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
         p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
         with pytest.raises(CommandRejectedError, match="positive"):
-            p.reserve(player.ReserveFunds(
-                table_root=b"\x01\x02",
-                amount=poker_types.Currency(amount=0),
-            ))
+            p.reserve(
+                player.ReserveFunds(
+                    table_root=b"\x01\x02",
+                    amount=poker_types.Currency(amount=0),
+                )
+            )
 
     def test_reserve_rejects_insufficient_funds(self):
         p = Player()
         p.register(player.RegisterPlayer(display_name="Alice", email="a@b.com"))
         p.deposit(player.DepositFunds(amount=poker_types.Currency(amount=100)))
         with pytest.raises(CommandRejectedError, match="Insufficient"):
-            p.reserve(player.ReserveFunds(
-                table_root=b"\x01\x02",
-                amount=poker_types.Currency(amount=500),
-            ))
+            p.reserve(
+                player.ReserveFunds(
+                    table_root=b"\x01\x02",
+                    amount=poker_types.Currency(amount=500),
+                )
+            )
 
     def test_release_requires_existing_player(self):
         p = Player()
@@ -311,10 +323,12 @@ class TestCompleteLifecycle:
 
         # Reserve for table
         table_root = b"\xaa\xbb\xcc\xdd"
-        p.reserve(player.ReserveFunds(
-            table_root=table_root,
-            amount=poker_types.Currency(amount=200),
-        ))
+        p.reserve(
+            player.ReserveFunds(
+                table_root=table_root,
+                amount=poker_types.Currency(amount=200),
+            )
+        )
         assert p.reserved_funds == 200
         assert p.available_balance == 800
 

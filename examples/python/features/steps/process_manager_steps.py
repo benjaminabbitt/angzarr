@@ -13,6 +13,7 @@ from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "hand-flow"))
 
 from hand_process import HandProcess, HandProcessManager, HandPhase, PlayerState
@@ -73,8 +74,13 @@ def step_given_hand_process_manager(context):
 @given("a HandStarted event with:")
 def step_given_hand_started_event(context):
     """Create a HandStarted event from datatable."""
-    row = {context.table.headings[i]: context.table[0][i] for i in range(len(context.table.headings))}
-    variant = getattr(poker_types, row.get("game_variant", "TEXAS_HOLDEM"), poker_types.TEXAS_HOLDEM)
+    row = {
+        context.table.headings[i]: context.table[0][i]
+        for i in range(len(context.table.headings))
+    }
+    variant = getattr(
+        poker_types, row.get("game_variant", "TEXAS_HOLDEM"), poker_types.TEXAS_HOLDEM
+    )
 
     context.hand_started = table.HandStarted(
         hand_root=b"hand-1",
@@ -102,7 +108,10 @@ def _add_active_players_from_table(context):
         raise ValueError("No hand_started or event in context")
 
     for row in context.table:
-        row_dict = {context.table.headings[j]: row[j] for j in range(len(context.table.headings))}
+        row_dict = {
+            context.table.headings[j]: row[j]
+            for j in range(len(context.table.headings))
+        }
         player_root = row_dict.get("player_root", "player-1").encode()
         target.active_players.append(
             table.SeatSnapshot(
@@ -180,12 +189,18 @@ def step_given_small_blind_posted(context):
 @given("a BlindPosted event for (?P<blind_type>\\w+) blind")
 def step_given_blind_posted_event(context, blind_type):
     """Create a BlindPosted event."""
-    amount = context.process.small_blind if blind_type == "small" else context.process.big_blind
+    amount = (
+        context.process.small_blind
+        if blind_type == "small"
+        else context.process.big_blind
+    )
     context.event = hand.BlindPosted(
         player_root=b"player-1" if blind_type == "small" else b"player-2",
         blind_type=blind_type,
         amount=amount,
-        pot_total=amount if blind_type == "small" else amount + context.process.small_blind,
+        pot_total=amount
+        if blind_type == "small"
+        else amount + context.process.small_blind,
         player_stack=500 - amount,
     )
 
@@ -196,7 +211,9 @@ def step_given_action_on(context, pos):
     context.process.action_on = int(pos)
 
 
-@given("an ActionTaken event for player at position (?P<pos>\\d+) with action (?P<action>\\w+)")
+@given(
+    "an ActionTaken event for player at position (?P<pos>\\d+) with action (?P<action>\\w+)"
+)
 def step_given_action_taken_event(context, pos, action):
     """Create an ActionTaken event."""
     position = int(pos)
@@ -206,8 +223,11 @@ def step_given_action_taken_event(context, pos, action):
         player_root=player.player_root if player else b"player-1",
         action=action_enum,
         amount=0 if action in ("FOLD", "CHECK") else 10,
-        pot_total=context.process.pot_total + (10 if action not in ("FOLD", "CHECK") else 0),
-        player_stack=player.stack - (10 if action not in ("FOLD", "CHECK") else 0) if player else 490,
+        pot_total=context.process.pot_total
+        + (10 if action not in ("FOLD", "CHECK") else 0),
+        player_stack=player.stack - (10 if action not in ("FOLD", "CHECK") else 0)
+        if player
+        else 490,
     )
 
 
@@ -287,8 +307,12 @@ def step_given_process_with_betting_phase(context, phase):
         big_blind=10,
     )
 
-    context.process.players[0] = PlayerState(player_root=b"player-1", position=0, stack=500)
-    context.process.players[1] = PlayerState(player_root=b"player-2", position=1, stack=500)
+    context.process.players[0] = PlayerState(
+        player_root=b"player-1", position=0, stack=500
+    )
+    context.process.players[1] = PlayerState(
+        player_root=b"player-2", position=1, stack=500
+    )
     context.process.active_positions = [0, 1]
 
     context.pm._processes[DEFAULT_HAND_ID] = context.process
@@ -323,7 +347,7 @@ def step_given_process_with_player_count(context, count):
 
     for i in range(int(count)):
         context.process.players[i] = PlayerState(
-            player_root=f"player-{i+1}".encode(),
+            player_root=f"player-{i + 1}".encode(),
             position=i,
             stack=500,
         )
@@ -379,8 +403,12 @@ def step_given_process_with_variant(context, variant):
         big_blind=10,
     )
 
-    context.process.players[0] = PlayerState(player_root=b"player-1", position=0, stack=500)
-    context.process.players[1] = PlayerState(player_root=b"player-2", position=1, stack=500)
+    context.process.players[0] = PlayerState(
+        player_root=b"player-1", position=0, stack=500
+    )
+    context.process.players[1] = PlayerState(
+        player_root=b"player-2", position=1, stack=500
+    )
     context.process.active_positions = [0, 1]
 
     for p in context.process.players.values():
@@ -432,8 +460,12 @@ def step_given_active_process(context):
         big_blind=10,
     )
 
-    context.process.players[0] = PlayerState(player_root=b"player-1", position=0, stack=500)
-    context.process.players[1] = PlayerState(player_root=b"player-2", position=1, stack=500)
+    context.process.players[0] = PlayerState(
+        player_root=b"player-1", position=0, stack=500
+    )
+    context.process.players[1] = PlayerState(
+        player_root=b"player-2", position=1, stack=500
+    )
     context.process.active_positions = [0, 1]
 
     context.pm._processes[DEFAULT_HAND_ID] = context.process
@@ -447,7 +479,9 @@ def step_given_event_series(context, amount):
     context.process.pot_total = int(amount)
 
 
-@given('an active hand process with player "(?P<player>[^"]+)" at stack (?P<stack>\\d+)')
+@given(
+    'an active hand process with player "(?P<player>[^"]+)" at stack (?P<stack>\\d+)'
+)
 def step_given_process_with_player_stack(context, player, stack):
     """Create process with specified player stack."""
     context.command_sender = TestCommandSender()
@@ -564,28 +598,36 @@ def step_then_process_created_with_phase(context, phase):
     """Verify process created with specified phase."""
     expected = getattr(HandPhase, phase)
     assert context.process is not None, "No process created"
-    assert context.process.phase == expected, f"Expected phase {phase}, got {context.process.phase}"
+    assert context.process.phase == expected, (
+        f"Expected phase {phase}, got {context.process.phase}"
+    )
 
 
 @then("the process has (?P<count>\\d+) players")
 def step_then_process_has_players(context, count):
     """Verify process has specified number of players."""
     expected = int(count)
-    assert len(context.process.players) == expected, f"Expected {expected} players, got {len(context.process.players)}"
+    assert len(context.process.players) == expected, (
+        f"Expected {expected} players, got {len(context.process.players)}"
+    )
 
 
 @then("the process has dealer_position (?P<pos>\\d+)")
 def step_then_process_has_dealer(context, pos):
     """Verify process has specified dealer position."""
     expected = int(pos)
-    assert context.process.dealer_position == expected, f"Expected dealer {expected}, got {context.process.dealer_position}"
+    assert context.process.dealer_position == expected, (
+        f"Expected dealer {expected}, got {context.process.dealer_position}"
+    )
 
 
 @then("the process transitions to phase (?P<phase>\\w+)")
 def step_then_process_transitions(context, phase):
     """Verify process transitions to specified phase."""
     expected = getattr(HandPhase, phase)
-    assert context.process.phase == expected, f"Expected phase {phase}, got {context.process.phase}"
+    assert context.process.phase == expected, (
+        f"Expected phase {phase}, got {context.process.phase}"
+    )
 
 
 @then("a PostBlind command is sent for (?P<blind_type>\\w+) blind")
@@ -606,7 +648,10 @@ def step_then_action_utg(context):
 def step_then_action_advances(context):
     """Verify action advances."""
     # Just check action_on is set
-    assert context.process.action_on >= 0 or context.process.phase in (HandPhase.COMPLETE, HandPhase.SHOWDOWN)
+    assert context.process.action_on >= 0 or context.process.phase in (
+        HandPhase.COMPLETE,
+        HandPhase.SHOWDOWN,
+    )
 
 
 @then("players at positions (?P<positions>\\d+ and \\d+) have has_acted reset to false")
@@ -615,14 +660,19 @@ def step_then_players_reset(context, positions):
     for pos_str in positions.replace("and", ",").split(","):
         pos = int(pos_str.strip())
         if pos in context.process.players:
-            assert not context.process.players[pos].has_acted, f"Player at {pos} should have has_acted=False"
+            assert not context.process.players[pos].has_acted, (
+                f"Player at {pos} should have has_acted=False"
+            )
 
 
 @then("the betting round ends")
 def step_then_betting_ends(context):
     """Verify betting round ended."""
     # Process would have transitioned
-    assert context.process.phase != HandPhase.BETTING or context.process.phase == HandPhase.BETTING
+    assert (
+        context.process.phase != HandPhase.BETTING
+        or context.process.phase == HandPhase.BETTING
+    )
 
 
 @then("the process advances to next phase")
@@ -635,7 +685,9 @@ def step_then_process_advances(context):
 def step_then_deal_community_sent(context, count):
     """Verify DealCommunityCards command sent."""
     commands = context.command_sender.get_all_commands_of_type("DealCommunityCards")
-    assert len(commands) >= 1, f"Expected DealCommunityCards command, got {len(commands)}"
+    assert len(commands) >= 1, (
+        f"Expected DealCommunityCards command, got {len(commands)}"
+    )
 
     cmd_any = commands[0].pages[0].command
     cmd = hand.DealCommunityCards()
@@ -688,7 +740,9 @@ def step_then_pm_sends_action(context, action):
 def step_then_bets_reset(context):
     """Verify all players have bet_this_round reset."""
     for player in context.process.players.values():
-        assert player.bet_this_round == 0, f"Player at {player.position} should have bet_this_round=0"
+        assert player.bet_this_round == 0, (
+            f"Player at {player.position} should have bet_this_round=0"
+        )
 
 
 @then("all players have has_acted reset to false")
@@ -696,13 +750,17 @@ def step_then_all_reset(context):
     """Verify all players have has_acted reset."""
     for player in context.process.players.values():
         if not player.has_folded and not player.is_all_in:
-            assert not player.has_acted, f"Player at {player.position} should have has_acted=False"
+            assert not player.has_acted, (
+                f"Player at {player.position} should have has_acted=False"
+            )
 
 
 @then("current_bet is reset to 0")
 def step_then_current_bet_reset(context):
     """Verify current bet is reset."""
-    assert context.process.current_bet == 0, f"Expected current_bet=0, got {context.process.current_bet}"
+    assert context.process.current_bet == 0, (
+        f"Expected current_bet=0, got {context.process.current_bet}"
+    )
 
 
 @then("action_on is set to first player after dealer")
@@ -715,7 +773,9 @@ def step_then_action_after_dealer(context):
 def step_then_pot_total(context, amount):
     """Verify pot total."""
     expected = int(amount)
-    assert context.process.pot_total == expected, f"Expected pot {expected}, got {context.process.pot_total}"
+    assert context.process.pot_total == expected, (
+        f"Expected pot {expected}, got {context.process.pot_total}"
+    )
 
 
 @then('"(?P<player>[^"]+)" stack is (?P<stack>\\d+)')
@@ -732,11 +792,15 @@ def step_then_player_stack(context, player, stack):
 @then("any pending timeout is cancelled")
 def step_then_timeout_cancelled(context):
     """Verify timeout is cancelled."""
-    assert context.hand_id not in context.pm._timeout_tasks, "Timeout should be cancelled"
+    assert context.hand_id not in context.pm._timeout_tasks, (
+        "Timeout should be cancelled"
+    )
 
 
 @then("betting_phase is set to (?P<phase>\\w+)")
 def step_then_betting_phase_set(context, phase):
     """Verify betting phase."""
     expected = getattr(poker_types, phase)
-    assert context.process.betting_phase == expected, f"Expected {phase}, got {context.process.betting_phase}"
+    assert context.process.betting_phase == expected, (
+        f"Expected {phase}, got {context.process.betting_phase}"
+    )

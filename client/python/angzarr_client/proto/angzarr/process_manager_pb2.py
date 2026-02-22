@@ -4,18 +4,15 @@
 # source: angzarr/process_manager.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'angzarr/process_manager.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "angzarr/process_manager.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -26,28 +23,34 @@ from angzarr_client.proto.angzarr import types_pb2 as angzarr_dot_types__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1d\x61ngzarr/process_manager.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x90\x01\n\x12SpeculatePmRequest\x12>\n\x07request\x18\x01 \x01(\x0b\x32$.angzarr.ProcessManagerHandleRequestR\x07request\x12:\n\rpoint_in_time\x18\x02 \x01(\x0b\x32\x16.angzarr.TemporalQueryR\x0bpointInTime\"\x85\x01\n\x1cProcessManagerPrepareRequest\x12,\n\x07trigger\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x07trigger\x12\x37\n\rprocess_state\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x0cprocessState\"S\n\x1dProcessManagerPrepareResponse\x12\x32\n\x0c\x64\x65stinations\x18\x01 \x03(\x0b\x32\x0e.angzarr.CoverR\x0c\x64\x65stinations\"\xbc\x01\n\x1bProcessManagerHandleRequest\x12,\n\x07trigger\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x07trigger\x12\x37\n\rprocess_state\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x0cprocessState\x12\x36\n\x0c\x64\x65stinations\x18\x03 \x03(\x0b\x32\x12.angzarr.EventBookR\x0c\x64\x65stinations\"\x8b\x01\n\x1cProcessManagerHandleResponse\x12\x30\n\x08\x63ommands\x18\x01 \x03(\x0b\x32\x14.angzarr.CommandBookR\x08\x63ommands\x12\x39\n\x0eprocess_events\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\rprocessEvents\"\xb5\x01\n\x0eProcessTimeout\x12%\n\x0e\x63orrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12!\n\x0cprocess_type\x18\x02 \x01(\tR\x0bprocessType\x12!\n\x0ctimeout_type\x18\x03 \x01(\tR\x0btimeoutType\x12\x36\n\x08\x64\x65\x61\x64line\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08\x64\x65\x61\x64line2\xc8\x01\n\x15ProcessManagerService\x12X\n\x07Prepare\x12%.angzarr.ProcessManagerPrepareRequest\x1a&.angzarr.ProcessManagerPrepareResponse\x12U\n\x06Handle\x12$.angzarr.ProcessManagerHandleRequest\x1a%.angzarr.ProcessManagerHandleResponse2{\n ProcessManagerCoordinatorService\x12W\n\x11HandleSpeculative\x12\x1b.angzarr.SpeculatePmRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x88\x01\n\x0b\x63om.angzarrB\x13ProcessManagerProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x1d\x61ngzarr/process_manager.proto\x12\x07\x61ngzarr\x1a\x13\x61ngzarr/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\x90\x01\n\x12SpeculatePmRequest\x12>\n\x07request\x18\x01 \x01(\x0b\x32$.angzarr.ProcessManagerHandleRequestR\x07request\x12:\n\rpoint_in_time\x18\x02 \x01(\x0b\x32\x16.angzarr.TemporalQueryR\x0bpointInTime"\x85\x01\n\x1cProcessManagerPrepareRequest\x12,\n\x07trigger\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x07trigger\x12\x37\n\rprocess_state\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x0cprocessState"S\n\x1dProcessManagerPrepareResponse\x12\x32\n\x0c\x64\x65stinations\x18\x01 \x03(\x0b\x32\x0e.angzarr.CoverR\x0c\x64\x65stinations"\xbc\x01\n\x1bProcessManagerHandleRequest\x12,\n\x07trigger\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x07trigger\x12\x37\n\rprocess_state\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\x0cprocessState\x12\x36\n\x0c\x64\x65stinations\x18\x03 \x03(\x0b\x32\x12.angzarr.EventBookR\x0c\x64\x65stinations"\x8b\x01\n\x1cProcessManagerHandleResponse\x12\x30\n\x08\x63ommands\x18\x01 \x03(\x0b\x32\x14.angzarr.CommandBookR\x08\x63ommands\x12\x39\n\x0eprocess_events\x18\x02 \x01(\x0b\x32\x12.angzarr.EventBookR\rprocessEvents"\xb5\x01\n\x0eProcessTimeout\x12%\n\x0e\x63orrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12!\n\x0cprocess_type\x18\x02 \x01(\tR\x0bprocessType\x12!\n\x0ctimeout_type\x18\x03 \x01(\tR\x0btimeoutType\x12\x36\n\x08\x64\x65\x61\x64line\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08\x64\x65\x61\x64line2\xc8\x01\n\x15ProcessManagerService\x12X\n\x07Prepare\x12%.angzarr.ProcessManagerPrepareRequest\x1a&.angzarr.ProcessManagerPrepareResponse\x12U\n\x06Handle\x12$.angzarr.ProcessManagerHandleRequest\x1a%.angzarr.ProcessManagerHandleResponse2{\n ProcessManagerCoordinatorService\x12W\n\x11HandleSpeculative\x12\x1b.angzarr.SpeculatePmRequest\x1a%.angzarr.ProcessManagerHandleResponseB\x88\x01\n\x0b\x63om.angzarrB\x13ProcessManagerProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.process_manager_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(
+    DESCRIPTOR, "angzarr.process_manager_pb2", _globals
+)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\023ProcessManagerProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_SPECULATEPMREQUEST']._serialized_start=97
-  _globals['_SPECULATEPMREQUEST']._serialized_end=241
-  _globals['_PROCESSMANAGERPREPAREREQUEST']._serialized_start=244
-  _globals['_PROCESSMANAGERPREPAREREQUEST']._serialized_end=377
-  _globals['_PROCESSMANAGERPREPARERESPONSE']._serialized_start=379
-  _globals['_PROCESSMANAGERPREPARERESPONSE']._serialized_end=462
-  _globals['_PROCESSMANAGERHANDLEREQUEST']._serialized_start=465
-  _globals['_PROCESSMANAGERHANDLEREQUEST']._serialized_end=653
-  _globals['_PROCESSMANAGERHANDLERESPONSE']._serialized_start=656
-  _globals['_PROCESSMANAGERHANDLERESPONSE']._serialized_end=795
-  _globals['_PROCESSTIMEOUT']._serialized_start=798
-  _globals['_PROCESSTIMEOUT']._serialized_end=979
-  _globals['_PROCESSMANAGERSERVICE']._serialized_start=982
-  _globals['_PROCESSMANAGERSERVICE']._serialized_end=1182
-  _globals['_PROCESSMANAGERCOORDINATORSERVICE']._serialized_start=1184
-  _globals['_PROCESSMANAGERCOORDINATORSERVICE']._serialized_end=1307
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\013com.angzarrB\023ProcessManagerProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr"
+    _globals["_SPECULATEPMREQUEST"]._serialized_start = 97
+    _globals["_SPECULATEPMREQUEST"]._serialized_end = 241
+    _globals["_PROCESSMANAGERPREPAREREQUEST"]._serialized_start = 244
+    _globals["_PROCESSMANAGERPREPAREREQUEST"]._serialized_end = 377
+    _globals["_PROCESSMANAGERPREPARERESPONSE"]._serialized_start = 379
+    _globals["_PROCESSMANAGERPREPARERESPONSE"]._serialized_end = 462
+    _globals["_PROCESSMANAGERHANDLEREQUEST"]._serialized_start = 465
+    _globals["_PROCESSMANAGERHANDLEREQUEST"]._serialized_end = 653
+    _globals["_PROCESSMANAGERHANDLERESPONSE"]._serialized_start = 656
+    _globals["_PROCESSMANAGERHANDLERESPONSE"]._serialized_end = 795
+    _globals["_PROCESSTIMEOUT"]._serialized_start = 798
+    _globals["_PROCESSTIMEOUT"]._serialized_end = 979
+    _globals["_PROCESSMANAGERSERVICE"]._serialized_start = 982
+    _globals["_PROCESSMANAGERSERVICE"]._serialized_end = 1182
+    _globals["_PROCESSMANAGERCOORDINATORSERVICE"]._serialized_start = 1184
+    _globals["_PROCESSMANAGERCOORDINATORSERVICE"]._serialized_end = 1307
 # @@protoc_insertion_point(module_scope)

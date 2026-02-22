@@ -129,10 +129,7 @@ class TestCommandBuilder:
         client.handle.return_value = expected_response
 
         msg = StringValue(value="test")
-        builder = (
-            CommandBuilder(client, "orders")
-            .with_command("type/Cmd", msg)
-        )
+        builder = CommandBuilder(client, "orders").with_command("type/Cmd", msg)
         response = builder.execute()
 
         client.handle.assert_called_once()
@@ -319,11 +316,7 @@ class TestQueryBuilder:
         client = self._mock_query_client()
         root = PyUUID("12345678-1234-5678-1234-567812345678")
 
-        result = (
-            QueryBuilder(client, "orders", root)
-            .with_edition("v2")
-            .range_to(0, 10)
-        )
+        result = QueryBuilder(client, "orders", root).with_edition("v2").range_to(0, 10)
 
         assert isinstance(result, QueryBuilder)
 

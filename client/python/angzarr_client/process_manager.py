@@ -106,7 +106,9 @@ class ProcessManager(Generic[StateT], ABC):
     """
 
     name: str
-    _dispatch_table: dict[str, tuple[str, type, str, str]] = {}  # suffix -> (method, type, input_domain, output_domain)
+    _dispatch_table: dict[
+        str, tuple[str, type, str, str]
+    ] = {}  # suffix -> (method, type, input_domain, output_domain)
     _prepare_table: dict[str, tuple[str, type]] = {}  # suffix -> (method, type)
     _input_domains: dict[str, list[str]] = {}  # domain -> [event types]
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
@@ -144,7 +146,12 @@ class ProcessManager(Generic[StateT], ABC):
                 if suffix in cls._dispatch_table:
                     raise TypeError(f"{cls.__name__}: duplicate handler for {suffix}")
 
-                cls._dispatch_table[suffix] = (attr_name, event_type, input_domain, output_domain)
+                cls._dispatch_table[suffix] = (
+                    attr_name,
+                    event_type,
+                    input_domain,
+                    output_domain,
+                )
 
                 # Track input domains for descriptor
                 if input_domain:
@@ -161,7 +168,9 @@ class ProcessManager(Generic[StateT], ABC):
                 event_type = attr._event_type
                 suffix = event_type.__name__
                 if suffix in cls._prepare_table:
-                    raise TypeError(f"{cls.__name__}: duplicate prepare handler for {suffix}")
+                    raise TypeError(
+                        f"{cls.__name__}: duplicate prepare handler for {suffix}"
+                    )
                 cls._prepare_table[suffix] = (attr_name, event_type)
 
     @classmethod
@@ -250,7 +259,12 @@ class ProcessManager(Generic[StateT], ABC):
         """
         type_url = event_any.type_url
 
-        for suffix, (method_name, event_type, _, output_domain) in self._dispatch_table.items():
+        for suffix, (
+            method_name,
+            event_type,
+            _,
+            output_domain,
+        ) in self._dispatch_table.items():
             if type_url.endswith(suffix):
                 # Unpack event
                 event = event_type()
@@ -286,7 +300,11 @@ class ProcessManager(Generic[StateT], ABC):
         # Handle pre-packed CommandBooks (advanced usage)
         if isinstance(result, types.CommandBook):
             return [result]
-        if isinstance(result, list) and result and isinstance(result[0], types.CommandBook):
+        if (
+            isinstance(result, list)
+            and result
+            and isinstance(result[0], types.CommandBook)
+        ):
             return result
 
         commands = result if isinstance(result, tuple) else (result,)
@@ -369,12 +387,16 @@ class ProcessManager(Generic[StateT], ABC):
         """
         pm = cls(process_state)
         root = trigger.cover.root.value if trigger.HasField("cover") else None
-        correlation_id = trigger.cover.correlation_id if trigger.HasField("cover") else ""
+        correlation_id = (
+            trigger.cover.correlation_id if trigger.HasField("cover") else ""
+        )
 
         commands = []
         for page in trigger.pages:
             if page.HasField("event"):
-                commands.extend(pm.dispatch(page.event, root, correlation_id, destinations))
+                commands.extend(
+                    pm.dispatch(page.event, root, correlation_id, destinations)
+                )
 
         return commands, pm.process_events()
 
@@ -421,7 +443,9 @@ class ProcessManager(Generic[StateT], ABC):
             if rejected_cmd.pages[0].HasField("command"):
                 type_url = rejected_cmd.pages[0].command.type_url
                 # Extract suffix (e.g., "ReserveInventory" from "type.googleapis.com/.../ReserveInventory")
-                command_suffix = type_url.rsplit("/", 1)[-1] if "/" in type_url else type_url
+                command_suffix = (
+                    type_url.rsplit("/", 1)[-1] if "/" in type_url else type_url
+                )
 
         # Dispatch to @rejected handler if found (use suffix matching like regular dispatch)
         for key, method_name in self._rejection_table.items():
