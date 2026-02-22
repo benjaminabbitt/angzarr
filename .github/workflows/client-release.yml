@@ -10,6 +10,10 @@ on:
       - 'client-csharp/v*.*.*'
       - 'client-cpp/v*.*.*'
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/angzarr
+
 permissions:
   contents: write
   id-token: write
@@ -60,7 +64,7 @@ jobs:
     if: needs.detect.outputs.rust == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/angzarr-io/angzarr-rust:latest
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rust:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -91,7 +95,7 @@ jobs:
     if: needs.detect.outputs.python == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/angzarr-io/angzarr-python:latest
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-python:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -123,7 +127,7 @@ jobs:
     if: needs.detect.outputs.go == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/angzarr-io/angzarr-go:latest
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-go:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -172,7 +176,7 @@ jobs:
     if: needs.detect.outputs.java == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/angzarr-io/angzarr-java:latest
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-java:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -204,7 +208,7 @@ jobs:
     if: needs.detect.outputs.csharp == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/angzarr-io/angzarr-csharp:latest
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-csharp:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -238,7 +242,7 @@ jobs:
     if: needs.detect.outputs.cpp == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/angzarr-io/angzarr-cpp:latest
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-cpp:latest
     steps:
       - uses: actions/checkout@v4
 

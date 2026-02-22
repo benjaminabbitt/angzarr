@@ -1,8 +1,10 @@
 name: Integration Tests (Matrix)
 
+  # NOTE: Disabled automatic PR trigger - this workflow requires Kind cluster
+  # infrastructure (justfile targets, k8s manifests) that hasn't been built yet.
+  # Re-enable pull_request trigger once images-build-*, images-load-*,
+  # k8s-apply-* justfile targets and k8s/base/ manifests are created.
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       language:

@@ -486,13 +486,14 @@ jobs:
   # Phase 4: Build and package core binaries into runtime images
   # ==========================================================================
   build-core:
-    needs: [changes, build-rust, fmt, clippy, test-unit, test-integration]
+    needs: [changes, build-rust, fmt, clippy, test-unit, test-integration, test-unit-backends]
     if: |
       always() &&
       needs.fmt.result == 'success' &&
       needs.clippy.result == 'success' &&
       needs.test-unit.result == 'success' &&
       needs.test-integration.result == 'success' &&
+      (needs.test-unit-backends.result == 'success' || needs.test-unit-backends.result == 'skipped') &&
       (needs.changes.outputs.core == 'true' || github.event.inputs.force_rebuild == 'true')
     runs-on: ubuntu-latest
     steps:
