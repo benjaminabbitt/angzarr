@@ -325,6 +325,12 @@ integration: _cluster-ready
 acceptance: _cluster-ready
     cd "{{TOP}}/examples/rust" && just acceptance
 
+# === Vector Search ===
+
+# Rebuild vector index for semantic codebase search (used by MCP qdrant server)
+reindex:
+    uv run "{{TOP}}/scripts/index_codebase.py"
+
 # === Internal Helpers ===
 
 _cluster-ready:
