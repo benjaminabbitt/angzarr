@@ -6,6 +6,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import dev.angzarr.client.Aggregate;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Handles;
+import dev.angzarr.client.util.ByteUtils;
 import dev.angzarr.examples.table.state.SeatState;
 import dev.angzarr.examples.table.state.TableState;
 import dev.angzarr.examples.*;
@@ -98,7 +99,7 @@ public class Table extends Aggregate<TableState> {
                     String playerHex = entry.getKey();
                     long delta = entry.getValue();
                     for (SeatState seat : state.getSeats().values()) {
-                        if (bytesToHex(seat.getPlayerRoot()).equals(playerHex)) {
+                        if (ByteUtils.bytesToHex(seat.getPlayerRoot()).equals(playerHex)) {
                             seat.setStack(seat.getStack() + delta);
                         }
                     }
@@ -346,7 +347,7 @@ public class Table extends Aggregate<TableState> {
         // Calculate stack changes from results
         java.util.Map<String, Long> stackChanges = new java.util.HashMap<>();
         for (PotResult result : cmd.getResultsList()) {
-            String playerHex = bytesToHex(result.getWinnerRoot().toByteArray());
+            String playerHex = ByteUtils.bytesToHex(result.getWinnerRoot().toByteArray());
             long currentChange = stackChanges.getOrDefault(playerHex, 0L);
             stackChanges.put(playerHex, currentChange + result.getAmount());
         }
@@ -394,14 +395,6 @@ public class Table extends Aggregate<TableState> {
         return state.findSeatByPlayer(playerRoot);
     }
 
-    private static String bytesToHex(byte[] bytes) {
-        if (bytes == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
 
     private byte[] generateHandRoot(String tableId, long handNumber) {
         try {

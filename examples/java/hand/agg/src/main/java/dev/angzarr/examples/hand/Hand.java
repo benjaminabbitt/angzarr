@@ -6,6 +6,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import dev.angzarr.client.Aggregate;
 import dev.angzarr.client.Errors;
 import dev.angzarr.client.annotations.Handles;
+import dev.angzarr.client.util.ByteUtils;
 import dev.angzarr.examples.hand.state.HandState;
 import dev.angzarr.examples.hand.state.PlayerHandState;
 import dev.angzarr.examples.*;
@@ -61,7 +62,7 @@ public class Hand extends Aggregate<HandState> {
                     pState.setPlayerRoot(p.getPlayerRoot().toByteArray());
                     pState.setPosition(p.getPosition());
                     pState.setStack(p.getStack());
-                    state.getPlayers().put(bytesToHex(p.getPlayerRoot().toByteArray()), pState);
+                    state.getPlayers().put(ByteUtils.bytesToHex(p.getPlayerRoot().toByteArray()), pState);
                 }
 
                 // Store hole cards
@@ -480,7 +481,7 @@ public class Hand extends Aggregate<HandState> {
             }
         }
         // Shuffle using seed
-        Random rng = seed.length > 0 ? new Random(bytesToLong(seed)) : new Random();
+        Random rng = seed.length > 0 ? new Random(ByteUtils.bytesToLong(seed)) : new Random();
         Collections.shuffle(deck, rng);
         return deck;
     }
@@ -501,31 +502,21 @@ public class Hand extends Aggregate<HandState> {
         return BettingPhase.SHOWDOWN;
     }
 
-    private static String bytesToHex(byte[] bytes) {
-        if (bytes == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) sb.append(String.format("%02x", b));
-        return sb.toString();
-    }
 
     private static byte[] cardToBytes(Card c) {
         return new byte[]{(byte) c.getSuitValue(), (byte) c.getRankValue()};
     }
 
     private static Card bytesToCard(byte[] bytes) {
+        if (bytes == null || bytes.length < 2) {
+            throw new IllegalArgumentException("Invalid card bytes: expected 2 bytes");
+        }
         return Card.newBuilder()
             .setSuit(Suit.forNumber(bytes[0]))
             .setRank(Rank.forNumber(bytes[1]))
             .build();
     }
 
-    private static long bytesToLong(byte[] bytes) {
-        long result = 0;
-        for (int i = 0; i < Math.min(8, bytes.length); i++) {
-            result = (result << 8) | (bytes[i] & 0xFF);
-        }
-        return result;
-    }
 
     // --- Hand Evaluation ---
 
@@ -560,9 +551,12 @@ public class Hand extends Aggregate<HandState> {
         // Check for straight flush / royal flush
         if (flushCards != null) {
             List<Card> straightFlush = findStraight(flushCards);
-            if (straightFlush != null || (straightCards != null && isSameSuit(straightCards))) {
-                List<Card> sfCards = straightFlush != null ? straightFlush : straightCards;
-                if (sfCards.get(0).getRankValue() == Rank.ACE_VALUE) {
+            // Fall back: check if the regular straight is all one suit
+            if (straightFlush == null && straightCards != null && isSameSuit(straightCards)) {
+                straightFlush = straightCards;
+            }
+            if (straightFlush != null) {
+                if (straightFlush.get(0).getRankValue() == Rank.ACE_VALUE) {
                     return HandRanking.newBuilder()
                         .setRankType(HandRankType.ROYAL_FLUSH)
                         .setScore(1000)
@@ -570,8 +564,8 @@ public class Hand extends Aggregate<HandState> {
                 }
                 return HandRanking.newBuilder()
                     .setRankType(HandRankType.STRAIGHT_FLUSH)
-                    .addKickers(sfCards.get(0).getRank())
-                    .setScore(900 + sfCards.get(0).getRankValue())
+                    .addKickers(straightFlush.get(0).getRank())
+                    .setScore(900 + straightFlush.get(0).getRankValue())
                     .build();
             }
         }

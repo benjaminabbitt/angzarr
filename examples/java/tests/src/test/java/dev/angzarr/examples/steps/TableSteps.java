@@ -7,6 +7,7 @@ import dev.angzarr.Cover;
 import dev.angzarr.EventBook;
 import dev.angzarr.EventPage;
 import dev.angzarr.client.Errors;
+import dev.angzarr.client.util.ByteUtils;
 import dev.angzarr.examples.table.Table;
 import dev.angzarr.examples.*;
 import io.cucumber.datatable.DataTable;
@@ -310,19 +311,11 @@ public class TableSteps {
         assertThat(resultEvent).isInstanceOf(HandEnded.class);
         HandEnded event = (HandEnded) resultEvent;
         // The map key is hex-encoded player_root bytes
-        String playerHex = bytesToHex(playerId.getBytes(StandardCharsets.UTF_8));
+        String playerHex = ByteUtils.bytesToHex(playerId.getBytes(StandardCharsets.UTF_8));
         long actualChange = event.getStackChangesOrDefault(playerHex, 0L);
         assertThat(actualChange).isEqualTo((long) change);
     }
 
-    private static String bytesToHex(byte[] bytes) {
-        if (bytes == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
 
     @Then("the table state has {int} players")
     public void tableStateHasPlayers(int count) {
