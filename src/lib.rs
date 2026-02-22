@@ -3,6 +3,8 @@
 //! A Rust implementation of the angzarr framework for building
 //! event-sourced applications with CQRS architecture.
 
+#[cfg(feature = "advice")]
+pub mod advice;
 pub mod bus;
 pub mod clients;
 pub mod config;

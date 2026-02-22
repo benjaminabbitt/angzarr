@@ -769,18 +769,18 @@ def step_notification_created(context):
 def step_notification_has_issuer_name(context, expected):
     """Verify issuer_name field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert (
-        rejection.issuer_name == expected
-    ), f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+    assert rejection.issuer_name == expected, (
+        f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+    )
 
 
 @then(r"the notification has rejection_reason \"([^\"]+)\"")
 def step_notification_has_reason(context, expected):
     """Verify rejection_reason field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert (
-        rejection.rejection_reason == expected
-    ), f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+    assert rejection.rejection_reason == expected, (
+        f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+    )
 
 
 @then(r"the notification contains the rejected (\w+) command")
@@ -934,9 +934,9 @@ def step_notification_rejected_cmd_contains(context):
         value = row["value"]
 
         if field == "cover.domain":
-            assert (
-                rejection.rejected_command.cover.domain == value
-            ), f"Expected domain {value}, got {rejection.rejected_command.cover.domain}"
+            assert rejection.rejected_command.cover.domain == value, (
+                f"Expected domain {value}, got {rejection.rejected_command.cover.domain}"
+            )
         elif field == "cover.root":
             # Root is bytes, value from table is string - compare as decoded
             actual_root = rejection.rejected_command.cover.root.value.decode()
@@ -1858,13 +1858,13 @@ def step_notification_containing(context):
         field = row[0]
         expected = row[1]
         if field == "issuer_name":
-            assert (
-                rejection.issuer_name == expected
-            ), f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+            assert rejection.issuer_name == expected, (
+                f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+            )
         elif field == "rejection_reason":
-            assert (
-                rejection.rejection_reason == expected
-            ), f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+            assert rejection.rejection_reason == expected, (
+                f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+            )
         elif field == "rejected_command":
             type_url = rejection.rejected_command.pages[0].command.type_url
             assert expected in type_url, f"Expected {expected} in {type_url}"

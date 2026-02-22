@@ -664,9 +664,9 @@ def step_when_rebuild_state(context):
 @then(r"the result is an? (?P<event_type>\w+) event")
 def step_then_result_is_event(context, event_type):
     """Verify the result event type."""
-    assert (
-        context.result is not None
-    ), f"Expected {event_type} event but got error: {getattr(context, 'error_message', 'unknown')}"
+    assert context.result is not None, (
+        f"Expected {event_type} event but got error: {getattr(context, 'error_message', 'unknown')}"
+    )
     assert context.result.pages, f"Expected {event_type} event but got empty result"
     type_url = context.result.pages[0].event.type_url
     assert event_type in type_url, f"Expected {event_type} in {type_url}"
@@ -679,9 +679,9 @@ def step_then_players_have_cards(context, count):
     event = hand.CardsDealt()
     context.result_event_any.Unpack(event)
     for pc in event.player_cards:
-        assert len(pc.cards) == int(
-            count
-        ), f"Expected {count} cards, got {len(pc.cards)}"
+        assert len(pc.cards) == int(count), (
+            f"Expected {count} cards, got {len(pc.cards)}"
+        )
 
 
 @then(r"the remaining deck has (?P<count>\d+) cards")
@@ -712,18 +712,18 @@ def step_then_player_has_seeded_cards(context, player_id, seed):
 @then(r'the command fails with status "(?P<status>\w+)"')
 def step_then_command_fails(context, status):
     """Verify command failed with expected status."""
-    assert (
-        context.error is not None
-    ), f"ASSERT FAILED: Expected command to fail but it succeeded"
+    assert context.error is not None, (
+        f"ASSERT FAILED: Expected command to fail but it succeeded"
+    )
 
 
 @then(r'the error message contains "(?P<text>[^"]+)"')
 def step_then_error_contains(context, text):
     """Verify error message content."""
     assert context.error_message is not None, "No error message"
-    assert (
-        text.lower() in context.error_message.lower()
-    ), f"Expected '{text}' in error message, got: {context.error_message}"
+    assert text.lower() in context.error_message.lower(), (
+        f"Expected '{text}' in error message, got: {context.error_message}"
+    )
 
 
 @then(r"the player event has blind_type \"(?P<blind_type>[^\"]+)\"")
@@ -732,9 +732,9 @@ def step_then_event_has_blind_type(context, blind_type):
     assert context.result_event_any is not None, "No result event"
     event = hand.BlindPosted()
     context.result_event_any.Unpack(event)
-    assert (
-        event.blind_type == blind_type
-    ), f"Expected {blind_type}, got {event.blind_type}"
+    assert event.blind_type == blind_type, (
+        f"Expected {blind_type}, got {event.blind_type}"
+    )
 
 
 @then(r"the blind event has blind_type \"(?P<blind_type>[^\"]+)\"")
@@ -743,9 +743,9 @@ def step_then_blind_event_has_blind_type(context, blind_type):
     assert context.result_event_any is not None, "No result event"
     event = hand.BlindPosted()
     context.result_event_any.Unpack(event)
-    assert (
-        event.blind_type == blind_type
-    ), f"Expected {blind_type}, got {event.blind_type}"
+    assert event.blind_type == blind_type, (
+        f"Expected {blind_type}, got {event.blind_type}"
+    )
 
 
 @then(r"the player event has amount (?P<amount>\d+)")
@@ -781,15 +781,15 @@ def step_then_event_has_stack(context, stack):
     if "BlindPosted" in type_url:
         event = hand.BlindPosted()
         context.result_event_any.Unpack(event)
-        assert event.player_stack == int(
-            stack
-        ), f"Expected {stack}, got {event.player_stack}"
+        assert event.player_stack == int(stack), (
+            f"Expected {stack}, got {event.player_stack}"
+        )
     elif "ActionTaken" in type_url:
         event = hand.ActionTaken()
         context.result_event_any.Unpack(event)
-        assert event.player_stack == int(
-            stack
-        ), f"Expected {stack}, got {event.player_stack}"
+        assert event.player_stack == int(stack), (
+            f"Expected {stack}, got {event.player_stack}"
+        )
 
 
 @then(r"the blind event has player_stack (?P<stack>\d+)")
@@ -798,9 +798,9 @@ def step_then_blind_event_has_stack(context, stack):
     assert context.result_event_any is not None, "No result event"
     event = hand.BlindPosted()
     context.result_event_any.Unpack(event)
-    assert event.player_stack == int(
-        stack
-    ), f"Expected {stack}, got {event.player_stack}"
+    assert event.player_stack == int(stack), (
+        f"Expected {stack}, got {event.player_stack}"
+    )
 
 
 @then(r"the player event has pot_total (?P<pot>\d+)")
@@ -843,9 +843,9 @@ def step_then_community_has_cards(context, count):
     assert context.result_event_any is not None, "No result event"
     event = hand.CommunityCardsDealt()
     context.result_event_any.Unpack(event)
-    assert len(event.cards) == int(
-        count
-    ), f"Expected {count} cards, got {len(event.cards)}"
+    assert len(event.cards) == int(count), (
+        f"Expected {count} cards, got {len(event.cards)}"
+    )
 
 
 @then(r"the community cards event has phase (?P<phase>\w+)")
@@ -864,9 +864,9 @@ def step_then_draw_has_discarded(context, count):
     assert context.result_event_any is not None, "No result event"
     event = hand.DrawCompleted()
     context.result_event_any.Unpack(event)
-    assert event.cards_discarded == int(
-        count
-    ), f"Expected {count}, got {event.cards_discarded}"
+    assert event.cards_discarded == int(count), (
+        f"Expected {count}, got {event.cards_discarded}"
+    )
 
 
 @then(r"the draw event has cards_drawn (?P<count>\d+)")
@@ -885,9 +885,9 @@ def step_then_revealed_ranking(context, ranking):
     event = hand.CardsRevealed()
     context.result_event_any.Unpack(event)
     expected = getattr(poker_types, ranking, poker_types.HIGH_CARD)
-    assert (
-        event.ranking.rank_type == expected
-    ), f"Expected {ranking}, got {event.ranking.rank_type}"
+    assert event.ranking.rank_type == expected, (
+        f"Expected {ranking}, got {event.ranking.rank_type}"
+    )
 
 
 @then(r"the pot awarded event has (?P<count>\d+) winners?")
@@ -896,9 +896,9 @@ def step_then_pot_has_winners(context, count):
     assert context.result_event_any is not None, "No result event"
     event = hand.PotAwarded()
     context.result_event_any.Unpack(event)
-    assert len(event.winners) == int(
-        count
-    ), f"Expected {count} winners, got {len(event.winners)}"
+    assert len(event.winners) == int(count), (
+        f"Expected {count} winners, got {len(event.winners)}"
+    )
 
 
 @then(r'winner "(?P<player_id>[^"]+)" receives (?P<amount>\d+)')
@@ -909,9 +909,9 @@ def step_then_winner_receives(context, player_id, amount):
     context.result_event_any.Unpack(event)
     for winner in event.winners:
         if winner.player_root == player_id.encode():
-            assert winner.amount == int(
-                amount
-            ), f"Expected {amount}, got {winner.amount}"
+            assert winner.amount == int(amount), (
+                f"Expected {amount}, got {winner.amount}"
+            )
             return
     assert False, f"Winner {player_id} not found"
 
@@ -934,9 +934,9 @@ def step_then_state_has_phase(context, phase):
     """Verify hand state phase."""
     assert context.agg is not None, "No hand aggregate"
     expected = getattr(poker_types, phase, poker_types.PREFLOP)
-    assert (
-        context.agg.current_phase == expected
-    ), f"Expected {phase}, got {context.agg.current_phase}"
+    assert context.agg.current_phase == expected, (
+        f"Expected {phase}, got {context.agg.current_phase}"
+    )
 
 
 @then(r'the hand state has status "(?P<status>\w+)"')
@@ -950,18 +950,18 @@ def step_then_state_has_status(context, status):
 def step_then_state_has_players(context, count):
     """Verify player count in state."""
     assert context.agg is not None, "No hand aggregate"
-    assert len(context.agg.players) == int(
-        count
-    ), f"Expected {count}, got {len(context.agg.players)}"
+    assert len(context.agg.players) == int(count), (
+        f"Expected {count}, got {len(context.agg.players)}"
+    )
 
 
 @then(r"the hand state has (?P<count>\d+) community cards")
 def step_then_state_has_community(context, count):
     """Verify community card count in state."""
     assert context.agg is not None, "No hand aggregate"
-    assert len(context.agg.community_cards) == int(
-        count
-    ), f"Expected {count}, got {len(context.agg.community_cards)}"
+    assert len(context.agg.community_cards) == int(count), (
+        f"Expected {count}, got {len(context.agg.community_cards)}"
+    )
 
 
 @then(r'player "(?P<player_id>[^"]+)" has_folded is (?P<value>\w+)')
@@ -1216,9 +1216,9 @@ def step_then_action_has_pot_total(context, pot):
     assert context.result_event_any is not None, "No result event"
     event = hand.ActionTaken()
     context.result_event_any.Unpack(event)
-    assert event.pot_total == int(
-        pot
-    ), f"Expected pot_total={pot}, got {event.pot_total}"
+    assert event.pot_total == int(pot), (
+        f"Expected pot_total={pot}, got {event.pot_total}"
+    )
 
 
 @then(r"the action event has amount_to_call (?P<amount>\d+)")
@@ -1228,9 +1228,9 @@ def step_then_action_has_amount_to_call(context, amount):
     event = hand.ActionTaken()
     context.result_event_any.Unpack(event)
     # amount_to_call might be stored differently
-    assert event.amount == int(
-        amount
-    ), f"Expected amount_to_call={amount}, got {event.amount}"
+    assert event.amount == int(amount), (
+        f"Expected amount_to_call={amount}, got {event.amount}"
+    )
 
 
 @then(r"the action event has player_stack (?P<stack>\d+)")
@@ -1239,9 +1239,9 @@ def step_then_action_has_player_stack(context, stack):
     assert context.result_event_any is not None, "No result event"
     event = hand.ActionTaken()
     context.result_event_any.Unpack(event)
-    assert event.player_stack == int(
-        stack
-    ), f"Expected player_stack={stack}, got {event.player_stack}"
+    assert event.player_stack == int(stack), (
+        f"Expected player_stack={stack}, got {event.player_stack}"
+    )
 
 
 @then(r"the event has (?P<count>\d+) cards? dealt")
@@ -1250,9 +1250,9 @@ def step_then_event_has_cards_dealt(context, count):
     assert context.result_event_any is not None, "No result event"
     event = hand.CommunityCardsDealt()
     context.result_event_any.Unpack(event)
-    assert len(event.cards) == int(
-        count
-    ), f"Expected {count} cards, got {len(event.cards)}"
+    assert len(event.cards) == int(count), (
+        f"Expected {count} cards, got {len(event.cards)}"
+    )
 
 
 @then(r'the event has phase "(?P<phase>\w+)"')
@@ -1278,9 +1278,9 @@ def step_then_all_community_has_count(context, count):
     assert context.result_event_any is not None, "No result event"
     event = hand.CommunityCardsDealt()
     context.result_event_any.Unpack(event)
-    assert len(event.all_community_cards) == int(
-        count
-    ), f"Expected {count} cards, got {len(event.all_community_cards)}"
+    assert len(event.all_community_cards) == int(count), (
+        f"Expected {count} cards, got {len(event.all_community_cards)}"
+    )
 
 
 @then(r'player "(?P<player_id>[^"]+)" has (?P<count>\d+) hole cards')
@@ -1290,9 +1290,9 @@ def step_then_player_has_hole_cards(context, player_id, count):
     player = context.agg.get_player(player_id.encode())
     assert player is not None, f"Player {player_id} not found in aggregate"
     actual_count = len(player.hole_cards)
-    assert actual_count == int(
-        count
-    ), f"Expected {count} hole cards, got {actual_count}"
+    assert actual_count == int(count), (
+        f"Expected {count} hole cards, got {actual_count}"
+    )
 
 
 @then(r'the reveal event has cards for player "(?P<player_id>[^"]+)"')
@@ -1323,9 +1323,9 @@ def step_then_award_has_winner(context, player_id, amount):
     found = False
     for winner in event.winners:
         if winner.player_root == player_id.encode():
-            assert winner.amount == int(
-                amount
-            ), f"Expected {amount}, got {winner.amount}"
+            assert winner.amount == int(amount), (
+                f"Expected {amount}, got {winner.amount}"
+            )
             found = True
             break
     assert found, f"Winner {player_id} not found"
@@ -1347,9 +1347,9 @@ def step_then_hand_complete_emitted_simple(context):
 def step_then_hand_status_is(context, status):
     """Verify hand status."""
     assert context.agg is not None, "No hand aggregate"
-    assert (
-        context.agg.status == status
-    ), f"Expected status={status}, got {context.agg.status}"
+    assert context.agg.status == status, (
+        f"Expected status={status}, got {context.agg.status}"
+    )
 
 
 @then(r'player "(?P<player_id>[^"]+)" has ranking "(?P<ranking>[^"]+)"')
@@ -1358,9 +1358,9 @@ def step_then_player_has_ranking(context, player_id, ranking):
     results = getattr(context, "evaluation_results", {})
     assert player_id in results, f"No evaluation for {player_id}"
     expected = getattr(poker_types, ranking, poker_types.HIGH_CARD)
-    assert (
-        results[player_id] == expected
-    ), f"Expected {ranking}, got {results[player_id]}"
+    assert results[player_id] == expected, (
+        f"Expected {ranking}, got {results[player_id]}"
+    )
 
 
 @then(r'player "(?P<player_id>[^"]+)" wins')
@@ -1370,6 +1370,6 @@ def step_then_player_wins(context, player_id):
     if results:
         # Find best hand
         best_player = max(results.keys(), key=lambda p: results[p])
-        assert (
-            best_player == player_id
-        ), f"Expected {player_id} to win, but {best_player} won"
+        assert best_player == player_id, (
+            f"Expected {player_id} to win, but {best_player} won"
+        )

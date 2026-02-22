@@ -1,5 +1,6 @@
 use super::*;
 use crate::bus::MockEventBus;
+use crate::orchestration::correlation::extract_correlation_id;
 use crate::proto::{
     command_page, CommandBook, CommandPage, Cover, MergeStrategy, RevocationResponse,
     Uuid as ProtoUuid,
@@ -33,16 +34,16 @@ fn make_command_book(with_correlation: bool) -> CommandBook {
 }
 
 #[test]
-fn test_generate_correlation_id_existing() {
+fn test_extract_correlation_id_existing() {
     let command = make_command_book(true);
-    let result = generate_correlation_id(&command).unwrap();
+    let result = extract_correlation_id(&command).unwrap();
     assert_eq!(result, "test-correlation-id");
 }
 
 #[test]
-fn test_generate_correlation_id_empty_stays_empty() {
+fn test_extract_correlation_id_empty_stays_empty() {
     let command = make_command_book(false);
-    let result = generate_correlation_id(&command).unwrap();
+    let result = extract_correlation_id(&command).unwrap();
     assert!(result.is_empty());
 }
 

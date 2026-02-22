@@ -5,7 +5,17 @@
 *.swo
 .DS_Store
 *.db
+*-shm
+*-wal
 /data/
+
+# Example runtime artifacts
+examples/*/data/
+examples/*/*/data/
+examples/*/*.txt
+examples/*/*/*.txt
+examples/*/tmp/
+examples/*/*/tmp/
 .plan/
 .tasks/
 
@@ -88,11 +98,19 @@ examples/go/*/proto/
 .terraform/
 *.tfstate
 *.tfstate.backup
+*.tfstate.*
 
 # IDE
 .vscode/
+.idea/
 *.ipr
 *.iws
+*.iml
+
+# Backup files
+*.bak
+*.orig
+*~
 
 
 .scm/sessions/

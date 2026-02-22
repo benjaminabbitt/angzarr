@@ -105,6 +105,7 @@ s3 = ["dep:aws-sdk-s3", "dep:aws-config"]
 # Observability & Utilities
 # =============================================================================
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-opentelemetry"]
+advice = ["dep:metrics"]
 lossy = ["dep:rand"]
 
 # =============================================================================
@@ -218,6 +219,9 @@ bigtable_rs = { version = "0.2", optional = true }
 
 # Random (for lossy testing bus)
 rand = { version = "0.9", optional = true }
+
+# Metrics facade (for instrumentation advice)
+metrics = { version = "0.24", optional = true }
 
 # Kubernetes API (for gateway service discovery)
 kube = { version = "0.98", features = ["runtime", "client"] }

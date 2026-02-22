@@ -58,14 +58,10 @@ def secret_exists(name: str, namespace: str) -> bool:
 def create_namespace(namespace: str) -> None:
     """Create namespace if it doesn't exist."""
     if not namespace_exists(namespace):
-        print(
-            f"Creating namespace: {namespace}"
-        )  # nosec - namespace name, not sensitive
+        print(f"Creating namespace: {namespace}")  # nosec - namespace name, not sensitive
         kubectl("create", "namespace", namespace)
     else:
-        print(
-            f"Namespace already exists: {namespace}"
-        )  # nosec - namespace name, not sensitive
+        print(f"Namespace already exists: {namespace}")  # nosec - namespace name, not sensitive
 
 
 def get_secret_data(name: str, namespace: str) -> dict[str, str] | None:
@@ -87,9 +83,7 @@ def create_secret(
 ) -> None:
     """Create or update a Kubernetes secret."""
     if secret_exists(name, namespace) and not force:
-        print(
-            f"Secret '{name}' already exists in namespace '{namespace}'"
-        )  # nosec - name only
+        print(f"Secret '{name}' already exists in namespace '{namespace}'")  # nosec - name only
         print("Use --force to overwrite")
         return
 
@@ -188,9 +182,7 @@ def cmd_init(args: argparse.Namespace, config: Config) -> int:
     create_namespace(config.secrets_namespace)
 
     if secret_exists(config.secret_name, config.secrets_namespace) and not args.force:
-        print(
-            f"Secrets already exist in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        print(f"Secrets already exist in namespace '{config.secrets_namespace}'")  # nosec - name only
         print("Use --force to regenerate")
         return 0
 
@@ -218,9 +210,7 @@ def cmd_rotate(args: argparse.Namespace, config: Config) -> int:
 def cmd_show(args: argparse.Namespace, config: Config) -> int:
     """Display current secrets."""
     if not secret_exists(config.secret_name, config.secrets_namespace):
-        print(
-            f"No secrets found in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        print(f"No secrets found in namespace '{config.secrets_namespace}'")  # nosec - name only
         return 1
 
     data = get_secret_data(config.secret_name, config.secrets_namespace)
@@ -251,14 +241,10 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
 def cmd_check(args: argparse.Namespace, config: Config) -> int:
     """Check if secrets exist."""
     if secret_exists(config.secret_name, config.secrets_namespace):
-        print(
-            f"Secrets exist in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        print(f"Secrets exist in namespace '{config.secrets_namespace}'")  # nosec - name only
         return 0
     else:
-        print(
-            f"No secrets found in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        print(f"No secrets found in namespace '{config.secrets_namespace}'")  # nosec - name only
         return 1
 
 
@@ -266,9 +252,7 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     """Sync secrets to target namespace in format expected by Bitnami charts."""
     # Ensure source secrets exist
     if not secret_exists(config.secret_name, config.secrets_namespace):
-        print(
-            f"Source secrets not found in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        print(f"Source secrets not found in namespace '{config.secrets_namespace}'")  # nosec - name only
         print("Run 'init' first to create secrets")
         return 1
 

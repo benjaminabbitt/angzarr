@@ -25,3 +25,36 @@
 mod instrumented;
 
 pub use instrumented::Instrumented;
+
+// Re-export metric constants for external dashboards/alerting
+pub use instrumented::{
+    // Special values
+    DOMAIN_CORRELATION_QUERY,
+    // Label names
+    LABEL_DOMAIN,
+    LABEL_HANDLER,
+    LABEL_NAMESPACE,
+    LABEL_OPERATION,
+    LABEL_STORAGE,
+    // Metric names
+    METRIC_EVENTS_LOADED,
+    METRIC_EVENTS_STORED,
+    METRIC_POSITIONS_UPDATED,
+    METRIC_SNAPSHOTS_LOADED,
+    METRIC_SNAPSHOTS_STORED,
+    METRIC_STORAGE_DURATION,
+    // Operation names
+    OP_EVENT_ADD,
+    OP_EVENT_GET,
+    OP_EVENT_GET_BY_CORRELATION,
+    OP_EVENT_GET_FROM,
+    OP_EVENT_GET_FROM_TO,
+    OP_EVENT_GET_NEXT_SEQUENCE,
+    OP_EVENT_LIST_DOMAINS,
+    OP_EVENT_LIST_ROOTS,
+    OP_POSITION_GET,
+    OP_POSITION_PUT,
+    OP_SNAPSHOT_DELETE,
+    OP_SNAPSHOT_GET,
+    OP_SNAPSHOT_PUT,
+};

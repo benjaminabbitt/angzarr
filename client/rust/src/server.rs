@@ -239,8 +239,6 @@ pub async fn run_projector_server(
 /// #[tokio::main]
 /// async fn main() {
 ///     let router = ProcessManagerRouter::new("hand-flow", "hand-flow", rebuild_state)
-///         .subscribes("table")
-///         .subscribes("hand")
 ///         .on("HandStarted", handle_hand_started);
 ///
 ///     run_process_manager_server("hand-flow", 9091, router).await;

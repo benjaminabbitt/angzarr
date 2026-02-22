@@ -852,7 +852,6 @@ enum PMRebuildType<S> {
 pub struct ProcessManagerRouter<S> {
     name: String,
     pm_domain: String,
-    input_domains: Vec<String>,
     rebuild: PMRebuildType<S>,
     handlers: HashMap<String, PMHandlerType<S>>,
     prepare_handlers: HashMap<String, PMPrepareType<S>>,
@@ -872,7 +871,6 @@ impl<S: 'static> ProcessManagerRouter<S> {
         Self {
             name: name.into(),
             pm_domain: pm_domain.into(),
-            input_domains: Vec::new(),
             rebuild: PMRebuildType::Fn(rebuild),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
@@ -892,18 +890,11 @@ impl<S: 'static> ProcessManagerRouter<S> {
         Self {
             name: name.into(),
             pm_domain: pm_domain.into(),
-            input_domains: Vec::new(),
             rebuild: PMRebuildType::Closure(Arc::new(rebuild)),
             handlers: HashMap::new(),
             prepare_handlers: HashMap::new(),
             rejection_handlers: HashMap::new(),
         }
-    }
-
-    /// Add an input domain this PM subscribes to.
-    pub fn subscribes(mut self, domain: impl Into<String>) -> Self {
-        self.input_domains.push(domain.into());
-        self
     }
 
     /// Register an event handler (function pointer) for events ending with the given suffix.
@@ -984,11 +975,6 @@ impl<S: 'static> ProcessManagerRouter<S> {
     /// Get the PM's own domain.
     pub fn pm_domain(&self) -> &str {
         &self.pm_domain
-    }
-
-    /// Get the input domains.
-    pub fn input_domains(&self) -> &[String] {
-        &self.input_domains
     }
 
     /// Get the list of registered event type suffixes.
