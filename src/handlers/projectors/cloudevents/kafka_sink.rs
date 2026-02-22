@@ -267,7 +267,11 @@ mod tests {
         let config = KafkaSinkConfig::default()
             .with_bootstrap_servers("localhost:9092".to_string())
             .with_topic("my-events".to_string())
-            .with_sasl(TEST_USER.to_string(), TEST_PASSWORD.to_string(), "PLAIN".to_string());
+            .with_sasl(
+                TEST_USER.to_string(),
+                TEST_PASSWORD.to_string(),
+                "PLAIN".to_string(),
+            );
 
         assert_eq!(config.bootstrap_servers, "localhost:9092");
         assert_eq!(config.topic, "my-events");

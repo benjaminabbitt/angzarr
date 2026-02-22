@@ -59,8 +59,11 @@ fn test_subscriber_config() {
 #[test]
 fn test_sasl_config() {
     // codeql[rust/hard-coded-cryptographic-value] - Test fixture, not real credentials
-    let config =
-        KafkaEventBusConfig::publisher("localhost:9092").with_sasl(TEST_USER, TEST_PASSWORD, "SCRAM-SHA-256");
+    let config = KafkaEventBusConfig::publisher("localhost:9092").with_sasl(
+        TEST_USER,
+        TEST_PASSWORD,
+        "SCRAM-SHA-256",
+    );
     assert_eq!(config.sasl_username, Some(TEST_USER.to_string()));
     assert_eq!(config.sasl_password, Some(TEST_PASSWORD.to_string()));
     assert_eq!(config.sasl_mechanism, Some("SCRAM-SHA-256".to_string()));
