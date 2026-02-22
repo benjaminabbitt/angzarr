@@ -12,17 +12,10 @@ Feature: Compensation Flow - Framework Emits Notification
 
   Patterns enabled by compensation notification:
   - Distributed saga rollback: Each step in a multi-step saga can be undone
-    when a downstream step fails. Same pattern applies to payment→fulfillment.
+    when a downstream step fails.
   - Workflow state tracking: PMs record which step failed for reporting and
-    retry logic. Same pattern applies to approval chains, onboarding flows.
+    retry logic.
   - Source aggregate cleanup: The originating aggregate releases held resources.
-    Same pattern applies to inventory holds, payment authorizations.
-
-  Why poker exercises compensation patterns well:
-  - FundsReserved→JoinTable failure is obvious: $500 was held, now must be released
-  - Multi-step coordination: Table→Hand→Player with clear failure points
-  - Visible compensation: FundsReleased event is explicit, auditable
-  - Multiple failure scenarios: table full, insufficient buy-in, hand rejected
 
   The flow:
   1. Saga/PM issues command (triggered by source event)
@@ -31,10 +24,6 @@ Feature: Compensation Flow - Framework Emits Notification
   4. Framework routes Notification back through the chain:
      - To PM first (if PM issued the command) - can update workflow state
      - To source aggregate - can emit compensation events
-
-  Poker example: Player reserves $500 to join a table. The table-player-saga
-  issues JoinTable to the table aggregate. If the table is full (rejection),
-  the player needs to release those reserved funds (compensation).
 
   Background:
     Given the angzarr framework is initialized
@@ -47,34 +36,25 @@ Feature: Compensation Flow - Framework Emits Notification
 
   @emit @saga
   Scenario: Saga rejection triggers Notification creation
-    # Player reserves funds → table-player-saga issues JoinTable → Table rejects.
-    # The saga is stateless and won't know about the rejection without notification.
-    Given a Player aggregate that emitted FundsReserved (money set aside for table buy-in)
-    And a table-player-saga listening for FundsReserved, issuing JoinTable to table domain
-    When the Table aggregate rejects JoinTable with "table_full"
+    Given a SourceAggregate that emitted ResourceReserved
+    And a cross-domain-saga listening for ResourceReserved, issuing CommandThatWillFail to target domain
+    When the TargetAggregate rejects CommandThatWillFail with "precondition_not_met"
     Then the framework creates a Notification containing:
-      | issuer_name      | saga-table-player |
-      | rejection_reason | table_full        |
-      | rejected_command | JoinTable         |
-    # This Notification will be routed back to Player for compensation
+      | issuer_name      | saga-cross-domain    |
+      | rejection_reason | precondition_not_met |
+      | rejected_command | CommandThatWillFail  |
 
   @emit @saga
   Scenario: Notification routes back to the source aggregate
-    # The source aggregate (Player) needs to know its action's downstream effect failed.
-    # It emitted FundsReserved, which triggered a saga, which failed.
-    # Player must release those reserved funds.
-    Given Player emitted FundsReserved → table-player-saga issued JoinTable → rejected
+    Given SourceAggregate emitted ResourceReserved which triggered cross-domain-saga which was rejected
     When the framework routes the rejection
-    Then Player receives the Notification
-    And the notification identifies source_event_type "FundsReserved"
-    # Player can now emit FundsReleased to compensate
+    Then SourceAggregate receives the Notification
+    And the notification identifies source_event_type "ResourceReserved"
 
   @emit @saga
   Scenario: Notification preserves full command context for debugging
-    # When investigating failures, operators need complete context:
-    # Which aggregate? Which command? What correlation ID traces the workflow?
-    Given a saga command targeting player-123 with correlation_id corr-456
-    When the command is rejected with reason "table_full"
+    Given a saga command targeting root-123 with correlation_id corr-456
+    When the command is rejected with reason "precondition_not_met"
     Then the Notification contains the full rejected command
     And includes cover.domain, cover.root for routing
     And includes rejection_reason for compensation logic decisions
@@ -88,36 +68,26 @@ Feature: Compensation Flow - Framework Emits Notification
 
   @emit @pm
   Scenario: PM rejection creates Notification with PM identity
-    # HandFlowPM coordinates: Table → Hand → Player balance updates
-    # If Hand aggregate rejects a command, the PM needs to mark the step failed.
-    Given Table emitted HandStarted
-    And HandFlowPM reacts by issuing DealCards to Hand
-    When Hand rejects with "invalid_player_count"
+    Given SourceAggregate emitted WorkflowTriggered
+    And WorkflowPM reacts by issuing CommandThatWillFail to target domain
+    When TargetAggregate rejects with "step_failed"
     Then a Notification is created identifying:
-      | issuer_name      | pmg-hand-flow        |
-      | rejection_reason | invalid_player_count |
-    # The PM can now transition to a "failed" or "retry" state
+      | issuer_name      | pmg-workflow  |
+      | rejection_reason | step_failed   |
 
   @emit @pm
   Scenario: PM receives Notification before source aggregate
-    # PM state must update first so it can:
-    # - Record the failure step
-    # - Decide if retry is possible
-    # - Coordinate any multi-step rollback
-    # THEN the source aggregate compensates.
-    Given Table → HandFlowPM → Hand (rejected)
+    Given SourceAggregate triggered WorkflowPM which issued a command that was rejected
     When the framework routes the rejection
-    Then HandFlowPM receives the Notification first
-    And can update its workflow state (e.g., step = "deal_failed")
-    Then Table receives the Notification second
-    And can emit compensation events (e.g., HandCancelled)
+    Then WorkflowPM receives the Notification first
+    And can update its workflow state
+    Then SourceAggregate receives the Notification second
+    And can emit compensation events
 
   @emit @pm
   Scenario: Notification links back to PM's correlation context
-    # The PM tracks workflow state by correlation_id. The Notification must
-    # carry enough context to match it back to the right workflow instance.
-    Given HandFlowPM tracking hand-789 at step "awaiting_deal"
-    When its DealCards command is rejected
+    Given WorkflowPM tracking workflow-789 at step "awaiting_response"
+    When its CommandThatWillFail is rejected
     Then the Notification includes correlation_id linking to this PM instance
     And the PM can load its state to make compensation decisions
 
@@ -129,68 +99,54 @@ Feature: Compensation Flow - Framework Emits Notification
   @emit
   Scenario: Business rejection (FAILED_PRECONDITION) triggers compensation
     # FAILED_PRECONDITION = "I understood your request but can't fulfill it"
-    # Examples: insufficient balance, item out of stock, user not authorized
-    # These are recoverable business conditions, not bugs.
     Given a saga issues a command to an aggregate
     When the aggregate returns gRPC FAILED_PRECONDITION
     Then the framework creates a Notification
     And routes it for compensation
-    # The source aggregate can emit events to undo partial work
 
   @emit
   Scenario: Input validation errors do not trigger compensation
     # INVALID_ARGUMENT = "your request is malformed"
     # This is a bug in the caller, not a business condition.
-    # No compensation needed - nothing was partially done.
     Given a saga issues a malformed command
     When the aggregate returns gRPC INVALID_ARGUMENT
     Then no Notification is created
     And the error propagates to the original caller
-    # Fix the bug; don't try to compensate for invalid requests
 
   @emit
   Scenario: Notification captures full provenance for debugging
-    # When investigating "why did this hand fail to start?", operators need the
-    # complete chain: which event triggered which component to issue what.
-    Given this chain of events:
-      | step | component        | action               |
-      | 1    | Table aggregate  | emits HandStarted    |
-      | 2    | HandFlowPM       | issues DealCards     |
-      | 3    | Hand aggregate   | rejects (bad config) |
+    Given this chain of components:
+      | step | component         | action                      |
+      | 1    | SourceAggregate   | emits WorkflowTriggered     |
+      | 2    | WorkflowPM        | issues CommandThatWillFail  |
+      | 3    | TargetAggregate   | rejects (precondition)      |
     When the framework creates the Notification
     Then it contains the full provenance:
-      | source_event_type | HandStarted     |
-      | rejected_command  | DealCards       |
-      | issuer_type       | process_manager |
-      | issuer_name       | pmg-hand-flow   |
+      | source_event_type | WorkflowTriggered       |
+      | rejected_command  | CommandThatWillFail     |
+      | issuer_type       | process_manager         |
+      | issuer_name       | pmg-workflow            |
 
   # ============================================================================
   # Edge cases
   # ============================================================================
-  # Complex scenarios that test compensation routing correctness.
 
   @emit @edge
   Scenario: Multi-command saga stops on first rejection
-    # A saga might issue: ReserveFunds, then JoinTable.
-    # If funds fail, we must NOT try to join - stop immediately.
-    # Only one Notification is created (for the funds failure).
     Given a saga that issues commands sequentially:
-      | 1. ReserveFunds | → player (might fail)    |
-      | 2. JoinTable    | → table (never sent)     |
-    When ReserveFunds is rejected (insufficient_balance)
-    Then JoinTable is never issued
-    And exactly one Notification is created (for funds rejection)
-    # This prevents seating players who can't afford the buy-in
+      | command              | target |
+      | FirstCommand         | agg-a  |
+      | SecondCommand        | agg-b  |
+    When FirstCommand is rejected with "first_failed"
+    Then SecondCommand is never issued
+    And exactly one Notification is created for the first rejection
 
   @emit @edge
   Scenario: Nested PM chain bubbles rejection through all levels
-    # PM chains can coordinate complex flows: HandFlowPM → nested workflows
-    # If a downstream aggregate rejects, each PM in the chain must be notified to
-    # update their workflow state, then the original aggregate compensates.
-    Given a PM chain: HandFlowPM → nested-workflow → Hand
-    When Hand rejects AwardPot command
+    Given a PM chain: OuterPM issues to InnerPM issues to TargetAggregate
+    When TargetAggregate rejects the command
     Then Notifications route through the chain in reverse:
-      | 1. nested-workflow | updates workflow state      |
-      | 2. HandFlowPM      | updates workflow state      |
-      | 3. Source aggregate| emits compensation events   |
-    # Each PM records the failure before passing notification upstream
+      | order | component       | action                    |
+      | 1     | InnerPM         | updates workflow state    |
+      | 2     | OuterPM         | updates workflow state    |
+      | 3     | SourceAggregate | emits compensation events |

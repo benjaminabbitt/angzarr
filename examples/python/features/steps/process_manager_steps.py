@@ -58,7 +58,6 @@ class TestCommandSender:
 # --- Given steps ---
 
 
-@given("a HandProcessManager")
 @given("a HandFlowPM")
 def step_given_hand_process_manager(context):
     """Create HandProcessManager instance."""
