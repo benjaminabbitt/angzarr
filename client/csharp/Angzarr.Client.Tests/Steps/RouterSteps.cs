@@ -19,6 +19,7 @@ public class RouterSteps
     private Angzarr.EventBook? _eventBook;
     private Angzarr.ContextualCommand? _contextualCommand;
     private Dictionary<string, List<string>>? _subscriptions;
+    private Angzarr.RevocationResponse? _rejection;
 
     public RouterSteps(ScenarioContext ctx) => _ctx = ctx;
 
