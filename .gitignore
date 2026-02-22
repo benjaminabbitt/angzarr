@@ -32,6 +32,7 @@ __pycache__/
 
 # C++ build artifacts
 examples/cpp/build/
+client/cpp/build/
 
 # C# build artifacts
 **/obj/

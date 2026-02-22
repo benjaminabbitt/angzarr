@@ -117,7 +117,7 @@ fmt-java:
 
 # Format C++ code (runs in angzarr-base container - has clang-format)
 fmt-cpp:
-    just _lang-container base sh -c "find examples/cpp client/cpp -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | xargs clang-format -i"
+    just _lang-container base sh -c "find examples/cpp client/cpp -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' | xargs clang-format -i"
 
 # === Buf Schema Registry ===
 
