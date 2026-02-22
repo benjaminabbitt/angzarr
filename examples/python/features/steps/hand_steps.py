@@ -738,6 +738,17 @@ def step_then_event_has_blind_type(context, blind_type):
     )
 
 
+@then(r"the blind event has blind_type \"(?P<blind_type>[^\"]+)\"")
+def step_then_blind_event_has_blind_type(context, blind_type):
+    """Verify blind type in BlindPosted event."""
+    assert context.result_event_any is not None, "No result event"
+    event = hand.BlindPosted()
+    context.result_event_any.Unpack(event)
+    assert event.blind_type == blind_type, (
+        f"Expected {blind_type}, got {event.blind_type}"
+    )
+
+
 @then(r"the player event has amount (?P<amount>\d+)")
 def step_then_event_has_amount(context, amount):
     """Verify amount in event."""
@@ -752,6 +763,15 @@ def step_then_event_has_amount(context, amount):
         event = hand.ActionTaken()
         context.result_event_any.Unpack(event)
         assert event.amount == int(amount), f"Expected {amount}, got {event.amount}"
+
+
+@then(r"the blind event has amount (?P<amount>\d+)")
+def step_then_blind_event_has_amount(context, amount):
+    """Verify amount in BlindPosted event."""
+    assert context.result_event_any is not None, "No result event"
+    event = hand.BlindPosted()
+    context.result_event_any.Unpack(event)
+    assert event.amount == int(amount), f"Expected {amount}, got {event.amount}"
 
 
 @then(r"the player event has player_stack (?P<stack>\d+)")
@@ -773,6 +793,17 @@ def step_then_event_has_stack(context, stack):
         )
 
 
+@then(r"the blind event has player_stack (?P<stack>\d+)")
+def step_then_blind_event_has_stack(context, stack):
+    """Verify player_stack in BlindPosted event."""
+    assert context.result_event_any is not None, "No result event"
+    event = hand.BlindPosted()
+    context.result_event_any.Unpack(event)
+    assert event.player_stack == int(stack), (
+        f"Expected {stack}, got {event.player_stack}"
+    )
+
+
 @then(r"the player event has pot_total (?P<pot>\d+)")
 def step_then_event_has_pot(context, pot):
     """Verify pot_total in event."""
@@ -786,6 +817,15 @@ def step_then_event_has_pot(context, pot):
         event = hand.ActionTaken()
         context.result_event_any.Unpack(event)
         assert event.pot_total == int(pot), f"Expected {pot}, got {event.pot_total}"
+
+
+@then(r"the blind event has pot_total (?P<pot>\d+)")
+def step_then_blind_event_has_pot(context, pot):
+    """Verify pot_total in BlindPosted event."""
+    assert context.result_event_any is not None, "No result event"
+    event = hand.BlindPosted()
+    context.result_event_any.Unpack(event)
+    assert event.pot_total == int(pot), f"Expected {pot}, got {event.pot_total}"
 
 
 @then(r'the action event has action "?(?P<action>\w+)"?')
