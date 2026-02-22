@@ -46,7 +46,7 @@ def check_health(endpoint: str) -> bool:
             '"status": "SERVING"' in result.stdout
             or '"status":"SERVING"' in result.stdout
         )
-    except subprocess.TimeoutExpired, subprocess.SubprocessError:
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
         return False
 
 
@@ -55,7 +55,7 @@ def check_grpcurl_installed() -> bool:
     try:
         subprocess.run(["grpcurl", "--version"], capture_output=True, check=True)
         return True
-    except subprocess.SubprocessError, FileNotFoundError:
+    except (subprocess.SubprocessError, FileNotFoundError):
         return False
 
 
