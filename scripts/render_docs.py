@@ -129,7 +129,9 @@ def count_scenarios(feature_path: Path) -> int:
     with open(feature_path, "r", encoding="utf-8") as f:
         for line in f:
             stripped = line.strip()
-            if stripped.startswith("Scenario:") or stripped.startswith("Scenario Outline:"):
+            if stripped.startswith("Scenario:") or stripped.startswith(
+                "Scenario Outline:"
+            ):
                 count += 1
     return count
 
@@ -144,12 +146,14 @@ def get_feature_files(repo_root: Path) -> list[dict]:
     for f in sorted(features_dir.glob("*.feature")):
         domain = f.stem.replace("_", " ").title()
         scenarios = count_scenarios(f)
-        feature_files.append({
-            "domain": domain,
-            "name": f.name,
-            "scenarios": scenarios,
-            "link": f"../examples/features/{f.name}",
-        })
+        feature_files.append(
+            {
+                "domain": domain,
+                "name": f.name,
+                "scenarios": scenarios,
+                "link": f"../examples/features/{f.name}",
+            }
+        )
 
     return feature_files
 
@@ -198,30 +202,36 @@ def collect_data(repo_root: Path) -> dict:
 
     go_loc = get_example_loc(repo_root, "go", "customer")
     if go_loc > 0:
-        customer_examples.append({
-            "language": "Go",
-            "loc": go_loc,
-            "path": "examples/go/customer/logic/",
-            "link": "../examples/go/customer/logic/",
-        })
+        customer_examples.append(
+            {
+                "language": "Go",
+                "loc": go_loc,
+                "path": "examples/go/customer/logic/",
+                "link": "../examples/go/customer/logic/",
+            }
+        )
 
     python_loc = get_example_loc(repo_root, "python", "customer")
     if python_loc > 0:
-        customer_examples.append({
-            "language": "Python",
-            "loc": python_loc,
-            "path": "examples/python/customer/",
-            "link": "../examples/python/customer/",
-        })
+        customer_examples.append(
+            {
+                "language": "Python",
+                "loc": python_loc,
+                "path": "examples/python/customer/",
+                "link": "../examples/python/customer/",
+            }
+        )
 
     rust_loc = get_example_loc(repo_root, "rust", "customer")
     if rust_loc > 0:
-        customer_examples.append({
-            "language": "Rust",
-            "loc": rust_loc,
-            "path": "examples/rust/customer/src/",
-            "link": "../examples/rust/customer/src/",
-        })
+        customer_examples.append(
+            {
+                "language": "Rust",
+                "loc": rust_loc,
+                "path": "examples/rust/customer/src/",
+                "link": "../examples/rust/customer/src/",
+            }
+        )
 
     data["customer_examples"] = customer_examples
 
@@ -239,7 +249,9 @@ def render_template(template_path: Path, data: dict) -> str:
     return chevron.render(template, data)
 
 
-def render_all_templates(repo_root: Path, dry_run: bool = False) -> list[tuple[Path, bool]]:
+def render_all_templates(
+    repo_root: Path, dry_run: bool = False
+) -> list[tuple[Path, bool]]:
     """Render all templates in docs/templates/.
 
     Returns list of (output_path, was_modified) tuples.
@@ -310,7 +322,9 @@ def main():
     if args.check:
         modified = [path for path, was_modified in results if was_modified]
         if modified:
-            print(f"\nError: {len(modified)} file(s) out of date. Run 'just docs' to update.")
+            print(
+                f"\nError: {len(modified)} file(s) out of date. Run 'just docs' to update."
+            )
             sys.exit(1)
         else:
             print("\nAll documentation up to date.")

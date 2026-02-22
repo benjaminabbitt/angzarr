@@ -44,7 +44,11 @@ def make_event_book(domain: str = "test") -> types.EventBook:
     """Create a test EventBook."""
     return types.EventBook(
         cover=types.Cover(domain=domain),
-        pages=[types.EventPage(event=ProtoAny(type_url="type.googleapis.com/test.TestEvent"))],
+        pages=[
+            types.EventPage(
+                event=ProtoAny(type_url="type.googleapis.com/test.TestEvent")
+            )
+        ],
     )
 
 
@@ -80,7 +84,9 @@ class TestRejectionHandlerResponse:
         """Response can contain both events and notification."""
         event_book = make_event_book()
         notification = make_notification()
-        response = RejectionHandlerResponse(events=event_book, notification=notification)
+        response = RejectionHandlerResponse(
+            events=event_book, notification=notification
+        )
         assert response.events is event_book
         assert response.notification is notification
 
@@ -92,8 +98,12 @@ class TestRejectionHandlerResponseMultipleEvents:
         """Response events pages are accessible and countable."""
         event_book = types.EventBook(
             pages=[
-                types.EventPage(event=ProtoAny(type_url="type.googleapis.com/test.Event1")),
-                types.EventPage(event=ProtoAny(type_url="type.googleapis.com/test.Event2")),
+                types.EventPage(
+                    event=ProtoAny(type_url="type.googleapis.com/test.Event1")
+                ),
+                types.EventPage(
+                    event=ProtoAny(type_url="type.googleapis.com/test.Event2")
+                ),
             ]
         )
         response = RejectionHandlerResponse(events=event_book)

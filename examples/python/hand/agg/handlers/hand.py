@@ -15,6 +15,7 @@ from .game_rules import get_game_rules
 @dataclass
 class _PlayerHandInfo:
     """State for a player in the hand."""
+
     player_root: bytes = b""
     position: int = 0
     hole_cards: list = field(default_factory=list)
@@ -29,6 +30,7 @@ class _PlayerHandInfo:
 @dataclass
 class _PotInfo:
     """State for a pot."""
+
     amount: int = 0
     eligible_players: list = field(default_factory=list)
     pot_type: str = "main"
@@ -37,6 +39,7 @@ class _PotInfo:
 @dataclass
 class _HandState:
     """Internal state representation."""
+
     hand_id: str = ""
     table_root: bytes = b""
     hand_number: int = 0
@@ -111,8 +114,12 @@ class Hand(Aggregate[_HandState]):
                             dealt_cards.add((c.suit, c.rank))
 
             full_deck = []
-            for suit in [poker_types.CLUBS, poker_types.DIAMONDS,
-                         poker_types.HEARTS, poker_types.SPADES]:
+            for suit in [
+                poker_types.CLUBS,
+                poker_types.DIAMONDS,
+                poker_types.HEARTS,
+                poker_types.SPADES,
+            ]:
                 for rank in range(2, 15):
                     card = (suit, rank)
                     if card not in dealt_cards:
@@ -120,11 +127,13 @@ class Hand(Aggregate[_HandState]):
             random.shuffle(full_deck)
             state.remaining_deck = full_deck
 
-            state.pots = [_PotInfo(
-                amount=0,
-                eligible_players=[p.player_root for p in state.players.values()],
-                pot_type="main",
-            )]
+            state.pots = [
+                _PotInfo(
+                    amount=0,
+                    eligible_players=[p.player_root for p in state.players.values()],
+                    pot_type="main",
+                )
+            ]
 
         elif "BlindPosted" in type_url:
             event = hand_proto.BlindPosted()
@@ -156,14 +165,22 @@ class Hand(Aggregate[_HandState]):
                     player.has_acted = True
                     if event.action == poker_types.FOLD:
                         player.has_folded = True
-                    elif event.action in (poker_types.CALL, poker_types.BET, poker_types.RAISE):
+                    elif event.action in (
+                        poker_types.CALL,
+                        poker_types.BET,
+                        poker_types.RAISE,
+                    ):
                         player.bet_this_round += event.amount
                         player.total_invested += event.amount
                     elif event.action == poker_types.ALL_IN:
                         player.is_all_in = True
                         player.bet_this_round += event.amount
                         player.total_invested += event.amount
-                    if event.action in (poker_types.BET, poker_types.RAISE, poker_types.ALL_IN):
+                    if event.action in (
+                        poker_types.BET,
+                        poker_types.RAISE,
+                        poker_types.ALL_IN,
+                    ):
                         if player.bet_this_round > state.current_bet:
                             raise_amount = player.bet_this_round - state.current_bet
                             state.current_bet = player.bet_this_round
@@ -185,7 +202,7 @@ class Hand(Aggregate[_HandState]):
                     new_cards = [(c.suit, c.rank) for c in event.new_cards]
                     # For simplicity, replace the specified number of cards
                     if event.cards_discarded > 0:
-                        player.hole_cards = player.hole_cards[event.cards_discarded:]
+                        player.hole_cards = player.hole_cards[event.cards_discarded :]
                     player.hole_cards.extend(new_cards)
                     # Remove dealt cards from deck
                     for card in new_cards:
@@ -273,8 +290,11 @@ class Hand(Aggregate[_HandState]):
         return None
 
     def get_active_players(self) -> list:
-        return [p for p in self._get_state().players.values()
-                if not p.has_folded and not p.is_all_in]
+        return [
+            p
+            for p in self._get_state().players.values()
+            if not p.has_folded and not p.is_all_in
+        ]
 
     def get_players_in_hand(self) -> list:
         return [p for p in self._get_state().players.values() if not p.has_folded]
@@ -418,12 +438,15 @@ class Hand(Aggregate[_HandState]):
             amount=amount,
             player_stack=new_stack,
             pot_total=new_pot_total,
-            amount_to_call=max(self.current_bet, player.bet_this_round + amount) - player.bet_this_round,
+            amount_to_call=max(self.current_bet, player.bet_this_round + amount)
+            - player.bet_this_round,
             action_at=now(),
         )
 
     @handles(hand_proto.DealCommunityCards)
-    def deal_community(self, cmd: hand_proto.DealCommunityCards) -> hand_proto.CommunityCardsDealt:
+    def deal_community(
+        self, cmd: hand_proto.DealCommunityCards
+    ) -> hand_proto.CommunityCardsDealt:
         """Deal community cards."""
         if not self.exists:
             raise CommandRejectedError("Hand not dealt")
@@ -448,7 +471,7 @@ class Hand(Aggregate[_HandState]):
         if len(state.remaining_deck) < cmd.count:
             raise CommandRejectedError("Not enough cards in deck")
 
-        new_cards = state.remaining_deck[:cmd.count]
+        new_cards = state.remaining_deck[: cmd.count]
         all_community = state.community_cards + new_cards
 
         event = hand_proto.CommunityCardsDealt(
@@ -509,7 +532,9 @@ class Hand(Aggregate[_HandState]):
         return event
 
     @handles(hand_proto.RevealCards)
-    def reveal(self, cmd: hand_proto.RevealCards) -> Union[hand_proto.CardsRevealed, hand_proto.CardsMucked]:
+    def reveal(
+        self, cmd: hand_proto.RevealCards
+    ) -> Union[hand_proto.CardsRevealed, hand_proto.CardsMucked]:
         """Reveal or muck cards at showdown."""
         if not self.exists:
             raise CommandRejectedError("Hand not dealt")
@@ -552,7 +577,9 @@ class Hand(Aggregate[_HandState]):
         return event
 
     @handles(hand_proto.AwardPot)
-    def award(self, cmd: hand_proto.AwardPot) -> Tuple[hand_proto.PotAwarded, hand_proto.HandComplete]:
+    def award(
+        self, cmd: hand_proto.AwardPot
+    ) -> Tuple[hand_proto.PotAwarded, hand_proto.HandComplete]:
         """Award pot and complete the hand."""
         if not self.exists:
             raise CommandRejectedError("Hand not dealt")
@@ -579,24 +606,30 @@ class Hand(Aggregate[_HandState]):
 
         winners = []
         for award in awards:
-            winners.append(hand_proto.PotWinner(
-                player_root=award.player_root,
-                amount=award.amount,
-                pot_type=award.pot_type,
-            ))
+            winners.append(
+                hand_proto.PotWinner(
+                    player_root=award.player_root,
+                    amount=award.amount,
+                    pot_type=award.pot_type,
+                )
+            )
 
         pot_event = hand_proto.PotAwarded(awarded_at=now())
         pot_event.winners.extend(winners)
 
         final_stacks = []
         for player in state.players.values():
-            player_amount = sum(a.amount for a in awards if a.player_root == player.player_root)
-            final_stacks.append(hand_proto.PlayerStackSnapshot(
-                player_root=player.player_root,
-                stack=player.stack + player_amount,
-                is_all_in=player.is_all_in,
-                has_folded=player.has_folded,
-            ))
+            player_amount = sum(
+                a.amount for a in awards if a.player_root == player.player_root
+            )
+            final_stacks.append(
+                hand_proto.PlayerStackSnapshot(
+                    player_root=player.player_root,
+                    stack=player.stack + player_amount,
+                    is_all_in=player.is_all_in,
+                    has_folded=player.has_folded,
+                )
+            )
 
         complete_event = hand_proto.HandComplete(
             table_root=state.table_root,

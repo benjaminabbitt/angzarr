@@ -12,6 +12,7 @@ from angzarr_client.proto.examples import table_pb2 as table_proto
 @dataclass
 class _SeatState:
     """State of a single seat at the table."""
+
     position: int
     player_root: bytes
     stack: int
@@ -22,6 +23,7 @@ class _SeatState:
 @dataclass
 class _TableState:
     """Internal state representation."""
+
     table_id: str = ""
     table_name: str = ""
     game_variant: int = 0

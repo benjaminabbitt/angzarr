@@ -4,18 +4,15 @@
 # source: examples/projections.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'examples/projections.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "examples/projections.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -26,14 +23,20 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 from examples import order_pb2 as examples_dot_order__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x65xamples/projections.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14\x65xamples/order.proto\"\xaa\x03\n\x07Receipt\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x1f\n\x0b\x63ustomer_id\x18\x02 \x01(\tR\ncustomerId\x12(\n\x05items\x18\x03 \x03(\x0b\x32\x12.examples.LineItemR\x05items\x12%\n\x0esubtotal_cents\x18\x04 \x01(\x05R\rsubtotalCents\x12%\n\x0e\x64iscount_cents\x18\x05 \x01(\x05R\rdiscountCents\x12*\n\x11\x66inal_total_cents\x18\x06 \x01(\x05R\x0f\x66inalTotalCents\x12%\n\x0epayment_method\x18\x07 \x01(\tR\rpaymentMethod\x12\x32\n\x15loyalty_points_earned\x18\x08 \x01(\x05R\x13loyaltyPointsEarned\x12=\n\x0c\x63ompleted_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ompletedAt\x12%\n\x0e\x66ormatted_text\x18\n \x01(\tR\rformattedTextB\x94\x01\n\x0c\x63om.examplesB\x10ProjectionsProtoP\x01Z2github.com/angzarr/angzarr/proto/examples;examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x1a\x65xamples/projections.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14\x65xamples/order.proto"\xaa\x03\n\x07Receipt\x12\x19\n\x08order_id\x18\x01 \x01(\tR\x07orderId\x12\x1f\n\x0b\x63ustomer_id\x18\x02 \x01(\tR\ncustomerId\x12(\n\x05items\x18\x03 \x03(\x0b\x32\x12.examples.LineItemR\x05items\x12%\n\x0esubtotal_cents\x18\x04 \x01(\x05R\rsubtotalCents\x12%\n\x0e\x64iscount_cents\x18\x05 \x01(\x05R\rdiscountCents\x12*\n\x11\x66inal_total_cents\x18\x06 \x01(\x05R\x0f\x66inalTotalCents\x12%\n\x0epayment_method\x18\x07 \x01(\tR\rpaymentMethod\x12\x32\n\x15loyalty_points_earned\x18\x08 \x01(\x05R\x13loyaltyPointsEarned\x12=\n\x0c\x63ompleted_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ompletedAt\x12%\n\x0e\x66ormatted_text\x18\n \x01(\tR\rformattedTextB\x94\x01\n\x0c\x63om.examplesB\x10ProjectionsProtoP\x01Z2github.com/angzarr/angzarr/proto/examples;examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.projections_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(
+    DESCRIPTOR, "examples.projections_pb2", _globals
+)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\020ProjectionsProtoP\001Z2github.com/angzarr/angzarr/proto/examples;examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
-  _globals['_RECEIPT']._serialized_start=96
-  _globals['_RECEIPT']._serialized_end=522
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\014com.examplesB\020ProjectionsProtoP\001Z2github.com/angzarr/angzarr/proto/examples;examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples"
+    _globals["_RECEIPT"]._serialized_start = 96
+    _globals["_RECEIPT"]._serialized_end = 522
 # @@protoc_insertion_point(module_scope)

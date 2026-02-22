@@ -423,12 +423,14 @@ class TestHandEvaluationEdgeCases:
     def test_less_than_five_cards_returns_high_card(self):
         rules = TexasHoldemRules()
         # Only 4 cards
-        result = rules._find_best_hand([
-            (poker_types.SPADES, 14),
-            (poker_types.HEARTS, 13),
-            (poker_types.DIAMONDS, 12),
-            (poker_types.CLUBS, 11),
-        ])
+        result = rules._find_best_hand(
+            [
+                (poker_types.SPADES, 14),
+                (poker_types.HEARTS, 13),
+                (poker_types.DIAMONDS, 12),
+                (poker_types.CLUBS, 11),
+            ]
+        )
         assert result[0] == poker_types.HIGH_CARD
         assert result[1] == 0
 

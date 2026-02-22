@@ -49,7 +49,9 @@ def make_event_book(domain="test", events=None, snapshot=None):
         book.pages.extend(events)
     if snapshot:
         book.snapshot.CopyFrom(snapshot)
-    book.next_sequence = len(events) if events else (snapshot.sequence + 1 if snapshot else 0)
+    book.next_sequence = (
+        len(events) if events else (snapshot.sequence + 1 if snapshot else 0)
+    )
     return book
 
 
@@ -136,7 +138,9 @@ def given_event_book_complex(state_context, datatable):
         if "events" in row:
             parts = row["events"].replace("seq ", "").split(", ")
             for seq_str in parts:
-                events.append(make_event_page(int(seq_str), "type.googleapis.com/test.Event"))
+                events.append(
+                    make_event_page(int(seq_str), "type.googleapis.com/test.Event")
+                )
     state_context["event_book"] = make_event_book(events=events, snapshot=snapshot)
 
 
@@ -170,8 +174,7 @@ def given_increment_event(state_context, amount):
 def given_multiple_increments(state_context, a, b, c):
     state_context["increments"] = [a, b, c]
     events = [
-        make_event_page(i, "type.googleapis.com/test.Increment")
-        for i in range(3)
+        make_event_page(i, "type.googleapis.com/test.Increment") for i in range(3)
     ]
     state_context["event_book"] = make_event_book(events=events)
 
@@ -191,10 +194,12 @@ def given_event_type_url(state_context, type_url):
 @given("an event with corrupted payload bytes")
 def given_corrupted_payload(state_context):
     page = types_pb2.EventPage(sequence=0, created_at=Timestamp())
-    page.event.CopyFrom(Any(
-        type_url="type.googleapis.com/test.OrderCreated",
-        value=b"\xff\xff\xff\xff",
-    ))
+    page.event.CopyFrom(
+        Any(
+            type_url="type.googleapis.com/test.OrderCreated",
+            value=b"\xff\xff\xff\xff",
+        )
+    )
     state_context["event_book"] = make_event_book(events=[page])
 
 
@@ -212,8 +217,7 @@ def given_empty_aggregate(state_context):
 @given(parsers.parse("an EventBook with events up to sequence {seq:d}"))
 def given_events_up_to(state_context, seq):
     events = [
-        make_event_page(i, "type.googleapis.com/test.Event")
-        for i in range(seq + 1)
+        make_event_page(i, "type.googleapis.com/test.Event") for i in range(seq + 1)
     ]
     state_context["event_book"] = make_event_book(events=events)
 

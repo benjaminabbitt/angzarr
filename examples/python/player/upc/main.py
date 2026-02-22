@@ -56,7 +56,9 @@ class PlayerUpcaster(Upcaster):
     #     return PlayerRegistered(...)
 
 
-handler = UpcasterHandler("upcaster-player", "player").with_handle(PlayerUpcaster.handle)
+handler = UpcasterHandler("upcaster-player", "player").with_handle(
+    PlayerUpcaster.handle
+)
 
 
 if __name__ == "__main__":

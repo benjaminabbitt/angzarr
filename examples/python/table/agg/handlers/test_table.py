@@ -69,15 +69,19 @@ class TestCreate:
         t = Table()
 
         with pytest.raises(CommandRejectedError, match="small_blind"):
-            t.create(table.CreateTable(
-                table_name="Test", small_blind=0, big_blind=10, max_players=6
-            ))
+            t.create(
+                table.CreateTable(
+                    table_name="Test", small_blind=0, big_blind=10, max_players=6
+                )
+            )
 
         t2 = Table()
         with pytest.raises(CommandRejectedError, match="big_blind must be >="):
-            t2.create(table.CreateTable(
-                table_name="Test", small_blind=20, big_blind=10, max_players=6
-            ))
+            t2.create(
+                table.CreateTable(
+                    table_name="Test", small_blind=20, big_blind=10, max_players=6
+                )
+            )
 
 
 class TestJoin:
@@ -85,14 +89,16 @@ class TestJoin:
 
     def test_join_adds_player(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
 
         player_root = b"\x01\x02\x03\x04"
         event = t.join(table.JoinTable(player_root=player_root, buy_in_amount=500))
@@ -105,35 +111,41 @@ class TestJoin:
 
     def test_join_with_preferred_seat(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
 
         player_root = b"\x01"
-        t.join(table.JoinTable(
-            player_root=player_root,
-            buy_in_amount=500,
-            preferred_seat=3,
-        ))
+        t.join(
+            table.JoinTable(
+                player_root=player_root,
+                buy_in_amount=500,
+                preferred_seat=3,
+            )
+        )
 
         assert t.get_seat(3) is not None
         assert t.get_seat(3).player_root == player_root
 
     def test_join_rejects_duplicate_player(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
 
         player_root = b"\x01"
         t.join(table.JoinTable(player_root=player_root, buy_in_amount=500))
@@ -143,14 +155,16 @@ class TestJoin:
 
     def test_join_validates_buy_in(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
 
         with pytest.raises(CommandRejectedError, match="at least"):
             t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=50))
@@ -164,14 +178,16 @@ class TestLeave:
 
     def test_leave_removes_player(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
 
         player_root = b"\x01"
         t.join(table.JoinTable(player_root=player_root, buy_in_amount=500))
@@ -185,14 +201,16 @@ class TestLeave:
 
     def test_leave_rejects_unknown_player(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
 
         with pytest.raises(CommandRejectedError, match="not seated"):
             t.leave(table.LeaveTable(player_root=b"\x99"))
@@ -203,14 +221,16 @@ class TestStartHand:
 
     def test_start_hand_transitions_status(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
 
@@ -223,14 +243,16 @@ class TestStartHand:
 
     def test_start_hand_requires_two_players(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
 
         with pytest.raises(CommandRejectedError, match="Not enough players"):
@@ -238,14 +260,16 @@ class TestStartHand:
 
     def test_start_hand_rejects_if_hand_in_progress(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         t.start_hand(table.StartHand())
@@ -259,14 +283,16 @@ class TestEndHand:
 
     def test_end_hand_transitions_to_waiting(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         start_event = t.start_hand(table.StartHand())
@@ -278,14 +304,16 @@ class TestEndHand:
 
     def test_end_hand_validates_hand_root(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         t.start_hand(table.StartHand())
@@ -301,14 +329,16 @@ class TestCompleteLifecycle:
         t = Table()
 
         # Create
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         assert t.exists
         assert t.status == "waiting"
 
@@ -338,14 +368,16 @@ class TestCompleteLifecycle:
 
     def test_event_book_has_all_events(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            small_blind=5,
-            big_blind=10,
-            min_buy_in=100,
-            max_buy_in=1000,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
 
@@ -358,31 +390,41 @@ class TestStateAccessors:
 
     def test_table_id_format(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="High Stakes",
-            small_blind=50,
-            big_blind=100,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="High Stakes",
+                small_blind=50,
+                big_blind=100,
+                max_players=6,
+            )
+        )
         assert t.table_id == "table_High Stakes"
 
     def test_game_variant_returns_enum(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test",
-            game_variant=poker_types.GameVariant.TEXAS_HOLDEM,
-            small_blind=5,
-            big_blind=10,
-            max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                game_variant=poker_types.GameVariant.TEXAS_HOLDEM,
+                small_blind=5,
+                big_blind=10,
+                max_players=6,
+            )
+        )
         assert t.game_variant == poker_types.GameVariant.TEXAS_HOLDEM
 
     def test_dealer_position_after_hand(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         event = t.start_hand(table.StartHand())
@@ -390,10 +432,16 @@ class TestStateAccessors:
 
     def test_is_full_when_max_players_reached(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=2,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=2,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         assert not t.is_full
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
@@ -409,8 +457,12 @@ class TestStateAccessors:
 
         # TableCreated
         created = table.TableCreated(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
+            table_name="Test",
+            small_blind=5,
+            big_blind=10,
+            min_buy_in=100,
+            max_buy_in=1000,
+            max_players=6,
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
@@ -419,7 +471,9 @@ class TestStateAccessors:
         # Two players joined
         for i, root in enumerate([b"\x01", b"\x02"]):
             joined = table.PlayerJoined(
-                player_root=root, seat_position=i, stack=500,
+                player_root=root,
+                seat_position=i,
+                stack=500,
             )
             joined_any = Any()
             joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
@@ -448,8 +502,12 @@ class TestEventHandlers:
 
         # TableCreated
         created = table.TableCreated(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
+            table_name="Test",
+            small_blind=5,
+            big_blind=10,
+            min_buy_in=100,
+            max_buy_in=1000,
+            max_players=6,
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
@@ -457,7 +515,9 @@ class TestEventHandlers:
 
         # Player joined
         joined = table.PlayerJoined(
-            player_root=b"\x01", seat_position=0, stack=500,
+            player_root=b"\x01",
+            seat_position=0,
+            stack=500,
         )
         joined_any = Any()
         joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
@@ -489,8 +549,12 @@ class TestEventHandlers:
 
         # TableCreated
         created = table.TableCreated(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
+            table_name="Test",
+            small_blind=5,
+            big_blind=10,
+            min_buy_in=100,
+            max_buy_in=1000,
+            max_players=6,
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
@@ -498,7 +562,9 @@ class TestEventHandlers:
 
         # Player joined with 500
         joined = table.PlayerJoined(
-            player_root=b"\x01", seat_position=0, stack=500,
+            player_root=b"\x01",
+            seat_position=0,
+            stack=500,
         )
         joined_any = Any()
         joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
@@ -523,8 +589,12 @@ class TestEventHandlers:
 
         # TableCreated
         created = table.TableCreated(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
+            table_name="Test",
+            small_blind=5,
+            big_blind=10,
+            min_buy_in=100,
+            max_buy_in=1000,
+            max_players=6,
         )
         created_any = Any()
         created_any.Pack(created, type_url_prefix="type.googleapis.com/")
@@ -533,7 +603,9 @@ class TestEventHandlers:
         # Two players joined
         for i, root in enumerate([b"\x01", b"\x02"]):
             joined = table.PlayerJoined(
-                player_root=root, seat_position=i, stack=500,
+                player_root=root,
+                seat_position=i,
+                stack=500,
             )
             joined_any = Any()
             joined_any.Pack(joined, type_url_prefix="type.googleapis.com/")
@@ -541,7 +613,9 @@ class TestEventHandlers:
 
         # HandStarted
         started = table.HandStarted(
-            hand_root=b"\xaa\xbb\xcc", hand_number=1, dealer_position=0,
+            hand_root=b"\xaa\xbb\xcc",
+            hand_number=1,
+            dealer_position=0,
         )
         started_any = Any()
         started_any.Pack(started, type_url_prefix="type.googleapis.com/")
@@ -570,21 +644,27 @@ class TestEdgeCases:
     def test_create_validates_big_blind_positive(self):
         t = Table()
         with pytest.raises(CommandRejectedError, match="big_blind must be positive"):
-            t.create(table.CreateTable(
-                table_name="Test", small_blind=5, big_blind=0, max_players=6
-            ))
+            t.create(
+                table.CreateTable(
+                    table_name="Test", small_blind=5, big_blind=0, max_players=6
+                )
+            )
 
     def test_create_validates_max_players_bounds(self):
         t = Table()
         with pytest.raises(CommandRejectedError, match="max_players must be between"):
-            t.create(table.CreateTable(
-                table_name="Test", small_blind=5, big_blind=10, max_players=1
-            ))
+            t.create(
+                table.CreateTable(
+                    table_name="Test", small_blind=5, big_blind=10, max_players=1
+                )
+            )
         t2 = Table()
         with pytest.raises(CommandRejectedError, match="max_players must be between"):
-            t2.create(table.CreateTable(
-                table_name="Test", small_blind=5, big_blind=10, max_players=11
-            ))
+            t2.create(
+                table.CreateTable(
+                    table_name="Test", small_blind=5, big_blind=10, max_players=11
+                )
+            )
 
     def test_join_requires_table_exists(self):
         t = Table()
@@ -593,19 +673,31 @@ class TestEdgeCases:
 
     def test_join_requires_player_root(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         with pytest.raises(CommandRejectedError, match="player_root"):
             t.join(table.JoinTable(buy_in_amount=500))
 
     def test_join_rejects_full_table(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=2,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=2,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
 
@@ -614,14 +706,26 @@ class TestEdgeCases:
 
     def test_join_rejects_occupied_preferred_seat(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
-        t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500, preferred_seat=3))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
+        t.join(
+            table.JoinTable(player_root=b"\x01", buy_in_amount=500, preferred_seat=3)
+        )
 
         with pytest.raises(CommandRejectedError, match="Seat is occupied"):
-            t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500, preferred_seat=3))
+            t.join(
+                table.JoinTable(
+                    player_root=b"\x02", buy_in_amount=500, preferred_seat=3
+                )
+            )
 
     def test_leave_requires_table_exists(self):
         t = Table()
@@ -630,24 +734,38 @@ class TestEdgeCases:
 
     def test_leave_requires_player_root(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         with pytest.raises(CommandRejectedError, match="player_root"):
             t.leave(table.LeaveTable())
 
     def test_leave_rejects_during_hand(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         t.start_hand(table.StartHand())
 
-        with pytest.raises(CommandRejectedError, match="Cannot leave table during a hand"):
+        with pytest.raises(
+            CommandRejectedError, match="Cannot leave table during a hand"
+        ):
             t.leave(table.LeaveTable(player_root=b"\x01"))
 
     def test_start_hand_requires_table_exists(self):
@@ -662,39 +780,59 @@ class TestEdgeCases:
 
     def test_end_hand_requires_hand_in_progress(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         with pytest.raises(CommandRejectedError, match="No hand in progress"):
             t.end_hand(table.EndHand(hand_root=b"\x01"))
 
     def test_end_hand_with_results(self):
         """EndHand with pot results calculates stack_changes."""
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         start_event = t.start_hand(table.StartHand())
 
         # End with result showing player 1 won 100 from pot
-        event = t.end_hand(table.EndHand(
-            hand_root=start_event.hand_root,
-            results=[table.PotResult(winner_root=b"\x01", amount=100)],
-        ))
+        event = t.end_hand(
+            table.EndHand(
+                hand_root=start_event.hand_root,
+                results=[table.PotResult(winner_root=b"\x01", amount=100)],
+            )
+        )
 
         assert event.stack_changes[b"\x01".hex()] == 100
 
     def test_start_hand_heads_up_blind_positions(self):
         """In heads-up, dealer posts small blind."""
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         event = t.start_hand(table.StartHand())
@@ -705,10 +843,16 @@ class TestEdgeCases:
     def test_start_hand_three_way_blind_positions(self):
         """In 3+ player, SB is left of dealer."""
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x03", buy_in_amount=500))
@@ -719,26 +863,44 @@ class TestEdgeCases:
 
     def test_find_player_seat_not_found(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         assert t.find_player_seat(b"\x99") is None
 
     def test_get_seat_returns_none_for_empty(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         assert t.get_seat(5) is None
 
     def test_seats_property_returns_dict(self):
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         seats = t.seats
         assert isinstance(seats, dict)
@@ -747,10 +909,16 @@ class TestEdgeCases:
     def test_find_available_seat_returns_none_when_full(self):
         """Test internal method _find_available_seat when table is full."""
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=2,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=2,
+            )
+        )
         t.join(table.JoinTable(player_root=b"\x01", buy_in_amount=500))
         t.join(table.JoinTable(player_root=b"\x02", buy_in_amount=500))
         # Directly call internal method
@@ -759,9 +927,15 @@ class TestEdgeCases:
     def test_next_dealer_position_empty_table(self):
         """Test internal method _next_dealer_position with no seats."""
         t = Table()
-        t.create(table.CreateTable(
-            table_name="Test", small_blind=5, big_blind=10,
-            min_buy_in=100, max_buy_in=1000, max_players=6,
-        ))
+        t.create(
+            table.CreateTable(
+                table_name="Test",
+                small_blind=5,
+                big_blind=10,
+                min_buy_in=100,
+                max_buy_in=1000,
+                max_players=6,
+            )
+        )
         # Directly call internal method on empty table
         assert t._next_dealer_position() == 0

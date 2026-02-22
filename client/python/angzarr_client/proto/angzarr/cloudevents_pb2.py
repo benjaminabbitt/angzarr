@@ -4,18 +4,15 @@
 # source: angzarr/cloudevents.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'angzarr/cloudevents.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "angzarr/cloudevents.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -25,20 +22,24 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x61ngzarr/cloudevents.proto\x12\x07\x61ngzarr\x1a\x19google/protobuf/any.proto\"\xbd\x02\n\nCloudEvent\x12\x12\n\x04type\x18\x01 \x01(\tR\x04type\x12(\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x14.google.protobuf.AnyR\x04\x64\x61ta\x12\x43\n\nextensions\x18\x03 \x03(\x0b\x32#.angzarr.CloudEvent.ExtensionsEntryR\nextensions\x12\x13\n\x02id\x18\x04 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1b\n\x06source\x18\x05 \x01(\tH\x01R\x06source\x88\x01\x01\x12\x1d\n\x07subject\x18\x06 \x01(\tH\x02R\x07subject\x88\x01\x01\x1a=\n\x0f\x45xtensionsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\x05\n\x03_idB\t\n\x07_sourceB\n\n\x08_subject\"B\n\x13\x43loudEventsResponse\x12+\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x13.angzarr.CloudEventR\x06\x65ventsB\x85\x01\n\x0b\x63om.angzarrB\x10\x43loudeventsProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x19\x61ngzarr/cloudevents.proto\x12\x07\x61ngzarr\x1a\x19google/protobuf/any.proto"\xbd\x02\n\nCloudEvent\x12\x12\n\x04type\x18\x01 \x01(\tR\x04type\x12(\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x14.google.protobuf.AnyR\x04\x64\x61ta\x12\x43\n\nextensions\x18\x03 \x03(\x0b\x32#.angzarr.CloudEvent.ExtensionsEntryR\nextensions\x12\x13\n\x02id\x18\x04 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1b\n\x06source\x18\x05 \x01(\tH\x01R\x06source\x88\x01\x01\x12\x1d\n\x07subject\x18\x06 \x01(\tH\x02R\x07subject\x88\x01\x01\x1a=\n\x0f\x45xtensionsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\x05\n\x03_idB\t\n\x07_sourceB\n\n\x08_subject"B\n\x13\x43loudEventsResponse\x12+\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x13.angzarr.CloudEventR\x06\x65ventsB\x85\x01\n\x0b\x63om.angzarrB\x10\x43loudeventsProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.cloudevents_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "angzarr.cloudevents_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\020CloudeventsProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_CLOUDEVENT_EXTENSIONSENTRY']._loaded_options = None
-  _globals['_CLOUDEVENT_EXTENSIONSENTRY']._serialized_options = b'8\001'
-  _globals['_CLOUDEVENT']._serialized_start=66
-  _globals['_CLOUDEVENT']._serialized_end=383
-  _globals['_CLOUDEVENT_EXTENSIONSENTRY']._serialized_start=292
-  _globals['_CLOUDEVENT_EXTENSIONSENTRY']._serialized_end=353
-  _globals['_CLOUDEVENTSRESPONSE']._serialized_start=385
-  _globals['_CLOUDEVENTSRESPONSE']._serialized_end=451
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\013com.angzarrB\020CloudeventsProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr"
+    _globals["_CLOUDEVENT_EXTENSIONSENTRY"]._loaded_options = None
+    _globals["_CLOUDEVENT_EXTENSIONSENTRY"]._serialized_options = b"8\001"
+    _globals["_CLOUDEVENT"]._serialized_start = 66
+    _globals["_CLOUDEVENT"]._serialized_end = 383
+    _globals["_CLOUDEVENT_EXTENSIONSENTRY"]._serialized_start = 292
+    _globals["_CLOUDEVENT_EXTENSIONSENTRY"]._serialized_end = 353
+    _globals["_CLOUDEVENTSRESPONSE"]._serialized_start = 385
+    _globals["_CLOUDEVENTSRESPONSE"]._serialized_end = 451
 # @@protoc_insertion_point(module_scope)

@@ -32,7 +32,9 @@ def get_secret_value(namespace: str, secret_name: str, key: str) -> str:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to read secret {secret_name}/{key}: {result.stderr}")
+        raise RuntimeError(
+            f"Failed to read secret {secret_name}/{key}: {result.stderr}"
+        )
     return base64.b64decode(result.stdout).decode()
 
 
@@ -96,9 +98,12 @@ def truncate_database(namespace: str, database: str) -> bool:
             pod,
             "--",
             "psql",
-            "-U", "angzarr",
-            "-d", database,
-            "-c", truncate_sql,
+            "-U",
+            "angzarr",
+            "-d",
+            database,
+            "-c",
+            truncate_sql,
         ],
         capture_output=True,
         text=True,

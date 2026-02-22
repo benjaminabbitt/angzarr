@@ -86,7 +86,9 @@ CHUNK_OVERLAP = 20  # overlap between chunks
 # ---------------------------------------------------------------------------
 
 
-def chunk_lines(lines: list[str], chunk_size: int, overlap: int) -> list[tuple[int, list[str]]]:
+def chunk_lines(
+    lines: list[str], chunk_size: int, overlap: int
+) -> list[tuple[int, list[str]]]:
     """Split lines into overlapping chunks, returning (start_line, chunk_lines)."""
     chunks = []
     start = 0

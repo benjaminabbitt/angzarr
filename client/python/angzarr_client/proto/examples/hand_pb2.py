@@ -4,18 +4,15 @@
 # source: examples/hand.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'examples/hand.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "examples/hand.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -23,67 +20,73 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from angzarr_client.proto.examples import poker_types_pb2 as examples_dot_poker__types__pb2
+from angzarr_client.proto.examples import (
+    poker_types_pb2 as examples_dot_poker__types__pb2,
+)
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13\x65xamples/hand.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1a\x65xamples/poker_types.proto\"\xbb\x02\n\tDealCards\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12\x38\n\x0cgame_variant\x18\x03 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x30\n\x07players\x18\x04 \x03(\x0b\x32\x16.examples.PlayerInHandR\x07players\x12\'\n\x0f\x64\x65\x61ler_position\x18\x05 \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x1f\n\x0bsmall_blind\x18\x06 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x07 \x01(\x03R\x08\x62igBlind\x12\x1b\n\tdeck_seed\x18\x08 \x01(\x0cR\x08\x64\x65\x63kSeed\"a\n\x0cPlayerInHand\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1a\n\x08position\x18\x02 \x01(\x05R\x08position\x12\x14\n\x05stack\x18\x03 \x01(\x03R\x05stack\"c\n\tPostBlind\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1d\n\nblind_type\x18\x02 \x01(\tR\tblindType\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\"u\n\x0cPlayerAction\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12,\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\x06\x61\x63tion\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\"*\n\x12\x44\x65\x61lCommunityCards\x12\x14\n\x05\x63ount\x18\x01 \x01(\x05R\x05\x63ount\"Q\n\x0bRequestDraw\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12!\n\x0c\x63\x61rd_indices\x18\x02 \x03(\x05R\x0b\x63\x61rdIndices\"B\n\x0bRevealCards\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x12\n\x04muck\x18\x02 \x01(\x08R\x04muck\"6\n\x08\x41wardPot\x12*\n\x06\x61wards\x18\x01 \x03(\x0b\x32\x12.examples.PotAwardR\x06\x61wards\"^\n\x08PotAward\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x19\n\x08pot_type\x18\x03 \x01(\tR\x07potType\"\x8d\x03\n\nCardsDealt\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12\x38\n\x0cgame_variant\x18\x03 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12<\n\x0cplayer_cards\x18\x04 \x03(\x0b\x32\x19.examples.PlayerHoleCardsR\x0bplayerCards\x12\'\n\x0f\x64\x65\x61ler_position\x18\x05 \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x30\n\x07players\x18\x06 \x03(\x0b\x32\x16.examples.PlayerInHandR\x07players\x12\x35\n\x08\x64\x65\x61lt_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x64\x65\x61ltAt\x12\x35\n\x0eremaining_deck\x18\x08 \x03(\x0b\x32\x0e.examples.CardR\rremainingDeck\"X\n\x0fPlayerHoleCards\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12$\n\x05\x63\x61rds\x18\x02 \x03(\x0b\x32\x0e.examples.CardR\x05\x63\x61rds\"\xde\x01\n\x0b\x42lindPosted\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1d\n\nblind_type\x18\x02 \x01(\tR\tblindType\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\x12!\n\x0cplayer_stack\x18\x04 \x01(\x03R\x0bplayerStack\x12\x1b\n\tpot_total\x18\x05 \x01(\x03R\x08potTotal\x12\x37\n\tposted_at\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08postedAt\"\x93\x02\n\x0b\x41\x63tionTaken\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12,\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\x06\x61\x63tion\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\x12!\n\x0cplayer_stack\x18\x04 \x01(\x03R\x0bplayerStack\x12\x1b\n\tpot_total\x18\x05 \x01(\x03R\x08potTotal\x12$\n\x0e\x61mount_to_call\x18\x06 \x01(\x03R\x0c\x61mountToCall\x12\x37\n\taction_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08\x61\x63tionAt\"\xea\x01\n\x14\x42\x65ttingRoundComplete\x12?\n\x0f\x63ompleted_phase\x18\x01 \x01(\x0e\x32\x16.examples.BettingPhaseR\x0e\x63ompletedPhase\x12\x1b\n\tpot_total\x18\x02 \x01(\x03R\x08potTotal\x12\x35\n\x06stacks\x18\x03 \x03(\x0b\x32\x1d.examples.PlayerStackSnapshotR\x06stacks\x12=\n\x0c\x63ompleted_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ompletedAt\"\x87\x01\n\x13PlayerStackSnapshot\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x14\n\x05stack\x18\x02 \x01(\x03R\x05stack\x12\x1a\n\tis_all_in\x18\x03 \x01(\x08R\x07isAllIn\x12\x1d\n\nhas_folded\x18\x04 \x01(\x08R\thasFolded\"\xe0\x01\n\x13\x43ommunityCardsDealt\x12$\n\x05\x63\x61rds\x18\x01 \x03(\x0b\x32\x0e.examples.CardR\x05\x63\x61rds\x12,\n\x05phase\x18\x02 \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12>\n\x13\x61ll_community_cards\x18\x03 \x03(\x0b\x32\x0e.examples.CardR\x11\x61llCommunityCards\x12\x35\n\x08\x64\x65\x61lt_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x64\x65\x61ltAt\"\xde\x01\n\rDrawCompleted\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\'\n\x0f\x63\x61rds_discarded\x18\x02 \x01(\x05R\x0e\x63\x61rdsDiscarded\x12\x1f\n\x0b\x63\x61rds_drawn\x18\x03 \x01(\x05R\ncardsDrawn\x12+\n\tnew_cards\x18\x04 \x03(\x0b\x32\x0e.examples.CardR\x08newCards\x12\x35\n\x08\x64rawn_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x64rawnAt\"\xc4\x01\n\rCardsRevealed\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12$\n\x05\x63\x61rds\x18\x02 \x03(\x0b\x32\x0e.examples.CardR\x05\x63\x61rds\x12/\n\x07ranking\x18\x03 \x01(\x0b\x32\x15.examples.HandRankingR\x07ranking\x12;\n\x0brevealed_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nrevealedAt\"g\n\x0b\x43\x61rdsMucked\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x37\n\tmucked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08muckedAt\"t\n\x0fShowdownStarted\x12&\n\x0fplayers_to_show\x18\x01 \x03(\x0cR\rplayersToShow\x12\x39\n\nstarted_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tstartedAt\"v\n\nPotAwarded\x12-\n\x07winners\x18\x01 \x03(\x0b\x32\x13.examples.PotWinnerR\x07winners\x12\x39\n\nawarded_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tawardedAt\"\x99\x01\n\tPotWinner\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x19\n\x08pot_type\x18\x03 \x01(\tR\x07potType\x12\x38\n\x0cwinning_hand\x18\x04 \x01(\x0b\x32\x15.examples.HandRankingR\x0bwinningHand\"\xfe\x01\n\x0cHandComplete\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12-\n\x07winners\x18\x03 \x03(\x0b\x32\x13.examples.PotWinnerR\x07winners\x12@\n\x0c\x66inal_stacks\x18\x04 \x03(\x0b\x32\x1d.examples.PlayerStackSnapshotR\x0b\x66inalStacks\x12=\n\x0c\x63ompleted_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ompletedAt\"\xac\x01\n\x0ePlayerTimedOut\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12;\n\x0e\x64\x65\x66\x61ult_action\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\rdefaultAction\x12<\n\x0ctimed_out_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\ntimedOutAt\"\xb0\x05\n\tHandState\x12\x17\n\x07hand_id\x18\x01 \x01(\tR\x06handId\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x03 \x01(\x03R\nhandNumber\x12\x38\n\x0cgame_variant\x18\x04 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x35\n\x0eremaining_deck\x18\x05 \x03(\x0b\x32\x0e.examples.CardR\rremainingDeck\x12\x33\n\x07players\x18\x06 \x03(\x0b\x32\x19.examples.PlayerHandStateR\x07players\x12\x37\n\x0f\x63ommunity_cards\x18\x07 \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12;\n\rcurrent_phase\x18\x08 \x01(\x0e\x32\x16.examples.BettingPhaseR\x0c\x63urrentPhase\x12,\n\x12\x61\x63tion_on_position\x18\t \x01(\x05R\x10\x61\x63tionOnPosition\x12\x1f\n\x0b\x63urrent_bet\x18\n \x01(\x03R\ncurrentBet\x12\x1b\n\tmin_raise\x18\x0b \x01(\x03R\x08minRaise\x12!\n\x04pots\x18\x0c \x03(\x0b\x32\r.examples.PotR\x04pots\x12\'\n\x0f\x64\x65\x61ler_position\x18\r \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x30\n\x14small_blind_position\x18\x0e \x01(\x05R\x12smallBlindPosition\x12,\n\x12\x62ig_blind_position\x18\x0f \x01(\x05R\x10\x62igBlindPosition\x12\x16\n\x06status\x18\x10 \x01(\tR\x06status\"\xb8\x02\n\x0fPlayerHandState\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1a\n\x08position\x18\x02 \x01(\x05R\x08position\x12-\n\nhole_cards\x18\x03 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x14\n\x05stack\x18\x04 \x01(\x03R\x05stack\x12$\n\x0e\x62\x65t_this_round\x18\x05 \x01(\x03R\x0c\x62\x65tThisRound\x12%\n\x0etotal_invested\x18\x06 \x01(\x03R\rtotalInvested\x12\x1b\n\thas_acted\x18\x07 \x01(\x08R\x08hasActed\x12\x1d\n\nhas_folded\x18\x08 \x01(\x08R\thasFolded\x12\x1a\n\tis_all_in\x18\t \x01(\x08R\x07isAllInB\x84\x01\n\x0c\x63om.examplesB\tHandProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x13\x65xamples/hand.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1a\x65xamples/poker_types.proto"\xbb\x02\n\tDealCards\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12\x38\n\x0cgame_variant\x18\x03 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x30\n\x07players\x18\x04 \x03(\x0b\x32\x16.examples.PlayerInHandR\x07players\x12\'\n\x0f\x64\x65\x61ler_position\x18\x05 \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x1f\n\x0bsmall_blind\x18\x06 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x07 \x01(\x03R\x08\x62igBlind\x12\x1b\n\tdeck_seed\x18\x08 \x01(\x0cR\x08\x64\x65\x63kSeed"a\n\x0cPlayerInHand\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1a\n\x08position\x18\x02 \x01(\x05R\x08position\x12\x14\n\x05stack\x18\x03 \x01(\x03R\x05stack"c\n\tPostBlind\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1d\n\nblind_type\x18\x02 \x01(\tR\tblindType\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount"u\n\x0cPlayerAction\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12,\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\x06\x61\x63tion\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount"*\n\x12\x44\x65\x61lCommunityCards\x12\x14\n\x05\x63ount\x18\x01 \x01(\x05R\x05\x63ount"Q\n\x0bRequestDraw\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12!\n\x0c\x63\x61rd_indices\x18\x02 \x03(\x05R\x0b\x63\x61rdIndices"B\n\x0bRevealCards\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x12\n\x04muck\x18\x02 \x01(\x08R\x04muck"6\n\x08\x41wardPot\x12*\n\x06\x61wards\x18\x01 \x03(\x0b\x32\x12.examples.PotAwardR\x06\x61wards"^\n\x08PotAward\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x19\n\x08pot_type\x18\x03 \x01(\tR\x07potType"\x8d\x03\n\nCardsDealt\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12\x38\n\x0cgame_variant\x18\x03 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12<\n\x0cplayer_cards\x18\x04 \x03(\x0b\x32\x19.examples.PlayerHoleCardsR\x0bplayerCards\x12\'\n\x0f\x64\x65\x61ler_position\x18\x05 \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x30\n\x07players\x18\x06 \x03(\x0b\x32\x16.examples.PlayerInHandR\x07players\x12\x35\n\x08\x64\x65\x61lt_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x64\x65\x61ltAt\x12\x35\n\x0eremaining_deck\x18\x08 \x03(\x0b\x32\x0e.examples.CardR\rremainingDeck"X\n\x0fPlayerHoleCards\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12$\n\x05\x63\x61rds\x18\x02 \x03(\x0b\x32\x0e.examples.CardR\x05\x63\x61rds"\xde\x01\n\x0b\x42lindPosted\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1d\n\nblind_type\x18\x02 \x01(\tR\tblindType\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\x12!\n\x0cplayer_stack\x18\x04 \x01(\x03R\x0bplayerStack\x12\x1b\n\tpot_total\x18\x05 \x01(\x03R\x08potTotal\x12\x37\n\tposted_at\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08postedAt"\x93\x02\n\x0b\x41\x63tionTaken\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12,\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\x06\x61\x63tion\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\x12!\n\x0cplayer_stack\x18\x04 \x01(\x03R\x0bplayerStack\x12\x1b\n\tpot_total\x18\x05 \x01(\x03R\x08potTotal\x12$\n\x0e\x61mount_to_call\x18\x06 \x01(\x03R\x0c\x61mountToCall\x12\x37\n\taction_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08\x61\x63tionAt"\xea\x01\n\x14\x42\x65ttingRoundComplete\x12?\n\x0f\x63ompleted_phase\x18\x01 \x01(\x0e\x32\x16.examples.BettingPhaseR\x0e\x63ompletedPhase\x12\x1b\n\tpot_total\x18\x02 \x01(\x03R\x08potTotal\x12\x35\n\x06stacks\x18\x03 \x03(\x0b\x32\x1d.examples.PlayerStackSnapshotR\x06stacks\x12=\n\x0c\x63ompleted_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ompletedAt"\x87\x01\n\x13PlayerStackSnapshot\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x14\n\x05stack\x18\x02 \x01(\x03R\x05stack\x12\x1a\n\tis_all_in\x18\x03 \x01(\x08R\x07isAllIn\x12\x1d\n\nhas_folded\x18\x04 \x01(\x08R\thasFolded"\xe0\x01\n\x13\x43ommunityCardsDealt\x12$\n\x05\x63\x61rds\x18\x01 \x03(\x0b\x32\x0e.examples.CardR\x05\x63\x61rds\x12,\n\x05phase\x18\x02 \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12>\n\x13\x61ll_community_cards\x18\x03 \x03(\x0b\x32\x0e.examples.CardR\x11\x61llCommunityCards\x12\x35\n\x08\x64\x65\x61lt_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x64\x65\x61ltAt"\xde\x01\n\rDrawCompleted\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\'\n\x0f\x63\x61rds_discarded\x18\x02 \x01(\x05R\x0e\x63\x61rdsDiscarded\x12\x1f\n\x0b\x63\x61rds_drawn\x18\x03 \x01(\x05R\ncardsDrawn\x12+\n\tnew_cards\x18\x04 \x03(\x0b\x32\x0e.examples.CardR\x08newCards\x12\x35\n\x08\x64rawn_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x64rawnAt"\xc4\x01\n\rCardsRevealed\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12$\n\x05\x63\x61rds\x18\x02 \x03(\x0b\x32\x0e.examples.CardR\x05\x63\x61rds\x12/\n\x07ranking\x18\x03 \x01(\x0b\x32\x15.examples.HandRankingR\x07ranking\x12;\n\x0brevealed_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\nrevealedAt"g\n\x0b\x43\x61rdsMucked\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x37\n\tmucked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08muckedAt"t\n\x0fShowdownStarted\x12&\n\x0fplayers_to_show\x18\x01 \x03(\x0cR\rplayersToShow\x12\x39\n\nstarted_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tstartedAt"v\n\nPotAwarded\x12-\n\x07winners\x18\x01 \x03(\x0b\x32\x13.examples.PotWinnerR\x07winners\x12\x39\n\nawarded_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tawardedAt"\x99\x01\n\tPotWinner\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x19\n\x08pot_type\x18\x03 \x01(\tR\x07potType\x12\x38\n\x0cwinning_hand\x18\x04 \x01(\x0b\x32\x15.examples.HandRankingR\x0bwinningHand"\xfe\x01\n\x0cHandComplete\x12\x1d\n\ntable_root\x18\x01 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12-\n\x07winners\x18\x03 \x03(\x0b\x32\x13.examples.PotWinnerR\x07winners\x12@\n\x0c\x66inal_stacks\x18\x04 \x03(\x0b\x32\x1d.examples.PlayerStackSnapshotR\x0b\x66inalStacks\x12=\n\x0c\x63ompleted_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x0b\x63ompletedAt"\xac\x01\n\x0ePlayerTimedOut\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12;\n\x0e\x64\x65\x66\x61ult_action\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\rdefaultAction\x12<\n\x0ctimed_out_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\ntimedOutAt"\xb0\x05\n\tHandState\x12\x17\n\x07hand_id\x18\x01 \x01(\tR\x06handId\x12\x1d\n\ntable_root\x18\x02 \x01(\x0cR\ttableRoot\x12\x1f\n\x0bhand_number\x18\x03 \x01(\x03R\nhandNumber\x12\x38\n\x0cgame_variant\x18\x04 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x35\n\x0eremaining_deck\x18\x05 \x03(\x0b\x32\x0e.examples.CardR\rremainingDeck\x12\x33\n\x07players\x18\x06 \x03(\x0b\x32\x19.examples.PlayerHandStateR\x07players\x12\x37\n\x0f\x63ommunity_cards\x18\x07 \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12;\n\rcurrent_phase\x18\x08 \x01(\x0e\x32\x16.examples.BettingPhaseR\x0c\x63urrentPhase\x12,\n\x12\x61\x63tion_on_position\x18\t \x01(\x05R\x10\x61\x63tionOnPosition\x12\x1f\n\x0b\x63urrent_bet\x18\n \x01(\x03R\ncurrentBet\x12\x1b\n\tmin_raise\x18\x0b \x01(\x03R\x08minRaise\x12!\n\x04pots\x18\x0c \x03(\x0b\x32\r.examples.PotR\x04pots\x12\'\n\x0f\x64\x65\x61ler_position\x18\r \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x30\n\x14small_blind_position\x18\x0e \x01(\x05R\x12smallBlindPosition\x12,\n\x12\x62ig_blind_position\x18\x0f \x01(\x05R\x10\x62igBlindPosition\x12\x16\n\x06status\x18\x10 \x01(\tR\x06status"\xb8\x02\n\x0fPlayerHandState\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1a\n\x08position\x18\x02 \x01(\x05R\x08position\x12-\n\nhole_cards\x18\x03 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x14\n\x05stack\x18\x04 \x01(\x03R\x05stack\x12$\n\x0e\x62\x65t_this_round\x18\x05 \x01(\x03R\x0c\x62\x65tThisRound\x12%\n\x0etotal_invested\x18\x06 \x01(\x03R\rtotalInvested\x12\x1b\n\thas_acted\x18\x07 \x01(\x08R\x08hasActed\x12\x1d\n\nhas_folded\x18\x08 \x01(\x08R\thasFolded\x12\x1a\n\tis_all_in\x18\t \x01(\x08R\x07isAllInB\x84\x01\n\x0c\x63om.examplesB\tHandProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.hand_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "examples.hand_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\tHandProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
-  _globals['_DEALCARDS']._serialized_start=95
-  _globals['_DEALCARDS']._serialized_end=410
-  _globals['_PLAYERINHAND']._serialized_start=412
-  _globals['_PLAYERINHAND']._serialized_end=509
-  _globals['_POSTBLIND']._serialized_start=511
-  _globals['_POSTBLIND']._serialized_end=610
-  _globals['_PLAYERACTION']._serialized_start=612
-  _globals['_PLAYERACTION']._serialized_end=729
-  _globals['_DEALCOMMUNITYCARDS']._serialized_start=731
-  _globals['_DEALCOMMUNITYCARDS']._serialized_end=773
-  _globals['_REQUESTDRAW']._serialized_start=775
-  _globals['_REQUESTDRAW']._serialized_end=856
-  _globals['_REVEALCARDS']._serialized_start=858
-  _globals['_REVEALCARDS']._serialized_end=924
-  _globals['_AWARDPOT']._serialized_start=926
-  _globals['_AWARDPOT']._serialized_end=980
-  _globals['_POTAWARD']._serialized_start=982
-  _globals['_POTAWARD']._serialized_end=1076
-  _globals['_CARDSDEALT']._serialized_start=1079
-  _globals['_CARDSDEALT']._serialized_end=1476
-  _globals['_PLAYERHOLECARDS']._serialized_start=1478
-  _globals['_PLAYERHOLECARDS']._serialized_end=1566
-  _globals['_BLINDPOSTED']._serialized_start=1569
-  _globals['_BLINDPOSTED']._serialized_end=1791
-  _globals['_ACTIONTAKEN']._serialized_start=1794
-  _globals['_ACTIONTAKEN']._serialized_end=2069
-  _globals['_BETTINGROUNDCOMPLETE']._serialized_start=2072
-  _globals['_BETTINGROUNDCOMPLETE']._serialized_end=2306
-  _globals['_PLAYERSTACKSNAPSHOT']._serialized_start=2309
-  _globals['_PLAYERSTACKSNAPSHOT']._serialized_end=2444
-  _globals['_COMMUNITYCARDSDEALT']._serialized_start=2447
-  _globals['_COMMUNITYCARDSDEALT']._serialized_end=2671
-  _globals['_DRAWCOMPLETED']._serialized_start=2674
-  _globals['_DRAWCOMPLETED']._serialized_end=2896
-  _globals['_CARDSREVEALED']._serialized_start=2899
-  _globals['_CARDSREVEALED']._serialized_end=3095
-  _globals['_CARDSMUCKED']._serialized_start=3097
-  _globals['_CARDSMUCKED']._serialized_end=3200
-  _globals['_SHOWDOWNSTARTED']._serialized_start=3202
-  _globals['_SHOWDOWNSTARTED']._serialized_end=3318
-  _globals['_POTAWARDED']._serialized_start=3320
-  _globals['_POTAWARDED']._serialized_end=3438
-  _globals['_POTWINNER']._serialized_start=3441
-  _globals['_POTWINNER']._serialized_end=3594
-  _globals['_HANDCOMPLETE']._serialized_start=3597
-  _globals['_HANDCOMPLETE']._serialized_end=3851
-  _globals['_PLAYERTIMEDOUT']._serialized_start=3854
-  _globals['_PLAYERTIMEDOUT']._serialized_end=4026
-  _globals['_HANDSTATE']._serialized_start=4029
-  _globals['_HANDSTATE']._serialized_end=4717
-  _globals['_PLAYERHANDSTATE']._serialized_start=4720
-  _globals['_PLAYERHANDSTATE']._serialized_end=5032
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\014com.examplesB\tHandProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples"
+    _globals["_DEALCARDS"]._serialized_start = 95
+    _globals["_DEALCARDS"]._serialized_end = 410
+    _globals["_PLAYERINHAND"]._serialized_start = 412
+    _globals["_PLAYERINHAND"]._serialized_end = 509
+    _globals["_POSTBLIND"]._serialized_start = 511
+    _globals["_POSTBLIND"]._serialized_end = 610
+    _globals["_PLAYERACTION"]._serialized_start = 612
+    _globals["_PLAYERACTION"]._serialized_end = 729
+    _globals["_DEALCOMMUNITYCARDS"]._serialized_start = 731
+    _globals["_DEALCOMMUNITYCARDS"]._serialized_end = 773
+    _globals["_REQUESTDRAW"]._serialized_start = 775
+    _globals["_REQUESTDRAW"]._serialized_end = 856
+    _globals["_REVEALCARDS"]._serialized_start = 858
+    _globals["_REVEALCARDS"]._serialized_end = 924
+    _globals["_AWARDPOT"]._serialized_start = 926
+    _globals["_AWARDPOT"]._serialized_end = 980
+    _globals["_POTAWARD"]._serialized_start = 982
+    _globals["_POTAWARD"]._serialized_end = 1076
+    _globals["_CARDSDEALT"]._serialized_start = 1079
+    _globals["_CARDSDEALT"]._serialized_end = 1476
+    _globals["_PLAYERHOLECARDS"]._serialized_start = 1478
+    _globals["_PLAYERHOLECARDS"]._serialized_end = 1566
+    _globals["_BLINDPOSTED"]._serialized_start = 1569
+    _globals["_BLINDPOSTED"]._serialized_end = 1791
+    _globals["_ACTIONTAKEN"]._serialized_start = 1794
+    _globals["_ACTIONTAKEN"]._serialized_end = 2069
+    _globals["_BETTINGROUNDCOMPLETE"]._serialized_start = 2072
+    _globals["_BETTINGROUNDCOMPLETE"]._serialized_end = 2306
+    _globals["_PLAYERSTACKSNAPSHOT"]._serialized_start = 2309
+    _globals["_PLAYERSTACKSNAPSHOT"]._serialized_end = 2444
+    _globals["_COMMUNITYCARDSDEALT"]._serialized_start = 2447
+    _globals["_COMMUNITYCARDSDEALT"]._serialized_end = 2671
+    _globals["_DRAWCOMPLETED"]._serialized_start = 2674
+    _globals["_DRAWCOMPLETED"]._serialized_end = 2896
+    _globals["_CARDSREVEALED"]._serialized_start = 2899
+    _globals["_CARDSREVEALED"]._serialized_end = 3095
+    _globals["_CARDSMUCKED"]._serialized_start = 3097
+    _globals["_CARDSMUCKED"]._serialized_end = 3200
+    _globals["_SHOWDOWNSTARTED"]._serialized_start = 3202
+    _globals["_SHOWDOWNSTARTED"]._serialized_end = 3318
+    _globals["_POTAWARDED"]._serialized_start = 3320
+    _globals["_POTAWARDED"]._serialized_end = 3438
+    _globals["_POTWINNER"]._serialized_start = 3441
+    _globals["_POTWINNER"]._serialized_end = 3594
+    _globals["_HANDCOMPLETE"]._serialized_start = 3597
+    _globals["_HANDCOMPLETE"]._serialized_end = 3851
+    _globals["_PLAYERTIMEDOUT"]._serialized_start = 3854
+    _globals["_PLAYERTIMEDOUT"]._serialized_end = 4026
+    _globals["_HANDSTATE"]._serialized_start = 4029
+    _globals["_HANDSTATE"]._serialized_end = 4717
+    _globals["_PLAYERHANDSTATE"]._serialized_start = 4720
+    _globals["_PLAYERHANDSTATE"]._serialized_end = 5032
 # @@protoc_insertion_point(module_scope)

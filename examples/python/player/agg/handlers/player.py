@@ -49,7 +49,9 @@ class Player(Aggregate[_PlayerState]):
 
     # docs:start:state_appliers_oo
     @applies(player_proto.PlayerRegistered)
-    def apply_registered(self, state: _PlayerState, event: player_proto.PlayerRegistered):
+    def apply_registered(
+        self, state: _PlayerState, event: player_proto.PlayerRegistered
+    ):
         """Apply PlayerRegistered event to state."""
         state.player_id = f"player_{event.email}"
         state.display_name = event.display_name
@@ -90,10 +92,13 @@ class Player(Aggregate[_PlayerState]):
         state.table_reservations.pop(table_key, None)
 
     @applies(player_proto.FundsTransferred)
-    def apply_transferred(self, state: _PlayerState, event: player_proto.FundsTransferred):
+    def apply_transferred(
+        self, state: _PlayerState, event: player_proto.FundsTransferred
+    ):
         """Apply FundsTransferred event to state."""
         if event.new_balance:
             state.bankroll = event.new_balance.amount
+
     # docs:end:state_appliers_oo
 
     # --- State accessors ---
@@ -157,6 +162,7 @@ class Player(Aggregate[_PlayerState]):
     def _guard_deposit(state: _PlayerState) -> None:
         if not state.player_id:
             raise CommandRejectedError("Player does not exist")
+
     # docs:end:deposit_guard
 
     # docs:start:deposit_validate
@@ -166,6 +172,7 @@ class Player(Aggregate[_PlayerState]):
         if amount <= 0:
             raise CommandRejectedError("amount must be positive")
         return amount
+
     # docs:end:deposit_validate
 
     # docs:start:deposit_compute
@@ -179,10 +186,13 @@ class Player(Aggregate[_PlayerState]):
             new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
             deposited_at=now(),
         )
+
     # docs:end:deposit_compute
 
     @handles(player_proto.RegisterPlayer)
-    def register(self, cmd: player_proto.RegisterPlayer) -> player_proto.PlayerRegistered:
+    def register(
+        self, cmd: player_proto.RegisterPlayer
+    ) -> player_proto.PlayerRegistered:
         """Register a new player."""
         if self.exists:
             raise CommandRejectedError("Player already exists")
@@ -257,6 +267,7 @@ class Player(Aggregate[_PlayerState]):
             ),
             reserved_at=now(),
         )
+
     # docs:end:reserve_funds_oo
 
     @handles(player_proto.ReleaseFunds)
@@ -273,7 +284,9 @@ class Player(Aggregate[_PlayerState]):
         new_reserved = self.reserved_funds - reserved_for_table
         new_available = self.bankroll - new_reserved
         return player_proto.FundsReleased(
-            amount=poker_types.Currency(amount=reserved_for_table, currency_code="CHIPS"),
+            amount=poker_types.Currency(
+                amount=reserved_for_table, currency_code="CHIPS"
+            ),
             table_root=cmd.table_root,
             new_available_balance=poker_types.Currency(
                 amount=new_available, currency_code="CHIPS"
@@ -283,6 +296,7 @@ class Player(Aggregate[_PlayerState]):
             ),
             released_at=now(),
         )
+
     # docs:end:annotation_handlers
 
     # --- Saga/PM Compensation ---

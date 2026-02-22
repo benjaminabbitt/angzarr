@@ -98,7 +98,13 @@ from .identity import (
     to_proto_bytes,
 )
 from .event_packing import pack_event, pack_events, new_event_book, new_event_book_multi
-from .state_builder import StateBuilder, StateRouter, StateApplier, SnapshotLoader, StateFactory
+from .state_builder import (
+    StateBuilder,
+    StateRouter,
+    StateApplier,
+    SnapshotLoader,
+    StateFactory,
+)
 from .aggregate import Aggregate, handles, applies
 from .saga import Saga
 from .process_manager import ProcessManager

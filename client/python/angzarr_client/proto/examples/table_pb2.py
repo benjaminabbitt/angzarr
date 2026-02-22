@@ -4,18 +4,15 @@
 # source: examples/table.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'examples/table.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "examples/table.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -23,57 +20,63 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from angzarr_client.proto.examples import poker_types_pb2 as examples_dot_poker__types__pb2
+from angzarr_client.proto.examples import (
+    poker_types_pb2 as examples_dot_poker__types__pb2,
+)
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x65xamples/table.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1a\x65xamples/poker_types.proto\"\xb7\x02\n\x0b\x43reateTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x38\n\x0cgame_variant\x18\x02 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x03 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x04 \x01(\x03R\x08\x62igBlind\x12\x1c\n\nmin_buy_in\x18\x05 \x01(\x03R\x08minBuyIn\x12\x1c\n\nmax_buy_in\x18\x06 \x01(\x03R\x08maxBuyIn\x12\x1f\n\x0bmax_players\x18\x07 \x01(\x05R\nmaxPlayers\x12\x34\n\x16\x61\x63tion_timeout_seconds\x18\x08 \x01(\x05R\x14\x61\x63tionTimeoutSeconds\"w\n\tJoinTable\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12%\n\x0epreferred_seat\x18\x02 \x01(\x05R\rpreferredSeat\x12\"\n\rbuy_in_amount\x18\x03 \x01(\x03R\x0b\x62uyInAmount\"-\n\nLeaveTable\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\")\n\x06SitOut\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\"(\n\x05SitIn\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\"\x0b\n\tStartHand\"U\n\x07\x45ndHand\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12-\n\x07results\x18\x02 \x03(\x0b\x32\x13.examples.PotResultR\x07results\"\x99\x01\n\tPotResult\x12\x1f\n\x0bwinner_root\x18\x01 \x01(\x0cR\nwinnerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x19\n\x08pot_type\x18\x03 \x01(\tR\x07potType\x12\x38\n\x0cwinning_hand\x18\x04 \x01(\x0b\x32\x15.examples.HandRankingR\x0bwinningHand\"C\n\x08\x41\x64\x64\x43hips\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\"\xf3\x02\n\x0cTableCreated\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x38\n\x0cgame_variant\x18\x02 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x03 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x04 \x01(\x03R\x08\x62igBlind\x12\x1c\n\nmin_buy_in\x18\x05 \x01(\x03R\x08minBuyIn\x12\x1c\n\nmax_buy_in\x18\x06 \x01(\x03R\x08maxBuyIn\x12\x1f\n\x0bmax_players\x18\x07 \x01(\x05R\nmaxPlayers\x12\x34\n\x16\x61\x63tion_timeout_seconds\x18\x08 \x01(\x05R\x14\x61\x63tionTimeoutSeconds\x12\x39\n\ncreated_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\"\xc7\x01\n\x0cPlayerJoined\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12#\n\rseat_position\x18\x02 \x01(\x05R\x0cseatPosition\x12\"\n\rbuy_in_amount\x18\x03 \x01(\x03R\x0b\x62uyInAmount\x12\x14\n\x05stack\x18\x04 \x01(\x03R\x05stack\x12\x37\n\tjoined_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08joinedAt\"\xb1\x01\n\nPlayerLeft\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12#\n\rseat_position\x18\x02 \x01(\x05R\x0cseatPosition\x12(\n\x10\x63hips_cashed_out\x18\x03 \x01(\x03R\x0e\x63hipsCashedOut\x12\x33\n\x07left_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x06leftAt\"i\n\x0cPlayerSatOut\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x38\n\nsat_out_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08satOutAt\"f\n\x0bPlayerSatIn\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x36\n\tsat_in_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07satInAt\"\xc6\x03\n\x0bHandStarted\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12\'\n\x0f\x64\x65\x61ler_position\x18\x03 \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x30\n\x14small_blind_position\x18\x04 \x01(\x05R\x12smallBlindPosition\x12,\n\x12\x62ig_blind_position\x18\x05 \x01(\x05R\x10\x62igBlindPosition\x12=\n\x0e\x61\x63tive_players\x18\x06 \x03(\x0b\x32\x16.examples.SeatSnapshotR\ractivePlayers\x12\x38\n\x0cgame_variant\x18\x07 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x08 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\t \x01(\x03R\x08\x62igBlind\x12\x39\n\nstarted_at\x18\n \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tstartedAt\"a\n\x0cSeatSnapshot\x12\x1a\n\x08position\x18\x01 \x01(\x05R\x08position\x12\x1f\n\x0bplayer_root\x18\x02 \x01(\x0cR\nplayerRoot\x12\x14\n\x05stack\x18\x03 \x01(\x03R\x05stack\"\x9b\x02\n\tHandEnded\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12-\n\x07results\x18\x02 \x03(\x0b\x32\x13.examples.PotResultR\x07results\x12J\n\rstack_changes\x18\x03 \x03(\x0b\x32%.examples.HandEnded.StackChangesEntryR\x0cstackChanges\x12\x35\n\x08\x65nded_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x65ndedAt\x1a?\n\x11StackChangesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value:\x02\x38\x01\"\x99\x01\n\nChipsAdded\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x1b\n\tnew_stack\x18\x03 \x01(\x03R\x08newStack\x12\x35\n\x08\x61\x64\x64\x65\x64_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x61\x64\x64\x65\x64\x41t\"\x83\x04\n\nTableState\x12\x19\n\x08table_id\x18\x01 \x01(\tR\x07tableId\x12\x1d\n\ntable_name\x18\x02 \x01(\tR\ttableName\x12\x38\n\x0cgame_variant\x18\x03 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x04 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x05 \x01(\x03R\x08\x62igBlind\x12\x1c\n\nmin_buy_in\x18\x06 \x01(\x03R\x08minBuyIn\x12\x1c\n\nmax_buy_in\x18\x07 \x01(\x03R\x08maxBuyIn\x12\x1f\n\x0bmax_players\x18\x08 \x01(\x05R\nmaxPlayers\x12\x34\n\x16\x61\x63tion_timeout_seconds\x18\t \x01(\x05R\x14\x61\x63tionTimeoutSeconds\x12$\n\x05seats\x18\n \x03(\x0b\x32\x0e.examples.SeatR\x05seats\x12\'\n\x0f\x64\x65\x61ler_position\x18\x0b \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x1d\n\nhand_count\x18\x0c \x01(\x03R\thandCount\x12*\n\x11\x63urrent_hand_root\x18\r \x01(\x0cR\x0f\x63urrentHandRoot\x12\x16\n\x06status\x18\x0e \x01(\tR\x06statusB\x85\x01\n\x0c\x63om.examplesB\nTableProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x14\x65xamples/table.proto\x12\x08\x65xamples\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1a\x65xamples/poker_types.proto"\xb7\x02\n\x0b\x43reateTable\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x38\n\x0cgame_variant\x18\x02 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x03 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x04 \x01(\x03R\x08\x62igBlind\x12\x1c\n\nmin_buy_in\x18\x05 \x01(\x03R\x08minBuyIn\x12\x1c\n\nmax_buy_in\x18\x06 \x01(\x03R\x08maxBuyIn\x12\x1f\n\x0bmax_players\x18\x07 \x01(\x05R\nmaxPlayers\x12\x34\n\x16\x61\x63tion_timeout_seconds\x18\x08 \x01(\x05R\x14\x61\x63tionTimeoutSeconds"w\n\tJoinTable\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12%\n\x0epreferred_seat\x18\x02 \x01(\x05R\rpreferredSeat\x12"\n\rbuy_in_amount\x18\x03 \x01(\x03R\x0b\x62uyInAmount"-\n\nLeaveTable\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot")\n\x06SitOut\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot"(\n\x05SitIn\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot"\x0b\n\tStartHand"U\n\x07\x45ndHand\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12-\n\x07results\x18\x02 \x03(\x0b\x32\x13.examples.PotResultR\x07results"\x99\x01\n\tPotResult\x12\x1f\n\x0bwinner_root\x18\x01 \x01(\x0cR\nwinnerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x19\n\x08pot_type\x18\x03 \x01(\tR\x07potType\x12\x38\n\x0cwinning_hand\x18\x04 \x01(\x0b\x32\x15.examples.HandRankingR\x0bwinningHand"C\n\x08\x41\x64\x64\x43hips\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount"\xf3\x02\n\x0cTableCreated\x12\x1d\n\ntable_name\x18\x01 \x01(\tR\ttableName\x12\x38\n\x0cgame_variant\x18\x02 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x03 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x04 \x01(\x03R\x08\x62igBlind\x12\x1c\n\nmin_buy_in\x18\x05 \x01(\x03R\x08minBuyIn\x12\x1c\n\nmax_buy_in\x18\x06 \x01(\x03R\x08maxBuyIn\x12\x1f\n\x0bmax_players\x18\x07 \x01(\x05R\nmaxPlayers\x12\x34\n\x16\x61\x63tion_timeout_seconds\x18\x08 \x01(\x05R\x14\x61\x63tionTimeoutSeconds\x12\x39\n\ncreated_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt"\xc7\x01\n\x0cPlayerJoined\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12#\n\rseat_position\x18\x02 \x01(\x05R\x0cseatPosition\x12"\n\rbuy_in_amount\x18\x03 \x01(\x03R\x0b\x62uyInAmount\x12\x14\n\x05stack\x18\x04 \x01(\x03R\x05stack\x12\x37\n\tjoined_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08joinedAt"\xb1\x01\n\nPlayerLeft\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12#\n\rseat_position\x18\x02 \x01(\x05R\x0cseatPosition\x12(\n\x10\x63hips_cashed_out\x18\x03 \x01(\x03R\x0e\x63hipsCashedOut\x12\x33\n\x07left_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x06leftAt"i\n\x0cPlayerSatOut\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x38\n\nsat_out_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08satOutAt"f\n\x0bPlayerSatIn\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x36\n\tsat_in_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07satInAt"\xc6\x03\n\x0bHandStarted\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12\x1f\n\x0bhand_number\x18\x02 \x01(\x03R\nhandNumber\x12\'\n\x0f\x64\x65\x61ler_position\x18\x03 \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x30\n\x14small_blind_position\x18\x04 \x01(\x05R\x12smallBlindPosition\x12,\n\x12\x62ig_blind_position\x18\x05 \x01(\x05R\x10\x62igBlindPosition\x12=\n\x0e\x61\x63tive_players\x18\x06 \x03(\x0b\x32\x16.examples.SeatSnapshotR\ractivePlayers\x12\x38\n\x0cgame_variant\x18\x07 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x08 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\t \x01(\x03R\x08\x62igBlind\x12\x39\n\nstarted_at\x18\n \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tstartedAt"a\n\x0cSeatSnapshot\x12\x1a\n\x08position\x18\x01 \x01(\x05R\x08position\x12\x1f\n\x0bplayer_root\x18\x02 \x01(\x0cR\nplayerRoot\x12\x14\n\x05stack\x18\x03 \x01(\x03R\x05stack"\x9b\x02\n\tHandEnded\x12\x1b\n\thand_root\x18\x01 \x01(\x0cR\x08handRoot\x12-\n\x07results\x18\x02 \x03(\x0b\x32\x13.examples.PotResultR\x07results\x12J\n\rstack_changes\x18\x03 \x03(\x0b\x32%.examples.HandEnded.StackChangesEntryR\x0cstackChanges\x12\x35\n\x08\x65nded_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x65ndedAt\x1a?\n\x11StackChangesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value:\x02\x38\x01"\x99\x01\n\nChipsAdded\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12\x1b\n\tnew_stack\x18\x03 \x01(\x03R\x08newStack\x12\x35\n\x08\x61\x64\x64\x65\x64_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x07\x61\x64\x64\x65\x64\x41t"\x83\x04\n\nTableState\x12\x19\n\x08table_id\x18\x01 \x01(\tR\x07tableId\x12\x1d\n\ntable_name\x18\x02 \x01(\tR\ttableName\x12\x38\n\x0cgame_variant\x18\x03 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12\x1f\n\x0bsmall_blind\x18\x04 \x01(\x03R\nsmallBlind\x12\x1b\n\tbig_blind\x18\x05 \x01(\x03R\x08\x62igBlind\x12\x1c\n\nmin_buy_in\x18\x06 \x01(\x03R\x08minBuyIn\x12\x1c\n\nmax_buy_in\x18\x07 \x01(\x03R\x08maxBuyIn\x12\x1f\n\x0bmax_players\x18\x08 \x01(\x05R\nmaxPlayers\x12\x34\n\x16\x61\x63tion_timeout_seconds\x18\t \x01(\x05R\x14\x61\x63tionTimeoutSeconds\x12$\n\x05seats\x18\n \x03(\x0b\x32\x0e.examples.SeatR\x05seats\x12\'\n\x0f\x64\x65\x61ler_position\x18\x0b \x01(\x05R\x0e\x64\x65\x61lerPosition\x12\x1d\n\nhand_count\x18\x0c \x01(\x03R\thandCount\x12*\n\x11\x63urrent_hand_root\x18\r \x01(\x0cR\x0f\x63urrentHandRoot\x12\x16\n\x06status\x18\x0e \x01(\tR\x06statusB\x85\x01\n\x0c\x63om.examplesB\nTableProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.table_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "examples.table_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\nTableProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
-  _globals['_HANDENDED_STACKCHANGESENTRY']._loaded_options = None
-  _globals['_HANDENDED_STACKCHANGESENTRY']._serialized_options = b'8\001'
-  _globals['_CREATETABLE']._serialized_start=96
-  _globals['_CREATETABLE']._serialized_end=407
-  _globals['_JOINTABLE']._serialized_start=409
-  _globals['_JOINTABLE']._serialized_end=528
-  _globals['_LEAVETABLE']._serialized_start=530
-  _globals['_LEAVETABLE']._serialized_end=575
-  _globals['_SITOUT']._serialized_start=577
-  _globals['_SITOUT']._serialized_end=618
-  _globals['_SITIN']._serialized_start=620
-  _globals['_SITIN']._serialized_end=660
-  _globals['_STARTHAND']._serialized_start=662
-  _globals['_STARTHAND']._serialized_end=673
-  _globals['_ENDHAND']._serialized_start=675
-  _globals['_ENDHAND']._serialized_end=760
-  _globals['_POTRESULT']._serialized_start=763
-  _globals['_POTRESULT']._serialized_end=916
-  _globals['_ADDCHIPS']._serialized_start=918
-  _globals['_ADDCHIPS']._serialized_end=985
-  _globals['_TABLECREATED']._serialized_start=988
-  _globals['_TABLECREATED']._serialized_end=1359
-  _globals['_PLAYERJOINED']._serialized_start=1362
-  _globals['_PLAYERJOINED']._serialized_end=1561
-  _globals['_PLAYERLEFT']._serialized_start=1564
-  _globals['_PLAYERLEFT']._serialized_end=1741
-  _globals['_PLAYERSATOUT']._serialized_start=1743
-  _globals['_PLAYERSATOUT']._serialized_end=1848
-  _globals['_PLAYERSATIN']._serialized_start=1850
-  _globals['_PLAYERSATIN']._serialized_end=1952
-  _globals['_HANDSTARTED']._serialized_start=1955
-  _globals['_HANDSTARTED']._serialized_end=2409
-  _globals['_SEATSNAPSHOT']._serialized_start=2411
-  _globals['_SEATSNAPSHOT']._serialized_end=2508
-  _globals['_HANDENDED']._serialized_start=2511
-  _globals['_HANDENDED']._serialized_end=2794
-  _globals['_HANDENDED_STACKCHANGESENTRY']._serialized_start=2731
-  _globals['_HANDENDED_STACKCHANGESENTRY']._serialized_end=2794
-  _globals['_CHIPSADDED']._serialized_start=2797
-  _globals['_CHIPSADDED']._serialized_end=2950
-  _globals['_TABLESTATE']._serialized_start=2953
-  _globals['_TABLESTATE']._serialized_end=3468
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\014com.examplesB\nTableProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples"
+    _globals["_HANDENDED_STACKCHANGESENTRY"]._loaded_options = None
+    _globals["_HANDENDED_STACKCHANGESENTRY"]._serialized_options = b"8\001"
+    _globals["_CREATETABLE"]._serialized_start = 96
+    _globals["_CREATETABLE"]._serialized_end = 407
+    _globals["_JOINTABLE"]._serialized_start = 409
+    _globals["_JOINTABLE"]._serialized_end = 528
+    _globals["_LEAVETABLE"]._serialized_start = 530
+    _globals["_LEAVETABLE"]._serialized_end = 575
+    _globals["_SITOUT"]._serialized_start = 577
+    _globals["_SITOUT"]._serialized_end = 618
+    _globals["_SITIN"]._serialized_start = 620
+    _globals["_SITIN"]._serialized_end = 660
+    _globals["_STARTHAND"]._serialized_start = 662
+    _globals["_STARTHAND"]._serialized_end = 673
+    _globals["_ENDHAND"]._serialized_start = 675
+    _globals["_ENDHAND"]._serialized_end = 760
+    _globals["_POTRESULT"]._serialized_start = 763
+    _globals["_POTRESULT"]._serialized_end = 916
+    _globals["_ADDCHIPS"]._serialized_start = 918
+    _globals["_ADDCHIPS"]._serialized_end = 985
+    _globals["_TABLECREATED"]._serialized_start = 988
+    _globals["_TABLECREATED"]._serialized_end = 1359
+    _globals["_PLAYERJOINED"]._serialized_start = 1362
+    _globals["_PLAYERJOINED"]._serialized_end = 1561
+    _globals["_PLAYERLEFT"]._serialized_start = 1564
+    _globals["_PLAYERLEFT"]._serialized_end = 1741
+    _globals["_PLAYERSATOUT"]._serialized_start = 1743
+    _globals["_PLAYERSATOUT"]._serialized_end = 1848
+    _globals["_PLAYERSATIN"]._serialized_start = 1850
+    _globals["_PLAYERSATIN"]._serialized_end = 1952
+    _globals["_HANDSTARTED"]._serialized_start = 1955
+    _globals["_HANDSTARTED"]._serialized_end = 2409
+    _globals["_SEATSNAPSHOT"]._serialized_start = 2411
+    _globals["_SEATSNAPSHOT"]._serialized_end = 2508
+    _globals["_HANDENDED"]._serialized_start = 2511
+    _globals["_HANDENDED"]._serialized_end = 2794
+    _globals["_HANDENDED_STACKCHANGESENTRY"]._serialized_start = 2731
+    _globals["_HANDENDED_STACKCHANGESENTRY"]._serialized_end = 2794
+    _globals["_CHIPSADDED"]._serialized_start = 2797
+    _globals["_CHIPSADDED"]._serialized_end = 2950
+    _globals["_TABLESTATE"]._serialized_start = 2953
+    _globals["_TABLESTATE"]._serialized_end = 3468
 # @@protoc_insertion_point(module_scope)

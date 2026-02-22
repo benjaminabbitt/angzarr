@@ -47,7 +47,9 @@ class ProcessManagerHandler(process_manager_pb2_grpc.ProcessManagerServiceServic
     """
 
     def __init__(self, name_or_class: Union[str, type[ProcessManager]]) -> None:
-        if isinstance(name_or_class, type) and issubclass(name_or_class, ProcessManager):
+        if isinstance(name_or_class, type) and issubclass(
+            name_or_class, ProcessManager
+        ):
             # OO pattern: ProcessManager class
             self._pm_class = name_or_class
             self._name = name_or_class.name

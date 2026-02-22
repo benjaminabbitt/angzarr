@@ -4,18 +4,15 @@
 # source: angzarr/types.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'angzarr/types.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "angzarr/types.proto"
 )
 # @@protoc_insertion_point(imports)
 
@@ -26,84 +23,88 @@ from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13\x61ngzarr/types.proto\x12\x07\x61ngzarr\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n\x04UUID\x12\x14\n\x05value\x18\x01 \x01(\x0cR\x05value\"\x95\x01\n\x05\x43over\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x01 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\x12%\n\x0e\x63orrelation_id\x18\x03 \x01(\tR\rcorrelationId\x12*\n\x07\x65\x64ition\x18\x04 \x01(\x0b\x32\x10.angzarr.EditionR\x07\x65\x64ition\"Z\n\x07\x45\x64ition\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12;\n\x0b\x64ivergences\x18\x02 \x03(\x0b\x32\x19.angzarr.DomainDivergenceR\x0b\x64ivergences\"F\n\x10\x44omainDivergence\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\"\xe5\x01\n\x10PayloadReference\x12>\n\x0cstorage_type\x18\x01 \x01(\x0e\x32\x1b.angzarr.PayloadStorageTypeR\x0bstorageType\x12\x10\n\x03uri\x18\x02 \x01(\tR\x03uri\x12!\n\x0c\x63ontent_hash\x18\x03 \x01(\x0cR\x0b\x63ontentHash\x12#\n\roriginal_size\x18\x04 \x01(\x04R\x0coriginalSize\x12\x37\n\tstored_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08storedAt\"\xd4\x01\n\tEventPage\x12\x1a\n\x08sequence\x18\x01 \x01(\rR\x08sequence\x12\x39\n\ncreated_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12,\n\x05\x65vent\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00R\x05\x65vent\x12\x37\n\x08\x65xternal\x18\x04 \x01(\x0b\x32\x19.angzarr.PayloadReferenceH\x00R\x08\x65xternalB\t\n\x07payload\"\x8c\x01\n\x08Snapshot\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\x12*\n\x05state\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05state\x12\x38\n\tretention\x18\x04 \x01(\x0e\x32\x1a.angzarr.SnapshotRetentionR\tretention\"\xaf\x01\n\tEventBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12-\n\x08snapshot\x18\x02 \x01(\x0b\x32\x11.angzarr.SnapshotR\x08snapshot\x12(\n\x05pages\x18\x03 \x03(\x0b\x32\x12.angzarr.EventPageR\x05pages\x12#\n\rnext_sequence\x18\x06 \x01(\rR\x0cnextSequence\"k\n\rSyncEventBook\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"\xa2\x01\n\nProjection\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12\x1c\n\tprojector\x18\x02 \x01(\tR\tprojector\x12\x1a\n\x08sequence\x18\x03 \x01(\rR\x08sequence\x12\x34\n\nprojection\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyR\nprojection\"\xde\x01\n\x0b\x43ommandPage\x12\x1a\n\x08sequence\x18\x01 \x01(\rR\x08sequence\x12=\n\x0emerge_strategy\x18\x02 \x01(\x0e\x32\x16.angzarr.MergeStrategyR\rmergeStrategy\x12\x30\n\x07\x63ommand\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00R\x07\x63ommand\x12\x37\n\x08\x65xternal\x18\x04 \x01(\x0b\x32\x19.angzarr.PayloadReferenceH\x00R\x08\x65xternalB\t\n\x07payload\"\x9c\x01\n\x0b\x43ommandBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12*\n\x05pages\x18\x02 \x03(\x0b\x32\x14.angzarr.CommandPageR\x05pages\x12;\n\x0bsaga_origin\x18\x04 \x01(\x0b\x32\x1a.angzarr.SagaCommandOriginR\nsagaOrigin\"q\n\x0fSyncCommandBook\x12.\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"o\n\x11\x43ontextualCommand\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\x07\x63ommand\x18\x02 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\"}\n\x15SyncContextualCommand\x12\x34\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x1a.angzarr.ContextualCommandR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode\"J\n\rSequenceRange\x12\x14\n\x05lower\x18\x01 \x01(\rR\x05lower\x12\x19\n\x05upper\x18\x02 \x01(\rH\x00R\x05upper\x88\x01\x01\x42\x08\n\x06_upper\"%\n\x0bSequenceSet\x12\x16\n\x06values\x18\x01 \x03(\rR\x06values\"\x84\x01\n\rTemporalQuery\x12:\n\nas_of_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00R\x08\x61sOfTime\x12&\n\x0e\x61s_of_sequence\x18\x02 \x01(\rH\x00R\x0c\x61sOfSequenceB\x0f\n\rpoint_in_time\"\xd6\x01\n\x05Query\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12.\n\x05range\x18\x03 \x01(\x0b\x32\x16.angzarr.SequenceRangeH\x00R\x05range\x12\x34\n\tsequences\x18\x04 \x01(\x0b\x32\x14.angzarr.SequenceSetH\x00R\tsequences\x12\x34\n\x08temporal\x18\x05 \x01(\x0b\x32\x16.angzarr.TemporalQueryH\x00R\x08temporalB\x0b\n\tselection\"J\n\rAggregateRoot\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x02 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\":\n\x11\x45ventStreamFilter\x12%\n\x0e\x63orrelation_id\x18\x01 \x01(\tR\rcorrelationId\"\xaf\x01\n\x11SagaCommandOrigin\x12\x1b\n\tsaga_name\x18\x01 \x01(\tR\x08sagaName\x12\x41\n\x14triggering_aggregate\x18\x02 \x01(\x0b\x32\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence\"\x97\x02\n\x0cNotification\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12.\n\x07payload\x18\x02 \x01(\x0b\x32\x14.google.protobuf.AnyR\x07payload\x12\x33\n\x07sent_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x06sentAt\x12?\n\x08metadata\x18\x04 \x03(\x0b\x32#.angzarr.Notification.MetadataEntryR\x08metadata\x1a;\n\rMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\"\xb4\x02\n\x15RejectionNotification\x12?\n\x10rejected_command\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x0frejectedCommand\x12)\n\x10rejection_reason\x18\x02 \x01(\tR\x0frejectionReason\x12\x1f\n\x0bissuer_name\x18\x03 \x01(\tR\nissuerName\x12\x1f\n\x0bissuer_type\x18\x04 \x01(\tR\nissuerType\x12\x39\n\x10source_aggregate\x18\x05 \x01(\x0b\x32\x0e.angzarr.CoverR\x0fsourceAggregate\x12\x32\n\x15source_event_sequence\x18\x06 \x01(\rR\x13sourceEventSequence\"\xae\x01\n\x17SequenceMismatchDetails\x12+\n\x11\x65xpected_sequence\x18\x01 \x01(\rR\x10\x65xpectedSequence\x12\'\n\x0f\x61\x63tual_sequence\x18\x02 \x01(\rR\x0e\x61\x63tualSequence\x12=\n\x0emerge_strategy\x18\x03 \x01(\x0e\x32\x16.angzarr.MergeStrategyR\rmergeStrategy\"x\n\x1c\x45ventProcessingFailedDetails\x12\x14\n\x05\x65rror\x18\x01 \x01(\tR\x05\x65rror\x12\x1f\n\x0bretry_count\x18\x02 \x01(\rR\nretryCount\x12!\n\x0cis_transient\x18\x03 \x01(\x08R\x0bisTransient\"\xcf\x01\n\x1dPayloadRetrievalFailedDetails\x12>\n\x0cstorage_type\x18\x01 \x01(\x0e\x32\x1b.angzarr.PayloadStorageTypeR\x0bstorageType\x12\x10\n\x03uri\x18\x02 \x01(\tR\x03uri\x12!\n\x0c\x63ontent_hash\x18\x03 \x01(\x0cR\x0b\x63ontentHash\x12#\n\roriginal_size\x18\x04 \x01(\x04R\x0coriginalSize\x12\x14\n\x05\x65rror\x18\x05 \x01(\tR\x05\x65rror\"\xbb\x06\n\x11\x41ngzarrDeadLetter\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12\x41\n\x10rejected_command\x18\x02 \x01(\x0b\x32\x14.angzarr.CommandBookH\x00R\x0frejectedCommand\x12=\n\x0frejected_events\x18\t \x01(\x0b\x32\x12.angzarr.EventBookH\x00R\x0erejectedEvents\x12)\n\x10rejection_reason\x18\x03 \x01(\tR\x0frejectionReason\x12O\n\x11sequence_mismatch\x18\x0c \x01(\x0b\x32 .angzarr.SequenceMismatchDetailsH\x01R\x10sequenceMismatch\x12_\n\x17\x65vent_processing_failed\x18\r \x01(\x0b\x32%.angzarr.EventProcessingFailedDetailsH\x01R\x15\x65ventProcessingFailed\x12\x62\n\x18payload_retrieval_failed\x18\x0e \x01(\x0b\x32&.angzarr.PayloadRetrievalFailedDetailsH\x01R\x16payloadRetrievalFailed\x12;\n\x0boccurred_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAt\x12\x44\n\x08metadata\x18\x08 \x03(\x0b\x32(.angzarr.AngzarrDeadLetter.MetadataEntryR\x08metadata\x12)\n\x10source_component\x18\n \x01(\tR\x0fsourceComponent\x12\x32\n\x15source_component_type\x18\x0b \x01(\tR\x13sourceComponentType\x1a;\n\rMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\t\n\x07payloadB\x13\n\x11rejection_details*R\n\x08SyncMode\x12\x19\n\x15SYNC_MODE_UNSPECIFIED\x10\x00\x12\x14\n\x10SYNC_MODE_SIMPLE\x10\x01\x12\x15\n\x11SYNC_MODE_CASCADE\x10\x02*g\n\rMergeStrategy\x12\x15\n\x11MERGE_COMMUTATIVE\x10\x00\x12\x10\n\x0cMERGE_STRICT\x10\x01\x12\x1b\n\x17MERGE_AGGREGATE_HANDLES\x10\x02\x12\x10\n\x0cMERGE_MANUAL\x10\x03*Z\n\x11SnapshotRetention\x12\x15\n\x11RETENTION_DEFAULT\x10\x00\x12\x15\n\x11RETENTION_PERSIST\x10\x01\x12\x17\n\x13RETENTION_TRANSIENT\x10\x02*\x9a\x01\n\x12PayloadStorageType\x12$\n PAYLOAD_STORAGE_TYPE_UNSPECIFIED\x10\x00\x12#\n\x1fPAYLOAD_STORAGE_TYPE_FILESYSTEM\x10\x01\x12\x1c\n\x18PAYLOAD_STORAGE_TYPE_GCS\x10\x02\x12\x1b\n\x17PAYLOAD_STORAGE_TYPE_S3\x10\x03\x42\x7f\n\x0b\x63om.angzarrB\nTypesProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x13\x61ngzarr/types.proto\x12\x07\x61ngzarr\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\x1c\n\x04UUID\x12\x14\n\x05value\x18\x01 \x01(\x0cR\x05value"\x95\x01\n\x05\x43over\x12\x16\n\x06\x64omain\x18\x02 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x01 \x01(\x0b\x32\r.angzarr.UUIDR\x04root\x12%\n\x0e\x63orrelation_id\x18\x03 \x01(\tR\rcorrelationId\x12*\n\x07\x65\x64ition\x18\x04 \x01(\x0b\x32\x10.angzarr.EditionR\x07\x65\x64ition"Z\n\x07\x45\x64ition\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12;\n\x0b\x64ivergences\x18\x02 \x03(\x0b\x32\x19.angzarr.DomainDivergenceR\x0b\x64ivergences"F\n\x10\x44omainDivergence\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence"\xe5\x01\n\x10PayloadReference\x12>\n\x0cstorage_type\x18\x01 \x01(\x0e\x32\x1b.angzarr.PayloadStorageTypeR\x0bstorageType\x12\x10\n\x03uri\x18\x02 \x01(\tR\x03uri\x12!\n\x0c\x63ontent_hash\x18\x03 \x01(\x0cR\x0b\x63ontentHash\x12#\n\roriginal_size\x18\x04 \x01(\x04R\x0coriginalSize\x12\x37\n\tstored_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x08storedAt"\xd4\x01\n\tEventPage\x12\x1a\n\x08sequence\x18\x01 \x01(\rR\x08sequence\x12\x39\n\ncreated_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\tcreatedAt\x12,\n\x05\x65vent\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00R\x05\x65vent\x12\x37\n\x08\x65xternal\x18\x04 \x01(\x0b\x32\x19.angzarr.PayloadReferenceH\x00R\x08\x65xternalB\t\n\x07payload"\x8c\x01\n\x08Snapshot\x12\x1a\n\x08sequence\x18\x02 \x01(\rR\x08sequence\x12*\n\x05state\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyR\x05state\x12\x38\n\tretention\x18\x04 \x01(\x0e\x32\x1a.angzarr.SnapshotRetentionR\tretention"\xaf\x01\n\tEventBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12-\n\x08snapshot\x18\x02 \x01(\x0b\x32\x11.angzarr.SnapshotR\x08snapshot\x12(\n\x05pages\x18\x03 \x03(\x0b\x32\x12.angzarr.EventPageR\x05pages\x12#\n\rnext_sequence\x18\x06 \x01(\rR\x0cnextSequence"k\n\rSyncEventBook\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode"\xa2\x01\n\nProjection\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12\x1c\n\tprojector\x18\x02 \x01(\tR\tprojector\x12\x1a\n\x08sequence\x18\x03 \x01(\rR\x08sequence\x12\x34\n\nprojection\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyR\nprojection"\xde\x01\n\x0b\x43ommandPage\x12\x1a\n\x08sequence\x18\x01 \x01(\rR\x08sequence\x12=\n\x0emerge_strategy\x18\x02 \x01(\x0e\x32\x16.angzarr.MergeStrategyR\rmergeStrategy\x12\x30\n\x07\x63ommand\x18\x03 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00R\x07\x63ommand\x12\x37\n\x08\x65xternal\x18\x04 \x01(\x0b\x32\x19.angzarr.PayloadReferenceH\x00R\x08\x65xternalB\t\n\x07payload"\x9c\x01\n\x0b\x43ommandBook\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12*\n\x05pages\x18\x02 \x03(\x0b\x32\x14.angzarr.CommandPageR\x05pages\x12;\n\x0bsaga_origin\x18\x04 \x01(\x0b\x32\x1a.angzarr.SagaCommandOriginR\nsagaOrigin"q\n\x0fSyncCommandBook\x12.\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode"o\n\x11\x43ontextualCommand\x12*\n\x06\x65vents\x18\x01 \x01(\x0b\x32\x12.angzarr.EventBookR\x06\x65vents\x12.\n\x07\x63ommand\x18\x02 \x01(\x0b\x32\x14.angzarr.CommandBookR\x07\x63ommand"}\n\x15SyncContextualCommand\x12\x34\n\x07\x63ommand\x18\x01 \x01(\x0b\x32\x1a.angzarr.ContextualCommandR\x07\x63ommand\x12.\n\tsync_mode\x18\x02 \x01(\x0e\x32\x11.angzarr.SyncModeR\x08syncMode"J\n\rSequenceRange\x12\x14\n\x05lower\x18\x01 \x01(\rR\x05lower\x12\x19\n\x05upper\x18\x02 \x01(\rH\x00R\x05upper\x88\x01\x01\x42\x08\n\x06_upper"%\n\x0bSequenceSet\x12\x16\n\x06values\x18\x01 \x03(\rR\x06values"\x84\x01\n\rTemporalQuery\x12:\n\nas_of_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00R\x08\x61sOfTime\x12&\n\x0e\x61s_of_sequence\x18\x02 \x01(\rH\x00R\x0c\x61sOfSequenceB\x0f\n\rpoint_in_time"\xd6\x01\n\x05Query\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12.\n\x05range\x18\x03 \x01(\x0b\x32\x16.angzarr.SequenceRangeH\x00R\x05range\x12\x34\n\tsequences\x18\x04 \x01(\x0b\x32\x14.angzarr.SequenceSetH\x00R\tsequences\x12\x34\n\x08temporal\x18\x05 \x01(\x0b\x32\x16.angzarr.TemporalQueryH\x00R\x08temporalB\x0b\n\tselection"J\n\rAggregateRoot\x12\x16\n\x06\x64omain\x18\x01 \x01(\tR\x06\x64omain\x12!\n\x04root\x18\x02 \x01(\x0b\x32\r.angzarr.UUIDR\x04root":\n\x11\x45ventStreamFilter\x12%\n\x0e\x63orrelation_id\x18\x01 \x01(\tR\rcorrelationId"\xaf\x01\n\x11SagaCommandOrigin\x12\x1b\n\tsaga_name\x18\x01 \x01(\tR\x08sagaName\x12\x41\n\x14triggering_aggregate\x18\x02 \x01(\x0b\x32\x0e.angzarr.CoverR\x13triggeringAggregate\x12:\n\x19triggering_event_sequence\x18\x03 \x01(\rR\x17triggeringEventSequence"\x97\x02\n\x0cNotification\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12.\n\x07payload\x18\x02 \x01(\x0b\x32\x14.google.protobuf.AnyR\x07payload\x12\x33\n\x07sent_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\x06sentAt\x12?\n\x08metadata\x18\x04 \x03(\x0b\x32#.angzarr.Notification.MetadataEntryR\x08metadata\x1a;\n\rMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01"\xb4\x02\n\x15RejectionNotification\x12?\n\x10rejected_command\x18\x01 \x01(\x0b\x32\x14.angzarr.CommandBookR\x0frejectedCommand\x12)\n\x10rejection_reason\x18\x02 \x01(\tR\x0frejectionReason\x12\x1f\n\x0bissuer_name\x18\x03 \x01(\tR\nissuerName\x12\x1f\n\x0bissuer_type\x18\x04 \x01(\tR\nissuerType\x12\x39\n\x10source_aggregate\x18\x05 \x01(\x0b\x32\x0e.angzarr.CoverR\x0fsourceAggregate\x12\x32\n\x15source_event_sequence\x18\x06 \x01(\rR\x13sourceEventSequence"\xae\x01\n\x17SequenceMismatchDetails\x12+\n\x11\x65xpected_sequence\x18\x01 \x01(\rR\x10\x65xpectedSequence\x12\'\n\x0f\x61\x63tual_sequence\x18\x02 \x01(\rR\x0e\x61\x63tualSequence\x12=\n\x0emerge_strategy\x18\x03 \x01(\x0e\x32\x16.angzarr.MergeStrategyR\rmergeStrategy"x\n\x1c\x45ventProcessingFailedDetails\x12\x14\n\x05\x65rror\x18\x01 \x01(\tR\x05\x65rror\x12\x1f\n\x0bretry_count\x18\x02 \x01(\rR\nretryCount\x12!\n\x0cis_transient\x18\x03 \x01(\x08R\x0bisTransient"\xcf\x01\n\x1dPayloadRetrievalFailedDetails\x12>\n\x0cstorage_type\x18\x01 \x01(\x0e\x32\x1b.angzarr.PayloadStorageTypeR\x0bstorageType\x12\x10\n\x03uri\x18\x02 \x01(\tR\x03uri\x12!\n\x0c\x63ontent_hash\x18\x03 \x01(\x0cR\x0b\x63ontentHash\x12#\n\roriginal_size\x18\x04 \x01(\x04R\x0coriginalSize\x12\x14\n\x05\x65rror\x18\x05 \x01(\tR\x05\x65rror"\xbb\x06\n\x11\x41ngzarrDeadLetter\x12$\n\x05\x63over\x18\x01 \x01(\x0b\x32\x0e.angzarr.CoverR\x05\x63over\x12\x41\n\x10rejected_command\x18\x02 \x01(\x0b\x32\x14.angzarr.CommandBookH\x00R\x0frejectedCommand\x12=\n\x0frejected_events\x18\t \x01(\x0b\x32\x12.angzarr.EventBookH\x00R\x0erejectedEvents\x12)\n\x10rejection_reason\x18\x03 \x01(\tR\x0frejectionReason\x12O\n\x11sequence_mismatch\x18\x0c \x01(\x0b\x32 .angzarr.SequenceMismatchDetailsH\x01R\x10sequenceMismatch\x12_\n\x17\x65vent_processing_failed\x18\r \x01(\x0b\x32%.angzarr.EventProcessingFailedDetailsH\x01R\x15\x65ventProcessingFailed\x12\x62\n\x18payload_retrieval_failed\x18\x0e \x01(\x0b\x32&.angzarr.PayloadRetrievalFailedDetailsH\x01R\x16payloadRetrievalFailed\x12;\n\x0boccurred_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.TimestampR\noccurredAt\x12\x44\n\x08metadata\x18\x08 \x03(\x0b\x32(.angzarr.AngzarrDeadLetter.MetadataEntryR\x08metadata\x12)\n\x10source_component\x18\n \x01(\tR\x0fsourceComponent\x12\x32\n\x15source_component_type\x18\x0b \x01(\tR\x13sourceComponentType\x1a;\n\rMetadataEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x02\x38\x01\x42\t\n\x07payloadB\x13\n\x11rejection_details*R\n\x08SyncMode\x12\x19\n\x15SYNC_MODE_UNSPECIFIED\x10\x00\x12\x14\n\x10SYNC_MODE_SIMPLE\x10\x01\x12\x15\n\x11SYNC_MODE_CASCADE\x10\x02*g\n\rMergeStrategy\x12\x15\n\x11MERGE_COMMUTATIVE\x10\x00\x12\x10\n\x0cMERGE_STRICT\x10\x01\x12\x1b\n\x17MERGE_AGGREGATE_HANDLES\x10\x02\x12\x10\n\x0cMERGE_MANUAL\x10\x03*Z\n\x11SnapshotRetention\x12\x15\n\x11RETENTION_DEFAULT\x10\x00\x12\x15\n\x11RETENTION_PERSIST\x10\x01\x12\x17\n\x13RETENTION_TRANSIENT\x10\x02*\x9a\x01\n\x12PayloadStorageType\x12$\n PAYLOAD_STORAGE_TYPE_UNSPECIFIED\x10\x00\x12#\n\x1fPAYLOAD_STORAGE_TYPE_FILESYSTEM\x10\x01\x12\x1c\n\x18PAYLOAD_STORAGE_TYPE_GCS\x10\x02\x12\x1b\n\x17PAYLOAD_STORAGE_TYPE_S3\x10\x03\x42\x7f\n\x0b\x63om.angzarrB\nTypesProtoP\x01Z(github.com/angzarr/angzarr/proto/angzarr\xa2\x02\x03\x41XX\xaa\x02\x07\x41ngzarr\xca\x02\x07\x41ngzarr\xe2\x02\x13\x41ngzarr\\GPBMetadata\xea\x02\x07\x41ngzarrb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'angzarr.types_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "angzarr.types_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\013com.angzarrB\nTypesProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr'
-  _globals['_NOTIFICATION_METADATAENTRY']._loaded_options = None
-  _globals['_NOTIFICATION_METADATAENTRY']._serialized_options = b'8\001'
-  _globals['_ANGZARRDEADLETTER_METADATAENTRY']._loaded_options = None
-  _globals['_ANGZARRDEADLETTER_METADATAENTRY']._serialized_options = b'8\001'
-  _globals['_SYNCMODE']._serialized_start=4932
-  _globals['_SYNCMODE']._serialized_end=5014
-  _globals['_MERGESTRATEGY']._serialized_start=5016
-  _globals['_MERGESTRATEGY']._serialized_end=5119
-  _globals['_SNAPSHOTRETENTION']._serialized_start=5121
-  _globals['_SNAPSHOTRETENTION']._serialized_end=5211
-  _globals['_PAYLOADSTORAGETYPE']._serialized_start=5214
-  _globals['_PAYLOADSTORAGETYPE']._serialized_end=5368
-  _globals['_UUID']._serialized_start=92
-  _globals['_UUID']._serialized_end=120
-  _globals['_COVER']._serialized_start=123
-  _globals['_COVER']._serialized_end=272
-  _globals['_EDITION']._serialized_start=274
-  _globals['_EDITION']._serialized_end=364
-  _globals['_DOMAINDIVERGENCE']._serialized_start=366
-  _globals['_DOMAINDIVERGENCE']._serialized_end=436
-  _globals['_PAYLOADREFERENCE']._serialized_start=439
-  _globals['_PAYLOADREFERENCE']._serialized_end=668
-  _globals['_EVENTPAGE']._serialized_start=671
-  _globals['_EVENTPAGE']._serialized_end=883
-  _globals['_SNAPSHOT']._serialized_start=886
-  _globals['_SNAPSHOT']._serialized_end=1026
-  _globals['_EVENTBOOK']._serialized_start=1029
-  _globals['_EVENTBOOK']._serialized_end=1204
-  _globals['_SYNCEVENTBOOK']._serialized_start=1206
-  _globals['_SYNCEVENTBOOK']._serialized_end=1313
-  _globals['_PROJECTION']._serialized_start=1316
-  _globals['_PROJECTION']._serialized_end=1478
-  _globals['_COMMANDPAGE']._serialized_start=1481
-  _globals['_COMMANDPAGE']._serialized_end=1703
-  _globals['_COMMANDBOOK']._serialized_start=1706
-  _globals['_COMMANDBOOK']._serialized_end=1862
-  _globals['_SYNCCOMMANDBOOK']._serialized_start=1864
-  _globals['_SYNCCOMMANDBOOK']._serialized_end=1977
-  _globals['_CONTEXTUALCOMMAND']._serialized_start=1979
-  _globals['_CONTEXTUALCOMMAND']._serialized_end=2090
-  _globals['_SYNCCONTEXTUALCOMMAND']._serialized_start=2092
-  _globals['_SYNCCONTEXTUALCOMMAND']._serialized_end=2217
-  _globals['_SEQUENCERANGE']._serialized_start=2219
-  _globals['_SEQUENCERANGE']._serialized_end=2293
-  _globals['_SEQUENCESET']._serialized_start=2295
-  _globals['_SEQUENCESET']._serialized_end=2332
-  _globals['_TEMPORALQUERY']._serialized_start=2335
-  _globals['_TEMPORALQUERY']._serialized_end=2467
-  _globals['_QUERY']._serialized_start=2470
-  _globals['_QUERY']._serialized_end=2684
-  _globals['_AGGREGATEROOT']._serialized_start=2686
-  _globals['_AGGREGATEROOT']._serialized_end=2760
-  _globals['_EVENTSTREAMFILTER']._serialized_start=2762
-  _globals['_EVENTSTREAMFILTER']._serialized_end=2820
-  _globals['_SAGACOMMANDORIGIN']._serialized_start=2823
-  _globals['_SAGACOMMANDORIGIN']._serialized_end=2998
-  _globals['_NOTIFICATION']._serialized_start=3001
-  _globals['_NOTIFICATION']._serialized_end=3280
-  _globals['_NOTIFICATION_METADATAENTRY']._serialized_start=3221
-  _globals['_NOTIFICATION_METADATAENTRY']._serialized_end=3280
-  _globals['_REJECTIONNOTIFICATION']._serialized_start=3283
-  _globals['_REJECTIONNOTIFICATION']._serialized_end=3591
-  _globals['_SEQUENCEMISMATCHDETAILS']._serialized_start=3594
-  _globals['_SEQUENCEMISMATCHDETAILS']._serialized_end=3768
-  _globals['_EVENTPROCESSINGFAILEDDETAILS']._serialized_start=3770
-  _globals['_EVENTPROCESSINGFAILEDDETAILS']._serialized_end=3890
-  _globals['_PAYLOADRETRIEVALFAILEDDETAILS']._serialized_start=3893
-  _globals['_PAYLOADRETRIEVALFAILEDDETAILS']._serialized_end=4100
-  _globals['_ANGZARRDEADLETTER']._serialized_start=4103
-  _globals['_ANGZARRDEADLETTER']._serialized_end=4930
-  _globals['_ANGZARRDEADLETTER_METADATAENTRY']._serialized_start=3221
-  _globals['_ANGZARRDEADLETTER_METADATAENTRY']._serialized_end=3280
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\013com.angzarrB\nTypesProtoP\001Z(github.com/angzarr/angzarr/proto/angzarr\242\002\003AXX\252\002\007Angzarr\312\002\007Angzarr\342\002\023Angzarr\\GPBMetadata\352\002\007Angzarr"
+    _globals["_NOTIFICATION_METADATAENTRY"]._loaded_options = None
+    _globals["_NOTIFICATION_METADATAENTRY"]._serialized_options = b"8\001"
+    _globals["_ANGZARRDEADLETTER_METADATAENTRY"]._loaded_options = None
+    _globals["_ANGZARRDEADLETTER_METADATAENTRY"]._serialized_options = b"8\001"
+    _globals["_SYNCMODE"]._serialized_start = 4932
+    _globals["_SYNCMODE"]._serialized_end = 5014
+    _globals["_MERGESTRATEGY"]._serialized_start = 5016
+    _globals["_MERGESTRATEGY"]._serialized_end = 5119
+    _globals["_SNAPSHOTRETENTION"]._serialized_start = 5121
+    _globals["_SNAPSHOTRETENTION"]._serialized_end = 5211
+    _globals["_PAYLOADSTORAGETYPE"]._serialized_start = 5214
+    _globals["_PAYLOADSTORAGETYPE"]._serialized_end = 5368
+    _globals["_UUID"]._serialized_start = 92
+    _globals["_UUID"]._serialized_end = 120
+    _globals["_COVER"]._serialized_start = 123
+    _globals["_COVER"]._serialized_end = 272
+    _globals["_EDITION"]._serialized_start = 274
+    _globals["_EDITION"]._serialized_end = 364
+    _globals["_DOMAINDIVERGENCE"]._serialized_start = 366
+    _globals["_DOMAINDIVERGENCE"]._serialized_end = 436
+    _globals["_PAYLOADREFERENCE"]._serialized_start = 439
+    _globals["_PAYLOADREFERENCE"]._serialized_end = 668
+    _globals["_EVENTPAGE"]._serialized_start = 671
+    _globals["_EVENTPAGE"]._serialized_end = 883
+    _globals["_SNAPSHOT"]._serialized_start = 886
+    _globals["_SNAPSHOT"]._serialized_end = 1026
+    _globals["_EVENTBOOK"]._serialized_start = 1029
+    _globals["_EVENTBOOK"]._serialized_end = 1204
+    _globals["_SYNCEVENTBOOK"]._serialized_start = 1206
+    _globals["_SYNCEVENTBOOK"]._serialized_end = 1313
+    _globals["_PROJECTION"]._serialized_start = 1316
+    _globals["_PROJECTION"]._serialized_end = 1478
+    _globals["_COMMANDPAGE"]._serialized_start = 1481
+    _globals["_COMMANDPAGE"]._serialized_end = 1703
+    _globals["_COMMANDBOOK"]._serialized_start = 1706
+    _globals["_COMMANDBOOK"]._serialized_end = 1862
+    _globals["_SYNCCOMMANDBOOK"]._serialized_start = 1864
+    _globals["_SYNCCOMMANDBOOK"]._serialized_end = 1977
+    _globals["_CONTEXTUALCOMMAND"]._serialized_start = 1979
+    _globals["_CONTEXTUALCOMMAND"]._serialized_end = 2090
+    _globals["_SYNCCONTEXTUALCOMMAND"]._serialized_start = 2092
+    _globals["_SYNCCONTEXTUALCOMMAND"]._serialized_end = 2217
+    _globals["_SEQUENCERANGE"]._serialized_start = 2219
+    _globals["_SEQUENCERANGE"]._serialized_end = 2293
+    _globals["_SEQUENCESET"]._serialized_start = 2295
+    _globals["_SEQUENCESET"]._serialized_end = 2332
+    _globals["_TEMPORALQUERY"]._serialized_start = 2335
+    _globals["_TEMPORALQUERY"]._serialized_end = 2467
+    _globals["_QUERY"]._serialized_start = 2470
+    _globals["_QUERY"]._serialized_end = 2684
+    _globals["_AGGREGATEROOT"]._serialized_start = 2686
+    _globals["_AGGREGATEROOT"]._serialized_end = 2760
+    _globals["_EVENTSTREAMFILTER"]._serialized_start = 2762
+    _globals["_EVENTSTREAMFILTER"]._serialized_end = 2820
+    _globals["_SAGACOMMANDORIGIN"]._serialized_start = 2823
+    _globals["_SAGACOMMANDORIGIN"]._serialized_end = 2998
+    _globals["_NOTIFICATION"]._serialized_start = 3001
+    _globals["_NOTIFICATION"]._serialized_end = 3280
+    _globals["_NOTIFICATION_METADATAENTRY"]._serialized_start = 3221
+    _globals["_NOTIFICATION_METADATAENTRY"]._serialized_end = 3280
+    _globals["_REJECTIONNOTIFICATION"]._serialized_start = 3283
+    _globals["_REJECTIONNOTIFICATION"]._serialized_end = 3591
+    _globals["_SEQUENCEMISMATCHDETAILS"]._serialized_start = 3594
+    _globals["_SEQUENCEMISMATCHDETAILS"]._serialized_end = 3768
+    _globals["_EVENTPROCESSINGFAILEDDETAILS"]._serialized_start = 3770
+    _globals["_EVENTPROCESSINGFAILEDDETAILS"]._serialized_end = 3890
+    _globals["_PAYLOADRETRIEVALFAILEDDETAILS"]._serialized_start = 3893
+    _globals["_PAYLOADRETRIEVALFAILEDDETAILS"]._serialized_end = 4100
+    _globals["_ANGZARRDEADLETTER"]._serialized_start = 4103
+    _globals["_ANGZARRDEADLETTER"]._serialized_end = 4930
+    _globals["_ANGZARRDEADLETTER_METADATAENTRY"]._serialized_start = 3221
+    _globals["_ANGZARRDEADLETTER_METADATAENTRY"]._serialized_end = 3280
 # @@protoc_insertion_point(module_scope)

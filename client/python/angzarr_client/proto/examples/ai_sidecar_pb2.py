@@ -4,51 +4,54 @@
 # source: examples/ai_sidecar.proto
 # Protobuf Python Version: 6.33.5
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
-    _runtime_version.Domain.PUBLIC,
-    6,
-    33,
-    5,
-    '',
-    'examples/ai_sidecar.proto'
+    _runtime_version.Domain.PUBLIC, 6, 33, 5, "", "examples/ai_sidecar.proto"
 )
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-from angzarr_client.proto.examples import poker_types_pb2 as examples_dot_poker__types__pb2
+from angzarr_client.proto.examples import (
+    poker_types_pb2 as examples_dot_poker__types__pb2,
+)
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x65xamples/ai_sidecar.proto\x12\x08\x65xamples\x1a\x1a\x65xamples/poker_types.proto\"\xfa\x04\n\rActionRequest\x12\x19\n\x08model_id\x18\x01 \x01(\tR\x07modelId\x12\x38\n\x0cgame_variant\x18\x02 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12,\n\x05phase\x18\x03 \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12-\n\nhole_cards\x18\x04 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x37\n\x0f\x63ommunity_cards\x18\x05 \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12\x19\n\x08pot_size\x18\x06 \x01(\x03R\x07potSize\x12\x1d\n\nstack_size\x18\x07 \x01(\x03R\tstackSize\x12$\n\x0e\x61mount_to_call\x18\x08 \x01(\x03R\x0c\x61mountToCall\x12\x1b\n\tmin_raise\x18\t \x01(\x03R\x08minRaise\x12\x1b\n\tmax_raise\x18\n \x01(\x03R\x08maxRaise\x12\x1a\n\x08position\x18\x0b \x01(\x05R\x08position\x12+\n\x11players_remaining\x18\x0c \x01(\x05R\x10playersRemaining\x12$\n\x0eplayers_to_act\x18\r \x01(\x05R\x0cplayersToAct\x12>\n\x0e\x61\x63tion_history\x18\x0e \x03(\x0b\x32\x17.examples.ActionHistoryR\ractionHistory\x12\x35\n\topponents\x18\x0f \x03(\x0b\x32\x17.examples.OpponentStatsR\topponents\"\xa4\x01\n\rActionHistory\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12,\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\x06\x61\x63tion\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\x12,\n\x05phase\x18\x04 \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\"\xcb\x01\n\rOpponentStats\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1a\n\x08position\x18\x02 \x01(\x05R\x08position\x12\x14\n\x05stack\x18\x03 \x01(\x03R\x05stack\x12\x12\n\x04vpip\x18\x04 \x01(\x02R\x04vpip\x12\x10\n\x03pfr\x18\x05 \x01(\x02R\x03pfr\x12\x1e\n\naggression\x18\x06 \x01(\x02R\naggression\x12!\n\x0chands_played\x18\x07 \x01(\x05R\x0bhandsPlayed\"\xd3\x02\n\x0e\x41\x63tionResponse\x12\x43\n\x12recommended_action\x18\x01 \x01(\x0e\x32\x14.examples.ActionTypeR\x11recommendedAction\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12)\n\x10\x66old_probability\x18\x03 \x01(\x02R\x0f\x66oldProbability\x12\x34\n\x16\x63heck_call_probability\x18\x04 \x01(\x02R\x14\x63heckCallProbability\x12\x32\n\x15\x62\x65t_raise_probability\x18\x05 \x01(\x02R\x13\x62\x65tRaiseProbability\x12#\n\rmodel_version\x18\x06 \x01(\tR\x0cmodelVersion\x12*\n\x11inference_time_ms\x18\x07 \x01(\x03R\x0finferenceTimeMs\"\x0f\n\rHealthRequest\"\xba\x01\n\x0eHealthResponse\x12\x18\n\x07healthy\x18\x01 \x01(\x08R\x07healthy\x12\x19\n\x08model_id\x18\x02 \x01(\tR\x07modelId\x12#\n\rmodel_version\x18\x03 \x01(\tR\x0cmodelVersion\x12%\n\x0euptime_seconds\x18\x04 \x01(\x03R\ruptimeSeconds\x12\'\n\x0frequests_served\x18\x05 \x01(\x03R\x0erequestsServed\"I\n\x12\x42\x61tchActionRequest\x12\x33\n\x08requests\x18\x01 \x03(\x0b\x32\x17.examples.ActionRequestR\x08requests\"M\n\x13\x42\x61tchActionResponse\x12\x36\n\tresponses\x18\x01 \x03(\x0b\x32\x18.examples.ActionResponseR\tresponses2\xd8\x01\n\tAiSidecar\x12>\n\tGetAction\x12\x17.examples.ActionRequest\x1a\x18.examples.ActionResponse\x12;\n\x06Health\x12\x17.examples.HealthRequest\x1a\x18.examples.HealthResponse\x12N\n\x0fGetActionsBatch\x12\x1c.examples.BatchActionRequest\x1a\x1d.examples.BatchActionResponseB\x89\x01\n\x0c\x63om.examplesB\x0e\x41iSidecarProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x19\x65xamples/ai_sidecar.proto\x12\x08\x65xamples\x1a\x1a\x65xamples/poker_types.proto"\xfa\x04\n\rActionRequest\x12\x19\n\x08model_id\x18\x01 \x01(\tR\x07modelId\x12\x38\n\x0cgame_variant\x18\x02 \x01(\x0e\x32\x15.examples.GameVariantR\x0bgameVariant\x12,\n\x05phase\x18\x03 \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase\x12-\n\nhole_cards\x18\x04 \x03(\x0b\x32\x0e.examples.CardR\tholeCards\x12\x37\n\x0f\x63ommunity_cards\x18\x05 \x03(\x0b\x32\x0e.examples.CardR\x0e\x63ommunityCards\x12\x19\n\x08pot_size\x18\x06 \x01(\x03R\x07potSize\x12\x1d\n\nstack_size\x18\x07 \x01(\x03R\tstackSize\x12$\n\x0e\x61mount_to_call\x18\x08 \x01(\x03R\x0c\x61mountToCall\x12\x1b\n\tmin_raise\x18\t \x01(\x03R\x08minRaise\x12\x1b\n\tmax_raise\x18\n \x01(\x03R\x08maxRaise\x12\x1a\n\x08position\x18\x0b \x01(\x05R\x08position\x12+\n\x11players_remaining\x18\x0c \x01(\x05R\x10playersRemaining\x12$\n\x0eplayers_to_act\x18\r \x01(\x05R\x0cplayersToAct\x12>\n\x0e\x61\x63tion_history\x18\x0e \x03(\x0b\x32\x17.examples.ActionHistoryR\ractionHistory\x12\x35\n\topponents\x18\x0f \x03(\x0b\x32\x17.examples.OpponentStatsR\topponents"\xa4\x01\n\rActionHistory\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12,\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x14.examples.ActionTypeR\x06\x61\x63tion\x12\x16\n\x06\x61mount\x18\x03 \x01(\x03R\x06\x61mount\x12,\n\x05phase\x18\x04 \x01(\x0e\x32\x16.examples.BettingPhaseR\x05phase"\xcb\x01\n\rOpponentStats\x12\x1f\n\x0bplayer_root\x18\x01 \x01(\x0cR\nplayerRoot\x12\x1a\n\x08position\x18\x02 \x01(\x05R\x08position\x12\x14\n\x05stack\x18\x03 \x01(\x03R\x05stack\x12\x12\n\x04vpip\x18\x04 \x01(\x02R\x04vpip\x12\x10\n\x03pfr\x18\x05 \x01(\x02R\x03pfr\x12\x1e\n\naggression\x18\x06 \x01(\x02R\naggression\x12!\n\x0chands_played\x18\x07 \x01(\x05R\x0bhandsPlayed"\xd3\x02\n\x0e\x41\x63tionResponse\x12\x43\n\x12recommended_action\x18\x01 \x01(\x0e\x32\x14.examples.ActionTypeR\x11recommendedAction\x12\x16\n\x06\x61mount\x18\x02 \x01(\x03R\x06\x61mount\x12)\n\x10\x66old_probability\x18\x03 \x01(\x02R\x0f\x66oldProbability\x12\x34\n\x16\x63heck_call_probability\x18\x04 \x01(\x02R\x14\x63heckCallProbability\x12\x32\n\x15\x62\x65t_raise_probability\x18\x05 \x01(\x02R\x13\x62\x65tRaiseProbability\x12#\n\rmodel_version\x18\x06 \x01(\tR\x0cmodelVersion\x12*\n\x11inference_time_ms\x18\x07 \x01(\x03R\x0finferenceTimeMs"\x0f\n\rHealthRequest"\xba\x01\n\x0eHealthResponse\x12\x18\n\x07healthy\x18\x01 \x01(\x08R\x07healthy\x12\x19\n\x08model_id\x18\x02 \x01(\tR\x07modelId\x12#\n\rmodel_version\x18\x03 \x01(\tR\x0cmodelVersion\x12%\n\x0euptime_seconds\x18\x04 \x01(\x03R\ruptimeSeconds\x12\'\n\x0frequests_served\x18\x05 \x01(\x03R\x0erequestsServed"I\n\x12\x42\x61tchActionRequest\x12\x33\n\x08requests\x18\x01 \x03(\x0b\x32\x17.examples.ActionRequestR\x08requests"M\n\x13\x42\x61tchActionResponse\x12\x36\n\tresponses\x18\x01 \x03(\x0b\x32\x18.examples.ActionResponseR\tresponses2\xd8\x01\n\tAiSidecar\x12>\n\tGetAction\x12\x17.examples.ActionRequest\x1a\x18.examples.ActionResponse\x12;\n\x06Health\x12\x17.examples.HealthRequest\x1a\x18.examples.HealthResponse\x12N\n\x0fGetActionsBatch\x12\x1c.examples.BatchActionRequest\x1a\x1d.examples.BatchActionResponseB\x89\x01\n\x0c\x63om.examplesB\x0e\x41iSidecarProtoP\x01Z)github.com/angzarr/angzarr/proto/examples\xa2\x02\x03\x45XX\xaa\x02\x08\x45xamples\xca\x02\x08\x45xamples\xe2\x02\x14\x45xamples\\GPBMetadata\xea\x02\x08\x45xamplesb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'examples.ai_sidecar_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "examples.ai_sidecar_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'\n\014com.examplesB\016AiSidecarProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples'
-  _globals['_ACTIONREQUEST']._serialized_start=68
-  _globals['_ACTIONREQUEST']._serialized_end=702
-  _globals['_ACTIONHISTORY']._serialized_start=705
-  _globals['_ACTIONHISTORY']._serialized_end=869
-  _globals['_OPPONENTSTATS']._serialized_start=872
-  _globals['_OPPONENTSTATS']._serialized_end=1075
-  _globals['_ACTIONRESPONSE']._serialized_start=1078
-  _globals['_ACTIONRESPONSE']._serialized_end=1417
-  _globals['_HEALTHREQUEST']._serialized_start=1419
-  _globals['_HEALTHREQUEST']._serialized_end=1434
-  _globals['_HEALTHRESPONSE']._serialized_start=1437
-  _globals['_HEALTHRESPONSE']._serialized_end=1623
-  _globals['_BATCHACTIONREQUEST']._serialized_start=1625
-  _globals['_BATCHACTIONREQUEST']._serialized_end=1698
-  _globals['_BATCHACTIONRESPONSE']._serialized_start=1700
-  _globals['_BATCHACTIONRESPONSE']._serialized_end=1777
-  _globals['_AISIDECAR']._serialized_start=1780
-  _globals['_AISIDECAR']._serialized_end=1996
+    _globals["DESCRIPTOR"]._loaded_options = None
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\014com.examplesB\016AiSidecarProtoP\001Z)github.com/angzarr/angzarr/proto/examples\242\002\003EXX\252\002\010Examples\312\002\010Examples\342\002\024Examples\\GPBMetadata\352\002\010Examples"
+    _globals["_ACTIONREQUEST"]._serialized_start = 68
+    _globals["_ACTIONREQUEST"]._serialized_end = 702
+    _globals["_ACTIONHISTORY"]._serialized_start = 705
+    _globals["_ACTIONHISTORY"]._serialized_end = 869
+    _globals["_OPPONENTSTATS"]._serialized_start = 872
+    _globals["_OPPONENTSTATS"]._serialized_end = 1075
+    _globals["_ACTIONRESPONSE"]._serialized_start = 1078
+    _globals["_ACTIONRESPONSE"]._serialized_end = 1417
+    _globals["_HEALTHREQUEST"]._serialized_start = 1419
+    _globals["_HEALTHREQUEST"]._serialized_end = 1434
+    _globals["_HEALTHRESPONSE"]._serialized_start = 1437
+    _globals["_HEALTHRESPONSE"]._serialized_end = 1623
+    _globals["_BATCHACTIONREQUEST"]._serialized_start = 1625
+    _globals["_BATCHACTIONREQUEST"]._serialized_end = 1698
+    _globals["_BATCHACTIONRESPONSE"]._serialized_start = 1700
+    _globals["_BATCHACTIONRESPONSE"]._serialized_end = 1777
+    _globals["_AISIDECAR"]._serialized_start = 1780
+    _globals["_AISIDECAR"]._serialized_end = 1996
 # @@protoc_insertion_point(module_scope)

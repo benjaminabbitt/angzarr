@@ -30,6 +30,8 @@ class OutputProjector(Projector):
             name = self.player_names.get(player_cards.player_id, player_cards.player_id)
             cards = format_cards(player_cards.hole_cards)
             print(f"[Hand] {name} dealt {cards}")
+
+
 # docs:end:projector_oo
 
 

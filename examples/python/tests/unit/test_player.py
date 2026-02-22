@@ -34,6 +34,8 @@ def state_from_event_book(event_book):
         return state
     events = [page.event for page in event_book.pages if page.event]
     return build_state(state, events)
+
+
 from handlers.register_player import handle_register_player
 from handlers.deposit_funds import handle_deposit_funds
 from handlers.withdraw_funds import handle_withdraw_funds
@@ -41,7 +43,11 @@ from handlers.reserve_funds import handle_reserve_funds
 from handlers.release_funds import handle_release_funds
 
 from tests.conftest import (
-    ScenarioContext, make_cover, make_command_book, make_timestamp, pack_event
+    ScenarioContext,
+    make_cover,
+    make_command_book,
+    make_timestamp,
+    pack_event,
 )
 
 # docs:start:scenarios_loader
@@ -51,6 +57,7 @@ scenarios("../../../features/unit/player.feature")
 
 
 # --- Fixtures ---
+
 
 @pytest.fixture
 def ctx():
@@ -91,6 +98,7 @@ def _handle_command(ctx: ScenarioContext, command_msg, handler_fn):
 
 # --- Given steps ---
 
+
 @given("no prior events for the player aggregate")
 def no_prior_events(ctx):
     """Start with empty event history."""
@@ -108,6 +116,8 @@ def player_registered_event(ctx, name):
         registered_at=make_timestamp(),
     )
     ctx.add_event(event)
+
+
 # docs:end:given_step
 
 
@@ -131,7 +141,9 @@ def funds_deposited_event(ctx, amount):
     ctx.add_event(event)
 
 
-@given(parsers.parse('a FundsReserved event with amount {amount:d} for table "{table_id}"'))
+@given(
+    parsers.parse('a FundsReserved event with amount {amount:d} for table "{table_id}"')
+)
 def funds_reserved_event(ctx, amount, table_id):
     """Add a FundsReserved event."""
     table_root = table_id.encode()
@@ -163,8 +175,13 @@ def funds_reserved_event(ctx, amount, table_id):
 
 # --- When steps ---
 
+
 # docs:start:when_step
-@when(parsers.parse('I handle a RegisterPlayer command with name "{name}" and email "{email}"'))
+@when(
+    parsers.parse(
+        'I handle a RegisterPlayer command with name "{name}" and email "{email}"'
+    )
+)
 def handle_register_player_cmd(ctx, name, email):
     """Handle RegisterPlayer command."""
     cmd = player.RegisterPlayer(
@@ -173,10 +190,16 @@ def handle_register_player_cmd(ctx, name, email):
         player_type=poker_types.HUMAN,
     )
     _handle_command(ctx, cmd, handle_register_player)
+
+
 # docs:end:when_step
 
 
-@when(parsers.parse('I handle a RegisterPlayer command with name "{name}" and email "{email}" as AI'))
+@when(
+    parsers.parse(
+        'I handle a RegisterPlayer command with name "{name}" and email "{email}" as AI'
+    )
+)
 def handle_register_player_ai_cmd(ctx, name, email):
     """Handle RegisterPlayer command for AI player."""
     cmd = player.RegisterPlayer(
@@ -205,7 +228,11 @@ def handle_withdraw_funds_cmd(ctx, amount):
     _handle_command(ctx, cmd, handle_withdraw_funds)
 
 
-@when(parsers.parse('I handle a ReserveFunds command with amount {amount:d} for table "{table_id}"'))
+@when(
+    parsers.parse(
+        'I handle a ReserveFunds command with amount {amount:d} for table "{table_id}"'
+    )
+)
 def handle_reserve_funds_cmd(ctx, amount, table_id):
     """Handle ReserveFunds command."""
     cmd = player.ReserveFunds(
@@ -232,6 +259,7 @@ def rebuild_player_state(ctx):
 
 # --- Then steps ---
 
+
 # docs:start:then_step
 @then("the result is a PlayerRegistered event")
 def result_is_player_registered(ctx):
@@ -240,6 +268,8 @@ def result_is_player_registered(ctx):
     assert len(ctx.result.pages) == 1
     event_any = ctx.result.pages[0].event
     assert event_any.type_url.endswith("PlayerRegistered")
+
+
 # docs:end:then_step
 
 

@@ -1,4 +1,5 @@
 """Step definitions for speculative client scenarios."""
+
 from pytest_bdd import given, when, then, parsers
 from google.protobuf.any_pb2 import Any
 from google.protobuf.empty_pb2 import Empty
@@ -20,13 +21,21 @@ def then_speculative_operation_should_fail_with_connection_error(speculative_con
 
 
 @then("the speculative operation should fail with invalid argument error")
-def then_speculative_operation_should_fail_with_invalid_argument_error(speculative_context):
+def then_speculative_operation_should_fail_with_invalid_argument_error(
+    speculative_context,
+):
     error = speculative_context.get("error")
     assert error is not None, "Expected invalid argument error"
 
 
-@given(parsers.parse('a speculative aggregate "{domain}" with root "{root}" has {count:d} events'))
-def given_speculative_aggregate_with_root_has_events(speculative_context, domain, root, count):
+@given(
+    parsers.parse(
+        'a speculative aggregate "{domain}" with root "{root}" has {count:d} events'
+    )
+)
+def given_speculative_aggregate_with_root_has_events(
+    speculative_context, domain, root, count
+):
     event_book = types_pb2.EventBook()
     event_book.cover.domain = domain
     event_book.cover.root.value = root.encode()

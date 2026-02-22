@@ -47,13 +47,15 @@ def make_external_page(seq, uri="s3://bucket/key"):
         sequence=seq,
         created_at=Timestamp(),
     )
-    page.external.CopyFrom(types_pb2.PayloadReference(
-        storage_type=types_pb2.PAYLOAD_STORAGE_TYPE_S3,
-        uri=uri,
-        content_hash=b"abc123",
-        original_size=1024,
-        stored_at=Timestamp(),
-    ))
+    page.external.CopyFrom(
+        types_pb2.PayloadReference(
+            storage_type=types_pb2.PAYLOAD_STORAGE_TYPE_S3,
+            uri=uri,
+            content_hash=b"abc123",
+            original_size=1024,
+            stored_at=Timestamp(),
+        )
+    )
     return page
 
 
@@ -75,9 +77,7 @@ def given_valid_proto_bytes(decode_context):
 @given(parsers.parse('an event with type_url ending in "{suffix}"'))
 def given_event_suffix(decode_context, suffix):
     decode_context["type_url"] = f"type.googleapis.com/test.{suffix}"
-    decode_context["event_page"] = make_event_page(
-        0, decode_context["type_url"]
-    )
+    decode_context["event_page"] = make_event_page(0, decode_context["type_url"])
 
 
 @given("events with type_urls:")
@@ -97,16 +97,12 @@ def given_event_at_seq(decode_context, seq):
 
 @given("an EventPage with timestamp")
 def given_event_with_timestamp(decode_context):
-    decode_context["event_page"] = make_event_page(
-        0, "type.googleapis.com/test.Event"
-    )
+    decode_context["event_page"] = make_event_page(0, "type.googleapis.com/test.Event")
 
 
 @given("an EventPage with Event payload")
 def given_event_payload(decode_context):
-    decode_context["event_page"] = make_event_page(
-        0, "type.googleapis.com/test.Event"
-    )
+    decode_context["event_page"] = make_event_page(0, "type.googleapis.com/test.Event")
 
 
 @given("an EventPage with offloaded payload")
@@ -280,9 +276,7 @@ def when_decode_by_type(decode_context):
 @when(parsers.parse('I filter for "{event_type}" events'))
 def when_filter_events(decode_context, event_type):
     events = decode_context.get("events", [])
-    decode_context["filtered"] = [
-        e for e in events if event_type in e.event.type_url
-    ]
+    decode_context["filtered"] = [e for e in events if event_type in e.event.type_url]
 
 
 # --- Then steps ---
@@ -290,7 +284,9 @@ def when_filter_events(decode_context, event_type):
 
 @then("decoding should succeed")
 def then_decode_success(decode_context):
-    assert decode_context.get("decoded") is not None or decode_context.get("match_success")
+    assert decode_context.get("decoded") is not None or decode_context.get(
+        "match_success"
+    )
 
 
 @then("I should get an OrderCreated message")

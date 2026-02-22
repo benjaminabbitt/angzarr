@@ -33,6 +33,7 @@ scenarios("../../../features/unit/projector.feature")
 
 # --- Test context ---
 
+
 @dataclass
 class ProjectorTestContext:
     """Test context for projector scenarios."""
@@ -60,6 +61,7 @@ def ctx():
 
 # --- Helper functions ---
 
+
 def make_event_page(event_msg, time_str: str = None) -> types.EventPage:
     """Create EventPage with optional timestamp."""
     event_any = ProtoAny()
@@ -69,7 +71,9 @@ def make_event_page(event_msg, time_str: str = None) -> types.EventPage:
     if time_str:
         # Parse time like "14:30:00"
         h, m, s = map(int, time_str.split(":"))
-        dt = datetime.now(timezone.utc).replace(hour=h, minute=m, second=s, microsecond=0)
+        dt = datetime.now(timezone.utc).replace(
+            hour=h, minute=m, second=s, microsecond=0
+        )
         created_at = Timestamp(seconds=int(dt.timestamp()))
     else:
         created_at = make_timestamp()
@@ -87,6 +91,7 @@ def make_card(rank: int, suit: int):
 
 
 # --- Given steps ---
+
 
 @given("an OutputProjector")
 def given_output_projector(ctx):
@@ -135,7 +140,11 @@ def given_player_registered_event(ctx, name):
     ctx.event_page = make_event_page(event)
 
 
-@given(parsers.parse("a FundsDeposited event with amount {amount:d} and new_balance {balance:d}"))
+@given(
+    parsers.parse(
+        "a FundsDeposited event with amount {amount:d} and new_balance {balance:d}"
+    )
+)
 def given_funds_deposited_event(ctx, amount, balance):
     """Create FundsDeposited event."""
     event = player.FundsDeposited(
@@ -146,7 +155,11 @@ def given_funds_deposited_event(ctx, amount, balance):
     ctx.event_page = make_event_page(event)
 
 
-@given(parsers.parse("a FundsWithdrawn event with amount {amount:d} and new_balance {balance:d}"))
+@given(
+    parsers.parse(
+        "a FundsWithdrawn event with amount {amount:d} and new_balance {balance:d}"
+    )
+)
 def given_funds_withdrawn_event(ctx, amount, balance):
     """Create FundsWithdrawn event."""
     event = player.FundsWithdrawn(
@@ -247,7 +260,7 @@ def given_active_players_names(ctx, names, seats):
     seat_list = [int(s.strip()) for s in seats.split(",")]
 
     for i, (name, seat) in enumerate(zip(name_list, seat_list)):
-        player_root = f"player-{i+1}".encode()
+        player_root = f"player-{i + 1}".encode()
         ctx.projector.set_player_name(player_root, name)
         ctx._hand_started_event.active_players.append(
             table.SeatSnapshot(
@@ -290,7 +303,11 @@ def given_cards_dealt_event(ctx, name, cards):
     ctx.event_page = make_event_page(event)
 
 
-@given(parsers.parse('a BlindPosted event for "{name}" type "{blind_type}" amount {amount:d}'))
+@given(
+    parsers.parse(
+        'a BlindPosted event for "{name}" type "{blind_type}" amount {amount:d}'
+    )
+)
 def given_blind_posted_event(ctx, name, blind_type, amount):
     """Create BlindPosted event."""
     event = hand.BlindPosted(
@@ -317,7 +334,11 @@ def given_action_taken_fold(ctx, name, action):
     ctx.event_page = make_event_page(event)
 
 
-@given(parsers.parse('an ActionTaken event for "{name}" action {action} amount {amount:d} pot_total {pot:d}'))
+@given(
+    parsers.parse(
+        'an ActionTaken event for "{name}" action {action} amount {amount:d} pot_total {pot:d}'
+    )
+)
 def given_action_taken_with_amount(ctx, name, action, amount, pot):
     """Create ActionTaken event with amount."""
     action_enum = getattr(poker_types, action)
@@ -366,7 +387,11 @@ def given_showdown_started_event(ctx):
     ctx.event_page = make_event_page(event)
 
 
-@given(parsers.parse('a CardsRevealed event for "{name}" with cards {cards} and ranking {ranking}'))
+@given(
+    parsers.parse(
+        'a CardsRevealed event for "{name}" with cards {cards} and ranking {ranking}'
+    )
+)
 def given_cards_revealed_event(ctx, name, cards, ranking):
     """Create CardsRevealed event."""
     card_list = parse_cards(cards)
@@ -409,8 +434,8 @@ def given_hand_complete_event(ctx, datatable):
     event = hand.HandComplete()
 
     for i, row in enumerate(rows):
-        player_root = f"player-{i+1}".encode()
-        ctx.projector.set_player_name(player_root, row.get("player", f"Player{i+1}"))
+        player_root = f"player-{i + 1}".encode()
+        ctx.projector.set_player_name(player_root, row.get("player", f"Player{i + 1}"))
 
         event.final_stacks.append(
             hand.PlayerStackSnapshot(
@@ -423,7 +448,9 @@ def given_hand_complete_event(ctx, datatable):
     ctx.event_page = make_event_page(event)
 
 
-@given(parsers.parse('a PlayerTimedOut event for "{name}" with default_action {action}'))
+@given(
+    parsers.parse('a PlayerTimedOut event for "{name}" with default_action {action}')
+)
 def given_player_timed_out_event(ctx, name, action):
     """Create PlayerTimedOut event."""
     action_enum = getattr(poker_types, action)
@@ -507,6 +534,7 @@ def given_unknown_event(ctx, type_url):
 
 # --- When steps ---
 
+
 @when("the projector handles the event")
 def when_projector_handles_event(ctx):
     """Handle event with projector."""
@@ -563,6 +591,7 @@ def when_event_references_unknown_player(ctx, player_id):
 
 # --- Then steps ---
 
+
 @then(parsers.parse('the output contains "{text}"'))
 def then_output_contains(ctx, text):
     """Verify output contains text."""
@@ -615,7 +644,7 @@ def then_output_uses_name_prefix(ctx, name):
     assert "Player_" in combined
 
 
-@then(parsers.parse('ranks 2-9 display as digits'))
+@then(parsers.parse("ranks 2-9 display as digits"))
 def then_ranks_2_9_display_as_digits(ctx):
     """Verify ranks 2-9 are digits."""
     for digit in "23456789":
@@ -654,11 +683,23 @@ def then_rank_14_displays(ctx, symbol):
 
 # --- Helper functions ---
 
+
 def parse_cards(cards_str: str) -> list:
     """Parse card string like 'As Kh' into list of Card protos."""
     rank_map = {
-        "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
-        "T": 10, "J": 11, "Q": 12, "K": 13, "A": 14,
+        "2": 2,
+        "3": 3,
+        "4": 4,
+        "5": 5,
+        "6": 6,
+        "7": 7,
+        "8": 8,
+        "9": 9,
+        "T": 10,
+        "J": 11,
+        "Q": 12,
+        "K": 13,
+        "A": 14,
     }
     suit_map = {
         "c": poker_types.CLUBS,
@@ -678,6 +719,7 @@ def parse_cards(cards_str: str) -> list:
 
 # --- Standalone tests for scenarios that use datatables ---
 # pytest-bdd has limited datatable support, so we test these directly
+
 
 class TestProjectorDatatables:
     """Tests for scenarios that use datatables."""
@@ -787,10 +829,10 @@ class TestProjectorDatatables:
     def test_format_cards_all_suits(self):
         """Test card formatting with all suits."""
         cards = [
-            make_card(14, poker_types.CLUBS),     # Ac
-            make_card(13, poker_types.DIAMONDS), # Kd
-            make_card(12, poker_types.HEARTS),   # Qh
-            make_card(11, poker_types.SPADES),   # Js
+            make_card(14, poker_types.CLUBS),  # Ac
+            make_card(13, poker_types.DIAMONDS),  # Kd
+            make_card(12, poker_types.HEARTS),  # Qh
+            make_card(11, poker_types.SPADES),  # Js
         ]
         result = format_cards(cards)
         assert "Ac Kd Qh Js" in result

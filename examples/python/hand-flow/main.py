@@ -61,7 +61,9 @@ class HandFlowProcessManager:
             logger.info(
                 "command_would_send",
                 domain=cmd_book.cover.domain,
-                root=cmd_book.cover.root.value.hex()[:8] if cmd_book.cover.root.value else "none",
+                root=cmd_book.cover.root.value.hex()[:8]
+                if cmd_book.cover.root.value
+                else "none",
             )
 
     def _handle_timeout(self, hand_id: bytes, player_position: int) -> None:
@@ -88,10 +90,12 @@ class HandFlowProcessManager:
                 # Need hand aggregate state
                 event = table.HandStarted()
                 page.event.Unpack(event)
-                destinations.append(types.Cover(
-                    root=types.UUID(value=event.hand_root),
-                    domain="hand",
-                ))
+                destinations.append(
+                    types.Cover(
+                        root=types.UUID(value=event.hand_root),
+                        domain="hand",
+                    )
+                )
 
         return destinations
 

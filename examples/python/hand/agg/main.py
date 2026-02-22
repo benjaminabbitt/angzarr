@@ -28,14 +28,18 @@ def state_from_event_book(event_book):
     state = HandState()
     if event_book is None or not event_book.pages:
         return state
+
     # Sort by sequence for correct ordering
     def get_seq(p):
-        if p.WhichOneof('sequence') == 'num':
+        if p.WhichOneof("sequence") == "num":
             return p.num
         return 0
+
     sorted_pages = sorted(event_book.pages, key=get_seq)
     events = [page.event for page in sorted_pages if page.event]
     return build_state(state, events)
+
+
 from angzarr_client.proto.examples import hand_pb2 as hand
 
 structlog.configure(

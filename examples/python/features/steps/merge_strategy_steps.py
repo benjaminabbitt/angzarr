@@ -17,7 +17,9 @@ use_step_matcher("re")
 # ===========================================================================
 
 
-def make_command_page(sequence: int, strategy: types.MergeStrategy) -> types.CommandPage:
+def make_command_page(
+    sequence: int, strategy: types.MergeStrategy
+) -> types.CommandPage:
     """Create CommandPage with merge strategy."""
     command_any = ProtoAny()
     command_any.type_url = "type.googleapis.com/test.TestCommand"
@@ -43,7 +45,9 @@ def make_command_book(
     )
 
 
-def make_event_book(domain: str, root_bytes: bytes, sequences: list[int]) -> types.EventBook:
+def make_event_book(
+    domain: str, root_bytes: bytes, sequences: list[int]
+) -> types.EventBook:
     """Create EventBook with events at given sequences."""
     pages = []
     for seq in sequences:

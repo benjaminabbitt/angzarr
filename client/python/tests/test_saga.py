@@ -394,6 +394,7 @@ class TestFunctionBasedRouter:
         assert commands[0].cover.domain == "order"
         assert commands[1].cover.domain == "order"
 
+
 # =============================================================================
 # Tests comparing both patterns produce equivalent output
 # =============================================================================
@@ -421,5 +422,11 @@ class TestPatternEquivalence:
 
         # Both produce one command to fulfillment domain
         assert len(oo_commands) == len(fn_commands) == 1
-        assert oo_commands[0].cover.domain == fn_commands[0].cover.domain == "fulfillment"
-        assert oo_commands[0].cover.correlation_id == fn_commands[0].cover.correlation_id == "corr-eq"
+        assert (
+            oo_commands[0].cover.domain == fn_commands[0].cover.domain == "fulfillment"
+        )
+        assert (
+            oo_commands[0].cover.correlation_id
+            == fn_commands[0].cover.correlation_id
+            == "corr-eq"
+        )

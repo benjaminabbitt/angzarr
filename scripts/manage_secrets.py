@@ -66,9 +66,7 @@ def create_namespace(namespace: str) -> None:
 
 def get_secret_data(name: str, namespace: str) -> dict[str, str] | None:
     """Get secret data from Kubernetes (base64 decoded)."""
-    result = kubectl(
-        "get", "secret", name, "-n", namespace, "-o", "json", capture=True
-    )
+    result = kubectl("get", "secret", name, "-n", namespace, "-o", "json", capture=True)
     if result.returncode != 0:
         return None
 
@@ -356,9 +354,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # init command
-    init_parser = subparsers.add_parser(
-        "init", help="Initialize secrets (idempotent)"
-    )
+    init_parser = subparsers.add_parser("init", help="Initialize secrets (idempotent)")
     init_parser.add_argument(
         "--force", action="store_true", help="Overwrite existing secrets"
     )

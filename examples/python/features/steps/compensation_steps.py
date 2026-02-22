@@ -36,12 +36,14 @@ use_step_matcher("re")
 @dataclass
 class MockCommand:
     """Mock command for testing."""
+
     DESCRIPTOR = type("Desc", (), {"full_name": "test.MockCommand"})()
 
 
 @dataclass
 class MockEvent:
     """Mock event for testing."""
+
     DESCRIPTOR = type("Desc", (), {"full_name": "test.MockEvent"})()
 
 
@@ -53,6 +55,7 @@ class MockEvent:
 @dataclass
 class PlayerState:
     """Player aggregate state for testing."""
+
     player_root: bytes = b""
     balance: int = 0
     reserved_amount: int = 0
@@ -61,6 +64,7 @@ class PlayerState:
 @dataclass
 class OrderWorkflowState:
     """Order workflow PM state for testing."""
+
     order_id: str = ""
     step: str = "initial"
     attempts: int = 0
@@ -246,7 +250,9 @@ def make_notification(
     correlation_id: str = "corr-123",
 ) -> types.Notification:
     """Create a Notification with RejectionNotification payload for testing."""
-    rejected_cmd = make_command_book(rejected_domain, rejected_command_type, root, correlation_id)
+    rejected_cmd = make_command_book(
+        rejected_domain, rejected_command_type, root, correlation_id
+    )
 
     rejection = types.RejectionNotification(
         issuer_name=issuer_name,
@@ -265,7 +271,9 @@ def make_notification(
     )
 
 
-def get_rejection_from_notification(notification: types.Notification) -> types.RejectionNotification:
+def get_rejection_from_notification(
+    notification: types.Notification,
+) -> types.RejectionNotification:
     """Extract RejectionNotification from Notification payload."""
     rejection = types.RejectionNotification()
     if notification.HasField("payload"):
@@ -461,6 +469,7 @@ def step_inventory_rejects_simple(context):
 @given(r"a CommandRouter for domain \"([^\"]+)\" with:")
 def step_command_router_with(context, domain):
     """Create CommandRouter with specified handlers."""
+
     def rebuild(events):
         return PlayerState()
 
@@ -479,17 +488,22 @@ def step_command_router_with(context, domain):
 @given("a CommandRouter with on_rejected handler")
 def step_router_with_on_rejected(context):
     """Create router with rejection handler."""
+
     def rebuild(events):
         return PlayerState()
 
     context.router = CommandRouter("player", rebuild)
-    context.router.on_rejected("payment", "ProcessPayment",
-        lambda notification, state: types.EventBook(pages=[]))
+    context.router.on_rejected(
+        "payment",
+        "ProcessPayment",
+        lambda notification, state: types.EventBook(pages=[]),
+    )
 
 
 @given("a CommandRouter with no on_rejected handlers")
 def step_router_without_on_rejected(context):
     """Create router without rejection handlers."""
+
     def rebuild(events):
         return PlayerState()
 
@@ -643,8 +657,9 @@ def step_pm_receives_notification(context):
     )
 
     if hasattr(context, "pm"):
-        context.pm_events, context.revocation_response = \
-            context.pm.handle_revocation(context.notification)
+        context.pm_events, context.revocation_response = context.pm.handle_revocation(
+            context.notification
+        )
 
 
 @when("the PM handles an inventory rejection")
@@ -657,8 +672,9 @@ def step_pm_handles_inventory_rejection(context):
         rejected_domain="inventory",
         rejected_command_type="ReserveInventory",
     )
-    context.pm_events, context.revocation_response = \
-        context.pm.handle_revocation(context.notification)
+    context.pm_events, context.revocation_response = context.pm.handle_revocation(
+        context.notification
+    )
 
 
 @when("the PM receives a Notification")
@@ -672,8 +688,9 @@ def step_pm_receives_notification_simple(context):
         rejected_command_type="UnknownCommand",
     )
     if hasattr(context, "pm") and hasattr(context.pm, "handle_revocation"):
-        context.pm_events, context.revocation_response = \
-            context.pm.handle_revocation(context.notification)
+        context.pm_events, context.revocation_response = context.pm.handle_revocation(
+            context.notification
+        )
 
 
 # ============================================================================
@@ -714,9 +731,7 @@ def step_router_dispatch(context):
     notif_any = ProtoAny()
     notif_any.Pack(context.notification, type_url_prefix="type.googleapis.com/")
 
-    cmd_book = types.CommandBook(
-        pages=[types.CommandPage(command=notif_any)]
-    )
+    cmd_book = types.CommandBook(pages=[types.CommandPage(command=notif_any)])
 
     contextual = types.ContextualCommand(
         command=cmd_book,
@@ -754,16 +769,18 @@ def step_notification_created(context):
 def step_notification_has_issuer_name(context, expected):
     """Verify issuer_name field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert rejection.issuer_name == expected, \
+    assert rejection.issuer_name == expected, (
         f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+    )
 
 
 @then(r"the notification has rejection_reason \"([^\"]+)\"")
 def step_notification_has_reason(context, expected):
     """Verify rejection_reason field."""
     rejection = get_rejection_from_notification(context.notification)
-    assert rejection.rejection_reason == expected, \
+    assert rejection.rejection_reason == expected, (
         f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+    )
 
 
 @then(r"the notification contains the rejected (\w+) command")
@@ -772,8 +789,7 @@ def step_notification_contains_command(context, command_type):
     rejection = get_rejection_from_notification(context.notification)
     assert rejection.rejected_command is not None
     type_url = rejection.rejected_command.pages[0].command.type_url
-    assert command_type in type_url, \
-        f"Expected {command_type} in {type_url}"
+    assert command_type in type_url, f"Expected {command_type} in {type_url}"
 
 
 # ============================================================================
@@ -1344,8 +1360,10 @@ def step_rejection_arrives_for_key(context, domain, command):
 @given(r"a CommandRouter configured as:")
 def step_router_configured_as(context):
     """Create router from docstring config."""
+
     def rebuild(events):
         return PlayerState()
+
     context.router = CommandRouter("player", rebuild)
     context.router.on_rejected("payment", "ProcessPayment", lambda n, s: None)
     context.router.on_rejected("inventory", "ReserveItem", lambda n, s: None)
@@ -1598,6 +1616,7 @@ def step_aggregate_returns_status(context, status):
 
 # --- Given Steps: Emit Scenarios ---
 
+
 @given("a SourceAggregate that emitted ResourceReserved")
 def step_source_emitted_resource_reserved(context):
     """SourceAggregate with ResourceReserved event."""
@@ -1607,9 +1626,9 @@ def step_source_emitted_resource_reserved(context):
     context.source_event_type = "ResourceReserved"
 
 
-
-
-@given("a cross-domain-saga listening for ResourceReserved, issuing CommandThatWillFail to target domain")
+@given(
+    "a cross-domain-saga listening for ResourceReserved, issuing CommandThatWillFail to target domain"
+)
 def step_cross_domain_saga(context):
     """Configure cross-domain-saga."""
     context.issuer_name = "saga-cross-domain"
@@ -1618,7 +1637,9 @@ def step_cross_domain_saga(context):
     context.saga_issues = "CommandThatWillFail"
 
 
-@given("SourceAggregate emitted ResourceReserved which triggered cross-domain-saga which was rejected")
+@given(
+    "SourceAggregate emitted ResourceReserved which triggered cross-domain-saga which was rejected"
+)
 def step_source_saga_chain_rejected(context):
     """Full chain: SourceAggregate → saga → rejected."""
     step_source_emitted_resource_reserved(context)
@@ -1714,10 +1735,12 @@ def step_saga_sequential_commands(context):
     """Saga issues commands in sequence."""
     context.sequential_commands = []
     for row in context.table:
-        context.sequential_commands.append({
-            "command": row.get("command", ""),
-            "target": row.get("target", ""),
-        })
+        context.sequential_commands.append(
+            {
+                "command": row.get("command", ""),
+                "target": row.get("target", ""),
+            }
+        )
 
 
 @given("a PM chain: OuterPM issues to InnerPM issues to TargetAggregate")
@@ -1729,6 +1752,7 @@ def step_pm_chain_nested(context):
 
 
 # --- When Steps: Emit Scenarios ---
+
 
 @when(r"the TargetAggregate rejects CommandThatWillFail with \"([^\"]+)\"")
 def step_target_rejects_command(context, reason):
@@ -1754,7 +1778,9 @@ def step_target_rejects(context, reason):
         issuer_type=getattr(context, "issuer_type", "process_manager"),
         rejection_reason=reason,
         rejected_domain="target",
-        rejected_command_type=getattr(context, "rejected_command", "CommandThatWillFail"),
+        rejected_command_type=getattr(
+            context, "rejected_command", "CommandThatWillFail"
+        ),
     )
 
 
@@ -1780,7 +1806,9 @@ def step_returns_failed_precondition(context):
         issuer_type=getattr(context, "issuer_type", "saga"),
         rejection_reason="precondition_failed",
         rejected_domain=getattr(context, "rejected_domain", "target"),
-        rejected_command_type=getattr(context, "rejected_command", "CommandThatWillFail"),
+        rejected_command_type=getattr(
+            context, "rejected_command", "CommandThatWillFail"
+        ),
     )
 
 
@@ -1820,6 +1848,7 @@ def step_target_rejects_command_generic(context):
 
 # --- Then Steps: Emit Scenarios ---
 
+
 @then("the framework creates a Notification containing:")
 def step_notification_containing(context):
     """Verify notification has expected fields."""
@@ -1829,11 +1858,13 @@ def step_notification_containing(context):
         field = row[0]
         expected = row[1]
         if field == "issuer_name":
-            assert rejection.issuer_name == expected, \
+            assert rejection.issuer_name == expected, (
                 f"Expected issuer_name '{expected}', got '{rejection.issuer_name}'"
+            )
         elif field == "rejection_reason":
-            assert rejection.rejection_reason == expected, \
+            assert rejection.rejection_reason == expected, (
                 f"Expected reason '{expected}', got '{rejection.rejection_reason}'"
+            )
         elif field == "rejected_command":
             type_url = rejection.rejected_command.pages[0].command.type_url
             assert expected in type_url, f"Expected {expected} in {type_url}"
@@ -1975,6 +2006,7 @@ def step_notifications_route_reverse(context):
 
 # --- Given Steps: Handle Scenarios ---
 
+
 @given(r"SourceAggregate has reserved_amount (\d+)")
 def step_source_has_reserved(context, amount):
     """SourceAggregate has reserved amount."""
@@ -2010,11 +2042,13 @@ def step_source_has_handlers(context):
     context.aggregate = TestPlayerWithRejectionHandler(event_book)
     context.handlers_config = []
     for row in context.table:
-        context.handlers_config.append({
-            "domain": row["domain"],
-            "command": row["command"],
-            "handler": row["handler"],
-        })
+        context.handlers_config.append(
+            {
+                "domain": row["domain"],
+                "command": row["command"],
+                "handler": row["handler"],
+            }
+        )
 
 
 @given("SourceAggregate has no @rejected handlers configured")
@@ -2069,8 +2103,10 @@ def step_workflow_pm_no_handlers(context):
 @given(r"CommandRouter for \"([^\"]+)\" domain configured with:")
 def step_command_router_for_domain(context, domain):
     """CommandRouter for domain with config."""
+
     def rebuild(events):
         return PlayerState()
+
     context.router = CommandRouter(domain, rebuild)
     for row in context.table:
         type_col = row.get("type", "")
@@ -2086,10 +2122,14 @@ def step_command_router_for_domain(context, domain):
 @given("CommandRouter with on_rejected handler")
 def step_router_with_handler(context):
     """Router with rejection handler."""
+
     def rebuild(events):
         return PlayerState()
+
     context.router = CommandRouter("source", rebuild)
-    context.router.on_rejected("target", "CommandThatWillFail", lambda n, s: types.EventBook())
+    context.router.on_rejected(
+        "target", "CommandThatWillFail", lambda n, s: types.EventBook()
+    )
 
 
 @given("handler builds EventBook containing ResourceReleased")
@@ -2101,16 +2141,20 @@ def step_handler_builds_eventbook(context):
 @given("CommandRouter with no on_rejected handlers")
 def step_router_no_handlers(context):
     """Router without handlers."""
+
     def rebuild(events):
         return PlayerState()
+
     context.router = CommandRouter("source", rebuild)
 
 
 @given("CommandRouter configured as:")
 def step_router_configured_docstring(context):
     """Router from docstring config."""
+
     def rebuild(events):
         return PlayerState()
+
     context.router = CommandRouter("source", rebuild)
     context.router.on_rejected("target", "CommandThatWillFail", lambda n, s: None)
     context.router.on_rejected("other", "OtherCommand", lambda n, s: None)
@@ -2195,6 +2239,7 @@ def step_workflow_pm_in_step(context, step):
 
 # --- When Steps: Handle Scenarios ---
 
+
 @when("SourceAggregate receives Notification for target/CommandThatWillFail rejection")
 def step_source_receives_target_rejection(context):
     """SourceAggregate receives target rejection."""
@@ -2276,8 +2321,9 @@ def step_pm_receives_target_rejection(context):
         rejected_command_type="TargetCommand",
     )
     if hasattr(context, "pm") and hasattr(context.pm, "handle_revocation"):
-        context.pm_events, context.revocation_response = \
-            context.pm.handle_revocation(context.notification)
+        context.pm_events, context.revocation_response = context.pm.handle_revocation(
+            context.notification
+        )
 
 
 @when(r"PM handles target rejection with reason \"([^\"]+)\"")
@@ -2291,8 +2337,9 @@ def step_pm_handles_target_rejection(context, reason):
         rejected_command_type="TargetCommand",
     )
     if hasattr(context, "pm") and hasattr(context.pm, "handle_revocation"):
-        context.pm_events, context.revocation_response = \
-            context.pm.handle_revocation(context.notification)
+        context.pm_events, context.revocation_response = context.pm.handle_revocation(
+            context.notification
+        )
 
 
 @when("PM @rejected handler completes")
@@ -2312,8 +2359,9 @@ def step_pm_receives_notification_any(context):
         rejected_command_type="UnknownCommand",
     )
     if hasattr(context, "pm") and hasattr(context.pm, "handle_revocation"):
-        context.pm_events, context.revocation_response = \
-            context.pm.handle_revocation(context.notification)
+        context.pm_events, context.revocation_response = context.pm.handle_revocation(
+            context.notification
+        )
 
 
 @when("Notification arrives for target/CommandThatWillFail rejection")
@@ -2360,6 +2408,7 @@ def step_router_builds_key(context):
 
 
 # --- Then Steps: Handle Scenarios ---
+
 
 @then("the matching @rejected handler is invoked")
 def step_matching_handler_invoked(context):

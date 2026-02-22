@@ -168,4 +168,3 @@ class Projector(ABC):
                     last_projection = result
 
         return last_projection
-

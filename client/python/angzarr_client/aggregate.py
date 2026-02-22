@@ -72,7 +72,9 @@ def handles(command_type: type):
 
     def decorator(method: Callable) -> Callable:
         # Validate at decoration time (cmd is at index 1 after self)
-        validate_command_handler(method, command_type, cmd_param_index=1, decorator_name="handles")
+        validate_command_handler(
+            method, command_type, cmd_param_index=1, decorator_name="handles"
+        )
 
         @wraps(method)
         def wrapper(self, *args, **kwargs):
@@ -115,7 +117,9 @@ def applies(event_type: type):
 
     def decorator(method: Callable) -> Callable:
         # Validate at decoration time (event is at index 2 after self, state)
-        validate_command_handler(method, event_type, cmd_param_index=2, decorator_name="applies")
+        validate_command_handler(
+            method, event_type, cmd_param_index=2, decorator_name="applies"
+        )
 
         @wraps(method)
         def wrapper(self, state, event):
@@ -180,7 +184,9 @@ class Aggregate(Generic[StateT], ABC):
     domain: str
     _dispatch_table: dict[str, tuple[str, type]] = {}
     _rejection_table: dict[str, str] = {}  # "domain/command" -> method_name
-    _applier_table: dict[str, tuple[str, type]] = {}  # suffix -> (method_name, event_type)
+    _applier_table: dict[
+        str, tuple[str, type]
+    ] = {}  # suffix -> (method_name, event_type)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -207,9 +213,7 @@ class Aggregate(Generic[StateT], ABC):
                 cmd_type = attr._command_type
                 suffix = cmd_type.__name__
                 if suffix in table:
-                    raise TypeError(
-                        f"{cls.__name__}: duplicate handler for {suffix}"
-                    )
+                    raise TypeError(f"{cls.__name__}: duplicate handler for {suffix}")
                 table[suffix] = (name, cmd_type)
         return table
 
@@ -248,9 +252,7 @@ class Aggregate(Generic[StateT], ABC):
                 event_type = attr._event_type
                 suffix = event_type.__name__
                 if suffix in table:
-                    raise TypeError(
-                        f"{cls.__name__}: duplicate applier for {suffix}"
-                    )
+                    raise TypeError(f"{cls.__name__}: duplicate applier for {suffix}")
                 table[suffix] = (name, event_type)
         return table
 
@@ -319,7 +321,9 @@ class Aggregate(Generic[StateT], ABC):
         agg.dispatch(command_any)
         return aggregate.BusinessResponse(events=agg.event_book())
 
-    def handle_revocation(self, notification: types.Notification) -> aggregate.BusinessResponse:
+    def handle_revocation(
+        self, notification: types.Notification
+    ) -> aggregate.BusinessResponse:
         """Handle a rejection notification.
 
         Called when a saga/PM command is rejected and compensation is needed.
@@ -359,7 +363,9 @@ class Aggregate(Generic[StateT], ABC):
             if rejected_cmd.pages[0].HasField("command"):
                 type_url = rejected_cmd.pages[0].command.type_url
                 # Extract suffix (e.g., "ProcessPayment" from "type.googleapis.com/.../ProcessPayment")
-                command_suffix = type_url.rsplit("/", 1)[-1] if "/" in type_url else type_url
+                command_suffix = (
+                    type_url.rsplit("/", 1)[-1] if "/" in type_url else type_url
+                )
 
         # Dispatch to @rejected handler if found (use suffix matching like regular dispatch)
         for key, method_name in self._rejection_table.items():
@@ -394,7 +400,9 @@ class Aggregate(Generic[StateT], ABC):
         """
         # Create aggregate with events from request
         event_book = types.EventBook(
-            snapshot=request.base_snapshot if request.HasField("base_snapshot") else None,
+            snapshot=request.base_snapshot
+            if request.HasField("base_snapshot")
+            else None,
             pages=list(request.events),
         )
         agg = cls(event_book)
@@ -407,7 +415,6 @@ class Aggregate(Generic[StateT], ABC):
         state_any.Pack(state, type_url_prefix="type.googleapis.com/")
 
         return aggregate.ReplayResponse(state=state_any)
-
 
     def event_book(self) -> types.EventBook:
         """Return the event book for persistence.
