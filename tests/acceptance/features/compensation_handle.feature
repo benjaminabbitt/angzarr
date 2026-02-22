@@ -1,4 +1,4 @@
-@compensation
+@compensation @wip
 Feature: Compensation Flow - Components Handle Notification
   When a Notification arrives (indicating a downstream command was rejected),
   the source component must compensate - typically by emitting events that

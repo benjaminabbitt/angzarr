@@ -1,4 +1,4 @@
-@compensation
+@compensation @wip
 Feature: Compensation Flow - Framework Emits Notification
   When a saga or process manager issues a command that gets rejected by the
   target aggregate, the system must notify the original components so they

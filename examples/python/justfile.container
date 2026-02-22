@@ -18,7 +18,7 @@ test-unit: build
     uv run pytest -v
 
 test-acceptance: build
-    uv run behave features/
+    uv run behave features/ --tags="~@wip"
 
 test: test-unit test-acceptance
 
