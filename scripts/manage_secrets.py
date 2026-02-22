@@ -58,10 +58,10 @@ def secret_exists(name: str, namespace: str) -> bool:
 def create_namespace(namespace: str) -> None:
     """Create namespace if it doesn't exist."""
     if not namespace_exists(namespace):
-        print(f"Creating namespace: {namespace}")
+        print(f"Creating namespace: {namespace}")  # nosec - namespace name, not sensitive
         kubectl("create", "namespace", namespace)
     else:
-        print(f"Namespace already exists: {namespace}")
+        print(f"Namespace already exists: {namespace}")  # nosec - namespace name, not sensitive
 
 
 def get_secret_data(name: str, namespace: str) -> dict[str, str] | None:
@@ -83,7 +83,7 @@ def create_secret(
 ) -> None:
     """Create or update a Kubernetes secret."""
     if secret_exists(name, namespace) and not force:
-        print(f"Secret '{name}' already exists in namespace '{namespace}'")
+        print(f"Secret '{name}' already exists in namespace '{namespace}'")  # nosec - name only
         print("Use --force to overwrite")
         return
 
@@ -182,7 +182,7 @@ def cmd_init(args: argparse.Namespace, config: Config) -> int:
     create_namespace(config.secrets_namespace)
 
     if secret_exists(config.secret_name, config.secrets_namespace) and not args.force:
-        print(f"Secrets already exist in namespace '{config.secrets_namespace}'")
+        print(f"Secrets already exist in namespace '{config.secrets_namespace}'")  # nosec - name only
         print("Use --force to regenerate")
         return 0
 
@@ -210,7 +210,7 @@ def cmd_rotate(args: argparse.Namespace, config: Config) -> int:
 def cmd_show(args: argparse.Namespace, config: Config) -> int:
     """Display current secrets."""
     if not secret_exists(config.secret_name, config.secrets_namespace):
-        print(f"No secrets found in namespace '{config.secrets_namespace}'")
+        print(f"No secrets found in namespace '{config.secrets_namespace}'")  # nosec - name only
         return 1
 
     data = get_secret_data(config.secret_name, config.secrets_namespace)
@@ -218,7 +218,7 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
         print("Failed to retrieve secret data")
         return 1
 
-    print(f"Secrets in namespace '{config.secrets_namespace}':")
+    print(f"Secrets in namespace '{config.secrets_namespace}':")  # nosec - name only
     for key, value in sorted(data.items()):
         # Mask most of the value for security
         if len(value) > 8:
@@ -227,9 +227,9 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
             masked = "*" * len(value)
 
         if args.reveal:
-            print(f"  {key}: {value}")
+            print(f"  {key}: {value}")  # nosec - intentional reveal via --reveal flag
         else:
-            print(f"  {key}: {masked}")
+            print(f"  {key}: {masked}")  # nosec - value is masked
 
     if not args.reveal:
         print()
@@ -241,10 +241,10 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
 def cmd_check(args: argparse.Namespace, config: Config) -> int:
     """Check if secrets exist."""
     if secret_exists(config.secret_name, config.secrets_namespace):
-        print(f"Secrets exist in namespace '{config.secrets_namespace}'")
+        print(f"Secrets exist in namespace '{config.secrets_namespace}'")  # nosec - name only
         return 0
     else:
-        print(f"No secrets found in namespace '{config.secrets_namespace}'")
+        print(f"No secrets found in namespace '{config.secrets_namespace}'")  # nosec - name only
         return 1
 
 
@@ -252,7 +252,7 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     """Sync secrets to target namespace in format expected by Bitnami charts."""
     # Ensure source secrets exist
     if not secret_exists(config.secret_name, config.secrets_namespace):
-        print(f"Source secrets not found in namespace '{config.secrets_namespace}'")
+        print(f"Source secrets not found in namespace '{config.secrets_namespace}'")  # nosec - name only
         print("Run 'init' first to create secrets")
         return 1
 

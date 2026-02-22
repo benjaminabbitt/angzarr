@@ -1,6 +1,10 @@
 use super::*;
 use crate::proto::{Cover, Uuid};
 
+// Test fixtures - not real credentials
+const TEST_USER: &str = "test-user";
+const TEST_PASSWORD: &str = "test-password";
+
 #[test]
 fn test_message_key_generation() {
     let book = EventBook {
@@ -54,10 +58,11 @@ fn test_subscriber_config() {
 
 #[test]
 fn test_sasl_config() {
+    // codeql[rust/hard-coded-cryptographic-value] - Test fixture, not real credentials
     let config =
-        KafkaEventBusConfig::publisher("localhost:9092").with_sasl("user", "pass", "SCRAM-SHA-256");
-    assert_eq!(config.sasl_username, Some("user".to_string()));
-    assert_eq!(config.sasl_password, Some("pass".to_string()));
+        KafkaEventBusConfig::publisher("localhost:9092").with_sasl(TEST_USER, TEST_PASSWORD, "SCRAM-SHA-256");
+    assert_eq!(config.sasl_username, Some(TEST_USER.to_string()));
+    assert_eq!(config.sasl_password, Some(TEST_PASSWORD.to_string()));
     assert_eq!(config.sasl_mechanism, Some("SCRAM-SHA-256".to_string()));
     assert_eq!(config.security_protocol, Some("SASL_SSL".to_string()));
 }

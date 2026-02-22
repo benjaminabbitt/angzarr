@@ -250,6 +250,10 @@ impl CloudEventsSink for KafkaSink {
 mod tests {
     use super::*;
 
+    // Test fixtures - not real credentials
+    const TEST_USER: &str = "test-user";
+    const TEST_PASSWORD: &str = "test-password";
+
     #[test]
     fn test_config_defaults() {
         let config = KafkaSinkConfig::default();
@@ -259,14 +263,15 @@ mod tests {
 
     #[test]
     fn test_config_builder() {
+        // codeql[rust/hard-coded-cryptographic-value] - Test fixture, not real credentials
         let config = KafkaSinkConfig::default()
             .with_bootstrap_servers("localhost:9092".to_string())
             .with_topic("my-events".to_string())
-            .with_sasl("user".to_string(), "pass".to_string(), "PLAIN".to_string());
+            .with_sasl(TEST_USER.to_string(), TEST_PASSWORD.to_string(), "PLAIN".to_string());
 
         assert_eq!(config.bootstrap_servers, "localhost:9092");
         assert_eq!(config.topic, "my-events");
-        assert_eq!(config.sasl_username, Some("user".to_string()));
+        assert_eq!(config.sasl_username, Some(TEST_USER.to_string()));
         assert_eq!(config.sasl_mechanism, Some("PLAIN".to_string()));
         assert_eq!(config.security_protocol, Some("SASL_SSL".to_string()));
     }
