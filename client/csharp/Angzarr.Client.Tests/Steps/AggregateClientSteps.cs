@@ -778,8 +778,8 @@ public class AggregateClientSteps
         // Already have error set
     }
 
-    [Then(@"the operation should fail with connection error")]
-    public void ThenOperationShouldFailWithConnectionError()
+    [Then(@"the aggregate operation should fail with connection error")]
+    public void ThenAggregateOperationShouldFailWithConnectionError()
     {
         (_error as ClientError)?.IsConnectionError().Should().BeTrue();
     }
@@ -1557,8 +1557,8 @@ public class AggregateClientSteps
         }
     }
 
-    [Then(@"the final projection state should be returned")]
-    public void ThenTheFinalProjectionStateShouldBeReturned()
+    [Then(@"the router projection state should be returned")]
+    public void ThenTheRouterProjectionStateShouldBeReturned()
     {
         // Check local state or context-shared state
         object? state = _state;

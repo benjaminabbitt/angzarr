@@ -11,15 +11,16 @@ import (
 
 // SpeculativeClientContext holds state for speculative execution scenarios
 type SpeculativeClientContext struct {
-	eventBooks          map[string]*pb.EventBook
-	lastResult          *pb.EventBook
-	lastCommands        []*pb.CommandBook
-	lastProjection      interface{}
-	lastError           error
-	speculativeEvents   []*pb.EventPage
-	rejectionReason     string
-	serviceUnavailable  bool
-	editionCreated      bool
+	eventBooks            map[string]*pb.EventBook
+	lastResult            *pb.EventBook
+	lastCommands          []*pb.CommandBook
+	lastProjection        interface{}
+	lastError             error
+	speculativeEvents     []*pb.EventPage
+	rejectionReason       string
+	serviceUnavailable    bool
+	editionCreated        bool
+	missingCorrelationID  bool
 }
 
 func newSpeculativeClientContext() *SpeculativeClientContext {
@@ -254,6 +255,10 @@ func (c *SpeculativeClientContext) correlatedEventsFromMultipleDomains() error {
 }
 
 func (c *SpeculativeClientContext) iSpeculativelyExecuteProcessManager(pm string) error {
+	if c.missingCorrelationID {
+		c.lastError = fmt.Errorf("missing correlation ID")
+		return nil
+	}
 	c.lastCommands = []*pb.CommandBook{
 		{Cover: &pb.Cover{Domain: "orders"}},
 		{Cover: &pb.Cover{Domain: "inventory"}},
@@ -273,6 +278,7 @@ func (c *SpeculativeClientContext) theCommandsShouldNOTBeExecuted() error {
 }
 
 func (c *SpeculativeClientContext) eventsWithoutCorrelationID() error {
+	c.missingCorrelationID = true
 	return nil
 }
 
@@ -283,11 +289,43 @@ func (c *SpeculativeClientContext) theOperationShouldFail() error {
 	return nil
 }
 
+func (c *SpeculativeClientContext) theSpeculativePMOperationShouldFail() error {
+	if c.lastError == nil {
+		return fmt.Errorf("expected operation to fail")
+	}
+	return nil
+}
+
 func (c *SpeculativeClientContext) theErrorShouldIndicateMissingCorrelationID() error {
 	return nil
 }
 
 // State Isolation
+
+func (c *SpeculativeClientContext) aSpeculativeAggregateWithRootHasEvents(domain, root string, count int) error {
+	events := make([]*pb.EventPage, count)
+	for i := 0; i < count; i++ {
+		evt, _ := anypb.New(&emptypb.Empty{})
+		events[i] = &pb.EventPage{
+			Sequence: uint32(i),
+			Payload:  &pb.EventPage_Event{Event: evt},
+		}
+	}
+	c.eventBooks[c.key(domain, root)] = &pb.EventBook{
+		Cover: &pb.Cover{Domain: domain, Root: &pb.UUID{Value: []byte(root)}},
+		Pages: events,
+	}
+	return nil
+}
+
+func (c *SpeculativeClientContext) iVerifyTheRealEventsForRoot(domain, root string) error {
+	if book, ok := c.eventBooks[c.key(domain, root)]; ok {
+		c.lastResult = book
+	} else {
+		c.lastResult = &pb.EventBook{}
+	}
+	return nil
+}
 
 func (c *SpeculativeClientContext) iSpeculativelyExecuteACommandProducingEvents(count int) error {
 	c.editionCreated = true
@@ -381,7 +419,7 @@ func InitSpeculativeClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a SpeculativeClient connected to the test backend$`, c.aSpeculativeClientConnectedToTheTestBackend)
 
 	// Aggregate Execution
-	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)" has (\d+) events$`, c.anAggregateWithRootHasEvents)
+	// Note: "an aggregate ... has ... events" is registered by QueryClientContext
 	ctx.Step(`^I speculatively execute a command against "([^"]*)" root "([^"]*)"$`, c.iSpeculativelyExecuteACommandAgainstRoot)
 	ctx.Step(`^the response should contain the projected events$`, c.theResponseShouldContainTheProjectedEvents)
 	ctx.Step(`^the events should NOT be persisted$`, c.theEventsShouldNOTBePersisted)
@@ -392,7 +430,7 @@ func InitSpeculativeClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I speculatively execute a "([^"]*)" command$`, c.iSpeculativelyExecuteACommand)
 	ctx.Step(`^the response should indicate rejection$`, c.theResponseShouldIndicateRejection)
 	ctx.Step(`^the rejection reason should be "([^"]*)"$`, c.theRejectionReasonShouldBe)
-	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)"$`, c.anAggregateWithRoot)
+	// Step "an aggregate ... with root ..." handled by AggregateClientContext (InitAggregateClientSteps registered earlier in InitializeScenario)
 	ctx.Step(`^I speculatively execute a command with invalid payload$`, c.iSpeculativelyExecuteACommandWithInvalidPayload)
 	ctx.Step(`^the operation should fail with validation error$`, c.theOperationShouldFailWithValidationError)
 	ctx.Step(`^no events should be produced$`, c.noEventsShouldBeProduced)
@@ -423,12 +461,13 @@ func InitSpeculativeClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the response should contain the PM's command decisions$`, c.theResponseShouldContainThePMsCommandDecisions)
 	ctx.Step(`^the commands should NOT be executed$`, c.theCommandsShouldNOTBeExecuted)
 	ctx.Step(`^events without correlation ID$`, c.eventsWithoutCorrelationID)
-	ctx.Step(`^the operation should fail$`, c.theOperationShouldFail)
+	ctx.Step(`^the speculative PM operation should fail$`, c.theSpeculativePMOperationShouldFail)
 	ctx.Step(`^the error should indicate missing correlation ID$`, c.theErrorShouldIndicateMissingCorrelationID)
 
 	// State Isolation
+	ctx.Step(`^a speculative aggregate "([^"]*)" with root "([^"]*)" has (\d+) events$`, c.aSpeculativeAggregateWithRootHasEvents)
 	ctx.Step(`^I speculatively execute a command producing (\d+) events$`, c.iSpeculativelyExecuteACommandProducingEvents)
-	ctx.Step(`^I query events for "([^"]*)" root "([^"]*)"$`, c.iQueryEventsForRoot)
+	ctx.Step(`^I verify the real events for "([^"]*)" root "([^"]*)"$`, c.iVerifyTheRealEventsForRoot)
 	ctx.Step(`^I should receive only (\d+) events$`, c.iShouldReceiveOnlyEvents)
 	ctx.Step(`^the speculative events should not be present$`, c.theSpeculativeEventsShouldNotBePresent)
 	ctx.Step(`^I speculatively execute command A$`, c.iSpeculativelyExecuteCommandA)
@@ -439,7 +478,7 @@ func InitSpeculativeClientSteps(ctx *godog.ScenarioContext) {
 	// Error Handling
 	ctx.Step(`^the speculative service is unavailable$`, c.theSpeculativeServiceIsUnavailable)
 	ctx.Step(`^I attempt speculative execution$`, c.iAttemptSpeculativeExecution)
-	ctx.Step(`^the operation should fail with connection error$`, c.theOperationShouldFailWithConnectionError)
+	ctx.Step(`^the speculative operation should fail with connection error$`, c.theOperationShouldFailWithConnectionError)
 	ctx.Step(`^I attempt speculative execution with missing parameters$`, c.iAttemptSpeculativeExecutionWithMissingParameters)
-	ctx.Step(`^the operation should fail with invalid argument error$`, c.theOperationShouldFailWithInvalidArgumentError)
+	ctx.Step(`^the speculative operation should fail with invalid argument error$`, c.theOperationShouldFailWithInvalidArgumentError)
 }

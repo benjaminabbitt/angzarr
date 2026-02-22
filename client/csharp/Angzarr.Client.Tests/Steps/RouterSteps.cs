@@ -517,6 +517,26 @@ public class RouterSteps
         // Default message
     }
 
+    // New step definitions to match updated feature file patterns
+
+    [Given(@"a saga router with a rejected command")]
+    public void GivenASagaRouterWithARejectedCommand()
+    {
+        _eventRouter = new EventRouter("rejection-saga")
+            .Domain("test");
+        _rejection = new Angzarr.RevocationResponse
+        {
+            Reason = "Command rejected by target aggregate"
+        };
+        _ctx["rejection"] = _rejection;
+    }
+
+    [When(@"the router processes the rejection")]
+    public void WhenTheRouterProcessesTheRejection()
+    {
+        _rejection.Should().NotBeNull("Expected rejection to be present");
+    }
+
     // NOTE: default/initial state step is in StateBuildingSteps
 }
 

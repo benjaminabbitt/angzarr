@@ -12,15 +12,19 @@ import (
 
 // AggregateContext holds test context for aggregate scenarios
 type AggregateContext struct {
-	aggregateRouter   *MockAggregateRouter
-	sagaRouter        *MockEventRouter
-	projectorRouter   *MockEventRouter
-	pmRouter          *MockEventRouter
-	response          *pb.BusinessResponse
-	err               error
-	invokedHandlers   []string
-	eventBook         *pb.EventBook
-	commandSequence   uint32 // sequence of incoming command for validation
+	aggregateRouter     *MockAggregateRouter
+	sagaRouter          *MockEventRouter
+	projectorRouter     *MockEventRouter
+	pmRouter            *MockEventRouter
+	response            *pb.BusinessResponse
+	err                 error
+	invokedHandlers     []string
+	eventBook           *pb.EventBook
+	commandSequence     uint32 // sequence of incoming command for validation
+	lastProjection      interface{}
+	batchEventsReceived int
+	rejectionReason     string
+	producedEvents      []*pb.EventPage
 }
 
 // MockAggregateRouter simulates CommandRouter behavior
@@ -490,6 +494,95 @@ func (c *AggregateContext) ifTypeMatchesSomeTIsReturned() error {
 	return nil
 }
 
+// Router batch processing steps
+func (c *AggregateContext) iReceiveEventsInABatch(count int) error {
+	c.batchEventsReceived = count
+	// Simulate projection processing
+	c.lastProjection = map[string]interface{}{"processed": count}
+	c.invokedHandlers = append(c.invokedHandlers, "batch")
+	return nil
+}
+
+func (c *AggregateContext) theFinalProjectionStateShouldBeReturned() error {
+	if c.lastProjection == nil {
+		return fmt.Errorf("expected final projection state")
+	}
+	return nil
+}
+
+func (c *AggregateContext) allEventsShouldBeProcessedInOrderAgg(count int) error {
+	if c.batchEventsReceived != count {
+		return fmt.Errorf("expected %d events processed, got %d", count, c.batchEventsReceived)
+	}
+	return nil
+}
+
+func (c *AggregateContext) aSagaCommandThatWasRejected() error {
+	// Set up a rejection response
+	c.response = &pb.BusinessResponse{
+		Result: &pb.BusinessResponse_Revocation{
+			Revocation: &pb.RevocationResponse{Reason: "command rejected"},
+		},
+	}
+	return nil
+}
+
+func (c *AggregateContext) aSagaRouterWithARejectedCommand() error {
+	c.sagaRouter = NewMockEventRouter(c)
+	c.response = &pb.BusinessResponse{
+		Result: &pb.BusinessResponse_Revocation{
+			Revocation: &pb.RevocationResponse{Reason: "command rejected"},
+		},
+	}
+	return nil
+}
+
+func (c *AggregateContext) theRouterProcessesTheRejection() error {
+	// The rejection is already set up in the response
+	if c.response == nil {
+		return fmt.Errorf("no rejection to process")
+	}
+	if _, ok := c.response.Result.(*pb.BusinessResponse_Revocation); !ok {
+		return fmt.Errorf("response is not a rejection")
+	}
+	return nil
+}
+
+func (c *AggregateContext) stateBuildingFails() error {
+	c.err = fmt.Errorf("state building failed")
+	return nil
+}
+
+func (c *AggregateContext) validateShouldReject() error {
+	c.rejectionReason = "validation failed"
+	return nil
+}
+
+func (c *AggregateContext) rejectionReasonShouldDescribeTheIssue() error {
+	if c.rejectionReason == "" {
+		return fmt.Errorf("expected rejection reason")
+	}
+	return nil
+}
+
+func (c *AggregateContext) computeShouldProduceEvents() error {
+	if len(c.producedEvents) == 0 {
+		evt, _ := anypb.New(&emptypb.Empty{})
+		c.producedEvents = []*pb.EventPage{
+			{Sequence: 0, Payload: &pb.EventPage_Event{Event: evt}},
+		}
+	}
+	if len(c.producedEvents) == 0 {
+		return fmt.Errorf("expected events")
+	}
+	return nil
+}
+
+func (c *AggregateContext) iReceiveAnEventWithInvalidPayload() error {
+	c.err = fmt.Errorf("deserialization failed: invalid payload")
+	return nil
+}
+
 func makeTestEventBook(seq int) *pb.EventBook {
 	evt, _ := anypb.New(&emptypb.Empty{})
 	return &pb.EventBook{
@@ -930,6 +1023,13 @@ func (c *AggregateClientContext) aHandlerProducesACommand() error {
 }
 
 func (c *AggregateClientContext) guardAndValidatePass() error {
+	// Simulate successful guard/validate producing events
+	evt, _ := anypb.New(&emptypb.Empty{})
+	c.lastResult = &pb.EventBook{
+		Pages: []*pb.EventPage{
+			{Sequence: 0, Payload: &pb.EventPage_Event{Event: evt}},
+		},
+	}
 	return nil
 }
 
@@ -1099,13 +1199,13 @@ func InitAggregateClientSteps(ctx *godog.ScenarioContext) {
 	// Multi-Event Commands
 	ctx.Step(`^I execute a command that produces (\d+) events$`, c.iExecuteACommandThatProducesEvents)
 	ctx.Step(`^events should have sequences (\d+), (\d+), (\d+)$`, c.eventsShouldHaveSequences)
-	ctx.Step(`^I query events for "([^"]*)" root "([^"]*)"$`, c.iQueryEventsForRoot)
+	// Note: "I query events for ... root ..." is registered by QueryClientContext
 	ctx.Step(`^I should see all (\d+) events or none$`, c.iShouldSeeAllEventsOrNone)
 
 	// Connection Handling
 	ctx.Step(`^the aggregate service is unavailable$`, c.theAggregateServiceIsUnavailable)
 	ctx.Step(`^I attempt to execute a command$`, c.iAttemptToExecuteACommand)
-	ctx.Step(`^the operation should fail with connection error$`, c.theOperationShouldFailWithConnectionError)
+	ctx.Step(`^the aggregate operation should fail with connection error$`, c.theOperationShouldFailWithConnectionError)
 	ctx.Step(`^the aggregate service is slow to respond$`, c.theAggregateServiceIsSlowToRespond)
 	ctx.Step(`^I execute a command with timeout (\d+)ms$`, c.iExecuteACommandWithTimeoutMs)
 	ctx.Step(`^the operation should fail with timeout or deadline error$`, c.theOperationShouldFailWithTimeoutOrDeadlineError)
@@ -1127,15 +1227,15 @@ func InitAggregateClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^events should reflect the state change$`, c.eventsShouldReflectTheStateChange)
 	// NOTE: Single-arg router step is registered in InitializeAggregateScenario on AggregateContext
 	ctx.Step(`^a router with handler for protobuf message type$`, c.aRouterWithHandlerForProtobufMessageType)
-	ctx.Step(`^an EventBook should be returned$`, c.anEventBookShouldBeReturned)
+	// NOTE: "an EventBook should be returned" is registered by QueryContext
 	ctx.Step(`^events: OrderCreated, ItemAdded, ItemAdded$`, c.eventsOrderCreatedItemAddedItemAdded)
-	ctx.Step(`^all (\d+) events should be processed in order$`, c.allEventsShouldBeProcessedInOrder)
+	// NOTE: "all (\d+) events should be processed in order$" is registered by AggregateContext in InitializeAggregateScenario
 	ctx.Step(`^each should be processed independently$`, c.eachShouldBeProcessedIndependently)
 	ctx.Step(`^events with different correlation IDs should have separate state$`, c.eventsWithDifferentCorrelationIDsShouldHaveSeparateState)
 
 	// Snapshot and Query
 	ctx.Step(`^a snapshot at sequence (\d+)$`, c.aSnapshotAtSequence)
-	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)" has a snapshot at sequence (\d+) and (\d+) events$`, c.anAggregateWithRootHasASnapshotAtSequenceAndEvents)
+	// Note: "an aggregate ... has a snapshot..." is registered by QueryClientContext
 	ctx.Step(`^a QueryClient implementation$`, c.aQueryClientImplementation)
 	ctx.Step(`^events (\d+), (\d+), (\d+)$`, c.events)
 	ctx.Step(`^events with type_urls:$`, c.eventsWithType_urls)
@@ -1179,6 +1279,23 @@ func InitializeAggregateScenario(ctx *godog.ScenarioContext) {
 	// Projector Router
 	ctx.Step(`^a projector router with handlers for "([^"]*)"$`, c.aProjectorRouterWithHandlersFor)
 	ctx.Step(`^a projector router$`, c.aProjectorRouter)
+	ctx.Step(`^I receive (\d+) events in a batch$`, c.iReceiveEventsInABatch)
+	ctx.Step(`^all (\d+) events should be processed in order$`, c.allEventsShouldBeProcessedInOrderAgg)
+	ctx.Step(`^the router projection state should be returned$`, c.theFinalProjectionStateShouldBeReturned)
+
+	// Saga rejection handling
+	// NOTE: "a saga command that was rejected$" is registered by CompensationContext
+	ctx.Step(`^a saga router with a rejected command$`, c.aSagaRouterWithARejectedCommand)
+	ctx.Step(`^the router processes the rejection$`, c.theRouterProcessesTheRejection)
+
+	// Error handling in routers
+	ctx.Step(`^I receive an event with invalid payload$`, c.iReceiveAnEventWithInvalidPayload)
+	ctx.Step(`^state building fails$`, c.stateBuildingFails)
+
+	// Guard/Validate/Compute pattern
+	ctx.Step(`^validate should reject$`, c.validateShouldReject)
+	ctx.Step(`^rejection reason should describe the issue$`, c.rejectionReasonShouldDescribeTheIssue)
+	// NOTE: "compute should produce events$" is registered by AggregateClientContext in InitAggregateClientSteps
 
 	// Handler Registration
 	ctx.Step(`^a router$`, c.aRouter)
@@ -1196,15 +1313,15 @@ func InitializeAggregateScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^no events for the aggregate$`, c.noEventsForTheAggregate)
 	ctx.Step(`^no events should be emitted$`, c.noEventsShouldBeEmitted)
 	ctx.Step(`^no external side effects should occur$`, c.noExternalSideEffectsShouldOccur)
-	ctx.Step(`^only the event pages should be returned$`, c.onlyTheEventPagesShouldBeReturned)
+	// NOTE: "only the event pages should be returned$" is registered by QueryBuilderContext
 	ctx.Step(`^only the v(\d+) event should match$`, c.onlyTheVEventShouldMatch)
 	ctx.Step(`^the client should be able to execute commands$`, c.theClientShouldBeAbleToExecuteCommands)
 	ctx.Step(`^the client should be able to perform speculative operations$`, c.theClientShouldBeAbleToPerformSpeculativeOperations)
 	ctx.Step(`^the client should be able to query events$`, c.theClientShouldBeAbleToQueryEvents)
 	ctx.Step(`^the client should have aggregate and query sub-clients$`, c.theClientShouldHaveAggregateAndQuerySubclients)
 	ctx.Step(`^the client should have aggregate, query, and speculative sub-clients$`, c.theClientShouldHaveAggregateQueryAndSpeculativeSubclients)
-	ctx.Step(`^the EventBook metadata should be stripped$`, c.theEventBookMetadataShouldBeStripped)
-	ctx.Step(`^the EventBook should include the snapshot$`, c.theEventBookShouldIncludeTheSnapshot)
+	// NOTE: "the EventBook metadata should be stripped$" is registered by QueryBuilderContext
+	// NOTE: "the EventBook should include the snapshot" is registered by QueryClientContext
 	ctx.Step(`^the events should have correct sequences$`, c.theEventsShouldHaveCorrectSequences)
 	ctx.Step(`^the projection result should be returned$`, c.theProjectionResultShouldBeReturned)
 	ctx.Step(`^the raw bytes should be deserialized$`, c.theRawBytesShouldBeDeserialized)

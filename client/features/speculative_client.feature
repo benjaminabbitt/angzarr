@@ -90,7 +90,7 @@ Feature: SpeculativeClient - What-If Execution
   Scenario: Speculative PM requires correlation ID
     Given events without correlation ID
     When I speculatively execute process manager "order-workflow"
-    Then the operation should fail
+    Then the speculative PM operation should fail
     And the error should indicate missing correlation ID
 
   # ==========================================================================
@@ -98,9 +98,9 @@ Feature: SpeculativeClient - What-If Execution
   # ==========================================================================
 
   Scenario: Speculative execution does not affect real state
-    Given an aggregate "orders" with root "order-009" has 3 events
+    Given a speculative aggregate "orders" with root "order-009" has 3 events
     When I speculatively execute a command producing 2 events
-    And I query events for "orders" root "order-009"
+    And I verify the real events for "orders" root "order-009"
     Then I should receive only 3 events
     And the speculative events should not be present
 
@@ -118,8 +118,8 @@ Feature: SpeculativeClient - What-If Execution
   Scenario: Speculative execution of unavailable service fails
     Given the speculative service is unavailable
     When I attempt speculative execution
-    Then the operation should fail with connection error
+    Then the speculative operation should fail with connection error
 
   Scenario: Invalid speculative request returns error
     When I attempt speculative execution with missing parameters
-    Then the operation should fail with invalid argument error
+    Then the speculative operation should fail with invalid argument error

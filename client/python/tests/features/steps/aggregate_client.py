@@ -337,6 +337,40 @@ def then_each_should_invoke_its_handler(aggregate_context):
 
 
 # ==========================================================================
+# New Step Definitions (Updated Feature File Patterns)
+# ==========================================================================
+
+
+@then("the aggregate operation should fail with connection error")
+def then_aggregate_operation_should_fail_with_connection_error(aggregate_context):
+    error = aggregate_context.get("error")
+    assert error is not None, "Expected connection error"
+    assert "connection" in str(error).lower() or isinstance(error, ConnectionError)
+
+
+@given("a saga router with a rejected command")
+def given_saga_router_with_rejected_command(aggregate_context):
+    router = MockEventRouter()
+    router.domain("test")
+    aggregate_context["saga_router"] = router
+    aggregate_context["rejection"] = types_pb2.RevocationResponse(
+        reason="Command rejected by target aggregate"
+    )
+
+
+@when("the router processes the rejection")
+def when_router_processes_rejection(aggregate_context):
+    rejection = aggregate_context.get("rejection")
+    assert rejection is not None, "Expected rejection to be present"
+
+
+@then("the router projection state should be returned")
+def then_router_projection_state_should_be_returned(aggregate_context):
+    state = aggregate_context.get("built_state") or aggregate_context.get("last_projection")
+    assert state is not None, "Expected projection state to be returned"
+
+
+# ==========================================================================
 # Helper Functions
 # ==========================================================================
 

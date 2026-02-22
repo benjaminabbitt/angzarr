@@ -69,9 +69,8 @@ Feature: Router - Command and Event Routing
     And the command should have correct saga_origin
 
   Scenario: Saga router handles rejection
-    Given a saga router
-    And a saga command that was rejected
-    When the rejection is received
+    Given a saga router with a rejected command
+    When the router processes the rejection
     Then the router should build compensation context
     And the router should emit rejection notification
 
@@ -94,7 +93,7 @@ Feature: Router - Command and Event Routing
     Given a projector router
     When I receive 5 events in a batch
     Then all 5 events should be processed in order
-    And the final projection state should be returned
+    And the router projection state should be returned
 
   Scenario: Projector router supports speculative execution
     Given a projector router

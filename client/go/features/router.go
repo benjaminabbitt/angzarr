@@ -49,10 +49,10 @@ func InitRouterSteps(ctx *godog.ScenarioContext) {
 	// Additional router steps - removed duplicate "I receive a/an X command" step
 	// that conflicted with AggregateContext's version
 	ctx.Step(`^I receive an event that triggers command to "([^"]*)"$`, rc.iReceiveAnEventThatTriggersCommandTo)
-	ctx.Step(`^I receive an event with invalid payload$`, rc.iReceiveAnEventWithInvalidPayload)
+	// NOTE: "I receive an event with invalid payload$" is registered by AggregateContext
 	ctx.Step(`^I receive an event with that type$`, rc.iReceiveAnEventWithThatType)
 	ctx.Step(`^I receive correlated events with ID "([^"]*)"$`, rc.iReceiveCorrelatedEventsWithID)
-	ctx.Step(`^I receive (\d+) events in a batch$`, rc.iReceiveEventsInABatch)
+	// NOTE: "I receive (\d+) events in a batch$" is registered by AggregateContext
 	ctx.Step(`^I process events from sequence (\d+) to (\d+)$`, rc.iProcessEventsFromSequenceTo)
 	ctx.Step(`^I process two events with same type$`, rc.iProcessTwoEventsWithSameType)
 	ctx.Step(`^I send command to nonexistent aggregate$`, rc.iSendCommandToNonexistentAggregate)

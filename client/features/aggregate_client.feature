@@ -126,7 +126,7 @@ Feature: AggregateClient - Command Execution
   Scenario: Connection failure returns error
     Given the aggregate service is unavailable
     When I attempt to execute a command
-    Then the operation should fail with connection error
+    Then the aggregate operation should fail with connection error
 
   Scenario: Timeout returns error
     Given the aggregate service is slow to respond

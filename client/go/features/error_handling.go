@@ -155,12 +155,11 @@ func InitErrorHandlingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the message should include the error type and description$`, ec.theMessageShouldIncludeTheErrorTypeAndDescription)
 	ctx.Step(`^I should get detailed diagnostic information$`, ec.iShouldGetDetailedDiagnosticInformation)
 
-	// Additional error assertions
-	ctx.Step(`^the error should indicate connection lost$`, ec.theErrorShouldIndicateConnectionLost)
-	ctx.Step(`^the error should indicate invalid format$`, ec.theErrorShouldIndicateInvalidFormat)
+	// Note: "error should indicate connection lost" and "error should indicate invalid format"
+	// are registered by ConnectionContext which runs after this
 	ctx.Step(`^the error should indicate invalid timestamp$`, ec.theErrorShouldIndicateInvalidTimestamp)
-	ctx.Step(`^rejection reason should describe the issue$`, ec.rejectionReasonShouldDescribeTheIssue)
-	ctx.Step(`^validate should reject$`, ec.validateShouldReject)
+	// NOTE: "rejection reason should describe the issue$" is registered by AggregateContext
+	// NOTE: "validate should reject$" is registered by AggregateContext
 }
 
 // Original implementations
@@ -377,9 +376,11 @@ func (e *ErrorContext) iAttemptAClientOperation() error {
 	case "unreachable":
 		e.lastError = fmt.Errorf("connection error: server unreachable")
 		e.errorType = "connection"
+		e.errorMessage = e.lastError.Error()
 	case "dropped":
 		e.lastError = fmt.Errorf("transport error: connection dropped")
 		e.errorType = "transport"
+		e.errorMessage = e.lastError.Error()
 	default:
 		switch e.serverState {
 		case "internal_error":
@@ -387,15 +388,18 @@ func (e *ErrorContext) iAttemptAClientOperation() error {
 			e.errorType = "grpc"
 			e.grpcCode = codes.Internal
 			e.hasGRPCCode = true
+			e.errorMessage = e.lastError.Error()
 		case "timeout":
 			e.lastError = fmt.Errorf("deadline exceeded")
 			e.errorType = "grpc"
 			e.grpcCode = codes.DeadlineExceeded
 			e.hasGRPCCode = true
+			e.errorMessage = e.lastError.Error()
 		default:
 			e.lastError = fmt.Errorf("grpc error")
 			e.errorType = "grpc"
 			e.hasGRPCCode = true
+			e.errorMessage = e.lastError.Error()
 		}
 	}
 	return nil

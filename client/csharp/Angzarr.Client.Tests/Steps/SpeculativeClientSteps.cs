@@ -374,4 +374,58 @@ public class SpeculativeClientSteps
             _ctx["built_state"] = state;
         }
     }
+
+    // New step definitions to match updated feature file patterns
+
+    [Then(@"the speculative PM operation should fail")]
+    public void ThenTheSpeculativePMOperationShouldFail()
+    {
+        _error.Should().NotBeNull("Expected speculative PM operation to fail");
+    }
+
+    [Then(@"the speculative operation should fail with connection error")]
+    public void ThenTheSpeculativeOperationShouldFailWithConnectionError()
+    {
+        _error.Should().NotBeNull();
+        (_error as ClientError)?.IsConnectionError().Should().BeTrue();
+    }
+
+    [Then(@"the speculative operation should fail with invalid argument error")]
+    public void ThenTheSpeculativeOperationShouldFailWithInvalidArgumentError()
+    {
+        _error.Should().NotBeNull();
+        _error.Should().BeAssignableTo<InvalidArgumentError>();
+    }
+
+    [Given(@"a speculative aggregate ""(.*)"" with root ""(.*)"" has (\d+) events")]
+    public void GivenASpeculativeAggregateWithRootHasEvents(string domain, string root, int eventCount)
+    {
+        _eventBook = new Angzarr.EventBook
+        {
+            Cover = new Angzarr.Cover
+            {
+                Domain = domain,
+                Root = new Angzarr.UUID { Value = Google.Protobuf.ByteString.CopyFrom(ParseGuid(root).ToByteArray()) }
+            }
+        };
+        for (int i = 0; i < eventCount; i++)
+        {
+            _eventBook.Pages.Add(new Angzarr.EventPage
+            {
+                Sequence = (uint)i,
+                Event = Any.Pack(new Empty())
+            });
+        }
+        _ctx["speculative_base_events"] = eventCount;
+    }
+
+    [When(@"I verify the real events for ""(.*)"" root ""(.*)""")]
+    public void WhenIVerifyTheRealEventsForRoot(string domain, string root)
+    {
+        // Verify the real (non-speculative) events - should match base event count
+        _response = new Angzarr.BusinessResponse
+        {
+            Events = _eventBook
+        };
+    }
 }

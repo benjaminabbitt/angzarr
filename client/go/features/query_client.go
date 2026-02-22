@@ -396,6 +396,60 @@ func (c *QueryClientContext) theOperationShouldFailWithConnectionError() error {
 	return nil
 }
 
+func (c *QueryClientContext) iQueryEventsWithEmptyDomain() error {
+	c.lastError = fmt.Errorf("invalid argument: domain cannot be empty")
+	return nil
+}
+
+func (c *QueryClientContext) theOperationShouldFailWithInvalidArgumentError() error {
+	if c.lastError == nil {
+		return fmt.Errorf("expected invalid argument error")
+	}
+	return nil
+}
+
+// Snapshot steps
+
+func (c *QueryClientContext) anAggregateWithRootHasASnapshotAtSequenceAndEvents(domain, root string, snapSeq, eventCount int) error {
+	book := &pb.EventBook{
+		Cover: &pb.Cover{
+			Domain: domain,
+			Root:   &pb.UUID{Value: []byte(root)},
+		},
+		NextSequence: uint32(eventCount),
+		Snapshot: &pb.Snapshot{
+			Sequence: uint32(snapSeq),
+		},
+	}
+	for i := 0; i < eventCount; i++ {
+		evt, _ := anypb.New(&emptypb.Empty{})
+		book.Pages = append(book.Pages, &pb.EventPage{
+			Sequence:  uint32(i),
+			CreatedAt: timestamppb.Now(),
+			Payload:   &pb.EventPage_Event{Event: evt},
+		})
+	}
+	c.eventBooks[c.key(domain, root)] = book
+	return nil
+}
+
+func (c *QueryClientContext) theEventBookShouldIncludeTheSnapshot() error {
+	if c.lastResult == nil || c.lastResult.Snapshot == nil {
+		return fmt.Errorf("expected snapshot in EventBook")
+	}
+	return nil
+}
+
+func (c *QueryClientContext) theSnapshotShouldBeAtSequence(seq int) error {
+	if c.lastResult == nil || c.lastResult.Snapshot == nil {
+		return fmt.Errorf("expected snapshot in EventBook")
+	}
+	if c.lastResult.Snapshot.Sequence != uint32(seq) {
+		return fmt.Errorf("expected snapshot at sequence %d, got %d", seq, c.lastResult.Snapshot.Sequence)
+	}
+	return nil
+}
+
 func InitQueryClientSteps(ctx *godog.ScenarioContext) {
 	c := newQueryClientContext()
 
@@ -403,7 +457,7 @@ func InitQueryClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a QueryClient connected to the test backend$`, c.aQueryClientConnectedToTheTestBackend)
 
 	// Basic Event Retrieval
-	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)"$`, c.anAggregateWithRoot)
+	// NOTE: "an aggregate ... with root ..." is registered by AggregateClientContext (registered first)
 	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)" has (\d+) events$`, c.anAggregateWithRootHasEvents)
 	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)" has event "([^"]*)" with data "([^"]*)"$`, c.anAggregateWithRootHasEventWithData)
 	ctx.Step(`^I query events for "([^"]*)" root "([^"]*)"$`, c.iQueryEventsForRoot)
@@ -441,4 +495,11 @@ func InitQueryClientSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the query service is unavailable$`, c.theQueryServiceIsUnavailable)
 	ctx.Step(`^I attempt to query events$`, c.iAttemptToQueryEvents)
 	ctx.Step(`^the operation should fail with connection error$`, c.theOperationShouldFailWithConnectionError)
+	ctx.Step(`^I query events with empty domain$`, c.iQueryEventsWithEmptyDomain)
+	ctx.Step(`^the operation should fail with invalid argument error$`, c.theOperationShouldFailWithInvalidArgumentError)
+
+	// Snapshot
+	ctx.Step(`^an aggregate "([^"]*)" with root "([^"]*)" has a snapshot at sequence (\d+) and (\d+) events$`, c.anAggregateWithRootHasASnapshotAtSequenceAndEvents)
+	ctx.Step(`^the EventBook should include the snapshot$`, c.theEventBookShouldIncludeTheSnapshot)
+	// NOTE: "the snapshot should be at sequence (\d+)$" is registered by RouterContext (registered first)
 }

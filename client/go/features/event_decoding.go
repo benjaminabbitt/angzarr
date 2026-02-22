@@ -33,7 +33,7 @@ func InitEventDecodingSteps(ctx *godog.ScenarioContext) {
 	dc := newDecodeContext()
 
 	// Given steps
-	ctx.Step(`^an event with type_url "([^"]*)"$`, dc.givenEventTypeURL)
+	// NOTE: "an event with type_url" is registered by StateContext (registered first)
 	ctx.Step(`^valid protobuf bytes for OrderCreated$`, dc.givenValidProtoBytes)
 	ctx.Step(`^an event with type_url ending in "([^"]*)"$`, dc.givenEventSuffix)
 	ctx.Step(`^an EventPage at sequence (\d+)$`, dc.givenEventAtSeq)
@@ -42,7 +42,7 @@ func InitEventDecodingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^an EventPage with offloaded payload$`, dc.givenOffloadedPayload)
 	ctx.Step(`^an event with properly encoded payload$`, dc.givenProperPayload)
 	ctx.Step(`^an event with empty payload bytes$`, dc.givenEmptyPayload)
-	ctx.Step(`^an event with corrupted payload bytes$`, dc.givenCorruptedBytes)
+	// NOTE: "an event with corrupted payload bytes$" is registered by StateContext (registered first)
 	ctx.Step(`^an EventPage with payload = None$`, dc.givenNonePayload)
 	ctx.Step(`^an Event Any with empty value$`, dc.givenEmptyAny)
 	ctx.Step(`^the decode_event<T>\(event, type_suffix\) function$`, dc.givenDecodeFunction)
@@ -89,7 +89,7 @@ func InitEventDecodingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^an error should indicate deserialization failure$`, dc.thenDeserError)
 	ctx.Step(`^no crash should occur$`, dc.thenNoCrash)
 	ctx.Step(`^the result should be a default message$`, dc.thenDefaultMessage)
-	ctx.Step(`^no error should occur$`, dc.thenNoErrorSimple)
+	// NOTE: "no error should occur$" is registered by StateContext (registered first)
 	ctx.Step(`^I should get a slice/list of EventPages$`, dc.thenGetEventsList)
 	ctx.Step(`^I should get an empty slice/list$`, dc.thenEmptyList)
 	ctx.Step(`^all (\d+) should decode successfully$`, dc.thenAllDecode)

@@ -53,6 +53,9 @@ func InitStateBuildingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^an event that increments field by (\d+)$`, sc.givenIncrementEvent)
 	ctx.Step(`^events that increment by (\d+), (\d+), and (\d+)$`, sc.givenMultipleIncrements)
 	ctx.Step(`^events wrapped in google\.protobuf\.Any$`, sc.givenAnyWrappedEvents)
+	// NOTE: "an event with type_url" and "an event with corrupted payload bytes" are handled by
+	// EventDecodingContext which is registered later (loses to this one), but we keep them here
+	// since StateContext methods handle state_building.feature scenarios
 	ctx.Step(`^an event with type_url "([^"]*)"$`, sc.givenEventTypeURL)
 	ctx.Step(`^an event with corrupted payload bytes$`, sc.givenCorruptedPayload)
 	ctx.Step(`^an event missing a required field$`, sc.givenMissingField)
@@ -67,7 +70,7 @@ func InitStateBuildingSteps(ctx *godog.ScenarioContext) {
 
 	// When steps
 	ctx.Step(`^I build state from the EventBook$`, sc.whenBuildState)
-	ctx.Step(`^I build state$`, sc.whenBuildStateSimple)
+	// NOTE: "I build state$" is registered by RouterContext (registered first)
 	ctx.Step(`^I apply the event to state$`, sc.whenApplyEvent)
 	ctx.Step(`^I apply all events to state$`, sc.whenApplyAllEvents)
 	ctx.Step(`^I apply the event$`, sc.whenApplySingle)
@@ -83,7 +86,7 @@ func InitStateBuildingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the state should reflect the OrderCreated event$`, sc.thenStateReflectsOrder)
 	ctx.Step(`^the state should have order_id set$`, sc.thenStateHasOrderID)
 	ctx.Step(`^the state should reflect all (\d+) events$`, sc.thenStateReflectsCount)
-	ctx.Step(`^the state should have (\d+) items$`, sc.thenStateHasItems)
+	// NOTE: "the state should have (\d+) items$" is registered by RouterContext (registered first)
 	ctx.Step(`^events should be applied as A, then B, then C$`, sc.thenEventsAppliedOrder)
 	ctx.Step(`^final state should reflect the correct order$`, sc.thenFinalStateOrder)
 	ctx.Step(`^the state should equal the snapshot state$`, sc.thenStateEqualsSnapshot)
@@ -121,7 +124,7 @@ func InitStateBuildingSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^either default value is used or error is raised$`, sc.thenEitherDefaultOrError)
 
 	// Additional state building steps
-	ctx.Step(`^state building fails$`, sc.stateBuildingFails)
+	// NOTE: "state building fails$" is registered by AggregateContext
 	ctx.Step(`^state should be maintained across events$`, sc.stateShouldBeMaintainedAcrossEvents)
 	ctx.Step(`^no state should carry over between events$`, sc.noStateShouldCarryOverBetweenEvents)
 	ctx.Step(`^only apply events (\d+), (\d+), (\d+)$`, sc.onlyApplyEvents)

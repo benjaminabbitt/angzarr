@@ -58,6 +58,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Query client steps
 	InitQueryClientSteps(ctx)
 
-	// Speculative client steps
+	// Speculative client steps (last)
 	InitSpeculativeClientSteps(ctx)
 }

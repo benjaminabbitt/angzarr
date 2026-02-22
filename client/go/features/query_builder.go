@@ -1,6 +1,8 @@
 package features
 
 import (
+	"fmt"
+
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
@@ -15,6 +17,8 @@ type QueryContext struct {
 	BuiltQuery    *pb.Query
 	BuildError    error
 	MockClient    *MockQueryClient
+	lastEventBook *pb.EventBook
+	lastPages     []*pb.EventPage
 }
 
 // MockQueryClient simulates a query client
@@ -62,7 +66,7 @@ func InitQueryBuilderSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I set by_correlation_id to "([^"]*)"$`, qc.iSetBy_correlation_idTo)
 	ctx.Step(`^I set range from (\d+)$`, qc.iSetRangeFrom)
 	ctx.Step(`^I set range from (\d+) to (\d+)$`, qc.iSetRangeFromTo)
-	ctx.Step(`^I query events with empty domain$`, qc.iQueryEventsWithEmptyDomain)
+	// Note: "I query events with empty domain" is registered by QueryClientContext
 	ctx.Step(`^I call client\.query\("([^"]*)", root\)$`, qc.iCallClientqueryDomainRoot)
 	ctx.Step(`^I can chain by_correlation_id$`, qc.iCanChainByCorrelationID)
 
@@ -86,6 +90,11 @@ func InitQueryBuilderSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the range selection should be replaced$`, qc.theRangeSelectionShouldBeReplaced)
 	ctx.Step(`^the range upper bound should be (\d+)$`, qc.theRangeUpperBoundShouldBe)
 	ctx.Step(`^the range upper bound should be empty$`, qc.theRangeUpperBoundShouldBeEmpty)
+
+	// EventBook result steps
+	ctx.Step(`^an EventBook should be returned$`, qc.anEventBookShouldBeReturned)
+	ctx.Step(`^only the event pages should be returned$`, qc.onlyTheEventPagesShouldBeReturned)
+	ctx.Step(`^the EventBook metadata should be stripped$`, qc.theEventBookMetadataShouldBeStripped)
 }
 
 func (q *QueryContext) givenMockQueryClient() error {
@@ -222,6 +231,16 @@ func (q *QueryContext) iBuildAndGet_eventsForDomainRoot(domain, root string) err
 	r := uuid.New()
 	q.Root = &r
 	q.tryBuildQuery()
+	// Simulate query execution and response
+	q.lastEventBook = &pb.EventBook{
+		Cover: &pb.Cover{
+			Domain: domain,
+			Root:   &pb.UUID{Value: r[:]},
+		},
+		Pages: []*pb.EventPage{
+			{Sequence: 1},
+		},
+	}
 	return nil
 }
 
@@ -230,6 +249,11 @@ func (q *QueryContext) iBuildAndGet_pagesForDomainRoot(domain, root string) erro
 	r := uuid.New()
 	q.Root = &r
 	q.tryBuildQuery()
+	// Simulate query execution and response - just pages, no EventBook wrapper
+	q.lastPages = []*pb.EventPage{
+		{Sequence: 1},
+		{Sequence: 2},
+	}
 	return nil
 }
 
@@ -520,6 +544,28 @@ func (q *QueryContext) theRangeUpperBoundShouldBeEmpty() error {
 	}
 	if rangeSelection.Range.Upper != nil {
 		return godog.ErrPending
+	}
+	return nil
+}
+
+func (q *QueryContext) anEventBookShouldBeReturned() error {
+	if q.lastEventBook == nil {
+		return fmt.Errorf("expected EventBook")
+	}
+	return nil
+}
+
+func (q *QueryContext) onlyTheEventPagesShouldBeReturned() error {
+	if len(q.lastPages) == 0 {
+		return fmt.Errorf("expected event pages")
+	}
+	return nil
+}
+
+func (q *QueryContext) theEventBookMetadataShouldBeStripped() error {
+	// When using get_pages, we don't get the full EventBook wrapper
+	if q.lastEventBook != nil {
+		return fmt.Errorf("expected no EventBook, only pages")
 	}
 	return nil
 }
