@@ -133,6 +133,38 @@ public class Hand extends Aggregate<HandState> {
     public long getHandNumber() { return getState().getHandNumber(); }
     public long getPotTotal() { return getState().getPotTotal(); }
     public int getActivePlayerCount() { return getState().getActivePlayerCount(); }
+    public String getStatus() { return getState().getStatus(); }
+    public int getPlayerCount() { return getState().getPlayers().size(); }
+    public int getCommunityCardCount() { return getState().getCommunityCards().size(); }
+
+    public String getPhase() {
+        int phase = getState().getCurrentPhase();
+        if (phase == BettingPhase.PREFLOP_VALUE) return "PREFLOP";
+        if (phase == BettingPhase.FLOP_VALUE) return "FLOP";
+        if (phase == BettingPhase.TURN_VALUE) return "TURN";
+        if (phase == BettingPhase.RIVER_VALUE) return "RIVER";
+        if (phase == BettingPhase.SHOWDOWN_VALUE) return "SHOWDOWN";
+        return "UNKNOWN";
+    }
+
+    public boolean hasPlayerFolded(String playerId) {
+        PlayerHandState player = getState().getPlayers().get(playerId);
+        if (player == null) {
+            // Try hex-encoded lookup
+            byte[] playerBytes = playerId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            player = getState().getPlayer(playerBytes);
+        }
+        return player != null && player.hasFolded();
+    }
+
+    public int getPlayerHoleCardCount(String playerId) {
+        PlayerHandState player = getState().getPlayers().get(playerId);
+        if (player == null) {
+            byte[] playerBytes = playerId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            player = getState().getPlayer(playerBytes);
+        }
+        return player != null ? player.getHoleCards().size() : 0;
+    }
 
     // --- Command handlers ---
 

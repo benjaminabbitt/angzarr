@@ -206,11 +206,17 @@ public class Table extends Aggregate<TableState> {
         }
 
         int seatPosition = cmd.getPreferredSeat();
-        if (seatPosition < 0 || getState().getSeats().containsKey(seatPosition)) {
+        if (seatPosition >= 0) {
+            // Specific seat requested - fail if occupied
+            if (getState().getSeats().containsKey(seatPosition)) {
+                throw Errors.CommandRejectedError.preconditionFailed("Seat is occupied");
+            }
+        } else {
+            // No preference - find any available seat
             seatPosition = getState().findAvailableSeat();
-        }
-        if (seatPosition < 0) {
-            throw Errors.CommandRejectedError.preconditionFailed("No available seats");
+            if (seatPosition < 0) {
+                throw Errors.CommandRejectedError.preconditionFailed("No available seats");
+            }
         }
 
         return PlayerJoined.newBuilder()

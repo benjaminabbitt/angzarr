@@ -190,19 +190,8 @@ public class PlayerSteps {
         assertThat(resultEvent).isInstanceOf(FundsReleased.class);
     }
 
-    @Then("the command fails with status {string}")
-    public void commandFailsWithStatus(String status) {
-        assertThat(rejectedError).isNotNull();
-        Status.Code expectedCode = Status.Code.valueOf(status);
-        assertThat(rejectedError.getStatusCode()).isEqualTo(expectedCode);
-    }
-
-    @Then("the error message contains {string}")
-    public void errorMessageContains(String substring) {
-        assertThat(rejectedError).isNotNull();
-        assertThat(rejectedError.getMessage().toLowerCase())
-            .contains(substring.toLowerCase());
-    }
+    // Note: "the command fails with status" and "the error message contains"
+    // are defined in CommonSteps.java and shared across all step classes
 
     @Then("the player event has display_name {string}")
     public void playerEventHasDisplayName(String name) {
@@ -276,9 +265,11 @@ public class PlayerSteps {
         try {
             resultEvent = player.handleCommand(command);
             rejectedError = null;
+            CommonSteps.setLastRejectedError(null);
         } catch (Errors.CommandRejectedError e) {
             resultEvent = null;
             rejectedError = e;
+            CommonSteps.setLastRejectedError(e);
         }
     }
 

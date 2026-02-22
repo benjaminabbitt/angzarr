@@ -333,6 +333,9 @@ public class TableSteps {
         assertThat(table.getHandNumber()).isEqualTo(count);
     }
 
+    // Note: "the command fails with status" and "the error message contains"
+    // are defined in PlayerSteps.java and shared across all step classes
+
     // --- Helper methods ---
 
     private void addEvent(Message event) {
@@ -357,9 +360,11 @@ public class TableSteps {
         try {
             resultEvent = table.handleCommand(command);
             rejectedError = null;
+            CommonSteps.setLastRejectedError(null);
         } catch (Errors.CommandRejectedError e) {
             resultEvent = null;
             rejectedError = e;
+            CommonSteps.setLastRejectedError(e);
         }
     }
 }

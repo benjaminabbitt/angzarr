@@ -108,19 +108,19 @@ Feature: Hand aggregate logic
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     When I handle a PostBlind command for player "player-1" type "small" amount 5
     Then the result is a BlindPosted event
-    And the player event has blind_type "small"
-    And the player event has amount 5
-    And the player event has player_stack 495
-    And the player event has pot_total 5
+    And the blind event has blind_type "small"
+    And the blind event has amount 5
+    And the blind event has player_stack 495
+    And the blind event has pot_total 5
 
   Scenario: Post big blind
     Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
     And a BlindPosted event for player "player-1" amount 5
     When I handle a PostBlind command for player "player-2" type "big" amount 10
     Then the result is a BlindPosted event
-    And the player event has blind_type "big"
-    And the player event has amount 10
-    And the player event has pot_total 15
+    And the blind event has blind_type "big"
+    And the blind event has amount 10
+    And the blind event has pot_total 15
 
   Scenario: Post all-in blind when short-stacked
     Given a CardsDealt event for TEXAS_HOLDEM with players:
@@ -129,8 +129,8 @@ Feature: Hand aggregate logic
       | player-2    | 1        | 500   |
     When I handle a PostBlind command for player "player-1" type "small" amount 5
     Then the result is a BlindPosted event
-    And the player event has amount 3
-    And the player event has player_stack 0
+    And the blind event has amount 3
+    And the blind event has player_stack 0
 
   # ==========================================================================
   # Player Actions
