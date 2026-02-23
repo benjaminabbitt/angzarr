@@ -700,15 +700,9 @@ fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> Toke
         })
         .collect();
 
-    // Generate subscribes registrations
-    let subscribes_registrations: Vec<_> = inputs
-        .iter()
-        .map(|domain| {
-            quote! {
-                .subscribes(#domain)
-            }
-        })
-        .collect();
+    // Note: Subscriptions are now configured externally via env var or config file,
+    // not in code. The 'inputs' field is kept for documentation purposes only.
+    let _ = inputs; // Silence unused warning
 
     // Generate apply_event dispatch arms
     let apply_arms: Vec<_> = appliers
@@ -779,7 +773,6 @@ fn expand_process_manager(args: ProcessManagerArgs, mut input: ItemImpl) -> Toke
             {
                 let pm = std::sync::Arc::new(self);
                 angzarr_client::ProcessManagerRouter::new_with_rebuild_fn(#name, #pm_domain, Self::rebuild)
-                    #(#subscribes_registrations)*
                     #(#prepare_registrations)*
                     #(#handler_registrations)*
             }

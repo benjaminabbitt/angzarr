@@ -211,10 +211,7 @@ public class TableSteps {
       if (change > 0) {
         ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
         cmdBuilder.addResults(
-            PotResult.newBuilder()
-                .setWinnerRoot(playerRoot)
-                .setAmount(change)
-                .setPotType("main"));
+            PotResult.newBuilder().setWinnerRoot(playerRoot).setAmount(change).setPotType("main"));
       }
     }
     handleCommand(cmdBuilder.build());
