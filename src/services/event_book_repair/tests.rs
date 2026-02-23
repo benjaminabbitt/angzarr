@@ -136,7 +136,7 @@ fn test_is_complete_default_event_book() {
 
 #[test]
 fn test_is_complete_many_events_starting_at_zero() {
-    let pages: Vec<EventPage> = (0..100).map(|seq| make_event_page(seq)).collect();
+    let pages: Vec<EventPage> = (0..100).map(make_event_page).collect();
 
     let book = EventBook {
         cover: Some(make_cover("test")),

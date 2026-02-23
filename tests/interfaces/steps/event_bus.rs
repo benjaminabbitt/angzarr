@@ -657,7 +657,7 @@ async fn then_projector_receives_only(
 }
 
 #[then(expr = "never sees {word} events which are filtered out by the bus")]
-async fn then_never_sees_domain_events(world: &mut EventBusWorld, _filtered_domain: String) {
+async fn then_never_sees_domain_events(_world: &mut EventBusWorld, _filtered_domain: String) {
     // This is verified by the previous step - if we only received player events,
     // we didn't receive table events. Give a bit of time to ensure no late arrivals.
     tokio::time::sleep(Duration::from_millis(200)).await;
