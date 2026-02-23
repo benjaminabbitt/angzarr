@@ -32,7 +32,7 @@ post-commit:
         - "deploy/helm/**"
 
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
     # Rust - runs in container via just
     rust-fmt:
