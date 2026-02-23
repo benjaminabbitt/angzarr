@@ -6,7 +6,7 @@ output "bus" {
     type           = "kafka"
     connection_uri = "${local.service_name}.${var.namespace}.svc.cluster.local:9092"
     provides = {
-      capabilities  = toset(["pub_sub", "topic_routing", "message_persistence", "partitioning", "consumer_groups"])
+      capabilities  = toset(["event_bus", "pub_sub", "topic_routing", "message_persistence", "partitioning", "consumer_groups"])
       rust_features = toset(["kafka"])
     }
   }

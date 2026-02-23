@@ -1,0 +1,11 @@
+apiVersion: v2
+name: angzarr-db-redis
+description: Redis for Angzarr snapshot store (Bitnami wrapper)
+type: application
+version: 0.1.0
+appVersion: "7.2"
+
+dependencies:
+  - name: redis
+    version: "~19.0"
+    repository: "https://charts.bitnami.com/bitnami"

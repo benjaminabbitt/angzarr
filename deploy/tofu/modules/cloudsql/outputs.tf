@@ -1,5 +1,76 @@
 # Cloud SQL Module - Outputs
 
+#------------------------------------------------------------------------------
+# Standard Interface
+#------------------------------------------------------------------------------
+
+output "provides" {
+  description = "Capabilities provided by this module"
+  value = {
+    capabilities    = toset(["event_store", "position_store", "snapshot_store", "transactions"])
+    cloud           = "gcp"
+    rust_features   = toset(["postgres"])
+    ha_mode         = "multi-az" # Cloud SQL can be configured for HA
+    secrets_backend = "gcp"
+  }
+}
+
+output "requirements" {
+  description = "Requirements for this module"
+  value = {
+    compute_types   = null
+    vpc             = true # Private IP requires VPC
+    capabilities    = null
+    secrets_backend = "gcp"
+  }
+}
+
+output "connection_uri" {
+  description = "Connection URI for coordinators (uses private IP if available)"
+  value       = local.private_ip != null ? local.private_uri : local.proxy_uri
+  sensitive   = true
+}
+
+output "event_store" {
+  description = "Event store configuration for stack module"
+  value = {
+    connection_uri = local.private_ip != null ? local.private_uri : local.proxy_uri
+    provides = {
+      capabilities  = toset(["event_store", "transactions"])
+      rust_features = toset(["postgres"])
+    }
+  }
+  sensitive = true
+}
+
+output "position_store" {
+  description = "Position store configuration for stack module"
+  value = {
+    connection_uri = local.private_ip != null ? local.private_uri : local.proxy_uri
+    provides = {
+      capabilities  = toset(["position_store", "transactions"])
+      rust_features = toset(["postgres"])
+    }
+  }
+  sensitive = true
+}
+
+output "snapshot_store" {
+  description = "Snapshot store configuration for stack module"
+  value = {
+    connection_uri = local.private_ip != null ? local.private_uri : local.proxy_uri
+    provides = {
+      capabilities  = toset(["snapshot_store"])
+      rust_features = toset(["postgres"])
+    }
+  }
+  sensitive = true
+}
+
+#------------------------------------------------------------------------------
+# Instance Information
+#------------------------------------------------------------------------------
+
 output "instance_name" {
   description = "Name of the Cloud SQL instance"
   value       = google_sql_database_instance.instance.name

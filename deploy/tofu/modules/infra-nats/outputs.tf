@@ -6,7 +6,7 @@ output "bus" {
     type           = "nats"
     connection_uri = "nats://${local.service_name}.${var.namespace}.svc.cluster.local:4222"
     provides = {
-      capabilities  = toset(["pub_sub", "subject_routing", "jetstream", "message_persistence"])
+      capabilities  = toset(["event_bus", "pub_sub", "subject_routing", "jetstream", "message_persistence"])
       rust_features = toset(["nats"])
     }
   }

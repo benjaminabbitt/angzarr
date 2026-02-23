@@ -1,5 +1,50 @@
 # Pub/Sub Module - Outputs
 
+#------------------------------------------------------------------------------
+# Standard Interface
+#------------------------------------------------------------------------------
+
+output "provides" {
+  description = "Capabilities provided by this module"
+  value = {
+    capabilities  = toset(["event_bus", "pub_sub", "fan_out", "message_ordering"])
+    cloud         = "gcp"
+    rust_features = toset(["pubsub"])
+    ha_mode       = "multi-az"
+  }
+}
+
+output "requirements" {
+  description = "Requirements for this module"
+  value = {
+    compute_types   = null
+    vpc             = false
+    capabilities    = null
+    secrets_backend = null
+  }
+}
+
+output "bus" {
+  description = "Bus configuration for stack module"
+  value = {
+    type           = "pubsub"
+    connection_uri = "pubsub://${var.project_id}/${google_pubsub_topic.events.name}"
+    provides = {
+      capabilities  = toset(["event_bus", "pub_sub", "fan_out", "message_ordering"])
+      rust_features = toset(["pubsub"])
+    }
+  }
+}
+
+output "connection_uri" {
+  description = "Connection URI for coordinators"
+  value       = "pubsub://${var.project_id}/${google_pubsub_topic.events.name}"
+}
+
+#------------------------------------------------------------------------------
+# Topic Information
+#------------------------------------------------------------------------------
+
 output "events_topic_id" {
   description = "ID of the main events topic"
   value       = google_pubsub_topic.events.id

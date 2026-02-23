@@ -6,7 +6,7 @@ output "bus" {
     type           = "rabbit"
     connection_uri = "amqp://${var.username}:${local.password}@${local.service_name}.${var.namespace}.svc.cluster.local:5672"
     provides = {
-      capabilities  = toset(["pub_sub", "topic_routing", "message_persistence"])
+      capabilities  = toset(["event_bus", "pub_sub", "topic_routing", "message_persistence"])
       rust_features = toset(["amqp"])
     }
   }

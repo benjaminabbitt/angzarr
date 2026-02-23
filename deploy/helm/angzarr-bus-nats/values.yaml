@@ -1,0 +1,51 @@
+# NATS Helm Chart Values (Bitnami wrapper)
+# See https://github.com/bitnami/charts/tree/main/bitnami/nats for all options
+
+nats:
+  # Cluster size
+  replicaCount: 1
+
+  # JetStream (persistence)
+  jetstream:
+    enabled: true
+    memoryStore:
+      enabled: true
+      maxSize: 256Mi
+    fileStore:
+      enabled: true
+      storageDirectory: /data
+      pvc:
+        enabled: true
+        size: 10Gi
+
+  # Authentication
+  auth:
+    enabled: false
+    # For production, enable and configure auth:
+    # user: ""
+    # password: ""
+
+  # Client service
+  service:
+    type: ClusterIP
+    ports:
+      client: 4222
+      cluster: 6222
+      monitor: 8222
+
+  # Resources
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Metrics (Prometheus)
+  metrics:
+    enabled: false
+
+  # Persistence (for server state, not JetStream)
+  persistence:
+    enabled: false
