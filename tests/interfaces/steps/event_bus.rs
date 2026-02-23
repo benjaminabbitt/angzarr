@@ -761,10 +761,10 @@ async fn given_three_handlers_subscribe(world: &mut EventBusWorld, step: &cucumb
         let (tx, rx) = mpsc::channel(100);
 
         subscriber
-            .subscribe(Box::new(CapturingHandler {
-                received: received.clone(),
+            .subscribe(Box::new(CapturingHandler::with_storage(
                 tx,
-            }))
+                received.clone(),
+            )))
             .await
             .expect("Failed to subscribe");
 
@@ -991,10 +991,10 @@ async fn given_failing_handler(world: &mut EventBusWorld) {
     let error_reported = Arc::new(Mutex::new(None::<String>));
 
     subscriber
-        .subscribe(Box::new(FailingHandler {
-            error_message: "Handler failed intentionally".to_string(),
-            error_reported: error_reported.clone(),
-        }))
+        .subscribe(Box::new(FailingHandler::with_tracker(
+            "Handler failed intentionally",
+            error_reported.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 
