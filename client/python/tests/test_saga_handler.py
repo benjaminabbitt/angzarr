@@ -16,10 +16,11 @@ from angzarr_client.saga_handler import SagaHandler
 
 DOMAIN_SOURCE = "source"
 DOMAIN_TARGET = "target"
-SUFFIX_EVENT_A = "EventA"
-SUFFIX_EVENT_B = "EventB"
-TYPE_URL_EVENT_A = "type.test/EventA"
-TYPE_URL_OTHER_EVENT = "type.test/OtherEvent"
+# Fully qualified type names for reflection-based matching
+FULL_NAME_EVENT_A = "test.EventA"
+FULL_NAME_EVENT_B = "test.EventB"
+TYPE_URL_EVENT_A = "type.googleapis.com/test.EventA"
+TYPE_URL_OTHER_EVENT = "type.googleapis.com/test.OtherEvent"
 CORR_ID_1 = "corr-1"
 ROOT_BYTES = b"\x04\x05\x06"
 SAGA_NAME = "test-saga"
@@ -65,7 +66,7 @@ class TestSagaHandlerSimpleMode:
         router = (
             EventRouter(SAGA_NAME)
             .domain(DOMAIN_SOURCE)
-            .on(SUFFIX_EVENT_A, saga_event_handler)
+            .on(FULL_NAME_EVENT_A, saga_event_handler)
         )
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -79,7 +80,7 @@ class TestSagaHandlerSimpleMode:
         router = (
             EventRouter(SAGA_NAME)
             .domain(DOMAIN_SOURCE)
-            .on(SUFFIX_EVENT_A, saga_event_handler)
+            .on(FULL_NAME_EVENT_A, saga_event_handler)
         )
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -95,7 +96,7 @@ class TestSagaHandlerSimpleMode:
         router = (
             EventRouter(SAGA_NAME)
             .domain(DOMAIN_SOURCE)
-            .on(SUFFIX_EVENT_A, saga_event_handler)
+            .on(FULL_NAME_EVENT_A, saga_event_handler)
         )
         handler = SagaHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -116,7 +117,7 @@ class TestSagaHandlerCustomMode:
         router = (
             EventRouter(SAGA_NAME)
             .domain(DOMAIN_SOURCE)
-            .on(SUFFIX_EVENT_A, saga_event_handler)
+            .on(FULL_NAME_EVENT_A, saga_event_handler)
         )
 
         def custom_prepare(source):
@@ -135,7 +136,7 @@ class TestSagaHandlerCustomMode:
         router = (
             EventRouter(SAGA_NAME)
             .domain(DOMAIN_SOURCE)
-            .on(SUFFIX_EVENT_A, saga_event_handler)
+            .on(FULL_NAME_EVENT_A, saga_event_handler)
         )
 
         def custom_execute(source, destinations):

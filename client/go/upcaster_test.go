@@ -23,8 +23,9 @@ func TestUpcasterRouter_On_Chains(t *testing.T) {
 }
 
 func TestUpcasterRouter_Upcast_TransformsMatching(t *testing.T) {
+	// Use fully qualified type name for reflection-based matching
 	router := NewUpcasterRouter("order").
-		On("TestEventV1", func(old *anypb.Any) *anypb.Any {
+		On("test.TestEventV1", func(old *anypb.Any) *anypb.Any {
 			return &anypb.Any{
 				TypeUrl: "type.googleapis.com/test.TestEventV2",
 				Value:   []byte{1, 2, 3},

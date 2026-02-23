@@ -628,7 +628,7 @@ async fn given_projector_subscribes_only_to(
 #[when("events are published to player and table domains")]
 async fn when_events_published_to_multiple_domains(world: &mut EventBusWorld) {
     // Start listening first
-    for (_, state) in &world.subscribers {
+    for state in world.subscribers.values() {
         state
             .bus
             .start_consuming()
@@ -737,7 +737,7 @@ async fn when_events_published_to_three_domains(
     domain3: String,
 ) {
     // Start listening
-    for (_, state) in &world.subscribers {
+    for state in world.subscribers.values() {
         state
             .bus
             .start_consuming()

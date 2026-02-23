@@ -16,9 +16,10 @@ from angzarr_client.router import CommandRouter
 # ============================================================================
 
 DOMAIN_TEST = "test"
-SUFFIX_COMMAND_A = "CommandA"
-TYPE_URL_COMMAND_A = "type.test/CommandA"
-TYPE_URL_UNKNOWN = "type.test/UnknownCommand"
+# Use fully qualified type names for reflection-based matching
+FULL_NAME_COMMAND_A = "test.CommandA"
+TYPE_URL_COMMAND_A = "type.googleapis.com/test.CommandA"
+TYPE_URL_UNKNOWN = "type.googleapis.com/test.UnknownCommand"
 
 
 # ============================================================================
@@ -77,7 +78,7 @@ def invalid_handler(command_book, command_any, state, seq):
 class TestAggregateHandlerDispatch:
     def test_handle_dispatches_via_router(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -91,7 +92,7 @@ class TestAggregateHandlerDispatch:
 
     def test_handle_sync_dispatches_via_router(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -103,7 +104,7 @@ class TestAggregateHandlerDispatch:
 
     def test_maps_command_rejected_to_failed_precondition(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, rejecting_handler
+            FULL_NAME_COMMAND_A, rejecting_handler
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -120,7 +121,7 @@ class TestAggregateHandlerDispatch:
 
     def test_maps_value_error_to_invalid_argument(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, invalid_handler
+            FULL_NAME_COMMAND_A, invalid_handler
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -137,7 +138,7 @@ class TestAggregateHandlerDispatch:
 
     def test_unknown_command_maps_to_invalid_argument(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -156,7 +157,7 @@ class TestAggregateHandlerDispatch:
         )
 
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)
@@ -315,7 +316,7 @@ class TestAggregateHandlerReplay:
 
     def test_replay_not_supported_for_command_router(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
         handler = AggregateHandler(router)
         context = MagicMock(spec=grpc.ServicerContext)

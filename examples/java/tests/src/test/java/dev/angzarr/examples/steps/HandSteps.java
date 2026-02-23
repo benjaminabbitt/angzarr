@@ -447,6 +447,21 @@ public class HandSteps {
     showdownStartedEvent();
   }
 
+  @Given("a ActionTaken event for player {string} with action {word} amount {int}")
+  public void actionTakenEventForPlayer(String playerId, String action, int amount) {
+    ActionType actionType = ActionType.valueOf(action.toUpperCase());
+    ActionTaken event =
+        ActionTaken.newBuilder()
+            .setPlayerRoot(ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8)))
+            .setAction(actionType)
+            .setAmount(amount)
+            .setPlayerStack(500 - amount)
+            .setPotTotal(hand.getPotTotal() + amount)
+            .build();
+    addEvent(event);
+    rehydrateHand();
+  }
+
   @Given("a BlindPosted event for player {string} amount {int}")
   public void blindPostedEventForPlayer(String playerId, int amount) {
     BlindPosted event =

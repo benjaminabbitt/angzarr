@@ -200,6 +200,26 @@ public class TableSteps {
     handleCommand(cmd);
   }
 
+  @When("I handle an EndHand command with results:")
+  public void handleEndHandCommandWithResults(DataTable dataTable) {
+    EndHand.Builder cmdBuilder = EndHand.newBuilder();
+    List<Map<String, String>> results = dataTable.asMaps();
+    for (Map<String, String> result : results) {
+      String playerId = result.get("player");
+      int change = Integer.parseInt(result.get("change"));
+      // Only add as pot result if it's a win (positive change)
+      if (change > 0) {
+        ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
+        cmdBuilder.addResults(
+            PotResult.newBuilder()
+                .setWinnerRoot(playerRoot)
+                .setAmount(change)
+                .setPotType("main"));
+      }
+    }
+    handleCommand(cmdBuilder.build());
+  }
+
   @When("I rebuild the table state")
   public void rebuildTableState() {
     rehydrateTable();

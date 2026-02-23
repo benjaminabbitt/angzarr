@@ -133,16 +133,18 @@ func TestRejectionHandlerResponse_NotificationPayloadAccessible(t *testing.T) {
 // =============================================================================
 
 func TestIsNotification(t *testing.T) {
+	// IsNotification uses exact type matching, not suffix matching
 	tests := []struct {
 		typeURL  string
 		expected bool
 	}{
 		{"type.googleapis.com/angzarr.Notification", true},
-		{"type.googleapis.com/test.SomeNotification", true},
+		{"type.googleapis.com/test.SomeNotification", false}, // Different type, not the real Notification
 		{"type.googleapis.com/test.SomeCommand", false},
 		{"type.googleapis.com/test.SomeEvent", false},
-		{"Notification", true},
-		{"NotificationEvent", false},
+		{"Notification", false},       // Incomplete type URL
+		{"NotificationEvent", false},  // Different type
+		{"angzarr.Notification", false}, // Missing prefix
 	}
 
 	for _, tc := range tests {

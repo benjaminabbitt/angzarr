@@ -25,23 +25,24 @@ DOMAIN_FULFILLMENT = "fulfillment"
 DOMAIN_INVENTORY = "inventory"
 DOMAIN_CART = "cart"
 
-SUFFIX_COMMAND_A = "CommandA"
-SUFFIX_COMMAND_B = "CommandB"
-SUFFIX_CREATE = "Create"
-SUFFIX_CREATE_ORDER = "CreateOrder"
-SUFFIX_CANCEL_ORDER = "CancelOrder"
-SUFFIX_ORDER_COMPLETED = "OrderCompleted"
-SUFFIX_ORDER_CANCELLED = "OrderCancelled"
-SUFFIX_QTY_UPDATED = "QuantityUpdated"
+# Fully qualified type names for reflection-based matching
+FULL_NAME_COMMAND_A = "test.CommandA"
+FULL_NAME_COMMAND_B = "test.CommandB"
+FULL_NAME_CREATE = "test.Create"
+FULL_NAME_CREATE_ORDER = "examples.CreateOrder"
+FULL_NAME_CANCEL_ORDER = "examples.CancelOrder"
+FULL_NAME_ORDER_COMPLETED = "examples.OrderCompleted"
+FULL_NAME_ORDER_CANCELLED = "examples.OrderCancelled"
+FULL_NAME_QTY_UPDATED = "examples.QuantityUpdated"
 
-TYPE_URL_COMMAND_A = "type.test/CommandA"
-TYPE_URL_COMMAND_B = "type.test/CommandB"
-TYPE_URL_UNKNOWN = "type.test/UnknownCommand"
-TYPE_URL_CREATE = "type.test/Create"
-TYPE_URL_FULL_CREATE = "type.examples/examples.CreateOrder"
-TYPE_URL_ORDER_DONE = "type.examples/examples.OrderCompleted"
-TYPE_URL_OTHER_EVENT = "type.examples/examples.SomethingElse"
-TYPE_URL_QTY_UPDATED = "type.examples/examples.QuantityUpdated"
+TYPE_URL_COMMAND_A = "type.googleapis.com/test.CommandA"
+TYPE_URL_COMMAND_B = "type.googleapis.com/test.CommandB"
+TYPE_URL_UNKNOWN = "type.googleapis.com/test.UnknownCommand"
+TYPE_URL_CREATE = "type.googleapis.com/test.Create"
+TYPE_URL_FULL_CREATE = "type.googleapis.com/examples.CreateOrder"
+TYPE_URL_ORDER_DONE = "type.googleapis.com/examples.OrderCompleted"
+TYPE_URL_OTHER_EVENT = "type.googleapis.com/examples.SomethingElse"
+TYPE_URL_QTY_UPDATED = "type.googleapis.com/examples.QuantityUpdated"
 
 CORR_ID_1 = "corr-1"
 CORR_ID_2 = "corr-2"
@@ -115,8 +116,8 @@ class TestCommandRouterDispatch:
     def test_dispatches_correct_handler(self):
         router = (
             CommandRouter(DOMAIN_TEST, dummy_rebuild)
-            .on(SUFFIX_COMMAND_A, handler_a)
-            .on(SUFFIX_COMMAND_B, handler_b)
+            .on(FULL_NAME_COMMAND_A, handler_a)
+            .on(FULL_NAME_COMMAND_B, handler_b)
         )
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A)
@@ -130,8 +131,8 @@ class TestCommandRouterDispatch:
     def test_dispatches_second_handler(self):
         router = (
             CommandRouter(DOMAIN_TEST, dummy_rebuild)
-            .on(SUFFIX_COMMAND_A, handler_a)
-            .on(SUFFIX_COMMAND_B, handler_b)
+            .on(FULL_NAME_COMMAND_A, handler_a)
+            .on(FULL_NAME_COMMAND_B, handler_b)
         )
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_B)
@@ -151,7 +152,7 @@ class TestCommandRouterDispatch:
         cmd = make_contextual_command(TYPE_URL_COMMAND_A, prior)
         resp = (
             CommandRouter(DOMAIN_TEST, dummy_rebuild)
-            .on(SUFFIX_COMMAND_A, handler_a)
+            .on(FULL_NAME_COMMAND_A, handler_a)
             .dispatch(cmd)
         )
 
@@ -159,7 +160,7 @@ class TestCommandRouterDispatch:
 
     def test_unknown_command_raises(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
 
         cmd = make_contextual_command(TYPE_URL_UNKNOWN)
@@ -173,7 +174,7 @@ class TestCommandRouterDispatch:
             return angzarr.EventBook()
 
         router = CommandRouter(DOMAIN_TEST, exists_rebuild).on(
-            SUFFIX_CREATE, reject_handler
+            FULL_NAME_CREATE, reject_handler
         )
 
         cmd = make_contextual_command(TYPE_URL_CREATE)
@@ -182,7 +183,7 @@ class TestCommandRouterDispatch:
 
     def test_no_command_pages_raises(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, handler_a
+            FULL_NAME_COMMAND_A, handler_a
         )
 
         cmd = angzarr.ContextualCommand(
@@ -193,7 +194,7 @@ class TestCommandRouterDispatch:
 
     def test_suffix_matching_with_full_type_url(self):
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_CREATE_ORDER, handler_a
+            FULL_NAME_CREATE_ORDER, handler_a
         )
 
         cmd = make_contextual_command(TYPE_URL_FULL_CREATE)
@@ -211,7 +212,7 @@ class TestCommandRouterDispatch:
             return angzarr.EventBook()
 
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            SUFFIX_COMMAND_A, capturing_handler
+            FULL_NAME_COMMAND_A, capturing_handler
         )
 
         cmd = make_contextual_command(TYPE_URL_COMMAND_A)
@@ -304,7 +305,7 @@ class TestEventRouterDispatch:
         router = (
             EventRouter(SAGA_TEST)
             .domain(DOMAIN_ORDER)
-            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
+            .on(FULL_NAME_ORDER_COMPLETED, saga_handler)
         )
 
         book = make_event_book(TYPE_URL_ORDER_DONE, CORR_ID_1, ROOT_BYTES_A)
@@ -319,7 +320,7 @@ class TestEventRouterDispatch:
         router = (
             EventRouter(SAGA_TEST)
             .domain(DOMAIN_ORDER)
-            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
+            .on(FULL_NAME_ORDER_COMPLETED, saga_handler)
         )
 
         book = make_event_book(TYPE_URL_OTHER_EVENT, CORR_ID_1, ROOT_BYTES_A)
@@ -331,7 +332,7 @@ class TestEventRouterDispatch:
         router = (
             EventRouter(SAGA_INVENTORY_RESERVE)
             .domain(DOMAIN_CART)
-            .on(SUFFIX_QTY_UPDATED, multi_command_handler)
+            .on(FULL_NAME_QTY_UPDATED, multi_command_handler)
         )
 
         book = make_event_book(
@@ -345,7 +346,7 @@ class TestEventRouterDispatch:
         router = (
             EventRouter(SAGA_TEST)
             .domain(DOMAIN_ORDER)
-            .on(SUFFIX_ORDER_COMPLETED, saga_handler)
+            .on(FULL_NAME_ORDER_COMPLETED, saga_handler)
         )
 
         book = angzarr.EventBook(
@@ -533,7 +534,7 @@ class TestCommandHandlerDecorator:
             return FakeEvent(result=f"created:{cmd.value}")
 
         router = CommandRouter(DOMAIN_TEST, dummy_rebuild).on(
-            "FakeCommand", handle_create
+            "test.FakeCommand", handle_create
         )
 
         # Create contextual command

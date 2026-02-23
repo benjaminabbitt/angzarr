@@ -194,8 +194,6 @@ async fn main() {
         .init();
 
     let router = ProcessManagerRouter::new("hand-flow", "hand-flow", rebuild_state)
-        .subscribes("table")
-        .subscribes("hand")
         .prepare("examples.HandStarted", prepare_hand_started)
         .on("examples.HandStarted", handle_hand_started)
         .on("examples.CardsDealt", handle_cards_dealt)

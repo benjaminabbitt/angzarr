@@ -22,8 +22,9 @@ func rebuildTestState(events *pb.EventBook) testState {
 func TestCommandRouter_Dispatch(t *testing.T) {
 	t.Run("dispatches to matching handler", func(t *testing.T) {
 		called := false
+		// Use fully qualified type name for reflection-based matching
 		router := NewCommandRouter("test", rebuildTestState).
-			On("TestCommand", func(cb *pb.CommandBook, cmd *anypb.Any, state testState, seq uint32) (*pb.EventBook, error) {
+			On("examples.TestCommand", func(cb *pb.CommandBook, cmd *anypb.Any, state testState, seq uint32) (*pb.EventBook, error) {
 				called = true
 				if seq != 0 {
 					t.Errorf("expected seq 0, got %d", seq)
@@ -50,7 +51,7 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 
 	t.Run("returns error for unknown command", func(t *testing.T) {
 		router := NewCommandRouter("test", rebuildTestState).
-			On("KnownCommand", func(cb *pb.CommandBook, cmd *anypb.Any, state testState, seq uint32) (*pb.EventBook, error) {
+			On("examples.KnownCommand", func(cb *pb.CommandBook, cmd *anypb.Any, state testState, seq uint32) (*pb.EventBook, error) {
 				return &pb.EventBook{}, nil
 			})
 
@@ -86,7 +87,7 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 	t.Run("rebuilds state from prior events", func(t *testing.T) {
 		var capturedState testState
 		router := NewCommandRouter("test", rebuildTestState).
-			On("TestCommand", func(cb *pb.CommandBook, cmd *anypb.Any, state testState, seq uint32) (*pb.EventBook, error) {
+			On("examples.TestCommand", func(cb *pb.CommandBook, cmd *anypb.Any, state testState, seq uint32) (*pb.EventBook, error) {
 				capturedState = state
 				return &pb.EventBook{}, nil
 			})
@@ -119,9 +120,10 @@ func TestCommandRouter_Dispatch(t *testing.T) {
 func TestEventRouter_Dispatch(t *testing.T) {
 	t.Run("dispatches to matching handler", func(t *testing.T) {
 		called := false
+		// Use fully qualified type name for reflection-based matching
 		router := NewEventRouter("saga-test").
 			Domain("source").
-			On("TestEvent", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
+			On("examples.TestEvent", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				called = true
 				return []*pb.CommandBook{{}}, nil
 			})
@@ -153,11 +155,11 @@ func TestEventRouter_Dispatch(t *testing.T) {
 		callCount := 0
 		router := NewEventRouter("saga-test").
 			Domain("source").
-			On("Event1", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
+			On("examples.Event1", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				callCount++
 				return []*pb.CommandBook{{}}, nil
 			}).
-			On("Event2", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
+			On("examples.Event2", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				callCount++
 				return []*pb.CommandBook{{}, {}}, nil
 			})
@@ -185,7 +187,7 @@ func TestEventRouter_Dispatch(t *testing.T) {
 	t.Run("skips unmatched events", func(t *testing.T) {
 		router := NewEventRouter("saga-test").
 			Domain("source").
-			On("KnownEvent", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
+			On("examples.KnownEvent", func(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 				return []*pb.CommandBook{{}}, nil
 			})
 
