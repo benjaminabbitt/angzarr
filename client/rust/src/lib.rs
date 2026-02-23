@@ -75,8 +75,8 @@ pub use builder::{CommandBuilderExt, QueryBuilderExt};
 // Re-export helpers
 pub use builder::{decode_event, events_from_response, root_from_cover};
 pub use convert::{
-    now, parse_timestamp, proto_to_uuid, type_name_from_url, type_url, type_url_matches,
-    uuid_to_proto, TYPE_URL_PREFIX,
+    full_type_name, full_type_url, now, parse_timestamp, proto_to_uuid, try_unpack, type_matches,
+    type_name_from_url, type_url, type_url_matches_exact, unpack, uuid_to_proto, TYPE_URL_PREFIX,
 };
 
 // Re-export extension traits

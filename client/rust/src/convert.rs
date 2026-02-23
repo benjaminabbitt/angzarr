@@ -3,7 +3,8 @@
 use crate::error::{ClientError, Result};
 use crate::proto::Uuid as ProtoUuid;
 use chrono::{DateTime, Utc};
-use prost_types::Timestamp;
+use prost::Name;
+use prost_types::{Any, Timestamp};
 use uuid::Uuid;
 
 /// Default type URL prefix for protocol buffer messages.
@@ -20,16 +21,91 @@ pub fn type_url(type_name: &str) -> String {
     format!("{}/{}", TYPE_URL_PREFIX, type_name)
 }
 
-/// Extract the type name suffix from a type URL.
+/// Extract the fully-qualified type name from a type URL.
 ///
-/// Returns the part after the last `/` or the whole string if no `/` present.
+/// Returns the part after the last `/` (e.g., "examples.PlayerRegistered").
 pub fn type_name_from_url(type_url: &str) -> &str {
     type_url.rsplit('/').next().unwrap_or(type_url)
 }
 
-/// Check if a type URL ends with the given suffix.
-pub fn type_url_matches(type_url: &str, suffix: &str) -> bool {
-    type_url.ends_with(suffix)
+/// Check if a type URL matches the given fully-qualified type name exactly.
+///
+/// # Examples
+/// ```
+/// use angzarr_client::convert::type_url_matches_exact;
+/// assert!(type_url_matches_exact(
+///     "type.googleapis.com/examples.PlayerRegistered",
+///     "examples.PlayerRegistered"
+/// ));
+/// ```
+pub fn type_url_matches_exact(type_url: &str, full_type_name: &str) -> bool {
+    type_url == format!("{}/{}", TYPE_URL_PREFIX, full_type_name)
+}
+
+// Type-safe reflection helpers using prost::Name
+
+/// Check if an Any contains a message of type T using prost::Name reflection.
+///
+/// This is preferred over string-based suffix matching.
+///
+/// # Examples
+/// ```ignore
+/// use angzarr_client::convert::type_matches;
+/// use examples::PlayerRegistered;
+///
+/// let any: prost_types::Any = /* ... */;
+/// if type_matches::<PlayerRegistered>(&any) {
+///     let msg = try_unpack::<PlayerRegistered>(&any).unwrap();
+/// }
+/// ```
+pub fn type_matches<T: prost::Message + Name>(any: &Any) -> bool {
+    let expected = format!("{}/{}", TYPE_URL_PREFIX, T::full_name());
+    any.type_url == expected
+}
+
+/// Unpack an Any to type T if the type matches, returning None otherwise.
+///
+/// This is type-safe: it only unpacks if the type URL matches exactly.
+pub fn try_unpack<T: prost::Message + Default + Name>(any: &Any) -> Option<T> {
+    if type_matches::<T>(any) {
+        T::decode(any.value.as_slice()).ok()
+    } else {
+        None
+    }
+}
+
+/// Unpack an Any to type T, returning an error if type doesn't match or decode fails.
+pub fn unpack<T: prost::Message + Default + Name>(any: &Any) -> Result<T> {
+    let expected = format!("{}/{}", TYPE_URL_PREFIX, T::full_name());
+    if any.type_url != expected {
+        return Err(ClientError::InvalidArgument(format!(
+            "type mismatch: expected {}, got {}",
+            expected, any.type_url
+        )));
+    }
+    T::decode(any.value.as_slice())
+        .map_err(|e| ClientError::InvalidArgument(format!("decode error: {}", e)))
+}
+
+/// Get the full type URL for message type T.
+///
+/// # Examples
+/// ```ignore
+/// use angzarr_client::convert::full_type_url;
+/// use examples::PlayerRegistered;
+///
+/// assert_eq!(
+///     full_type_url::<PlayerRegistered>(),
+///     "type.googleapis.com/examples.PlayerRegistered"
+/// );
+/// ```
+pub fn full_type_url<T: Name>() -> String {
+    format!("{}/{}", TYPE_URL_PREFIX, T::full_name())
+}
+
+/// Get the fully-qualified type name for message type T (without URL prefix).
+pub fn full_type_name<T: Name>() -> String {
+    T::full_name().to_string()
 }
 
 /// Convert a UUID to its protobuf representation.
@@ -98,14 +174,19 @@ mod tests {
     }
 
     #[test]
-    fn test_type_url_matches() {
-        assert!(type_url_matches(
+    fn test_type_url_matches_exact() {
+        assert!(type_url_matches_exact(
+            "type.googleapis.com/examples.AddItemToCart",
+            "examples.AddItemToCart"
+        ));
+        assert!(!type_url_matches_exact(
+            "type.googleapis.com/examples.AddItemToCart",
+            "examples.RemoveItem"
+        ));
+        // Suffix matching should NOT work with exact matching
+        assert!(!type_url_matches_exact(
             "type.googleapis.com/examples.AddItemToCart",
             "AddItemToCart"
-        ));
-        assert!(!type_url_matches(
-            "type.googleapis.com/examples.AddItemToCart",
-            "RemoveItem"
         ));
     }
 

@@ -12,8 +12,8 @@
 //	func NewOutputProjector() *OutputProjector {
 //	    p := &OutputProjector{}
 //	    p.Init("output", []string{"player", "table", "hand"})
-//	    p.Projects("PlayerRegistered", p.projectRegistered)
-//	    p.Projects("TableCreated", p.projectTableCreated)
+//	    p.Projects(p.projectRegistered)
+//	    p.Projects(p.projectTableCreated)
 //	    return p
 //	}
 //
@@ -25,7 +25,6 @@ package angzarr
 
 import (
 	"reflect"
-	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
@@ -70,21 +69,22 @@ func (p *ProjectorBase) Domains() []string {
 	return p.domains
 }
 
-// Projects registers an event projection handler for a type_url suffix.
+// Projects registers an event projection handler.
 //
 // The handler function must have signature: func(*EventType) *pb.Projection
 // where EventType is a protobuf message type.
 // The handler may return nil to use the default projection.
+// The event type is automatically extracted via proto reflection.
 //
 // Example:
 //
-//	p.Projects("PlayerRegistered", p.projectRegistered)
+//	p.Projects(p.projectRegistered)
 //
 //	func (p *OutputProjector) projectRegistered(event *examples.PlayerRegistered) *pb.Projection {
 //	    writeLog(fmt.Sprintf("Player: %s", event.DisplayName))
 //	    return nil
 //	}
-func (p *ProjectorBase) Projects(suffix string, handler any) {
+func (p *ProjectorBase) Projects(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -104,6 +104,11 @@ func (p *ProjectorBase) Projects(suffix string, handler any) {
 		panic("event parameter must be a pointer")
 	}
 	eventType := eventPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the wrapper function
 	wrapper := func(data []byte) *pb.Projection {
@@ -126,7 +131,7 @@ func (p *ProjectorBase) Projects(suffix string, handler any) {
 		return results[0].Interface().(*pb.Projection)
 	}
 
-	p.handlers[suffix] = wrapper
+	p.handlers[fullName] = wrapper
 }
 
 // Handle processes an EventBook and returns a Projection.
@@ -148,9 +153,9 @@ func (p *ProjectorBase) Handle(events *pb.EventBook) (*pb.Projection, error) {
 
 		typeURL := event.TypeUrl
 
-		// Find handler by suffix
-		for suffix, handler := range p.handlers {
-			if strings.HasSuffix(typeURL, suffix) {
+		// Find handler by exact type match
+		for fullName, handler := range p.handlers {
+			if typeURL == TypeURLPrefix+fullName {
 				if projection := handler(event.Value); projection != nil {
 					return projection, nil
 				}

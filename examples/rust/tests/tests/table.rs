@@ -8,7 +8,7 @@ use angzarr_client::proto::examples::{
     PlayerJoined, PlayerLeft, PotResult, StartHand, TableCreated,
 };
 use angzarr_client::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
-use angzarr_client::{pack_event, CommandRejectedError, UnpackAny};
+use angzarr_client::{pack_event, try_unpack, type_matches, type_name_from_url, CommandRejectedError, UnpackAny};
 use cucumber::{given, then, when, World, WriterExt};
 use prost::Message;
 use prost_types::Any;
@@ -133,7 +133,7 @@ fn given_no_events(world: &mut TableWorld) {
 #[given(expr = "a TableCreated event for {string}")]
 fn given_table_created(world: &mut TableWorld, table_name: String) {
     // Don't clear if called from a variant step that already cleared
-    if world.events.is_empty() || !world.events.iter().any(|e| e.type_url.ends_with("TableCreated")) {
+    if world.events.is_empty() || !world.events.iter().any(|e| type_matches::<TableCreated>(e)) {
         world.events.clear();
     }
     // Set high defaults if not explicitly set
@@ -381,6 +381,52 @@ fn when_end_hand(world: &mut TableWorld, winner_id: String, amount: i64) {
     ));
 }
 
+#[when(regex = r"I handle an EndHand command with results:")]
+fn when_end_hand_with_results(world: &mut TableWorld, step: &cucumber::gherkin::Step) {
+    let table_root = world.table_root();
+    let hand_number = if world.hand_number > 0 {
+        world.hand_number
+    } else {
+        1
+    };
+    let hand_root = generate_hand_root(&table_root, hand_number);
+
+    // Parse the data table for results
+    let table = step.table.as_ref().expect("Expected data table");
+    let results: Vec<PotResult> = table
+        .rows
+        .iter()
+        .skip(1)  // Skip header
+        .map(|row| {
+            let player_id = &row[0];
+            let change: i64 = row[1].parse().unwrap();
+            PotResult {
+                winner_root: world.player_root(player_id),
+                amount: change,
+                pot_type: "main".to_string(),
+                winning_hand: None,
+            }
+        })
+        .collect();
+
+    let cmd = EndHand {
+        hand_root,
+        results,
+    };
+
+    let event_book = world.event_book();
+    let state = rebuild_state(&event_book);
+    let cmd_book = command_book(&world.table_root(), "table");
+    let cmd_any = pack_cmd(&cmd, "examples.EndHand");
+
+    world.result = Some(handlers::handle_end_hand(
+        &cmd_book,
+        &cmd_any,
+        &state,
+        world.next_seq(),
+    ));
+}
+
 #[when("I rebuild the table state")]
 fn when_rebuild_state(world: &mut TableWorld) {
     // State is rebuilt in Then steps
@@ -403,11 +449,11 @@ fn then_result_is_event(world: &mut TableWorld, event_type: String) {
         })
         .expect("No event in result");
 
-    assert!(
-        event.type_url.ends_with(&event_type),
+    let actual_type = type_name_from_url(&event.type_url);
+    assert_eq!(
+        actual_type, event_type,
         "Expected {} but got {}",
-        event_type,
-        event.type_url
+        event_type, actual_type
     );
 }
 
@@ -451,19 +497,15 @@ fn then_game_variant(world: &mut TableWorld, expected: String) {
     };
 
     // Could be TableCreated or HandStarted
-    if event.type_url.ends_with("TableCreated") {
-        let tc: TableCreated = event.unpack().expect("Failed to decode");
-        assert_eq!(
-            GameVariant::try_from(tc.game_variant).unwrap_or_default(),
-            expected_variant
-        );
-    } else if event.type_url.ends_with("HandStarted") {
-        let hs: HandStarted = event.unpack().expect("Failed to decode");
-        assert_eq!(
-            GameVariant::try_from(hs.game_variant).unwrap_or_default(),
-            expected_variant
-        );
-    }
+    let actual_variant = if let Some(tc) = try_unpack::<TableCreated>(event) {
+        GameVariant::try_from(tc.game_variant).unwrap_or_default()
+    } else if let Some(hs) = try_unpack::<HandStarted>(event) {
+        GameVariant::try_from(hs.game_variant).unwrap_or_default()
+    } else {
+        panic!("Unknown event type: {}", event.type_url);
+    };
+
+    assert_eq!(actual_variant, expected_variant);
 }
 
 #[then(expr = "the table event has small_blind {int}")]

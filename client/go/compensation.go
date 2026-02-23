@@ -26,14 +26,12 @@
 package angzarr
 
 import (
-	"strings"
-
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
 )
 
-// NotificationSuffix is used to detect rejection notifications.
-const NotificationSuffix = "Notification"
+// NotificationTypeName is the fully-qualified proto type name for Notification.
+const NotificationTypeName = "angzarr.Notification"
 
 // CompensationContext provides easy access to rejection details.
 type CompensationContext struct {
@@ -179,5 +177,5 @@ func PMEmitCompensationEvents(events *pb.EventBook, alsoEmitSystemEvent bool, re
 
 // IsNotification checks if a command is a rejection Notification.
 func IsNotification(typeURL string) bool {
-	return strings.HasSuffix(typeURL, NotificationSuffix)
+	return typeURL == TypeURLPrefix+NotificationTypeName
 }

@@ -14,6 +14,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from hand.agg.handlers import Hand, get_game_rules
 
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import player_pb2 as player
@@ -273,9 +274,7 @@ def step_given_blind_posted(context, player_id, amount):
     # Calculate pot total from prior blinds
     pot_total = int(amount)
     for page in context.events:
-        if page.event.type_url.endswith("BlindPosted"):
-            event = hand.BlindPosted()
-            page.event.Unpack(event)
+        if event := try_unpack(page.event, hand.BlindPosted):
             pot_total += event.amount
 
     blind_posted = hand.BlindPosted(
@@ -365,9 +364,7 @@ def step_given_community_dealt_phase(context, phase):
     # Get existing community cards from prior events
     existing_community = []
     for ep in context.events:
-        if ep.event.type_url.endswith("CommunityCardsDealt"):
-            evt = hand.CommunityCardsDealt()
-            ep.event.Unpack(evt)
+        if evt := try_unpack(ep.event, hand.CommunityCardsDealt):
             existing_community.extend(evt.cards)
 
     community_dealt.all_community_cards.extend(existing_community)

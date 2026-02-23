@@ -2,8 +2,6 @@
 package angzarr
 
 import (
-	"strings"
-
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -30,8 +28,8 @@ type UpcasterRouter struct {
 }
 
 type upcasterEntry struct {
-	suffix  string
-	handler UpcasterHandler
+	fullName string
+	handler  UpcasterHandler
 }
 
 // NewUpcasterRouter creates a new upcaster router for a domain.
@@ -42,12 +40,12 @@ func NewUpcasterRouter(domain string) *UpcasterRouter {
 	}
 }
 
-// On registers a handler for an old event type_url suffix.
+// On registers a handler for an old event type.
 //
-// The suffix is matched against the end of the event's type_url.
-// For example, suffix "OrderCreatedV1" matches "type.googleapis.com/examples.OrderCreatedV1".
-func (r *UpcasterRouter) On(suffix string, handler UpcasterHandler) *UpcasterRouter {
-	r.handlers = append(r.handlers, upcasterEntry{suffix: suffix, handler: handler})
+// The fullName is the fully-qualified proto type name (e.g., "examples.OrderCreatedV1").
+// This matches against type_url = "type.googleapis.com/" + fullName.
+func (r *UpcasterRouter) On(fullName string, handler UpcasterHandler) *UpcasterRouter {
+	r.handlers = append(r.handlers, upcasterEntry{fullName: fullName, handler: handler})
 	return r
 }
 
@@ -67,7 +65,7 @@ func (r *UpcasterRouter) Upcast(events []*pb.EventPage) []*pb.EventPage {
 
 		transformed := false
 		for _, entry := range r.handlers {
-			if strings.HasSuffix(event.TypeUrl, entry.suffix) {
+			if event.TypeUrl == TypeURLPrefix+entry.fullName {
 				newEvent := entry.handler(event)
 				// Clone the page and replace the event
 				newPage := proto.Clone(page).(*pb.EventPage)

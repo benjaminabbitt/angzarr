@@ -12,6 +12,7 @@ from typing import Callable, Generic, List, TypeVar
 
 from google.protobuf.any_pb2 import Any as AnyProto
 
+from .helpers import TYPE_URL_PREFIX
 from .proto.angzarr import types_pb2 as types
 
 S = TypeVar("S")
@@ -64,16 +65,22 @@ class StateBuilder(Generic[S]):
         self._snapshot_loader = loader
         return self
 
-    def on(self, type_suffix: str, apply: StateApplier[S]) -> StateBuilder[S]:
-        """Register an event applier for a type_url suffix.
+    def on(self, event_type, apply: StateApplier[S]) -> StateBuilder[S]:
+        """Register an event applier for an event type.
 
         The applier function is responsible for decoding the event.
 
         Args:
-            type_suffix: Event type_url suffix to match.
+            event_type: Proto class (e.g., PlayerRegistered) or full type name string.
             apply: Function receiving (state, raw_any_proto).
         """
-        self._appliers.append((type_suffix, apply))
+        # Extract full_name from proto class or use string directly
+        if hasattr(event_type, "DESCRIPTOR"):
+            full_name = event_type.DESCRIPTOR.full_name
+        else:
+            full_name = event_type
+
+        self._appliers.append((full_name, apply))
         return self
 
     def apply(self, state: S, event: AnyProto) -> None:
@@ -84,8 +91,8 @@ class StateBuilder(Generic[S]):
         """
         if event is None:
             return
-        for suffix, applier in self._appliers:
-            if event.type_url.endswith(suffix):
+        for full_name, applier in self._appliers:
+            if event.type_url == TYPE_URL_PREFIX + full_name:
                 applier(state, event)
                 break
 
@@ -178,8 +185,8 @@ class StateRouter(Generic[S]):
         Returns:
             Self for chaining.
         """
-        suffix = event_type.__name__
-        self._handlers.append((suffix, event_type, handler))
+        full_name = event_type.DESCRIPTOR.full_name
+        self._handlers.append((full_name, event_type, handler))
         return self
 
     def with_snapshot(self, loader: SnapshotLoader[S]) -> StateRouter[S]:
@@ -259,8 +266,8 @@ class StateRouter(Generic[S]):
             return
 
         type_url = event_any.type_url
-        for suffix, event_type, handler in self._handlers:
-            if type_url.endswith(suffix):
+        for full_name, event_type, handler in self._handlers:
+            if type_url == TYPE_URL_PREFIX + full_name:
                 event = event_type()
                 event_any.Unpack(event)
                 handler(state, event)

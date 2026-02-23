@@ -323,3 +323,23 @@ message AngzarrDeadLetter {
   string source_component_type = 11;    // "aggregate" | "saga" | "projector" | "process_manager"
 }
 // docs:end:dead_letter
+
+// ============================================================================
+// Component Descriptors - Self-description for topology discovery
+// ============================================================================
+
+// Describes what a component subscribes to.
+// Topology edges derived from inputs: if A subscribes to domain X, edge X→A exists.
+message Target {
+  string domain = 1;
+}
+
+// Component self-description.
+message ComponentDescriptor {
+  string name = 1;
+  string component_type = 2;
+  repeated Target inputs = 3;   // Domains I subscribe to (event types I consume)
+}
+
+// Request for GetDescriptor RPC.
+message GetDescriptorRequest {}

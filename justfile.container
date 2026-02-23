@@ -73,3 +73,26 @@ test-bus-all: clean-containers test-bus-amqp clean-containers test-bus-kafka cle
 clean:
     cargo clean
 
+# === Coverage ===
+
+# Run full workspace coverage (unit + integration tests)
+cov:
+    cargo llvm-cov --workspace --features sqlite --ignore-filename-regex "(proto/|build\.rs|main\.rs)"
+
+# Run coverage for acceptance/Gherkin tests only
+cov-gherkin:
+    cargo llvm-cov --test interfaces --features sqlite --ignore-filename-regex "(proto/|build\.rs)"
+
+# Generate HTML coverage report and open it
+cov-html:
+    cargo llvm-cov --workspace --features sqlite --html --ignore-filename-regex "(proto/|build\.rs|main\.rs)"
+    @echo "Coverage report generated at target/llvm-cov/html/index.html"
+
+# Quick terminal summary of coverage
+cov-summary:
+    cargo llvm-cov --workspace --features sqlite --ignore-filename-regex "(proto/|build\.rs|main\.rs)" --summary-only
+
+# Generate LCOV format for CI integration
+cov-lcov:
+    cargo llvm-cov --workspace --features sqlite --lcov --output-path target/llvm-cov/lcov.info --ignore-filename-regex "(proto/|build\.rs|main\.rs)"
+

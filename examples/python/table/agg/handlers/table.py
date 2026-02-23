@@ -6,6 +6,7 @@ from typing import Optional
 
 from angzarr_client import Aggregate, handles, now
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.examples import table_pb2 as table_proto
 
 
@@ -50,11 +51,7 @@ class Table(Aggregate[_TableState]):
 
     def _apply_event(self, state: _TableState, event_any) -> None:
         """Apply a single event to state."""
-        type_url = event_any.type_url
-
-        if type_url.endswith("TableCreated"):
-            event = table_proto.TableCreated()
-            event_any.Unpack(event)
+        if event := try_unpack(event_any, table_proto.TableCreated):
             state.table_id = f"table_{event.table_name}"
             state.table_name = event.table_name
             state.game_variant = event.game_variant
@@ -66,47 +63,35 @@ class Table(Aggregate[_TableState]):
             state.action_timeout_seconds = event.action_timeout_seconds
             state.status = "waiting"
 
-        elif type_url.endswith("PlayerJoined"):
-            event = table_proto.PlayerJoined()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.PlayerJoined):
             state.seats[event.seat_position] = _SeatState(
                 position=event.seat_position,
                 player_root=event.player_root,
                 stack=event.stack,
             )
 
-        elif type_url.endswith("PlayerLeft"):
-            event = table_proto.PlayerLeft()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.PlayerLeft):
             state.seats.pop(event.seat_position, None)
 
-        elif type_url.endswith("PlayerSatOut"):
-            event = table_proto.PlayerSatOut()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.PlayerSatOut):
             for seat in state.seats.values():
                 if seat.player_root == event.player_root:
                     seat.is_sitting_out = True
                     break
 
-        elif type_url.endswith("PlayerSatIn"):
-            event = table_proto.PlayerSatIn()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.PlayerSatIn):
             for seat in state.seats.values():
                 if seat.player_root == event.player_root:
                     seat.is_sitting_out = False
                     break
 
-        elif type_url.endswith("HandStarted"):
-            event = table_proto.HandStarted()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.HandStarted):
             state.hand_count = event.hand_number
             state.current_hand_root = event.hand_root
             state.dealer_position = event.dealer_position
             state.status = "in_hand"
 
-        elif type_url.endswith("HandEnded"):
-            event = table_proto.HandEnded()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.HandEnded):
             state.current_hand_root = b""
             state.status = "waiting"
             # Apply stack changes
@@ -117,9 +102,7 @@ class Table(Aggregate[_TableState]):
                         seat.stack += delta
                         break
 
-        elif type_url.endswith("ChipsAdded"):
-            event = table_proto.ChipsAdded()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, table_proto.ChipsAdded):
             for seat in state.seats.values():
                 if seat.player_root == event.player_root:
                     seat.stack = event.new_stack

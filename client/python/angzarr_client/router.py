@@ -18,9 +18,13 @@ from typing import Any, Callable, Generic, TypeVar
 
 from google.protobuf import any_pb2
 
+from .helpers import TYPE_URL_PREFIX
 from .proto.angzarr import aggregate_pb2 as aggregate
 from .proto.angzarr import saga_pb2 as saga
 from .proto.angzarr import types_pb2 as types
+
+# Type URL for Notification messages
+NOTIFICATION_TYPE_URL = TYPE_URL_PREFIX + "angzarr.Notification"
 
 S = TypeVar("S")
 
@@ -518,29 +522,34 @@ class CommandRouter(Generic[S]):
                 "or StateRouter via .with_state()"
             )
 
-    def on(self, suffix_or_handler, handler: Callable = None) -> CommandRouter[S]:
-        """Register a handler for a command type_url suffix.
+    def on(self, type_or_handler, handler: Callable = None) -> CommandRouter[S]:
+        """Register a handler for a command type.
 
-        Two calling patterns:
-            router.on("CreateCart", handle_create)  # Explicit suffix
-            router.on(handle_create)                # Derive suffix from @command_handler
+        Three calling patterns:
+            router.on(CreateCart, handle_create)  # Proto class + handler (recommended)
+            router.on(handle_create)              # Derive from @command_handler decorator
+            router.on("examples.CreateCart", handle_create)  # Explicit string (legacy)
 
         When passing only a handler, it must be decorated with @command_handler
         so the command type can be derived via reflection.
         """
         if handler is None:
-            # Single argument: derive suffix from @command_handler decorator
-            handler = suffix_or_handler
+            # Single argument: derive type name from @command_handler decorator
+            handler = type_or_handler
             if not hasattr(handler, "_command_type"):
                 raise TypeError(
                     f"{handler.__name__}: must be decorated with @command_handler "
                     "to use single-argument .on()"
                 )
-            suffix = handler._command_type.__name__
+            full_name = handler._command_type.DESCRIPTOR.full_name
+        elif hasattr(type_or_handler, "DESCRIPTOR"):
+            # Proto class passed - extract full_name via reflection
+            full_name = type_or_handler.DESCRIPTOR.full_name
         else:
-            suffix = suffix_or_handler
+            # String passed (legacy - still supported but not recommended)
+            full_name = type_or_handler
 
-        self._handlers.append((suffix, handler))
+        self._handlers.append((full_name, handler))
         return self
 
     def on_rejected(
@@ -589,7 +598,7 @@ class CommandRouter(Generic[S]):
         """Dispatch a ContextualCommand to the matching handler.
 
         Extracts command + prior events, rebuilds state, matches type_url
-        suffix, and calls the registered handler. Detects Notification
+        exactly, and calls the registered handler. Detects Notification
         and routes to rejection handlers.
 
         Returns:
@@ -614,14 +623,14 @@ class CommandRouter(Generic[S]):
         type_url = command_any.type_url
 
         # Check for Notification (rejection/compensation)
-        if type_url.endswith("Notification"):
+        if type_url == NOTIFICATION_TYPE_URL:
             notification = types.Notification()
             command_any.Unpack(notification)
             return self._dispatch_rejection(notification, state)
 
         # Normal command dispatch
-        for suffix, handler in self._handlers:
-            if type_url.endswith(suffix):
+        for full_name, handler in self._handlers:
+            if type_url == TYPE_URL_PREFIX + full_name:
                 events = handler(command_book, command_any, state, seq)
                 return aggregate.BusinessResponse(events=events)
 
@@ -644,9 +653,9 @@ class CommandRouter(Generic[S]):
         if notification.HasField("payload"):
             notification.payload.Unpack(rejection)
 
-        # Extract domain and command type from rejected_command
+        # Extract domain and command full type name from rejected_command
         domain = ""
-        command_suffix = ""
+        command_type_name = ""
 
         if rejection.HasField("rejected_command") and rejection.rejected_command.pages:
             rejected_cmd = rejection.rejected_command
@@ -654,16 +663,16 @@ class CommandRouter(Generic[S]):
                 domain = rejected_cmd.cover.domain
             if rejected_cmd.pages[0].HasField("command"):
                 cmd_type_url = rejected_cmd.pages[0].command.type_url
-                command_suffix = (
-                    cmd_type_url.rsplit("/", 1)[-1]
-                    if "/" in cmd_type_url
-                    else cmd_type_url
-                )
+                # Extract full type name after the prefix
+                if cmd_type_url.startswith(TYPE_URL_PREFIX):
+                    command_type_name = cmd_type_url[len(TYPE_URL_PREFIX) :]
+                else:
+                    command_type_name = cmd_type_url
 
-        # Dispatch to rejection handler if found (use suffix matching like regular dispatch)
+        # Dispatch to rejection handler if found (use exact type matching)
         for key, handler in self._rejection_handlers.items():
             expected_domain, expected_command = key.split("/", 1)
-            if domain == expected_domain and command_suffix.endswith(expected_command):
+            if domain == expected_domain and command_type_name == expected_command:
                 events = handler(notification, state)
                 return aggregate.BusinessResponse(events=events)
 
@@ -671,7 +680,7 @@ class CommandRouter(Generic[S]):
         return aggregate.BusinessResponse(
             revocation=aggregate.RevocationResponse(
                 emit_system_revocation=True,
-                reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_suffix}",
+                reason=f"Aggregate {self.domain} has no custom compensation for {domain}/{command_type_name}",
             )
         )
 
@@ -774,27 +783,38 @@ class EventRouter:
             self._prepare_handlers[name] = {}
         return self
 
-    def prepare(self, suffix: str, handler: Callable) -> "EventRouter":
-        """Register a prepare handler for an event type_url suffix.
+    def prepare(self, event_type, handler: Callable) -> "EventRouter":
+        """Register a prepare handler for an event type.
 
         The prepare handler returns a list of Covers identifying destinations
         that should be fetched before the main handler executes.
+
+        Args:
+            event_type: Proto class (e.g., HandStarted) or full type name string
 
         Must be called after .domain() to set context.
         """
         if self._current_domain is None:
             raise ValueError("Must call .domain() before .prepare()")
-        self._prepare_handlers[self._current_domain][suffix] = handler
+
+        # Extract full_name from proto class or use string directly
+        if hasattr(event_type, "DESCRIPTOR"):
+            full_name = event_type.DESCRIPTOR.full_name
+        else:
+            full_name = event_type
+
+        self._prepare_handlers[self._current_domain][full_name] = handler
         return self
 
-    def on(self, suffix_or_handler, handler: Callable = None) -> "EventRouter":
-        """Register a handler for an event type_url suffix in current domain.
+    def on(self, type_or_handler, handler: Callable = None) -> "EventRouter":
+        """Register a handler for an event type in current domain.
 
         Must be called after .domain() to set context.
 
-        Two calling patterns:
-            router.domain("order").on("OrderCompleted", handle_completed)
-            router.domain("order").on(handle_completed)  # Derive suffix from @event_handler
+        Three calling patterns:
+            router.domain("order").on(OrderCompleted, handle_completed)  # Proto class (recommended)
+            router.domain("order").on(handle_completed)  # Derive from @event_handler decorator
+            router.domain("order").on("examples.OrderCompleted", handle_completed)  # String (legacy)
 
         When passing only a handler, it must be decorated with @event_handler
         so the event type can be derived via reflection.
@@ -803,18 +823,22 @@ class EventRouter:
             raise ValueError("Must call .domain() before .on()")
 
         if handler is None:
-            # Single argument: derive suffix from @event_handler decorator
-            handler = suffix_or_handler
+            # Single argument: derive type name from @event_handler decorator
+            handler = type_or_handler
             if not hasattr(handler, "_event_type"):
                 raise TypeError(
                     f"{handler.__name__}: must be decorated with @event_handler "
                     "to use single-argument .on()"
                 )
-            suffix = handler._event_type.__name__
+            full_name = handler._event_type.DESCRIPTOR.full_name
+        elif hasattr(type_or_handler, "DESCRIPTOR"):
+            # Proto class passed - extract full_name via reflection
+            full_name = type_or_handler.DESCRIPTOR.full_name
         else:
-            suffix = suffix_or_handler
+            # String passed (legacy - still supported but not recommended)
+            full_name = type_or_handler
 
-        self._handlers[self._current_domain].append((suffix, handler))
+        self._handlers[self._current_domain].append((full_name, handler))
         return self
 
     def subscriptions(self) -> list[tuple[str, list[str]]]:
@@ -832,7 +856,7 @@ class EventRouter:
     def prepare_destinations(self, book: types.EventBook) -> list[types.Cover]:
         """Get destinations needed for the given source events.
 
-        Iterates pages, matches type_url suffixes against prepare handlers,
+        Iterates pages, matches type_url exactly against prepare handlers,
         and collects destination Covers.
         """
         root = book.cover.root if book.HasField("cover") else None
@@ -844,8 +868,8 @@ class EventRouter:
                 continue
             # Check prepare handlers for source domain
             if source_domain in self._prepare_handlers:
-                for suffix, handler in self._prepare_handlers[source_domain].items():
-                    if page.event.type_url.endswith(suffix):
+                for full_name, handler in self._prepare_handlers[source_domain].items():
+                    if page.event.type_url == TYPE_URL_PREFIX + full_name:
                         destinations.extend(handler(page.event, root))
                         break
         return destinations
@@ -857,7 +881,7 @@ class EventRouter:
     ) -> list[types.CommandBook]:
         """Dispatch all events in an EventBook to registered handlers.
 
-        Routes based on source domain and event type suffix.
+        Routes based on source domain and exact event type match.
 
         Args:
             book: Source EventBook containing events to process
@@ -877,8 +901,8 @@ class EventRouter:
         for page in book.pages:
             if not page.HasField("event"):
                 continue
-            for suffix, handler in domain_handlers:
-                if page.event.type_url.endswith(suffix):
+            for full_name, handler in domain_handlers:
+                if page.event.type_url == TYPE_URL_PREFIX + full_name:
                     commands.extend(handler(page.event, root, correlation_id, dests))
                     break
         return commands
@@ -987,31 +1011,37 @@ class UpcasterRouter:
             tuple[str, Callable, type]
         ] = []  # (suffix, handler, to_type)
 
-    def on(self, suffix_or_handler, handler: Callable = None) -> UpcasterRouter:
-        """Register a handler for an old event type_url suffix.
+    def on(self, type_or_handler, handler: Callable = None) -> UpcasterRouter:
+        """Register a handler for an old event type.
 
-        Two calling patterns:
-            router.on("OrderCreatedV1", upcast_created)  # Explicit suffix
-            router.on(upcast_created)                     # Derive suffix from @upcaster
+        Three calling patterns:
+            router.on(OrderCreatedV1, upcast_created)  # Proto class + handler (recommended)
+            router.on(upcast_created)                   # Derive from @upcaster decorator
+            router.on("examples.OrderCreatedV1", upcast_created)  # String (legacy)
 
         When passing only a handler, it must be decorated with @upcaster
         so the from_type can be derived via reflection.
         """
         if handler is None:
-            # Single argument: derive suffix from @upcaster decorator
-            handler = suffix_or_handler
+            # Single argument: derive type name from @upcaster decorator
+            handler = type_or_handler
             if not hasattr(handler, "_from_type"):
                 raise TypeError(
                     f"{handler.__name__}: must be decorated with @upcaster "
                     "to use single-argument .on()"
                 )
-            suffix = handler._from_type.__name__
+            full_name = handler._from_type.DESCRIPTOR.full_name
             to_type = handler._to_type
+        elif hasattr(type_or_handler, "DESCRIPTOR"):
+            # Proto class passed - extract full_name via reflection
+            full_name = type_or_handler.DESCRIPTOR.full_name
+            to_type = getattr(handler, "_to_type", None)
         else:
-            suffix = suffix_or_handler
+            # String passed (legacy - still supported but not recommended)
+            full_name = type_or_handler
             to_type = getattr(handler, "_to_type", None)
 
-        self._handlers.append((suffix, handler, to_type))
+        self._handlers.append((full_name, handler, to_type))
         return self
 
     def upcast(self, events: list[types.EventPage]) -> list[types.EventPage]:
@@ -1033,8 +1063,8 @@ class UpcasterRouter:
             type_url = page.event.type_url
             transformed = False
 
-            for suffix, handler, _ in self._handlers:
-                if type_url.endswith(suffix):
+            for full_name, handler, _ in self._handlers:
+                if type_url == TYPE_URL_PREFIX + full_name:
                     new_event = handler(page.event)
                     new_page = types.EventPage(event=new_event, sequence=page.sequence)
                     new_page.created_at.CopyFrom(page.created_at)

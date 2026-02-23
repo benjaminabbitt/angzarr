@@ -2,7 +2,9 @@
 //!
 //! Provides convenient accessors for sequence, type URL, and payload decoding.
 
+use crate::convert::TYPE_URL_PREFIX;
 use crate::proto::{CommandPage, EventPage, MergeStrategy};
+use prost::Name;
 
 /// Extension trait for EventPage proto type.
 ///
@@ -21,7 +23,17 @@ pub trait EventPageExt {
     ///
     /// Returns None if the event is missing, type URL doesn't match the suffix,
     /// or decoding fails.
+    #[deprecated(
+        since = "0.1.0",
+        note = "use decode_typed for reflection-based type matching"
+    )]
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
+
+    /// Type-safe decode using prost::Name reflection.
+    ///
+    /// Returns None if the event is missing, type URL doesn't match exactly,
+    /// or decoding fails. The expected type URL is derived from M::full_name().
+    fn decode_typed<M: prost::Message + Default + Name>(&self) -> Option<M>;
 }
 
 impl EventPageExt for EventPage {
@@ -43,12 +55,25 @@ impl EventPageExt for EventPage {
         }
     }
 
+    #[allow(deprecated)]
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
         let event = match &self.payload {
             Some(crate::proto::event_page::Payload::Event(e)) => e,
             _ => return None,
         };
         if !event.type_url.ends_with(type_suffix) {
+            return None;
+        }
+        M::decode(event.value.as_slice()).ok()
+    }
+
+    fn decode_typed<M: prost::Message + Default + Name>(&self) -> Option<M> {
+        let event = match &self.payload {
+            Some(crate::proto::event_page::Payload::Event(e)) => e,
+            _ => return None,
+        };
+        let expected = format!("{}{}", TYPE_URL_PREFIX, M::full_name());
+        if event.type_url != expected {
             return None;
         }
         M::decode(event.value.as_slice()).ok()
@@ -72,7 +97,17 @@ pub trait CommandPageExt {
     ///
     /// Returns None if the command is missing, type URL doesn't match the suffix,
     /// or decoding fails.
+    #[deprecated(
+        since = "0.1.0",
+        note = "use decode_typed for reflection-based type matching"
+    )]
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M>;
+
+    /// Type-safe decode using prost::Name reflection.
+    ///
+    /// Returns None if the command is missing, type URL doesn't match exactly,
+    /// or decoding fails. The expected type URL is derived from M::full_name().
+    fn decode_typed<M: prost::Message + Default + Name>(&self) -> Option<M>;
 
     /// Get the merge strategy for this command.
     ///
@@ -99,12 +134,25 @@ impl CommandPageExt for CommandPage {
         }
     }
 
+    #[allow(deprecated)]
     fn decode<M: prost::Message + Default>(&self, type_suffix: &str) -> Option<M> {
         let command = match &self.payload {
             Some(crate::proto::command_page::Payload::Command(c)) => c,
             _ => return None,
         };
         if !command.type_url.ends_with(type_suffix) {
+            return None;
+        }
+        M::decode(command.value.as_slice()).ok()
+    }
+
+    fn decode_typed<M: prost::Message + Default + Name>(&self) -> Option<M> {
+        let command = match &self.payload {
+            Some(crate::proto::command_page::Payload::Command(c)) => c,
+            _ => return None,
+        };
+        let expected = format!("{}{}", TYPE_URL_PREFIX, M::full_name());
+        if command.type_url != expected {
             return None;
         }
         M::decode(command.value.as_slice()).ok()

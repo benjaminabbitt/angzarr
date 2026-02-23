@@ -68,8 +68,8 @@ type CommandRouter[S any] struct {
 }
 
 type commandRegistration[S any] struct {
-	suffix  string
-	handler CommandHandler[S]
+	fullName string
+	handler  CommandHandler[S]
 }
 
 // NewCommandRouter creates a new router for the given domain.
@@ -82,9 +82,24 @@ func NewCommandRouter[S any](domain string, rebuild StateRebuilder[S]) *CommandR
 	}
 }
 
-// On registers a handler for a command type_url suffix.
-func (r *CommandRouter[S]) On(suffix string, handler CommandHandler[S]) *CommandRouter[S] {
-	r.handlers = append(r.handlers, commandRegistration[S]{suffix: suffix, handler: handler})
+// On registers a handler for a command type by fully-qualified name.
+//
+// The fullName should be the proto full name (e.g., "examples.RegisterPlayer").
+// For type-safe registration using generics, use OnType instead.
+func (r *CommandRouter[S]) On(fullName string, handler CommandHandler[S]) *CommandRouter[S] {
+	r.handlers = append(r.handlers, commandRegistration[S]{fullName: fullName, handler: handler})
+	return r
+}
+
+// OnType registers a handler for a command type using proto reflection.
+//
+// Example:
+//
+//	router.OnType[*examples.RegisterPlayer](handleRegisterPlayer)
+func OnType[T proto.Message, S any](r *CommandRouter[S], handler CommandHandler[S]) *CommandRouter[S] {
+	var zero T
+	fullName := string(zero.ProtoReflect().Descriptor().FullName())
+	r.handlers = append(r.handlers, commandRegistration[S]{fullName: fullName, handler: handler})
 	return r
 }
 
@@ -130,7 +145,7 @@ func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResp
 	typeURL := commandAny.TypeUrl
 
 	// Check for Notification (rejection/compensation)
-	if strings.HasSuffix(typeURL, "Notification") {
+	if typeURL == TypeURLPrefix+"angzarr.Notification" {
 		notification := &pb.Notification{}
 		if err := commandAny.UnmarshalTo(notification); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal Notification: %w", err)
@@ -138,9 +153,9 @@ func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResp
 		return r.dispatchRejection(notification, state)
 	}
 
-	// Normal command dispatch
+	// Normal command dispatch - exact type URL matching
 	for _, reg := range r.handlers {
-		if strings.HasSuffix(typeURL, reg.suffix) {
+		if typeURL == TypeURLPrefix+reg.fullName {
 			events, err := reg.handler(commandBook, commandAny, state, seq)
 			if err != nil {
 				return nil, err
@@ -248,13 +263,13 @@ type EventRouter struct {
 }
 
 type eventRegistration struct {
-	suffix  string
-	handler EventHandler
+	fullName string
+	handler  EventHandler
 }
 
 type prepareRegistration struct {
-	suffix  string
-	handler PrepareHandler
+	fullName string
+	handler  PrepareHandler
 }
 
 // NewEventRouter creates a new router for the given component name.
@@ -285,42 +300,85 @@ func (r *EventRouter) Domain(name string) *EventRouter {
 	return r
 }
 
-// Prepare registers a prepare handler for an event type_url suffix.
+// Prepare registers a prepare handler for an event type by fully-qualified name.
 // The prepare handler declares which destinations are needed before Execute.
 // Must be called after Domain() to set context.
-func (r *EventRouter) Prepare(suffix string, handler PrepareHandler) *EventRouter {
+//
+// The fullName should be the proto full name (e.g., "examples.HandStarted").
+func (r *EventRouter) Prepare(fullName string, handler PrepareHandler) *EventRouter {
 	if r.currentDomain == "" {
 		panic("Must call Domain() before Prepare()")
 	}
 	r.prepareHandlers[r.currentDomain] = append(
 		r.prepareHandlers[r.currentDomain],
-		prepareRegistration{suffix: suffix, handler: handler},
+		prepareRegistration{fullName: fullName, handler: handler},
 	)
 	return r
 }
 
-// On registers a handler for an event type_url suffix in current domain.
+// On registers a handler for an event type by fully-qualified name in current domain.
 // Must be called after Domain() to set context.
-func (r *EventRouter) On(suffix string, handler EventHandler) *EventRouter {
+//
+// The fullName should be the proto full name (e.g., "examples.HandStarted").
+// For type-safe registration using generics, use OnEvent instead.
+func (r *EventRouter) On(fullName string, handler EventHandler) *EventRouter {
 	if r.currentDomain == "" {
 		panic("Must call Domain() before On()")
 	}
 	r.handlers[r.currentDomain] = append(
 		r.handlers[r.currentDomain],
-		eventRegistration{suffix: suffix, handler: handler},
+		eventRegistration{fullName: fullName, handler: handler},
+	)
+	return r
+}
+
+// OnEvent registers a handler for an event type using proto reflection.
+// Must be called after Domain() to set context.
+//
+// Example:
+//
+//	OnEvent[*examples.HandStarted](router, handleStarted)
+func OnEvent[T proto.Message](r *EventRouter, handler EventHandler) *EventRouter {
+	if r.currentDomain == "" {
+		panic("Must call Domain() before OnEvent()")
+	}
+	var zero T
+	fullName := string(zero.ProtoReflect().Descriptor().FullName())
+	r.handlers[r.currentDomain] = append(
+		r.handlers[r.currentDomain],
+		eventRegistration{fullName: fullName, handler: handler},
+	)
+	return r
+}
+
+// PrepareEvent registers a prepare handler for an event type using proto reflection.
+// Must be called after Domain() to set context.
+//
+// Example:
+//
+//	PrepareEvent[*examples.HandStarted](router, prepareStarted)
+func PrepareEvent[T proto.Message](r *EventRouter, handler PrepareHandler) *EventRouter {
+	if r.currentDomain == "" {
+		panic("Must call Domain() before PrepareEvent()")
+	}
+	var zero T
+	fullName := string(zero.ProtoReflect().Descriptor().FullName())
+	r.prepareHandlers[r.currentDomain] = append(
+		r.prepareHandlers[r.currentDomain],
+		prepareRegistration{fullName: fullName, handler: handler},
 	)
 	return r
 }
 
 // Subscriptions auto-derives subscriptions from registered handlers.
-// Returns list of (domain, event_types) pairs.
+// Returns list of (domain, event_types) pairs with fully-qualified type names.
 func (r *EventRouter) Subscriptions() map[string][]string {
 	result := make(map[string][]string)
 	for domain, handlers := range r.handlers {
 		if len(handlers) > 0 {
 			types := make([]string, len(handlers))
 			for i, reg := range handlers {
-				types[i] = reg.suffix
+				types[i] = reg.fullName
 			}
 			result[domain] = types
 		}
@@ -353,7 +411,7 @@ func (r *EventRouter) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
 	}
 
 	for _, reg := range domainHandlers {
-		if strings.HasSuffix(event.TypeUrl, reg.suffix) {
+		if event.TypeUrl == TypeURLPrefix+reg.fullName {
 			return reg.handler(source, event)
 		}
 	}
@@ -361,7 +419,7 @@ func (r *EventRouter) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
 }
 
 // Dispatch routes all events in an EventBook to registered handlers.
-// Routes based on source domain and event type suffix.
+// Routes based on source domain and event type (exact match).
 func (r *EventRouter) Dispatch(source *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
 	if source == nil {
 		return nil, nil
@@ -384,7 +442,7 @@ func (r *EventRouter) Dispatch(source *pb.EventBook, destinations []*pb.EventBoo
 			continue
 		}
 		for _, reg := range domainHandlers {
-			if strings.HasSuffix(event.TypeUrl, reg.suffix) {
+			if event.TypeUrl == TypeURLPrefix+reg.fullName {
 				cmds, err := reg.handler(source, event, destinations)
 				if err != nil {
 					return nil, err
@@ -417,10 +475,10 @@ type StateFactory[S any] func() S
 // The handler receives raw bytes and is responsible for unmarshaling.
 type EventApplier[S any] func(state *S, value []byte)
 
-// stateRegistration holds a suffix and its handler.
+// stateRegistration holds a fully-qualified type name and its handler.
 type stateRegistration[S any] struct {
-	suffix  string
-	applier EventApplier[S]
+	fullName string
+	applier  EventApplier[S]
 }
 
 // StateRouter provides fluent state reconstruction from events.
@@ -473,10 +531,10 @@ func NewStateRouter[S any](factory StateFactory[S]) *StateRouter[S] {
 //	router.On(applyRegistered)  // applyRegistered is func(*PlayerState, *PlayerRegistered)
 func (r *StateRouter[S]) On(handler any) *StateRouter[S] {
 	// Use reflection to extract proto type from handler signature
-	suffix, applier := makeEventApplier[S](handler)
+	fullName, applier := makeEventApplier[S](handler)
 	r.handlers = append(r.handlers, stateRegistration[S]{
-		suffix:  suffix,
-		applier: applier,
+		fullName: fullName,
+		applier:  applier,
 	})
 	return r
 }
@@ -506,7 +564,7 @@ func (r *StateRouter[S]) WithEventBook(eventBook *pb.EventBook) S {
 func (r *StateRouter[S]) ApplySingle(state *S, eventAny *anypb.Any) {
 	typeURL := eventAny.TypeUrl
 	for _, reg := range r.handlers {
-		if strings.HasSuffix(typeURL, reg.suffix) {
+		if typeURL == TypeURLPrefix+reg.fullName {
 			reg.applier(state, eventAny.Value)
 			return
 		}
@@ -529,7 +587,7 @@ func (r *StateRouter[S]) ToRebuilder() StateRebuilder[S] {
 // makeEventApplier uses reflection to create an EventApplier from a typed handler.
 //
 // The handler must have signature: func(*S, *EventType) where EventType is a proto.Message.
-// Returns the event type suffix and an applier function.
+// Returns the fully-qualified type name and an applier function.
 func makeEventApplier[S any](handler any) (string, EventApplier[S]) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
@@ -548,8 +606,10 @@ func makeEventApplier[S any](handler any) (string, EventApplier[S]) {
 	}
 	eventType := eventPtrType.Elem()
 
-	// Get the type name for suffix matching
-	suffix := eventType.Name()
+	// Create a zero instance to get the full proto name via reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the applier function
 	applier := func(state *S, value []byte) {
@@ -567,5 +627,5 @@ func makeEventApplier[S any](handler any) (string, EventApplier[S]) {
 		handlerValue.Call([]reflect.Value{stateValue, eventPtr})
 	}
 
-	return suffix, applier
+	return fullName, applier
 }

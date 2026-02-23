@@ -428,6 +428,96 @@ impl SpeculativeExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto::event_page;
+
+    // ============================================================================
+    // DomainStateSpec Tests
+    // ============================================================================
+
+    #[test]
+    fn test_domain_state_spec_current() {
+        let spec = DomainStateSpec::Current;
+        // Current should be debug-printable
+        assert!(format!("{:?}", spec).contains("Current"));
+    }
+
+    #[test]
+    fn test_domain_state_spec_at_sequence() {
+        let spec = DomainStateSpec::AtSequence(42);
+        assert!(format!("{:?}", spec).contains("42"));
+    }
+
+    #[test]
+    fn test_domain_state_spec_at_timestamp() {
+        let ts = "2024-01-15T10:30:00Z".to_string();
+        let spec = DomainStateSpec::AtTimestamp(ts.clone());
+        assert!(format!("{:?}", spec).contains(&ts));
+    }
+
+    #[test]
+    fn test_domain_state_spec_explicit() {
+        let book = EventBook::default();
+        let spec = DomainStateSpec::Explicit(book);
+        assert!(format!("{:?}", spec).contains("Explicit"));
+    }
+
+    #[test]
+    fn test_domain_state_spec_clone() {
+        let spec = DomainStateSpec::AtSequence(10);
+        let cloned = spec.clone();
+        assert!(format!("{:?}", cloned).contains("10"));
+    }
+
+    // ============================================================================
+    // PmSpeculativeResult Tests
+    // ============================================================================
+
+    #[test]
+    fn test_pm_speculative_result_empty() {
+        let result = PmSpeculativeResult {
+            commands: vec![],
+            process_events: None,
+        };
+
+        assert!(result.commands.is_empty());
+        assert!(result.process_events.is_none());
+    }
+
+    #[test]
+    fn test_pm_speculative_result_with_commands() {
+        let cmd = CommandBook::default();
+        let result = PmSpeculativeResult {
+            commands: vec![cmd],
+            process_events: None,
+        };
+
+        assert_eq!(result.commands.len(), 1);
+    }
+
+    #[test]
+    fn test_pm_speculative_result_with_events() {
+        let events = EventBook::default();
+        let result = PmSpeculativeResult {
+            commands: vec![],
+            process_events: Some(events),
+        };
+
+        assert!(result.process_events.is_some());
+    }
+
+    #[test]
+    fn test_pm_speculative_result_debug() {
+        let result = PmSpeculativeResult {
+            commands: vec![],
+            process_events: None,
+        };
+        // Should be Debug-printable
+        assert!(format!("{:?}", result).contains("PmSpeculativeResult"));
+    }
+
+    // ============================================================================
+    // SpeculativeExecutor::build_event_book Tests
+    // ============================================================================
 
     #[test]
     fn test_build_event_book_structure() {
@@ -445,6 +535,69 @@ mod tests {
     }
 
     #[test]
+    fn test_build_event_book_with_pages() {
+        let root = Uuid::new_v4();
+        let page = EventPage {
+            sequence: 0,
+            payload: Some(event_page::Payload::Event(prost_types::Any {
+                type_url: "test.Event".to_string(),
+                value: vec![1, 2, 3],
+            })),
+            created_at: None,
+        };
+        let book = SpeculativeExecutor::build_event_book("order", root, vec![page]);
+
+        assert_eq!(book.pages.len(), 1);
+        assert_eq!(book.pages[0].sequence, 0);
+    }
+
+    #[test]
+    fn test_build_event_book_multiple_pages() {
+        let root = Uuid::new_v4();
+        let pages: Vec<EventPage> = (0..5)
+            .map(|seq| EventPage {
+                sequence: seq,
+                payload: Some(event_page::Payload::Event(prost_types::Any {
+                    type_url: format!("test.Event{}", seq),
+                    value: vec![],
+                })),
+                created_at: None,
+            })
+            .collect();
+
+        let book = SpeculativeExecutor::build_event_book("order", root, pages);
+
+        assert_eq!(book.pages.len(), 5);
+        for (i, page) in book.pages.iter().enumerate() {
+            assert_eq!(page.sequence, i as u32);
+        }
+    }
+
+    #[test]
+    fn test_build_event_book_has_default_edition() {
+        let root = Uuid::new_v4();
+        let book = SpeculativeExecutor::build_event_book("order", root, vec![]);
+
+        let cover = book.cover.as_ref().unwrap();
+        let edition = cover.edition.as_ref().unwrap();
+        assert_eq!(edition.name, DEFAULT_EDITION);
+        assert!(edition.divergences.is_empty());
+    }
+
+    #[test]
+    fn test_build_event_book_empty_correlation_id() {
+        let root = Uuid::new_v4();
+        let book = SpeculativeExecutor::build_event_book("order", root, vec![]);
+
+        let cover = book.cover.as_ref().unwrap();
+        assert!(cover.correlation_id.is_empty());
+    }
+
+    // ============================================================================
+    // SpeculativeExecutor::root_from_event_book Tests
+    // ============================================================================
+
+    #[test]
     fn test_root_from_event_book_valid() {
         let root = Uuid::new_v4();
         let book = SpeculativeExecutor::build_event_book("order", root, vec![]);
@@ -458,11 +611,129 @@ mod tests {
     }
 
     #[test]
-    fn test_domain_state_spec_variants() {
-        // Verify all variants can be constructed
-        let _ = DomainStateSpec::Current;
-        let _ = DomainStateSpec::AtSequence(5);
-        let _ = DomainStateSpec::AtTimestamp("2024-01-01T00:00:00Z".to_string());
-        let _ = DomainStateSpec::Explicit(EventBook::default());
+    fn test_root_from_event_book_missing_root() {
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: "test".to_string(),
+                root: None,
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            pages: vec![],
+            snapshot: None,
+            ..Default::default()
+        };
+        assert_eq!(SpeculativeExecutor::root_from_event_book(&book), None);
+    }
+
+    #[test]
+    fn test_root_from_event_book_invalid_uuid_bytes() {
+        let book = EventBook {
+            cover: Some(Cover {
+                domain: "test".to_string(),
+                root: Some(ProtoUuid {
+                    value: vec![1, 2, 3], // Invalid - not 16 bytes
+                }),
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            pages: vec![],
+            snapshot: None,
+            ..Default::default()
+        };
+        assert_eq!(SpeculativeExecutor::root_from_event_book(&book), None);
+    }
+
+    // ============================================================================
+    // SpeculativeExecutor Construction Tests
+    // ============================================================================
+
+    #[test]
+    fn test_speculative_executor_empty_construction() {
+        let executor = SpeculativeExecutor::new(
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+        );
+
+        // Should construct without error
+        let _ = executor;
+    }
+
+    #[test]
+    fn test_speculative_executor_with_domain_stores() {
+        use crate::standalone::router::DomainStorage;
+        use crate::storage::mock::{MockEventStore, MockSnapshotStore};
+
+        let mut domain_stores = HashMap::new();
+        domain_stores.insert(
+            "orders".to_string(),
+            DomainStorage {
+                event_store: Arc::new(MockEventStore::new()),
+                snapshot_store: Arc::new(MockSnapshotStore::new()),
+            },
+        );
+
+        let executor = SpeculativeExecutor::new(
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+            domain_stores,
+        );
+
+        let _ = executor;
+    }
+
+    // ============================================================================
+    // Edge Cases
+    // ============================================================================
+
+    #[test]
+    fn test_domain_state_spec_zero_sequence() {
+        let spec = DomainStateSpec::AtSequence(0);
+        assert!(format!("{:?}", spec).contains("0"));
+    }
+
+    #[test]
+    fn test_domain_state_spec_max_sequence() {
+        let spec = DomainStateSpec::AtSequence(u32::MAX);
+        assert!(format!("{:?}", spec).contains(&u32::MAX.to_string()));
+    }
+
+    #[test]
+    fn test_domain_state_spec_empty_timestamp() {
+        let spec = DomainStateSpec::AtTimestamp(String::new());
+        // Empty timestamp is valid at this level (validation happens elsewhere)
+        assert!(format!("{:?}", spec).contains("AtTimestamp"));
+    }
+
+    #[test]
+    fn test_build_event_book_preserves_page_order() {
+        let root = Uuid::new_v4();
+        let pages: Vec<EventPage> = vec![
+            EventPage {
+                sequence: 5,
+                payload: None,
+                created_at: None,
+            },
+            EventPage {
+                sequence: 3,
+                payload: None,
+                created_at: None,
+            },
+            EventPage {
+                sequence: 7,
+                payload: None,
+                created_at: None,
+            },
+        ];
+
+        let book = SpeculativeExecutor::build_event_book("order", root, pages);
+
+        // Pages should be preserved in insertion order, not sorted
+        assert_eq!(book.pages[0].sequence, 5);
+        assert_eq!(book.pages[1].sequence, 3);
+        assert_eq!(book.pages[2].sequence, 7);
     }
 }

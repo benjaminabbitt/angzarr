@@ -59,11 +59,11 @@ state_router = (
 router = (
     CommandRouter[PlayerState]("player")
     .with_state(state_router)
-    .on("RegisterPlayer", handle_register)
-    .on("DepositFunds", handle_deposit)
-    .on("WithdrawFunds", handle_withdraw)
-    .on("ReserveFunds", handle_reserve)
-    .on("ReleaseFunds", handle_release)
+    .on(player.RegisterPlayer, handle_register)
+    .on(player.DepositFunds, handle_deposit)
+    .on(player.WithdrawFunds, handle_withdraw)
+    .on(player.ReserveFunds, handle_reserve)
+    .on(player.ReleaseFunds, handle_release)
 )
 
 

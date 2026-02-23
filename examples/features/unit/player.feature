@@ -194,3 +194,19 @@ Feature: Player aggregate logic
     Then the player state has bankroll 1000
     And the player state has reserved_funds 400
     And the player state has available_balance 600
+
+  # ==========================================================================
+  # Compensation Flow - Releasing Reserved Funds
+  # ==========================================================================
+  # When a table join is rejected or a player leaves, reserved funds must be
+  # released back to their available balance. This exercises the compensation
+  # pattern where a failed operation triggers a compensating action.
+
+  Scenario: Funds released when table join is rejected
+    Given a PlayerRegistered event for "Alice"
+    And a FundsDeposited event with amount 500
+    And a FundsReserved event with amount 200 for table "high-stakes"
+    When I handle a ReleaseFunds command for table "high-stakes"
+    Then the result is a FundsReleased event
+    And the player event has amount 200
+    And the player event has new_available_balance 500

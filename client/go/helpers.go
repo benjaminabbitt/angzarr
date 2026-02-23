@@ -8,6 +8,7 @@ import (
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -288,6 +289,58 @@ func TypeNameFromURL(typeURL string) string {
 // typeName should be fully qualified (e.g., "examples.CardsDealt").
 func TypeURLMatches(typeURL, typeName string) bool {
 	return typeURL == TypeURLPrefix+typeName
+}
+
+// Type-safe reflection helpers
+
+// TypeMatches checks if an Any contains a message of type T using proto reflection.
+// This is preferred over string-based suffix matching.
+func TypeMatches[T proto.Message](any *anypb.Any) bool {
+	if any == nil {
+		return false
+	}
+	var zero T
+	return any.MessageIs(zero)
+}
+
+// TryUnpack attempts to unpack an Any to type T, returning nil if type doesn't match.
+func TryUnpack[T proto.Message](any *anypb.Any) T {
+	var zero T
+	if any == nil {
+		return zero
+	}
+	msg := proto.Clone(zero).(T)
+	if err := any.UnmarshalTo(msg); err != nil {
+		return zero
+	}
+	return msg
+}
+
+// MustUnpack unpacks an Any to type T, panicking if the type doesn't match.
+// Intended for test code where type mismatches indicate test bugs.
+func MustUnpack[T proto.Message](any *anypb.Any) T {
+	var zero T
+	if any == nil {
+		panic("MustUnpack: nil Any")
+	}
+	msg := proto.Clone(zero).(T)
+	if err := any.UnmarshalTo(msg); err != nil {
+		panic(fmt.Sprintf("MustUnpack: failed to unmarshal to %T: %v", zero, err))
+	}
+	return msg
+}
+
+// FullTypeName returns the fully-qualified proto type name for message type T.
+// Example: FullTypeName[*examples.PlayerRegistered]() returns "examples.PlayerRegistered"
+func FullTypeName[T proto.Message]() string {
+	var zero T
+	return string(zero.ProtoReflect().Descriptor().FullName())
+}
+
+// FullTypeURL returns the full type URL for message type T.
+// Example: FullTypeURL[*examples.PlayerRegistered]() returns "type.googleapis.com/examples.PlayerRegistered"
+func FullTypeURL[T proto.Message]() string {
+	return TypeURLPrefix + FullTypeName[T]()
 }
 
 // Timestamp helpers

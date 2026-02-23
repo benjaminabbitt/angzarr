@@ -38,6 +38,7 @@ from abc import ABC
 
 from google.protobuf.any_pb2 import Any
 
+from .helpers import TYPE_URL_PREFIX
 from .proto.angzarr import types_pb2 as types
 from .router import projects
 
@@ -115,10 +116,12 @@ class Projector(ABC):
             attr = getattr(cls, attr_name, None)
             if callable(attr) and getattr(attr, "_is_handler", False):
                 event_type = attr._event_type
-                suffix = event_type.__name__
-                if suffix in table:
-                    raise TypeError(f"{cls.__name__}: duplicate handler for {suffix}")
-                table[suffix] = (attr_name, event_type)
+                full_name = event_type.DESCRIPTOR.full_name
+                if full_name in table:
+                    raise TypeError(
+                        f"{cls.__name__}: duplicate handler for {full_name}"
+                    )
+                table[full_name] = (attr_name, event_type)
         return table
 
     def dispatch(self, event_any: Any) -> types.Projection:
@@ -132,8 +135,8 @@ class Projector(ABC):
         """
         type_url = event_any.type_url
 
-        for suffix, (method_name, event_type) in self._dispatch_table.items():
-            if type_url.endswith(suffix):
+        for full_name, (method_name, event_type) in self._dispatch_table.items():
+            if type_url == TYPE_URL_PREFIX + full_name:
                 # Unpack event
                 event = event_type()
                 event_any.Unpack(event)

@@ -19,9 +19,9 @@
 //	func NewHandFlowPM() *HandFlowPM {
 //	    pm := &HandFlowPM{}
 //	    pm.Init("hand-flow", "hand-flow", []string{"table", "hand"})
-//	    pm.Applies("ProcessStarted", pm.applyProcessStarted)
-//	    pm.Prepares("HandStarted", pm.prepareHandStarted)
-//	    pm.Handles("HandStarted", pm.handleHandStarted)
+//	    pm.Applies(pm.applyProcessStarted)
+//	    pm.Prepares(pm.prepareHandStarted)
+//	    pm.Handles(pm.handleHandStarted)
 //	    return pm
 //	}
 package angzarr
@@ -29,7 +29,6 @@ package angzarr
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
@@ -110,14 +109,16 @@ func (pm *ProcessManagerBase[S]) InputDomains() []string {
 	return pm.inputDomains
 }
 
-// Prepares registers a prepare handler for an event type_url suffix.
+// Prepares registers a prepare handler for an event type.
 //
 // The handler function must have signature:
 // func(trigger *pb.EventBook, state S, event *EventType) []*pb.Cover
 //
+// The event type is automatically extracted via proto reflection.
+//
 // Example:
 //
-//	pm.Prepares("HandStarted", pm.prepareHandStarted)
+//	pm.Prepares(pm.prepareHandStarted)
 //
 //	func (pm *HandFlowPM) prepareHandStarted(
 //	    trigger *pb.EventBook,
@@ -126,7 +127,7 @@ func (pm *ProcessManagerBase[S]) InputDomains() []string {
 //	) []*pb.Cover {
 //	    return []*pb.Cover{{Domain: "hand", Root: &pb.UUID{Value: event.HandRoot}}}
 //	}
-func (pm *ProcessManagerBase[S]) Prepares(suffix string, handler any) {
+func (pm *ProcessManagerBase[S]) Prepares(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -146,6 +147,11 @@ func (pm *ProcessManagerBase[S]) Prepares(suffix string, handler any) {
 		panic("event parameter must be a pointer")
 	}
 	eventType := eventPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the wrapper function
 	wrapper := func(trigger *pb.EventBook, state S, eventAny *anypb.Any) []*pb.Cover {
@@ -170,19 +176,21 @@ func (pm *ProcessManagerBase[S]) Prepares(suffix string, handler any) {
 		return results[0].Interface().([]*pb.Cover)
 	}
 
-	pm.prepares[suffix] = wrapper
+	pm.prepares[fullName] = wrapper
 }
 
-// Handles registers an event handler for a type_url suffix.
+// Handles registers an event handler.
 //
 // The handler function can have two signatures:
 //
 //  1. Without destinations: func(trigger, state, event) (cmds, pmEvents, error)
 //  2. With destinations: func(trigger, state, event, dests) (cmds, pmEvents, error)
 //
+// The event type is automatically extracted via proto reflection.
+//
 // Example:
 //
-//	pm.Handles("HandStarted", pm.handleHandStarted)
+//	pm.Handles(pm.handleHandStarted)
 //
 //	func (pm *HandFlowPM) handleHandStarted(
 //	    trigger *pb.EventBook,
@@ -193,7 +201,7 @@ func (pm *ProcessManagerBase[S]) Prepares(suffix string, handler any) {
 //	    // Process event and return commands
 //	    return cmds, nil, nil
 //	}
-func (pm *ProcessManagerBase[S]) Handles(suffix string, handler any) {
+func (pm *ProcessManagerBase[S]) Handles(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -215,6 +223,11 @@ func (pm *ProcessManagerBase[S]) Handles(suffix string, handler any) {
 		panic("event parameter must be a pointer")
 	}
 	eventType := eventPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	withDests := numIn == 4
 
@@ -260,25 +273,25 @@ func (pm *ProcessManagerBase[S]) Handles(suffix string, handler any) {
 		return cmds, pmEvents, err
 	}
 
-	pm.handlers[suffix] = wrapper
+	pm.handlers[fullName] = wrapper
 }
 
-// Applies registers a state applier for a PM event type_url suffix.
+// Applies registers a state applier for a PM event.
 //
 // The handler function must have signature:
 // func(state S, event *EventType)
 //
-// State is mutated in place.
+// State is mutated in place. The event type is automatically extracted via proto reflection.
 //
 // Example:
 //
-//	pm.Applies("ProcessStarted", pm.applyProcessStarted)
+//	pm.Applies(pm.applyProcessStarted)
 //
 //	func (pm *HandFlowPM) applyProcessStarted(state *PMState, event *ProcessStarted) {
 //	    state.HandRoot = event.HandRoot
 //	    state.InProgress = true
 //	}
-func (pm *ProcessManagerBase[S]) Applies(suffix string, handler any) {
+func (pm *ProcessManagerBase[S]) Applies(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -299,6 +312,11 @@ func (pm *ProcessManagerBase[S]) Applies(suffix string, handler any) {
 	}
 	eventType := eventPtrType.Elem()
 
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
+
 	// Create the wrapper function
 	wrapper := func(state S, eventAny *anypb.Any) {
 		// Create a new instance of the event type
@@ -315,7 +333,7 @@ func (pm *ProcessManagerBase[S]) Applies(suffix string, handler any) {
 		handlerValue.Call([]reflect.Value{stateValue, eventPtr})
 	}
 
-	pm.appliers[suffix] = wrapper
+	pm.appliers[fullName] = wrapper
 }
 
 // OnRejected registers a rejection handler for when a specific command is rejected.
@@ -392,8 +410,8 @@ func (pm *ProcessManagerBase[S]) RebuildState(processState *pb.EventBook) S {
 		}
 
 		typeURL := event.TypeUrl
-		for suffix, applier := range pm.appliers {
-			if strings.HasSuffix(typeURL, suffix) {
+		for fullName, applier := range pm.appliers {
+			if typeURL == TypeURLPrefix+fullName {
 				applier(state, event)
 				break
 			}
@@ -420,8 +438,8 @@ func (pm *ProcessManagerBase[S]) PrepareDestinations(trigger, processState *pb.E
 		}
 
 		typeURL := event.TypeUrl
-		for suffix, handler := range pm.prepares {
-			if strings.HasSuffix(typeURL, suffix) {
+		for fullName, handler := range pm.prepares {
+			if typeURL == TypeURLPrefix+fullName {
 				result := handler(trigger, state, event)
 				covers = append(covers, result...)
 				break
@@ -455,7 +473,7 @@ func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, des
 		typeURL := event.TypeUrl
 
 		// Check for Notification (rejection/compensation)
-		if strings.HasSuffix(typeURL, "Notification") {
+		if typeURL == TypeURLPrefix+"angzarr.Notification" {
 			resp := pm.handleNotification(state, event)
 			if resp != nil {
 				if resp.Events != nil {
@@ -468,8 +486,8 @@ func (pm *ProcessManagerBase[S]) Handle(trigger, processState *pb.EventBook, des
 			continue
 		}
 
-		for suffix, handler := range pm.handlers {
-			if strings.HasSuffix(typeURL, suffix) {
+		for fullName, handler := range pm.handlers {
+			if typeURL == TypeURLPrefix+fullName {
 				cmds, pmEvents, err := handler(trigger, state, event, destinations)
 				if err != nil {
 					return nil, nil, nil, err
@@ -522,7 +540,7 @@ func (pm *ProcessManagerBase[S]) handleNotification(state S, eventAny *anypb.Any
 	return nil
 }
 
-// extractRejectionKey extracts domain and command suffix from a RejectionNotification.
+// extractRejectionKey extracts domain and command type name from a RejectionNotification.
 func extractRejectionKey(rejection *pb.RejectionNotification) (string, string) {
 	if rejection.RejectedCommand == nil {
 		return "", ""
@@ -533,28 +551,22 @@ func extractRejectionKey(rejection *pb.RejectionNotification) (string, string) {
 		domain = rejection.RejectedCommand.Cover.Domain
 	}
 
-	cmdSuffix := ""
+	cmdTypeName := ""
 	if len(rejection.RejectedCommand.Pages) > 0 {
 		page := rejection.RejectedCommand.Pages[0]
 		if cmd := page.GetCommand(); cmd != nil {
-			typeURL := cmd.TypeUrl
-			// Extract suffix (last part after /)
-			if idx := strings.LastIndex(typeURL, "/"); idx >= 0 {
-				cmdSuffix = typeURL[idx+1:]
-			} else {
-				cmdSuffix = typeURL
-			}
+			cmdTypeName = TypeNameFromURL(cmd.TypeUrl)
 		}
 	}
 
-	return domain, cmdSuffix
+	return domain, cmdTypeName
 }
 
-// HandlerTypes returns the registered event type suffixes for handlers.
+// HandlerTypes returns the registered fully-qualified event type names.
 func (pm *ProcessManagerBase[S]) HandlerTypes() []string {
 	types := make([]string, 0, len(pm.handlers))
-	for suffix := range pm.handlers {
-		types = append(types, suffix)
+	for fullName := range pm.handlers {
+		types = append(types, fullName)
 	}
 	return types
 }

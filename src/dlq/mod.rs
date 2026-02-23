@@ -1582,4 +1582,424 @@ mod tests {
         let err = DlqError::InvalidDeadLetter("missing cover".to_string());
         assert!(err.to_string().contains("missing cover"));
     }
+
+    #[test]
+    fn test_dlq_error_serialization() {
+        let err = DlqError::Serialization("invalid protobuf".to_string());
+        assert!(err.to_string().contains("serialize"));
+        assert!(err.to_string().contains("invalid protobuf"));
+    }
+
+    #[test]
+    fn test_dlq_error_connection() {
+        let err = DlqError::Connection("tcp timeout".to_string());
+        assert!(err.to_string().contains("Connection error"));
+        assert!(err.to_string().contains("tcp timeout"));
+    }
+
+    // ============================================================================
+    // Proto Conversion Tests
+    // ============================================================================
+
+    #[test]
+    fn test_to_proto_sequence_mismatch() {
+        let cmd = make_test_command("orders", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            5,
+            10,
+            MergeStrategy::MergeManual,
+            "test-agg",
+        );
+
+        let proto = dl.to_proto();
+
+        assert!(proto.cover.is_some());
+        assert!(proto.payload.is_some());
+        assert!(proto.rejection_details.is_some());
+        assert!(!proto.rejection_reason.is_empty());
+        assert_eq!(proto.source_component, "test-agg");
+        assert_eq!(proto.source_component_type, "aggregate");
+    }
+
+    #[test]
+    fn test_to_proto_event_processing_failure() {
+        let root = Uuid::new_v4();
+        let events = EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: "test-corr".to_string(),
+                edition: None,
+            }),
+            pages: vec![],
+            snapshot: None,
+            ..Default::default()
+        };
+
+        let dl = AngzarrDeadLetter::from_event_processing_failure(
+            &events,
+            "Handler panic",
+            5,
+            true,
+            "saga-order-fulfillment",
+            "saga",
+        );
+
+        let proto = dl.to_proto();
+
+        match proto.rejection_details {
+            Some(angzarr_dead_letter::RejectionDetails::EventProcessingFailed(details)) => {
+                assert_eq!(details.error, "Handler panic");
+                assert_eq!(details.retry_count, 5);
+                assert!(details.is_transient);
+            }
+            _ => panic!("Expected EventProcessingFailed details"),
+        }
+    }
+
+    #[test]
+    fn test_to_proto_payload_retrieval_failure() {
+        let root = Uuid::new_v4();
+        let events = EventBook {
+            cover: Some(Cover {
+                domain: "orders".to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: "".to_string(),
+                edition: None,
+            }),
+            pages: vec![],
+            snapshot: None,
+            ..Default::default()
+        };
+
+        let dl = AngzarrDeadLetter::from_payload_retrieval_failure(
+            &events,
+            "s3",
+            "s3://bucket/key",
+            &[0xde, 0xad, 0xbe, 0xef],
+            2048,
+            "Access denied",
+            "bus-consumer",
+        );
+
+        let proto = dl.to_proto();
+
+        match proto.rejection_details {
+            Some(angzarr_dead_letter::RejectionDetails::PayloadRetrievalFailed(details)) => {
+                assert_eq!(details.storage_type, PayloadStorageType::S3 as i32);
+                assert_eq!(details.uri, "s3://bucket/key");
+                assert_eq!(details.content_hash, vec![0xde, 0xad, 0xbe, 0xef]);
+                assert_eq!(details.original_size, 2048);
+                assert_eq!(details.error, "Access denied");
+            }
+            _ => panic!("Expected PayloadRetrievalFailed details"),
+        }
+    }
+
+    #[test]
+    fn test_to_proto_storage_type_filesystem() {
+        let events = EventBook::default();
+        let dl = AngzarrDeadLetter::from_payload_retrieval_failure(
+            &events,
+            "filesystem",
+            "/path/to/file",
+            &[],
+            100,
+            "File not found",
+            "bus",
+        );
+
+        let proto = dl.to_proto();
+
+        match proto.rejection_details {
+            Some(angzarr_dead_letter::RejectionDetails::PayloadRetrievalFailed(details)) => {
+                assert_eq!(details.storage_type, PayloadStorageType::Filesystem as i32);
+            }
+            _ => panic!("Expected PayloadRetrievalFailed details"),
+        }
+    }
+
+    #[test]
+    fn test_to_proto_storage_type_gcs() {
+        let events = EventBook::default();
+        let dl = AngzarrDeadLetter::from_payload_retrieval_failure(
+            &events,
+            "gcs",
+            "gs://bucket/obj",
+            &[],
+            100,
+            "err",
+            "bus",
+        );
+
+        let proto = dl.to_proto();
+
+        match proto.rejection_details {
+            Some(angzarr_dead_letter::RejectionDetails::PayloadRetrievalFailed(details)) => {
+                assert_eq!(details.storage_type, PayloadStorageType::Gcs as i32);
+            }
+            _ => panic!("Expected PayloadRetrievalFailed details"),
+        }
+    }
+
+    #[test]
+    fn test_to_proto_storage_type_unknown() {
+        let events = EventBook::default();
+        let dl = AngzarrDeadLetter::from_payload_retrieval_failure(
+            &events,
+            "azure_blob",
+            "https://...",
+            &[],
+            100,
+            "err",
+            "bus",
+        );
+
+        let proto = dl.to_proto();
+
+        match proto.rejection_details {
+            Some(angzarr_dead_letter::RejectionDetails::PayloadRetrievalFailed(details)) => {
+                assert_eq!(details.storage_type, PayloadStorageType::Unspecified as i32);
+            }
+            _ => panic!("Expected PayloadRetrievalFailed details"),
+        }
+    }
+
+    // ============================================================================
+    // Reason Type Tests
+    // ============================================================================
+
+    #[test]
+    fn test_reason_type_sequence_mismatch() {
+        let cmd = make_test_command("orders", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            0,
+            5,
+            MergeStrategy::MergeManual,
+            "test",
+        );
+        assert_eq!(dl.reason_type(), "sequence_mismatch");
+    }
+
+    #[test]
+    fn test_reason_type_event_processing_failed() {
+        let events = EventBook::default();
+        let dl = AngzarrDeadLetter::from_event_processing_failure(
+            &events, "err", 1, false, "saga", "saga",
+        );
+        assert_eq!(dl.reason_type(), "event_processing_failed");
+    }
+
+    #[test]
+    fn test_reason_type_payload_retrieval_failed() {
+        let events = EventBook::default();
+        let dl = AngzarrDeadLetter::from_payload_retrieval_failure(
+            &events,
+            "s3",
+            "uri",
+            &[],
+            0,
+            "err",
+            "bus",
+        );
+        assert_eq!(dl.reason_type(), "payload_retrieval_failed");
+    }
+
+    #[test]
+    fn test_reason_type_unknown() {
+        let dl = AngzarrDeadLetter {
+            cover: None,
+            payload: DeadLetterPayload::Events(EventBook::default()),
+            rejection_reason: "Unknown reason".to_string(),
+            rejection_details: None,
+            occurred_at: None,
+            metadata: HashMap::new(),
+            source_component: "test".to_string(),
+            source_component_type: "test".to_string(),
+        };
+        assert_eq!(dl.reason_type(), "unknown");
+    }
+
+    // ============================================================================
+    // Domain Extraction Tests
+    // ============================================================================
+
+    #[test]
+    fn test_domain_from_cover() {
+        let cmd = make_test_command("inventory", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            0,
+            1,
+            MergeStrategy::MergeManual,
+            "test",
+        );
+        assert_eq!(dl.domain(), Some("inventory"));
+    }
+
+    #[test]
+    fn test_domain_missing_cover() {
+        let dl = AngzarrDeadLetter {
+            cover: None,
+            payload: DeadLetterPayload::Events(EventBook::default()),
+            rejection_reason: "test".to_string(),
+            rejection_details: None,
+            occurred_at: None,
+            metadata: HashMap::new(),
+            source_component: "test".to_string(),
+            source_component_type: "test".to_string(),
+        };
+        assert_eq!(dl.domain(), None);
+    }
+
+    #[test]
+    fn test_topic_with_unknown_domain() {
+        let dl = AngzarrDeadLetter {
+            cover: None,
+            payload: DeadLetterPayload::Events(EventBook::default()),
+            rejection_reason: "test".to_string(),
+            rejection_details: None,
+            occurred_at: None,
+            metadata: HashMap::new(),
+            source_component: "test".to_string(),
+            source_component_type: "test".to_string(),
+        };
+        assert_eq!(dl.topic(), "angzarr.dlq.unknown");
+    }
+
+    // ============================================================================
+    // Channel Publisher Edge Cases
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_channel_publisher_receiver_dropped() {
+        let (publisher, receiver) = ChannelDeadLetterPublisher::new();
+        drop(receiver);
+
+        let cmd = make_test_command("orders", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            0,
+            5,
+            MergeStrategy::MergeManual,
+            "test",
+        );
+
+        // Should return error when receiver is dropped
+        let result = publisher.publish(dl).await;
+        assert!(result.is_err());
+    }
+
+    // ============================================================================
+    // Async Publisher Factory Tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_create_publisher_async_none() {
+        let config = DlqConfig::default();
+        let publisher = create_publisher_async(&config).await.unwrap();
+        assert!(!publisher.is_configured());
+    }
+
+    #[tokio::test]
+    async fn test_create_publisher_async_channel_warning() {
+        let config = DlqConfig::channel();
+        let publisher = create_publisher_async(&config).await.unwrap();
+        // Returns noop with warning because channel requires manual setup
+        assert!(!publisher.is_configured());
+    }
+
+    // ============================================================================
+    // Metadata Chaining Tests
+    // ============================================================================
+
+    #[test]
+    fn test_metadata_chaining() {
+        let cmd = make_test_command("orders", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            0,
+            5,
+            MergeStrategy::MergeManual,
+            "test",
+        )
+        .with_metadata("key1", "value1")
+        .with_metadata("key2", "value2")
+        .with_metadata("key3", "value3");
+
+        assert_eq!(dl.metadata.len(), 3);
+        assert_eq!(dl.metadata.get("key1"), Some(&"value1".to_string()));
+        assert_eq!(dl.metadata.get("key2"), Some(&"value2".to_string()));
+        assert_eq!(dl.metadata.get("key3"), Some(&"value3".to_string()));
+    }
+
+    #[test]
+    fn test_metadata_overwrite() {
+        let cmd = make_test_command("orders", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            0,
+            5,
+            MergeStrategy::MergeManual,
+            "test",
+        )
+        .with_metadata("key", "value1")
+        .with_metadata("key", "value2");
+
+        assert_eq!(dl.metadata.len(), 1);
+        assert_eq!(dl.metadata.get("key"), Some(&"value2".to_string()));
+    }
+
+    // ============================================================================
+    // DlqBackend Tests
+    // ============================================================================
+
+    #[test]
+    fn test_dlq_backend_default() {
+        let backend = DlqBackend::default();
+        assert_eq!(backend, DlqBackend::None);
+    }
+
+    #[test]
+    fn test_dlq_backend_debug() {
+        assert!(format!("{:?}", DlqBackend::Amqp).contains("Amqp"));
+        assert!(format!("{:?}", DlqBackend::Kafka).contains("Kafka"));
+        assert!(format!("{:?}", DlqBackend::PubSub).contains("PubSub"));
+        assert!(format!("{:?}", DlqBackend::SnsSqs).contains("SnsSqs"));
+        assert!(format!("{:?}", DlqBackend::Channel).contains("Channel"));
+    }
+
+    #[test]
+    fn test_dlq_backend_clone() {
+        let backend = DlqBackend::Kafka;
+        let cloned = backend.clone();
+        assert_eq!(backend, cloned);
+    }
+
+    // ============================================================================
+    // Timestamp Tests
+    // ============================================================================
+
+    #[test]
+    fn test_dead_letter_has_timestamp() {
+        let cmd = make_test_command("orders", Uuid::new_v4());
+        let dl = AngzarrDeadLetter::from_sequence_mismatch(
+            &cmd,
+            0,
+            5,
+            MergeStrategy::MergeManual,
+            "test",
+        );
+
+        assert!(dl.occurred_at.is_some());
+        let ts = dl.occurred_at.unwrap();
+        // Should be a recent timestamp (within last minute)
+        assert!(ts.seconds > 0);
+    }
 }

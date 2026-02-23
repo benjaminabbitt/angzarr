@@ -1,6 +1,8 @@
 //! Cucumber step definitions for interface tests.
 
+pub mod dlq;
 pub mod editions;
+pub mod event_bus;
 pub mod event_query_service;
 pub mod event_store;
 pub mod event_stream_service;

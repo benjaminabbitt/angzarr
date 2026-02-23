@@ -257,6 +257,28 @@ test-local-full: test-local
 clean:
     just _container clean
 
+# === Coverage ===
+
+# Run full workspace coverage (unit + integration tests)
+cov:
+    just _container cov
+
+# Run coverage for acceptance/Gherkin tests only
+cov-gherkin:
+    just _container cov-gherkin
+
+# Generate HTML coverage report and open it
+cov-html:
+    just _container cov-html
+
+# Quick terminal summary of coverage
+cov-summary:
+    just _container cov-summary
+
+# Generate LCOV format for CI integration
+cov-lcov:
+    just _container cov-lcov
+
 # Watch and check on save (host only - requires bacon)
 watch:
     bacon

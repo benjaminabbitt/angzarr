@@ -11,7 +11,7 @@ use angzarr_client::proto::examples::{
     ShowdownStarted, AwardPot,
 };
 use angzarr_client::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
-use angzarr_client::{pack_event, CommandRejectedError, UnpackAny};
+use angzarr_client::{pack_event, try_unpack, type_name_from_url, CommandRejectedError, UnpackAny};
 use cucumber::{given, then, when, World, WriterExt};
 use prost::Message;
 use prost_types::Any;
@@ -539,6 +539,33 @@ fn given_player_folded(world: &mut HandWorld, player_id: String) {
         .push(pack_event(&event, "examples.ActionTaken"));
 }
 
+#[given(expr = "a ActionTaken event for player {string} with action {word} amount {int}")]
+fn given_action_taken(world: &mut HandWorld, player_id: String, action_str: String, amount: i64) {
+    let action = match action_str.as_str() {
+        "FOLD" => ActionType::Fold,
+        "CHECK" => ActionType::Check,
+        "CALL" => ActionType::Call,
+        "BET" => ActionType::Bet,
+        "RAISE" => ActionType::Raise,
+        "ALL_IN" => ActionType::AllIn,
+        _ => ActionType::Check,
+    };
+
+    let event = ActionTaken {
+        player_root: world.player_root(&player_id),
+        action: action as i32,
+        amount,
+        player_stack: 500 - amount,
+        pot_total: world.pot_total + amount,
+        amount_to_call: world.current_bet,
+        action_at: None,
+    };
+    world.pot_total += amount;
+    world
+        .events
+        .push(pack_event(&event, "examples.ActionTaken"));
+}
+
 #[given(regex = r"a CardsRevealed event for player .+ with ranking .+")]
 fn given_cards_revealed(world: &mut HandWorld, step: &cucumber::gherkin::Step) {
     let re = regex::Regex::new(r#""([^"]+)" with ranking (\w+)"#).unwrap();
@@ -1000,11 +1027,11 @@ fn then_result_is_event(world: &mut HandWorld, event_type: String) {
         })
         .expect("No event in result");
 
-    assert!(
-        event.type_url.ends_with(&event_type),
+    let actual_type = type_name_from_url(&event.type_url);
+    assert_eq!(
+        actual_type, event_type,
         "Expected {} but got {}",
-        event_type,
-        event.type_url
+        event_type, actual_type
     );
 }
 
@@ -1075,11 +1102,9 @@ fn then_blind_type(world: &mut HandWorld, expected: String) {
 #[then(expr = "the player event has amount {int}")]
 fn then_player_amount(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
-    if event.type_url.ends_with("BlindPosted") {
-        let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    if let Some(blind_posted) = try_unpack::<BlindPosted>(event) {
         assert_eq!(blind_posted.amount, expected);
-    } else if event.type_url.ends_with("ActionTaken") {
-        let action: ActionTaken = event.unpack().expect("Failed to decode");
+    } else if let Some(action) = try_unpack::<ActionTaken>(event) {
         assert_eq!(action.amount, expected);
     }
 }
@@ -1087,8 +1112,7 @@ fn then_player_amount(world: &mut HandWorld, expected: i64) {
 #[then(expr = "the player event has player_stack {int}")]
 fn then_player_stack(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
-    if event.type_url.ends_with("BlindPosted") {
-        let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    if let Some(blind_posted) = try_unpack::<BlindPosted>(event) {
         assert_eq!(blind_posted.player_stack, expected);
     }
 }
@@ -1096,8 +1120,7 @@ fn then_player_stack(world: &mut HandWorld, expected: i64) {
 #[then(expr = "the player event has pot_total {int}")]
 fn then_pot_total(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
-    if event.type_url.ends_with("BlindPosted") {
-        let blind_posted: BlindPosted = event.unpack().expect("Failed to decode");
+    if let Some(blind_posted) = try_unpack::<BlindPosted>(event) {
         assert_eq!(blind_posted.pot_total, expected);
     }
 }

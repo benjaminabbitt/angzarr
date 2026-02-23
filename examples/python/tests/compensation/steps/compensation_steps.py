@@ -21,6 +21,7 @@ from angzarr_client import (
     reacts_to,
     rejected,
 )
+from angzarr_client.helpers import type_name_from_url
 from angzarr_client.proto.angzarr import aggregate_pb2 as aggregate
 from angzarr_client.proto.angzarr import types_pb2 as types
 
@@ -84,10 +85,10 @@ class TestPlayerAggregate(Aggregate[PlayerState]):
         return PlayerState()
 
     def _apply_event(self, state: PlayerState, event_any: ProtoAny) -> None:
-        type_url = event_any.type_url
-        if type_url.endswith("FundsReserved"):
+        type_name = type_name_from_url(event_any.type_url)
+        if type_name == "FundsReserved":
             state.reserved_amount = 100  # Simplified
-        elif type_url.endswith("FundsReleased"):
+        elif type_name == "FundsReleased":
             state.reserved_amount = 0
 
 

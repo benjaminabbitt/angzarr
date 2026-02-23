@@ -55,16 +55,16 @@ func NewOutputProjector() *OutputProjector {
 	p.Init("output", []string{"player", "table", "hand"})
 
 	// Register projection handlers
-	p.Projects("PlayerRegistered", p.projectRegistered)
-	p.Projects("FundsDeposited", p.projectDeposited)
-	p.Projects("TableCreated", p.projectTableCreated)
-	p.Projects("PlayerJoined", p.projectPlayerJoined)
-	p.Projects("HandStarted", p.projectHandStarted)
-	p.Projects("CardsDealt", p.projectCardsDealt)
-	p.Projects("BlindPosted", p.projectBlindPosted)
-	p.Projects("ActionTaken", p.projectActionTaken)
-	p.Projects("PotAwarded", p.projectPotAwarded)
-	p.Projects("HandComplete", p.projectHandComplete)
+	p.Projects(p.projectRegistered)
+	p.Projects(p.projectDeposited)
+	p.Projects(p.projectTableCreated)
+	p.Projects(p.projectPlayerJoined)
+	p.Projects(p.projectHandStarted)
+	p.Projects(p.projectCardsDealt)
+	p.Projects(p.projectBlindPosted)
+	p.Projects(p.projectActionTaken)
+	p.Projects(p.projectPotAwarded)
+	p.Projects(p.projectHandComplete)
 
 	return p
 }

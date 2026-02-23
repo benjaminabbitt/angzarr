@@ -3,6 +3,16 @@
 //! Pretty-prints events to stdout with optional JSON decoding via prost-reflect.
 //! If a `DESCRIPTOR_PATH` environment variable is set, events are decoded to JSON.
 //! Otherwise, events are displayed as hex dumps.
+//!
+//! # Output Abstraction
+//!
+//! The service uses a [`LogOutput`] trait for output, allowing different destinations:
+//! - [`StdoutOutput`] - Plain stdout
+//! - [`FileOutput`] - File output
+//! - [`ColorizingOutput`] - Decorator that adds ANSI colors
+//!
+//! By default, uses [`ColorizingOutput`] wrapping [`StdoutOutput`] with pattern-based
+//! color classification.
 
 use std::sync::Arc;
 
@@ -10,32 +20,29 @@ use prost_reflect::{DescriptorPool, DynamicMessage};
 use tonic::{Request, Response, Status};
 use tracing::info;
 
+use super::output::{ColorizingOutput, DecodedEvent, EventColorConfig, LogOutput};
 use crate::proto::projector_coordinator_service_server::ProjectorCoordinatorService;
 use crate::proto::{EventBook, Projection, SpeculateProjectorRequest, SyncEventBook};
 
-// ANSI color codes for terminal output
-const BLUE: &str = "\x1b[94m";
-const GREEN: &str = "\x1b[92m";
-const YELLOW: &str = "\x1b[93m";
-const CYAN: &str = "\x1b[96m";
-const RED: &str = "\x1b[91m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RESET: &str = "\x1b[0m";
-
 /// Logging projector service.
 ///
-/// Receives events and pretty-prints them to stdout.
+/// Receives events and pretty-prints them using a configurable output.
 /// If `DESCRIPTOR_PATH` is set, decodes protobuf messages to JSON.
 pub struct LogService {
     pool: Option<DescriptorPool>,
+    output: Box<dyn LogOutput>,
 }
 
 impl LogService {
-    /// Create a new logging service.
+    /// Create a new logging service with default colorized stdout output.
     ///
     /// Attempts to load a `FileDescriptorSet` from `DESCRIPTOR_PATH` if set.
     pub fn new() -> Self {
+        Self::with_output(Box::new(ColorizingOutput::with_default_patterns()))
+    }
+
+    /// Create a new logging service with custom output.
+    pub fn with_output(output: Box<dyn LogOutput>) -> Self {
         let pool = std::env::var("DESCRIPTOR_PATH").ok().and_then(|path| {
             info!(path = %path, "Loading protobuf descriptors");
             let bytes = std::fs::read(&path).ok()?;
@@ -58,7 +65,12 @@ impl LogService {
             info!("No DESCRIPTOR_PATH set - events will be displayed as hex");
         }
 
-        Self { pool }
+        Self { pool, output }
+    }
+
+    /// Create a new logging service with custom output and color config.
+    pub fn with_color_config(config: EventColorConfig) -> Self {
+        Self::with_output(Box::new(ColorizingOutput::new(config)))
     }
 
     /// Decode an Any message to a pretty-printed string.
@@ -90,21 +102,6 @@ impl LogService {
         }
     }
 
-    /// Get color for an event type.
-    fn event_color(event_type: &str) -> &'static str {
-        if event_type.contains("Created") {
-            GREEN
-        } else if event_type.contains("Completed") {
-            CYAN
-        } else if event_type.contains("Cancelled") || event_type.contains("Failed") {
-            RED
-        } else if event_type.contains("Added") || event_type.contains("Applied") {
-            YELLOW
-        } else {
-            BLUE
-        }
-    }
-
     /// Handle an event book by logging all events.
     pub fn handle(&self, book: &EventBook) {
         let cover = match &book.cover {
@@ -128,21 +125,19 @@ impl LogService {
                 continue;
             };
 
-            let event_type = event.type_url.rsplit('.').next().unwrap_or(&event.type_url);
-            let color = Self::event_color(event_type);
-
-            // Event header
-            println!();
-            println!("{BOLD}{}{RESET}", "─".repeat(60));
-            println!("{DIM}{}:{}:{:010}{RESET}", cover.domain, root_id, sequence);
-            println!("{BOLD}{color}{event_type}{RESET}");
-            println!("{}", "─".repeat(60));
-
-            // Event content
+            // Extract full type name for reflection-based classification
+            let type_name = event.type_url.rsplit('/').next().unwrap_or(&event.type_url);
             let content = self.decode_event(event);
-            for line in content.lines() {
-                println!("  {line}");
-            }
+
+            let decoded = DecodedEvent {
+                domain: &cover.domain,
+                root_id: &root_id,
+                sequence,
+                type_name,
+                content: &content,
+            };
+
+            self.output.write_event(&decoded);
         }
     }
 }

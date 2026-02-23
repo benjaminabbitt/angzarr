@@ -16,6 +16,7 @@ root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "sagas"))
 
+from angzarr_client.helpers import type_matches
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import hand_pb2 as hand
 from angzarr_client.proto.examples import player_pb2 as player
@@ -133,7 +134,7 @@ class TestTableSyncSaga:
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "hand"
-        assert commands[0].pages[0].command.type_url.endswith("DealCards")
+        assert type_matches(commands[0].pages[0].command, hand.DealCards)
 
         # Verify command content
         cmd = hand.DealCards()
@@ -169,7 +170,7 @@ class TestTableSyncSaga:
 
         assert len(commands) == 1
         assert commands[0].cover.domain == "table"
-        assert commands[0].pages[0].command.type_url.endswith("EndHand")
+        assert type_matches(commands[0].pages[0].command, table.EndHand)
 
         # Verify command content
         cmd = table.EndHand()
@@ -209,7 +210,7 @@ class TestHandResultsSaga:
         assert len(commands) == 2
         for cmd_book in commands:
             assert cmd_book.cover.domain == "player"
-            assert cmd_book.pages[0].command.type_url.endswith("ReleaseFunds")
+            assert type_matches(cmd_book.pages[0].command, player.ReleaseFunds)
 
     def test_routes_pot_awarded_to_deposit_funds(self):
         """HandResultsSaga should emit DepositFunds when PotAwarded is received."""
@@ -239,7 +240,7 @@ class TestHandResultsSaga:
         assert len(commands) == 2
         for cmd_book in commands:
             assert cmd_book.cover.domain == "player"
-            assert cmd_book.pages[0].command.type_url.endswith("DepositFunds")
+            assert type_matches(cmd_book.pages[0].command, player.DepositFunds)
 
         # Verify first command
         cmd1 = player.DepositFunds()
@@ -280,7 +281,7 @@ class TestSagaRouter:
 
         # Only DealCards from TableSyncSaga
         assert len(commands) == 1
-        assert commands[0].pages[0].command.type_url.endswith("DealCards")
+        assert type_matches(commands[0].pages[0].command, hand.DealCards)
 
     def test_handles_multiple_events_in_event_book(self):
         """SagaRouter should handle multiple events in an event book."""
@@ -308,7 +309,7 @@ class TestSagaRouter:
 
         assert len(commands) == 2
         for cmd in commands:
-            assert cmd.pages[0].command.type_url.endswith("DealCards")
+            assert type_matches(cmd.pages[0].command, hand.DealCards)
 
     def test_continues_after_saga_failure(self):
         """SagaRouter should continue processing after a saga fails."""
@@ -348,6 +349,63 @@ class TestSagaRouter:
         deal_commands = [
             cmd
             for cmd in commands
-            if cmd.pages[0].command.type_url.endswith("DealCards")
+            if type_matches(cmd.pages[0].command, hand.DealCards)
         ]
         assert len(deal_commands) == 1
+
+
+class TestHandResultsSagaEdgeCases:
+    """Edge case tests for HandResultsSaga."""
+
+    def test_handles_empty_player_list_gracefully(self):
+        """HandResultsSaga should emit no commands when stack_changes is empty."""
+        saga = HandResultsSaga()
+
+        # Create HandEnded event with no stack changes
+        event = table.HandEnded(
+            hand_root=uuid_for("hand-1"),
+        )
+        # No stack_changes added
+
+        event_any = pack_event(event)
+        event_book = make_event_book("table", uuid_for("table-1"), [event_any])
+
+        context = SagaContext(
+            event_book=event_book,
+            event_type="HandEnded",
+            aggregate_type="table",
+            aggregate_root=uuid_for("table-1"),
+        )
+
+        commands = saga.handle(context)
+
+        assert len(commands) == 0
+
+    def test_emits_for_all_players_including_zero_change(self):
+        """HandResultsSaga should emit ReleaseFunds for all players in stack_changes."""
+        saga = HandResultsSaga()
+
+        # Create HandEnded event with one zero change
+        event = table.HandEnded(
+            hand_root=uuid_for("hand-1"),
+        )
+        event.stack_changes[uuid_for("player-1").hex()] = 100
+        event.stack_changes[uuid_for("player-2").hex()] = 0
+
+        event_any = pack_event(event)
+        event_book = make_event_book("table", uuid_for("table-1"), [event_any])
+
+        context = SagaContext(
+            event_book=event_book,
+            event_type="HandEnded",
+            aggregate_type="table",
+            aggregate_root=uuid_for("table-1"),
+        )
+
+        commands = saga.handle(context)
+
+        # All players in stack_changes should get ReleaseFunds
+        assert len(commands) == 2
+        for cmd_book in commands:
+            assert cmd_book.cover.domain == "player"
+            assert type_matches(cmd_book.pages[0].command, player.ReleaseFunds)

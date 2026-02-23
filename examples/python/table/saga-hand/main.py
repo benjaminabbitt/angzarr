@@ -108,8 +108,8 @@ def handle_hand_started(
 router = (
     EventRouter("saga-table-hand")
     .domain("table")
-    .prepare("HandStarted", prepare_hand_started)
-    .on("HandStarted", handle_hand_started)
+    .prepare(table.HandStarted, prepare_hand_started)
+    .on(table.HandStarted, handle_hand_started)
 )
 # docs:end:event_router
 

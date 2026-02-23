@@ -26,10 +26,10 @@ func NewTableHandSaga() *TableHandSaga {
 	s.Init("saga-table-hand", "table", "hand")
 
 	// Register prepare handler
-	s.Prepares("HandStarted", s.prepareHandStarted)
+	s.Prepares(s.prepareHandStarted)
 
 	// Register event handler
-	s.ReactsTo("HandStarted", s.handleHandStarted)
+	s.ReactsTo(s.handleHandStarted)
 
 	return s
 }

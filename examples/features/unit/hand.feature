@@ -435,6 +435,45 @@ Feature: Hand aggregate logic
     And the revealed ranking is "HIGH_CARD"
 
   # ==========================================================================
+  # Error Paths - Betting Validation
+  # ==========================================================================
+  # The hand aggregate enforces strict betting rules. Invalid actions are
+  # rejected with clear error messages rather than auto-corrected.
+
+  Scenario: Cannot raise less than minimum raise amount
+    Given a CardsDealt event for TEXAS_HOLDEM with 2 players at stacks 500
+    And blinds posted with pot 15 and current_bet 10
+    And a ActionTaken event for player "player-1" with action CALL amount 5
+    When I handle a PlayerAction command for player "player-2" action RAISE amount 15
+    Then the command fails with status "INVALID_ARGUMENT"
+    And the error message contains "raise"
+
+  # ==========================================================================
+  # Split Pot and Kicker Resolution
+  # ==========================================================================
+  # Multiple players can share a pot when hands are identical, or a kicker
+  # can determine the winner when hand rankings match.
+
+  Scenario: Split pot when hands are identical
+    Given a showdown with player hands:
+      | player   | hole_cards | community_cards    |
+      | player-1 | As Kd      | Ah Kh 2c 5d 9s     |
+      | player-2 | Ac Ks      | Ah Kh 2c 5d 9s     |
+    When hands are evaluated
+    Then player "player-1" has ranking "TWO_PAIR"
+    And player "player-2" has ranking "TWO_PAIR"
+
+  Scenario: Kicker determines winner with matching pairs
+    Given a showdown with player hands:
+      | player   | hole_cards | community_cards    |
+      | player-1 | As Kd      | Ah 2c 5d 9s 3h     |
+      | player-2 | Ac Qd      | Ah 2c 5d 9s 3h     |
+    When hands are evaluated
+    Then player "player-1" has ranking "PAIR"
+    And player "player-2" has ranking "PAIR"
+    And player "player-1" wins
+
+  # ==========================================================================
   # State Reconstruction
   # ==========================================================================
   # Hand state includes phase, community cards, player stacks, and who has

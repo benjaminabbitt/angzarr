@@ -102,8 +102,8 @@ def handle_hand_complete(
 router = (
     EventRouter("saga-hand-table")
     .domain("hand")
-    .prepare("HandComplete", prepare_hand_complete)
-    .on("HandComplete", handle_hand_complete)
+    .prepare(hand.HandComplete, prepare_hand_complete)
+    .on(hand.HandComplete, handle_hand_complete)
 )
 
 

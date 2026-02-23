@@ -11,6 +11,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import type_matches
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.proto.examples import table_pb2 as table
@@ -364,7 +365,7 @@ def result_is_table_created(ctx):
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     assert len(ctx.result.pages) == 1
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("TableCreated")
+    assert type_matches(event_any, table.TableCreated)
 
 
 @then("the result is a PlayerJoined event")
@@ -372,7 +373,7 @@ def result_is_player_joined(ctx):
     """Verify result is PlayerJoined event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("PlayerJoined")
+    assert type_matches(event_any, table.PlayerJoined)
 
 
 @then("the result is a PlayerLeft event")
@@ -380,7 +381,7 @@ def result_is_player_left(ctx):
     """Verify result is PlayerLeft event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("PlayerLeft")
+    assert type_matches(event_any, table.PlayerLeft)
 
 
 @then("the result is a HandStarted event")
@@ -388,7 +389,7 @@ def result_is_hand_started(ctx):
     """Verify result is HandStarted event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("HandStarted")
+    assert type_matches(event_any, table.HandStarted)
 
 
 @then("the result is a HandEnded event")
@@ -396,7 +397,7 @@ def result_is_hand_ended(ctx):
     """Verify result is HandEnded event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("HandEnded")
+    assert type_matches(event_any, table.HandEnded)
 
 
 @then(parsers.parse('the table event has table_name "{name}"'))

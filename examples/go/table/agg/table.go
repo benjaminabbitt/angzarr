@@ -59,21 +59,21 @@ func NewTable(eventBook *pb.EventBook) *Table {
 	t.SetDomain("table")
 
 	// Register event appliers
-	t.Applies("TableCreated", t.applyTableCreated)
-	t.Applies("PlayerJoined", t.applyPlayerJoined)
-	t.Applies("PlayerLeft", t.applyPlayerLeft)
-	t.Applies("PlayerSatOut", t.applyPlayerSatOut)
-	t.Applies("PlayerSatIn", t.applyPlayerSatIn)
-	t.Applies("HandStarted", t.applyHandStarted)
-	t.Applies("HandEnded", t.applyHandEnded)
-	t.Applies("ChipsAdded", t.applyChipsAdded)
+	t.Applies(t.applyTableCreated)
+	t.Applies(t.applyPlayerJoined)
+	t.Applies(t.applyPlayerLeft)
+	t.Applies(t.applyPlayerSatOut)
+	t.Applies(t.applyPlayerSatIn)
+	t.Applies(t.applyHandStarted)
+	t.Applies(t.applyHandEnded)
+	t.Applies(t.applyChipsAdded)
 
 	// Register command handlers
-	t.Handles("CreateTable", t.create)
-	t.Handles("JoinTable", t.join)
-	t.Handles("LeaveTable", t.leave)
-	t.Handles("StartHand", t.startHand)
-	t.Handles("EndHand", t.endHand)
+	t.Handles(t.create)
+	t.Handles(t.join)
+	t.Handles(t.leave)
+	t.Handles(t.startHand)
+	t.Handles(t.endHand)
 
 	return t
 }

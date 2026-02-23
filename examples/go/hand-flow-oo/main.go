@@ -37,15 +37,15 @@ func NewHandFlowPM() *HandFlowPM {
 	pm.WithStateFactory(func() *PMState { return &PMState{} })
 
 	// Register prepare handlers
-	pm.Prepares("HandStarted", pm.prepareHandStarted)
+	pm.Prepares(pm.prepareHandStarted)
 
 	// Register event handlers
-	pm.Handles("HandStarted", pm.handleHandStarted)
-	pm.Handles("CardsDealt", pm.handleCardsDealt)
-	pm.Handles("BlindPosted", pm.handleBlindPosted)
-	pm.Handles("ActionTaken", pm.handleActionTaken)
-	pm.Handles("CommunityCardsDealt", pm.handleCommunityDealt)
-	pm.Handles("PotAwarded", pm.handlePotAwarded)
+	pm.Handles(pm.handleHandStarted)
+	pm.Handles(pm.handleCardsDealt)
+	pm.Handles(pm.handleBlindPosted)
+	pm.Handles(pm.handleActionTaken)
+	pm.Handles(pm.handleCommunityDealt)
+	pm.Handles(pm.handlePotAwarded)
 
 	return pm
 }

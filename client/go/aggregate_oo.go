@@ -22,10 +22,10 @@
 //	func NewPlayer(eventBook *pb.EventBook) *Player {
 //	    p := &Player{}
 //	    p.Init(eventBook, func() PlayerState { return PlayerState{} })
-//	    p.Applies("PlayerRegistered", p.applyRegistered)
-//	    p.Applies("FundsDeposited", p.applyDeposited)
-//	    p.Handles("RegisterPlayer", p.register)
-//	    p.Handles("DepositFunds", p.deposit)
+//	    p.Applies(p.applyRegistered)
+//	    p.Applies(p.applyDeposited)
+//	    p.Handles(p.register)
+//	    p.Handles(p.deposit)
 //	    return p
 //	}
 //
@@ -48,7 +48,6 @@ package angzarr
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
@@ -110,14 +109,15 @@ func (a *AggregateBase[S]) Domain() string {
 	return a.domain
 }
 
-// Handles registers a command handler for a type_url suffix.
+// Handles registers a command handler.
 //
 // The handler function must have signature: func(*CommandType) (proto.Message, error)
-// where CommandType is a protobuf message type.
+// where CommandType is a protobuf message type. The command type is automatically
+// extracted via proto reflection.
 //
 // Example:
 //
-//	p.Handles("RegisterPlayer", p.register)
+//	p.Handles(p.register)
 //
 //	func (p *Player) register(cmd *examples.RegisterPlayer) (proto.Message, error) {
 //	    if p.Exists() {
@@ -125,7 +125,7 @@ func (a *AggregateBase[S]) Domain() string {
 //	    }
 //	    return &examples.PlayerRegistered{...}, nil
 //	}
-func (a *AggregateBase[S]) Handles(suffix string, handler any) {
+func (a *AggregateBase[S]) Handles(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -145,6 +145,11 @@ func (a *AggregateBase[S]) Handles(suffix string, handler any) {
 		panic("command parameter must be a pointer")
 	}
 	cmdType := cmdPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	cmdPtr := reflect.New(cmdType)
+	protoMsg := cmdPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the wrapper function
 	wrapper := func(cmdAny *anypb.Any) (proto.Message, error) {
@@ -174,7 +179,7 @@ func (a *AggregateBase[S]) Handles(suffix string, handler any) {
 		return event, err
 	}
 
-	a.handlers[suffix] = wrapper
+	a.handlers[fullName] = wrapper
 }
 
 // HandlesMulti registers a command handler that returns multiple events.
@@ -187,13 +192,13 @@ func (a *AggregateBase[S]) Handles(suffix string, handler any) {
 //
 // Example:
 //
-//	h.HandlesMulti("AwardPot", h.awardPot)
+//	h.HandlesMulti(h.awardPot)
 //
 //	func (h *Hand) awardPot(cmd *examples.AwardPot) ([]proto.Message, error) {
 //	    // ... validation ...
 //	    return []proto.Message{potAwardedEvent, handCompleteEvent}, nil
 //	}
-func (a *AggregateBase[S]) HandlesMulti(suffix string, handler any) {
+func (a *AggregateBase[S]) HandlesMulti(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -213,6 +218,11 @@ func (a *AggregateBase[S]) HandlesMulti(suffix string, handler any) {
 		panic("command parameter must be a pointer")
 	}
 	cmdType := cmdPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	cmdPtr := reflect.New(cmdType)
+	protoMsg := cmdPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the wrapper function
 	wrapper := func(cmdAny *anypb.Any) ([]proto.Message, error) {
@@ -247,23 +257,24 @@ func (a *AggregateBase[S]) HandlesMulti(suffix string, handler any) {
 		return events, err
 	}
 
-	a.multiHandlers[suffix] = wrapper
+	a.multiHandlers[fullName] = wrapper
 }
 
-// Applies registers an event applier for a type_url suffix.
+// Applies registers an event applier.
 //
 // The applier function must have signature: func(*S, *EventType)
 // where S is the state type and EventType is a protobuf message type.
+// The event type is automatically extracted via proto reflection.
 //
 // Example:
 //
-//	p.Applies("PlayerRegistered", p.applyRegistered)
+//	p.Applies(p.applyRegistered)
 //
 //	func (p *Player) applyRegistered(state *PlayerState, event *examples.PlayerRegistered) {
 //	    state.PlayerID = "player_" + event.Email
 //	    state.DisplayName = event.DisplayName
 //	}
-func (a *AggregateBase[S]) Applies(suffix string, applier any) {
+func (a *AggregateBase[S]) Applies(applier any) {
 	applierValue := reflect.ValueOf(applier)
 	applierType := applierValue.Type()
 
@@ -281,6 +292,11 @@ func (a *AggregateBase[S]) Applies(suffix string, applier any) {
 	}
 	eventType := eventPtrType.Elem()
 
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
+
 	// Create the wrapper function
 	wrapper := func(state *S, value []byte) {
 		// Create a new instance of the event type
@@ -297,7 +313,7 @@ func (a *AggregateBase[S]) Applies(suffix string, applier any) {
 		applierValue.Call([]reflect.Value{stateValue, eventPtr})
 	}
 
-	a.appliers[suffix] = wrapper
+	a.appliers[fullName] = wrapper
 }
 
 // State returns the current state, rebuilding from events if needed.
@@ -332,8 +348,8 @@ func (a *AggregateBase[S]) Dispatch(cmdAny *anypb.Any) error {
 	typeURL := cmdAny.TypeUrl
 
 	// Check single-event handlers first
-	for suffix, handler := range a.handlers {
-		if strings.HasSuffix(typeURL, suffix) {
+	for fullName, handler := range a.handlers {
+		if typeURL == TypeURLPrefix+fullName {
 			// Ensure state is built before calling handler
 			_ = a.State()
 
@@ -350,8 +366,8 @@ func (a *AggregateBase[S]) Dispatch(cmdAny *anypb.Any) error {
 	}
 
 	// Check multi-event handlers
-	for suffix, handler := range a.multiHandlers {
-		if strings.HasSuffix(typeURL, suffix) {
+	for fullName, handler := range a.multiHandlers {
+		if typeURL == TypeURLPrefix+fullName {
 			// Ensure state is built before calling handler
 			_ = a.State()
 
@@ -392,8 +408,8 @@ func (a *AggregateBase[S]) applyAndRecord(event proto.Message) {
 // applyEvent applies a single event to state using registered appliers.
 func (a *AggregateBase[S]) applyEvent(state *S, eventAny *anypb.Any) {
 	typeURL := eventAny.TypeUrl
-	for suffix, applier := range a.appliers {
-		if strings.HasSuffix(typeURL, suffix) {
+	for fullName, applier := range a.appliers {
+		if typeURL == TypeURLPrefix+fullName {
 			applier(state, eventAny.Value)
 			return
 		}
@@ -422,14 +438,14 @@ func (a *AggregateBase[S]) rebuild() {
 	a.eventBook.Pages = nil
 }
 
-// HandlerTypes returns the registered command type suffixes.
+// HandlerTypes returns the registered fully-qualified command type names.
 func (a *AggregateBase[S]) HandlerTypes() []string {
 	types := make([]string, 0, len(a.handlers)+len(a.multiHandlers))
-	for suffix := range a.handlers {
-		types = append(types, suffix)
+	for fullName := range a.handlers {
+		types = append(types, fullName)
 	}
-	for suffix := range a.multiHandlers {
-		types = append(types, suffix)
+	for fullName := range a.multiHandlers {
+		types = append(types, fullName)
 	}
 	return types
 }
@@ -453,7 +469,7 @@ func (a *AggregateBase[S]) Handle(request *pb.ContextualCommand) (*pb.BusinessRe
 	}
 
 	// Check for Notification (rejection/compensation)
-	if strings.HasSuffix(cmdAny.TypeUrl, "Notification") {
+	if cmdAny.TypeUrl == TypeURLPrefix+"angzarr.Notification" {
 		// TODO: Implement revocation handling
 		return DelegateToFramework("OO aggregate revocation not yet implemented"), nil
 	}

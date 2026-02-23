@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "client" / "python"))
 
 from angzarr_client import ProcessManager, prepares, reacts_to, rejected
+from angzarr_client.helpers import type_name_from_url
 from angzarr_client.process_manager_handler import (
     ProcessManagerHandler,
     run_process_manager_server,
@@ -143,11 +144,11 @@ class OrderWorkflowPM(ProcessManager[OrderWorkflowState]):
 
     def _apply_event(self, state: OrderWorkflowState, event_any: ProtoAny) -> None:
         """Apply process manager events to state."""
-        type_url = event_any.type_url
-        if type_url.endswith("WorkflowCompleted"):
+        type_name = type_name_from_url(event_any.type_url)
+        if type_name == "WorkflowCompleted":
             # Mark as complete
             pass
-        elif type_url.endswith("WorkflowFailed"):
+        elif type_name == "WorkflowFailed":
             state.failed = True
 
     # -------------------------------------------------------------------------

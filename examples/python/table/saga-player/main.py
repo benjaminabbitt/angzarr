@@ -107,8 +107,8 @@ def handle_hand_ended(
 router = (
     EventRouter("saga-table-player")
     .domain("table")
-    .prepare("HandEnded", prepare_hand_ended)
-    .on("HandEnded", handle_hand_ended)
+    .prepare(table.HandEnded, prepare_hand_ended)
+    .on(table.HandEnded, handle_hand_ended)
 )
 
 

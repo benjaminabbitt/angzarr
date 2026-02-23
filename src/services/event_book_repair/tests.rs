@@ -2,6 +2,10 @@ use super::*;
 use crate::proto::{EventPage, Snapshot, SnapshotRetention};
 use crate::test_utils::{make_cover, make_event_page};
 
+// ============================================================================
+// is_complete Tests
+// ============================================================================
+
 #[test]
 fn test_is_complete_empty_book() {
     let book = EventBook {
@@ -67,6 +71,104 @@ fn test_is_incomplete_starts_at_nonzero() {
 }
 
 #[test]
+fn test_is_complete_single_event_at_zero() {
+    let book = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![make_event_page(0)],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    assert!(is_complete(&book));
+}
+
+#[test]
+fn test_is_complete_single_event_not_at_zero() {
+    let book = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![make_event_page(1)],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    assert!(!is_complete(&book));
+}
+
+#[test]
+fn test_is_complete_snapshot_at_zero() {
+    let book = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![],
+        snapshot: Some(Snapshot {
+            sequence: 0,
+            state: None,
+            retention: SnapshotRetention::RetentionDefault as i32,
+        }),
+        ..Default::default()
+    };
+
+    assert!(is_complete(&book));
+}
+
+#[test]
+fn test_is_complete_snapshot_without_pages() {
+    let book = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![],
+        snapshot: Some(Snapshot {
+            sequence: 10,
+            state: None,
+            retention: SnapshotRetention::RetentionDefault as i32,
+        }),
+        ..Default::default()
+    };
+
+    // With a snapshot and no pages, it's considered complete
+    assert!(is_complete(&book));
+}
+
+#[test]
+fn test_is_complete_default_event_book() {
+    let book = EventBook::default();
+    // Default EventBook has no cover, no pages, no snapshot - considered complete (empty aggregate)
+    assert!(is_complete(&book));
+}
+
+#[test]
+fn test_is_complete_many_events_starting_at_zero() {
+    let pages: Vec<EventPage> = (0..100).map(|seq| make_event_page(seq)).collect();
+
+    let book = EventBook {
+        cover: Some(make_cover("test")),
+        pages,
+        snapshot: None,
+        ..Default::default()
+    };
+
+    assert!(is_complete(&book));
+}
+
+#[test]
+fn test_is_complete_gap_in_middle() {
+    // This tests a book that starts at 0 but has gaps
+    // The is_complete function only checks the first event's sequence
+    let book = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![make_event_page(0), make_event_page(5), make_event_page(10)],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    // Book starts at 0, so it's considered complete
+    // (Gap detection is a separate concern)
+    assert!(is_complete(&book));
+}
+
+// ============================================================================
+// extract_identity Tests
+// ============================================================================
+
+#[test]
 fn test_extract_identity_success() {
     let root = Uuid::new_v4();
     let book = EventBook {
@@ -117,6 +219,155 @@ fn test_extract_identity_missing_root() {
 
     let result = extract_identity(&book);
     assert!(matches!(result, Err(RepairError::MissingRoot)));
+}
+
+#[test]
+fn test_extract_identity_invalid_uuid() {
+    let book = EventBook {
+        cover: Some(crate::proto::Cover {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid {
+                value: vec![1, 2, 3], // Invalid - not 16 bytes
+            }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        pages: vec![],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    let result = extract_identity(&book);
+    assert!(matches!(result, Err(RepairError::InvalidUuid(_))));
+}
+
+#[test]
+fn test_extract_identity_empty_uuid_bytes() {
+    let book = EventBook {
+        cover: Some(crate::proto::Cover {
+            domain: "orders".to_string(),
+            root: Some(ProtoUuid { value: vec![] }),
+            correlation_id: String::new(),
+            edition: None,
+        }),
+        pages: vec![],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    let result = extract_identity(&book);
+    assert!(matches!(result, Err(RepairError::InvalidUuid(_))));
+}
+
+#[test]
+fn test_extract_identity_preserves_domain() {
+    let root = Uuid::new_v4();
+    let domains = ["orders", "inventory", "fulfillment", "player", "_internal"];
+
+    for domain in domains {
+        let book = EventBook {
+            cover: Some(crate::proto::Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: String::new(),
+                edition: None,
+            }),
+            pages: vec![],
+            snapshot: None,
+            ..Default::default()
+        };
+
+        let (extracted_domain, _) = extract_identity(&book).unwrap();
+        assert_eq!(extracted_domain, domain);
+    }
+}
+
+// ============================================================================
+// RepairError Tests
+// ============================================================================
+
+#[test]
+fn test_repair_error_missing_cover_display() {
+    let err = RepairError::MissingCover;
+    assert!(err.to_string().contains("missing cover"));
+}
+
+#[test]
+fn test_repair_error_missing_root_display() {
+    let err = RepairError::MissingRoot;
+    assert!(err.to_string().contains("missing root"));
+}
+
+#[test]
+fn test_repair_error_invalid_uuid_display() {
+    // Create a uuid error by trying to parse invalid bytes
+    let bad_bytes: [u8; 5] = [1, 2, 3, 4, 5];
+    let uuid_err = Uuid::from_slice(&bad_bytes).unwrap_err();
+    let err = RepairError::InvalidUuid(uuid_err);
+    assert!(err.to_string().contains("Invalid UUID"));
+}
+
+#[test]
+fn test_repair_error_grpc_display() {
+    let status = tonic::Status::internal("test error");
+    let err: RepairError = status.into();
+    assert!(err.to_string().contains("gRPC error"));
+}
+
+#[test]
+fn test_repair_error_invalid_uri_display() {
+    let err = RepairError::InvalidUri("bad://uri".to_string());
+    assert!(err.to_string().contains("Invalid URI"));
+    assert!(err.to_string().contains("bad://uri"));
+}
+
+#[test]
+fn test_repair_error_no_event_book_display() {
+    let err = RepairError::NoEventBookReturned;
+    assert!(err.to_string().contains("No EventBook"));
+}
+
+#[test]
+fn test_repair_error_from_tonic_status() {
+    let status = tonic::Status::not_found("aggregate not found");
+    let err: RepairError = status.into();
+
+    match err {
+        RepairError::Grpc(boxed_status) => {
+            assert_eq!(boxed_status.code(), tonic::Code::NotFound);
+            assert!(boxed_status.message().contains("not found"));
+        }
+        _ => panic!("Expected Grpc error"),
+    }
+}
+
+// ============================================================================
+// EventBookRepairer Tests (construction only - gRPC tests are in grpc_integration)
+// ============================================================================
+
+#[test]
+fn test_is_complete_function_directly() {
+    // For unit tests, we verify the free function directly
+    // The actual gRPC tests are in grpc_integration module
+    let book_complete = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![make_event_page(0), make_event_page(1)],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    let book_incomplete = EventBook {
+        cover: Some(make_cover("test")),
+        pages: vec![make_event_page(5)],
+        snapshot: None,
+        ..Default::default()
+    };
+
+    // Test the free function directly since we can't construct repairer without channel
+    assert!(is_complete(&book_complete));
+    assert!(!is_complete(&book_incomplete));
 }
 
 mod grpc_integration {

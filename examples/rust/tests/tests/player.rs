@@ -13,7 +13,7 @@ use angzarr_client::proto::examples::{
     PlayerRegistered, PlayerType, RegisterPlayer, ReleaseFunds, ReserveFunds, WithdrawFunds,
 };
 use angzarr_client::proto::{command_page, event_page, CommandBook, CommandPage, Cover, EventBook, EventPage, Uuid};
-use angzarr_client::{pack_event, UnpackAny};
+use angzarr_client::{pack_event, try_unpack, type_matches, UnpackAny};
 use cucumber::{given, then, when, World};
 use prost_types::Any;
 use sha2::{Digest, Sha256};
@@ -334,7 +334,7 @@ fn rebuild_player_state(world: &mut PlayerWorld) {
 fn result_is_player_registered(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
-        event.type_url.ends_with("PlayerRegistered"),
+        type_matches::<PlayerRegistered>(event),
         "Expected PlayerRegistered event but got {}",
         event.type_url
     );
@@ -345,7 +345,7 @@ fn result_is_player_registered(world: &mut PlayerWorld) {
 fn result_is_funds_deposited(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
-        event.type_url.ends_with("FundsDeposited"),
+        type_matches::<FundsDeposited>(event),
         "Expected FundsDeposited event but got {}",
         event.type_url
     );
@@ -355,7 +355,7 @@ fn result_is_funds_deposited(world: &mut PlayerWorld) {
 fn result_is_funds_withdrawn(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
-        event.type_url.ends_with("FundsWithdrawn"),
+        type_matches::<FundsWithdrawn>(event),
         "Expected FundsWithdrawn event but got {}",
         event.type_url
     );
@@ -365,7 +365,7 @@ fn result_is_funds_withdrawn(world: &mut PlayerWorld) {
 fn result_is_funds_reserved(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
-        event.type_url.ends_with("FundsReserved"),
+        type_matches::<FundsReserved>(event),
         "Expected FundsReserved event but got {}",
         event.type_url
     );
@@ -375,7 +375,7 @@ fn result_is_funds_reserved(world: &mut PlayerWorld) {
 fn result_is_funds_released(world: &mut PlayerWorld) {
     let event = world.get_last_event().expect("No event found");
     assert!(
-        event.type_url.ends_with("FundsReleased"),
+        type_matches::<FundsReleased>(event),
         "Expected FundsReleased event but got {}",
         event.type_url
     );
@@ -432,85 +432,64 @@ fn player_event_has_player_type(world: &mut PlayerWorld, expected: String) {
 fn player_event_has_amount(world: &mut PlayerWorld, expected: i64) {
     let event_any = world.get_last_event().expect("No event found");
 
-    if event_any.type_url.ends_with("FundsDeposited") {
-        let event: FundsDeposited = event_any.unpack().expect("Failed to unpack event");
-        let amount = event.amount.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            amount, expected,
-            "Expected amount {} but got {}",
-            expected, amount
-        );
-    } else if event_any.type_url.ends_with("FundsWithdrawn") {
-        let event: FundsWithdrawn = event_any.unpack().expect("Failed to unpack event");
-        let amount = event.amount.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            amount, expected,
-            "Expected amount {} but got {}",
-            expected, amount
-        );
-    } else if event_any.type_url.ends_with("FundsReserved") {
-        let event: FundsReserved = event_any.unpack().expect("Failed to unpack event");
-        let amount = event.amount.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            amount, expected,
-            "Expected amount {} but got {}",
-            expected, amount
-        );
-    } else if event_any.type_url.ends_with("FundsReleased") {
-        let event: FundsReleased = event_any.unpack().expect("Failed to unpack event");
-        let amount = event.amount.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            amount, expected,
-            "Expected amount {} but got {}",
-            expected, amount
-        );
-    }
+    let amount = if let Some(event) = try_unpack::<FundsDeposited>(event_any) {
+        event.amount.map(|c| c.amount).unwrap_or(0)
+    } else if let Some(event) = try_unpack::<FundsWithdrawn>(event_any) {
+        event.amount.map(|c| c.amount).unwrap_or(0)
+    } else if let Some(event) = try_unpack::<FundsReserved>(event_any) {
+        event.amount.map(|c| c.amount).unwrap_or(0)
+    } else if let Some(event) = try_unpack::<FundsReleased>(event_any) {
+        event.amount.map(|c| c.amount).unwrap_or(0)
+    } else {
+        panic!("Unknown event type: {}", event_any.type_url);
+    };
+
+    assert_eq!(
+        amount, expected,
+        "Expected amount {} but got {}",
+        expected, amount
+    );
 }
 
 #[then(expr = "the player event has new_balance {int}")]
 fn player_event_has_new_balance(world: &mut PlayerWorld, expected: i64) {
     let event_any = world.get_last_event().expect("No event found");
 
-    if event_any.type_url.ends_with("FundsDeposited") {
-        let event: FundsDeposited = event_any.unpack().expect("Failed to unpack event");
-        let balance = event.new_balance.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            balance, expected,
-            "Expected new_balance {} but got {}",
-            expected, balance
-        );
-    } else if event_any.type_url.ends_with("FundsWithdrawn") {
-        let event: FundsWithdrawn = event_any.unpack().expect("Failed to unpack event");
-        let balance = event.new_balance.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            balance, expected,
-            "Expected new_balance {} but got {}",
-            expected, balance
-        );
-    }
+    let balance = if let Some(event) = try_unpack::<FundsDeposited>(event_any) {
+        event.new_balance.map(|c| c.amount).unwrap_or(0)
+    } else if let Some(event) = try_unpack::<FundsWithdrawn>(event_any) {
+        event.new_balance.map(|c| c.amount).unwrap_or(0)
+    } else {
+        panic!("Unknown event type for new_balance: {}", event_any.type_url);
+    };
+
+    assert_eq!(
+        balance, expected,
+        "Expected new_balance {} but got {}",
+        expected, balance
+    );
 }
 
 #[then(expr = "the player event has new_available_balance {int}")]
 fn player_event_has_new_available_balance(world: &mut PlayerWorld, expected: i64) {
     let event_any = world.get_last_event().expect("No event found");
 
-    if event_any.type_url.ends_with("FundsReserved") {
-        let event: FundsReserved = event_any.unpack().expect("Failed to unpack event");
-        let available = event.new_available_balance.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            available, expected,
-            "Expected new_available_balance {} but got {}",
-            expected, available
+    let available = if let Some(event) = try_unpack::<FundsReserved>(event_any) {
+        event.new_available_balance.map(|c| c.amount).unwrap_or(0)
+    } else if let Some(event) = try_unpack::<FundsReleased>(event_any) {
+        event.new_available_balance.map(|c| c.amount).unwrap_or(0)
+    } else {
+        panic!(
+            "Unknown event type for new_available_balance: {}",
+            event_any.type_url
         );
-    } else if event_any.type_url.ends_with("FundsReleased") {
-        let event: FundsReleased = event_any.unpack().expect("Failed to unpack event");
-        let available = event.new_available_balance.map(|c| c.amount).unwrap_or(0);
-        assert_eq!(
-            available, expected,
-            "Expected new_available_balance {} but got {}",
-            expected, available
-        );
-    }
+    };
+
+    assert_eq!(
+        available, expected,
+        "Expected new_available_balance {} but got {}",
+        expected, available
+    );
 }
 
 #[then(expr = "the player state has bankroll {int}")]

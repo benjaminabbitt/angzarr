@@ -14,6 +14,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from table.agg.handlers import Table
 
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import type_name_from_url
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 from angzarr_client.proto.examples import table_pb2 as table
@@ -360,9 +361,8 @@ def step_then_result_is_event(context, event_type):
     )
     assert context.result.pages, "No event pages in result"
     event_any = context.result.pages[0].event
-    assert event_any.type_url.endswith(event_type), (
-        f"Expected {event_type} but got {event_any.type_url}"
-    )
+    actual_type = type_name_from_url(event_any.type_url)
+    assert actual_type == event_type, f"Expected {event_type} but got {actual_type}"
 
 
 @then(r'the table event has table_name "(?P<name>[^"]+)"')

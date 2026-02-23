@@ -14,6 +14,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from player.agg.handlers import Player
 
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import try_unpack, type_matches, type_name_from_url
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
@@ -82,9 +83,7 @@ def step_given_funds_deposited(context, amount):
     # Calculate new balance from prior deposits
     prior_balance = 0
     for ep in context.events:
-        if ep.event.type_url.endswith("FundsDeposited"):
-            evt = player.FundsDeposited()
-            ep.event.Unpack(evt)
+        if evt := try_unpack(ep.event, player.FundsDeposited):
             if evt.new_balance:
                 prior_balance = evt.new_balance.amount
 
@@ -110,14 +109,10 @@ def step_given_funds_reserved(context, amount, table_id):
     total_deposited = 0
     total_reserved = 0
     for ep in context.events:
-        if ep.event.type_url.endswith("FundsDeposited"):
-            evt = player.FundsDeposited()
-            ep.event.Unpack(evt)
+        if evt := try_unpack(ep.event, player.FundsDeposited):
             if evt.new_balance:
                 total_deposited = evt.new_balance.amount
-        elif ep.event.type_url.endswith("FundsReserved"):
-            evt = player.FundsReserved()
-            ep.event.Unpack(evt)
+        elif evt := try_unpack(ep.event, player.FundsReserved):
             if evt.new_reserved_balance:
                 total_reserved = evt.new_reserved_balance.amount
 
@@ -248,9 +243,8 @@ def step_then_result_is_event(context, event_type):
     )
     assert context.result.pages, "No event pages in result"
     event_any = context.result.pages[0].event
-    assert event_any.type_url.endswith(event_type), (
-        f"Expected {event_type} but got {event_any.type_url}"
-    )
+    actual_type = type_name_from_url(event_any.type_url)
+    assert actual_type == event_type, f"Expected {event_type} but got {actual_type}"
 
 
 @then(r'the player event has display_name "(?P<name>[^"]+)"')
@@ -280,18 +274,15 @@ def step_then_event_has_amount(context, amount):
     event_any = context.result_event_any
 
     # Try different event types that have amount field
-    if event_any.type_url.endswith("FundsDeposited"):
-        event = player.FundsDeposited()
-    elif event_any.type_url.endswith("FundsWithdrawn"):
-        event = player.FundsWithdrawn()
-    elif event_any.type_url.endswith("FundsReserved"):
-        event = player.FundsReserved()
-    elif event_any.type_url.endswith("FundsReleased"):
-        event = player.FundsReleased()
-    else:
+    event = (
+        try_unpack(event_any, player.FundsDeposited)
+        or try_unpack(event_any, player.FundsWithdrawn)
+        or try_unpack(event_any, player.FundsReserved)
+        or try_unpack(event_any, player.FundsReleased)
+    )
+    if event is None:
         raise AssertionError(f"Unknown event type: {event_any.type_url}")
 
-    event_any.Unpack(event)
     assert event.amount.amount == int(amount), (
         f"Expected amount={amount}, got {event.amount.amount}"
     )
@@ -303,16 +294,14 @@ def step_then_event_has_new_balance(context, balance):
     event_any = context.result_event_any
 
     # Try different event types that have new_balance field
-    if event_any.type_url.endswith("FundsDeposited"):
-        event = player.FundsDeposited()
-    elif event_any.type_url.endswith("FundsWithdrawn"):
-        event = player.FundsWithdrawn()
-    else:
+    event = try_unpack(event_any, player.FundsDeposited) or try_unpack(
+        event_any, player.FundsWithdrawn
+    )
+    if event is None:
         raise AssertionError(
             f"Unknown event type for new_balance: {event_any.type_url}"
         )
 
-    event_any.Unpack(event)
     assert event.new_balance.amount == int(balance), (
         f"Expected new_balance={balance}, got {event.new_balance.amount}"
     )
@@ -323,16 +312,14 @@ def step_then_event_has_new_available_balance(context, balance):
     """Verify the event new_available_balance field."""
     event_any = context.result_event_any
 
-    if event_any.type_url.endswith("FundsReserved"):
-        event = player.FundsReserved()
-    elif event_any.type_url.endswith("FundsReleased"):
-        event = player.FundsReleased()
-    else:
+    event = try_unpack(event_any, player.FundsReserved) or try_unpack(
+        event_any, player.FundsReleased
+    )
+    if event is None:
         raise AssertionError(
             f"Unknown event type for new_available_balance: {event_any.type_url}"
         )
 
-    event_any.Unpack(event)
     assert event.new_available_balance.amount == int(balance), (
         f"Expected new_available_balance={balance}, got {event.new_available_balance.amount}"
     )

@@ -205,6 +205,19 @@ Feature: Table aggregate logic
     Then the command fails with status "FAILED_PRECONDITION"
     And the error message contains "No hand in progress"
 
+  Scenario: End hand updates player stacks with wins and losses
+    Given a TableCreated event for "Main Table"
+    And a PlayerJoined event for player "player-1" at seat 0 with stack 500
+    And a PlayerJoined event for player "player-2" at seat 1 with stack 500
+    And a HandStarted event for hand 1
+    When I handle an EndHand command with results:
+      | player   | change |
+      | player-1 | 150    |
+      | player-2 | -150   |
+    Then the result is a HandEnded event
+    And player "player-1" stack change is 150
+    And player "player-2" stack change is -150
+
   # ==========================================================================
   # State Reconstruction
   # ==========================================================================

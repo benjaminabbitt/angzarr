@@ -23,6 +23,7 @@ sys.path.insert(0, str(root / "player" / "agg" / "handlers"))
 from handlers.state import PlayerState, build_state
 
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import try_unpack, type_matches
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
@@ -128,9 +129,7 @@ def funds_deposited_event(ctx, amount):
     # Calculate new balance from prior events
     prior_balance = 0
     for event_any in ctx.events:
-        if event_any.type_url.endswith("FundsDeposited"):
-            e = player.FundsDeposited()
-            event_any.Unpack(e)
+        if e := try_unpack(event_any, player.FundsDeposited):
             if e.new_balance:
                 prior_balance = e.new_balance.amount
 
@@ -153,14 +152,10 @@ def funds_reserved_event(ctx, amount, table_id):
     bankroll = 0
     reserved = 0
     for event_any in ctx.events:
-        if event_any.type_url.endswith("FundsDeposited"):
-            e = player.FundsDeposited()
-            event_any.Unpack(e)
+        if e := try_unpack(event_any, player.FundsDeposited):
             if e.new_balance:
                 bankroll = e.new_balance.amount
-        elif event_any.type_url.endswith("FundsReserved"):
-            e = player.FundsReserved()
-            event_any.Unpack(e)
+        elif e := try_unpack(event_any, player.FundsReserved):
             if e.new_reserved_balance:
                 reserved = e.new_reserved_balance.amount
 
@@ -268,7 +263,7 @@ def result_is_player_registered(ctx):
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     assert len(ctx.result.pages) == 1
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("PlayerRegistered")
+    assert type_matches(event_any, player.PlayerRegistered)
 
 
 # docs:end:then_step
@@ -280,7 +275,7 @@ def result_is_funds_deposited(ctx):
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     assert len(ctx.result.pages) == 1
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("FundsDeposited")
+    assert type_matches(event_any, player.FundsDeposited)
 
 
 @then("the result is a FundsWithdrawn event")
@@ -288,7 +283,7 @@ def result_is_funds_withdrawn(ctx):
     """Verify result is FundsWithdrawn event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("FundsWithdrawn")
+    assert type_matches(event_any, player.FundsWithdrawn)
 
 
 @then("the result is a FundsReserved event")
@@ -296,7 +291,7 @@ def result_is_funds_reserved(ctx):
     """Verify result is FundsReserved event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("FundsReserved")
+    assert type_matches(event_any, player.FundsReserved)
 
 
 @then("the result is a FundsReleased event")
@@ -304,7 +299,7 @@ def result_is_funds_released(ctx):
     """Verify result is FundsReleased event."""
     assert ctx.result is not None, f"Expected result, got error: {ctx.error}"
     event_any = ctx.result.pages[0].event
-    assert event_any.type_url.endswith("FundsReleased")
+    assert type_matches(event_any, player.FundsReleased)
 
 
 @then(parsers.parse('the player event has display_name "{name}"'))
@@ -330,20 +325,16 @@ def event_has_player_type(ctx, ptype):
 def event_has_amount(ctx, amount):
     """Verify event amount."""
     event_any = ctx.result.pages[0].event
-    type_url = event_any.type_url
 
-    if type_url.endswith("FundsDeposited"):
-        event = player.FundsDeposited()
-    elif type_url.endswith("FundsWithdrawn"):
-        event = player.FundsWithdrawn()
-    elif type_url.endswith("FundsReserved"):
-        event = player.FundsReserved()
-    elif type_url.endswith("FundsReleased"):
-        event = player.FundsReleased()
-    else:
-        pytest.fail(f"Unknown event type: {type_url}")
+    event = (
+        try_unpack(event_any, player.FundsDeposited)
+        or try_unpack(event_any, player.FundsWithdrawn)
+        or try_unpack(event_any, player.FundsReserved)
+        or try_unpack(event_any, player.FundsReleased)
+    )
+    if event is None:
+        pytest.fail(f"Unknown event type: {event_any.type_url}")
 
-    event_any.Unpack(event)
     assert event.amount.amount == amount
 
 
@@ -351,16 +342,13 @@ def event_has_amount(ctx, amount):
 def event_has_new_balance(ctx, amount):
     """Verify event new_balance."""
     event_any = ctx.result.pages[0].event
-    type_url = event_any.type_url
 
-    if type_url.endswith("FundsDeposited"):
-        event = player.FundsDeposited()
-    elif type_url.endswith("FundsWithdrawn"):
-        event = player.FundsWithdrawn()
-    else:
-        pytest.fail(f"Unknown event type: {type_url}")
+    event = try_unpack(event_any, player.FundsDeposited) or try_unpack(
+        event_any, player.FundsWithdrawn
+    )
+    if event is None:
+        pytest.fail(f"Unknown event type: {event_any.type_url}")
 
-    event_any.Unpack(event)
     assert event.new_balance.amount == amount
 
 
@@ -368,16 +356,13 @@ def event_has_new_balance(ctx, amount):
 def event_has_new_available_balance(ctx, amount):
     """Verify event new_available_balance."""
     event_any = ctx.result.pages[0].event
-    type_url = event_any.type_url
 
-    if type_url.endswith("FundsReserved"):
-        event = player.FundsReserved()
-    elif type_url.endswith("FundsReleased"):
-        event = player.FundsReleased()
-    else:
-        pytest.fail(f"Unknown event type: {type_url}")
+    event = try_unpack(event_any, player.FundsReserved) or try_unpack(
+        event_any, player.FundsReleased
+    )
+    if event is None:
+        pytest.fail(f"Unknown event type: {event_any.type_url}")
 
-    event_any.Unpack(event)
     assert event.new_available_balance.amount == amount
 
 

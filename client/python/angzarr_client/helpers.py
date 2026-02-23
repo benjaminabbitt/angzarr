@@ -1,11 +1,15 @@
 """Helper functions for working with Angzarr proto types."""
 
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Type, TypeVar, Union
 from uuid import UUID as PyUUID
 
 from google.protobuf.any_pb2 import Any as ProtoAny
+from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
+
+# Type variable for generic message type
+T = TypeVar("T", bound=Message)
 
 from .errors import InvalidTimestampError
 from .proto.angzarr import (
@@ -251,6 +255,106 @@ def type_url_matches(type_url_str: str, type_name: str) -> bool:
         True if type_url equals TYPE_URL_PREFIX + type_name
     """
     return type_url_str == TYPE_URL_PREFIX + type_name
+
+
+# Type-safe reflection helpers
+
+
+def type_matches(any_proto: ProtoAny, msg_class: Type[T]) -> bool:
+    """Check if an Any contains a message of the given type using DESCRIPTOR.
+
+    This is preferred over string-based suffix matching.
+
+    Args:
+        any_proto: The Any message to check
+        msg_class: The protobuf message class to check against
+
+    Returns:
+        True if the Any's type_url matches the message class
+
+    Example:
+        if type_matches(event_any, PlayerRegistered):
+            msg = try_unpack(event_any, PlayerRegistered)
+    """
+    if any_proto is None:
+        return False
+    return any_proto.Is(msg_class.DESCRIPTOR)
+
+
+def try_unpack(any_proto: ProtoAny, msg_class: Type[T]) -> Optional[T]:
+    """Unpack an Any to msg_class if type matches, returning None otherwise.
+
+    This is type-safe: it only unpacks if the type URL matches exactly.
+
+    Args:
+        any_proto: The Any message to unpack
+        msg_class: The protobuf message class to unpack into
+
+    Returns:
+        The unpacked message if type matches and decoding succeeds, None otherwise
+
+    Example:
+        if msg := try_unpack(event_any, PlayerRegistered):
+            print(f"Player {msg.player_id} registered")
+    """
+    if not type_matches(any_proto, msg_class):
+        return None
+    try:
+        msg = msg_class()
+        any_proto.Unpack(msg)
+        return msg
+    except Exception:
+        return None
+
+
+def unpack(any_proto: ProtoAny, msg_class: Type[T]) -> T:
+    """Unpack an Any to msg_class, raising ValueError if type doesn't match.
+
+    Args:
+        any_proto: The Any message to unpack
+        msg_class: The protobuf message class to unpack into
+
+    Returns:
+        The unpacked message
+
+    Raises:
+        ValueError: If type doesn't match or decoding fails
+    """
+    if not type_matches(any_proto, msg_class):
+        expected = full_type_name(msg_class)
+        raise ValueError(
+            f"type mismatch: expected {expected}, got {any_proto.type_url}"
+        )
+    msg = msg_class()
+    any_proto.Unpack(msg)
+    return msg
+
+
+def full_type_name(msg_class: Type[Message]) -> str:
+    """Get the fully-qualified type name from a message class DESCRIPTOR.
+
+    Args:
+        msg_class: The protobuf message class
+
+    Returns:
+        The fully-qualified type name (e.g., "examples.PlayerRegistered")
+
+    Example:
+        name = full_type_name(PlayerRegistered)  # "examples.PlayerRegistered"
+    """
+    return msg_class.DESCRIPTOR.full_name
+
+
+def full_type_url_for(msg_class: Type[Message]) -> str:
+    """Get the full type URL for a message class.
+
+    Args:
+        msg_class: The protobuf message class
+
+    Returns:
+        The full type URL (e.g., "type.googleapis.com/examples.PlayerRegistered")
+    """
+    return TYPE_URL_PREFIX + full_type_name(msg_class)
 
 
 # Timestamp helpers

@@ -1,8 +1,9 @@
-//! Interface tests for storage backends using Cucumber.
+//! Interface tests for storage and bus backends using Cucumber.
 //!
-//! These tests verify that all storage implementations conform to the same contract.
+//! These tests verify that all implementations conform to the same contract.
 //! Select a backend via environment variable:
 //!
+//! ## Storage Tests
 //! ```bash
 //! # SQLite (default)
 //! cargo test --test interfaces --features sqlite
@@ -16,12 +17,36 @@
 //! # immudb (uses testcontainers)
 //! STORAGE_BACKEND=immudb cargo test --test interfaces --features immudb
 //! ```
+//!
+//! ## Bus Tests
+//! ```bash
+//! # Channel (default, in-memory)
+//! BUS_BACKEND=channel cargo test --test interfaces --features channel
+//!
+//! # AMQP/RabbitMQ (uses testcontainers)
+//! BUS_BACKEND=amqp cargo test --test interfaces --features amqp
+//!
+//! # Kafka (uses testcontainers)
+//! BUS_BACKEND=kafka cargo test --test interfaces --features kafka
+//!
+//! # NATS JetStream (uses testcontainers)
+//! BUS_BACKEND=nats cargo test --test interfaces --features nats
+//!
+//! # Google Pub/Sub (uses testcontainers emulator)
+//! BUS_BACKEND=pubsub cargo test --test interfaces --features pubsub
+//!
+//! # AWS SNS/SQS (uses testcontainers/LocalStack)
+//! BUS_BACKEND=sns-sqs cargo test --test interfaces --features sns-sqs
+//! ```
 
 mod backend;
+mod bus_backend;
 mod steps;
 
 use cucumber::World;
+use steps::dlq::DlqWorld;
 use steps::editions::EditionWorld;
+use steps::event_bus::EventBusWorld;
 use steps::event_query_service::EventQueryServiceWorld;
 use steps::event_store::EventStoreWorld;
 use steps::event_stream_service::EventStreamServiceWorld;
@@ -102,5 +127,19 @@ async fn main() {
     NotificationWorld::cucumber()
         .fail_on_skipped()
         .run("tests/interfaces/features/notification.feature")
+        .await;
+
+    // Run EventBus tests
+    println!("\n=== Running EventBus Interface Tests ===\n");
+    EventBusWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/event_bus.feature")
+        .await;
+
+    // Run DLQ tests
+    println!("\n=== Running DLQ Interface Tests ===\n");
+    DlqWorld::cucumber()
+        .fail_on_skipped()
+        .run("tests/interfaces/features/dlq.feature")
         .await;
 }

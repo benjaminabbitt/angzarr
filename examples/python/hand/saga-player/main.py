@@ -106,8 +106,8 @@ def handle_pot_awarded(
 router = (
     EventRouter("saga-hand-player")
     .domain("hand")
-    .prepare("PotAwarded", prepare_pot_awarded)
-    .on("PotAwarded", handle_pot_awarded)
+    .prepare(hand.PotAwarded, prepare_pot_awarded)
+    .on(hand.PotAwarded, handle_pot_awarded)
 )
 
 

@@ -16,8 +16,8 @@
 //	func NewTableHandSaga() *TableHandSaga {
 //	    s := &TableHandSaga{}
 //	    s.Init("saga-table-hand", "table", "hand")
-//	    s.Prepares("HandStarted", s.prepareHandStarted)
-//	    s.ReactsTo("HandStarted", s.handleHandStarted)
+//	    s.Prepares(s.prepareHandStarted)
+//	    s.ReactsTo(s.handleHandStarted)
 //	    return s
 //	}
 //
@@ -41,7 +41,6 @@ package angzarr
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"google.golang.org/protobuf/proto"
@@ -99,19 +98,20 @@ func (s *SagaBase) OutputDomain() string {
 	return s.outputDomain
 }
 
-// Prepares registers a prepare handler for an event type_url suffix.
+// Prepares registers a prepare handler for an event type.
 //
 // The handler function must have signature: func(*EventType) []*pb.Cover
-// where EventType is a protobuf message type.
+// where EventType is a protobuf message type. The event type is automatically
+// extracted via proto reflection - no type name string needed.
 //
 // Example:
 //
-//	s.Prepares("HandStarted", s.prepareHandStarted)
+//	s.Prepares(s.prepareHandStarted)
 //
 //	func (s *TableHandSaga) prepareHandStarted(event *table.HandStarted) []*pb.Cover {
 //	    return []*pb.Cover{{Domain: "hand", Root: &pb.UUID{Value: event.HandRoot}}}
 //	}
-func (s *SagaBase) Prepares(suffix string, handler any) {
+func (s *SagaBase) Prepares(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -131,6 +131,11 @@ func (s *SagaBase) Prepares(suffix string, handler any) {
 		panic("event parameter must be a pointer")
 	}
 	eventType := eventPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the wrapper function
 	wrapper := func(eventAny *anypb.Any) []*pb.Cover {
@@ -153,19 +158,21 @@ func (s *SagaBase) Prepares(suffix string, handler any) {
 		return results[0].Interface().([]*pb.Cover)
 	}
 
-	s.prepares[suffix] = wrapper
+	s.prepares[fullName] = wrapper
 }
 
-// ReactsTo registers an event handler for a type_url suffix.
+// ReactsTo registers an event handler.
 //
 // The handler function can have two signatures:
 //
 //  1. Without destinations: func(*EventType) (*pb.CommandBook, error)
 //  2. With destinations: func(*EventType, []*pb.EventBook) (*pb.CommandBook, error)
 //
+// The event type is automatically extracted via proto reflection.
+//
 // Example:
 //
-//	s.ReactsTo("HandStarted", s.handleHandStarted)
+//	s.ReactsTo(s.handleHandStarted)
 //
 //	func (s *TableHandSaga) handleHandStarted(
 //	    event *table.HandStarted,
@@ -175,7 +182,7 @@ func (s *SagaBase) Prepares(suffix string, handler any) {
 //	    // ... build command
 //	    return &pb.CommandBook{...}, nil
 //	}
-func (s *SagaBase) ReactsTo(suffix string, handler any) {
+func (s *SagaBase) ReactsTo(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -197,6 +204,11 @@ func (s *SagaBase) ReactsTo(suffix string, handler any) {
 		panic("event parameter must be a pointer")
 	}
 	eventType := eventPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	withDests := numIn == 2
 
@@ -237,7 +249,7 @@ func (s *SagaBase) ReactsTo(suffix string, handler any) {
 		return nil, err
 	}
 
-	s.handlers[suffix] = wrapper
+	s.handlers[fullName] = wrapper
 }
 
 // ReactsToMulti registers an event handler that returns multiple commands.
@@ -245,8 +257,9 @@ func (s *SagaBase) ReactsTo(suffix string, handler any) {
 // The handler function must have signature:
 // func(*EventType, []*pb.EventBook) ([]*pb.CommandBook, error)
 //
+// The event type is automatically extracted via proto reflection.
 // Use this for broadcasting to multiple aggregates.
-func (s *SagaBase) ReactsToMulti(suffix string, handler any) {
+func (s *SagaBase) ReactsToMulti(handler any) {
 	handlerValue := reflect.ValueOf(handler)
 	handlerType := handlerValue.Type()
 
@@ -266,6 +279,11 @@ func (s *SagaBase) ReactsToMulti(suffix string, handler any) {
 		panic("event parameter must be a pointer")
 	}
 	eventType := eventPtrType.Elem()
+
+	// Extract fully-qualified type name via proto reflection
+	eventPtr := reflect.New(eventType)
+	protoMsg := eventPtr.Interface().(proto.Message)
+	fullName := string(protoMsg.ProtoReflect().Descriptor().FullName())
 
 	// Create the wrapper function
 	wrapper := func(eventAny *anypb.Any, dests []*pb.EventBook) ([]*pb.CommandBook, error) {
@@ -296,7 +314,7 @@ func (s *SagaBase) ReactsToMulti(suffix string, handler any) {
 		return cmdBooks, err
 	}
 
-	s.handlers[suffix] = wrapper
+	s.handlers[fullName] = wrapper
 }
 
 // PrepareDestinations returns the destination covers needed for the given source.
@@ -314,8 +332,8 @@ func (s *SagaBase) PrepareDestinations(source *pb.EventBook) []*pb.Cover {
 		}
 
 		typeURL := event.TypeUrl
-		for suffix, handler := range s.prepares {
-			if strings.HasSuffix(typeURL, suffix) {
+		for fullName, handler := range s.prepares {
+			if typeURL == TypeURLPrefix+fullName {
 				result := handler(event)
 				covers = append(covers, result...)
 				break
@@ -340,8 +358,8 @@ func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (
 		}
 
 		typeURL := event.TypeUrl
-		for suffix, handler := range s.handlers {
-			if strings.HasSuffix(typeURL, suffix) {
+		for fullName, handler := range s.handlers {
+			if typeURL == TypeURLPrefix+fullName {
 				cmds, err := handler(event, destinations)
 				if err != nil {
 					return nil, err
@@ -354,11 +372,11 @@ func (s *SagaBase) Execute(source *pb.EventBook, destinations []*pb.EventBook) (
 	return commands, nil
 }
 
-// HandlerTypes returns the registered event type suffixes.
+// HandlerTypes returns the registered fully-qualified event type names.
 func (s *SagaBase) HandlerTypes() []string {
 	types := make([]string, 0, len(s.handlers))
-	for suffix := range s.handlers {
-		types = append(types, suffix)
+	for fullName := range s.handlers {
+		types = append(types, fullName)
 	}
 	return types
 }

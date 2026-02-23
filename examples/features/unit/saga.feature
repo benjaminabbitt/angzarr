@@ -121,3 +121,31 @@ Feature: Saga logic
     When the router routes the event
     Then TableSyncSaga still emits its command
     And no exception is raised
+
+  # ==========================================================================
+  # Saga Error Handling
+  # ==========================================================================
+  # Sagas must handle edge cases gracefully. Empty or invalid input should
+  # not cause crashes; instead, sagas emit no commands or log errors.
+
+  Scenario: Saga handles empty player list gracefully
+    Given a HandResultsSaga
+    And a HandEnded event from table domain with:
+      | hand_root |
+      | hand-1    |
+    And stack_changes:
+      | player_root | change |
+    When the saga handles the event
+    Then the saga emits 0 ReleaseFunds commands to player domain
+
+  Scenario: Hand results saga skips players with zero change
+    Given a HandResultsSaga
+    And a HandEnded event from table domain with:
+      | hand_root |
+      | hand-1    |
+    And stack_changes:
+      | player_root | change |
+      | player-1    | 100    |
+      | player-2    | 0      |
+    When the saga handles the event
+    Then the saga emits 2 ReleaseFunds commands to player domain
