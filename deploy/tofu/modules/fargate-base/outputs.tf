@@ -1,5 +1,33 @@
 # Fargate Base Module - Outputs
 
+#------------------------------------------------------------------------------
+# Standard Interface
+#------------------------------------------------------------------------------
+
+output "provides" {
+  description = "Capabilities provided by this module"
+  value = {
+    capabilities  = toset(["compute"])
+    compute_type  = "fargate"
+    cloud         = "aws"
+    region        = data.aws_region.current.name
+    vpc_id        = local.vpc_id
+    ha_mode       = "multi-az"
+    rust_features = toset([])
+  }
+}
+
+output "requirements" {
+  description = "Requirements for this module"
+  value = {
+    compute_types   = null
+    vpc             = false # Creates own VPC if needed
+    capabilities    = toset([])
+    secrets_backend = null
+  }
+}
+
+#------------------------------------------------------------------------------
 # VPC
 output "vpc_id" {
   description = "VPC ID"
