@@ -47,3 +47,17 @@ validate ENV:
 # Format all OpenTofu files
 fmt:
     tofu fmt -recursive "{{TF_DIR}}"
+
+# === Module Tests ===
+
+# Run all OpenTofu module tests
+test:
+    cd "{{TF_DIR}}/modules/stack" && tofu init -backend=false && tofu test
+
+# Run tests for a specific module
+test-module MODULE:
+    cd "{{TF_DIR}}/modules/{{MODULE}}" && tofu init -backend=false && tofu test
+
+# Check formatting for all OpenTofu files
+fmt-check:
+    tofu fmt -check -recursive "{{TF_DIR}}"

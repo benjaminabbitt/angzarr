@@ -4,7 +4,7 @@ output "component_url" {
   description = "URL of the main component (aggregate or process manager)"
   value = var.aggregate.enabled ? (
     length(google_cloud_run_v2_service.aggregate) > 0 ? google_cloud_run_v2_service.aggregate[0].uri : null
-  ) : (
+    ) : (
     var.process_manager.enabled && length(google_cloud_run_v2_service.process_manager) > 0 ? google_cloud_run_v2_service.process_manager[0].uri : null
   )
 }
@@ -13,7 +13,7 @@ output "component_name" {
   description = "Name of the main component service"
   value = var.aggregate.enabled ? (
     length(google_cloud_run_v2_service.aggregate) > 0 ? google_cloud_run_v2_service.aggregate[0].name : null
-  ) : (
+    ) : (
     var.process_manager.enabled && length(google_cloud_run_v2_service.process_manager) > 0 ? google_cloud_run_v2_service.process_manager[0].name : null
   )
 }

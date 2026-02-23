@@ -1,0 +1,81 @@
+# angzarr-domain - Helm values
+# Deploy a single domain component (aggregate, saga, or projector)
+
+# Domain name (e.g., "order", "inventory")
+domain: ""
+
+# Component type: aggregate, saga, projector
+componentType: aggregate
+
+# For sagas: name and target domain
+sagaName: ""
+targetDomain: ""
+
+# For projectors: name
+projectorName: ""
+
+# Business logic container
+logic:
+  image: ""
+  env: {}
+
+# Coordinator sidecar
+coordinator:
+  image: ""
+  env: {}
+
+# gRPC gateway sidecar (optional)
+grpcGateway:
+  enabled: false
+  image: ""
+
+# Resource limits
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Labels to apply
+labels: {}
+
+# Replica count
+replicaCount: 1
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+
+# Pod security context
+podSecurityContext:
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 1310
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

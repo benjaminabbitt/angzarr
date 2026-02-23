@@ -57,6 +57,7 @@ jobs:
       examples-java: ${{ steps.filter.outputs.examples-java }}
       examples-csharp: ${{ steps.filter.outputs.examples-csharp }}
       examples-cpp: ${{ steps.filter.outputs.examples-cpp }}
+      tofu: ${{ steps.filter.outputs.tofu }}
     steps:
       - uses: actions/checkout@v4
 
@@ -134,6 +135,35 @@ jobs:
               - 'examples/features/**'
               - 'client/cpp/**'
               - 'proto/**'
+            tofu:
+              - 'deploy/tofu/**'
+
+  # ==========================================================================
+  # OpenTofu Module Tests (runs in parallel with builds)
+  # ==========================================================================
+  test-tofu:
+    needs: changes
+    if: |
+      needs.changes.outputs.tofu == 'true' ||
+      github.event.inputs.force_rebuild == 'true' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.9.0
+
+      - name: Run stack module tests
+        working-directory: deploy/tofu/modules/stack
+        run: |
+          tofu init -backend=false
+          tofu test
+
+      - name: Check formatting
+        run: tofu fmt -check -recursive deploy/tofu
 
   # ==========================================================================
   # Phase 2: Build support images (base first, then language-specific)

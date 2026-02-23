@@ -45,8 +45,8 @@ locals {
   # Domain-specific images
   domain_images = {
     order = {
-      logic          = "${var.image_registry}/agg-order:${var.image_tag}"
-      saga_logic     = {
+      logic = "${var.image_registry}/agg-order:${var.image_tag}"
+      saga_logic = {
         fulfillment = "${var.image_registry}/saga-order-fulfillment:${var.image_tag}"
       }
       projector_logic = {
@@ -54,13 +54,13 @@ locals {
       }
     }
     inventory = {
-      logic          = "${var.image_registry}/agg-inventory:${var.image_tag}"
-      saga_logic     = {}
+      logic           = "${var.image_registry}/agg-inventory:${var.image_tag}"
+      saga_logic      = {}
       projector_logic = {}
     }
     fulfillment = {
-      logic          = "${var.image_registry}/agg-fulfillment:${var.image_tag}"
-      saga_logic     = {}
+      logic           = "${var.image_registry}/agg-fulfillment:${var.image_tag}"
+      saga_logic      = {}
       projector_logic = {}
     }
   }
@@ -111,9 +111,9 @@ module "infrastructure" {
     image   = local.images.topology
   }
 
-  coordinator_env     = merge(module.cloudsql.coordinator_env, module.pubsub.coordinator_env)
+  coordinator_env       = merge(module.cloudsql.coordinator_env, module.pubsub.coordinator_env)
   allow_unauthenticated = var.allow_unauthenticated
-  labels              = local.labels
+  labels                = local.labels
 }
 
 #------------------------------------------------------------------------------

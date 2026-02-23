@@ -76,15 +76,15 @@ variable "projectors" {
 variable "images" {
   description = "Container images for all components"
   type = object({
-    grpc_gateway          = string                       # REST bridge
-    coordinator_aggregate = string                       # Aggregate coordinator
-    coordinator_saga      = string                       # Saga coordinator
-    coordinator_projector = string                       # Projector coordinator
-    coordinator_pm        = string                       # Process manager coordinator
-    logic                 = string                       # Domain business logic
-    upcaster              = optional(string)             # Upcaster (if enabled)
-    saga_logic            = optional(map(string), {})    # saga name → image
-    projector_logic       = optional(map(string), {})    # projector name → image
+    grpc_gateway          = string                    # REST bridge
+    coordinator_aggregate = string                    # Aggregate coordinator
+    coordinator_saga      = string                    # Saga coordinator
+    coordinator_projector = string                    # Projector coordinator
+    coordinator_pm        = string                    # Process manager coordinator
+    logic                 = string                    # Domain business logic
+    upcaster              = optional(string)          # Upcaster (if enabled)
+    saga_logic            = optional(map(string), {}) # saga name → image
+    projector_logic       = optional(map(string), {}) # projector name → image
   })
 }
 

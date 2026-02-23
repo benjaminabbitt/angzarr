@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr-pm.fullname" . }}
+  labels:
+    {{- include "angzarr-pm.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "angzarr-pm.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "angzarr-pm.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr-pm.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Process manager business logic container
+        - name: logic
+          image: {{ .Values.logic.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50054
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "50054"
+            - name: PM_NAME
+              value: {{ .Values.name | quote }}
+            {{- range $key, $value := .Values.logic.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "angzarr-pm.containerSecurityContext" . | nindent 12 }}
+
+        # PM coordinator sidecar
+        - name: coordinator
+          image: {{ .Values.coordinator.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: coordinator
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            # Pod metadata
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Transport
+            - name: ANGZARR__TRANSPORT__TCP__PORT
+              value: {{ .Values.service.port | quote }}
+            # Target (business logic)
+            - name: ANGZARR__TARGET__ADDRESS
+              value: "localhost:50054"
+            - name: ANGZARR__PM__NAME
+              value: {{ .Values.name | quote }}
+            # Subscriptions and targets
+            - name: ANGZARR__PM__SUBSCRIPTIONS
+              value: {{ .Values.subscriptions | join ";" | quote }}
+            - name: ANGZARR__PM__TARGETS
+              value: {{ .Values.targets | join ";" | quote }}
+            {{- range $key, $value := .Values.coordinator.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: coordinator
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: coordinator
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "angzarr-pm.containerSecurityContext" . | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

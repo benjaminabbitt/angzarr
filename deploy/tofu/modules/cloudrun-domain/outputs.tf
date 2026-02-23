@@ -1,4 +1,4 @@
-# Fargate Domain Module - Outputs (Placeholder)
+# Cloud Run Domain Module - Outputs (Placeholder)
 
 output "aggregate_url" {
   description = "URL for the aggregate service"

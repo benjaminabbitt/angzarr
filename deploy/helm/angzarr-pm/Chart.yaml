@@ -1,0 +1,17 @@
+apiVersion: v2
+name: angzarr-pm
+description: Deploy an angzarr process manager
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/benjaminabbitt/angzarr
+sources:
+  - https://github.com/benjaminabbitt/angzarr
+keywords:
+  - cqrs
+  - event-sourcing
+  - process-manager
+  - saga
+  - orchestration
+maintainers:
+  - name: Benjamin Abbitt

@@ -38,22 +38,22 @@ locals {
       })
       env = [for k, v in var.aggregate.env : { name = k, value = v }]
     }
-  ] : (var.process_manager.enabled ? [
-    {
-      name          = "${var.domain}-pm"
-      domain        = var.domain
-      sourceDomains = var.process_manager.source_domains
-      image = {
-        repository = var.images.logic
-        tag        = "latest"
+    ] : (var.process_manager.enabled ? [
+      {
+        name          = "${var.domain}-pm"
+        domain        = var.domain
+        sourceDomains = var.process_manager.source_domains
+        image = {
+          repository = var.images.logic
+          tag        = "latest"
+        }
+        port = 50053
+        resources = try(var.scaling.process_manager.resources, {
+          requests = { cpu = "100m", memory = "128Mi" }
+          limits   = { cpu = "1", memory = "512Mi" }
+        })
+        env = [for k, v in var.process_manager.env : { name = k, value = v }]
       }
-      port = 50053
-      resources = try(var.scaling.process_manager.resources, {
-        requests = { cpu = "100m", memory = "128Mi" }
-        limits   = { cpu = "1", memory = "512Mi" }
-      })
-      env = [for k, v in var.process_manager.env : { name = k, value = v }]
-    }
   ] : [])
 
   # Build applications.sagas list

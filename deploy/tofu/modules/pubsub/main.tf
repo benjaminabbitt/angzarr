@@ -96,7 +96,7 @@ resource "google_pubsub_subscription" "push" {
   topic   = google_pubsub_topic.events.name
   project = var.project_id
   labels = merge(local.labels, {
-    "subscriber" = each.key
+    "subscriber"      = each.key
     "subscriber-type" = lookup(each.value, "type", "saga")
   })
 

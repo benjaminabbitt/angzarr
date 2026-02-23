@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "angzarr-domain.fullname" . }}
+  labels:
+    {{- include "angzarr-domain.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: coordinator
+      protocol: TCP
+      name: grpc
+    {{- if .Values.grpcGateway.enabled }}
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+    {{- end }}
+  selector:
+    {{- include "angzarr-domain.selectorLabels" . | nindent 4 }}

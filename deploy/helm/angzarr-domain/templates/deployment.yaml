@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "angzarr-domain.fullname" . }}
+  labels:
+    {{- include "angzarr-domain.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "angzarr-domain.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "angzarr-domain.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "angzarr-domain.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        # Business logic container
+        - name: logic
+          image: {{ .Values.logic.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: {{ include "angzarr-domain.logicPort" . }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ include "angzarr-domain.logicPort" . | quote }}
+            - name: DOMAIN
+              value: {{ .Values.domain | quote }}
+            {{- range $key, $value := .Values.logic.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "angzarr-domain.containerSecurityContext" . | nindent 12 }}
+
+        # Coordinator sidecar
+        - name: coordinator
+          image: {{ .Values.coordinator.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: coordinator
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            # Pod metadata
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Transport
+            - name: ANGZARR__TRANSPORT__TCP__PORT
+              value: {{ .Values.service.port | quote }}
+            # Target (business logic)
+            - name: ANGZARR__TARGET__ADDRESS
+              value: "localhost:{{ include "angzarr-domain.logicPort" . }}"
+            - name: ANGZARR__TARGET__DOMAIN
+              value: {{ .Values.domain | quote }}
+            {{- if eq .Values.componentType "saga" }}
+            - name: ANGZARR__SAGA__NAME
+              value: {{ .Values.sagaName | quote }}
+            - name: ANGZARR__TARGET__DOMAIN
+              value: {{ .Values.targetDomain | quote }}
+            {{- end }}
+            {{- if eq .Values.componentType "projector" }}
+            - name: ANGZARR__PROJECTOR__NAME
+              value: {{ .Values.projectorName | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.coordinator.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: coordinator
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: coordinator
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "angzarr-domain.containerSecurityContext" . | nindent 12 }}
+
+        {{- if .Values.grpcGateway.enabled }}
+        # gRPC Gateway sidecar (optional)
+        - name: grpc-gateway
+          image: {{ .Values.grpcGateway.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GRPC_TARGET
+              value: "localhost:{{ .Values.service.port }}"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          securityContext:
+            {{- include "angzarr-domain.containerSecurityContext" . | nindent 12 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -182,11 +182,11 @@ resource "google_cloud_run_v2_service" "aggregate" {
 
       dynamic "env" {
         for_each = merge(local.base_coordinator_env, {
-          "PORT"                       = tostring(local.ports.coordinator)
-          "COMPONENT_TYPE"             = "aggregate"
-          "ANGZARR__TARGET__ADDRESS"   = "localhost:${local.ports.logic}"
-          "ANGZARR_UPCASTER_ENABLED"   = tostring(var.aggregate.upcaster.enabled)
-          "ANGZARR_UPCASTER_ADDRESS"   = var.aggregate.upcaster.enabled ? "localhost:${local.ports.upcaster}" : ""
+          "PORT"                     = tostring(local.ports.coordinator)
+          "COMPONENT_TYPE"           = "aggregate"
+          "ANGZARR__TARGET__ADDRESS" = "localhost:${local.ports.logic}"
+          "ANGZARR_UPCASTER_ENABLED" = tostring(var.aggregate.upcaster.enabled)
+          "ANGZARR_UPCASTER_ADDRESS" = var.aggregate.upcaster.enabled ? "localhost:${local.ports.upcaster}" : ""
         })
         content {
           name  = env.key
