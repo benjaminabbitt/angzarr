@@ -1,7 +1,6 @@
 //! EventBus interface step definitions.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,9 +35,6 @@ pub struct EventBusWorld {
 
     /// Last error message.
     last_error: Option<String>,
-
-    /// Event counter for concurrency tests.
-    event_counter: Arc<AtomicUsize>,
 }
 
 /// State for a named subscriber.
@@ -95,21 +91,6 @@ impl EventHandler for FailingHandler {
     }
 }
 
-/// Handler that counts events atomically.
-struct CountingHandler {
-    counter: Arc<AtomicUsize>,
-}
-
-impl EventHandler for CountingHandler {
-    fn handle(&self, _book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
-        let counter = self.counter.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        })
-    }
-}
-
 impl EventBusWorld {
     fn new() -> Self {
         Self {
@@ -119,7 +100,6 @@ impl EventBusWorld {
             published_events: Vec::new(),
             last_publish_success: false,
             last_error: None,
-            event_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -783,7 +763,7 @@ async fn then_projector_receives_subscribed(
 
 #[then(expr = "the {word}-projector does NOT receive {word} events because it did not subscribe")]
 async fn then_projector_does_not_receive(
-    world: &mut EventBusWorld,
+    _world: &mut EventBusWorld,
     _projector: String,
     _domain: String,
 ) {
