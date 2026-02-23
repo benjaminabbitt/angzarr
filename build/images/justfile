@@ -56,18 +56,81 @@ push-languages:
 push LANG:
     podman push {{REGISTRY}}/angzarr-{{LANG}}:latest
 
-# Pull all images from registry
+# Pull all images from registry (tries branch tag, falls back to latest)
 pull-all:
     #!/usr/bin/env bash
     set -e
     for img in base rust go python java csharp cpp; do
         echo "=== Pulling $img image ==="
-        podman pull {{REGISTRY}}/angzarr-$img:latest
+        just pull "$img"
     done
 
-# Pull specific image
+# Pull specific image (tries branch tag, falls back to latest)
 pull IMAGE:
-    podman pull {{REGISTRY}}/angzarr-{{IMAGE}}:latest
+    #!/usr/bin/env bash
+    set -e
+    REGISTRY="{{REGISTRY}}"
+    IMAGE="{{IMAGE}}"
+
+    # Get current branch and sanitize for docker tag
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
+
+    # Try branch-specific tag first (pr-<branch> format from CI)
+    if [ "$BRANCH" != "main" ]; then
+        PR_TAG="pr-$BRANCH_TAG"
+        echo "Trying $REGISTRY/angzarr-$IMAGE:$PR_TAG..."
+        if podman pull "$REGISTRY/angzarr-$IMAGE:$PR_TAG" 2>/dev/null; then
+            echo "Pulled branch-specific image: $PR_TAG"
+            # Tag as latest locally for consistency
+            podman tag "$REGISTRY/angzarr-$IMAGE:$PR_TAG" "$REGISTRY/angzarr-$IMAGE:latest"
+            exit 0
+        fi
+        echo "Branch tag not found, falling back to latest..."
+    fi
+
+    # Fall back to latest
+    podman pull "$REGISTRY/angzarr-$IMAGE:latest"
+
+# Pull core runtime images (tries branch tag, falls back to latest)
+pull-core:
+    #!/usr/bin/env bash
+    set -e
+    for img in aggregate projector saga process-manager log stream topology; do
+        echo "=== Pulling $img image ==="
+        just pull-core-image "$img"
+    done
+
+# Pull specific core image (tries branch tag, falls back to latest)
+pull-core-image IMAGE:
+    #!/usr/bin/env bash
+    set -e
+    REGISTRY="{{REGISTRY}}"
+    IMAGE="{{IMAGE}}"
+
+    # Get current branch and sanitize for docker tag
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    BRANCH_TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
+
+    # Try branch-specific tag first (pr-<branch> format from CI)
+    # Core images have -dev suffix in CI
+    if [ "$BRANCH" != "main" ]; then
+        PR_TAG="pr-$BRANCH_TAG"
+        echo "Trying $REGISTRY/angzarr-$IMAGE-dev:$PR_TAG..."
+        if podman pull "$REGISTRY/angzarr-$IMAGE-dev:$PR_TAG" 2>/dev/null; then
+            echo "Pulled branch-specific image: $PR_TAG"
+            podman tag "$REGISTRY/angzarr-$IMAGE-dev:$PR_TAG" "$REGISTRY/angzarr-$IMAGE:latest"
+            exit 0
+        fi
+        echo "Branch tag not found, falling back to latest..."
+    fi
+
+    # Fall back to latest
+    if podman pull "$REGISTRY/angzarr-$IMAGE-dev:latest" 2>/dev/null; then
+        podman tag "$REGISTRY/angzarr-$IMAGE-dev:latest" "$REGISTRY/angzarr-$IMAGE:latest"
+    else
+        podman pull "$REGISTRY/angzarr-$IMAGE:latest"
+    fi
 
 # List all local angzarr images
 list:
