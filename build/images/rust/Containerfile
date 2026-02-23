@@ -15,6 +15,7 @@ ARG MOLD_VERSION=2.35.1
 # Clang for faster linking with mold, protoc for prost-build, musl for static builds
 # libsasl2-dev for rdkafka SASL authentication support
 # cmake for building native dependencies (rdkafka-sys)
+# libcurl4-openssl-dev for rdkafka HTTP features
 RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     lld \
@@ -23,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     musl-dev \
     libsasl2-dev \
     cmake \
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install mold (fast linker)
