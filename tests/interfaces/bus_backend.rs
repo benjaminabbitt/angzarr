@@ -25,13 +25,13 @@ use angzarr::bus::channel::ChannelEventBus;
 use angzarr::dlq::ChannelDeadLetterPublisher;
 
 #[cfg(feature = "amqp")]
-use angzarr::bus::amqp::AmqpEventBus;
+use angzarr::bus::amqp::{AmqpConfig, AmqpEventBus};
 
 #[cfg(feature = "amqp")]
 use angzarr::dlq::AmqpDeadLetterPublisher;
 
 #[cfg(feature = "kafka")]
-use angzarr::bus::kafka::KafkaEventBus;
+use angzarr::bus::kafka::{KafkaEventBus, KafkaEventBusConfig};
 
 #[cfg(feature = "kafka")]
 use angzarr::dlq::KafkaDeadLetterPublisher;
@@ -40,13 +40,13 @@ use angzarr::dlq::KafkaDeadLetterPublisher;
 use angzarr::bus::nats::NatsEventBus;
 
 #[cfg(feature = "pubsub")]
-use angzarr::bus::pubsub::PubSubEventBus;
+use angzarr::bus::pubsub::{PubSubConfig, PubSubEventBus};
 
 #[cfg(feature = "pubsub")]
 use angzarr::dlq::PubSubDeadLetterPublisher;
 
 #[cfg(feature = "sns-sqs")]
-use angzarr::bus::sns_sqs::SnsSqsEventBus;
+use angzarr::bus::sns_sqs::{SnsSqsConfig, SnsSqsEventBus};
 
 #[cfg(feature = "sns-sqs")]
 use angzarr::dlq::SnsSqsDeadLetterPublisher;
@@ -221,7 +221,7 @@ impl BusContext {
         let host = container.get_host().await.expect("Failed to get host");
         let url = format!("amqp://guest:guest@{}:{}", host, host_port);
 
-        let bus = AmqpEventBus::publisher(&url)
+        let bus = AmqpEventBus::new(AmqpConfig::publisher(&url))
             .await
             .expect("Failed to create AMQP publisher");
 
@@ -234,14 +234,13 @@ impl BusContext {
                 let name = name.to_string();
                 let domain = domain.map(|s| s.to_string());
                 Box::pin(async move {
-                    let subscriber = match domain {
-                        Some(d) => AmqpEventBus::subscriber(&url, &name, &d)
-                            .await
-                            .expect("Failed to create AMQP subscriber"),
-                        None => AmqpEventBus::subscriber_all(&url, &name)
-                            .await
-                            .expect("Failed to create AMQP subscriber"),
+                    let config = match domain {
+                        Some(d) => AmqpConfig::subscriber(&url, &name, &d),
+                        None => AmqpConfig::subscriber_all(&url, &name),
                     };
+                    let subscriber = AmqpEventBus::new(config)
+                        .await
+                        .expect("Failed to create AMQP subscriber");
                     Arc::new(subscriber) as Arc<dyn EventBus>
                 })
             }),
@@ -292,7 +291,8 @@ impl BusContext {
 
         let bootstrap_servers = format!("localhost:{}", kafka_port);
 
-        let bus = KafkaEventBus::publisher(&bootstrap_servers, "test")
+        let bus = KafkaEventBus::new(KafkaEventBusConfig::publisher(&bootstrap_servers))
+            .await
             .expect("Failed to create Kafka publisher");
 
         let bootstrap_clone = bootstrap_servers.clone();
@@ -304,12 +304,13 @@ impl BusContext {
                 let name = name.to_string();
                 let domain = domain.map(|s| s.to_string());
                 Box::pin(async move {
-                    let subscriber = match domain {
-                        Some(d) => KafkaEventBus::subscriber(&bootstrap, "test", &name, vec![d])
-                            .expect("Failed to create Kafka subscriber"),
-                        None => KafkaEventBus::subscriber_all(&bootstrap, "test", &name)
-                            .expect("Failed to create Kafka subscriber"),
+                    let config = match domain {
+                        Some(d) => KafkaEventBusConfig::subscriber(&bootstrap, &name, vec![d]),
+                        None => KafkaEventBusConfig::subscriber_all(&bootstrap, &name),
                     };
+                    let subscriber = KafkaEventBus::new(config)
+                        .await
+                        .expect("Failed to create Kafka subscriber");
                     Arc::new(subscriber) as Arc<dyn EventBus>
                 })
             }),
@@ -425,26 +426,29 @@ impl BusContext {
         // Set emulator environment variable
         std::env::set_var("PUBSUB_EMULATOR_HOST", &format!("{}:{}", host, host_port));
 
-        let bus = PubSubEventBus::new("test-project", "test")
+        let config = PubSubConfig::publisher("test-project").with_topic_prefix("test");
+        let bus = PubSubEventBus::new(config)
             .await
             .expect("Failed to create Pub/Sub bus");
 
-        let endpoint_clone = endpoint.clone();
+        let _endpoint_clone = endpoint.clone();
 
         BusContext {
             publisher: Arc::new(bus),
             subscriber_factory: Box::new(move |name, domain| {
-                let _endpoint = endpoint_clone.clone();
                 let name = name.to_string();
                 let domain = domain.map(|s| s.to_string());
                 Box::pin(async move {
-                    let bus = PubSubEventBus::new("test-project", "test")
+                    let config = match domain {
+                        Some(d) => PubSubConfig::subscriber("test-project", &name, vec![d])
+                            .with_topic_prefix("test"),
+                        None => PubSubConfig::subscriber_all("test-project", &name)
+                            .with_topic_prefix("test"),
+                    };
+                    let subscriber = PubSubEventBus::new(config)
                         .await
-                        .expect("Failed to create Pub/Sub bus");
-                    let domain_ref = domain.as_deref();
-                    bus.create_subscriber(&name, domain_ref)
-                        .await
-                        .expect("Failed to create subscriber")
+                        .expect("Failed to create Pub/Sub subscriber");
+                    Arc::new(subscriber) as Arc<dyn EventBus>
                 })
             }),
             container: BusContainerHandle::PubSub(container),
@@ -485,7 +489,11 @@ impl BusContext {
         std::env::set_var("AWS_ACCESS_KEY_ID", "test");
         std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
 
-        let bus = SnsSqsEventBus::new(Some("us-east-1"), Some(&endpoint), "test")
+        let config = SnsSqsConfig::publisher()
+            .with_region("us-east-1")
+            .with_endpoint(&endpoint)
+            .with_topic_prefix("test");
+        let bus = SnsSqsEventBus::new(config)
             .await
             .expect("Failed to create SNS/SQS bus");
 
@@ -498,13 +506,20 @@ impl BusContext {
                 let name = name.to_string();
                 let domain = domain.map(|s| s.to_string());
                 Box::pin(async move {
-                    let bus = SnsSqsEventBus::new(Some("us-east-1"), Some(&endpoint), "test")
+                    let config = match domain {
+                        Some(d) => SnsSqsConfig::subscriber(&name, vec![d])
+                            .with_region("us-east-1")
+                            .with_endpoint(&endpoint)
+                            .with_topic_prefix("test"),
+                        None => SnsSqsConfig::subscriber_all(&name)
+                            .with_region("us-east-1")
+                            .with_endpoint(&endpoint)
+                            .with_topic_prefix("test"),
+                    };
+                    let subscriber = SnsSqsEventBus::new(config)
                         .await
-                        .expect("Failed to create SNS/SQS bus");
-                    let domain_ref = domain.as_deref();
-                    bus.create_subscriber(&name, domain_ref)
-                        .await
-                        .expect("Failed to create subscriber")
+                        .expect("Failed to create SNS/SQS subscriber");
+                    Arc::new(subscriber) as Arc<dyn EventBus>
                 })
             }),
             container: BusContainerHandle::SnsSqs(container),
