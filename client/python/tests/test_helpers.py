@@ -25,6 +25,8 @@ from angzarr_client.helpers import (
     cover_of,
     # Event decoding
     decode_event,
+    # Saga helpers
+    destination_map,
     divergence_for,
     domain,
     edition,
@@ -404,6 +406,65 @@ class TestEventBookHelpers:
     def test_event_pages_none_returns_empty(self) -> None:
         """event_pages returns empty list for None."""
         assert event_pages(None) == []
+
+
+class TestDestinationMap:
+    """Tests for destination_map function."""
+
+    def test_builds_map_from_destinations(self) -> None:
+        """destination_map builds hex-keyed map from EventBook list."""
+        uuid1 = PyUUID("11111111-1111-1111-1111-111111111111")
+        uuid2 = PyUUID("22222222-2222-2222-2222-222222222222")
+
+        book1 = EventBook(next_sequence=5)
+        book1.cover.domain = "player"
+        book1.cover.root.CopyFrom(uuid_to_proto(uuid1))
+
+        book2 = EventBook(next_sequence=10)
+        book2.cover.domain = "player"
+        book2.cover.root.CopyFrom(uuid_to_proto(uuid2))
+
+        result = destination_map([book1, book2])
+
+        assert len(result) == 2
+        assert result[uuid1.bytes.hex()] is book1
+        assert result[uuid2.bytes.hex()] is book2
+
+    def test_empty_list_returns_empty_map(self) -> None:
+        """destination_map returns empty dict for empty list."""
+        assert destination_map([]) == {}
+
+    def test_skips_entries_without_root(self) -> None:
+        """destination_map skips EventBooks without root set."""
+        uuid1 = PyUUID("11111111-1111-1111-1111-111111111111")
+
+        book_with_root = EventBook(next_sequence=5)
+        book_with_root.cover.domain = "player"
+        book_with_root.cover.root.CopyFrom(uuid_to_proto(uuid1))
+
+        book_without_root = EventBook(next_sequence=10)
+        book_without_root.cover.domain = "player"
+        # No root set
+
+        result = destination_map([book_with_root, book_without_root])
+
+        assert len(result) == 1
+        assert uuid1.bytes.hex() in result
+
+    def test_works_with_next_sequence_lookup(self) -> None:
+        """destination_map integrates with next_sequence for lookups."""
+        uuid1 = PyUUID("11111111-1111-1111-1111-111111111111")
+
+        book = EventBook(next_sequence=42)
+        book.cover.domain = "player"
+        book.cover.root.CopyFrom(uuid_to_proto(uuid1))
+
+        dest_map = destination_map([book])
+        key = uuid1.bytes.hex()
+
+        # Pattern used in sagas: next_sequence(dest_map.get(key))
+        assert next_sequence(dest_map.get(key)) == 42
+        assert next_sequence(dest_map.get("nonexistent")) == 0
 
 
 class TestCommandBookHelpers:

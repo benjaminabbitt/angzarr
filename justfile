@@ -25,6 +25,7 @@ REGISTRY := "ghcr.io/angzarr-io"
 mod client "client/justfile"
 mod examples "examples/justfile"
 mod images "build/images/justfile"
+mod kind "deploy/kind/justfile"
 mod tofu "deploy/tofu/justfile"
 
 # Build the devcontainer image
@@ -294,21 +295,24 @@ watch:
 
 # === K8s Cluster ===
 
-# Create Kind cluster with local registry
+# Create Kind cluster
 cluster-create:
-    uv run "{{TOP}}/scripts/kind-with-registry.py"
+    #!/usr/bin/env bash
+    if kind get clusters 2>/dev/null | grep -q "^angzarr$"; then
+        echo "Cluster 'angzarr' already exists"
+    else
+        kind create cluster --config "{{TOP}}/kind-config.yaml" --name angzarr
+    fi
 
 # Show cluster status
 cluster-status:
-    uv run "{{TOP}}/scripts/kind-with-registry.py" status
+    @kubectl cluster-info --context kind-angzarr 2>/dev/null || echo "Cluster not running"
+    @echo ""
+    @kubectl get nodes -o wide 2>/dev/null || true
 
 # Delete Kind cluster
 cluster-delete:
-    uv run "{{TOP}}/scripts/kind-with-registry.py" delete
-
-# Delete Kind cluster and registry
-cluster-delete-all:
-    uv run "{{TOP}}/scripts/kind-with-registry.py" delete-all
+    kind delete cluster --name angzarr
 
 # === Port Forwarding ===
 
