@@ -80,3 +80,9 @@ pre-commit:
     helm-lint:
       glob: "deploy/helm/**"
       run: helm lint deploy/helm/angzarr
+
+    # OpenTofu
+    tofu-fmt:
+      glob: "deploy/tofu/**/*.tf"
+      run: tofu fmt -recursive deploy/tofu/
+      stage_fixed: true
