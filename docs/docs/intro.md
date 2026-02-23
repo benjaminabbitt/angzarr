@@ -5,7 +5,7 @@ slug: /
 
 # Introduction
 
-**⍼ Angzarr** is a polyglot CQRS/Event Sourcing framework. You write business logic in your preferred language—Python, Go, Rust, Java, C#, or C++—while the framework handles event persistence, saga coordination, projection management, and all the infrastructure complexity that typically derails CQRS/ES projects.
+**⍼ Angzarr** is a polyglot CQRS/Event Sourcing framework. You write business logic in any language with [gRPC support](https://grpc.io/docs/languages/)—the framework handles event persistence, saga coordination, projection management, and all the infrastructure complexity that typically derails CQRS/ES projects.
 
 The symbol ⍼ (U+237C, "angzarr") has existed in Unicode since 2002 without a defined purpose. The right angle represents the origin point—your event store. The zigzag arrow represents events cascading through your system. We gave it meaning.
 
@@ -136,7 +136,7 @@ Each component type runs in its own pod with an ⍼ Angzarr sidecar. Your code h
 
 If you're evaluating Angzarr for your organization:
 
-- **[PITCH.md](https://github.com/benjaminabbitt/angzarr/blob/main/PITCH.md)** — Complete architectural pitch (standalone document)
+- **[Technical Pitch](/pitch)** — Complete architectural pitch with detailed rationale
 - **[Architecture](./architecture)** — Core concepts: data model, coordinators, sync modes
 - **[Why Poker](./examples/why-poker)** — Why our example domain exercises every pattern
 
@@ -154,9 +154,9 @@ Ready to build:
 
 ## Language Support
 
-**Any language with gRPC support works.** Your business logic communicates with ⍼ Angzarr coordinators via gRPC—if your language can generate code from `.proto` files and make gRPC calls, you can use it. The framework doesn't care what's behind the gRPC endpoint.
+**Any language with gRPC support works.** Your business logic communicates with ⍼ Angzarr coordinators via gRPC—the framework doesn't care what's behind the endpoint. If your language appears on the [gRPC supported languages matrix](https://grpc.io/docs/languages/), you can use it with Angzarr. This includes C#, C++, Dart, Go, Java, Kotlin, Node.js, Objective-C, PHP, Python, Ruby, Rust, and more.
 
-**Client libraries simplify integration.** For six languages, we provide client libraries that handle protobuf packing/unpacking, state reconstruction, router registration, and other boilerplate:
+**Client libraries are optional and minimal.** For six languages (the top TIOBE languages), we provide thin client libraries that reduce boilerplate—protobuf packing/unpacking, state reconstruction, router registration. These libraries are intentionally kept lightweight; the real contract is just gRPC + protobuf. You can always work directly with the proto bindings if you prefer:
 
 | Language | Client Library | Example |
 |----------|----------------|---------|

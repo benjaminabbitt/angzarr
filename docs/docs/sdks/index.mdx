@@ -9,7 +9,13 @@ import TabItem from '@theme/TabItem';
 
 Angzarr provides client libraries for multiple languages, enabling polyglot teams to build event-sourced applications using their preferred language.
 
+:::tip Client Libraries Are Optional
+**Any language with gRPC support can integrate with Angzarr** using the proto bindings alone — the client libraries simply reduce boilerplate. If your language isn't listed below, you can generate gRPC stubs from the [proto definitions](https://github.com/benjaminabbitt/angzarr/tree/main/proto) and interact with Angzarr directly.
+:::
+
 ## Supported Languages
+
+Client libraries are provided for the top TIOBE languages. Additional languages (Ruby, Kotlin, TypeScript, etc.) can be added as demand materializes — the libraries are intentionally lightweight, so adding new language support is straightforward.
 
 | Language | Package | Status |
 |----------|---------|--------|
