@@ -19,27 +19,36 @@ variable "compute" {
       namespace    = "angzarr"
 
     For Cloud Run:
-      compute_type = "cloudrun"
-      project_id   = "my-project"
-      region       = "us-central1"
+      compute_type    = "cloudrun"
+      project_id      = "my-project"
+      region          = "us-central1"
+      service_account = "sa@project.iam.gserviceaccount.com" (optional)
 
     For Fargate:
-      compute_type = "fargate"
-      cluster_arn  = "arn:aws:ecs:..."
-      vpc_id       = "vpc-..."
-      subnet_ids   = ["subnet-...", ...]
+      compute_type       = "fargate"
+      cluster_arn        = "arn:aws:ecs:..."
+      vpc_id             = "vpc-..."
+      subnet_ids         = ["subnet-...", ...]
+      region             = "us-east-1"
+      execution_role_arn = "arn:aws:iam::..."
+      log_group          = "/ecs/angzarr"
   EOT
   type = object({
     compute_type = string
     # K8s-specific
     namespace = optional(string, "angzarr")
     # GCP-specific
-    project_id = optional(string)
-    region     = optional(string)
+    project_id      = optional(string)
+    service_account = optional(string)
     # AWS-specific
-    cluster_arn = optional(string)
-    vpc_id      = optional(string)
-    subnet_ids  = optional(list(string))
+    cluster_arn        = optional(string)
+    vpc_id             = optional(string)
+    subnet_ids         = optional(list(string))
+    execution_role_arn = optional(string)
+    task_role_arn      = optional(string)
+    log_group          = optional(string)
+    # Shared
+    region = optional(string)
   })
 
   validation {

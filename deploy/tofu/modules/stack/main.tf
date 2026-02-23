@@ -86,6 +86,7 @@ module "cloudrun_domain" {
 
   coordinator_images = var.coordinator_images
   labels             = local.common_labels
+  service_account    = var.compute.service_account
 }
 
 module "cloudrun_pm" {
@@ -106,6 +107,7 @@ module "cloudrun_pm" {
 
   coordinator_images = var.coordinator_images
   labels             = local.common_labels
+  service_account    = var.compute.service_account
 }
 
 #------------------------------------------------------------------------------
@@ -120,6 +122,7 @@ module "fargate_domain" {
   cluster_arn = var.compute.cluster_arn
   vpc_id      = var.compute.vpc_id
   subnet_ids  = var.compute.subnet_ids
+  region      = var.compute.region
 
   aggregate  = each.value.aggregate
   sagas      = each.value.sagas
@@ -130,6 +133,9 @@ module "fargate_domain" {
 
   coordinator_images = var.coordinator_images
   labels             = local.common_labels
+  execution_role_arn = var.compute.execution_role_arn
+  task_role_arn      = var.compute.task_role_arn
+  log_group          = var.compute.log_group
 }
 
 module "fargate_pm" {
@@ -140,6 +146,7 @@ module "fargate_pm" {
   cluster_arn = var.compute.cluster_arn
   vpc_id      = var.compute.vpc_id
   subnet_ids  = var.compute.subnet_ids
+  region      = var.compute.region
 
   image         = each.value.image
   subscriptions = each.value.subscriptions
@@ -151,4 +158,7 @@ module "fargate_pm" {
 
   coordinator_images = var.coordinator_images
   labels             = local.common_labels
+  execution_role_arn = var.compute.execution_role_arn
+  task_role_arn      = var.compute.task_role_arn
+  log_group          = var.compute.log_group
 }

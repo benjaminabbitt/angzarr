@@ -1,4 +1,4 @@
-# Cloud Run PM Module - Variables (Placeholder)
+# Cloud Run PM Module - Variables
 
 variable "name" {
   description = "Process manager name"
@@ -31,28 +31,93 @@ variable "targets" {
 }
 
 variable "env" {
-  description = "Environment variables"
+  description = "Environment variables for business logic"
   type        = map(string)
   default     = {}
 }
 
 variable "storage" {
-  description = "Storage configuration"
-  type        = any
+  description = "Resolved storage configuration"
+  type = object({
+    event_store = object({
+      connection_uri = string
+      provides = object({
+        capabilities  = set(string)
+        rust_features = set(string)
+      })
+    })
+    position_store = object({
+      connection_uri = string
+      provides = object({
+        capabilities  = set(string)
+        rust_features = set(string)
+      })
+    })
+    snapshot_store = optional(object({
+      connection_uri = string
+      provides = object({
+        capabilities  = set(string)
+        rust_features = set(string)
+      })
+    }))
+  })
 }
 
 variable "bus" {
-  description = "Bus configuration"
-  type        = any
+  description = "Event bus configuration"
+  type = object({
+    type           = string
+    connection_uri = string
+    provides = object({
+      capabilities  = set(string)
+      rust_features = set(string)
+    })
+  })
 }
 
 variable "coordinator_images" {
-  description = "Coordinator images"
-  type        = any
+  description = "Coordinator container images"
+  type = object({
+    aggregate    = string
+    saga         = string
+    projector    = string
+    pm           = string
+    grpc_gateway = optional(string)
+  })
 }
 
 variable "labels" {
-  description = "Labels"
+  description = "Labels to apply to resources"
   type        = map(string)
   default     = {}
+}
+
+variable "service_account" {
+  description = "Service account email for Cloud Run service"
+  type        = string
+  default     = null
+}
+
+variable "resources" {
+  description = "Resource limits for containers"
+  type = object({
+    coordinator = optional(object({
+      cpu    = optional(string, "1")
+      memory = optional(string, "512Mi")
+    }), {})
+    logic = optional(object({
+      cpu    = optional(string, "1")
+      memory = optional(string, "512Mi")
+    }), {})
+  })
+  default = {}
+}
+
+variable "scaling" {
+  description = "Scaling configuration"
+  type = object({
+    min_instances = optional(number, 0)
+    max_instances = optional(number, 10)
+  })
+  default = {}
 }

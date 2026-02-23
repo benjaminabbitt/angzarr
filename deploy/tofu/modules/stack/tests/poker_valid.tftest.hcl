@@ -1,6 +1,10 @@
 # Valid Poker Stack Test
 # Tests a correctly configured poker domain topology
 
+# Mock providers to avoid needing real cloud credentials
+mock_provider "aws" {}
+mock_provider "google" {}
+
 variables {
   name = "poker"
 

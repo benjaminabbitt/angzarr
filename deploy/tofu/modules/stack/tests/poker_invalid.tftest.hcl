@@ -1,6 +1,10 @@
 # Invalid Poker Stack Tests
 # Tests that validation correctly catches misconfigurations
 
+# Mock providers to avoid needing real cloud credentials
+mock_provider "aws" {}
+mock_provider "google" {}
+
 # Common variables for all tests
 variables {
   name = "poker-invalid"

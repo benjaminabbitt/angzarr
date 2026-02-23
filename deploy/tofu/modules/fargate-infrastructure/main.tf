@@ -196,9 +196,7 @@ resource "aws_service_discovery_service" "stream" {
     routing_policy = "MULTIVALUE"
   }
 
-  health_check_custom_config {
-    failure_threshold = 1
-  }
+  health_check_custom_config {}
 
   tags = merge(local.tags, { "angzarr-component" = "stream" })
 }
@@ -304,9 +302,7 @@ resource "aws_service_discovery_service" "topology" {
     routing_policy = "MULTIVALUE"
   }
 
-  health_check_custom_config {
-    failure_threshold = 1
-  }
+  health_check_custom_config {}
 
   tags = merge(local.tags, { "angzarr-component" = "topology" })
 }
