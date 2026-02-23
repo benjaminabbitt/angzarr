@@ -619,7 +619,7 @@ jobs:
           key: ${{ runner.os }}-cargo-interface-${{ matrix.name }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run interface tests (${{ matrix.name }} bus)
-        run: cargo test --test interfaces --features ${{ matrix.features }} -- --nocapture
+        run: cargo test --test interfaces --features ${{ matrix.features }}
         env:
           BUS_BACKEND: ${{ matrix.bus_backend }}
 
