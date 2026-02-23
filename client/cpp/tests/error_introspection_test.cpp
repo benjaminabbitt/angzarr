@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include "angzarr/errors.hpp"
 
 using namespace angzarr;
@@ -21,7 +22,8 @@ TEST(ErrorIntrospectionTest, GrpcError_WithOtherCode_ShouldReturnFalseForIsNotFo
 // IsPreconditionFailed Tests
 // =============================================================================
 
-TEST(ErrorIntrospectionTest, GrpcError_WithFailedPrecondition_ShouldReturnTrueForIsPreconditionFailed) {
+TEST(ErrorIntrospectionTest,
+     GrpcError_WithFailedPrecondition_ShouldReturnTrueForIsPreconditionFailed) {
     GrpcError error("precondition failed", grpc::StatusCode::FAILED_PRECONDITION);
     EXPECT_TRUE(error.is_precondition_failed());
 }

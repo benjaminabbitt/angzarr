@@ -7,16 +7,15 @@
 
 #include "angzarr/client.hpp"
 #include "angzarr/proto/angzarr/types.pb.h"
-#include "angzarr/proto/examples/table.pb.h"
 #include "angzarr/proto/examples/player.pb.h"
+#include "angzarr/proto/examples/table.pb.h"
 
 using namespace angzarr;
 using namespace angzarr::proto::angzarr;
 using namespace angzarr::proto::examples;
 
 // docs:start:saga_splitter
-std::vector<CommandBook> handle_table_settled(
-    const TableSettled& event, const SagaContext& ctx) {
+std::vector<CommandBook> handle_table_settled(const TableSettled& event, const SagaContext& ctx) {
     // Split one event into commands for multiple player aggregates
     std::vector<CommandBook> commands;
 
@@ -39,6 +38,6 @@ std::vector<CommandBook> handle_table_settled(
         commands.push_back(book);
     }
 
-    return commands; // One CommandBook per player
+    return commands;  // One CommandBook per player
 }
 // docs:end:saga_splitter

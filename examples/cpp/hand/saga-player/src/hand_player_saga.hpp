@@ -17,9 +17,8 @@ angzarr::EventRouter create_hand_player_router();
 std::vector<angzarr::Cover> prepare_pot_awarded(const examples::PotAwarded& event);
 
 /// Handle PotAwarded: produce DepositFunds commands for each winner.
-angzarr::CommandBook handle_pot_awarded(
-    const examples::PotAwarded& event,
-    const std::vector<angzarr::EventBook>& destinations);
+angzarr::CommandBook handle_pot_awarded(const examples::PotAwarded& event,
+                                        const std::vector<angzarr::EventBook>& destinations);
 
-} // namespace saga
-} // namespace hand
+}  // namespace saga
+}  // namespace hand

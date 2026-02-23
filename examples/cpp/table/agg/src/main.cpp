@@ -1,21 +1,22 @@
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/timestamp.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
-#include <google/protobuf/timestamp.pb.h>
 
-#include "table_state.hpp"
 #include "../handlers/create_handler.hpp"
+#include "../handlers/end_hand_handler.hpp"
 #include "../handlers/join_handler.hpp"
 #include "../handlers/leave_handler.hpp"
 #include "../handlers/start_hand_handler.hpp"
-#include "../handlers/end_hand_handler.hpp"
-#include "angzarr/command_router.hpp"
 #include "angzarr/aggregate.grpc.pb.h"
+#include "angzarr/command_router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/table.pb.h"
+#include "table_state.hpp"
 
 namespace {
 
@@ -24,7 +25,8 @@ constexpr const char* TABLE_DOMAIN = "table";
 
 /// Create the table aggregate command router (functional style).
 angzarr::CommandRouter<table::TableState> create_router() {
-    return angzarr::CommandRouter<table::TableState>(TABLE_DOMAIN, table::TableState::from_event_book)
+    return angzarr::CommandRouter<table::TableState>(TABLE_DOMAIN,
+                                                     table::TableState::from_event_book)
         .on<examples::CreateTable, examples::TableCreated>(table::handlers::handle_create)
         .on<examples::JoinTable, examples::PlayerJoined>(table::handlers::handle_join)
         .on<examples::LeaveTable, examples::PlayerLeft>(table::handlers::handle_leave)
@@ -34,15 +36,12 @@ angzarr::CommandRouter<table::TableState> create_router() {
 
 /// gRPC service implementation for table aggregate.
 class TableAggregateService final : public angzarr::AggregateService::Service {
-public:
+   public:
     explicit TableAggregateService(angzarr::CommandRouter<table::TableState> router)
         : router_(std::move(router)) {}
 
-    grpc::Status Handle(
-        grpc::ServerContext* context,
-        const angzarr::ContextualCommand* request,
-        angzarr::BusinessResponse* response) override {
-
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::ContextualCommand* request,
+                        angzarr::BusinessResponse* response) override {
         try {
             const auto& command_book = request->command();
             const auto& event_book = request->events();
@@ -93,7 +92,7 @@ public:
                 page->mutable_event()->PackFrom(event);
             } else {
                 return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                    "Unknown command type: " + type_url);
+                                    "Unknown command type: " + type_url);
             }
 
             return grpc::Status::OK;
@@ -104,11 +103,8 @@ public:
         }
     }
 
-    grpc::Status Replay(
-        grpc::ServerContext* context,
-        const angzarr::ReplayRequest* request,
-        angzarr::ReplayResponse* response) override {
-
+    grpc::Status Replay(grpc::ServerContext* context, const angzarr::ReplayRequest* request,
+                        angzarr::ReplayResponse* response) override {
         angzarr::EventBook event_book;
         *event_book.mutable_pages() = {request->events().begin(), request->events().end()};
 
@@ -132,11 +128,11 @@ public:
         return grpc::Status::OK;
     }
 
-private:
+   private:
     angzarr::CommandRouter<table::TableState> router_;
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

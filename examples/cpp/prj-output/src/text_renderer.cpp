@@ -1,6 +1,7 @@
 #include "text_renderer.hpp"
-#include <sstream>
+
 #include <iomanip>
+#include <sstream>
 
 namespace projector {
 
@@ -30,20 +31,36 @@ std::string TextRenderer::get_player_name(const std::string& player_root) const 
 
 std::string TextRenderer::render_card(const examples::Card& card) {
     std::string rank;
-    if (card.rank() == 14) rank = "A";
-    else if (card.rank() == 13) rank = "K";
-    else if (card.rank() == 12) rank = "Q";
-    else if (card.rank() == 11) rank = "J";
-    else if (card.rank() == 10) rank = "T";
-    else rank = std::to_string(card.rank());
+    if (card.rank() == 14)
+        rank = "A";
+    else if (card.rank() == 13)
+        rank = "K";
+    else if (card.rank() == 12)
+        rank = "Q";
+    else if (card.rank() == 11)
+        rank = "J";
+    else if (card.rank() == 10)
+        rank = "T";
+    else
+        rank = std::to_string(card.rank());
 
     std::string suit;
     switch (card.suit()) {
-        case examples::SPADES: suit = "♠"; break;
-        case examples::HEARTS: suit = "♥"; break;
-        case examples::DIAMONDS: suit = "♦"; break;
-        case examples::CLUBS: suit = "♣"; break;
-        default: suit = "?"; break;
+        case examples::SPADES:
+            suit = "♠";
+            break;
+        case examples::HEARTS:
+            suit = "♥";
+            break;
+        case examples::DIAMONDS:
+            suit = "♦";
+            break;
+        case examples::CLUBS:
+            suit = "♣";
+            break;
+        default:
+            suit = "?";
+            break;
     }
 
     return rank + suit;
@@ -51,13 +68,20 @@ std::string TextRenderer::render_card(const examples::Card& card) {
 
 std::string TextRenderer::render_action(examples::ActionType action) {
     switch (action) {
-        case examples::FOLD: return "folds";
-        case examples::CHECK: return "checks";
-        case examples::CALL: return "calls";
-        case examples::BET: return "bets";
-        case examples::RAISE: return "raises";
-        case examples::ALL_IN: return "all-in";
-        default: return "unknown";
+        case examples::FOLD:
+            return "folds";
+        case examples::CHECK:
+            return "checks";
+        case examples::CALL:
+            return "calls";
+        case examples::BET:
+            return "bets";
+        case examples::RAISE:
+            return "raises";
+        case examples::ALL_IN:
+            return "all-in";
+        default:
+            return "unknown";
     }
 }
 
@@ -98,23 +122,22 @@ std::string TextRenderer::render_funds_released(const examples::FundsReleased& e
 
 std::string TextRenderer::render_table_created(const examples::TableCreated& event) {
     std::stringstream ss;
-    ss << "Table '" << event.table_name() << "' created - "
-       << event.small_blind() << "/" << event.big_blind() << " blinds, "
+    ss << "Table '" << event.table_name() << "' created - " << event.small_blind() << "/"
+       << event.big_blind() << " blinds, "
        << "max " << event.max_players() << " players";
     return ss.str();
 }
 
 std::string TextRenderer::render_player_joined(const examples::PlayerJoined& event) {
     std::stringstream ss;
-    ss << get_player_name(event.player_root()) << " joined at seat "
-       << event.seat_position() << " with " << event.stack();
+    ss << get_player_name(event.player_root()) << " joined at seat " << event.seat_position()
+       << " with " << event.stack();
     return ss.str();
 }
 
 std::string TextRenderer::render_player_left(const examples::PlayerLeft& event) {
     std::stringstream ss;
-    ss << get_player_name(event.player_root()) << " left with "
-       << event.chips_cashed_out();
+    ss << get_player_name(event.player_root()) << " left with " << event.chips_cashed_out();
     return ss.str();
 }
 
@@ -138,15 +161,14 @@ std::string TextRenderer::render_cards_dealt(const examples::CardsDealt& event) 
 
 std::string TextRenderer::render_blind_posted(const examples::BlindPosted& event) {
     std::stringstream ss;
-    ss << get_player_name(event.player_root()) << " posts "
-       << event.blind_type() << " blind: " << event.amount();
+    ss << get_player_name(event.player_root()) << " posts " << event.blind_type()
+       << " blind: " << event.amount();
     return ss.str();
 }
 
 std::string TextRenderer::render_action_taken(const examples::ActionTaken& event) {
     std::stringstream ss;
-    ss << get_player_name(event.player_root()) << " "
-       << render_action(event.action());
+    ss << get_player_name(event.player_root()) << " " << render_action(event.action());
     if (event.amount() > 0) {
         ss << " " << event.amount();
     }
@@ -157,10 +179,18 @@ std::string TextRenderer::render_community_cards_dealt(const examples::Community
     std::stringstream ss;
     ss << "*** ";
     switch (event.phase()) {
-        case examples::FLOP: ss << "FLOP"; break;
-        case examples::TURN: ss << "TURN"; break;
-        case examples::RIVER: ss << "RIVER"; break;
-        default: ss << "COMMUNITY"; break;
+        case examples::FLOP:
+            ss << "FLOP";
+            break;
+        case examples::TURN:
+            ss << "TURN";
+            break;
+        case examples::RIVER:
+            ss << "RIVER";
+            break;
+        default:
+            ss << "COMMUNITY";
+            break;
     }
     ss << " *** [";
     bool first = true;
@@ -177,8 +207,7 @@ std::string TextRenderer::render_pot_awarded(const examples::PotAwarded& event) 
     std::stringstream ss;
     ss << "*** POT AWARDED ***\n";
     for (const auto& winner : event.winners()) {
-        ss << get_player_name(winner.player_root()) << " wins "
-           << winner.amount() << "\n";
+        ss << get_player_name(winner.player_root()) << " wins " << winner.amount() << "\n";
     }
     return ss.str();
 }
@@ -188,10 +217,9 @@ std::string TextRenderer::render_hand_complete(const examples::HandComplete& eve
     ss << "=== Hand Complete ===\n";
     ss << "Final stacks:\n";
     for (const auto& stack : event.final_stacks()) {
-        ss << "  " << get_player_name(stack.player_root()) << ": "
-           << stack.stack() << "\n";
+        ss << "  " << get_player_name(stack.player_root()) << ": " << stack.stack() << "\n";
     }
     return ss.str();
 }
 
-} // namespace projector
+}  // namespace projector

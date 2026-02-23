@@ -1,14 +1,14 @@
 #pragma once
 
-#include "player_state.hpp"
 #include "angzarr/aggregate.hpp"
 #include "examples/player.pb.h"
+#include "player_state.hpp"
 
 namespace player {
 
 /// Player aggregate - OO style using CRTP pattern.
 class Player : public angzarr::Aggregate<Player, PlayerState> {
-public:
+   public:
     static constexpr const char* DOMAIN = "player";
 
     Player();
@@ -39,4 +39,4 @@ public:
     examples::FundsTransferred handle_transfer(const examples::TransferFunds& cmd);
 };
 
-} // namespace player
+}  // namespace player

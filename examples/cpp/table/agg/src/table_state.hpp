@@ -1,11 +1,13 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <string>
 #include <unordered_map>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
-#include "examples/table.pb.h"
 #include "examples/poker_types.pb.h"
+#include "examples/table.pb.h"
 
 namespace table {
 
@@ -47,4 +49,4 @@ struct TableState {
     static void apply_event(TableState& state, const google::protobuf::Any& event_any);
 };
 
-} // namespace table
+}  // namespace table

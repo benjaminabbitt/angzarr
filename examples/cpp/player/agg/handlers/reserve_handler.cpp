@@ -1,8 +1,10 @@
 #include "reserve_handler.hpp"
-#include "angzarr/errors.hpp"
+
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+
+#include "angzarr/errors.hpp"
 
 namespace player {
 namespace handlers {
@@ -15,9 +17,10 @@ std::string bytes_to_hex(const std::string& bytes) {
     }
     return ss.str();
 }
-} // anonymous namespace
+}  // anonymous namespace
 
-examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd, const PlayerState& state) {
+examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd,
+                                       const PlayerState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::precondition_failed("Player does not exist");
@@ -31,7 +34,8 @@ examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd, const 
 
     std::string table_key = bytes_to_hex(cmd.table_root());
     if (state.table_reservations.count(table_key) > 0) {
-        throw angzarr::CommandRejectedError::precondition_failed("Funds already reserved for this table");
+        throw angzarr::CommandRejectedError::precondition_failed(
+            "Funds already reserved for this table");
     }
     if (amount > state.available_balance()) {
         throw angzarr::CommandRejectedError::precondition_failed("Insufficient funds");
@@ -56,5 +60,5 @@ examples::FundsReserved handle_reserve(const examples::ReserveFunds& cmd, const 
     return event;
 }
 
-} // namespace handlers
-} // namespace player
+}  // namespace handlers
+}  // namespace player

@@ -1,16 +1,18 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
+
 #include "angzarr/aggregate.pb.h"
-#include "helpers.hpp"
-#include "errors.hpp"
-#include "router.hpp"
+#include "angzarr/types.pb.h"
 #include "descriptor.hpp"
+#include "errors.hpp"
+#include "helpers.hpp"
+#include "router.hpp"
 
 namespace angzarr {
 
@@ -37,11 +39,12 @@ namespace angzarr {
  *       PlayerState create_empty_state() override { return PlayerState{}; }
  *   };
  */
-template<typename StateT>
+template <typename StateT>
 class Aggregate {
-public:
+   public:
     using State = StateT;
-    using CommandDispatcher = std::function<EventBook(Aggregate*, const google::protobuf::Any&, int)>;
+    using CommandDispatcher =
+        std::function<EventBook(Aggregate*, const google::protobuf::Any&, int)>;
     using EventApplier = std::function<void(Aggregate*, StateT&, const google::protobuf::Any&)>;
     using RejectionHandler = std::function<EventBook(Aggregate*, const Notification&, StateT&)>;
 
@@ -119,7 +122,7 @@ public:
      */
     StateT& mutable_state() { return state_; }
 
-protected:
+   protected:
     /**
      * Create an empty state instance.
      */
@@ -146,7 +149,7 @@ protected:
         rejection_handlers()[key] = std::move(handler);
     }
 
-private:
+   private:
     void rebuild_state(const EventBook* event_book) {
         state_ = create_empty_state();
         exists_ = false;
@@ -179,8 +182,8 @@ private:
                     rejection.rejected_command().pages_size() > 0) {
                     const auto& rejected_cmd = rejection.rejected_command();
                     domain = rejected_cmd.cover().domain();
-                    command_suffix = helpers::type_name_from_url(
-                        rejected_cmd.pages(0).command().type_url());
+                    command_suffix =
+                        helpers::type_name_from_url(rejected_cmd.pages(0).command().type_url());
                 }
             }
         }
@@ -198,8 +201,8 @@ private:
         BusinessResponse response;
         auto* revocation = response.mutable_revocation();
         revocation->set_emit_system_revocation(true);
-        revocation->set_reason("Aggregate " + this->domain() +
-                               " has no custom compensation for " + key);
+        revocation->set_reason("Aggregate " + this->domain() + " has no custom compensation for " +
+                               key);
         return response;
     }
 
@@ -223,4 +226,4 @@ private:
     bool exists_ = false;
 };
 
-} // namespace angzarr
+}  // namespace angzarr

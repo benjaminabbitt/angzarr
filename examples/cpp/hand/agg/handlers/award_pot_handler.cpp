@@ -1,15 +1,16 @@
 #include "award_pot_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
+#include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace hand {
 namespace handlers {
 
 std::pair<examples::PotAwarded, examples::HandComplete> handle_award_pot(
-    const examples::AwardPot& cmd,
-    const HandState& state) {
-
+    const examples::AwardPot& cmd, const HandState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Hand not dealt");
@@ -95,5 +96,5 @@ std::pair<examples::PotAwarded, examples::HandComplete> handle_award_pot(
     return {pot_event, complete_event};
 }
 
-} // namespace handlers
-} // namespace hand
+}  // namespace handlers
+}  // namespace hand

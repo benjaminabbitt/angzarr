@@ -1,11 +1,13 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/message.h>
+
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <google/protobuf/message.h>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
 #include "errors.hpp"
 
@@ -13,14 +15,15 @@ namespace angzarr {
 
 /// Functional router for aggregate command handling.
 /// Uses a state builder function to reconstruct state from EventBook on each dispatch.
-template<typename State>
+template <typename State>
 class CommandRouter {
-public:
+   public:
     using MessagePtr = std::unique_ptr<google::protobuf::Message>;
     using StateBuilder = std::function<State(const EventBook&)>;
-    using CommandHandler = std::function<MessagePtr(const google::protobuf::Message&, const State&)>;
+    using CommandHandler =
+        std::function<MessagePtr(const google::protobuf::Message&, const State&)>;
     using RejectionHandler = std::function<MessagePtr(const Notification&, const State&)>;
-    using RejectionKey = std::pair<std::string, std::string>; // (domain, command)
+    using RejectionKey = std::pair<std::string, std::string>;  // (domain, command)
 
     struct RejectionKeyHash {
         size_t operator()(const RejectionKey& k) const {
@@ -28,21 +31,22 @@ public:
         }
     };
 
-private:
+   private:
     std::string name_;
     StateBuilder state_builder_;
     std::unordered_map<std::string, CommandHandler> handlers_;
     std::unordered_map<RejectionKey, RejectionHandler, RejectionKeyHash> rejection_handlers_;
 
-public:
+   public:
     CommandRouter(const std::string& name, StateBuilder state_builder)
         : name_(name), state_builder_(std::move(state_builder)) {}
 
     /// Register a command handler.
-    template<typename CommandType, typename EventType>
+    template <typename CommandType, typename EventType>
     CommandRouter& on(std::function<EventType(const CommandType&, const State&)> handler) {
         const std::string type_name = CommandType::descriptor()->full_name();
-        handlers_[type_name] = [handler](const google::protobuf::Message& msg, const State& state) -> MessagePtr {
+        handlers_[type_name] = [handler](const google::protobuf::Message& msg,
+                                         const State& state) -> MessagePtr {
             const auto& cmd = static_cast<const CommandType&>(msg);
             auto event = handler(cmd, state);
             return std::make_unique<EventType>(std::move(event));
@@ -51,13 +55,14 @@ public:
     }
 
     /// Register a rejection handler for compensation.
-    CommandRouter& on_rejected(const std::string& domain, const std::string& command, RejectionHandler handler) {
+    CommandRouter& on_rejected(const std::string& domain, const std::string& command,
+                               RejectionHandler handler) {
         rejection_handlers_[{domain, command}] = std::move(handler);
         return *this;
     }
 
     /// Dispatch a command.
-    template<typename CommandType>
+    template <typename CommandType>
     MessagePtr dispatch(const CommandType& cmd, const EventBook& event_book) {
         const std::string type_name = CommandType::descriptor()->full_name();
         auto it = handlers_.find(type_name);
@@ -97,7 +102,7 @@ public:
         RejectionKey key{domain, command};
         auto it = rejection_handlers_.find(key);
         if (it == rejection_handlers_.end()) {
-            return nullptr; // Delegate to framework
+            return nullptr;  // Delegate to framework
         }
         State state = state_builder_(event_book);
         return it->second(notification, state);
@@ -106,4 +111,4 @@ public:
     const std::string& name() const { return name_; }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

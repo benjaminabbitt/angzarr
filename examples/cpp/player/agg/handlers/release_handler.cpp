@@ -1,8 +1,10 @@
 #include "release_handler.hpp"
-#include "angzarr/errors.hpp"
+
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+
+#include "angzarr/errors.hpp"
 
 namespace player {
 namespace handlers {
@@ -15,9 +17,10 @@ std::string bytes_to_hex(const std::string& bytes) {
     }
     return ss.str();
 }
-} // anonymous namespace
+}  // anonymous namespace
 
-examples::FundsReleased handle_release(const examples::ReleaseFunds& cmd, const PlayerState& state) {
+examples::FundsReleased handle_release(const examples::ReleaseFunds& cmd,
+                                       const PlayerState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::precondition_failed("Player does not exist");
@@ -26,7 +29,8 @@ examples::FundsReleased handle_release(const examples::ReleaseFunds& cmd, const 
     std::string table_key = bytes_to_hex(cmd.table_root());
     auto it = state.table_reservations.find(table_key);
     if (it == state.table_reservations.end() || it->second == 0) {
-        throw angzarr::CommandRejectedError::precondition_failed("No funds reserved for this table");
+        throw angzarr::CommandRejectedError::precondition_failed(
+            "No funds reserved for this table");
     }
 
     // Compute
@@ -50,5 +54,5 @@ examples::FundsReleased handle_release(const examples::ReleaseFunds& cmd, const 
     return event;
 }
 
-} // namespace handlers
-} // namespace player
+}  // namespace handlers
+}  // namespace player

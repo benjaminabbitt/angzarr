@@ -1,7 +1,8 @@
 #include "table_player_saga.hpp"
-#include <unordered_map>
-#include <sstream>
+
 #include <iomanip>
+#include <sstream>
+#include <unordered_map>
 
 namespace table {
 namespace saga {
@@ -34,10 +35,8 @@ std::vector<angzarr::Cover> prepare_hand_ended(const examples::HandEnded& event)
     return covers;
 }
 
-angzarr::CommandBook handle_hand_ended(
-    const examples::HandEnded& event,
-    const std::vector<angzarr::EventBook>& destinations) {
-
+angzarr::CommandBook handle_hand_ended(const examples::HandEnded& event,
+                                       const std::vector<angzarr::EventBook>& destinations) {
     // Build map from player root hex to destination for sequence lookup
     std::unordered_map<std::string, const angzarr::EventBook*> dest_map;
     for (const auto& dest : destinations) {
@@ -95,5 +94,5 @@ angzarr::CommandBook handle_hand_ended(
     return cmd_book;
 }
 
-} // namespace saga
-} // namespace table
+}  // namespace saga
+}  // namespace table

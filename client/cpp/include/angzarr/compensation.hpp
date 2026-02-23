@@ -1,7 +1,8 @@
 #pragma once
 
-#include <string>
 #include <optional>
+#include <string>
+
 #include "angzarr/types.pb.h"
 #include "helpers.hpp"
 
@@ -34,7 +35,7 @@ namespace angzarr {
  *   }
  */
 class CompensationContext {
-public:
+   public:
     /**
      * Extract compensation context from a Notification.
      *
@@ -128,8 +129,8 @@ public:
             return "";
         }
 
-        std::string domain = rejected_command_->has_cover()
-            ? rejected_command_->cover().domain() : "";
+        std::string domain =
+            rejected_command_->has_cover() ? rejected_command_->cover().domain() : "";
         std::string cmd_type = rejected_command_type();
 
         if (domain.empty() || cmd_type.empty()) {
@@ -139,7 +140,7 @@ public:
         return domain + "/" + cmd_type;
     }
 
-private:
+   private:
     std::string issuer_name_;
     std::string issuer_type_;
     uint32_t source_event_sequence_ = 0;
@@ -148,4 +149,4 @@ private:
     std::optional<Cover> source_aggregate_;
 };
 
-} // namespace angzarr
+}  // namespace angzarr

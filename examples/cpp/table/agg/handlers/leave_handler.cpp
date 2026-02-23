@@ -1,15 +1,15 @@
 #include "leave_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
+#include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace table {
 namespace handlers {
 
-examples::PlayerLeft handle_leave(
-    const examples::LeaveTable& cmd,
-    const TableState& state) {
-
+examples::PlayerLeft handle_leave(const examples::LeaveTable& cmd, const TableState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Table does not exist");
@@ -25,7 +25,8 @@ examples::PlayerLeft handle_leave(
         throw angzarr::CommandRejectedError::not_found("Player is not seated at table");
     }
     if (state.status == "in_hand") {
-        throw angzarr::CommandRejectedError::precondition_failed("Cannot leave table during a hand");
+        throw angzarr::CommandRejectedError::precondition_failed(
+            "Cannot leave table during a hand");
     }
 
     // Compute
@@ -42,5 +43,5 @@ examples::PlayerLeft handle_leave(
     return event;
 }
 
-} // namespace handlers
-} // namespace table
+}  // namespace handlers
+}  // namespace table

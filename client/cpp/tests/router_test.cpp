@@ -1,9 +1,12 @@
-#include <gtest/gtest.h>
-#include <string>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
-#include "angzarr/aggregate.pb.h"
 #include "angzarr/router.hpp"
+
+#include <google/protobuf/any.pb.h>
+#include <gtest/gtest.h>
+
+#include <string>
+
+#include "angzarr/aggregate.pb.h"
+#include "angzarr/types.pb.h"
 
 using namespace angzarr;
 
@@ -21,7 +24,7 @@ struct TestState {
 // =============================================================================
 
 class EventRouterTest : public ::testing::Test {
-protected:
+   protected:
     EventBook make_event_book(const std::string& domain, const std::string& event_type) {
         EventBook book;
         auto* cover = book.mutable_cover();
@@ -41,14 +44,12 @@ TEST_F(EventRouterTest, Dispatch_RegisteredHandler_ShouldInvokeHandler) {
     // Given an EventRouter with a registered handler
     bool handler_called = false;
     EventRouter router("saga-test");
-    router.domain("orders")
-          .on("OrderCreated", [&](const google::protobuf::Any&,
-                                  const std::string&,
-                                  const std::string&,
-                                  const std::vector<EventBook>&) {
-              handler_called = true;
-              return std::vector<CommandBook>{};
-          });
+    router.domain("orders").on(
+        "OrderCreated", [&](const google::protobuf::Any&, const std::string&, const std::string&,
+                            const std::vector<EventBook>&) {
+            handler_called = true;
+            return std::vector<CommandBook>{};
+        });
 
     // When I dispatch an EventBook with that event type
     auto book = make_event_book("orders", "OrderCreated");
@@ -62,15 +63,13 @@ TEST_F(EventRouterTest, Subscriptions_ShouldListRegisteredDomains) {
     // Given an EventRouter with multiple domain handlers
     EventRouter router("pmg-test");
     router.domain("orders")
-          .on("OrderCreated", [](const google::protobuf::Any&, const std::string&,
-                                 const std::string&, const std::vector<EventBook>&) {
-              return std::vector<CommandBook>{};
-          })
-          .domain("inventory")
-          .on("StockReserved", [](const google::protobuf::Any&, const std::string&,
-                                  const std::string&, const std::vector<EventBook>&) {
-              return std::vector<CommandBook>{};
-          });
+        .on("OrderCreated",
+            [](const google::protobuf::Any&, const std::string&, const std::string&,
+               const std::vector<EventBook>&) { return std::vector<CommandBook>{}; })
+        .domain("inventory")
+        .on("StockReserved",
+            [](const google::protobuf::Any&, const std::string&, const std::string&,
+               const std::vector<EventBook>&) { return std::vector<CommandBook>{}; });
 
     // When I get subscriptions
     auto subs = router.subscriptions();
@@ -84,11 +83,9 @@ TEST_F(EventRouterTest, Subscriptions_ShouldListRegisteredDomains) {
 TEST_F(EventRouterTest, Dispatch_UnregisteredEvent_ShouldReturnEmpty) {
     // Given an EventRouter without handler for event type
     EventRouter router("saga-test");
-    router.domain("orders")
-          .on("OrderCreated", [](const google::protobuf::Any&, const std::string&,
-                                 const std::string&, const std::vector<EventBook>&) {
-              return std::vector<CommandBook>{};
-          });
+    router.domain("orders").on(
+        "OrderCreated", [](const google::protobuf::Any&, const std::string&, const std::string&,
+                           const std::vector<EventBook>&) { return std::vector<CommandBook>{}; });
 
     // When I dispatch an unregistered event
     auto book = make_event_book("orders", "OrderShipped");
@@ -103,7 +100,7 @@ TEST_F(EventRouterTest, Dispatch_UnregisteredEvent_ShouldReturnEmpty) {
 // =============================================================================
 
 class CommandRouterTest : public ::testing::Test {
-protected:
+   protected:
     ContextualCommand make_contextual_command(const std::string& command_type) {
         ContextualCommand ctx_cmd;
         auto* cmd_book = ctx_cmd.mutable_command();
@@ -124,15 +121,15 @@ TEST_F(CommandRouterTest, Dispatch_RegisteredCommand_ShouldReturnEvents) {
     // Given a CommandRouter with registered handler
     auto rebuild = [](const EventBook*) { return TestState{}; };
     CommandRouter<TestState> router("test", rebuild);
-    router.on("CreateOrder", [](const CommandBook&, const google::protobuf::Any&,
-                                TestState&, int seq) {
-        EventBook events;
-        auto* page = events.add_pages();
-        page->set_sequence(seq);
-        auto* event = page->mutable_event();
-        event->set_type_url("type.googleapis.com/OrderCreated");
-        return events;
-    });
+    router.on("CreateOrder",
+              [](const CommandBook&, const google::protobuf::Any&, TestState&, int seq) {
+                  EventBook events;
+                  auto* page = events.add_pages();
+                  page->set_sequence(seq);
+                  auto* event = page->mutable_event();
+                  event->set_type_url("type.googleapis.com/OrderCreated");
+                  return events;
+              });
 
     // When I dispatch a command
     auto ctx_cmd = make_contextual_command("CreateOrder");
@@ -147,8 +144,7 @@ TEST_F(CommandRouterTest, Dispatch_UnknownCommand_ShouldThrow) {
     // Given a CommandRouter with no handler for command
     auto rebuild = [](const EventBook*) { return TestState{}; };
     CommandRouter<TestState> router("test", rebuild);
-    router.on("CreateOrder", [](const CommandBook&, const google::protobuf::Any&,
-                                TestState&, int) {
+    router.on("CreateOrder", [](const CommandBook&, const google::protobuf::Any&, TestState&, int) {
         return EventBook{};
     });
 
@@ -167,12 +163,12 @@ TEST_F(CommandRouterTest, Dispatch_RebuildState_ShouldUseRebuildFunction) {
         return TestState{.counter = 5};
     };
     CommandRouter<TestState> router("test", rebuild);
-    router.on("UpdateOrder", [](const CommandBook&, const google::protobuf::Any&,
-                                TestState& state, int) {
-        // Verify state was rebuilt
-        EXPECT_EQ(state.counter, 5);
-        return EventBook{};
-    });
+    router.on("UpdateOrder",
+              [](const CommandBook&, const google::protobuf::Any&, TestState& state, int) {
+                  // Verify state was rebuilt
+                  EXPECT_EQ(state.counter, 5);
+                  return EventBook{};
+              });
 
     // When I dispatch a command
     auto ctx_cmd = make_contextual_command("UpdateOrder");
@@ -187,7 +183,7 @@ TEST_F(CommandRouterTest, Dispatch_RebuildState_ShouldUseRebuildFunction) {
 // =============================================================================
 
 class StateBuildingTest : public ::testing::Test {
-protected:
+   protected:
     EventBook make_event_book_with_events(int count) {
         EventBook book;
         for (int i = 0; i < count; i++) {

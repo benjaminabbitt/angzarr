@@ -25,10 +25,8 @@ std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& ev
 }
 
 // docs:start:saga_handler
-angzarr::CommandBook handle_hand_started(
-    const examples::HandStarted& event,
-    const std::vector<angzarr::EventBook>& destinations) {
-
+angzarr::CommandBook handle_hand_started(const examples::HandStarted& event,
+                                         const std::vector<angzarr::EventBook>& destinations) {
     int dest_seq = destinations.empty() ? 0 : destinations[0].next_sequence();
 
     // Build DealCards command from HandStarted event
@@ -65,5 +63,5 @@ angzarr::CommandBook handle_hand_started(
 }
 // docs:end:saga_handler
 
-} // namespace saga
-} // namespace table
+}  // namespace saga
+}  // namespace table

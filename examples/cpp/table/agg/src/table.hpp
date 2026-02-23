@@ -1,16 +1,16 @@
 #pragma once
 
-#include "table_state.hpp"
 #include "angzarr/aggregate.hpp"
 #include "angzarr/errors.hpp"
 #include "examples/table.pb.h"
+#include "table_state.hpp"
 
 namespace table {
 
 /// Table aggregate - OO style implementation.
 /// Uses CRTP pattern with Aggregate base class.
 class Table : public angzarr::Aggregate<Table, TableState> {
-public:
+   public:
     static constexpr const char* DOMAIN = "table";
 
     // State accessors
@@ -31,9 +31,7 @@ public:
     const std::string& current_hand_root() const { return state_.current_hand_root; }
     const std::string& status() const { return state_.status; }
 
-    const SeatState* get_seat(int position) const {
-        return state_.get_seat(position);
-    }
+    const SeatState* get_seat(int position) const { return state_.get_seat(position); }
 
     const SeatState* find_player_seat(const std::string& player_root) const {
         return state_.find_player_seat(player_root);
@@ -46,16 +44,14 @@ public:
     examples::HandStarted start_hand(const examples::StartHand& cmd);
     examples::HandEnded end_hand(const examples::EndHand& cmd);
 
-protected:
+   protected:
     friend class angzarr::Aggregate<Table, TableState>;
 
-    TableState create_empty_state() const {
-        return TableState{};
-    }
+    TableState create_empty_state() const { return TableState{}; }
 
     void apply_event_impl(TableState& state, const google::protobuf::Any& event_any) {
         TableState::apply_event(state, event_any);
     }
 };
 
-} // namespace table
+}  // namespace table

@@ -1,4 +1,5 @@
 #include "table_state.hpp"
+
 #include <algorithm>
 #include <vector>
 
@@ -6,7 +7,7 @@ namespace table {
 
 int TableState::active_player_count() const {
     return static_cast<int>(std::count_if(seats.begin(), seats.end(),
-        [](const auto& p) { return !p.second.is_sitting_out; }));
+                                          [](const auto& p) { return !p.second.is_sitting_out; }));
 }
 
 TableState TableState::from_event_book(const angzarr::EventBook& event_book) {
@@ -37,13 +38,8 @@ void TableState::apply_event(TableState& state, const google::protobuf::Any& eve
     } else if (type_url.find("PlayerJoined") != std::string::npos) {
         examples::PlayerJoined event;
         if (event_any.UnpackTo(&event)) {
-            state.seats[event.seat_position()] = SeatState{
-                event.seat_position(),
-                event.player_root(),
-                event.stack(),
-                true,
-                false
-            };
+            state.seats[event.seat_position()] =
+                SeatState{event.seat_position(), event.player_root(), event.stack(), true, false};
         }
     } else if (type_url.find("PlayerLeft") != std::string::npos) {
         examples::PlayerLeft event;
@@ -162,4 +158,4 @@ int TableState::next_dealer_position() const {
     return positions[next_idx];
 }
 
-} // namespace table
+}  // namespace table

@@ -1,14 +1,16 @@
 #pragma once
 
+#include <grpcpp/grpcpp.h>
+
+#include <cstdlib>
 #include <memory>
 #include <string>
-#include <cstdlib>
-#include <grpcpp/grpcpp.h>
-#include "angzarr/types.pb.h"
-#include "angzarr/aggregate.pb.h"
+
 #include "angzarr/aggregate.grpc.pb.h"
-#include "angzarr/query.pb.h"
+#include "angzarr/aggregate.pb.h"
 #include "angzarr/query.grpc.pb.h"
+#include "angzarr/query.pb.h"
+#include "angzarr/types.pb.h"
 #include "errors.hpp"
 
 namespace angzarr {
@@ -31,7 +33,7 @@ namespace angzarr {
  *   auto events = client->get_event_book(query);
  */
 class QueryClient {
-public:
+   public:
     /**
      * Connect to an event query service at the given endpoint.
      *
@@ -40,8 +42,8 @@ public:
      * @throws ConnectionError if connection fails
      */
     static std::unique_ptr<QueryClient> connect(const std::string& endpoint) {
-        auto channel = grpc::CreateChannel(format_endpoint(endpoint),
-                                           grpc::InsecureChannelCredentials());
+        auto channel =
+            grpc::CreateChannel(format_endpoint(endpoint), grpc::InsecureChannelCredentials());
         return std::make_unique<QueryClient>(channel);
     }
 
@@ -57,7 +59,7 @@ public:
      * @return Unique pointer to QueryClient
      */
     static std::unique_ptr<QueryClient> from_env(const std::string& env_var,
-                                                  const std::string& default_endpoint) {
+                                                 const std::string& default_endpoint) {
         const char* endpoint = std::getenv(env_var.c_str());
         return connect(endpoint ? endpoint : default_endpoint);
     }
@@ -111,12 +113,12 @@ public:
         return results;
     }
 
-private:
+   private:
     std::unique_ptr<EventQueryService::Stub> stub_;
 
     static std::string format_endpoint(const std::string& endpoint) {
         if (endpoint.find("://") == std::string::npos) {
-            return endpoint; // Already plain host:port
+            return endpoint;  // Already plain host:port
         }
         // Strip http:// or https:// prefix for gRPC
         auto pos = endpoint.find("://");
@@ -141,7 +143,7 @@ private:
  *   auto response = client->handle(cmd);
  */
 class AggregateClient {
-public:
+   public:
     /**
      * Connect to an aggregate coordinator at the given endpoint.
      *
@@ -150,8 +152,8 @@ public:
      * @throws ConnectionError if connection fails
      */
     static std::unique_ptr<AggregateClient> connect(const std::string& endpoint) {
-        auto channel = grpc::CreateChannel(format_endpoint(endpoint),
-                                           grpc::InsecureChannelCredentials());
+        auto channel =
+            grpc::CreateChannel(format_endpoint(endpoint), grpc::InsecureChannelCredentials());
         return std::make_unique<AggregateClient>(channel);
     }
 
@@ -163,7 +165,7 @@ public:
      * @return Unique pointer to AggregateClient
      */
     static std::unique_ptr<AggregateClient> from_env(const std::string& env_var,
-                                                      const std::string& default_endpoint) {
+                                                     const std::string& default_endpoint) {
         const char* endpoint = std::getenv(env_var.c_str());
         return connect(endpoint ? endpoint : default_endpoint);
     }
@@ -236,7 +238,7 @@ public:
         return response;
     }
 
-private:
+   private:
     std::unique_ptr<AggregateCoordinatorService::Stub> stub_;
 
     static std::string format_endpoint(const std::string& endpoint) {
@@ -269,7 +271,7 @@ private:
  *   auto events = client->query()->get_event_book(query);
  */
 class DomainClient {
-public:
+   public:
     /**
      * Connect to a domain's coordinator at the given endpoint.
      *
@@ -291,7 +293,7 @@ public:
      * @return Unique pointer to DomainClient
      */
     static std::unique_ptr<DomainClient> from_env(const std::string& env_var,
-                                                   const std::string& default_endpoint) {
+                                                  const std::string& default_endpoint) {
         const char* endpoint = std::getenv(env_var.c_str());
         return connect(endpoint ? endpoint : default_endpoint);
     }
@@ -302,8 +304,8 @@ public:
      * @param channel Shared gRPC channel
      */
     explicit DomainClient(std::shared_ptr<grpc::Channel> channel)
-        : aggregate_(std::make_unique<AggregateClient>(channel))
-        , query_(std::make_unique<QueryClient>(channel)) {}
+        : aggregate_(std::make_unique<AggregateClient>(channel)),
+          query_(std::make_unique<QueryClient>(channel)) {}
 
     /**
      * Get the aggregate client for command execution.
@@ -318,11 +320,9 @@ public:
     /**
      * Execute a command (convenience method delegating to aggregate).
      */
-    CommandResponse execute(const CommandBook& command) {
-        return aggregate_->handle(command);
-    }
+    CommandResponse execute(const CommandBook& command) { return aggregate_->handle(command); }
 
-private:
+   private:
     std::unique_ptr<AggregateClient> aggregate_;
     std::unique_ptr<QueryClient> query_;
 
@@ -335,4 +335,4 @@ private:
     }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

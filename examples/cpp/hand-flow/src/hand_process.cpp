@@ -1,7 +1,8 @@
 #include "hand_process.hpp"
+
 #include <algorithm>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 
 namespace hand_flow {
 
@@ -15,7 +16,6 @@ HandProcess* HandProcessManager::get_process(const std::string& hand_id) {
 
 std::optional<angzarr::CommandBook> HandProcessManager::start_hand(
     const examples::HandStarted& event) {
-
     // Build hand_id from table_root hex + hand_number
     std::stringstream ss;
     for (unsigned char c : event.hand_root()) {
@@ -53,7 +53,6 @@ std::optional<angzarr::CommandBook> HandProcessManager::start_hand(
 
 std::optional<angzarr::CommandBook> HandProcessManager::handle_cards_dealt(
     const examples::CardsDealt& event) {
-
     std::stringstream ss;
     for (unsigned char c : event.table_root()) {
         ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(c);
@@ -73,7 +72,6 @@ std::optional<angzarr::CommandBook> HandProcessManager::handle_cards_dealt(
 
 std::optional<angzarr::CommandBook> HandProcessManager::handle_blind_posted(
     const examples::BlindPosted& event) {
-
     // Find the process by player_root (simplified - would need hand_id in real impl)
     for (auto& [hand_id, process] : processes_) {
         if (process.phase != HandPhase::POSTING_BLINDS) {
@@ -109,7 +107,6 @@ std::optional<angzarr::CommandBook> HandProcessManager::handle_blind_posted(
 
 std::optional<angzarr::CommandBook> HandProcessManager::handle_action_taken(
     const examples::ActionTaken& event) {
-
     // Find the process
     for (auto& [hand_id, process] : processes_) {
         if (process.phase != HandPhase::BETTING) {
@@ -128,15 +125,13 @@ std::optional<angzarr::CommandBook> HandProcessManager::handle_action_taken(
                     player.is_all_in = true;
                     player.bet_this_round += event.amount();
                     player.total_invested += event.amount();
-                } else if (event.action() == examples::CALL ||
-                           event.action() == examples::BET ||
+                } else if (event.action() == examples::CALL || event.action() == examples::BET ||
                            event.action() == examples::RAISE) {
                     player.bet_this_round += event.amount();
                     player.total_invested += event.amount();
                 }
 
-                if (event.action() == examples::BET ||
-                    event.action() == examples::RAISE ||
+                if (event.action() == examples::BET || event.action() == examples::RAISE ||
                     event.action() == examples::ALL_IN) {
                     if (player.bet_this_round > process.current_bet) {
                         int64_t raise_amount = player.bet_this_round - process.current_bet;
@@ -170,7 +165,6 @@ std::optional<angzarr::CommandBook> HandProcessManager::handle_action_taken(
 
 std::optional<angzarr::CommandBook> HandProcessManager::handle_community_cards_dealt(
     const examples::CommunityCardsDealt& event) {
-
     for (auto& [hand_id, process] : processes_) {
         if (process.phase == HandPhase::DEALING_COMMUNITY) {
             process.betting_phase = event.phase();
@@ -183,7 +177,6 @@ std::optional<angzarr::CommandBook> HandProcessManager::handle_community_cards_d
 
 std::optional<angzarr::CommandBook> HandProcessManager::handle_showdown_started(
     const examples::ShowdownStarted& event) {
-
     // In a real implementation, would wait for reveals then award pot
     for (auto& [hand_id, process] : processes_) {
         if (process.phase == HandPhase::SHOWDOWN) {
@@ -216,12 +209,10 @@ std::optional<angzarr::CommandBook> HandProcessManager::post_next_blind(HandProc
     return std::nullopt;
 }
 
-angzarr::CommandBook HandProcessManager::build_post_blind_cmd(
-    const HandProcess& process,
-    const PlayerState& player,
-    const std::string& blind_type,
-    int64_t amount) {
-
+angzarr::CommandBook HandProcessManager::build_post_blind_cmd(const HandProcess& process,
+                                                              const PlayerState& player,
+                                                              const std::string& blind_type,
+                                                              int64_t amount) {
     examples::PostBlind post_blind;
     post_blind.set_player_root(player.player_root);
     post_blind.set_blind_type(blind_type);
@@ -331,8 +322,7 @@ std::optional<angzarr::CommandBook> HandProcessManager::end_betting_round(HandPr
     }
 
     // Advance to next phase
-    if (process.game_variant == examples::TEXAS_HOLDEM ||
-        process.game_variant == examples::OMAHA) {
+    if (process.game_variant == examples::TEXAS_HOLDEM || process.game_variant == examples::OMAHA) {
         if (process.betting_phase == examples::PREFLOP) {
             process.phase = HandPhase::DEALING_COMMUNITY;
             return build_deal_community_cmd(process, 3);
@@ -351,9 +341,8 @@ std::optional<angzarr::CommandBook> HandProcessManager::end_betting_round(HandPr
     return std::nullopt;
 }
 
-angzarr::CommandBook HandProcessManager::build_deal_community_cmd(
-    const HandProcess& process, int count) {
-
+angzarr::CommandBook HandProcessManager::build_deal_community_cmd(const HandProcess& process,
+                                                                  int count) {
     examples::DealCommunityCards deal;
     deal.set_count(count);
 
@@ -424,4 +413,4 @@ angzarr::CommandBook HandProcessManager::build_award_pot_cmd(const HandProcess& 
     return cmd_book;
 }
 
-} // namespace hand_flow
+}  // namespace hand_flow

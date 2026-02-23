@@ -1,8 +1,10 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <string>
 #include <unordered_map>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
 #include "examples/player.pb.h"
 #include "examples/poker_types.pb.h"
@@ -32,4 +34,4 @@ struct PlayerState {
     static void apply_event(PlayerState& state, const google::protobuf::Any& event_any);
 };
 
-} // namespace player
+}  // namespace player

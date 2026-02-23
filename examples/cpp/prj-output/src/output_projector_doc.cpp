@@ -16,7 +16,7 @@ using namespace angzarr::proto::examples;
 
 // docs:start:projector_oo
 class OutputProjector {
-public:
+   public:
     void handle_player_registered(const PlayerRegistered& event) {
         player_names_[event.player_id()] = event.display_name();
         std::cout << "[Player] " << event.display_name() << " registered\n";
@@ -25,8 +25,7 @@ public:
     void handle_funds_deposited(const FundsDeposited& event) {
         auto it = player_names_.find(event.player_id());
         std::string name = (it != player_names_.end()) ? it->second : event.player_id();
-        std::cout << "[Player] " << name << " deposited $"
-                  << std::fixed << std::setprecision(2)
+        std::cout << "[Player] " << name << " deposited $" << std::fixed << std::setprecision(2)
                   << (event.amount().amount() / 100.0) << "\n";
     }
 
@@ -39,11 +38,11 @@ public:
         }
     }
 
-private:
+   private:
     std::unordered_map<std::string, std::string> player_names_;
 
     std::string format_cards(const auto& cards) {
-        return "cards"; // Simplified for documentation
+        return "cards";  // Simplified for documentation
     }
 };
 // docs:end:projector_oo

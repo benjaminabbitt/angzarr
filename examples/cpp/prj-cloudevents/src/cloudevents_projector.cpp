@@ -16,9 +16,8 @@ using namespace angzarr::proto::examples;
 
 // docs:start:cloudevents_oo
 class PlayerCloudEventsProjector : public CloudEventsProjector {
-public:
-    PlayerCloudEventsProjector()
-        : CloudEventsProjector("prj-player-cloudevents", "player") {}
+   public:
+    PlayerCloudEventsProjector() : CloudEventsProjector("prj-player-cloudevents", "player") {}
 
     std::optional<CloudEvent> on_player_registered(const PlayerRegistered& event) {
         // Filter sensitive fields, return public version

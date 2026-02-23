@@ -23,9 +23,9 @@
 
 // OO base classes with macro registration
 #include "aggregate.hpp"
-#include "saga.hpp"
 #include "process_manager.hpp"
 #include "projector.hpp"
+#include "saga.hpp"
 
 // gRPC client classes
 #include "client.hpp"

@@ -1,10 +1,13 @@
-#include <gtest/gtest.h>
-#include <string>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
-#include "angzarr/aggregate.pb.h"
 #include "angzarr/compensation.hpp"
+
+#include <google/protobuf/any.pb.h>
+#include <gtest/gtest.h>
+
+#include <string>
+
+#include "angzarr/aggregate.pb.h"
 #include "angzarr/router.hpp"
+#include "angzarr/types.pb.h"
 
 using namespace angzarr;
 
@@ -17,10 +20,10 @@ struct CompensationTestState {
 };
 
 class CompensationContextTest : public ::testing::Test {
-protected:
+   protected:
     Notification make_rejection_notification(const std::string& domain,
-                                              const std::string& command_type,
-                                              const std::string& reason) {
+                                             const std::string& command_type,
+                                             const std::string& reason) {
         // Create rejected command
         CommandBook rejected_cmd;
         auto* cover = rejected_cmd.mutable_cover();
@@ -84,7 +87,7 @@ TEST_F(CompensationContextTest, FromNotification_ShouldExtractIssuerInfo) {
 // =============================================================================
 
 class RejectionHandlerTest : public ::testing::Test {
-protected:
+   protected:
     ContextualCommand wrap_notification_in_command(const Notification& notification) {
         ContextualCommand ctx_cmd;
         auto* cmd_book = ctx_cmd.mutable_command();
@@ -95,7 +98,7 @@ protected:
     }
 
     Notification make_rejection_notification(const std::string& domain,
-                                              const std::string& command_type) {
+                                             const std::string& command_type) {
         CommandBook rejected_cmd;
         rejected_cmd.mutable_cover()->set_domain(domain);
         auto* page = rejected_cmd.add_pages();
@@ -118,9 +121,9 @@ TEST_F(RejectionHandlerTest, OnRejected_MatchingHandler_ShouldBeInvoked) {
     CommandRouter<CompensationTestState> router("test", rebuild);
     router.on_rejected("inventory", "ReserveStock",
                        [&](const Notification&, CompensationTestState&) {
-        handler_called = true;
-        return RejectionHandlerResponse{};
-    });
+                           handler_called = true;
+                           return RejectionHandlerResponse{};
+                       });
 
     // When I dispatch a matching rejection
     auto notification = make_rejection_notification("inventory", "ReserveStock");
@@ -137,13 +140,13 @@ TEST_F(RejectionHandlerTest, OnRejected_ReturnEvents_ShouldEmitCompensation) {
     CommandRouter<CompensationTestState> router("test", rebuild);
     router.on_rejected("inventory", "ReserveStock",
                        [](const Notification&, CompensationTestState&) {
-        RejectionHandlerResponse response;
-        EventBook events;
-        auto* page = events.add_pages();
-        page->mutable_event()->set_type_url("type.googleapis.com/StockReleased");
-        response.events = std::move(events);
-        return response;
-    });
+                           RejectionHandlerResponse response;
+                           EventBook events;
+                           auto* page = events.add_pages();
+                           page->mutable_event()->set_type_url("type.googleapis.com/StockReleased");
+                           response.events = std::move(events);
+                           return response;
+                       });
 
     // When I dispatch a rejection
     auto notification = make_rejection_notification("inventory", "ReserveStock");
@@ -161,10 +164,10 @@ TEST_F(RejectionHandlerTest, OnRejected_ReturnNotification_ShouldForward) {
     CommandRouter<CompensationTestState> router("test", rebuild);
     router.on_rejected("inventory", "ReserveStock",
                        [](const Notification& notification, CompensationTestState&) {
-        RejectionHandlerResponse response;
-        response.notification = notification;
-        return response;
-    });
+                           RejectionHandlerResponse response;
+                           response.notification = notification;
+                           return response;
+                       });
 
     // When I dispatch a rejection
     auto notification = make_rejection_notification("inventory", "ReserveStock");

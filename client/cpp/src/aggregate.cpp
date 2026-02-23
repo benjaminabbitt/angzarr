@@ -5,4 +5,4 @@
 
 namespace angzarr {
 // Aggregate classes are template-based, defined in header
-} // namespace angzarr
+}  // namespace angzarr

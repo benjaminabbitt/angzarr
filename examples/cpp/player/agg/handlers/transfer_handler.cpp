@@ -1,11 +1,14 @@
 #include "transfer_handler.hpp"
-#include "angzarr/errors.hpp"
+
 #include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace player {
 namespace handlers {
 
-examples::FundsTransferred handle_transfer(const examples::TransferFunds& cmd, const PlayerState& state) {
+examples::FundsTransferred handle_transfer(const examples::TransferFunds& cmd,
+                                           const PlayerState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::precondition_failed("Player does not exist");
@@ -31,5 +34,5 @@ examples::FundsTransferred handle_transfer(const examples::TransferFunds& cmd, c
     return event;
 }
 
-} // namespace handlers
-} // namespace player
+}  // namespace handlers
+}  // namespace player

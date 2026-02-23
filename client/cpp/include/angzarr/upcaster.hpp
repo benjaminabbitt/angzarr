@@ -1,9 +1,11 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
 
 namespace angzarr {
@@ -38,14 +40,13 @@ using UpcasterHandler = std::function<google::protobuf::Any(const google::protob
  * @endcode
  */
 class UpcasterRouter {
-public:
+   public:
     /**
      * Create a new upcaster router for a domain.
      *
      * @param domain The domain this upcaster handles
      */
-    explicit UpcasterRouter(const std::string& domain)
-        : domain_(domain) {}
+    explicit UpcasterRouter(const std::string& domain) : domain_(domain) {}
 
     /**
      * Register a handler for an old event type_url suffix.
@@ -115,13 +116,11 @@ public:
      *
      * @return The domain name
      */
-    const std::string& domain() const {
-        return domain_;
-    }
+    const std::string& domain() const { return domain_; }
 
-private:
+   private:
     std::string domain_;
     std::vector<std::pair<std::string, UpcasterHandler>> handlers_;
 };
 
-} // namespace angzarr
+}  // namespace angzarr

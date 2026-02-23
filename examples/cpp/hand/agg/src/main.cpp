@@ -1,21 +1,22 @@
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/timestamp.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
-#include <google/protobuf/timestamp.pb.h>
 
-#include "hand_state.hpp"
+#include "../handlers/action_handler.hpp"
+#include "../handlers/award_pot_handler.hpp"
+#include "../handlers/deal_community_handler.hpp"
 #include "../handlers/deal_handler.hpp"
 #include "../handlers/post_blind_handler.hpp"
-#include "../handlers/action_handler.hpp"
-#include "../handlers/deal_community_handler.hpp"
-#include "../handlers/award_pot_handler.hpp"
-#include "angzarr/command_router.hpp"
 #include "angzarr/aggregate.grpc.pb.h"
+#include "angzarr/command_router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
+#include "hand_state.hpp"
 
 namespace {
 
@@ -34,15 +35,12 @@ angzarr::CommandRouter<hand::HandState> create_router() {
 
 /// gRPC service implementation for hand aggregate.
 class HandAggregateService final : public angzarr::AggregateService::Service {
-public:
+   public:
     explicit HandAggregateService(angzarr::CommandRouter<hand::HandState> router)
         : router_(std::move(router)) {}
 
-    grpc::Status Handle(
-        grpc::ServerContext* context,
-        const angzarr::ContextualCommand* request,
-        angzarr::BusinessResponse* response) override {
-
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::ContextualCommand* request,
+                        angzarr::BusinessResponse* response) override {
         try {
             const auto& command_book = request->command();
             const auto& event_book = request->events();
@@ -102,7 +100,7 @@ public:
                 page->mutable_event()->PackFrom(event);
             } else {
                 return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                    "Unknown command type: " + type_url);
+                                    "Unknown command type: " + type_url);
             }
 
             return grpc::Status::OK;
@@ -113,11 +111,8 @@ public:
         }
     }
 
-    grpc::Status Replay(
-        grpc::ServerContext* context,
-        const angzarr::ReplayRequest* request,
-        angzarr::ReplayResponse* response) override {
-
+    grpc::Status Replay(grpc::ServerContext* context, const angzarr::ReplayRequest* request,
+                        angzarr::ReplayResponse* response) override {
         angzarr::EventBook event_book;
         for (const auto& event_page : request->events()) {
             *event_book.add_pages() = event_page;
@@ -153,11 +148,11 @@ public:
         return grpc::Status::OK;
     }
 
-private:
+   private:
     angzarr::CommandRouter<hand::HandState> router_;
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

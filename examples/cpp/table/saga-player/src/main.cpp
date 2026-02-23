@@ -1,14 +1,15 @@
+#include <google/protobuf/any.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
 
 #include "angzarr/saga.grpc.pb.h"
 #include "angzarr/types.pb.h"
-#include "examples/table.pb.h"
 #include "examples/player.pb.h"
+#include "examples/table.pb.h"
 
 namespace {
 
@@ -19,12 +20,9 @@ constexpr const char* OUTPUT_DOMAIN = "player";
 
 /// gRPC service implementation for table-player saga.
 class TablePlayerSagaService final : public angzarr::SagaService::Service {
-public:
-    grpc::Status Prepare(
-        grpc::ServerContext* context,
-        const angzarr::SagaPrepareRequest* request,
-        angzarr::SagaPrepareResponse* response) override {
-
+   public:
+    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
+                         angzarr::SagaPrepareResponse* response) override {
         // Find HandEnded event and extract player roots
         const auto& source = request->source();
         for (const auto& page : source.pages()) {
@@ -52,11 +50,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status Execute(
-        grpc::ServerContext* context,
-        const angzarr::SagaExecuteRequest* request,
-        angzarr::SagaResponse* response) override {
-
+    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
+                         angzarr::SagaResponse* response) override {
         try {
             const auto& source = request->source();
 
@@ -86,15 +81,16 @@ public:
                         // Convert hex string to bytes
                         std::string player_bytes;
                         for (size_t i = 0; i < player_hex.length(); i += 2) {
-                            player_bytes += static_cast<char>(
-                                std::stoi(player_hex.substr(i, 2), nullptr, 16));
+                            player_bytes +=
+                                static_cast<char>(std::stoi(player_hex.substr(i, 2), nullptr, 16));
                         }
 
                         // Get sequence from destination state
                         uint64_t dest_seq = 0;
                         auto it = dest_map.find(player_hex);
                         if (it != dest_map.end() && it->second->pages_size() > 0) {
-                            dest_seq = it->second->pages(it->second->pages_size() - 1).sequence() + 1;
+                            dest_seq =
+                                it->second->pages(it->second->pages_size() - 1).sequence() + 1;
                         }
 
                         // Create ReleaseFunds command
@@ -124,7 +120,7 @@ public:
     }
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

@@ -1,17 +1,17 @@
 #include "deal_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
-#include <random>
+
 #include <algorithm>
+#include <chrono>
+#include <random>
+
+#include "angzarr/errors.hpp"
 
 namespace hand {
 namespace handlers {
 
-examples::CardsDealt handle_deal(
-    const examples::DealCards& cmd,
-    const HandState& state) {
-
+examples::CardsDealt handle_deal(const examples::DealCards& cmd, const HandState& state) {
     // Guard
     if (state.exists()) {
         throw angzarr::CommandRejectedError::precondition_failed("Hand already dealt");
@@ -27,10 +27,8 @@ examples::CardsDealt handle_deal(
 
     // Compute - build deck and deal cards
     std::vector<Card> deck;
-    std::vector<examples::Suit> suits = {
-        examples::CLUBS, examples::DIAMONDS,
-        examples::HEARTS, examples::SPADES
-    };
+    std::vector<examples::Suit> suits = {examples::CLUBS, examples::DIAMONDS, examples::HEARTS,
+                                         examples::SPADES};
     for (auto suit : suits) {
         for (int rank = 2; rank <= 14; ++rank) {
             deck.push_back(Card{suit, rank});
@@ -93,5 +91,5 @@ examples::CardsDealt handle_deal(
     return event;
 }
 
-} // namespace handlers
-} // namespace hand
+}  // namespace handlers
+}  // namespace hand

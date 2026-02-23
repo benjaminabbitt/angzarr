@@ -1,14 +1,15 @@
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
 
-#include "hand_process.hpp"
 #include "angzarr/process_manager.grpc.pb.h"
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/table.pb.h"
+#include "hand_process.hpp"
 
 namespace {
 
@@ -17,25 +18,23 @@ constexpr const char* PM_NAME = "pmg-hand-flow";
 
 /// gRPC service implementation for hand-flow process manager.
 class HandFlowService final : public angzarr::ProcessManagerService::Service {
-public:
-    HandFlowService() : manager_([this](const angzarr::CommandBook& cmd) {
-        // Command sender callback - would forward to aggregate coordinator
-        std::cout << "Would send command to domain: " << cmd.cover().domain() << std::endl;
-    }) {}
+   public:
+    HandFlowService()
+        : manager_([this](const angzarr::CommandBook& cmd) {
+              // Command sender callback - would forward to aggregate coordinator
+              std::cout << "Would send command to domain: " << cmd.cover().domain() << std::endl;
+          }) {}
 
-    grpc::Status Prepare(
-        grpc::ServerContext* context,
-        const angzarr::ProcessManagerPrepareRequest* request,
-        angzarr::ProcessManagerPrepareResponse* response) override {
+    grpc::Status Prepare(grpc::ServerContext* context,
+                         const angzarr::ProcessManagerPrepareRequest* request,
+                         angzarr::ProcessManagerPrepareResponse* response) override {
         // No additional destinations needed beyond trigger and process state
         return grpc::Status::OK;
     }
 
-    grpc::Status Handle(
-        grpc::ServerContext* context,
-        const angzarr::ProcessManagerHandleRequest* request,
-        angzarr::ProcessManagerHandleResponse* response) override {
-
+    grpc::Status Handle(grpc::ServerContext* context,
+                        const angzarr::ProcessManagerHandleRequest* request,
+                        angzarr::ProcessManagerHandleResponse* response) override {
         // Process each event in the trigger
         for (const auto& page : request->trigger().pages()) {
             const auto& event_any = page.event();
@@ -88,11 +87,11 @@ public:
         return grpc::Status::OK;
     }
 
-private:
+   private:
     hand_flow::HandProcessManager manager_;
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

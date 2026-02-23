@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+
 #include "angzarr/types.pb.h"
 #include "text_renderer.hpp"
 
@@ -9,7 +10,7 @@ namespace projector {
 
 /// Projector that subscribes to events from all domains and outputs text.
 class OutputProjector {
-public:
+   public:
     using OutputFn = std::function<void(const std::string&)>;
 
     explicit OutputProjector(OutputFn output_fn, bool show_timestamps = false);
@@ -23,10 +24,10 @@ public:
     /// Handle all events in an event book.
     void handle_event_book(const angzarr::EventBook& event_book);
 
-private:
+   private:
     TextRenderer renderer_;
     OutputFn output_fn_;
     bool show_timestamps_;
 };
 
-} // namespace projector
+}  // namespace projector

@@ -17,9 +17,8 @@ angzarr::EventRouter create_hand_table_router();
 std::vector<angzarr::Cover> prepare_hand_complete(const examples::HandComplete& event);
 
 /// Handle HandComplete: produce EndHand command.
-angzarr::CommandBook handle_hand_complete(
-    const examples::HandComplete& event,
-    const std::vector<angzarr::EventBook>& destinations);
+angzarr::CommandBook handle_hand_complete(const examples::HandComplete& event,
+                                          const std::vector<angzarr::EventBook>& destinations);
 
-} // namespace saga
-} // namespace hand
+}  // namespace saga
+}  // namespace hand

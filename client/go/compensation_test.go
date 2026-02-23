@@ -142,8 +142,8 @@ func TestIsNotification(t *testing.T) {
 		{"type.googleapis.com/test.SomeNotification", false}, // Different type, not the real Notification
 		{"type.googleapis.com/test.SomeCommand", false},
 		{"type.googleapis.com/test.SomeEvent", false},
-		{"Notification", false},       // Incomplete type URL
-		{"NotificationEvent", false},  // Different type
+		{"Notification", false},         // Incomplete type URL
+		{"NotificationEvent", false},    // Different type
 		{"angzarr.Notification", false}, // Missing prefix
 	}
 

@@ -1,15 +1,16 @@
+#include <google/protobuf/any.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
 
-#include "table_hand_saga.hpp"
 #include "angzarr/saga.grpc.pb.h"
 #include "angzarr/types.pb.h"
-#include "examples/table.pb.h"
 #include "examples/hand.pb.h"
+#include "examples/table.pb.h"
+#include "table_hand_saga.hpp"
 
 namespace {
 
@@ -20,22 +21,16 @@ constexpr const char* OUTPUT_DOMAIN = "hand";
 
 /// gRPC service implementation for table-hand saga.
 class TableHandSagaService final : public angzarr::SagaService::Service {
-public:
-    grpc::Status Prepare(
-        grpc::ServerContext* context,
-        const angzarr::SagaPrepareRequest* request,
-        angzarr::SagaPrepareResponse* response) override {
-
+   public:
+    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
+                         angzarr::SagaPrepareResponse* response) override {
         // Table-hand saga doesn't need to read destination state
         // Hand is created fresh, no prior state needed
         return grpc::Status::OK;
     }
 
-    grpc::Status Execute(
-        grpc::ServerContext* context,
-        const angzarr::SagaExecuteRequest* request,
-        angzarr::SagaResponse* response) override {
-
+    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
+                         angzarr::SagaResponse* response) override {
         try {
             const auto& source = request->source();
 
@@ -84,7 +79,7 @@ public:
     }
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

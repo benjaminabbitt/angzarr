@@ -1,4 +1,5 @@
 #include "player_state.hpp"
+
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -20,7 +21,7 @@ bool ends_with(const std::string& str, const std::string& suffix) {
     return str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 PlayerState PlayerState::from_event_book(const angzarr::EventBook& event_book) {
     PlayerState state;
@@ -89,4 +90,4 @@ void PlayerState::apply_event(PlayerState& state, const google::protobuf::Any& e
     }
 }
 
-} // namespace player
+}  // namespace player

@@ -10,11 +10,11 @@ namespace angzarr {
  * Component type constants for topology discovery.
  */
 namespace component_types {
-    constexpr const char* AGGREGATE = "aggregate";
-    constexpr const char* SAGA = "saga";
-    constexpr const char* PROJECTOR = "projector";
-    constexpr const char* PROCESS_MANAGER = "process_manager";
-}
+constexpr const char* AGGREGATE = "aggregate";
+constexpr const char* SAGA = "saga";
+constexpr const char* PROJECTOR = "projector";
+constexpr const char* PROCESS_MANAGER = "process_manager";
+}  // namespace component_types
 
 /**
  * Component descriptor for topology registration.
@@ -26,4 +26,4 @@ struct Descriptor {
     std::map<std::string, std::vector<std::string>> inputs;
 };
 
-} // namespace angzarr
+}  // namespace angzarr

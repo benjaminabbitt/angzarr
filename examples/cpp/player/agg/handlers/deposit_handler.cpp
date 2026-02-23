@@ -1,6 +1,8 @@
 #include "deposit_handler.hpp"
-#include "angzarr/errors.hpp"
+
 #include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace player {
 namespace handlers {
@@ -24,7 +26,8 @@ int64_t validate(const examples::DepositFunds& cmd) {
 // docs:end:deposit_validate
 
 // docs:start:deposit_compute
-examples::FundsDeposited compute(const examples::DepositFunds& cmd, const PlayerState& state, int64_t amount) {
+examples::FundsDeposited compute(const examples::DepositFunds& cmd, const PlayerState& state,
+                                 int64_t amount) {
     int64_t new_balance = state.bankroll + amount;
 
     examples::FundsDeposited event;
@@ -40,11 +43,12 @@ examples::FundsDeposited compute(const examples::DepositFunds& cmd, const Player
 }
 // docs:end:deposit_compute
 
-examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd, const PlayerState& state) {
+examples::FundsDeposited handle_deposit(const examples::DepositFunds& cmd,
+                                        const PlayerState& state) {
     guard(state);
     int64_t amount = validate(cmd);
     return compute(cmd, state, amount);
 }
 
-} // namespace handlers
-} // namespace player
+}  // namespace handlers
+}  // namespace player

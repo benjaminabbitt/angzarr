@@ -1,15 +1,15 @@
 #include "join_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
+#include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace table {
 namespace handlers {
 
-examples::PlayerJoined handle_join(
-    const examples::JoinTable& cmd,
-    const TableState& state) {
-
+examples::PlayerJoined handle_join(const examples::JoinTable& cmd, const TableState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Table does not exist");
@@ -26,12 +26,12 @@ examples::PlayerJoined handle_join(
         throw angzarr::CommandRejectedError::precondition_failed("Table is full");
     }
     if (cmd.buy_in_amount() < state.min_buy_in) {
-        throw angzarr::CommandRejectedError::invalid_argument(
-            "Buy-in must be at least " + std::to_string(state.min_buy_in));
+        throw angzarr::CommandRejectedError::invalid_argument("Buy-in must be at least " +
+                                                              std::to_string(state.min_buy_in));
     }
     if (cmd.buy_in_amount() > state.max_buy_in) {
-        throw angzarr::CommandRejectedError::invalid_argument(
-            "Buy-in cannot exceed " + std::to_string(state.max_buy_in));
+        throw angzarr::CommandRejectedError::invalid_argument("Buy-in cannot exceed " +
+                                                              std::to_string(state.max_buy_in));
     }
     // preferred_seat > 0 means explicit preference; 0 means no preference
     if (cmd.preferred_seat() > 0 && state.get_seat(cmd.preferred_seat()) != nullptr) {
@@ -55,5 +55,5 @@ examples::PlayerJoined handle_join(
     return event;
 }
 
-} // namespace handlers
-} // namespace table
+}  // namespace handlers
+}  // namespace table

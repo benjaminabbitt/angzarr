@@ -1,16 +1,18 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
+
 #include "angzarr/saga.pb.h"
-#include "helpers.hpp"
-#include "errors.hpp"
-#include "router.hpp"
+#include "angzarr/types.pb.h"
 #include "descriptor.hpp"
+#include "errors.hpp"
+#include "helpers.hpp"
+#include "router.hpp"
 
 namespace angzarr {
 
@@ -45,16 +47,16 @@ namespace angzarr {
  *       HandFlowState create_empty_state() override { return HandFlowState{}; }
  *   };
  */
-template<typename StateT>
+template <typename StateT>
 class ProcessManager {
-public:
+   public:
     using State = StateT;
     using EventDispatcher = std::function<std::vector<CommandBook>(
         ProcessManager*, const google::protobuf::Any&, const std::string&)>;
-    using EventApplier = std::function<void(
-        ProcessManager*, StateT&, const google::protobuf::Any&)>;
-    using RejectionHandler = std::function<RejectionHandlerResponse(
-        ProcessManager*, const Notification&, StateT&)>;
+    using EventApplier =
+        std::function<void(ProcessManager*, StateT&, const google::protobuf::Any&)>;
+    using RejectionHandler =
+        std::function<RejectionHandlerResponse(ProcessManager*, const Notification&, StateT&)>;
 
     virtual ~ProcessManager() = default;
 
@@ -74,8 +76,7 @@ public:
         std::optional<RejectionHandlerResponse> rejection_response;
     };
 
-    DispatchResult dispatch(const EventBook& book,
-                            const EventBook* prior_events = nullptr) {
+    DispatchResult dispatch(const EventBook& book, const EventBook* prior_events = nullptr) {
         rebuild_state(prior_events);
 
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
@@ -142,7 +143,7 @@ public:
      */
     StateT& mutable_state() { return state_; }
 
-protected:
+   protected:
     /**
      * Create an empty state instance.
      */
@@ -151,7 +152,7 @@ protected:
     /**
      * Pack commands for output.
      */
-    template<typename T>
+    template <typename T>
     std::vector<CommandBook> pack_commands(const T& command, const std::string& domain,
                                            const std::string& correlation_id) {
         CommandBook book;
@@ -186,7 +187,7 @@ protected:
         rejection_handlers()[key] = std::move(handler);
     }
 
-private:
+   private:
     void rebuild_state(const EventBook* event_book) {
         state_ = create_empty_state();
         exists_ = false;
@@ -216,17 +217,16 @@ private:
                     rejection.rejected_command().pages_size() > 0) {
                     const auto& rejected_cmd = rejection.rejected_command();
                     domain = rejected_cmd.cover().domain();
-                    command_suffix = helpers::type_name_from_url(
-                        rejected_cmd.pages(0).command().type_url());
+                    command_suffix =
+                        helpers::type_name_from_url(rejected_cmd.pages(0).command().type_url());
                 }
             }
         }
 
         // Extract simple type name (e.g., "test.ReserveStock" -> "ReserveStock")
         auto dot_pos = command_suffix.rfind('.');
-        std::string simple_command = (dot_pos != std::string::npos)
-            ? command_suffix.substr(dot_pos + 1)
-            : command_suffix;
+        std::string simple_command =
+            (dot_pos != std::string::npos) ? command_suffix.substr(dot_pos + 1) : command_suffix;
 
         auto key = domain + "/" + simple_command;
         auto it = rejection_handlers().find(key);
@@ -260,8 +260,8 @@ private:
 /**
  * Macro to declare a process manager.
  */
-#define ANGZARR_PROCESS_MANAGER(pm_name) \
+#define ANGZARR_PROCESS_MANAGER(pm_name)          \
     static constexpr const char* kName = pm_name; \
     std::string name() const override { return kName; }
 
-} // namespace angzarr
+}  // namespace angzarr

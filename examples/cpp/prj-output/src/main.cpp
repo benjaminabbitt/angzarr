@@ -1,19 +1,20 @@
-#include <iostream>
-#include <fstream>
-#include <memory>
-#include <string>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <google/protobuf/any.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <string>
 
 #include "angzarr/projector.grpc.pb.h"
 #include "angzarr/types.pb.h"
+#include "examples/hand.pb.h"
 #include "examples/player.pb.h"
 #include "examples/table.pb.h"
-#include "examples/hand.pb.h"
 
 namespace {
 
@@ -24,11 +25,11 @@ constexpr const char* PROJECTOR_NAME = "output";
 // docs:start:projector_functional
 /// gRPC service implementation for output projector.
 class OutputProjectorService final : public angzarr::ProjectorService::Service {
-public:
+   public:
     explicit OutputProjectorService(const std::string& log_path, bool show_timestamps = true)
-        : log_path_(log_path)
-        , log_file_(log_path, std::ios::app)
-        , show_timestamps_(show_timestamps) {}
+        : log_path_(log_path),
+          log_file_(log_path, std::ios::app),
+          show_timestamps_(show_timestamps) {}
 
     ~OutputProjectorService() {
         if (log_file_.is_open()) {
@@ -36,19 +37,13 @@ public:
         }
     }
 
-    grpc::Status Handle(
-        grpc::ServerContext* context,
-        const angzarr::EventBook* request,
-        angzarr::Projection* response) override {
-
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::EventBook* request,
+                        angzarr::Projection* response) override {
         return process_event_book(*request, response);
     }
 
-    grpc::Status HandleSpeculative(
-        grpc::ServerContext* context,
-        const angzarr::EventBook* request,
-        angzarr::Projection* response) override {
-
+    grpc::Status HandleSpeculative(grpc::ServerContext* context, const angzarr::EventBook* request,
+                                   angzarr::Projection* response) override {
         // Speculative mode - don't write to file
         uint32_t seq = 0;
         for (const auto& page : request->pages()) {
@@ -62,9 +57,9 @@ public:
         return grpc::Status::OK;
     }
 
-private:
+   private:
     grpc::Status process_event_book(const angzarr::EventBook& event_book,
-                                     angzarr::Projection* response) {
+                                    angzarr::Projection* response) {
         uint32_t seq = 0;
 
         for (const auto& page : event_book.pages()) {
@@ -126,7 +121,8 @@ private:
         if (type_url.find("HandStarted") != std::string::npos) {
             examples::HandStarted event;
             event_any.UnpackTo(&event);
-            return prefix + "Hand started: dealer position " + std::to_string(event.dealer_position());
+            return prefix + "Hand started: dealer position " +
+                   std::to_string(event.dealer_position());
         }
 
         // Hand events
@@ -151,7 +147,8 @@ private:
         if (type_url.find("CommunityCardsDealt") != std::string::npos) {
             examples::CommunityCardsDealt event;
             event_any.UnpackTo(&event);
-            return prefix + "Community cards dealt: " + std::to_string(event.cards_size()) + " cards";
+            return prefix + "Community cards dealt: " + std::to_string(event.cards_size()) +
+                   " cards";
         }
 
         if (type_url.find("PotAwarded") != std::string::npos) {
@@ -188,7 +185,7 @@ private:
 };
 // docs:end:projector_functional
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

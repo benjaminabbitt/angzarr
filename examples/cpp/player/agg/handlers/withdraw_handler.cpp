@@ -1,11 +1,14 @@
 #include "withdraw_handler.hpp"
-#include "angzarr/errors.hpp"
+
 #include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace player {
 namespace handlers {
 
-examples::FundsWithdrawn handle_withdraw(const examples::WithdrawFunds& cmd, const PlayerState& state) {
+examples::FundsWithdrawn handle_withdraw(const examples::WithdrawFunds& cmd,
+                                         const PlayerState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::precondition_failed("Player does not exist");
@@ -35,5 +38,5 @@ examples::FundsWithdrawn handle_withdraw(const examples::WithdrawFunds& cmd, con
     return event;
 }
 
-} // namespace handlers
-} // namespace player
+}  // namespace handlers
+}  // namespace player

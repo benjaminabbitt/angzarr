@@ -1,8 +1,9 @@
 #include "hand_state.hpp"
+
 #include <algorithm>
+#include <iomanip>
 #include <random>
 #include <sstream>
-#include <iomanip>
 
 namespace hand {
 
@@ -103,10 +104,8 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
 
             // Build remaining deck
             state.remaining_deck.clear();
-            std::vector<examples::Suit> suits = {
-                examples::CLUBS, examples::DIAMONDS,
-                examples::HEARTS, examples::SPADES
-            };
+            std::vector<examples::Suit> suits = {examples::CLUBS, examples::DIAMONDS,
+                                                 examples::HEARTS, examples::SPADES};
             for (auto suit : suits) {
                 for (int rank = 2; rank <= 14; ++rank) {
                     if (dealt_cards.find({static_cast<int>(suit), rank}) == dealt_cards.end()) {
@@ -128,8 +127,7 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
             }
             state.pots = {main_pot};
         }
-    }
-    else if (type_url.find("BlindPosted") != std::string::npos) {
+    } else if (type_url.find("BlindPosted") != std::string::npos) {
         examples::BlindPosted event;
         if (event_any.UnpackTo(&event)) {
             auto* player = state.get_player_mut(event.player_root());
@@ -152,8 +150,7 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
             }
             state.status = "betting";
         }
-    }
-    else if (type_url.find("ActionTaken") != std::string::npos) {
+    } else if (type_url.find("ActionTaken") != std::string::npos) {
         examples::ActionTaken event;
         if (event_any.UnpackTo(&event)) {
             auto* player = state.get_player_mut(event.player_root());
@@ -162,8 +159,7 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
                 player->has_acted = true;
                 if (event.action() == examples::FOLD) {
                     player->has_folded = true;
-                } else if (event.action() == examples::CALL ||
-                           event.action() == examples::BET ||
+                } else if (event.action() == examples::CALL || event.action() == examples::BET ||
                            event.action() == examples::RAISE) {
                     player->bet_this_round += event.amount();
                     player->total_invested += event.amount();
@@ -172,8 +168,7 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
                     player->bet_this_round += event.amount();
                     player->total_invested += event.amount();
                 }
-                if (event.action() == examples::BET ||
-                    event.action() == examples::RAISE ||
+                if (event.action() == examples::BET || event.action() == examples::RAISE ||
                     event.action() == examples::ALL_IN) {
                     if (player->bet_this_round > state.current_bet) {
                         int64_t raise_amount = player->bet_this_round - state.current_bet;
@@ -187,16 +182,14 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
             }
             state.action_on_position = -1;
         }
-    }
-    else if (type_url.find("CommunityCardsDealt") != std::string::npos) {
+    } else if (type_url.find("CommunityCardsDealt") != std::string::npos) {
         examples::CommunityCardsDealt event;
         if (event_any.UnpackTo(&event)) {
             for (const auto& card : event.cards()) {
                 Card c{card.suit(), card.rank()};
                 state.community_cards.push_back(c);
                 // Remove from remaining deck
-                auto it = std::find(state.remaining_deck.begin(),
-                                    state.remaining_deck.end(), c);
+                auto it = std::find(state.remaining_deck.begin(), state.remaining_deck.end(), c);
                 if (it != state.remaining_deck.end()) {
                     state.remaining_deck.erase(it);
                 }
@@ -210,11 +203,9 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
             }
             state.current_bet = 0;
         }
-    }
-    else if (type_url.find("ShowdownStarted") != std::string::npos) {
+    } else if (type_url.find("ShowdownStarted") != std::string::npos) {
         state.status = "showdown";
-    }
-    else if (type_url.find("PotAwarded") != std::string::npos) {
+    } else if (type_url.find("PotAwarded") != std::string::npos) {
         examples::PotAwarded event;
         if (event_any.UnpackTo(&event)) {
             for (const auto& winner : event.winners()) {
@@ -224,10 +215,9 @@ void HandState::apply_event(HandState& state, const google::protobuf::Any& event
                 }
             }
         }
-    }
-    else if (type_url.find("HandComplete") != std::string::npos) {
+    } else if (type_url.find("HandComplete") != std::string::npos) {
         state.status = "complete";
     }
 }
 
-} // namespace hand
+}  // namespace hand

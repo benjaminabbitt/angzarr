@@ -2,8 +2,8 @@
 
 #include "angzarr/event_router.hpp"
 #include "angzarr/types.pb.h"
-#include "examples/table.pb.h"
 #include "examples/hand.pb.h"
+#include "examples/table.pb.h"
 
 namespace table {
 namespace saga {
@@ -17,9 +17,8 @@ angzarr::EventRouter create_table_hand_router();
 std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& event);
 
 /// Handle HandStarted: produce DealCards command.
-angzarr::CommandBook handle_hand_started(
-    const examples::HandStarted& event,
-    const std::vector<angzarr::EventBook>& destinations);
+angzarr::CommandBook handle_hand_started(const examples::HandStarted& event,
+                                         const std::vector<angzarr::EventBook>& destinations);
 
-} // namespace saga
-} // namespace table
+}  // namespace saga
+}  // namespace table

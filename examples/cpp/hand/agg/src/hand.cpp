@@ -1,9 +1,10 @@
 #include "hand.hpp"
+
+#include "action_handler.hpp"
+#include "award_pot_handler.hpp"
+#include "deal_community_handler.hpp"
 #include "deal_handler.hpp"
 #include "post_blind_handler.hpp"
-#include "action_handler.hpp"
-#include "deal_community_handler.hpp"
-#include "award_pot_handler.hpp"
 
 namespace hand {
 
@@ -23,8 +24,9 @@ examples::CommunityCardsDealt Hand::deal_community(const examples::DealCommunity
     return handlers::handle_deal_community(cmd, state_);
 }
 
-std::pair<examples::PotAwarded, examples::HandComplete> Hand::award_pot(const examples::AwardPot& cmd) {
+std::pair<examples::PotAwarded, examples::HandComplete> Hand::award_pot(
+    const examples::AwardPot& cmd) {
     return handlers::handle_award_pot(cmd, state_);
 }
 
-} // namespace hand
+}  // namespace hand

@@ -1,15 +1,15 @@
 #include "post_blind_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
+#include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace hand {
 namespace handlers {
 
-examples::BlindPosted handle_post_blind(
-    const examples::PostBlind& cmd,
-    const HandState& state) {
-
+examples::BlindPosted handle_post_blind(const examples::PostBlind& cmd, const HandState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Hand not dealt");
@@ -54,5 +54,5 @@ examples::BlindPosted handle_post_blind(
     return event;
 }
 
-} // namespace handlers
-} // namespace hand
+}  // namespace handlers
+}  // namespace hand

@@ -1,11 +1,13 @@
-#include <gtest/gtest.h>
-#include <string>
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/empty.pb.h>
-#include "angzarr/types.pb.h"
+#include <gtest/gtest.h>
+
+#include <string>
+
 #include "angzarr/aggregate.pb.h"
-#include "angzarr/router.hpp"
 #include "angzarr/helpers.hpp"
+#include "angzarr/router.hpp"
+#include "angzarr/types.pb.h"
 
 using namespace angzarr;
 
@@ -35,7 +37,7 @@ AggregateState rebuild_state(const EventBook* book) {
 }
 
 class StateBuildingTest : public ::testing::Test {
-protected:
+   protected:
     EventBook make_event_book(int event_count) {
         EventBook book;
         auto* cover = book.mutable_cover();

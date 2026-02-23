@@ -1,17 +1,18 @@
 #pragma once
 
-#include "hand_state.hpp"
+#include <utility>
+
 #include "angzarr/aggregate.hpp"
 #include "angzarr/errors.hpp"
 #include "examples/hand.pb.h"
-#include <utility>
+#include "hand_state.hpp"
 
 namespace hand {
 
 /// Hand aggregate - OO style implementation.
 /// Uses CRTP pattern with Aggregate base class.
 class Hand : public angzarr::Aggregate<Hand, HandState> {
-public:
+   public:
     static constexpr const char* DOMAIN = "hand";
 
     // State accessors
@@ -45,18 +46,17 @@ public:
     examples::BlindPosted post_blind(const examples::PostBlind& cmd);
     examples::ActionTaken action(const examples::PlayerAction& cmd);
     examples::CommunityCardsDealt deal_community(const examples::DealCommunityCards& cmd);
-    std::pair<examples::PotAwarded, examples::HandComplete> award_pot(const examples::AwardPot& cmd);
+    std::pair<examples::PotAwarded, examples::HandComplete> award_pot(
+        const examples::AwardPot& cmd);
 
-protected:
+   protected:
     friend class angzarr::Aggregate<Hand, HandState>;
 
-    HandState create_empty_state() const {
-        return HandState{};
-    }
+    HandState create_empty_state() const { return HandState{}; }
 
     void apply_event_impl(HandState& state, const google::protobuf::Any& event_any) {
         HandState::apply_event(state, event_any);
     }
 };
 
-} // namespace hand
+}  // namespace hand

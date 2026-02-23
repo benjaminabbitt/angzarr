@@ -32,5 +32,5 @@ google::protobuf::Timestamp now() {
     return ts;
 }
 
-} // namespace helpers
-} // namespace angzarr
+}  // namespace helpers
+}  // namespace angzarr

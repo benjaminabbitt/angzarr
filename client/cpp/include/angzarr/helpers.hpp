@@ -1,10 +1,12 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <chrono>
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/timestamp.pb.h>
+
+#include <chrono>
+#include <string>
+#include <vector>
+
 #include "angzarr/types.pb.h"
 
 namespace angzarr {
@@ -83,7 +85,7 @@ google::protobuf::Timestamp now();
 /**
  * Pack a protobuf message into an Any.
  */
-template<typename T>
+template <typename T>
 google::protobuf::Any pack_any(const T& message) {
     google::protobuf::Any any;
     any.PackFrom(message, "type.googleapis.com/");
@@ -93,7 +95,7 @@ google::protobuf::Any pack_any(const T& message) {
 /**
  * Pack an event into an EventPage.
  */
-template<typename T>
+template <typename T>
 EventPage pack_event(const T& event_message) {
     EventPage page;
     page.mutable_event()->PackFrom(event_message, "type.googleapis.com/");
@@ -103,12 +105,12 @@ EventPage pack_event(const T& event_message) {
 /**
  * Create a new EventBook with the given events.
  */
-template<typename... Events>
+template <typename... Events>
 EventBook new_event_book(const Events&... events) {
     EventBook book;
     (book.add_pages()->CopyFrom(pack_event(events)), ...);
     return book;
 }
 
-} // namespace helpers
-} // namespace angzarr
+}  // namespace helpers
+}  // namespace angzarr

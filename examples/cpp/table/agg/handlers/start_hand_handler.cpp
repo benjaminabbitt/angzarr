@@ -1,12 +1,15 @@
 #include "start_hand_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
 #include <algorithm>
-#include <vector>
+#include <chrono>
+#include <iomanip>
 #include <random>
 #include <sstream>
-#include <iomanip>
+#include <vector>
+
+#include "angzarr/errors.hpp"
 
 namespace table {
 namespace handlers {
@@ -28,12 +31,9 @@ std::string generate_hand_root(const std::string& table_id, int64_t hand_number)
     return ss.str().substr(0, 16);  // 16 bytes as hex string
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
-examples::HandStarted handle_start_hand(
-    const examples::StartHand& cmd,
-    const TableState& state) {
-
+examples::HandStarted handle_start_hand(const examples::StartHand& cmd, const TableState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Table does not exist");
@@ -42,7 +42,8 @@ examples::HandStarted handle_start_hand(
         throw angzarr::CommandRejectedError::precondition_failed("Hand already in progress");
     }
     if (state.active_player_count() < 2) {
-        throw angzarr::CommandRejectedError::precondition_failed("Not enough players to start hand");
+        throw angzarr::CommandRejectedError::precondition_failed(
+            "Not enough players to start hand");
     }
 
     // Compute
@@ -109,5 +110,5 @@ examples::HandStarted handle_start_hand(
     return event;
 }
 
-} // namespace handlers
-} // namespace table
+}  // namespace handlers
+}  // namespace table

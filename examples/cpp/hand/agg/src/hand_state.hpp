@@ -1,9 +1,11 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <google/protobuf/any.pb.h>
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/poker_types.pb.h"
@@ -14,9 +16,7 @@ struct Card {
     examples::Suit suit = examples::SUIT_UNSPECIFIED;
     int rank = 0;
 
-    bool operator==(const Card& other) const {
-        return suit == other.suit && rank == other.rank;
-    }
+    bool operator==(const Card& other) const { return suit == other.suit && rank == other.rank; }
 };
 
 struct PlayerHandInfo {
@@ -68,4 +68,4 @@ struct HandState {
     static void apply_event(HandState& state, const google::protobuf::Any& event_any);
 };
 
-} // namespace hand
+}  // namespace hand

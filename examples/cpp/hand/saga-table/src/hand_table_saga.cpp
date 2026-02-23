@@ -21,10 +21,8 @@ std::vector<angzarr::Cover> prepare_hand_complete(const examples::HandComplete& 
     return covers;
 }
 
-angzarr::CommandBook handle_hand_complete(
-    const examples::HandComplete& event,
-    const std::vector<angzarr::EventBook>& destinations) {
-
+angzarr::CommandBook handle_hand_complete(const examples::HandComplete& event,
+                                          const std::vector<angzarr::EventBook>& destinations) {
     // Get next sequence from destination state
     int dest_seq = destinations.empty() ? 0 : destinations[0].next_sequence();
 
@@ -56,5 +54,5 @@ angzarr::CommandBook handle_hand_complete(
     return cmd_book;
 }
 
-} // namespace saga
-} // namespace hand
+}  // namespace saga
+}  // namespace hand

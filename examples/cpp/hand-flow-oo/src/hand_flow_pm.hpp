@@ -1,16 +1,18 @@
 #pragma once
 
-#include <string>
-#include <vector>
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
-#include "angzarr/saga.pb.h"
-#include "angzarr/process_manager.grpc.pb.h"
-#include "angzarr/macros.hpp"
+#include <string>
+#include <vector>
+
 #include "angzarr/errors.hpp"
+#include "angzarr/macros.hpp"
+#include "angzarr/process_manager.grpc.pb.h"
 #include "angzarr/process_manager.hpp"
+#include "angzarr/saga.pb.h"
+#include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
 #include "examples/table.pb.h"
 
@@ -28,7 +30,7 @@ struct PMState {
 /// - Tracking when hands start and complete
 /// - Coordinating between table and hand domains
 class HandFlowPM {
-public:
+   public:
     HandFlowPM() {
         // Register prepare handlers
         prepare_handlers_["HandStarted"] = [this](const google::protobuf::Any& any) {
@@ -38,32 +40,38 @@ public:
         };
 
         // Register event handlers
-        handlers_["HandStarted"] = [this](const google::protobuf::Any& any, const std::string& corr_id) {
+        handlers_["HandStarted"] = [this](const google::protobuf::Any& any,
+                                          const std::string& corr_id) {
             examples::HandStarted evt;
             any.UnpackTo(&evt);
             return handle_HandStarted(evt, corr_id);
         };
-        handlers_["CardsDealt"] = [this](const google::protobuf::Any& any, const std::string& corr_id) {
+        handlers_["CardsDealt"] = [this](const google::protobuf::Any& any,
+                                         const std::string& corr_id) {
             examples::CardsDealt evt;
             any.UnpackTo(&evt);
             return handle_CardsDealt(evt, corr_id);
         };
-        handlers_["BlindPosted"] = [this](const google::protobuf::Any& any, const std::string& corr_id) {
+        handlers_["BlindPosted"] = [this](const google::protobuf::Any& any,
+                                          const std::string& corr_id) {
             examples::BlindPosted evt;
             any.UnpackTo(&evt);
             return handle_BlindPosted(evt, corr_id);
         };
-        handlers_["ActionTaken"] = [this](const google::protobuf::Any& any, const std::string& corr_id) {
+        handlers_["ActionTaken"] = [this](const google::protobuf::Any& any,
+                                          const std::string& corr_id) {
             examples::ActionTaken evt;
             any.UnpackTo(&evt);
             return handle_ActionTaken(evt, corr_id);
         };
-        handlers_["CommunityCardsDealt"] = [this](const google::protobuf::Any& any, const std::string& corr_id) {
+        handlers_["CommunityCardsDealt"] = [this](const google::protobuf::Any& any,
+                                                  const std::string& corr_id) {
             examples::CommunityCardsDealt evt;
             any.UnpackTo(&evt);
             return handle_CommunityCardsDealt(evt, corr_id);
         };
-        handlers_["PotAwarded"] = [this](const google::protobuf::Any& any, const std::string& corr_id) {
+        handlers_["PotAwarded"] = [this](const google::protobuf::Any& any,
+                                         const std::string& corr_id) {
             examples::PotAwarded evt;
             any.UnpackTo(&evt);
             return handle_PotAwarded(evt, corr_id);
@@ -84,9 +92,7 @@ public:
 
     std::string name() const { return "pmg-hand-flow-oo"; }
 
-    std::vector<std::string> input_domains() const {
-        return {"table", "hand"};
-    }
+    std::vector<std::string> input_domains() const { return {"table", "hand"}; }
 
     /// Prepare destinations for events (two-phase protocol).
     std::vector<angzarr::Cover> prepare_destinations(const angzarr::EventBook& book) {
@@ -105,9 +111,8 @@ public:
 
     /// Dispatch events to handlers.
     std::vector<angzarr::CommandBook> dispatch(
-            const angzarr::EventBook& book,
-            const angzarr::EventBook* prior_events = nullptr,
-            const std::vector<angzarr::EventBook>& /* destinations */ = {}) {
+        const angzarr::EventBook& book, const angzarr::EventBook* prior_events = nullptr,
+        const std::vector<angzarr::EventBook>& /* destinations */ = {}) {
         rebuild_state(prior_events);
 
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
@@ -139,7 +144,7 @@ public:
 
     const PMState& state() const { return state_; }
 
-protected:
+   protected:
     /// Declare the hand destination needed when a hand starts.
     std::vector<angzarr::Cover> prepare_HandStarted(const examples::HandStarted& evt) {
         angzarr::Cover cover;
@@ -149,9 +154,8 @@ protected:
     }
 
     /// Process the HandStarted event from table domain.
-    std::vector<angzarr::CommandBook> handle_HandStarted(
-            const examples::HandStarted& /* evt */,
-            const std::string& /* corr_id */) {
+    std::vector<angzarr::CommandBook> handle_HandStarted(const examples::HandStarted& /* evt */,
+                                                         const std::string& /* corr_id */) {
         // No commands to emit - saga-table-hand handles the DealCards command
         return {};
     }
@@ -163,37 +167,32 @@ protected:
     }
 
     /// Process the CardsDealt event from hand domain.
-    std::vector<angzarr::CommandBook> handle_CardsDealt(
-            const examples::CardsDealt& /* evt */,
-            const std::string& /* corr_id */) {
+    std::vector<angzarr::CommandBook> handle_CardsDealt(const examples::CardsDealt& /* evt */,
+                                                        const std::string& /* corr_id */) {
         return {};
     }
 
     /// Process the BlindPosted event from hand domain.
-    std::vector<angzarr::CommandBook> handle_BlindPosted(
-            const examples::BlindPosted& /* evt */,
-            const std::string& /* corr_id */) {
+    std::vector<angzarr::CommandBook> handle_BlindPosted(const examples::BlindPosted& /* evt */,
+                                                         const std::string& /* corr_id */) {
         return {};
     }
 
     /// Process the ActionTaken event from hand domain.
-    std::vector<angzarr::CommandBook> handle_ActionTaken(
-            const examples::ActionTaken& /* evt */,
-            const std::string& /* corr_id */) {
+    std::vector<angzarr::CommandBook> handle_ActionTaken(const examples::ActionTaken& /* evt */,
+                                                         const std::string& /* corr_id */) {
         return {};
     }
 
     /// Process the CommunityCardsDealt event from hand domain.
     std::vector<angzarr::CommandBook> handle_CommunityCardsDealt(
-            const examples::CommunityCardsDealt& /* evt */,
-            const std::string& /* corr_id */) {
+        const examples::CommunityCardsDealt& /* evt */, const std::string& /* corr_id */) {
         return {};
     }
 
     /// Process the PotAwarded event from hand domain.
-    std::vector<angzarr::CommandBook> handle_PotAwarded(
-            const examples::PotAwarded& /* evt */,
-            const std::string& /* corr_id */) {
+    std::vector<angzarr::CommandBook> handle_PotAwarded(const examples::PotAwarded& /* evt */,
+                                                        const std::string& /* corr_id */) {
         return {};
     }
 
@@ -202,7 +201,7 @@ protected:
         state.hand_in_progress = false;
     }
 
-private:
+   private:
     void rebuild_state(const angzarr::EventBook* event_book) {
         state_ = PMState{};
         if (!event_book) return;
@@ -219,8 +218,7 @@ private:
 
     using EventHandler = std::function<std::vector<angzarr::CommandBook>(
         const google::protobuf::Any&, const std::string&)>;
-    using PrepareHandler = std::function<std::vector<angzarr::Cover>(
-        const google::protobuf::Any&)>;
+    using PrepareHandler = std::function<std::vector<angzarr::Cover>(const google::protobuf::Any&)>;
     using EventApplier = std::function<void(PMState&, const google::protobuf::Any&)>;
 
     std::map<std::string, EventHandler> handlers_;
@@ -229,4 +227,4 @@ private:
     PMState state_;
 };
 
-} // namespace hand_flow_oo
+}  // namespace hand_flow_oo

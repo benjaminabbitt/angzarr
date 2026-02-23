@@ -1,15 +1,17 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
 #include <optional>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
+
 #include "angzarr/aggregate.pb.h"
-#include "helpers.hpp"
+#include "angzarr/types.pb.h"
 #include "errors.hpp"
+#include "helpers.hpp"
 
 namespace angzarr {
 
@@ -26,11 +28,11 @@ struct RejectionHandlerResponse {
 /**
  * DRY command dispatcher for aggregates (functional pattern).
  */
-template<typename State>
+template <typename State>
 class CommandRouter {
-public:
-    using CommandHandler = std::function<EventBook(
-        const CommandBook&, const google::protobuf::Any&, State&, int)>;
+   public:
+    using CommandHandler =
+        std::function<EventBook(const CommandBook&, const google::protobuf::Any&, State&, int)>;
     using RejectionHandler = std::function<RejectionHandlerResponse(const Notification&, State&)>;
     using StateRebuilder = std::function<State(const EventBook*)>;
 
@@ -95,7 +97,7 @@ public:
         throw InvalidArgumentError("Unknown command type: " + type_url);
     }
 
-private:
+   private:
     State get_state(const EventBook* event_book) {
         if (rebuild_) {
             return rebuild_(event_book);
@@ -114,8 +116,8 @@ private:
                     rejection.rejected_command().pages_size() > 0) {
                     const auto& rejected_cmd = rejection.rejected_command();
                     domain = rejected_cmd.cover().domain();
-                    command_suffix = helpers::type_name_from_url(
-                        rejected_cmd.pages(0).command().type_url());
+                    command_suffix =
+                        helpers::type_name_from_url(rejected_cmd.pages(0).command().type_url());
                 }
             }
         }
@@ -123,9 +125,8 @@ private:
         // Extract simple type name (e.g., "test.ReserveStock" -> "ReserveStock")
         std::string simple_command;
         auto dot_pos = command_suffix.rfind('.');
-        simple_command = (dot_pos != std::string::npos)
-            ? command_suffix.substr(dot_pos + 1)
-            : command_suffix;
+        simple_command =
+            (dot_pos != std::string::npos) ? command_suffix.substr(dot_pos + 1) : command_suffix;
 
         for (const auto& [key, handler] : rejection_handlers_) {
             auto pos = key.find('/');
@@ -187,22 +188,21 @@ private:
  *         .domain("hand").on("CardsDealt", handle_dealt);
  */
 class EventRouter {
-public:
-    using EventHandler = std::function<std::vector<CommandBook>(
-        const google::protobuf::Any&, const std::string&, const std::string&,
-        const std::vector<EventBook>&)>;
-    using PrepareHandler = std::function<std::vector<Cover>(
-        const google::protobuf::Any&, const UUID*)>;
+   public:
+    using EventHandler =
+        std::function<std::vector<CommandBook>(const google::protobuf::Any&, const std::string&,
+                                               const std::string&, const std::vector<EventBook>&)>;
+    using PrepareHandler =
+        std::function<std::vector<Cover>(const google::protobuf::Any&, const UUID*)>;
 
-    explicit EventRouter(const std::string& name)
-        : name_(name) {}
+    explicit EventRouter(const std::string& name) : name_(name) {}
 
     /**
      * Create a new EventRouter with a single input domain (backwards compatibility).
      * @deprecated Use EventRouter(name).domain(input_domain) instead.
      */
-    [[deprecated("Use EventRouter(name).domain(input_domain) instead")]]
-    EventRouter(const std::string& name, const std::string& input_domain)
+    [[deprecated("Use EventRouter(name).domain(input_domain) instead")]] EventRouter(
+        const std::string& name, const std::string& input_domain)
         : name_(name) {
         if (!input_domain.empty()) {
             domain(input_domain);
@@ -280,8 +280,8 @@ public:
             return {};
         }
 
-        const UUID* root = book.has_cover() && book.cover().has_root()
-            ? &book.cover().root() : nullptr;
+        const UUID* root =
+            book.has_cover() && book.cover().has_root() ? &book.cover().root() : nullptr;
         std::vector<Cover> destinations;
 
         for (const auto& page : book.pages()) {
@@ -302,7 +302,7 @@ public:
      * Routes based on source domain and event type suffix.
      */
     std::vector<CommandBook> dispatch(const EventBook& book,
-                                       const std::vector<EventBook>& destinations = {}) {
+                                      const std::vector<EventBook>& destinations = {}) {
         std::string source_domain;
         if (book.has_cover()) {
             source_domain = book.cover().domain();
@@ -333,13 +333,11 @@ public:
         return commands;
     }
 
-
     /**
      * Return the first registered domain (for backwards compatibility).
      * @deprecated Use subscriptions() instead.
      */
-    [[deprecated("Use subscriptions() instead")]]
-    std::string input_domain() const {
+    [[deprecated("Use subscriptions() instead")]] std::string input_domain() const {
         if (!handlers_.empty()) {
             return handlers_.begin()->first;
         }
@@ -351,8 +349,8 @@ public:
      * This method was used for topology discovery but is now deprecated.
      * @deprecated This method has no effect and will be removed.
      */
-    [[deprecated("This method has no effect and will be removed")]]
-    EventRouter& sends(const std::string& /*domain*/, const std::string& /*command_type*/) {
+    [[deprecated("This method has no effect and will be removed")]] EventRouter& sends(
+        const std::string& /*domain*/, const std::string& /*command_type*/) {
         // No-op for backwards compatibility
         return *this;
     }
@@ -361,8 +359,8 @@ public:
      * Return output domain names (deprecated, returns empty vector).
      * @deprecated Output domains are no longer tracked.
      */
-    [[deprecated("Output domains are no longer tracked")]]
-    std::vector<std::string> output_domains() const {
+    [[deprecated("Output domains are no longer tracked")]] std::vector<std::string> output_domains()
+        const {
         return {};
     }
 
@@ -370,12 +368,12 @@ public:
      * Return command types for a given output domain (deprecated, returns empty vector).
      * @deprecated Output types are no longer tracked.
      */
-    [[deprecated("Output types are no longer tracked")]]
-    std::vector<std::string> output_types(const std::string& /*domain*/) const {
+    [[deprecated("Output types are no longer tracked")]] std::vector<std::string> output_types(
+        const std::string& /*domain*/) const {
         return {};
     }
 
-private:
+   private:
     std::string name_;
     std::string current_domain_;
     std::map<std::string, std::vector<std::pair<std::string, EventHandler>>> handlers_;
@@ -385,18 +383,17 @@ private:
 /**
  * Fluent state reconstruction from events (functional pattern).
  */
-template<typename State>
+template <typename State>
 class StateRouter {
-public:
+   public:
     using Applier = std::function<void(State&, const google::protobuf::Any&)>;
 
-    explicit StateRouter(std::function<State()> factory)
-        : factory_(std::move(factory)) {}
+    explicit StateRouter(std::function<State()> factory) : factory_(std::move(factory)) {}
 
     /**
      * Register an event applier.
      */
-    template<typename Event>
+    template <typename Event>
     StateRouter& on(std::function<void(State&, const Event&)> applier) {
         std::string suffix = Event::descriptor()->name();
         appliers_[suffix] = [applier](State& state, const google::protobuf::Any& any) {
@@ -421,7 +418,7 @@ public:
         return state;
     }
 
-private:
+   private:
     void apply_event(State& state, const google::protobuf::Any& event_any) {
         for (const auto& [suffix, applier] : appliers_) {
             if (helpers::type_url_matches(event_any.type_url(), suffix)) {
@@ -435,4 +432,4 @@ private:
     std::map<std::string, Applier> appliers_;
 };
 
-} // namespace angzarr
+}  // namespace angzarr

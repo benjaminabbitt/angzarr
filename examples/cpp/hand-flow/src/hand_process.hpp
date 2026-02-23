@@ -1,14 +1,15 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <functional>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "angzarr/types.pb.h"
 #include "examples/hand.pb.h"
-#include "examples/table.pb.h"
 #include "examples/poker_types.pb.h"
+#include "examples/table.pb.h"
 
 namespace hand_flow {
 
@@ -79,7 +80,7 @@ using CommandSender = std::function<void(const angzarr::CommandBook&)>;
 
 /// Orchestrates the flow of a poker hand.
 class HandProcessManager {
-public:
+   public:
     explicit HandProcessManager(CommandSender command_sender);
 
     /// Get process state for a hand.
@@ -108,13 +109,10 @@ public:
     /// Handle PotAwarded event.
     void handle_pot_awarded(const examples::PotAwarded& event);
 
-private:
+   private:
     std::optional<angzarr::CommandBook> post_next_blind(HandProcess& process);
-    angzarr::CommandBook build_post_blind_cmd(
-        const HandProcess& process,
-        const PlayerState& player,
-        const std::string& blind_type,
-        int64_t amount);
+    angzarr::CommandBook build_post_blind_cmd(const HandProcess& process, const PlayerState& player,
+                                              const std::string& blind_type, int64_t amount);
     void start_betting(HandProcess& process);
     void advance_action(HandProcess& process);
     int find_next_active(const HandProcess& process, int after_position) const;
@@ -127,4 +125,4 @@ private:
     std::unordered_map<std::string, HandProcess> processes_;
 };
 
-} // namespace hand_flow
+}  // namespace hand_flow

@@ -1,9 +1,10 @@
 #include "table.hpp"
+
 #include "create_handler.hpp"
+#include "end_hand_handler.hpp"
 #include "join_handler.hpp"
 #include "leave_handler.hpp"
 #include "start_hand_handler.hpp"
-#include "end_hand_handler.hpp"
 
 namespace table {
 
@@ -27,4 +28,4 @@ examples::HandEnded Table::end_hand(const examples::EndHand& cmd) {
     return handlers::handle_end_hand(cmd, state_);
 }
 
-} // namespace table
+}  // namespace table

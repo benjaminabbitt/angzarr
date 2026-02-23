@@ -1,10 +1,12 @@
-#include <gtest/gtest.h>
-#include <string>
-#include <optional>
 #include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
-#include "angzarr/router.hpp"
+#include <gtest/gtest.h>
+
+#include <optional>
+#include <string>
+
 #include "angzarr/process_manager.hpp"
+#include "angzarr/router.hpp"
+#include "angzarr/types.pb.h"
 
 using namespace angzarr;
 
@@ -13,7 +15,7 @@ using namespace angzarr;
 // =============================================================================
 
 class RejectionHandlerResponseTest : public ::testing::Test {
-protected:
+   protected:
     EventBook makeEventBook() {
         EventBook book;
         auto* page = book.add_pages();
@@ -21,8 +23,7 @@ protected:
         return book;
     }
 
-    Notification makeNotification(const std::string& domain,
-                                  const std::string& commandType,
+    Notification makeNotification(const std::string& domain, const std::string& commandType,
                                   const std::string& reason) {
         RejectionNotification rejection;
         rejection.set_issuer_name("test-saga");
@@ -102,7 +103,7 @@ struct TestState {
 };
 
 class CommandRouterRejectionTest : public ::testing::Test {
-protected:
+   protected:
     TestState rebuildState(const EventBook* events) {
         TestState state;
         if (events) {
@@ -111,8 +112,7 @@ protected:
         return state;
     }
 
-    Notification makeNotification(const std::string& domain,
-                                  const std::string& commandType,
+    Notification makeNotification(const std::string& domain, const std::string& commandType,
                                   const std::string& reason) {
         RejectionNotification rejection;
         rejection.set_issuer_name("test-saga");
@@ -138,12 +138,11 @@ protected:
 };
 
 TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsEvents) {
-    CommandRouter<TestState> router("test", [this](const EventBook* events) {
-        return rebuildState(events);
-    });
+    CommandRouter<TestState> router(
+        "test", [this](const EventBook* events) { return rebuildState(events); });
 
-    router.on_rejected("inventory", "ReserveStock",
-        [](const Notification& notification, TestState& state) {
+    router.on_rejected(
+        "inventory", "ReserveStock", [](const Notification& notification, TestState& state) {
             RejectionHandlerResponse response;
             EventBook events;
             auto* page = events.add_pages();
@@ -162,16 +161,14 @@ TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsEvents) {
 }
 
 TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsNotification) {
-    CommandRouter<TestState> router("test", [this](const EventBook* events) {
-        return rebuildState(events);
-    });
+    CommandRouter<TestState> router(
+        "test", [this](const EventBook* events) { return rebuildState(events); });
 
-    router.on_rejected("payment", "Charge",
-        [](const Notification& notification, TestState& state) {
-            RejectionHandlerResponse response;
-            response.notification = notification;
-            return response;
-        });
+    router.on_rejected("payment", "Charge", [](const Notification& notification, TestState& state) {
+        RejectionHandlerResponse response;
+        response.notification = notification;
+        return response;
+    });
 
     Notification notification = makeNotification("payment", "Charge", "declined");
     ContextualCommand cmd = wrapNotification(notification);
@@ -182,9 +179,8 @@ TEST_F(CommandRouterRejectionTest, OnRejected_ReturnsNotification) {
 }
 
 TEST_F(CommandRouterRejectionTest, OnRejected_NoHandler_DelegatesToFramework) {
-    CommandRouter<TestState> router("test", [this](const EventBook* events) {
-        return rebuildState(events);
-    });
+    CommandRouter<TestState> router(
+        "test", [this](const EventBook* events) { return rebuildState(events); });
     // No rejection handler registered
 
     Notification notification = makeNotification("unknown", "UnknownCommand", "reason");
@@ -205,19 +201,17 @@ struct PMTestState {
 };
 
 class PMTestFixture : public ProcessManager<PMTestState> {
-public:
+   public:
     PMTestFixture() = default;
 
     std::string name() const override { return "test-pm"; }
 
-protected:
-    PMTestState create_empty_state() override {
-        return PMTestState{};
-    }
+   protected:
+    PMTestState create_empty_state() override { return PMTestState{}; }
 };
 
 class ProcessManagerRejectionTest : public ::testing::Test {
-protected:
+   protected:
     EventBook wrapNotificationAsEvent(const Notification& notification) {
         EventBook book;
         book.mutable_cover()->set_correlation_id("test-correlation");
@@ -226,8 +220,7 @@ protected:
         return book;
     }
 
-    Notification makeNotification(const std::string& domain,
-                                  const std::string& commandType,
+    Notification makeNotification(const std::string& domain, const std::string& commandType,
                                   const std::string& reason) {
         RejectionNotification rejection;
         rejection.set_issuer_name("test-saga");

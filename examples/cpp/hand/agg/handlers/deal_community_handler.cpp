@@ -1,7 +1,10 @@
 #include "deal_community_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
+#include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace hand {
 namespace handlers {
@@ -32,12 +35,10 @@ PhaseTransition get_next_phase(examples::GameVariant variant, examples::BettingP
     }
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
-examples::CommunityCardsDealt handle_deal_community(
-    const examples::DealCommunityCards& cmd,
-    const HandState& state) {
-
+examples::CommunityCardsDealt handle_deal_community(const examples::DealCommunityCards& cmd,
+                                                    const HandState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Hand not dealt");
@@ -101,5 +102,5 @@ examples::CommunityCardsDealt handle_deal_community(
     return event;
 }
 
-} // namespace handlers
-} // namespace hand
+}  // namespace handlers
+}  // namespace hand

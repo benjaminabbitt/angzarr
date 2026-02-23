@@ -1,16 +1,18 @@
 #pragma once
 
-#include <string>
-#include <optional>
-#include <vector>
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/timestamp.pb.h>
-#include "angzarr/types.pb.h"
+
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "angzarr/aggregate.pb.h"
 #include "angzarr/query.pb.h"
+#include "angzarr/types.pb.h"
+#include "client.hpp"
 #include "errors.hpp"
 #include "helpers.hpp"
-#include "client.hpp"
 
 namespace angzarr {
 
@@ -33,7 +35,7 @@ namespace angzarr {
  *       .execute();
  */
 class CommandBuilder {
-public:
+   public:
     /**
      * Create a command builder for a domain.
      *
@@ -94,7 +96,7 @@ public:
      * @param message The protobuf command message
      * @return Reference to this builder for chaining
      */
-    template<typename T>
+    template <typename T>
     CommandBuilder& with_command(const std::string& type_url, const T& message) {
         type_url_ = type_url;
         payload_ = message.SerializeAsString();
@@ -147,7 +149,7 @@ public:
         return client_->handle(command);
     }
 
-private:
+   private:
     AggregateClient* client_;
     std::string domain_;
     std::optional<std::string> root_;
@@ -191,7 +193,7 @@ private:
  *       .get_event_book();
  */
 class QueryBuilder {
-public:
+   public:
     /**
      * Create a query builder for a domain.
      *
@@ -209,7 +211,7 @@ public:
      */
     QueryBuilder& with_root(const std::string& root_bytes) {
         root_ = root_bytes;
-        correlation_id_.reset(); // Clear correlation ID when root is set
+        correlation_id_.reset();  // Clear correlation ID when root is set
         return *this;
     }
 
@@ -224,7 +226,7 @@ public:
      */
     QueryBuilder& by_correlation_id(const std::string& id) {
         correlation_id_ = id;
-        root_.reset(); // Clear root when correlation ID is set
+        root_.reset();  // Clear root when correlation ID is set
         return *this;
     }
 
@@ -385,7 +387,7 @@ public:
         return pages;
     }
 
-private:
+   private:
     QueryClient* client_;
     std::string domain_;
     std::optional<std::string> root_;
@@ -410,8 +412,8 @@ private:
         }
 
         int year, month, day, hour, minute, second;
-        if (sscanf(rfc3339.c_str(), "%d-%d-%dT%d:%d:%d",
-                   &year, &month, &day, &hour, &minute, &second) != 6) {
+        if (sscanf(rfc3339.c_str(), "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute,
+                   &second) != 6) {
             throw InvalidTimestampError("Invalid RFC3339 timestamp: " + rfc3339);
         }
 
@@ -448,4 +450,4 @@ private:
     }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

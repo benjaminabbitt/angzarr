@@ -1,19 +1,21 @@
 #pragma once
 
+#include <google/protobuf/message.h>
+
+#include <functional>
 #include <string>
 #include <unordered_map>
-#include <functional>
-#include <google/protobuf/message.h>
-#include "examples/player.pb.h"
-#include "examples/table.pb.h"
+
 #include "examples/hand.pb.h"
+#include "examples/player.pb.h"
 #include "examples/poker_types.pb.h"
+#include "examples/table.pb.h"
 
 namespace projector {
 
 /// Text renderer for poker events.
 class TextRenderer {
-public:
+   public:
     TextRenderer() = default;
 
     /// Set display name for a player.
@@ -48,8 +50,8 @@ public:
     std::string render_pot_awarded(const examples::PotAwarded& event);
     std::string render_hand_complete(const examples::HandComplete& event);
 
-private:
+   private:
     std::unordered_map<std::string, std::string> player_names_;
 };
 
-} // namespace projector
+}  // namespace projector

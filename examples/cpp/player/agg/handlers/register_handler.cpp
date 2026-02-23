@@ -1,11 +1,14 @@
 #include "register_handler.hpp"
-#include "angzarr/errors.hpp"
+
 #include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace player {
 namespace handlers {
 
-examples::PlayerRegistered handle_register(const examples::RegisterPlayer& cmd, const PlayerState& state) {
+examples::PlayerRegistered handle_register(const examples::RegisterPlayer& cmd,
+                                           const PlayerState& state) {
     // Guard: preconditions on state
     if (state.exists()) {
         throw angzarr::CommandRejectedError::precondition_failed("Player already exists");
@@ -34,5 +37,5 @@ examples::PlayerRegistered handle_register(const examples::RegisterPlayer& cmd, 
     return event;
 }
 
-} // namespace handlers
-} // namespace player
+}  // namespace handlers
+}  // namespace player

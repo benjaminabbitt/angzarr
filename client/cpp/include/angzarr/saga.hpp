@@ -1,16 +1,18 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
+
 #include "angzarr/saga.pb.h"
-#include "helpers.hpp"
-#include "errors.hpp"
-#include "router.hpp"
+#include "angzarr/types.pb.h"
 #include "descriptor.hpp"
+#include "errors.hpp"
+#include "helpers.hpp"
+#include "router.hpp"
 
 namespace angzarr {
 
@@ -39,11 +41,11 @@ namespace angzarr {
  *   };
  */
 class Saga {
-public:
+   public:
     using EventDispatcher = std::function<std::vector<CommandBook>(
         Saga*, const google::protobuf::Any&, const std::string&)>;
-    using PrepareDispatcher = std::function<std::vector<Cover>(
-        Saga*, const google::protobuf::Any&)>;
+    using PrepareDispatcher =
+        std::function<std::vector<Cover>(Saga*, const google::protobuf::Any&)>;
 
     virtual ~Saga() = default;
 
@@ -85,7 +87,7 @@ public:
      * Dispatch all events to handlers.
      */
     std::vector<CommandBook> dispatch(const EventBook& book,
-                                       const std::vector<EventBook>& destinations = {}) {
+                                      const std::vector<EventBook>& destinations = {}) {
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
 
         std::vector<CommandBook> commands;
@@ -113,11 +115,11 @@ public:
         return {name(), component_types::SAGA, {{input_domain(), types}}};
     }
 
-protected:
+   protected:
     /**
      * Pack a single command into a CommandBook.
      */
-    template<typename T>
+    template <typename T>
     std::vector<CommandBook> pack_commands(const T& command, const std::string& correlation_id) {
         CommandBook book;
         auto* cover = book.mutable_cover();
@@ -133,7 +135,7 @@ protected:
     /**
      * Pack multiple commands into CommandBooks.
      */
-    template<typename T>
+    template <typename T>
     std::vector<CommandBook> pack_commands(const std::vector<T>& commands,
                                            const std::string& correlation_id) {
         std::vector<CommandBook> books;
@@ -158,7 +160,7 @@ protected:
         prepare_handlers()[suffix] = std::move(dispatcher);
     }
 
-private:
+   private:
     static std::map<std::string, EventDispatcher>& handlers() {
         static std::map<std::string, EventDispatcher> h;
         return h;
@@ -170,4 +172,4 @@ private:
     }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

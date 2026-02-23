@@ -1,12 +1,14 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/message.h>
+
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <google/protobuf/message.h>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
 
 namespace angzarr {
@@ -15,19 +17,19 @@ namespace angzarr {
 /// Two-phase pattern: prepare (get destinations) then handle (produce commands).
 /// Uses fluent .domain().on() pattern to register handlers with domain context.
 class EventRouter {
-public:
+   public:
     using PrepareHandler = std::function<std::vector<Cover>(const google::protobuf::Message&)>;
-    using HandleHandler = std::function<CommandBook(const google::protobuf::Message&, const std::vector<EventBook>&)>;
+    using HandleHandler =
+        std::function<CommandBook(const google::protobuf::Message&, const std::vector<EventBook>&)>;
 
-private:
+   private:
     std::string name_;
     std::string current_domain_;
     std::unordered_map<std::string, PrepareHandler> prepare_handlers_;
     std::unordered_map<std::string, HandleHandler> handle_handlers_;
 
-public:
-    explicit EventRouter(const std::string& name)
-        : name_(name) {}
+   public:
+    explicit EventRouter(const std::string& name) : name_(name) {}
 
     /// Set the current domain context for subsequent .on() calls.
     EventRouter& domain(const std::string& domain_name) {
@@ -36,7 +38,7 @@ public:
     }
 
     /// Register a prepare handler.
-    template<typename EventType>
+    template <typename EventType>
     EventRouter& prepare(std::function<std::vector<Cover>(const EventType&)> handler) {
         const std::string type_name = EventType::descriptor()->full_name();
         prepare_handlers_[type_name] = [handler](const google::protobuf::Message& msg) {
@@ -47,11 +49,12 @@ public:
     }
 
     /// Register an event reaction handler.
-    template<typename EventType>
-    EventRouter& on(std::function<CommandBook(const EventType&, const std::vector<EventBook>&)> handler) {
+    template <typename EventType>
+    EventRouter& on(
+        std::function<CommandBook(const EventType&, const std::vector<EventBook>&)> handler) {
         const std::string type_name = EventType::descriptor()->full_name();
         handle_handlers_[type_name] = [handler](const google::protobuf::Message& msg,
-                                                 const std::vector<EventBook>& destinations) {
+                                                const std::vector<EventBook>& destinations) {
             const auto& event = static_cast<const EventType&>(msg);
             return handler(event, destinations);
         };
@@ -59,7 +62,7 @@ public:
     }
 
     /// Execute prepare phase - get destination covers.
-    template<typename EventType>
+    template <typename EventType>
     std::vector<Cover> do_prepare(const EventType& event) {
         const std::string type_name = EventType::descriptor()->full_name();
         auto it = prepare_handlers_.find(type_name);
@@ -70,7 +73,7 @@ public:
     }
 
     /// Execute handle phase - produce commands.
-    template<typename EventType>
+    template <typename EventType>
     CommandBook do_handle(const EventType& event, const std::vector<EventBook>& destinations) {
         const std::string type_name = EventType::descriptor()->full_name();
         auto it = handle_handlers_.find(type_name);
@@ -87,7 +90,7 @@ public:
     }
 
     /// Pack a command message into Any.
-    template<typename CommandType>
+    template <typename CommandType>
     static google::protobuf::Any pack_command(const CommandType& cmd) {
         google::protobuf::Any any;
         any.PackFrom(cmd, "type.googleapis.com/");
@@ -97,4 +100,4 @@ public:
     const std::string& name() const { return name_; }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

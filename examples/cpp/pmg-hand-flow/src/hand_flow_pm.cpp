@@ -27,9 +27,8 @@ struct HandFlowState {
 
 // docs:start:pm_handler
 class HandFlowPM : public ProcessManager<HandFlowState> {
-public:
-    std::vector<CommandBook> handle_hand_started(
-        const HandStarted& event, HandFlowState& state) {
+   public:
+    std::vector<CommandBook> handle_hand_started(const HandStarted& event, HandFlowState& state) {
         state.hand_id = event.hand_id();
         state.phase = HandPhase::Dealing;
         state.player_count = event.player_count();
@@ -40,8 +39,7 @@ public:
         return {build_command("hand", cmd)};
     }
 
-    std::vector<CommandBook> handle_cards_dealt(
-        const CardsDealt& event, HandFlowState& state) {
+    std::vector<CommandBook> handle_cards_dealt(const CardsDealt& event, HandFlowState& state) {
         state.phase = HandPhase::Blinds;
 
         PostBlinds cmd;
@@ -49,8 +47,7 @@ public:
         return {build_command("hand", cmd)};
     }
 
-    std::vector<CommandBook> handle_hand_complete(
-        const HandComplete& event, HandFlowState& state) {
+    std::vector<CommandBook> handle_hand_complete(const HandComplete& event, HandFlowState& state) {
         state.phase = HandPhase::Complete;
 
         EndHand cmd;

@@ -1,9 +1,10 @@
+#include <google/protobuf/any.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
 
 #include "angzarr/saga.grpc.pb.h"
 #include "angzarr/types.pb.h"
@@ -19,12 +20,9 @@ constexpr const char* OUTPUT_DOMAIN = "table";
 
 /// gRPC service implementation for hand-table saga.
 class HandTableSagaService final : public angzarr::SagaService::Service {
-public:
-    grpc::Status Prepare(
-        grpc::ServerContext* context,
-        const angzarr::SagaPrepareRequest* request,
-        angzarr::SagaPrepareResponse* response) override {
-
+   public:
+    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
+                         angzarr::SagaPrepareResponse* response) override {
         // Find HandComplete event and extract table root
         const auto& source = request->source();
         for (const auto& page : source.pages()) {
@@ -45,11 +43,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status Execute(
-        grpc::ServerContext* context,
-        const angzarr::SagaExecuteRequest* request,
-        angzarr::SagaResponse* response) override {
-
+    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
+                         angzarr::SagaResponse* response) override {
         try {
             const auto& source = request->source();
 
@@ -110,7 +105,7 @@ public:
     }
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

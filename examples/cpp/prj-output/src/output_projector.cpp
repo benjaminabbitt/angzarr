@@ -1,4 +1,5 @@
 #include "output_projector.hpp"
+
 #include <chrono>
 #include <iomanip>
 #include <sstream>
@@ -6,8 +7,7 @@
 namespace projector {
 
 OutputProjector::OutputProjector(OutputFn output_fn, bool show_timestamps)
-    : output_fn_(std::move(output_fn))
-    , show_timestamps_(show_timestamps) {}
+    : output_fn_(std::move(output_fn)), show_timestamps_(show_timestamps) {}
 
 void OutputProjector::set_player_name(const std::string& player_root, const std::string& name) {
     renderer_.set_player_name(player_root, name);
@@ -130,4 +130,4 @@ void OutputProjector::handle_event_book(const angzarr::EventBook& event_book) {
     }
 }
 
-} // namespace projector
+}  // namespace projector

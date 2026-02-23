@@ -1,15 +1,17 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
-#include "helpers.hpp"
-#include "errors.hpp"
-#include "router.hpp"
 #include "descriptor.hpp"
+#include "errors.hpp"
+#include "helpers.hpp"
+#include "router.hpp"
 
 namespace angzarr {
 
@@ -25,9 +27,7 @@ struct Projection {
         return {key, value, false};
     }
 
-    static Projection remove(const std::string& key) {
-        return {key, "", true};
-    }
+    static Projection remove(const std::string& key) { return {key, "", true}; }
 };
 
 /**
@@ -45,9 +45,8 @@ struct Projection {
  *   };
  */
 class Projector {
-public:
-    using ProjectionHandler = std::function<Projection(
-        Projector*, const google::protobuf::Any&)>;
+   public:
+    using ProjectionHandler = std::function<Projection(Projector*, const google::protobuf::Any&)>;
 
     virtual ~Projector() = default;
 
@@ -90,7 +89,7 @@ public:
         return {name(), component_types::PROJECTOR, {{input_domain(), types}}};
     }
 
-protected:
+   protected:
     /**
      * Register a projection handler.
      */
@@ -98,7 +97,7 @@ protected:
         handlers()[suffix] = std::move(handler);
     }
 
-private:
+   private:
     static std::map<std::string, ProjectionHandler>& handlers() {
         static std::map<std::string, ProjectionHandler> h;
         return h;
@@ -108,10 +107,10 @@ private:
 /**
  * Macro to declare a projector.
  */
-#define ANGZARR_PROJECTOR(projector_name, in_domain) \
-    static constexpr const char* kName = projector_name; \
+#define ANGZARR_PROJECTOR(projector_name, in_domain)       \
+    static constexpr const char* kName = projector_name;   \
     static constexpr const char* kInputDomain = in_domain; \
-    std::string name() const override { return kName; } \
+    std::string name() const override { return kName; }    \
     std::string input_domain() const override { return kInputDomain; }
 
-} // namespace angzarr
+}  // namespace angzarr

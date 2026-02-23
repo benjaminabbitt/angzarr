@@ -1,15 +1,15 @@
 #include "action_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
+
+#include <chrono>
+
+#include "angzarr/errors.hpp"
 
 namespace hand {
 namespace handlers {
 
-examples::ActionTaken handle_action(
-    const examples::PlayerAction& cmd,
-    const HandState& state) {
-
+examples::ActionTaken handle_action(const examples::PlayerAction& cmd, const HandState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Hand not dealt");
@@ -62,8 +62,8 @@ examples::ActionTaken handle_action(
                 "Cannot bet when there is already a bet");
         }
         if (amount < state.big_blind) {
-            throw angzarr::CommandRejectedError::invalid_argument(
-                "Bet must be at least " + std::to_string(state.big_blind));
+            throw angzarr::CommandRejectedError::invalid_argument("Bet must be at least " +
+                                                                  std::to_string(state.big_blind));
         }
         if (amount > player->stack) {
             throw angzarr::CommandRejectedError::invalid_argument("Bet exceeds stack");
@@ -79,8 +79,8 @@ examples::ActionTaken handle_action(
         int64_t total_bet = player->bet_this_round + amount;
         int64_t raise_amount = total_bet - state.current_bet;
         if (raise_amount < state.min_raise && amount < player->stack) {
-            throw angzarr::CommandRejectedError::invalid_argument(
-                "Raise must be at least " + std::to_string(state.min_raise));
+            throw angzarr::CommandRejectedError::invalid_argument("Raise must be at least " +
+                                                                  std::to_string(state.min_raise));
         }
         if (amount > player->stack) {
             throw angzarr::CommandRejectedError::invalid_argument("Raise exceeds stack");
@@ -115,5 +115,5 @@ examples::ActionTaken handle_action(
     return event;
 }
 
-} // namespace handlers
-} // namespace hand
+}  // namespace handlers
+}  // namespace hand

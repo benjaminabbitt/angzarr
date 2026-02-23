@@ -1,14 +1,16 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+
 #include <functional>
 #include <map>
 #include <string>
 #include <vector>
-#include <google/protobuf/any.pb.h>
-#include "angzarr/types.pb.h"
+
 #include "angzarr/saga.pb.h"
-#include "macros.hpp"
+#include "angzarr/types.pb.h"
 #include "errors.hpp"
+#include "macros.hpp"
 
 namespace angzarr {
 
@@ -40,18 +42,18 @@ namespace angzarr {
 ///   protected:
 ///       PMState create_empty_state() override { return PMState{}; }
 ///   };
-template<typename StateT>
+template <typename StateT>
 class ProcessManager {
-public:
+   public:
     using State = StateT;
     using EventDispatcher = std::function<std::vector<CommandBook>(
         ProcessManager*, const google::protobuf::Any&, const std::string&)>;
-    using PrepareDispatcher = std::function<std::vector<Cover>(
-        ProcessManager*, const google::protobuf::Any&)>;
-    using EventApplier = std::function<void(
-        ProcessManager*, StateT&, const google::protobuf::Any&)>;
-    using RejectionHandler = std::function<EventBook(
-        ProcessManager*, const Notification&, StateT&)>;
+    using PrepareDispatcher =
+        std::function<std::vector<Cover>(ProcessManager*, const google::protobuf::Any&)>;
+    using EventApplier =
+        std::function<void(ProcessManager*, StateT&, const google::protobuf::Any&)>;
+    using RejectionHandler =
+        std::function<EventBook(ProcessManager*, const Notification&, StateT&)>;
 
     virtual ~ProcessManager() = default;
 
@@ -83,8 +85,8 @@ public:
 
     /// Dispatch events to handlers.
     std::vector<CommandBook> dispatch(const EventBook& book,
-                                       const EventBook* prior_events = nullptr,
-                                       const std::vector<EventBook>& destinations = {}) {
+                                      const EventBook* prior_events = nullptr,
+                                      const std::vector<EventBook>& destinations = {}) {
         rebuild_state(prior_events);
 
         auto correlation_id = book.has_cover() ? book.cover().correlation_id() : "";
@@ -124,7 +126,7 @@ public:
     /// Get mutable state.
     StateT& mutable_state() { return state_; }
 
-protected:
+   protected:
     /// Create an empty state instance.
     virtual StateT create_empty_state() = 0;
 
@@ -135,9 +137,7 @@ protected:
     }
 
     /// Pack commands for output (returns empty for void handlers).
-    std::vector<CommandBook> pack_commands(std::nullptr_t, const std::string&) {
-        return {};
-    }
+    std::vector<CommandBook> pack_commands(std::nullptr_t, const std::string&) { return {}; }
 
     /// Register an event handler.
     static void register_event_handler(const std::string& suffix, EventDispatcher dispatcher) {
@@ -159,7 +159,7 @@ protected:
         rejection_handlers()[key] = std::move(handler);
     }
 
-private:
+   private:
     void rebuild_state(const EventBook* event_book) {
         state_ = create_empty_state();
         exists_ = false;
@@ -202,4 +202,4 @@ private:
     bool exists_ = false;
 };
 
-} // namespace angzarr
+}  // namespace angzarr

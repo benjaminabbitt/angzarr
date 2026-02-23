@@ -1,15 +1,13 @@
 #pragma once
 
-#include "table_state.hpp"
 #include "examples/table.pb.h"
+#include "table_state.hpp"
 
 namespace table {
 namespace handlers {
 
 /// Handle LeaveTable command.
-examples::PlayerLeft handle_leave(
-    const examples::LeaveTable& cmd,
-    const TableState& state);
+examples::PlayerLeft handle_leave(const examples::LeaveTable& cmd, const TableState& state);
 
-} // namespace handlers
-} // namespace table
+}  // namespace handlers
+}  // namespace table

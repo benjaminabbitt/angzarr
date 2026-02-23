@@ -1,11 +1,13 @@
 #pragma once
 
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/message.h>
+
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <google/protobuf/message.h>
-#include <google/protobuf/any.pb.h>
+
 #include "angzarr/types.pb.h"
 #include "errors.hpp"
 
@@ -15,17 +17,18 @@ namespace angzarr {
 /// Derived classes must implement:
 ///   - void apply_event(State& state, const google::protobuf::Any& event)
 ///   - Register handlers via register_handler<CommandType>(handler)
-template<typename Derived, typename State>
+template <typename Derived, typename State>
 class Aggregate {
-public:
+   public:
     using MessagePtr = std::unique_ptr<google::protobuf::Message>;
-    using CommandHandler = std::function<MessagePtr(const google::protobuf::Message&, const State&)>;
+    using CommandHandler =
+        std::function<MessagePtr(const google::protobuf::Message&, const State&)>;
 
-protected:
+   protected:
     State state_;
     std::unordered_map<std::string, CommandHandler> handlers_;
 
-public:
+   public:
     Aggregate() : state_{} {}
     virtual ~Aggregate() = default;
 
@@ -38,7 +41,7 @@ public:
     }
 
     /// Handle a command using registered handlers.
-    template<typename CommandType>
+    template <typename CommandType>
     MessagePtr handle_command(const CommandType& cmd) {
         const std::string type_name = CommandType::descriptor()->full_name();
         auto it = handlers_.find(type_name);
@@ -51,12 +54,13 @@ public:
     /// Get the current state (const reference).
     const State& state() const { return state_; }
 
-protected:
+   protected:
     /// Register a command handler.
-    template<typename CommandType, typename EventType>
+    template <typename CommandType, typename EventType>
     void register_handler(std::function<EventType(const CommandType&, const State&)> handler) {
         const std::string type_name = CommandType::descriptor()->full_name();
-        handlers_[type_name] = [handler](const google::protobuf::Message& msg, const State& state) -> MessagePtr {
+        handlers_[type_name] = [handler](const google::protobuf::Message& msg,
+                                         const State& state) -> MessagePtr {
             const auto& cmd = static_cast<const CommandType&>(msg);
             auto event = handler(cmd, state);
             return std::make_unique<EventType>(std::move(event));
@@ -67,10 +71,11 @@ protected:
     static google::protobuf::Timestamp now() {
         google::protobuf::Timestamp ts;
         auto now = std::chrono::system_clock::now();
-        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+        auto seconds =
+            std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
         ts.set_seconds(seconds);
         return ts;
     }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

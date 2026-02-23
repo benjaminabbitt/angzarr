@@ -1,23 +1,23 @@
+#include <google/protobuf/any.pb.h>
+#include <google/protobuf/timestamp.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
-#include <google/protobuf/timestamp.pb.h>
 
-#include "player_state.hpp"
-#include "angzarr/command_router.hpp"
+#include "../handlers/deposit_handler.hpp"
+#include "../handlers/register_handler.hpp"
+#include "../handlers/release_handler.hpp"
+#include "../handlers/reserve_handler.hpp"
+#include "../handlers/transfer_handler.hpp"
+#include "../handlers/withdraw_handler.hpp"
 #include "angzarr/aggregate.grpc.pb.h"
+#include "angzarr/command_router.hpp"
 #include "angzarr/types.pb.h"
 #include "examples/player.pb.h"
-
-#include "../handlers/register_handler.hpp"
-#include "../handlers/deposit_handler.hpp"
-#include "../handlers/withdraw_handler.hpp"
-#include "../handlers/reserve_handler.hpp"
-#include "../handlers/release_handler.hpp"
-#include "../handlers/transfer_handler.hpp"
+#include "player_state.hpp"
 
 namespace {
 
@@ -25,7 +25,7 @@ constexpr int DEFAULT_PORT = 50401;
 constexpr const char* PLAYER_DOMAIN = "player";
 
 /// Helper to pack a protobuf message into Any
-template<typename T>
+template <typename T>
 google::protobuf::Any pack_any(const T& msg) {
     google::protobuf::Any any;
     any.PackFrom(msg);
@@ -35,7 +35,8 @@ google::protobuf::Any pack_any(const T& msg) {
 /// Create functional command router for player aggregate.
 // docs:start:command_router
 angzarr::CommandRouter<player::PlayerState> create_router() {
-    return angzarr::CommandRouter<player::PlayerState>(PLAYER_DOMAIN, player::PlayerState::from_event_book)
+    return angzarr::CommandRouter<player::PlayerState>(PLAYER_DOMAIN,
+                                                       player::PlayerState::from_event_book)
         .on<examples::RegisterPlayer, examples::PlayerRegistered>(player::handlers::handle_register)
         .on<examples::DepositFunds, examples::FundsDeposited>(player::handlers::handle_deposit)
         .on<examples::WithdrawFunds, examples::FundsWithdrawn>(player::handlers::handle_withdraw)
@@ -47,15 +48,12 @@ angzarr::CommandRouter<player::PlayerState> create_router() {
 
 /// gRPC service implementation for player aggregate.
 class PlayerAggregateService final : public angzarr::AggregateService::Service {
-public:
+   public:
     explicit PlayerAggregateService(angzarr::CommandRouter<player::PlayerState> router)
         : router_(std::move(router)) {}
 
-    grpc::Status Handle(
-        grpc::ServerContext* context,
-        const angzarr::ContextualCommand* request,
-        angzarr::BusinessResponse* response) override {
-
+    grpc::Status Handle(grpc::ServerContext* context, const angzarr::ContextualCommand* request,
+                        angzarr::BusinessResponse* response) override {
         try {
             // Get command and events from request
             const auto& command_book = request->command();
@@ -119,7 +117,7 @@ public:
                 page->mutable_event()->PackFrom(event);
             } else {
                 return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                    "Unknown command type: " + type_url);
+                                    "Unknown command type: " + type_url);
             }
 
             return grpc::Status::OK;
@@ -130,11 +128,8 @@ public:
         }
     }
 
-    grpc::Status Replay(
-        grpc::ServerContext* context,
-        const angzarr::ReplayRequest* request,
-        angzarr::ReplayResponse* response) override {
-
+    grpc::Status Replay(grpc::ServerContext* context, const angzarr::ReplayRequest* request,
+                        angzarr::ReplayResponse* response) override {
         // Build state from events in request
         angzarr::EventBook event_book;
         *event_book.mutable_pages() = {request->events().begin(), request->events().end()};
@@ -162,11 +157,11 @@ public:
         return grpc::Status::OK;
     }
 
-private:
+   private:
     angzarr::CommandRouter<player::PlayerState> router_;
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

@@ -1,17 +1,19 @@
 #pragma once
 
+#include <grpcpp/grpcpp.h>
+
 #include <stdexcept>
 #include <string>
-#include <grpcpp/grpcpp.h>
 
 namespace angzarr {
 
 /// Exception thrown when a command is rejected by the aggregate.
 class CommandRejectedError : public std::runtime_error {
-public:
+   public:
     grpc::StatusCode status_code;
 
-    CommandRejectedError(const std::string& message, grpc::StatusCode code = grpc::StatusCode::UNKNOWN)
+    CommandRejectedError(const std::string& message,
+                         grpc::StatusCode code = grpc::StatusCode::UNKNOWN)
         : std::runtime_error(message), status_code(code) {}
 
     static CommandRejectedError precondition_failed(const std::string& message) {
@@ -27,4 +29,4 @@ public:
     }
 };
 
-} // namespace angzarr
+}  // namespace angzarr

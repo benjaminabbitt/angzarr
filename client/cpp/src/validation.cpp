@@ -5,4 +5,4 @@
 
 namespace angzarr {
 // All validation functions are inline in the header
-} // namespace angzarr
+}  // namespace angzarr

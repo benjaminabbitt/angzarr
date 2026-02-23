@@ -1,10 +1,11 @@
+#include <google/protobuf/any.pb.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
-#include <map>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <google/protobuf/any.pb.h>
 
 #include "angzarr/saga.grpc.pb.h"
 #include "angzarr/types.pb.h"
@@ -20,12 +21,9 @@ constexpr const char* OUTPUT_DOMAIN = "player";
 
 /// gRPC service implementation for hand-player saga.
 class HandPlayerSagaService final : public angzarr::SagaService::Service {
-public:
-    grpc::Status Prepare(
-        grpc::ServerContext* context,
-        const angzarr::SagaPrepareRequest* request,
-        angzarr::SagaPrepareResponse* response) override {
-
+   public:
+    grpc::Status Prepare(grpc::ServerContext* context, const angzarr::SagaPrepareRequest* request,
+                         angzarr::SagaPrepareResponse* response) override {
         // Find PotAwarded event and extract player roots
         const auto& source = request->source();
         for (const auto& page : source.pages()) {
@@ -48,11 +46,8 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status Execute(
-        grpc::ServerContext* context,
-        const angzarr::SagaExecuteRequest* request,
-        angzarr::SagaResponse* response) override {
-
+    grpc::Status Execute(grpc::ServerContext* context, const angzarr::SagaExecuteRequest* request,
+                         angzarr::SagaResponse* response) override {
         try {
             const auto& source = request->source();
 
@@ -93,7 +88,8 @@ public:
                         uint64_t dest_seq = 0;
                         auto it = dest_map.find(player_hex);
                         if (it != dest_map.end() && it->second->pages_size() > 0) {
-                            dest_seq = it->second->pages(it->second->pages_size() - 1).sequence() + 1;
+                            dest_seq =
+                                it->second->pages(it->second->pages_size() - 1).sequence() + 1;
                         }
 
                         // Create DepositFunds command
@@ -123,7 +119,7 @@ public:
     }
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char** argv) {
     int port = DEFAULT_PORT;

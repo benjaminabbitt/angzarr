@@ -1,17 +1,17 @@
 #include "end_hand_handler.hpp"
-#include "angzarr/errors.hpp"
-#include <chrono>
+
 #include <google/protobuf/util/time_util.h>
-#include <sstream>
+
+#include <chrono>
 #include <iomanip>
+#include <sstream>
+
+#include "angzarr/errors.hpp"
 
 namespace table {
 namespace handlers {
 
-examples::HandEnded handle_end_hand(
-    const examples::EndHand& cmd,
-    const TableState& state) {
-
+examples::HandEnded handle_end_hand(const examples::EndHand& cmd, const TableState& state) {
     // Guard
     if (!state.exists()) {
         throw angzarr::CommandRejectedError::not_found("Table does not exist");
@@ -60,5 +60,5 @@ examples::HandEnded handle_end_hand(
     return event;
 }
 
-} // namespace handlers
-} // namespace table
+}  // namespace handlers
+}  // namespace table
