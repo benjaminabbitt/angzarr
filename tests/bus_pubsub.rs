@@ -1,30 +1,22 @@
 //! GCP Pub/Sub event bus integration tests using testcontainers.
 //!
-//! Run with: cargo test --test bus_pubsub --features pubsub -- --nocapture
+//! Run with: cargo test --test bus_pubsub --features "pubsub test-utils" -- --nocapture
 //!
 //! Uses the GCP Pub/Sub emulator for local testing.
 
 #![cfg(feature = "pubsub")]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+mod bus;
+
 use std::time::Duration;
 
 use angzarr::bus::pubsub::{PubSubConfig, PubSubEventBus};
-use angzarr::bus::EventBus;
-use angzarr::dlq::{
-    AngzarrDeadLetter, DeadLetterPayload, DlqConfig, EventProcessingFailedDetails,
-    RejectionDetails, SequenceMismatchDetails,
-};
-use angzarr::proto::{event_page, CommandBook, Cover, EventBook, EventPage, MergeStrategy, Uuid};
-use angzarr::test_utils::CapturingHandler;
-use prost_types::Any;
+use angzarr::dlq::DlqConfig;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
     GenericImage, ImageExt,
 };
-use tokio::sync::mpsc;
 
 /// Start GCP Pub/Sub emulator container.
 ///
@@ -72,286 +64,48 @@ async fn start_pubsub_emulator() -> (testcontainers::ContainerAsync<GenericImage
     (container, emulator_host)
 }
 
-fn make_test_book(domain: &str) -> EventBook {
-    EventBook {
-        cover: Some(Cover {
-            domain: domain.to_string(),
-            root: Some(Uuid {
-                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: format!("test-{}", uuid::Uuid::new_v4()),
-            edition: None,
-        }),
-        pages: vec![EventPage {
-            sequence: 0,
-            created_at: None,
-            payload: Some(event_page::Payload::Event(Any {
-                type_url: "type.googleapis.com/test.TestEvent".to_string(),
-                value: vec![1, 2, 3],
-            })),
-        }],
-        snapshot: None,
-        ..Default::default()
-    }
+fn test_prefix() -> String {
+    format!(
+        "test_{}",
+        uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+    )
 }
 
 #[tokio::test]
-async fn test_pubsub_publish_and_consume() {
-    println!("=== Pub/Sub Publish and Consume Test ===");
-    println!("Starting Pub/Sub emulator container...");
+async fn test_pubsub_event_bus() {
+    println!("=== Pub/Sub EventBus Tests ===");
 
     let (_container, emulator_host) = start_pubsub_emulator().await;
-    let domain = "test";
-    let subscription_id = format!("test-sub-{}", &uuid::Uuid::new_v4().to_string()[..8]);
-    let project_id = "test-project";
+    let prefix = test_prefix();
 
-    // Set emulator environment variable
+    // Set emulator environment
     std::env::set_var("PUBSUB_EMULATOR_HOST", &emulator_host);
 
-    // Create publisher
-    let publisher = PubSubEventBus::new(PubSubConfig::publisher(project_id))
+    let bus = PubSubEventBus::new(PubSubConfig::publisher("test-project"))
         .await
-        .expect("Failed to create publisher");
+        .expect("Failed to create Pub/Sub publisher");
 
-    // Create subscriber
-    let subscriber = PubSubEventBus::new(PubSubConfig::subscriber(
-        project_id,
-        &subscription_id,
-        vec![domain.to_string()],
-    ))
-    .await
-    .expect("Failed to create subscriber");
+    run_event_bus_tests!(&bus, &prefix);
 
-    // Set up counting handler
-    let count = Arc::new(AtomicUsize::new(0));
-    let (tx, mut rx) = mpsc::channel(10);
-    subscriber
-        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
-        .await
-        .expect("Failed to subscribe");
-
-    subscriber
-        .start_consuming()
-        .await
-        .expect("Failed to start consuming");
-
-    // Give consumer time to start (increased for CI stability)
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    // Publish event
-    let book = make_test_book(domain);
-    publisher
-        .publish(Arc::new(book.clone()))
-        .await
-        .expect("Failed to publish");
-
-    // Wait for message (increased timeout for CI stability)
-    let received = tokio::time::timeout(Duration::from_secs(30), rx.recv())
-        .await
-        .expect("Timed out waiting for message")
-        .expect("Channel closed");
-
-    assert_eq!(received.cover.as_ref().unwrap().domain, domain);
-    assert_eq!(count.load(Ordering::SeqCst), 1);
-
-    // Clean up env var
-    std::env::remove_var("PUBSUB_EMULATOR_HOST");
-
-    println!("=== Pub/Sub Publish and Consume Test PASSED ===");
+    println!("=== All Pub/Sub EventBus tests PASSED ===");
 }
 
 #[tokio::test]
-async fn test_pubsub_publisher_only() {
-    println!("=== Pub/Sub Publisher Only Test ===");
-    println!("Starting Pub/Sub emulator container...");
-
-    let (_container, emulator_host) = start_pubsub_emulator().await;
-    let project_id = "test-project";
-
-    // Set emulator environment variable
-    std::env::set_var("PUBSUB_EMULATOR_HOST", &emulator_host);
-
-    let publisher = PubSubEventBus::new(PubSubConfig::publisher(project_id))
-        .await
-        .expect("Failed to create publisher");
-
-    let book = make_test_book("publish-test");
-
-    // Should succeed (topic created automatically)
-    publisher
-        .publish(Arc::new(book))
-        .await
-        .expect("Publish should succeed");
-
-    // Clean up env var
-    std::env::remove_var("PUBSUB_EMULATOR_HOST");
-
-    println!("=== Pub/Sub Publisher Only Test PASSED ===");
-}
-
-#[tokio::test]
-async fn test_pubsub_multiple_messages() {
-    println!("=== Pub/Sub Multiple Messages Test ===");
-    println!("Starting Pub/Sub emulator container...");
-
-    let (_container, emulator_host) = start_pubsub_emulator().await;
-    let domain = "multi";
-    let subscription_id = format!("test-multi-{}", &uuid::Uuid::new_v4().to_string()[..8]);
-    let project_id = "test-project";
-
-    // Set emulator environment variable
-    std::env::set_var("PUBSUB_EMULATOR_HOST", &emulator_host);
-
-    let publisher = PubSubEventBus::new(PubSubConfig::publisher(project_id))
-        .await
-        .expect("Failed to create publisher");
-
-    let subscriber = PubSubEventBus::new(PubSubConfig::subscriber(
-        project_id,
-        &subscription_id,
-        vec![domain.to_string()],
-    ))
-    .await
-    .expect("Failed to create subscriber");
-
-    let count = Arc::new(AtomicUsize::new(0));
-    let (tx, mut rx) = mpsc::channel(100);
-    subscriber
-        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
-        .await
-        .unwrap();
-
-    subscriber.start_consuming().await.unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Publish 5 messages
-    for _ in 0..5 {
-        let book = make_test_book(domain);
-        publisher.publish(Arc::new(book)).await.unwrap();
-    }
-
-    // Wait for all messages
-    for _ in 0..5 {
-        tokio::time::timeout(Duration::from_secs(10), rx.recv())
-            .await
-            .expect("Timed out")
-            .expect("Channel closed");
-    }
-
-    assert_eq!(count.load(Ordering::SeqCst), 5);
-
-    // Clean up env var
-    std::env::remove_var("PUBSUB_EMULATOR_HOST");
-
-    println!("=== Pub/Sub Multiple Messages Test PASSED ===");
-}
-
-#[tokio::test]
-async fn test_pubsub_dlq_publish() {
-    use angzarr::dlq::create_publisher_async;
-
-    println!("=== Pub/Sub DLQ Publish Test ===");
-    println!("Starting Pub/Sub emulator container...");
+async fn test_pubsub_dlq() {
+    println!("=== Pub/Sub DLQ Tests ===");
 
     let (_container, emulator_host) = start_pubsub_emulator().await;
 
-    // Set emulator environment variable
+    // Set emulator environment
     std::env::set_var("PUBSUB_EMULATOR_HOST", &emulator_host);
 
-    // Create DLQ publisher
     let dlq_config = DlqConfig::pubsub();
-    let dlq_publisher = create_publisher_async(&dlq_config)
-        .await
-        .expect("Failed to create DLQ publisher");
 
-    // Create a dead letter from an event processing failure
-    let book = make_test_book("orders");
-    let dead_letter = AngzarrDeadLetter {
-        cover: book.cover.clone(),
-        payload: DeadLetterPayload::Events(book),
-        rejection_reason: "Handler threw an exception".to_string(),
-        rejection_details: Some(RejectionDetails::EventProcessingFailed(
-            EventProcessingFailedDetails {
-                error: "Connection refused".to_string(),
-                retry_count: 3,
-                is_transient: false,
-            },
-        )),
-        source_component: "saga-order-fulfillment".to_string(),
-        source_component_type: "saga".to_string(),
-        occurred_at: None,
-        metadata: std::collections::HashMap::new(),
-    };
+    bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
+    println!("  test_dlq_publish: PASSED");
 
-    // Publish should succeed
-    dlq_publisher
-        .publish(dead_letter)
-        .await
-        .expect("DLQ publish should succeed");
+    bus::event_bus_tests::test_dlq_sequence_mismatch(&dlq_config).await;
+    println!("  test_dlq_sequence_mismatch: PASSED");
 
-    // Clean up env var
-    std::env::remove_var("PUBSUB_EMULATOR_HOST");
-
-    println!("=== Pub/Sub DLQ Publish Test PASSED ===");
-}
-
-#[tokio::test]
-async fn test_pubsub_dlq_sequence_mismatch() {
-    use angzarr::dlq::create_publisher_async;
-
-    println!("=== Pub/Sub DLQ Sequence Mismatch Test ===");
-    println!("Starting Pub/Sub emulator container...");
-
-    let (_container, emulator_host) = start_pubsub_emulator().await;
-
-    // Set emulator environment variable
-    std::env::set_var("PUBSUB_EMULATOR_HOST", &emulator_host);
-
-    // Create DLQ publisher
-    let dlq_config = DlqConfig::pubsub();
-    let dlq_publisher = create_publisher_async(&dlq_config)
-        .await
-        .expect("Failed to create DLQ publisher");
-
-    // Create a command book
-    let command_book = CommandBook {
-        cover: Some(Cover {
-            domain: "inventory".to_string(),
-            root: Some(Uuid {
-                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: format!("txn-{}", uuid::Uuid::new_v4()),
-            edition: None,
-        }),
-        pages: vec![],
-        ..Default::default()
-    };
-
-    // Create a dead letter for sequence mismatch
-    let dead_letter = AngzarrDeadLetter {
-        cover: command_book.cover.clone(),
-        payload: DeadLetterPayload::Command(command_book),
-        rejection_reason: "Sequence mismatch".to_string(),
-        rejection_details: Some(RejectionDetails::SequenceMismatch(
-            SequenceMismatchDetails {
-                expected_sequence: 0,
-                actual_sequence: 5,
-                merge_strategy: MergeStrategy::MergeManual,
-            },
-        )),
-        source_component: "aggregate-inventory".to_string(),
-        source_component_type: "aggregate".to_string(),
-        occurred_at: None,
-        metadata: std::collections::HashMap::new(),
-    };
-
-    dlq_publisher
-        .publish(dead_letter)
-        .await
-        .expect("DLQ publish should succeed");
-
-    // Clean up env var
-    std::env::remove_var("PUBSUB_EMULATOR_HOST");
-
-    println!("=== Pub/Sub DLQ Sequence Mismatch Test PASSED ===");
+    println!("=== All Pub/Sub DLQ tests PASSED ===");
 }

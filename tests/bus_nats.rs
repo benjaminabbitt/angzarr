@@ -4,12 +4,14 @@
 //!
 //! These tests spin up NATS with JetStream in a container using testcontainers-rs.
 
+mod bus;
+
 use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::bus::nats::NatsEventBus;
 use angzarr::bus::EventBus;
-use angzarr::proto::{Cover, Edition, EventBook, EventPage};
+use angzarr::proto::{event_page, Cover, Edition, EventBook, EventPage};
 use angzarr::storage::nats::NatsEventStore;
 use angzarr::storage::EventStore;
 use angzarr::test_utils::CapturingHandler;
@@ -67,136 +69,76 @@ fn test_prefix() -> String {
     )
 }
 
-/// Create a test EventBook for a given domain.
-fn make_event_book(domain: &str) -> EventBook {
-    let root = Uuid::new_v4();
+#[tokio::test]
+async fn test_nats_event_bus() {
+    println!("=== NATS EventBus Tests ===");
+
+    let (_container, client) = start_nats().await;
+    let prefix = test_prefix();
+
+    let bus = NatsEventBus::new(client, Some(&prefix))
+        .await
+        .expect("Failed to create NATS EventBus");
+
+    run_event_bus_tests!(&bus, &prefix);
+
+    println!("=== All NATS EventBus tests PASSED ===");
+}
+
+// =============================================================================
+// NATS-specific tests
+// =============================================================================
+
+/// Create a test EventBook with specific sequence and root.
+fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32) -> EventBook {
+    let pages: Vec<EventPage> = (0..count)
+        .map(|i| EventPage {
+            sequence: first_seq + i,
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: format!("type.example/{}Event", domain),
+                value: vec![1, 2, 3, (first_seq + i) as u8],
+            })),
+        })
+        .collect();
+
+    let next_seq = first_seq + count;
+
     EventBook {
         cover: Some(Cover {
             domain: domain.to_string(),
             root: Some(angzarr::proto::Uuid {
                 value: root.as_bytes().to_vec(),
             }),
-            correlation_id: "test-correlation".to_string(),
-            edition: None,
+            correlation_id: "interop-test".to_string(),
+            edition: Some(Edition {
+                name: "angzarr".to_string(),
+                divergences: vec![],
+            }),
         }),
         snapshot: None,
-        pages: vec![EventPage {
-            sequence: 0,
-            created_at: None,
-            payload: Some(angzarr::proto::event_page::Payload::Event(Any {
-                type_url: format!("type.example/{}Event", domain),
-                value: vec![1, 2, 3],
-            })),
-        }],
-        next_sequence: 1,
+        pages,
+        next_sequence: next_seq,
     }
 }
 
-#[tokio::test]
-async fn test_publish_subscribe_roundtrip() {
-    println!("=== test_publish_subscribe_roundtrip ===");
-    let (_container, client) = start_nats().await;
-    let prefix = test_prefix();
-
-    let bus = NatsEventBus::new(client, Some(&prefix))
-        .await
-        .expect("Failed to create NATS EventBus");
-
-    let (tx, mut rx) = mpsc::channel(10);
-
-    // Create subscriber for "order" domain
-    let subscriber = bus
-        .create_subscriber("test-sub", Some("order"))
-        .await
-        .expect("Failed to create subscriber");
-
-    subscriber
-        .subscribe(Box::new(CapturingHandler::new(tx)))
-        .await
-        .expect("Failed to subscribe");
-
-    subscriber
-        .start_consuming()
-        .await
-        .expect("Failed to start consuming");
-
-    // Give consumer time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Publish event
-    let book = make_event_book("order");
-    bus.publish(Arc::new(book.clone()))
-        .await
-        .expect("Failed to publish");
-
-    // Wait for event with timeout
-    let received = tokio::time::timeout(Duration::from_secs(5), rx.recv())
-        .await
-        .expect("Timeout waiting for event")
-        .expect("Channel closed");
-
-    assert_eq!(received.cover.as_ref().unwrap().domain, "order");
-    println!("  PASSED");
+/// Create test EventPages for EventStore.add().
+fn make_event_pages(first_seq: u32, count: u32) -> Vec<EventPage> {
+    (0..count)
+        .map(|i| EventPage {
+            sequence: first_seq + i,
+            created_at: None,
+            payload: Some(event_page::Payload::Event(Any {
+                type_url: "type.example/TestEvent".to_string(),
+                value: vec![10, 20, 30, (first_seq + i) as u8],
+            })),
+        })
+        .collect()
 }
 
-#[tokio::test]
-async fn test_domain_filtering() {
-    println!("=== test_domain_filtering ===");
-    let (_container, client) = start_nats().await;
-    let prefix = test_prefix();
-
-    let bus = NatsEventBus::new(client, Some(&prefix))
-        .await
-        .expect("Failed to create NATS EventBus");
-
-    let (tx, mut rx) = mpsc::channel(10);
-
-    // Subscribe to "order" domain only
-    let subscriber = bus
-        .create_subscriber("filter-test", Some("order"))
-        .await
-        .expect("Failed to create subscriber");
-
-    subscriber
-        .subscribe(Box::new(CapturingHandler::new(tx)))
-        .await
-        .expect("Failed to subscribe");
-
-    subscriber
-        .start_consuming()
-        .await
-        .expect("Failed to start consuming");
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Publish to order - should be received
-    bus.publish(Arc::new(make_event_book("order")))
-        .await
-        .expect("Failed to publish order");
-
-    // Publish to inventory - should NOT be received
-    bus.publish(Arc::new(make_event_book("inventory")))
-        .await
-        .expect("Failed to publish inventory");
-
-    // Should receive only the order event
-    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
-        .await
-        .expect("Timeout waiting for order event")
-        .expect("Channel closed");
-
-    assert_eq!(received.cover.as_ref().unwrap().domain, "order");
-
-    // Should NOT receive another event (inventory was filtered)
-    let timeout_result = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await;
-    assert!(
-        timeout_result.is_err(),
-        "Should not receive inventory event"
-    );
-
-    println!("  PASSED");
-}
-
+/// Test consumer group load balancing.
+///
+/// Two subscribers with the same name should share messages.
 #[tokio::test]
 async fn test_consumer_group_load_balancing() {
     println!("=== test_consumer_group_load_balancing ===");
@@ -235,7 +177,7 @@ async fn test_consumer_group_load_balancing() {
 
     // Publish 10 messages
     for _ in 0..10 {
-        bus.publish(Arc::new(make_event_book("order")))
+        bus.publish(Arc::new(bus::event_bus_tests::make_event_book("order")))
             .await
             .expect("Failed to publish");
     }
@@ -261,7 +203,6 @@ async fn test_consumer_group_load_balancing() {
 
     assert_eq!(total, 10, "Should receive all 10 messages across consumers");
     // In a consumer group, messages are distributed. Both should get some.
-    // Note: with only 10 messages, distribution might not be perfectly even.
     assert!(
         count1 > 0 && count2 > 0,
         "Both consumers should receive messages"
@@ -270,53 +211,10 @@ async fn test_consumer_group_load_balancing() {
     println!("  PASSED");
 }
 
-/// Create a test EventBook with specific sequence and root.
-fn make_event_book_with_seq(domain: &str, root: Uuid, first_seq: u32, count: u32) -> EventBook {
-    let pages: Vec<EventPage> = (0..count)
-        .map(|i| EventPage {
-            sequence: first_seq + i,
-            created_at: None,
-            payload: Some(angzarr::proto::event_page::Payload::Event(Any {
-                type_url: format!("type.example/{}Event", domain),
-                value: vec![1, 2, 3, (first_seq + i) as u8],
-            })),
-        })
-        .collect();
-
-    let next_seq = first_seq + count;
-
-    EventBook {
-        cover: Some(Cover {
-            domain: domain.to_string(),
-            root: Some(angzarr::proto::Uuid {
-                value: root.as_bytes().to_vec(),
-            }),
-            correlation_id: "interop-test".to_string(),
-            edition: Some(Edition {
-                name: "angzarr".to_string(),
-                divergences: vec![],
-            }),
-        }),
-        snapshot: None,
-        pages,
-        next_sequence: next_seq,
-    }
-}
-
-/// Create test EventPages for EventStore.add().
-fn make_event_pages(first_seq: u32, count: u32) -> Vec<EventPage> {
-    (0..count)
-        .map(|i| EventPage {
-            sequence: first_seq + i,
-            created_at: None,
-            payload: Some(angzarr::proto::event_page::Payload::Event(Any {
-                type_url: "type.example/TestEvent".to_string(),
-                value: vec![10, 20, 30, (first_seq + i) as u8],
-            })),
-        })
-        .collect()
-}
-
+/// Test EventStore/EventBus interoperability.
+///
+/// Events written via EventStore should be received by EventBus subscribers,
+/// and events published via EventBus should be readable via EventStore.
 #[tokio::test]
 async fn test_eventstore_eventbus_interoperability() {
     println!("=== test_eventstore_eventbus_interoperability ===");

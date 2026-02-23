@@ -1,30 +1,23 @@
 //! AMQP/RabbitMQ event bus integration tests using testcontainers.
 //!
-//! Run with: cargo test --test bus_amqp --features amqp -- --nocapture
+//! Run with: cargo test --test bus_amqp --features "amqp test-utils" -- --nocapture
 //!
 //! These tests spin up RabbitMQ in a container using testcontainers-rs.
 //! No manual RabbitMQ setup required.
 
 #![cfg(feature = "amqp")]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+mod bus;
+
 use std::time::Duration;
 
 use angzarr::bus::amqp::{AmqpConfig, AmqpEventBus};
-use angzarr::bus::EventBus;
-use angzarr::dlq::{
-    AngzarrDeadLetter, DeadLetterPayload, DlqConfig, EventProcessingFailedDetails, RejectionDetails,
-};
-use angzarr::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
-use angzarr::test_utils::CapturingHandler;
-use prost_types::Any;
+use angzarr::dlq::DlqConfig;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
     GenericImage, ImageExt,
 };
-use tokio::sync::mpsc;
 
 /// Start RabbitMQ container.
 ///
@@ -60,244 +53,45 @@ async fn start_rabbitmq() -> (testcontainers::ContainerAsync<GenericImage>, Stri
     (container, amqp_url)
 }
 
-fn make_test_book(domain: &str) -> EventBook {
-    EventBook {
-        cover: Some(Cover {
-            domain: domain.to_string(),
-            root: Some(Uuid {
-                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: format!("test-{}", uuid::Uuid::new_v4()),
-            edition: None,
-        }),
-        pages: vec![EventPage {
-            sequence: 0,
-            created_at: None,
-            payload: Some(event_page::Payload::Event(Any {
-                type_url: "type.googleapis.com/test.TestEvent".to_string(),
-                value: vec![1, 2, 3],
-            })),
-        }],
-        snapshot: None,
-        ..Default::default()
-    }
+fn test_prefix() -> String {
+    format!(
+        "test_{}",
+        uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
+    )
 }
 
 #[tokio::test]
-async fn test_publish_and_consume() {
-    println!("=== AMQP Publish and Consume Test ===");
+async fn test_amqp_event_bus() {
+    println!("=== AMQP EventBus Tests ===");
     println!("Starting RabbitMQ container...");
 
     let (_container, url) = start_rabbitmq().await;
-    let queue_name = format!("test-queue-{}", uuid::Uuid::new_v4());
+    let prefix = test_prefix();
 
-    // Create publisher
-    let publisher = AmqpEventBus::new(AmqpConfig::publisher(&url))
+    let bus = AmqpEventBus::new(AmqpConfig::publisher(&url))
         .await
-        .expect("Failed to create publisher");
+        .expect("Failed to create AMQP publisher");
 
-    // Create subscriber
-    let subscriber = AmqpEventBus::new(AmqpConfig::subscriber(&url, &queue_name, "test"))
-        .await
-        .expect("Failed to create subscriber");
+    // Run shared tests (without DLQ - those need separate container lifetime)
+    run_event_bus_tests!(&bus, &prefix);
 
-    // Set up counting handler
-    let count = Arc::new(AtomicUsize::new(0));
-    let (tx, mut rx) = mpsc::channel(10);
-    subscriber
-        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
-        .await
-        .expect("Failed to subscribe");
-
-    subscriber
-        .start_consuming()
-        .await
-        .expect("Failed to start consuming");
-
-    // Give consumer time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Publish event
-    let book = make_test_book("test");
-    publisher
-        .publish(Arc::new(book.clone()))
-        .await
-        .expect("Failed to publish");
-
-    // Wait for message
-    let received = tokio::time::timeout(Duration::from_secs(5), rx.recv())
-        .await
-        .expect("Timed out waiting for message")
-        .expect("Channel closed");
-
-    assert_eq!(received.cover.as_ref().unwrap().domain, "test");
-    assert_eq!(count.load(Ordering::SeqCst), 1);
-
-    println!("=== AMQP Publish and Consume Test PASSED ===");
+    println!("=== All AMQP EventBus tests PASSED ===");
 }
 
 #[tokio::test]
-async fn test_publisher_retries_on_failure() {
-    println!("=== AMQP Publisher Retries Test ===");
+async fn test_amqp_dlq() {
+    println!("=== AMQP DLQ Tests ===");
     println!("Starting RabbitMQ container...");
 
     let (_container, url) = start_rabbitmq().await;
 
-    let publisher = AmqpEventBus::new(AmqpConfig::publisher(&url))
-        .await
-        .expect("Failed to create publisher");
-
-    let book = make_test_book("retry-test");
-
-    // Should succeed on first try
-    publisher
-        .publish(Arc::new(book))
-        .await
-        .expect("Publish should succeed");
-
-    println!("=== AMQP Publisher Retries Test PASSED ===");
-}
-
-#[tokio::test]
-async fn test_consumer_receives_multiple_messages() {
-    println!("=== AMQP Multiple Messages Test ===");
-    println!("Starting RabbitMQ container...");
-
-    let (_container, url) = start_rabbitmq().await;
-    let queue_name = format!("test-multi-{}", uuid::Uuid::new_v4());
-
-    let publisher = AmqpEventBus::new(AmqpConfig::publisher(&url))
-        .await
-        .expect("Failed to create publisher");
-
-    let subscriber = AmqpEventBus::new(AmqpConfig::subscriber(&url, &queue_name, "multi"))
-        .await
-        .expect("Failed to create subscriber");
-
-    let count = Arc::new(AtomicUsize::new(0));
-    let (tx, mut rx) = mpsc::channel(100);
-    subscriber
-        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
-        .await
-        .unwrap();
-
-    subscriber.start_consuming().await.unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Publish 10 messages
-    for _ in 0..10 {
-        let book = make_test_book("multi");
-        publisher.publish(Arc::new(book)).await.unwrap();
-    }
-
-    // Wait for all messages
-    for _ in 0..10 {
-        tokio::time::timeout(Duration::from_secs(5), rx.recv())
-            .await
-            .expect("Timed out")
-            .expect("Channel closed");
-    }
-
-    assert_eq!(count.load(Ordering::SeqCst), 10);
-
-    println!("=== AMQP Multiple Messages Test PASSED ===");
-}
-
-#[tokio::test]
-async fn test_dlq_publish() {
-    use angzarr::dlq::create_publisher_async;
-
-    println!("=== AMQP DLQ Publish Test ===");
-    println!("Starting RabbitMQ container...");
-
-    let (_container, url) = start_rabbitmq().await;
-
-    // Create DLQ publisher
     let dlq_config = DlqConfig::amqp(&url);
-    let dlq_publisher = create_publisher_async(&dlq_config)
-        .await
-        .expect("Failed to create DLQ publisher");
 
-    // Create a dead letter from an event processing failure
-    let book = make_test_book("orders");
-    let dead_letter = AngzarrDeadLetter {
-        cover: book.cover.clone(),
-        payload: DeadLetterPayload::Events(book),
-        rejection_reason: "Handler threw an exception".to_string(),
-        rejection_details: Some(RejectionDetails::EventProcessingFailed(
-            EventProcessingFailedDetails {
-                error: "Connection refused".to_string(),
-                retry_count: 3,
-                is_transient: false,
-            },
-        )),
-        source_component: "saga-order-fulfillment".to_string(),
-        source_component_type: "saga".to_string(),
-        occurred_at: None,
-        metadata: std::collections::HashMap::new(),
-    };
+    bus::event_bus_tests::test_dlq_publish(&dlq_config).await;
+    println!("  test_dlq_publish: PASSED");
 
-    // Publish should succeed
-    dlq_publisher
-        .publish(dead_letter)
-        .await
-        .expect("DLQ publish should succeed");
+    bus::event_bus_tests::test_dlq_sequence_mismatch(&dlq_config).await;
+    println!("  test_dlq_sequence_mismatch: PASSED");
 
-    println!("=== AMQP DLQ Publish Test PASSED ===");
-}
-
-#[tokio::test]
-async fn test_dlq_command_sequence_mismatch() {
-    use angzarr::dlq::{create_publisher_async, SequenceMismatchDetails};
-    use angzarr::proto::MergeStrategy;
-
-    println!("=== AMQP DLQ Sequence Mismatch Test ===");
-    println!("Starting RabbitMQ container...");
-
-    let (_container, url) = start_rabbitmq().await;
-
-    // Create DLQ publisher
-    let dlq_config = DlqConfig::amqp(&url);
-    let dlq_publisher = create_publisher_async(&dlq_config)
-        .await
-        .expect("Failed to create DLQ publisher");
-
-    // Create a command book
-    let command_book = CommandBook {
-        cover: Some(Cover {
-            domain: "inventory".to_string(),
-            root: Some(Uuid {
-                value: uuid::Uuid::new_v4().as_bytes().to_vec(),
-            }),
-            correlation_id: format!("txn-{}", uuid::Uuid::new_v4()),
-            edition: None,
-        }),
-        pages: vec![],
-        ..Default::default()
-    };
-
-    // Create a dead letter for sequence mismatch
-    let dead_letter = AngzarrDeadLetter {
-        cover: command_book.cover.clone(),
-        payload: DeadLetterPayload::Command(command_book),
-        rejection_reason: "Sequence mismatch".to_string(),
-        rejection_details: Some(RejectionDetails::SequenceMismatch(
-            SequenceMismatchDetails {
-                expected_sequence: 0,
-                actual_sequence: 5,
-                merge_strategy: MergeStrategy::MergeManual,
-            },
-        )),
-        source_component: "aggregate-inventory".to_string(),
-        source_component_type: "aggregate".to_string(),
-        occurred_at: None,
-        metadata: std::collections::HashMap::new(),
-    };
-
-    dlq_publisher
-        .publish(dead_letter)
-        .await
-        .expect("DLQ publish should succeed");
-
-    println!("=== AMQP DLQ Sequence Mismatch Test PASSED ===");
+    println!("=== All AMQP DLQ tests PASSED ===");
 }
