@@ -497,9 +497,9 @@ fn then_game_variant(world: &mut TableWorld, expected: String) {
     };
 
     // Could be TableCreated or HandStarted
-    let actual_variant = if let Some(tc) = try_unpack::<TableCreated>(event) {
+    let actual_variant = if let Some(tc) = try_unpack::<TableCreated>(&event) {
         GameVariant::try_from(tc.game_variant).unwrap_or_default()
-    } else if let Some(hs) = try_unpack::<HandStarted>(event) {
+    } else if let Some(hs) = try_unpack::<HandStarted>(&event) {
         GameVariant::try_from(hs.game_variant).unwrap_or_default()
     } else {
         panic!("Unknown event type: {}", event.type_url);

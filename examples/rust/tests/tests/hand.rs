@@ -1102,9 +1102,9 @@ fn then_blind_type(world: &mut HandWorld, expected: String) {
 #[then(expr = "the player event has amount {int}")]
 fn then_player_amount(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
-    if let Some(blind_posted) = try_unpack::<BlindPosted>(event) {
+    if let Some(blind_posted) = try_unpack::<BlindPosted>(&event) {
         assert_eq!(blind_posted.amount, expected);
-    } else if let Some(action) = try_unpack::<ActionTaken>(event) {
+    } else if let Some(action) = try_unpack::<ActionTaken>(&event) {
         assert_eq!(action.amount, expected);
     }
 }
@@ -1112,7 +1112,7 @@ fn then_player_amount(world: &mut HandWorld, expected: i64) {
 #[then(expr = "the player event has player_stack {int}")]
 fn then_player_stack(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
-    if let Some(blind_posted) = try_unpack::<BlindPosted>(event) {
+    if let Some(blind_posted) = try_unpack::<BlindPosted>(&event) {
         assert_eq!(blind_posted.player_stack, expected);
     }
 }
@@ -1120,7 +1120,7 @@ fn then_player_stack(world: &mut HandWorld, expected: i64) {
 #[then(expr = "the player event has pot_total {int}")]
 fn then_pot_total(world: &mut HandWorld, expected: i64) {
     let event = world.result_event().expect("No event");
-    if let Some(blind_posted) = try_unpack::<BlindPosted>(event) {
+    if let Some(blind_posted) = try_unpack::<BlindPosted>(&event) {
         assert_eq!(blind_posted.pot_total, expected);
     }
 }
