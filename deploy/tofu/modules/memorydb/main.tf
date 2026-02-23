@@ -124,18 +124,18 @@ resource "aws_memorydb_parameter_group" "angzarr" {
 #------------------------------------------------------------------------------
 
 resource "aws_memorydb_cluster" "angzarr" {
-  name                 = var.cluster_name
-  node_type            = var.node_type
-  num_shards           = var.num_shards
+  name                   = var.cluster_name
+  node_type              = var.node_type
+  num_shards             = var.num_shards
   num_replicas_per_shard = var.num_replicas_per_shard
 
-  acl_name                 = aws_memorydb_acl.angzarr.name
-  parameter_group_name     = aws_memorydb_parameter_group.angzarr.name
-  subnet_group_name        = aws_memorydb_subnet_group.angzarr.name
-  security_group_ids       = [aws_security_group.memorydb.id]
+  acl_name             = aws_memorydb_acl.angzarr.name
+  parameter_group_name = aws_memorydb_parameter_group.angzarr.name
+  subnet_group_name    = aws_memorydb_subnet_group.angzarr.name
+  security_group_ids   = [aws_security_group.memorydb.id]
 
-  tls_enabled              = var.tls_enabled
-  kms_key_arn              = var.kms_key_arn
+  tls_enabled = var.tls_enabled
+  kms_key_arn = var.kms_key_arn
 
   snapshot_retention_limit = var.snapshot_retention_limit
   snapshot_window          = var.snapshot_window

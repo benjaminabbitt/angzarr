@@ -1,8 +1,8 @@
 # Memorystore Module - Outputs
 
 locals {
-  protocol = var.transit_encryption_mode == "SERVER_AUTHENTICATION" ? "rediss" : "redis"
-  auth_part = var.auth_enabled ? ":${google_redis_instance.angzarr.auth_string}@" : ""
+  protocol       = var.transit_encryption_mode == "SERVER_AUTHENTICATION" ? "rediss" : "redis"
+  auth_part      = var.auth_enabled ? ":${google_redis_instance.angzarr.auth_string}@" : ""
   connection_uri = "${local.protocol}://${local.auth_part}${google_redis_instance.angzarr.host}:${google_redis_instance.angzarr.port}"
 }
 

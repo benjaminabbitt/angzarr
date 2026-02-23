@@ -12,8 +12,8 @@ variable "data_dir" {
     - {data_dir}/positions.db
     - {data_dir}/snapshots.db
   EOT
-  type    = string
-  default = "/data/angzarr"
+  type        = string
+  default     = "/data/angzarr"
 }
 
 variable "journal_mode" {
@@ -24,8 +24,8 @@ variable "journal_mode" {
     - DELETE: Traditional rollback journal
     - MEMORY: Journal in memory (faster but less durable)
   EOT
-  type    = string
-  default = "WAL"
+  type        = string
+  default     = "WAL"
 
   validation {
     condition     = contains(["WAL", "DELETE", "MEMORY", "TRUNCATE", "PERSIST", "OFF"], var.journal_mode)
@@ -41,8 +41,8 @@ variable "synchronous" {
     - NORMAL: Good balance (recommended for WAL mode)
     - OFF: Fastest, risk of corruption on crash
   EOT
-  type    = string
-  default = "NORMAL"
+  type        = string
+  default     = "NORMAL"
 
   validation {
     condition     = contains(["OFF", "NORMAL", "FULL", "EXTRA"], var.synchronous)

@@ -25,10 +25,10 @@ output "provides" {
 output "requirements" {
   description = "Requirements for this module"
   value = {
-    compute_types   = null           # Works anywhere
-    vpc             = false          # No network needed
-    capabilities    = null           # No dependencies
-    secrets_backend = null           # No secrets needed
+    compute_types   = null  # Works anywhere
+    vpc             = false # No network needed
+    capabilities    = null  # No dependencies
+    secrets_backend = null  # No secrets needed
   }
 }
 

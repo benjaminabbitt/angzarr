@@ -8,10 +8,10 @@ locals {
 output "provides" {
   description = "Capabilities provided by this module"
   value = {
-    capabilities  = toset(["snapshot_store", "caching"])
-    cloud         = "aws"
-    rust_features = toset(["redis"])
-    ha_mode       = var.num_replicas_per_shard > 0 ? "multi-az" : "single-az"
+    capabilities    = toset(["snapshot_store", "caching"])
+    cloud           = "aws"
+    rust_features   = toset(["redis"])
+    ha_mode         = var.num_replicas_per_shard > 0 ? "multi-az" : "single-az"
     secrets_backend = "aws"
   }
 }

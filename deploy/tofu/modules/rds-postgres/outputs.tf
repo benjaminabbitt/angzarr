@@ -7,10 +7,10 @@ locals {
 output "provides" {
   description = "Capabilities provided by this module"
   value = {
-    capabilities  = toset(["event_store", "position_store", "snapshot_store", "transactions"])
-    cloud         = "aws"
-    rust_features = toset(["postgres"])
-    ha_mode       = var.multi_az ? "multi-az" : "single-az"
+    capabilities    = toset(["event_store", "position_store", "snapshot_store", "transactions"])
+    cloud           = "aws"
+    rust_features   = toset(["postgres"])
+    ha_mode         = var.multi_az ? "multi-az" : "single-az"
     secrets_backend = "aws"
   }
 }
