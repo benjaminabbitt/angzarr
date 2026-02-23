@@ -161,16 +161,16 @@ def when_handler_emits_events(aggregate_context, count):
 
 @then(parsers.parse("the {handler_name} handler should be invoked"))
 def then_handler_should_be_invoked(aggregate_context, handler_name):
-    assert handler_name in aggregate_context["invoked_handlers"], (
-        f"Handler {handler_name} was not invoked. Invoked: {aggregate_context['invoked_handlers']}"
-    )
+    assert (
+        handler_name in aggregate_context["invoked_handlers"]
+    ), f"Handler {handler_name} was not invoked. Invoked: {aggregate_context['invoked_handlers']}"
 
 
 @then(parsers.parse("the {handler_name} handler should NOT be invoked"))
 def then_handler_should_not_be_invoked(aggregate_context, handler_name):
-    assert handler_name not in aggregate_context["invoked_handlers"], (
-        f"Handler {handler_name} was invoked but should not have been"
-    )
+    assert (
+        handler_name not in aggregate_context["invoked_handlers"]
+    ), f"Handler {handler_name} was invoked but should not have been"
 
 
 @then("the router should load the EventBook first")

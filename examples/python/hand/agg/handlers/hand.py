@@ -390,19 +390,25 @@ class Hand(Aggregate[_HandState]):
         action = cmd.action
         amount = cmd.amount
         call_amount = self.current_bet - player.bet_this_round
+        # chips_put_in tracks actual chips going into pot (differs from amount for RAISE)
+        chips_put_in = amount
+        # event_amount tracks the value for the event (total bet level for RAISE)
+        event_amount = amount
 
         if action == poker_types.FOLD:
-            amount = 0
+            chips_put_in = 0
+            event_amount = 0
         elif action == poker_types.CHECK:
             if call_amount > 0:
                 raise CommandRejectedError("Cannot check when there is a bet to call")
-            amount = 0
+            chips_put_in = 0
+            event_amount = 0
         elif action == poker_types.CALL:
             if call_amount == 0:
                 raise CommandRejectedError("Nothing to call")
-            actual_amount = min(call_amount, player.stack)
-            amount = actual_amount
-            if player.stack - actual_amount == 0:
+            chips_put_in = min(call_amount, player.stack)
+            event_amount = chips_put_in
+            if player.stack - chips_put_in == 0:
                 action = poker_types.ALL_IN
         elif action == poker_types.BET:
             if self.current_bet > 0:
@@ -411,34 +417,40 @@ class Hand(Aggregate[_HandState]):
                 raise CommandRejectedError(f"Bet must be at least {self.big_blind}")
             if amount > player.stack:
                 raise CommandRejectedError("Bet exceeds stack")
-            if player.stack - amount == 0:
+            chips_put_in = amount
+            event_amount = amount
+            if player.stack - chips_put_in == 0:
                 action = poker_types.ALL_IN
         elif action == poker_types.RAISE:
             if self.current_bet == 0:
                 raise CommandRejectedError("Cannot raise when there is no bet")
-            total_bet = player.bet_this_round + amount
-            raise_amount = total_bet - self.current_bet
-            if raise_amount < self.min_raise and amount < player.stack:
+            # amount is the total bet level (what player is raising TO)
+            raise_amount = amount - self.current_bet
+            to_put_in = amount - player.bet_this_round
+            if raise_amount < self.min_raise and to_put_in < player.stack:
                 raise CommandRejectedError(f"Raise must be at least {self.min_raise}")
-            if amount > player.stack:
+            if to_put_in > player.stack:
                 raise CommandRejectedError("Raise exceeds stack")
-            if player.stack - amount == 0:
+            chips_put_in = to_put_in
+            event_amount = amount  # Event stores total bet level
+            if player.stack - chips_put_in == 0:
                 action = poker_types.ALL_IN
         elif action == poker_types.ALL_IN:
-            amount = player.stack
+            chips_put_in = player.stack
+            event_amount = chips_put_in
         else:
             raise CommandRejectedError("Invalid action")
 
-        new_stack = player.stack - amount
-        new_pot_total = self.get_pot_total() + amount
+        new_stack = player.stack - chips_put_in
+        new_pot_total = self.get_pot_total() + chips_put_in
 
         return hand_proto.ActionTaken(
             player_root=cmd.player_root,
             action=action,
-            amount=amount,
+            amount=event_amount,
             player_stack=new_stack,
             pot_total=new_pot_total,
-            amount_to_call=max(self.current_bet, player.bet_this_round + amount)
+            amount_to_call=max(self.current_bet, player.bet_this_round + chips_put_in)
             - player.bet_this_round,
             action_at=now(),
         )

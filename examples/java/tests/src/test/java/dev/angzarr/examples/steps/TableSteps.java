@@ -207,12 +207,10 @@ public class TableSteps {
     for (Map<String, String> result : results) {
       String playerId = result.get("player");
       int change = Integer.parseInt(result.get("change"));
-      // Only add as pot result if it's a win (positive change)
-      if (change > 0) {
-        ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
-        cmdBuilder.addResults(
-            PotResult.newBuilder().setWinnerRoot(playerRoot).setAmount(change).setPotType("main"));
-      }
+      // Add all changes to results to track stack_changes for both winners and losers
+      ByteString playerRoot = ByteString.copyFrom(playerId.getBytes(StandardCharsets.UTF_8));
+      cmdBuilder.addResults(
+          PotResult.newBuilder().setWinnerRoot(playerRoot).setAmount(change).setPotType("main"));
     }
     handleCommand(cmdBuilder.build());
   }

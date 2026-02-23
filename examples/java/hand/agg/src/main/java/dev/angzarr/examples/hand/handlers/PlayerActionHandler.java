@@ -88,6 +88,12 @@ public final class PlayerActionHandler {
         if (amount > player.getStack()) {
           throw Errors.CommandRejectedError.invalidArgument("Raise exceeds stack");
         }
+        // Validate minimum raise (unless going all-in)
+        long raiseAmount = amount - state.getCurrentBet();
+        if (raiseAmount < state.getMinRaise() && amount < player.getStack()) {
+          throw Errors.CommandRejectedError.invalidArgument(
+              "Raise must be at least " + state.getMinRaise() + " above current bet");
+        }
         if (player.getStack() - amount == 0) {
           action = ActionType.ALL_IN;
         }

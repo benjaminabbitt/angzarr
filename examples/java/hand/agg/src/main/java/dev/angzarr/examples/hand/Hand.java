@@ -89,6 +89,10 @@ public class Hand extends Aggregate<HandState> {
         }
         state.setPotTotal(event.getPotTotal());
         state.setCurrentBet(Math.max(state.getCurrentBet(), event.getAmount()));
+        // Track min_raise as the big blind (highest blind posted)
+        if (event.getAmount() > state.getMinRaise()) {
+          state.setMinRaise(event.getAmount());
+        }
 
       } else if (typeUrl.endsWith("ActionTaken")) {
         ActionTaken event = eventAny.unpack(ActionTaken.class);
@@ -319,12 +323,28 @@ public class Hand extends Aggregate<HandState> {
         amount = Math.min(amount, player.getStack());
         break;
       case BET:
-      case RAISE:
         amount = cmd.getAmount();
-        // Minimum bet is the big blind (typically current_bet when opening)
+        // Minimum bet is the big blind
         long minBet = getState().getMinRaise() > 0 ? getState().getMinRaise() : 10;
         if (amount < minBet && amount < player.getStack()) {
           throw Errors.CommandRejectedError.invalidArgument("Bet must be at least " + minBet);
+        }
+        if (amount > player.getStack()) {
+          amount = player.getStack();
+          action = ActionType.ALL_IN;
+        }
+        break;
+      case RAISE:
+        if (getState().getCurrentBet() == 0) {
+          throw Errors.CommandRejectedError.invalidArgument("Cannot raise when there is no bet");
+        }
+        amount = cmd.getAmount();
+        // Validate minimum raise (amount is total bet level)
+        long raiseAmount = amount - getState().getCurrentBet();
+        long minRaise = getState().getMinRaise() > 0 ? getState().getMinRaise() : 10;
+        if (raiseAmount < minRaise && amount < player.getStack()) {
+          throw Errors.CommandRejectedError.invalidArgument(
+              "Raise must be at least " + minRaise + " above current bet");
         }
         if (amount > player.getStack()) {
           amount = player.getStack();

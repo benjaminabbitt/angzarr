@@ -114,11 +114,20 @@ fmt-csharp:
 
 # Format Java code (runs in angzarr-java container)
 fmt-java:
-    just _lang-container java sh -c "cd examples/java && ./gradlew spotlessApply"
+    just _lang-container java ./examples/java/gradlew -p examples/java spotlessApply
 
 # Format C++ code (runs in angzarr-base container - has clang-format)
 fmt-cpp:
-    just _lang-container base sh -c "find examples/cpp client/cpp -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' | xargs clang-format -i"
+    #!/usr/bin/env bash
+    if [ "${DEVCONTAINER:-}" = "true" ]; then
+        find examples/cpp client/cpp \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' \) -exec clang-format -i {} +
+    else
+        podman run --rm --network=host \
+            -v "$(git rev-parse --show-toplevel):/workspace:Z" \
+            -w /workspace \
+            {{REGISTRY}}/angzarr-base:latest \
+            find examples/cpp client/cpp \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.h' \) -exec clang-format -i {} +
+    fi
 
 # === Buf Schema Registry ===
 

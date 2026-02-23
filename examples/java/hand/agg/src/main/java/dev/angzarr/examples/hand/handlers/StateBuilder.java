@@ -98,6 +98,10 @@ public final class StateBuilder {
     }
     state.setPotTotal(event.getPotTotal());
     state.setCurrentBet(Math.max(state.getCurrentBet(), event.getAmount()));
+    // Track min_raise as the big blind (highest blind posted)
+    if (event.getAmount() > state.getMinRaise()) {
+      state.setMinRaise(event.getAmount());
+    }
   }
 
   private static void applyActionTaken(HandState state, ActionTaken event) {

@@ -507,13 +507,13 @@ def step_when_router_routes_events(context):
 @then("the saga emits a DealCards command to hand domain")
 def step_then_saga_emits_deal_cards(context):
     """Verify saga emits DealCards command."""
-    assert len(context.commands) >= 1, (
-        f"Expected at least 1 command, got {len(context.commands)}"
-    )
+    assert (
+        len(context.commands) >= 1
+    ), f"Expected at least 1 command, got {len(context.commands)}"
     cmd_book = context.commands[0]
-    assert cmd_book.cover.domain == "hand", (
-        f"Expected hand domain, got {cmd_book.cover.domain}"
-    )
+    assert (
+        cmd_book.cover.domain == "hand"
+    ), f"Expected hand domain, got {cmd_book.cover.domain}"
     assert "DealCards" in cmd_book.pages[0].command.type_url
 
 
@@ -522,9 +522,9 @@ def step_then_saga_emits_end_hand(context):
     """Verify saga emits EndHand command."""
     assert len(context.commands) >= 1
     cmd_book = context.commands[0]
-    assert cmd_book.cover.domain == "table", (
-        f"Expected table domain, got {cmd_book.cover.domain}"
-    )
+    assert (
+        cmd_book.cover.domain == "table"
+    ), f"Expected table domain, got {cmd_book.cover.domain}"
     assert "EndHand" in cmd_book.pages[0].command.type_url
 
 
@@ -532,9 +532,9 @@ def step_then_saga_emits_end_hand(context):
 def step_then_saga_emits_release_funds(context, count):
     """Verify saga emits ReleaseFunds commands."""
     expected = int(count)
-    assert len(context.commands) == expected, (
-        f"Expected {expected} commands, got {len(context.commands)}"
-    )
+    assert (
+        len(context.commands) == expected
+    ), f"Expected {expected} commands, got {len(context.commands)}"
     for cmd_book in context.commands:
         assert cmd_book.cover.domain == "player"
         assert "ReleaseFunds" in cmd_book.pages[0].command.type_url
@@ -544,9 +544,9 @@ def step_then_saga_emits_release_funds(context, count):
 def step_then_saga_emits_deposit_funds(context, count):
     """Verify saga emits DepositFunds commands."""
     expected = int(count)
-    assert len(context.commands) == expected, (
-        f"Expected {expected} commands, got {len(context.commands)}"
-    )
+    assert (
+        len(context.commands) == expected
+    ), f"Expected {expected} commands, got {len(context.commands)}"
     for cmd_book in context.commands:
         assert cmd_book.cover.domain == "player"
         assert "DepositFunds" in cmd_book.pages[0].command.type_url
@@ -559,9 +559,9 @@ def step_then_saga_emits_deal_cards_count(context, count):
     deal_cards_count = sum(
         1 for cmd in context.commands if "DealCards" in cmd.pages[0].command.type_url
     )
-    assert deal_cards_count == expected, (
-        f"Expected {expected} DealCards commands, got {deal_cards_count}"
-    )
+    assert (
+        deal_cards_count == expected
+    ), f"Expected {expected} DealCards commands, got {deal_cards_count}"
 
 
 @then("the command has game_variant (?P<variant>\\w+)")
@@ -581,9 +581,9 @@ def step_then_command_has_players(context, count):
     cmd = hand.DealCards()
     cmd_any.Unpack(cmd)
     expected = int(count)
-    assert len(cmd.players) == expected, (
-        f"Expected {expected} players, got {len(cmd.players)}"
-    )
+    assert (
+        len(cmd.players) == expected
+    ), f"Expected {expected} players, got {len(cmd.players)}"
 
 
 @then("the command has hand_number (?P<num>\\d+)")
@@ -593,9 +593,9 @@ def step_then_command_has_hand_number(context, num):
     cmd = hand.DealCards()
     cmd_any.Unpack(cmd)
     expected = int(num)
-    assert cmd.hand_number == expected, (
-        f"Expected hand_number {expected}, got {cmd.hand_number}"
-    )
+    assert (
+        cmd.hand_number == expected
+    ), f"Expected hand_number {expected}, got {cmd.hand_number}"
 
 
 @then("the command has (?P<count>\\d+) result")
@@ -605,9 +605,9 @@ def step_then_command_has_results(context, count):
     cmd = table.EndHand()
     cmd_any.Unpack(cmd)
     expected = int(count)
-    assert len(cmd.results) == expected, (
-        f"Expected {expected} results, got {len(cmd.results)}"
-    )
+    assert (
+        len(cmd.results) == expected
+    ), f"Expected {expected} results, got {len(cmd.results)}"
 
 
 @then('the result has winner "(?P<winner>[^"]+)" with amount (?P<amount>\\d+)')
@@ -618,12 +618,12 @@ def step_then_result_has_winner(context, winner, amount):
     cmd_any.Unpack(cmd)
     result = cmd.results[0]
     expected_amount = int(amount)
-    assert result.winner_root == winner.encode(), (
-        f"Expected {winner}, got {result.winner_root}"
-    )
-    assert result.amount == expected_amount, (
-        f"Expected {expected_amount}, got {result.amount}"
-    )
+    assert (
+        result.winner_root == winner.encode()
+    ), f"Expected {winner}, got {result.winner_root}"
+    assert (
+        result.amount == expected_amount
+    ), f"Expected {expected_amount}, got {result.amount}"
 
 
 @then('the first command has amount (?P<amount>\\d+) for "(?P<player_id>[^"]+)"')
@@ -633,9 +633,9 @@ def step_then_first_command_has_amount(context, amount, player_id):
     cmd = player.DepositFunds()
     cmd_any.Unpack(cmd)
     expected_amount = int(amount)
-    assert cmd.amount.amount == expected_amount, (
-        f"Expected {expected_amount}, got {cmd.amount.amount}"
-    )
+    assert (
+        cmd.amount.amount == expected_amount
+    ), f"Expected {expected_amount}, got {cmd.amount.amount}"
 
 
 @then('the second command has amount (?P<amount>\\d+) for "(?P<player_id>[^"]+)"')
@@ -645,9 +645,9 @@ def step_then_second_command_has_amount(context, amount, player_id):
     cmd = player.DepositFunds()
     cmd_any.Unpack(cmd)
     expected_amount = int(amount)
-    assert cmd.amount.amount == expected_amount, (
-        f"Expected {expected_amount}, got {cmd.amount.amount}"
-    )
+    assert (
+        cmd.amount.amount == expected_amount
+    ), f"Expected {expected_amount}, got {cmd.amount.amount}"
 
 
 @then("only TableSyncSaga handles the event")
