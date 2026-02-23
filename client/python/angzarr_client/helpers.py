@@ -207,6 +207,31 @@ def event_pages(book: Optional[EventBook]) -> list[EventPage]:
     return list(book.pages)
 
 
+def destination_map(destinations: list[EventBook]) -> dict[str, EventBook]:
+    """Build a map from root UUID hex to EventBook for destination lookup.
+
+    Used in multi-destination sagas to look up the correct EventBook
+    by aggregate root when setting command sequences.
+
+    Args:
+        destinations: List of EventBooks from the saga prepare phase
+
+    Returns:
+        Dict mapping root hex string to EventBook. Entries without
+        a root are skipped.
+
+    Example:
+        dest_map = destination_map(destinations)
+        dest_seq = next_sequence(dest_map.get(player_hex))
+    """
+    result = {}
+    for dest in destinations:
+        key = root_id_hex(dest)
+        if key:
+            result[key] = dest
+    return result
+
+
 # CommandBook helpers
 
 

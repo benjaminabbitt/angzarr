@@ -12,7 +12,7 @@ from google.protobuf.any_pb2 import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from angzarr_client import next_sequence
+from angzarr_client import destination_map, next_sequence
 from angzarr_client.proto.angzarr import types_pb2 as types
 from angzarr_client.proto.examples import player_pb2 as player
 from angzarr_client.proto.examples import table_pb2 as table
@@ -60,23 +60,13 @@ def handle_hand_ended(
     hand_ended = table.HandEnded()
     event.Unpack(hand_ended)
 
-    # Build a map from player root to destination for sequence lookup
-    dest_map = {}
-    for dest in destinations:
-        if dest.HasField("cover") and dest.cover.HasField("root"):
-            key = dest.cover.root.value.hex()
-            dest_map[key] = dest
-
+    dest_map = destination_map(destinations)
     commands = []
 
     # Create ReleaseFunds commands for all players
     for player_hex in hand_ended.stack_changes:
         player_root = bytes.fromhex(player_hex)
-
-        # Get sequence from destination state
-        dest_seq = 0
-        if player_hex in dest_map:
-            dest_seq = next_sequence(dest_map[player_hex])
+        dest_seq = next_sequence(dest_map.get(player_hex))
 
         release_funds = player.ReleaseFunds(
             table_root=hand_ended.hand_root,

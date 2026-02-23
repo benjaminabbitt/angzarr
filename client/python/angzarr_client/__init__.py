@@ -30,6 +30,7 @@ from .errors import (
 from .event_packing import new_event_book, new_event_book_multi, pack_event, pack_events
 from .helpers import (
     correlation_id,
+    destination_map,
     domain,
     edition,
     has_correlation_id,
@@ -140,6 +141,7 @@ __all__ = [
     "InvalidTimestampError",
     "CommandRejectedError",
     # Helpers
+    "destination_map",
     "domain",
     "correlation_id",
     "has_correlation_id",
