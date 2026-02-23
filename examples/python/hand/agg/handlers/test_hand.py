@@ -1888,12 +1888,13 @@ class TestMoreEdgeCases:
                 amount=10,
             )
         )
-        # Raise for entire remaining stack (95)
+        # Raise to total bet level that uses entire remaining stack
+        # Player has 95 chips left and 5 already bet, so raising to 100 uses all chips
         event = h.action(
             hand.PlayerAction(
                 player_root=players[0].player_root,
                 action=poker_types.RAISE,
-                amount=95,
+                amount=100,
             )
         )
         assert event.action == poker_types.ALL_IN
