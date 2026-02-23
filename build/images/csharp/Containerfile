@@ -28,11 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
 
-# Install CSharpier formatter as global tool
-RUN dotnet tool install -g csharpier
+# Set PATH for dotnet global tools
 ENV PATH="/root/.dotnet/tools:${PATH}"
 
-# Verify installation
-RUN dotnet --version && dotnet csharpier --version
+# Install CSharpier formatter as global tool and verify
+RUN dotnet tool install -g csharpier \
+    && dotnet --version \
+    && csharpier --version
 
 WORKDIR /workspace
