@@ -6,19 +6,23 @@
 //! Provides utilities for handling saga command rejections, including:
 //! - Building Notification messages with RejectionNotification payload
 //! - Emitting SagaCompensationFailed events
-//! - Dead letter queue routing
-//! - Escalation triggers
+//! - Escalation via configurable handlers (EventBus, webhook, etc.)
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use prost::Message;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
 use crate::proto::{
     business_response, BusinessResponse, CommandBook, Cover, EventBook, EventPage, MergeStrategy,
     Notification, RejectionNotification, RevocationResponse, SagaCommandOrigin,
     SagaCompensationFailed, Uuid as ProtoUuid,
 };
+use crate::proto_ext::type_url;
 use crate::proto_ext::CoverExt;
 
 /// Result type for compensation operations.
@@ -36,14 +40,159 @@ pub enum CompensationError {
     #[error("Compensation aborted: {0}")]
     Aborted(String),
 
-    #[error("DLQ send failed: {0}")]
-    DlqFailed(String),
-
     #[error("Escalation failed: {0}")]
     EscalationFailed(String),
 
     #[error("Event store error: {0}")]
     EventStore(String),
+}
+
+/// Trait for handling escalation actions during saga compensation.
+///
+/// Two distinct concerns:
+/// - Quarantine: isolate failed messages for later reprocessing (operational)
+/// - Notify: inform operators of failures requiring attention (observability)
+///
+/// These are intentionally separate methods because callers may want one without
+/// the other (e.g., quarantine for replay without alerting, or alerting without quarantine).
+#[async_trait]
+pub trait EscalationHandler: Send + Sync {
+    /// Quarantine a compensation failure for later reprocessing.
+    ///
+    /// Called when `send_to_dead_letter_queue` flag is set. Implementations
+    /// should preserve the full context for later replay/investigation.
+    async fn quarantine(
+        &self,
+        context: &CompensationContext,
+        reason: &str,
+    ) -> std::result::Result<(), CompensationError>;
+
+    /// Notify operators of a compensation failure.
+    ///
+    /// Called when `escalate` flag is set. Implementations should alert
+    /// operators for manual review and resolution.
+    async fn notify(
+        &self,
+        context: &CompensationContext,
+        reason: &str,
+    ) -> std::result::Result<(), CompensationError>;
+}
+
+/// Default escalation handler that routes based on configuration.
+///
+/// - `quarantine`: If `dead_letter_queue_url` configured → publishes to fallback domain via EventBus
+/// - `notify`: If `escalation_webhook_url` configured → calls webhook (TODO)
+pub struct DefaultEscalationHandler {
+    event_bus: Arc<dyn EventBus>,
+    config: SagaCompensationConfig,
+}
+
+impl DefaultEscalationHandler {
+    /// Create a new default escalation handler.
+    pub fn new(event_bus: Arc<dyn EventBus>, config: SagaCompensationConfig) -> Self {
+        Self { event_bus, config }
+    }
+}
+
+#[async_trait]
+impl EscalationHandler for DefaultEscalationHandler {
+    async fn quarantine(
+        &self,
+        context: &CompensationContext,
+        reason: &str,
+    ) -> std::result::Result<(), CompensationError> {
+        let Some(ref dlq_url) = self.config.dead_letter_queue_url else {
+            warn!(
+                saga = %context.saga_origin.saga_name,
+                "Quarantine requested but dead_letter_queue_url not configured"
+            );
+            return Ok(());
+        };
+
+        info!(
+            saga = %context.saga_origin.saga_name,
+            dlq_url = %dlq_url,
+            reason = %reason,
+            "Quarantining compensation failure"
+        );
+
+        let event_book = build_compensation_failed_event_book(context, reason, &self.config);
+        self.event_bus
+            .publish(Arc::new(event_book))
+            .await
+            .map_err(|e| {
+                CompensationError::EscalationFailed(format!("Quarantine failed: {}", e))
+            })?;
+
+        Ok(())
+    }
+
+    async fn notify(
+        &self,
+        context: &CompensationContext,
+        reason: &str,
+    ) -> std::result::Result<(), CompensationError> {
+        // Always log at ERROR for notifications
+        error!(
+            saga = %context.saga_origin.saga_name,
+            triggering_aggregate = ?context.saga_origin.triggering_aggregate,
+            triggering_sequence = context.saga_origin.triggering_event_sequence,
+            rejection_reason = %context.rejection_reason,
+            compensation_reason = %reason,
+            "NOTIFY: Saga compensation failed"
+        );
+
+        let Some(ref webhook_url) = self.config.escalation_webhook_url else {
+            warn!(
+                saga = %context.saga_origin.saga_name,
+                "Notification requested but escalation_webhook_url not configured"
+            );
+            return Ok(());
+        };
+
+        info!(
+            saga = %context.saga_origin.saga_name,
+            webhook = %webhook_url,
+            "Sending notification (not yet implemented)"
+        );
+        // TODO: Implement HTTP webhook call
+
+        Ok(())
+    }
+}
+
+/// No-op escalation handler that only logs.
+///
+/// Useful for tests or when escalation is disabled.
+pub struct NoopEscalationHandler;
+
+#[async_trait]
+impl EscalationHandler for NoopEscalationHandler {
+    async fn quarantine(
+        &self,
+        context: &CompensationContext,
+        reason: &str,
+    ) -> std::result::Result<(), CompensationError> {
+        warn!(
+            saga = %context.saga_origin.saga_name,
+            reason = %reason,
+            "Quarantine requested but using NoopEscalationHandler (logging only)"
+        );
+        Ok(())
+    }
+
+    async fn notify(
+        &self,
+        context: &CompensationContext,
+        reason: &str,
+    ) -> std::result::Result<(), CompensationError> {
+        warn!(
+            saga = %context.saga_origin.saga_name,
+            reason = %reason,
+            "Notification requested but using NoopEscalationHandler (logging only)"
+        );
+        Ok(())
+    }
 }
 
 /// Context for compensation operations.
@@ -107,7 +256,7 @@ pub fn build_notification(context: &CompensationContext) -> Notification {
     Notification {
         cover,
         payload: Some(prost_types::Any {
-            type_url: "type.googleapis.com/angzarr.RejectionNotification".to_string(),
+            type_url: type_url::REJECTION_NOTIFICATION.to_string(),
             value: rejection.encode_to_vec(),
         }),
         sent_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
@@ -137,7 +286,7 @@ pub fn build_notification_command_book(context: &CompensationContext) -> Result<
             sequence: 0,
             payload: Some(crate::proto::command_page::Payload::Command(
                 prost_types::Any {
-                    type_url: "type.googleapis.com/angzarr.Notification".to_string(),
+                    type_url: type_url::NOTIFICATION.to_string(),
                     value: notification.encode_to_vec(),
                 },
             )),
@@ -190,7 +339,7 @@ pub fn build_compensation_failed_event_book(
             sequence: 0,
             created_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
             payload: Some(crate::proto::event_page::Payload::Event(prost_types::Any {
-                type_url: "type.angzarr/angzarr.SagaCompensationFailed".to_string(),
+                type_url: type_url::SAGA_COMPENSATION_FAILED.to_string(),
                 value: event.encode_to_vec(),
             })),
         }],
@@ -219,11 +368,12 @@ pub enum CompensationOutcome {
 /// 2. If business returns RevocationResponse → process flags
 /// 3. If empty/error → use config-based fallback
 ///
-/// Returns actions to take (emit events, DLQ, escalate, etc.)
-pub fn handle_business_response(
+/// Returns actions to take (emit events, escalate, etc.)
+pub async fn handle_business_response(
     response: std::result::Result<BusinessResponse, tonic::Status>,
     context: &CompensationContext,
     config: &SagaCompensationConfig,
+    escalation_handler: &dyn EscalationHandler,
 ) -> Result<CompensationOutcome> {
     let revocation = match response {
         Ok(BusinessResponse {
@@ -278,14 +428,15 @@ pub fn handle_business_response(
     };
 
     // Process revocation flags
-    process_revocation_flags(&revocation, context, config)
+    process_revocation_flags(&revocation, context, config, escalation_handler).await
 }
 
 /// Process RevocationResponse flags and take appropriate actions.
-fn process_revocation_flags(
+async fn process_revocation_flags(
     revocation: &RevocationResponse,
     context: &CompensationContext,
     config: &SagaCompensationConfig,
+    escalation_handler: &dyn EscalationHandler,
 ) -> Result<CompensationOutcome> {
     info!(
         saga = %context.saga_origin.saga_name,
@@ -297,23 +448,26 @@ fn process_revocation_flags(
         "Processing revocation response"
     );
 
-    // Send to DLQ if requested
+    // Quarantine if requested (for later reprocessing)
     if revocation.send_to_dead_letter_queue {
-        if let Err(e) = send_to_dead_letter_queue(context, &revocation.reason, config) {
-            error!(error = %e, "Failed to send to DLQ");
-            // Continue processing other flags even if DLQ fails
+        if let Err(e) = escalation_handler
+            .quarantine(context, &revocation.reason)
+            .await
+        {
+            error!(error = %e, "Failed to quarantine");
+            // Continue processing other flags even if quarantine fails
         }
     }
 
-    // Trigger escalation if requested
+    // Notify if requested (for human intervention)
     if revocation.escalate {
-        if let Err(e) = trigger_escalation(context, &revocation.reason, config) {
-            error!(error = %e, "Failed to trigger escalation");
-            // Continue processing other flags even if escalation fails
+        if let Err(e) = escalation_handler.notify(context, &revocation.reason).await {
+            error!(error = %e, "Failed to notify");
+            // Continue processing other flags even if notification fails
         }
     }
 
-    // Check abort flag first - it takes precedence
+    // Check abort flag - it takes precedence over other outcomes
     if revocation.abort {
         return Err(CompensationError::Aborted(revocation.reason.clone()));
     }
@@ -335,60 +489,81 @@ fn process_revocation_flags(
     })
 }
 
-/// Send compensation failure context to dead letter queue.
+/// Process compensation response from coordinator and handle all outcomes.
 ///
-/// Currently a stub - will be implemented with AMQP integration.
-pub fn send_to_dead_letter_queue(
+/// This is the shared entry point for saga compensation - both gRPC and local
+/// modes call this after getting the BusinessResponse from the coordinator.
+/// Handles event persistence acknowledgment, system revocation emission,
+/// escalation (quarantine/notify), and logging.
+pub async fn process_compensation_response(
+    response: std::result::Result<crate::proto::BusinessResponse, tonic::Status>,
     context: &CompensationContext,
-    reason: &str,
     config: &SagaCompensationConfig,
-) -> Result<()> {
-    let Some(dlq_url) = &config.dead_letter_queue_url else {
-        warn!("DLQ requested but not configured");
-        return Ok(());
-    };
+    event_bus: &std::sync::Arc<dyn crate::bus::EventBus>,
+    saga_name: &str,
+    triggering_domain: &str,
+) {
+    let escalation_handler = DefaultEscalationHandler::new(event_bus.clone(), config.clone());
 
-    info!(
-        saga = %context.saga_origin.saga_name,
-        dlq_url = %dlq_url,
-        reason = %reason,
-        "Sending to dead letter queue"
-    );
+    let outcome = handle_business_response(response, context, config, &escalation_handler).await;
 
-    // TODO: Implement actual DLQ send via AMQP
-    // For now, just log the intent
-    Ok(())
-}
-
-/// Trigger escalation for compensation failure.
-///
-/// Currently logs at ERROR level. Will integrate with webhook when configured.
-pub fn trigger_escalation(
-    context: &CompensationContext,
-    reason: &str,
-    config: &SagaCompensationConfig,
-) -> Result<()> {
-    // Always log at ERROR for escalations
-    error!(
-        saga = %context.saga_origin.saga_name,
-        triggering_aggregate = ?context.saga_origin.triggering_aggregate,
-        triggering_sequence = context.saga_origin.triggering_event_sequence,
-        rejection_reason = %context.rejection_reason,
-        compensation_reason = %reason,
-        "ESCALATION: Saga compensation failed"
-    );
-
-    // Send to webhook if configured
-    if let Some(webhook_url) = &config.escalation_webhook_url {
-        info!(
-            webhook = %webhook_url,
-            "Sending escalation to webhook"
-        );
-        // TODO: Implement actual webhook call
-        // For now, just log the intent
+    match outcome {
+        Ok(CompensationOutcome::Events(events)) => {
+            // Business provided compensation events - already persisted by HandleCompensation
+            info!(
+                saga = %saga_name,
+                triggering_domain = %triggering_domain,
+                events = events.pages.len(),
+                "Compensation events recorded successfully"
+            );
+        }
+        Ok(CompensationOutcome::EmitSystemRevocation(event_book)) => {
+            info!(
+                saga = %saga_name,
+                triggering_domain = %triggering_domain,
+                "Emitting system revocation event"
+            );
+            if let Err(e) = event_bus.publish(std::sync::Arc::new(event_book)).await {
+                error!(
+                    saga = %saga_name,
+                    error = %e,
+                    "Failed to publish system revocation event"
+                );
+            }
+        }
+        Ok(CompensationOutcome::Declined { reason }) => {
+            debug!(
+                saga = %saga_name,
+                triggering_domain = %triggering_domain,
+                reason = %reason,
+                "Compensation declined by business logic"
+            );
+        }
+        Ok(CompensationOutcome::Aborted { reason }) => {
+            error!(
+                saga = %saga_name,
+                triggering_domain = %triggering_domain,
+                reason = %reason,
+                "Compensation aborted by business logic - saga chain stopped"
+            );
+        }
+        Err(CompensationError::Aborted(reason)) => {
+            error!(
+                saga = %saga_name,
+                triggering_domain = %triggering_domain,
+                reason = %reason,
+                "Compensation aborted - saga chain stopped"
+            );
+        }
+        Err(e) => {
+            error!(
+                saga = %saga_name,
+                triggering_domain = %triggering_domain,
+                error = %e,
+                "Compensation failed"
+            );
+        }
     }
-
-    Ok(())
 }
 
 #[cfg(test)]

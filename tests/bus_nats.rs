@@ -8,11 +8,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::bus::nats::NatsEventBus;
-use angzarr::bus::{BusError, EventBus, EventHandler};
+use angzarr::bus::EventBus;
 use angzarr::proto::{Cover, Edition, EventBook, EventPage};
 use angzarr::storage::nats::NatsEventStore;
 use angzarr::storage::EventStore;
-use futures::future::BoxFuture;
+use angzarr::test_utils::CapturingHandler;
 use prost_types::Any;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
@@ -89,30 +89,6 @@ fn make_event_book(domain: &str) -> EventBook {
             })),
         }],
         next_sequence: 1,
-    }
-}
-
-/// Handler that captures received events.
-struct CapturingHandler {
-    tx: mpsc::Sender<EventBook>,
-}
-
-impl CapturingHandler {
-    fn new(tx: mpsc::Sender<EventBook>) -> Self {
-        Self { tx }
-    }
-}
-
-impl EventHandler for CapturingHandler {
-    fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
-        let tx = self.tx.clone();
-        let book = (*book).clone();
-        Box::pin(async move {
-            tx.send(book)
-                .await
-                .map_err(|e| BusError::Publish(e.to_string()))?;
-            Ok(())
-        })
     }
 }
 

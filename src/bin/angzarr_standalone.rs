@@ -221,6 +221,34 @@ fn socket_path(base_path: &std::path::Path, prefix: &str, name: &str) -> String 
     format!("{}/{}-{}.sock", base_path.display(), prefix, name)
 }
 
+/// Initialize storage for a domain if not already present.
+async fn ensure_domain_storage(
+    stores: &mut HashMap<String, DomainStorage>,
+    domain: &str,
+    storage_config: &angzarr::storage::StorageConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if stores.contains_key(domain) {
+        return Ok(());
+    }
+
+    let (event_store, snapshot_store) = angzarr::storage::init_storage(storage_config).await?;
+
+    info!(
+        domain = %domain,
+        storage_type = ?storage_config.storage_type,
+        "Initialized storage"
+    );
+
+    stores.insert(
+        domain.to_string(),
+        DomainStorage {
+            event_store,
+            snapshot_store,
+        },
+    );
+    Ok(())
+}
+
 /// Wait for a UDS socket to become connectable.
 async fn wait_for_socket(
     path: &str,
@@ -313,49 +341,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut children: Vec<ManagedChild> = Vec::new();
 
-    // Initialize per-domain storage
+    // Initialize per-domain storage for aggregates and process managers
     let mut domain_stores: HashMap<String, DomainStorage> = HashMap::new();
     for svc in &config.standalone.aggregates {
         let storage_config = svc.storage.as_ref().unwrap_or(&config.storage);
-        let (event_store, snapshot_store) = angzarr::storage::init_storage(storage_config).await?;
-
-        info!(
-            domain = %svc.domain,
-            storage_type = ?storage_config.storage_type,
-            "Initialized storage"
-        );
-
-        domain_stores.insert(
-            svc.domain.clone(),
-            DomainStorage {
-                event_store,
-                snapshot_store,
-            },
-        );
+        ensure_domain_storage(&mut domain_stores, &svc.domain, storage_config).await?;
     }
 
-    // Initialize PM storage early so it's available for LocalDestinationFetcher
     // PMs need their own storage since they emit their own events
     for svc in &config.standalone.process_managers {
-        if !domain_stores.contains_key(&svc.domain) {
-            let storage_config = svc.storage.as_ref().unwrap_or(&config.storage);
-            let (event_store, snapshot_store) =
-                angzarr::storage::init_storage(storage_config).await?;
-
-            info!(
-                domain = %svc.domain,
-                storage_type = ?storage_config.storage_type,
-                "Initialized PM storage"
-            );
-
-            domain_stores.insert(
-                svc.domain.clone(),
-                DomainStorage {
-                    event_store,
-                    snapshot_store,
-                },
-            );
-        }
+        let storage_config = svc.storage.as_ref().unwrap_or(&config.storage);
+        ensure_domain_storage(&mut domain_stores, &svc.domain, storage_config).await?;
     }
 
     // Create channel event bus (in-process event distribution)
@@ -594,16 +590,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start per-domain aggregate coordinator servers
     let mut servers: Vec<ServerInfo> = Vec::new();
     for svc in &config.standalone.aggregates {
+        let storage = domain_stores.get(&svc.domain).ok_or_else(|| {
+            format!(
+                "No storage for domain '{}' when starting coordinator",
+                svc.domain
+            )
+        })?;
+
         // TCP port-based coordinator
         if let Some(port) = svc.port {
             let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
-
-            let storage = domain_stores.get(&svc.domain).ok_or_else(|| {
-                format!(
-                    "No storage for domain '{}' when starting coordinator",
-                    svc.domain
-                )
-            })?;
 
             let aggregate_svc = StandaloneAggregateService::with_limits(
                 svc.domain.clone(),
@@ -638,13 +634,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // UDS socket-based coordinator
         else if let Some(socket_path) = &svc.socket {
-            let storage = domain_stores.get(&svc.domain).ok_or_else(|| {
-                format!(
-                    "No storage for domain '{}' when starting coordinator",
-                    svc.domain
-                )
-            })?;
-
             let aggregate_svc = StandaloneAggregateService::with_limits(
                 svc.domain.clone(),
                 router.clone(),

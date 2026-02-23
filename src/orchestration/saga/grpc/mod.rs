@@ -8,18 +8,18 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::bus::EventBus;
 use crate::config::SagaCompensationConfig;
 use crate::proto::aggregate_coordinator_service_client::AggregateCoordinatorServiceClient;
 use crate::proto::saga_service_client::SagaServiceClient;
-use crate::proto::{
-    CommandBook, Cover, Edition, EventBook, SagaExecuteRequest, SagaPrepareRequest,
-};
-use crate::proto_ext::EditionExt;
+use crate::proto::{CommandBook, Cover, EventBook, SagaExecuteRequest, SagaPrepareRequest};
 use crate::proto_ext::{correlated_request, CoverExt};
-use crate::utils::saga_compensation::{build_notification_command_book, CompensationContext};
+use crate::utils::box_err;
+use crate::utils::saga_compensation::{
+    build_notification_command_book, process_compensation_response, CompensationContext,
+};
 
 use super::{SagaContextFactory, SagaRetryContext};
 
@@ -72,17 +72,11 @@ impl SagaRetryContext for GrpcSagaContext {
         let response = client
             .prepare(correlated_request(request, correlation_id))
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            .map_err(box_err)?;
 
-        // Stamp source edition onto outgoing covers
         let mut covers = response.into_inner().destinations;
         for cover in &mut covers {
-            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition {
-                    name: edition.clone(),
-                    divergences: vec![],
-                });
-            }
+            cover.stamp_edition_if_empty(&edition);
         }
         Ok(covers)
     }
@@ -101,25 +95,14 @@ impl SagaRetryContext for GrpcSagaContext {
         let response = client
             .execute(correlated_request(request, correlation_id))
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            .map_err(box_err)?;
 
-        // Stamp source edition onto outgoing command covers
-        let commands = response
-            .into_inner()
-            .commands
-            .into_iter()
-            .map(|mut cmd| {
-                if let Some(ref mut c) = cmd.cover {
-                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition {
-                            name: edition.clone(),
-                            divergences: vec![],
-                        });
-                    }
-                }
-                cmd
-            })
-            .collect();
+        let mut commands = response.into_inner().commands;
+        for cmd in &mut commands {
+            if let Some(c) = &mut cmd.cover {
+                c.stamp_edition_if_empty(&edition);
+            }
+        }
         Ok(commands)
     }
 
@@ -149,8 +132,8 @@ impl SagaRetryContext for GrpcSagaContext {
 ///
 /// If the command has a saga_origin (meaning it came from a saga),
 /// sends a Notification with RejectionNotification payload to the
-/// triggering aggregate for compensation.
-/// If compensation fails or client logic requests it, emits a fallback event.
+/// triggering aggregate via HandleCompensation RPC, then processes the
+/// BusinessResponse through handle_business_response with EscalationHandler.
 async fn handle_command_rejection(
     rejected_command: &CommandBook,
     rejection_error: &tonic::Status,
@@ -203,45 +186,24 @@ async fn handle_command_rejection(
     info!(
         saga = %saga_name,
         triggering_domain = %triggering_domain,
-        "Sending rejection Notification to triggering aggregate"
+        "Sending rejection Notification to triggering aggregate via HandleCompensation"
     );
 
-    match handler
-        .handle(correlated_request(notification_command, &correlation_id))
-        .await
-    {
-        Ok(response) => {
-            let sync_resp = response.into_inner();
-            if sync_resp.events.is_some() {
-                info!(
-                    saga = %saga_name,
-                    triggering_domain = %triggering_domain,
-                    "Compensation events recorded successfully"
-                );
-            } else {
-                debug!(
-                    saga = %saga_name,
-                    triggering_domain = %triggering_domain,
-                    "Rejection notification handled, no compensation events produced"
-                );
-            }
-        }
-        Err(e) => {
-            error!(
-                saga = %saga_name,
-                triggering_domain = %triggering_domain,
-                error = %e,
-                "Rejection notification failed, emitting fallback event"
-            );
-            emit_fallback_event(
-                &context,
-                &format!("Rejection notification failed: {}", e),
-                publisher,
-                config,
-            )
-            .await;
-        }
-    }
+    // Use HandleCompensation RPC to get BusinessResponse
+    let response = handler
+        .handle_compensation(correlated_request(notification_command, &correlation_id))
+        .await;
+
+    // Process the BusinessResponse through shared handler
+    process_compensation_response(
+        response.map(|r| r.into_inner()),
+        &context,
+        config,
+        publisher,
+        saga_name,
+        &triggering_domain,
+    )
+    .await;
 }
 
 /// Factory that produces `GrpcSagaContext` instances for distributed mode.

@@ -19,8 +19,8 @@ use crate::config::ResourceLimits;
 use crate::proto::aggregate_coordinator_service_server::AggregateCoordinatorService;
 use crate::proto::event_query_service_server::EventQueryService as EventQueryTrait;
 use crate::proto::{
-    AggregateRoot, CommandBook, CommandResponse, EventBook, Query, SpeculateAggregateRequest,
-    SyncCommandBook, Uuid as ProtoUuid,
+    AggregateRoot, BusinessResponse, CommandBook, CommandResponse, EventBook, Query,
+    SpeculateAggregateRequest, SyncCommandBook, Uuid as ProtoUuid,
 };
 use crate::proto_ext::CoverExt;
 use crate::repository::EventBookRepository;
@@ -130,6 +130,17 @@ impl AggregateCoordinatorService for StandaloneAggregateService {
             .router
             .speculative(command, as_of_sequence, as_of_timestamp.as_deref())
             .await?;
+        Ok(Response::new(response))
+    }
+
+    async fn handle_compensation(
+        &self,
+        request: Request<CommandBook>,
+    ) -> Result<Response<BusinessResponse>, Status> {
+        let command = request.into_inner();
+        self.validate_domain(&command)?;
+        validation::validate_command_book(&command, &self.limits)?;
+        let response = self.router.execute_compensation(command).await?;
         Ok(Response::new(response))
     }
 }

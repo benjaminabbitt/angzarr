@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use angzarr::bus::{BusError, EventBus, EventHandler};
+use angzarr::bus::EventBus;
 use angzarr::proto::{event_page, Cover, EventBook, EventPage, Uuid as ProtoUuid};
+use angzarr::test_utils::{CapturingHandler, FailingHandler};
 use cucumber::{given, then, when, World};
-use futures::future::BoxFuture;
 use prost_types::Any;
 use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
@@ -52,42 +52,6 @@ impl std::fmt::Debug for SubscriberState {
             .field("bus", &"<dyn EventBus>")
             .field("received_count", &"<Arc<Mutex<Vec>>>")
             .finish()
-    }
-}
-
-/// Handler that captures received events.
-struct CapturingHandler {
-    received: Arc<Mutex<Vec<EventBook>>>,
-    tx: mpsc::Sender<EventBook>,
-}
-
-impl EventHandler for CapturingHandler {
-    fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
-        let received = self.received.clone();
-        let tx = self.tx.clone();
-        let book = (*book).clone();
-        Box::pin(async move {
-            received.lock().await.push(book.clone());
-            let _ = tx.send(book).await;
-            Ok(())
-        })
-    }
-}
-
-/// Handler that fails on every event.
-struct FailingHandler {
-    error_message: String,
-    error_reported: Arc<Mutex<Option<String>>>,
-}
-
-impl EventHandler for FailingHandler {
-    fn handle(&self, _book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
-        let error = self.error_message.clone();
-        let error_reported = self.error_reported.clone();
-        Box::pin(async move {
-            *error_reported.lock().await = Some(error.clone());
-            Err(BusError::Publish(error))
-        })
     }
 }
 
@@ -280,10 +244,10 @@ async fn given_projector_subscribes_to_domain(
     let (tx, rx) = mpsc::channel(100);
 
     subscriber
-        .subscribe(Box::new(CapturingHandler {
-            received: received.clone(),
+        .subscribe(Box::new(CapturingHandler::with_storage(
             tx,
-        }))
+            received.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 
@@ -421,10 +385,10 @@ async fn given_subscriber_listening(world: &mut EventBusWorld) {
     let (tx, rx) = mpsc::channel(100);
 
     subscriber
-        .subscribe(Box::new(CapturingHandler {
-            received: received.clone(),
+        .subscribe(Box::new(CapturingHandler::with_storage(
             tx,
-        }))
+            received.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 
@@ -493,10 +457,10 @@ async fn given_projector_subscribed_to(world: &mut EventBusWorld, domain: String
     let (tx, rx) = mpsc::channel(100);
 
     subscriber
-        .subscribe(Box::new(CapturingHandler {
-            received: received.clone(),
+        .subscribe(Box::new(CapturingHandler::with_storage(
             tx,
-        }))
+            received.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 
@@ -688,10 +652,10 @@ async fn given_projector_subscribed_to_two_domains(
     let (tx, rx) = mpsc::channel(100);
 
     subscriber
-        .subscribe(Box::new(CapturingHandler {
-            received: received.clone(),
+        .subscribe(Box::new(CapturingHandler::with_storage(
             tx,
-        }))
+            received.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 
@@ -862,10 +826,10 @@ async fn given_projector_listening_for(world: &mut EventBusWorld, event_type: St
     let (tx, rx) = mpsc::channel(100);
 
     subscriber
-        .subscribe(Box::new(CapturingHandler {
-            received: received.clone(),
+        .subscribe(Box::new(CapturingHandler::with_storage(
             tx,
-        }))
+            received.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 
@@ -947,10 +911,10 @@ async fn given_handler_expecting_protobuf(world: &mut EventBusWorld) {
     let (tx, rx) = mpsc::channel(100);
 
     subscriber
-        .subscribe(Box::new(CapturingHandler {
-            received: received.clone(),
+        .subscribe(Box::new(CapturingHandler::with_storage(
             tx,
-        }))
+            received.clone(),
+        )))
         .await
         .expect("Failed to subscribe");
 

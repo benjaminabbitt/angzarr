@@ -8,7 +8,7 @@
 //! [External Client] -> [angzarr-aggregate] -> [Client Logic Service]
 //!                            |
 //!                            v
-//!                      [Event Store] + [AMQP Publisher]
+//!                      [Event Store] + [Event Bus]
 //!                            |
 //!                            v (sync mode)
 //!                      [Projector/Saga Coordinators via K8s Labels]
@@ -18,8 +18,22 @@
 //! - TARGET_ADDRESS: Client logic gRPC address (e.g., "localhost:50051")
 //! - TARGET_DOMAIN: Domain this service handles (e.g., "customers")
 //! - TARGET_COMMAND: Optional command to spawn client logic (embedded mode)
-//! - STORAGE_TYPE/PATH: Event store configuration
-//! - AMQP_URL: Optional RabbitMQ for event publishing
+//!
+//! ### Storage (ANGZARR__STORAGE__*)
+//! - postgres: PostgreSQL (ANGZARR__STORAGE__DATABASE_URL)
+//! - sqlite: SQLite file (ANGZARR__STORAGE__DATABASE_PATH)
+//! - redis: Redis/MemoryDB (ANGZARR__STORAGE__REDIS_URL)
+//! - bigtable: GCP Bigtable (ANGZARR__STORAGE__PROJECT_ID, TABLE_NAME)
+//! - dynamodb: AWS DynamoDB (ANGZARR__STORAGE__TABLE_NAME)
+//!
+//! ### Messaging (ANGZARR__MESSAGING__*)
+//! - amqp: RabbitMQ (ANGZARR__MESSAGING__AMQP_URL)
+//! - kafka: Kafka/Redpanda (ANGZARR__MESSAGING__BOOTSTRAP_SERVERS)
+//! - pubsub: GCP Pub/Sub (ANGZARR__MESSAGING__PROJECT_ID)
+//! - sns-sqs: AWS SNS/SQS (ANGZARR__MESSAGING__AWS_REGION)
+//! - nats: NATS JetStream (ANGZARR__MESSAGING__NATS_URL)
+//! - ipc: Unix domain sockets (standalone mode)
+//! - channel: In-memory (testing only)
 //!
 //! ## Embedded Mode
 //! When `target.command` is configured, the sidecar will:

@@ -130,10 +130,11 @@ fn test_build_compensation_failed_event_book() {
     assert_eq!(cover.correlation_id, "corr-123");
 }
 
-#[test]
-fn test_handle_business_response_with_events() {
+#[tokio::test]
+async fn test_handle_business_response_with_events() {
     let context = make_context();
     let config = SagaCompensationConfig::default();
+    let handler = NoopEscalationHandler;
 
     let response = Ok(BusinessResponse {
         result: Some(business_response::Result::Events(EventBook {
@@ -156,17 +157,20 @@ fn test_handle_business_response_with_events() {
         })),
     });
 
-    let outcome = handle_business_response(response, &context, &config).unwrap();
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
     assert!(matches!(outcome, CompensationOutcome::Events(_)));
 }
 
-#[test]
-fn test_handle_business_response_empty_events_uses_fallback() {
+#[tokio::test]
+async fn test_handle_business_response_empty_events_uses_fallback() {
     let context = make_context();
     let config = SagaCompensationConfig {
         fallback_emit_system_revocation: true,
         ..Default::default()
     };
+    let handler = NoopEscalationHandler;
 
     let response = Ok(BusinessResponse {
         result: Some(business_response::Result::Events(EventBook {
@@ -177,17 +181,20 @@ fn test_handle_business_response_empty_events_uses_fallback() {
         })),
     });
 
-    let outcome = handle_business_response(response, &context, &config).unwrap();
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
     assert!(matches!(
         outcome,
         CompensationOutcome::EmitSystemRevocation(_)
     ));
 }
 
-#[test]
-fn test_handle_business_response_revocation_emit() {
+#[tokio::test]
+async fn test_handle_business_response_revocation_emit() {
     let context = make_context();
     let config = SagaCompensationConfig::default();
+    let handler = NoopEscalationHandler;
 
     let response = Ok(BusinessResponse {
         result: Some(business_response::Result::Revocation(RevocationResponse {
@@ -199,17 +206,20 @@ fn test_handle_business_response_revocation_emit() {
         })),
     });
 
-    let outcome = handle_business_response(response, &context, &config).unwrap();
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
     assert!(matches!(
         outcome,
         CompensationOutcome::EmitSystemRevocation(_)
     ));
 }
 
-#[test]
-fn test_handle_business_response_revocation_abort() {
+#[tokio::test]
+async fn test_handle_business_response_revocation_abort() {
     let context = make_context();
     let config = SagaCompensationConfig::default();
+    let handler = NoopEscalationHandler;
 
     let response = Ok(BusinessResponse {
         result: Some(business_response::Result::Revocation(RevocationResponse {
@@ -221,14 +231,15 @@ fn test_handle_business_response_revocation_abort() {
         })),
     });
 
-    let result = handle_business_response(response, &context, &config);
+    let result = handle_business_response(response, &context, &config, &handler).await;
     assert!(matches!(result, Err(CompensationError::Aborted(_))));
 }
 
-#[test]
-fn test_handle_business_response_revocation_declined() {
+#[tokio::test]
+async fn test_handle_business_response_revocation_declined() {
     let context = make_context();
     let config = SagaCompensationConfig::default();
+    let handler = NoopEscalationHandler;
 
     let response = Ok(BusinessResponse {
         result: Some(business_response::Result::Revocation(RevocationResponse {
@@ -240,75 +251,99 @@ fn test_handle_business_response_revocation_declined() {
         })),
     });
 
-    let outcome = handle_business_response(response, &context, &config).unwrap();
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
     assert!(matches!(outcome, CompensationOutcome::Declined { .. }));
 }
 
-#[test]
-fn test_handle_business_response_grpc_error_uses_fallback() {
+#[tokio::test]
+async fn test_handle_business_response_grpc_error_uses_fallback() {
     let context = make_context();
     let config = SagaCompensationConfig {
         fallback_emit_system_revocation: true,
         ..Default::default()
     };
+    let handler = NoopEscalationHandler;
 
     let response = Err(tonic::Status::unavailable("Service down"));
 
-    let outcome = handle_business_response(response, &context, &config).unwrap();
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
     assert!(matches!(
         outcome,
         CompensationOutcome::EmitSystemRevocation(_)
     ));
 }
 
-#[test]
-fn test_send_to_dlq_no_url_configured() {
+#[tokio::test]
+async fn test_noop_escalation_handler_quarantine() {
     let context = make_context();
-    let config = SagaCompensationConfig {
-        dead_letter_queue_url: None,
-        ..Default::default()
-    };
+    let handler = NoopEscalationHandler;
 
-    // Should succeed silently when DLQ not configured
-    let result = send_to_dead_letter_queue(&context, "test", &config);
+    // NoopEscalationHandler always succeeds (logs only)
+    let result = handler.quarantine(&context, "test reason").await;
     assert!(result.is_ok());
 }
 
-#[test]
-fn test_send_to_dlq_with_url() {
+#[tokio::test]
+async fn test_noop_escalation_handler_notify() {
     let context = make_context();
-    let config = SagaCompensationConfig {
-        dead_letter_queue_url: Some("amqp://localhost:5672/dlq".to_string()),
-        ..Default::default()
-    };
+    let handler = NoopEscalationHandler;
 
-    // Currently just logs - should succeed
-    let result = send_to_dead_letter_queue(&context, "test", &config);
+    // NoopEscalationHandler always succeeds (logs only)
+    let result = handler.notify(&context, "test reason").await;
     assert!(result.is_ok());
 }
 
-#[test]
-fn test_trigger_escalation_no_webhook() {
+#[tokio::test]
+async fn test_handle_business_response_with_notify_flag() {
     let context = make_context();
-    let config = SagaCompensationConfig {
-        escalation_webhook_url: None,
-        ..Default::default()
-    };
+    let config = SagaCompensationConfig::default();
+    let handler = NoopEscalationHandler;
 
-    // Should succeed (logs at ERROR level)
-    let result = trigger_escalation(&context, "test", &config);
-    assert!(result.is_ok());
+    // When escalate flag is true, handler.notify() is called
+    let response = Ok(BusinessResponse {
+        result: Some(business_response::Result::Revocation(RevocationResponse {
+            emit_system_revocation: true,
+            send_to_dead_letter_queue: false,
+            escalate: true, // This triggers notify()
+            abort: false,
+            reason: "Notification needed".to_string(),
+        })),
+    });
+
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
+    // Should still return EmitSystemRevocation since that flag is also set
+    assert!(matches!(
+        outcome,
+        CompensationOutcome::EmitSystemRevocation(_)
+    ));
 }
 
-#[test]
-fn test_trigger_escalation_with_webhook() {
+#[tokio::test]
+async fn test_handle_business_response_with_quarantine_flag() {
     let context = make_context();
-    let config = SagaCompensationConfig {
-        escalation_webhook_url: Some("https://alerts.example.com/webhook".to_string()),
-        ..Default::default()
-    };
+    let config = SagaCompensationConfig::default();
+    let handler = NoopEscalationHandler;
 
-    // Currently just logs - should succeed
-    let result = trigger_escalation(&context, "test", &config);
-    assert!(result.is_ok());
+    // When send_to_dead_letter_queue flag is true, handler.quarantine() is called
+    let response = Ok(BusinessResponse {
+        result: Some(business_response::Result::Revocation(RevocationResponse {
+            emit_system_revocation: false,
+            send_to_dead_letter_queue: true, // This triggers quarantine()
+            escalate: false,
+            abort: false,
+            reason: "Quarantine requested".to_string(),
+        })),
+    });
+
+    let outcome = handle_business_response(response, &context, &config, &handler)
+        .await
+        .unwrap();
+    // Should return Declined since emit_system_revocation is false
+    assert!(matches!(outcome, CompensationOutcome::Declined { .. }));
 }

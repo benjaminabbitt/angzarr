@@ -12,11 +12,17 @@ use uuid::Uuid;
 use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::local::LocalAggregateContext;
+use crate::orchestration::aggregate::TemporalQuery;
 use crate::orchestration::aggregate::{
     execute_command_pipeline, execute_command_with_retry, parse_command_cover, AggregateContext,
     ClientLogic, PipelineMode,
 };
-use crate::proto::{CommandBook, CommandResponse, Cover, MergeStrategy, Uuid as ProtoUuid};
+use crate::orchestration::correlation;
+use crate::proto::{
+    business_response, BusinessResponse, CommandBook, CommandResponse, ContextualCommand, Cover,
+    MergeStrategy, Uuid as ProtoUuid,
+};
+use crate::proto_ext::CoverExt;
 use crate::storage::{EventStore, SnapshotStore};
 use crate::utils::retry::saga_backoff;
 
@@ -114,9 +120,7 @@ impl CommandRouter {
         &self,
         command_book: CommandBook,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
-        self.execute_inner(command_book)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        self.execute_inner(command_book).await.map_err(Into::into)
     }
 
     /// Call in-process sync projectors and return their projections.
@@ -247,6 +251,82 @@ impl CommandRouter {
             },
         )
         .await
+    }
+
+    /// Execute compensation for a rejected saga command.
+    ///
+    /// Returns the raw BusinessResponse so the caller can inspect revocation flags.
+    /// If business logic returns events, they are persisted before returning.
+    pub async fn execute_compensation(
+        &self,
+        command_book: CommandBook,
+    ) -> Result<BusinessResponse, Status> {
+        let (domain, root_uuid) = parse_command_cover(&command_book)?;
+        let correlation_id = correlation::extract_correlation_id(&command_book)?;
+
+        debug!(
+            domain = %domain,
+            root = %root_uuid,
+            "Executing compensation"
+        );
+
+        let business = self.business.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No handler registered for domain: {domain}"))
+        })?;
+
+        let storage = self.stores.get(&domain).ok_or_else(|| {
+            Status::not_found(format!("No storage configured for domain: {domain}"))
+        })?;
+
+        let ctx: Arc<dyn AggregateContext> = match &self.edition_name {
+            Some(_) => Arc::new(LocalAggregateContext::without_discovery(
+                storage.clone(),
+                self.event_bus.clone(),
+            )),
+            None => Arc::new(LocalAggregateContext::new(
+                storage.clone(),
+                self.discovery.clone(),
+                self.event_bus.clone(),
+            )),
+        };
+
+        let edition = command_book.edition().to_string();
+
+        // Load prior events
+        let prior_events = ctx
+            .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+            .await?;
+
+        // Transform events (upcasting)
+        let prior_events = ctx.transform_events(&domain, prior_events).await?;
+
+        // Invoke business logic
+        let contextual_command = ContextualCommand {
+            events: Some(prior_events.clone()),
+            command: Some(command_book),
+        };
+
+        let response = business.invoke(contextual_command).await?;
+
+        // If business returned events, persist them
+        if let Some(business_response::Result::Events(ref events)) = response.result {
+            if !events.pages.is_empty() {
+                ctx.persist_events(
+                    &prior_events,
+                    events,
+                    &domain,
+                    &edition,
+                    root_uuid,
+                    &correlation_id,
+                )
+                .await?;
+
+                // Post-persist: publish to bus
+                ctx.post_persist(events).await?;
+            }
+        }
+
+        Ok(response)
     }
 
     /// Get storage for a domain.

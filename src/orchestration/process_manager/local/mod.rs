@@ -12,8 +12,8 @@ use tracing::{error, warn};
 
 use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
-use crate::proto::{CommandBook, CommandResponse, Edition, EventBook};
-use crate::proto_ext::{CoverExt, EditionExt};
+use crate::proto::{CommandBook, CommandResponse, EventBook};
+use crate::proto_ext::CoverExt;
 use crate::standalone::DomainStorage;
 use crate::standalone::ProcessManagerHandler;
 
@@ -54,14 +54,8 @@ impl ProcessManagerContext for LocalPMContext {
         let edition = trigger.edition().to_string();
         let mut covers = self.handler.prepare(trigger, pm_state);
 
-        // Stamp trigger edition onto outgoing covers
         for cover in &mut covers {
-            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition {
-                    name: edition.clone(),
-                    divergences: vec![],
-                });
-            }
+            cover.stamp_edition_if_empty(&edition);
         }
         Ok(PmPrepareResponse {
             destinations: covers,
@@ -75,23 +69,13 @@ impl ProcessManagerContext for LocalPMContext {
         destinations: &[EventBook],
     ) -> Result<PmHandleResponse, Box<dyn std::error::Error + Send + Sync>> {
         let edition = trigger.edition().to_string();
-        let (commands, process_events) = self.handler.handle(trigger, pm_state, destinations);
+        let (mut commands, process_events) = self.handler.handle(trigger, pm_state, destinations);
 
-        // Stamp trigger edition onto outgoing command covers
-        let commands = commands
-            .into_iter()
-            .map(|mut cmd| {
-                if let Some(ref mut c) = cmd.cover {
-                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition {
-                            name: edition.clone(),
-                            divergences: vec![],
-                        });
-                    }
-                }
-                cmd
-            })
-            .collect();
+        for cmd in &mut commands {
+            if let Some(c) = &mut cmd.cover {
+                c.stamp_edition_if_empty(&edition);
+            }
+        }
 
         Ok(PmHandleResponse {
             commands,

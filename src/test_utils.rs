@@ -11,6 +11,7 @@ use futures::future::BoxFuture;
 use prost_types::Any;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::bus::{BusError, EventHandler};
@@ -196,6 +197,123 @@ impl EventHandler for CountingHandler {
         Box::pin(async move {
             count.fetch_add(1, Ordering::SeqCst);
             Ok(())
+        })
+    }
+}
+
+/// A test handler that captures received events and sends them to a channel.
+///
+/// Useful for verifying event content in bus tests. Supports:
+/// - Channel-based delivery for async waiting
+/// - Optional count tracking
+/// - Optional mutex-backed storage for later query
+///
+/// # Example
+/// ```ignore
+/// let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+/// let handler = CapturingHandler::new(tx);
+/// bus.subscribe(Box::new(handler)).await?;
+/// // ... publish events ...
+/// let received = rx.recv().await.unwrap();
+/// assert_eq!(received.domain(), "orders");
+/// ```
+pub struct CapturingHandler {
+    tx: tokio::sync::mpsc::Sender<EventBook>,
+    count: Option<Arc<AtomicUsize>>,
+    /// Optional storage for later query (used by BDD tests).
+    received: Option<Arc<Mutex<Vec<EventBook>>>>,
+}
+
+impl CapturingHandler {
+    /// Create a handler that sends events to the given channel.
+    pub fn new(tx: tokio::sync::mpsc::Sender<EventBook>) -> Self {
+        Self {
+            tx,
+            count: None,
+            received: None,
+        }
+    }
+
+    /// Create a handler that sends events and tracks count.
+    pub fn with_count(tx: tokio::sync::mpsc::Sender<EventBook>, count: Arc<AtomicUsize>) -> Self {
+        Self {
+            tx,
+            count: Some(count),
+            received: None,
+        }
+    }
+
+    /// Create a handler with mutex-backed storage for later query.
+    /// Used by BDD/interface tests that need to inspect received events.
+    pub fn with_storage(
+        tx: tokio::sync::mpsc::Sender<EventBook>,
+        received: Arc<Mutex<Vec<EventBook>>>,
+    ) -> Self {
+        Self {
+            tx,
+            count: None,
+            received: Some(received),
+        }
+    }
+}
+
+impl EventHandler for CapturingHandler {
+    fn handle(&self, book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
+        let tx = self.tx.clone();
+        let count = self.count.clone();
+        let received = self.received.clone();
+        let book = (*book).clone();
+        Box::pin(async move {
+            if let Some(c) = count {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+            if let Some(r) = received {
+                r.lock().await.push(book.clone());
+            }
+            tx.send(book)
+                .await
+                .map_err(|e| BusError::Publish(e.to_string()))?;
+            Ok(())
+        })
+    }
+}
+
+/// A test handler that always fails with a configurable error.
+///
+/// Useful for testing error handling and DLQ scenarios.
+pub struct FailingHandler {
+    error_message: String,
+    /// Optional tracker for verifying error was reported (used by BDD tests).
+    error_reported: Option<Arc<Mutex<Option<String>>>>,
+}
+
+impl FailingHandler {
+    /// Create a handler that fails with the given message.
+    pub fn new(error_message: &str) -> Self {
+        Self {
+            error_message: error_message.to_string(),
+            error_reported: None,
+        }
+    }
+
+    /// Create a handler that fails and tracks the error for verification.
+    pub fn with_tracker(error_message: &str, error_reported: Arc<Mutex<Option<String>>>) -> Self {
+        Self {
+            error_message: error_message.to_string(),
+            error_reported: Some(error_reported),
+        }
+    }
+}
+
+impl EventHandler for FailingHandler {
+    fn handle(&self, _book: Arc<EventBook>) -> BoxFuture<'static, Result<(), BusError>> {
+        let error = self.error_message.clone();
+        let error_reported = self.error_reported.clone();
+        Box::pin(async move {
+            if let Some(tracker) = error_reported {
+                *tracker.lock().await = Some(error.clone());
+            }
+            Err(BusError::Publish(error))
         })
     }
 }

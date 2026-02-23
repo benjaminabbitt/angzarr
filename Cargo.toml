@@ -107,6 +107,8 @@ s3 = ["dep:aws-sdk-s3", "dep:aws-config"]
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-opentelemetry"]
 advice = ["dep:metrics"]
 lossy = ["dep:rand"]
+# Test utilities for integration tests
+test-utils = []
 
 # =============================================================================
 # All Features (for CI/development)

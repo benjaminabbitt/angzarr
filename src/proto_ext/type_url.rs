@@ -17,8 +17,6 @@ pub const CLOUD_EVENTS_RESPONSE_SUFFIX: &str = "CloudEventsResponse";
 pub const NOTIFICATION: &str = "type.angzarr.io/angzarr.Notification";
 /// Type URL for RejectionNotification messages.
 pub const REJECTION_NOTIFICATION: &str = "type.angzarr.io/angzarr.RejectionNotification";
-/// Type URL for ProcessTimeout messages.
-pub const PROCESS_TIMEOUT: &str = "type.angzarr.io/angzarr.ProcessTimeout";
 /// Type URL for SagaCompensationFailed messages.
 pub const SAGA_COMPENSATION_FAILED: &str = "type.angzarr.io/angzarr.SagaCompensationFailed";
 

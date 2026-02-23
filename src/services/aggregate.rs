@@ -9,15 +9,14 @@ use crate::bus::EventBus;
 use crate::discovery::ServiceDiscovery;
 use crate::orchestration::aggregate::grpc::GrpcAggregateContext;
 use crate::orchestration::aggregate::{
-    execute_command_pipeline, execute_command_with_retry, ClientLogic, GrpcBusinessLogic,
-    PipelineMode,
+    execute_command_pipeline, execute_command_with_retry, parse_command_cover, AggregateContext,
+    ClientLogic, GrpcBusinessLogic, PipelineMode, TemporalQuery,
 };
 use crate::proto::{
     aggregate_coordinator_service_server::AggregateCoordinatorService,
-    aggregate_service_client::AggregateServiceClient, CommandBook, CommandResponse,
-    SpeculateAggregateRequest, SyncCommandBook,
+    aggregate_service_client::AggregateServiceClient, business_response, BusinessResponse,
+    CommandBook, CommandResponse, ContextualCommand, SpeculateAggregateRequest, SyncCommandBook,
 };
-#[cfg(feature = "otel")]
 use crate::proto_ext::CoverExt;
 use crate::services::upcaster::Upcaster;
 use crate::storage::{EventStore, SnapshotStore};
@@ -257,6 +256,61 @@ impl AggregateCoordinatorService for AggregateService {
             },
         )
         .await?;
+
+        Ok(Response::new(response))
+    }
+
+    /// Handle compensation flow - returns BusinessResponse for saga compensation handling.
+    ///
+    /// Unlike normal Handle, this returns the raw BusinessResponse so the caller
+    /// can inspect revocation flags and decide how to handle (quarantine, notify, etc.).
+    /// If business logic returns events, they are persisted before returning.
+    #[tracing::instrument(name = "aggregate.handle_compensation", skip_all)]
+    async fn handle_compensation(
+        &self,
+        request: Request<CommandBook>,
+    ) -> Result<Response<BusinessResponse>, Status> {
+        let command_book = request.into_inner();
+        let (domain, root_uuid) = parse_command_cover(&command_book)?;
+        let edition = command_book.edition().to_string();
+        let correlation_id =
+            crate::orchestration::correlation::extract_correlation_id(&command_book)?;
+
+        let ctx = self.create_async_context();
+
+        // Load prior events
+        let prior_events = ctx
+            .load_prior_events(&domain, &edition, root_uuid, &TemporalQuery::Current)
+            .await?;
+
+        // Transform events (upcasting)
+        let prior_events = ctx.transform_events(&domain, prior_events).await?;
+
+        // Invoke business logic
+        let contextual_command = ContextualCommand {
+            events: Some(prior_events.clone()),
+            command: Some(command_book),
+        };
+
+        let response = self.business.invoke(contextual_command).await?;
+
+        // If business returned events, persist them
+        if let Some(business_response::Result::Events(ref events)) = response.result {
+            if !events.pages.is_empty() {
+                ctx.persist_events(
+                    &prior_events,
+                    events,
+                    &domain,
+                    &edition,
+                    root_uuid,
+                    &correlation_id,
+                )
+                .await?;
+
+                // Post-persist: publish to bus
+                ctx.post_persist(events).await?;
+            }
+        }
 
         Ok(Response::new(response))
     }

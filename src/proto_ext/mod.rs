@@ -4,6 +4,7 @@
 //! This module adds framework-specific functionality like otel-enhanced gRPC utilities.
 
 pub mod grpc;
+pub mod type_url;
 
 // Re-export everything from angzarr-client
 pub use angzarr_client::proto_ext::*;

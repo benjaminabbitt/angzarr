@@ -40,6 +40,9 @@ service AggregateCoordinatorService {
   rpc HandleSync (SyncCommandBook) returns (CommandResponse);
   // Speculative execution - execute against temporal state without persisting
   rpc HandleSyncSpeculative (SpeculateAggregateRequest) returns (CommandResponse);
+  // Compensation flow - returns BusinessResponse for saga compensation handling.
+  // If business returns events, persists them. Caller handles revocation flags.
+  rpc HandleCompensation (CommandBook) returns (BusinessResponse);
 }
 
 // Response from entity - aggregate events + sync projector results

@@ -29,8 +29,11 @@ pub mod transport;
 pub mod utils;
 pub mod validation;
 
-#[cfg(test)]
-pub(crate) mod test_utils;
+/// Test utilities for bus and storage integration tests.
+///
+/// Provides reusable test handlers and fixture builders.
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils;
 
 // Re-export proto types from angzarr-client (includes both client and server)
 pub use angzarr_client::proto;

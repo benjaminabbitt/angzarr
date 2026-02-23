@@ -7,7 +7,6 @@ option csharp_namespace = "Angzarr";
 option ruby_package = "Angzarr";
 
 import "angzarr/types.proto";
-import "google/protobuf/timestamp.proto";
 
 // ProcessManagerService: stateful coordinator for long-running workflows across multiple aggregates.
 //
@@ -78,13 +77,5 @@ message ProcessManagerHandleResponse {
   // Events for the process manager's own domain (non-duplicative workflow state).
   // These are persisted via AggregateCoordinator to the PM's domain.
   EventBook process_events = 2;
-}
-
-// System event for process timeout - emitted by TimeoutScheduler.
-message ProcessTimeout {
-  string correlation_id = 1;
-  string process_type = 2;     // e.g., "order-fulfillment"
-  string timeout_type = 3;     // e.g., "payment", "reservation"
-  google.protobuf.Timestamp deadline = 4;
 }
 

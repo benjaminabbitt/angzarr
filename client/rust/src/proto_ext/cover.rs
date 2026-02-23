@@ -3,7 +3,7 @@
 //! Provides convenient accessors for domain, correlation_id, and root_id
 //! from Cover-bearing types.
 
-use crate::proto::{CommandBook, Cover, EventBook, Query};
+use crate::proto::{CommandBook, Cover, Edition, EventBook, Query};
 
 use super::constants::{DEFAULT_EDITION, UNKNOWN_DOMAIN};
 
@@ -114,5 +114,21 @@ impl CoverExt for Query {
 impl CoverExt for Cover {
     fn cover(&self) -> Option<&Cover> {
         Some(self)
+    }
+}
+
+impl Cover {
+    /// Stamp edition onto this cover if not already set.
+    ///
+    /// Sets the edition to the given name with no divergences if the cover's
+    /// edition is None or has an empty name. Used by sagas and process managers
+    /// to propagate source edition to outgoing covers and commands.
+    pub fn stamp_edition_if_empty(&mut self, edition: &str) {
+        if self.edition.as_ref().is_none_or(|e| e.name.is_empty()) {
+            self.edition = Some(Edition {
+                name: edition.to_string(),
+                divergences: vec![],
+            });
+        }
     }
 }

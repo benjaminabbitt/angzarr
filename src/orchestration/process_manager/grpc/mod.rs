@@ -14,9 +14,8 @@ use crate::bus::EventBus;
 use crate::orchestration::command::CommandOutcome;
 use crate::proto::process_manager_service_client::ProcessManagerServiceClient;
 use crate::proto::{
-    CommandResponse, Edition, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest,
+    CommandResponse, EventBook, ProcessManagerHandleRequest, ProcessManagerPrepareRequest,
 };
-use crate::proto_ext::EditionExt;
 use crate::proto_ext::{correlated_request, CoverExt};
 use crate::storage::EventStore;
 
@@ -69,15 +68,9 @@ impl ProcessManagerContext for GrpcPMContext {
             .await?
             .into_inner();
 
-        // Stamp trigger edition onto outgoing covers
         let mut covers = response.destinations;
         for cover in &mut covers {
-            if cover.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                cover.edition = Some(Edition {
-                    name: edition.clone(),
-                    divergences: vec![],
-                });
-            }
+            cover.stamp_edition_if_empty(&edition);
         }
         Ok(super::PmPrepareResponse {
             destinations: covers,
@@ -112,22 +105,12 @@ impl ProcessManagerContext for GrpcPMContext {
             .await?
             .into_inner();
 
-        // Stamp trigger edition onto outgoing command covers
-        let commands = response
-            .commands
-            .into_iter()
-            .map(|mut cmd| {
-                if let Some(ref mut c) = cmd.cover {
-                    if c.edition.as_ref().is_none_or(|e| e.is_empty()) {
-                        c.edition = Some(Edition {
-                            name: edition.clone(),
-                            divergences: vec![],
-                        });
-                    }
-                }
-                cmd
-            })
-            .collect();
+        let mut commands = response.commands;
+        for cmd in &mut commands {
+            if let Some(c) = &mut cmd.cover {
+                c.stamp_edition_if_empty(&edition);
+            }
+        }
 
         Ok(PmHandleResponse {
             commands,

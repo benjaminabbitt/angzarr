@@ -248,8 +248,8 @@ mod tests {
 
     #[test]
     fn test_extract_type_name_angzarr() {
-        let type_url = "type.angzarr/angzarr.SagaCompensationFailed";
-        let result = extract_type_name(type_url).unwrap();
+        use crate::proto_ext::type_url;
+        let result = extract_type_name(type_url::SAGA_COMPENSATION_FAILED).unwrap();
         assert_eq!(result, "angzarr.SagaCompensationFailed");
     }
 

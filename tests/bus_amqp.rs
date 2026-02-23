@@ -12,11 +12,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use angzarr::bus::amqp::{AmqpConfig, AmqpEventBus};
-use angzarr::bus::{BusError, EventBus, EventHandler};
+use angzarr::bus::EventBus;
 use angzarr::dlq::{
     AngzarrDeadLetter, DeadLetterPayload, DlqConfig, EventProcessingFailedDetails, RejectionDetails,
 };
 use angzarr::proto::{event_page, CommandBook, Cover, EventBook, EventPage, Uuid};
+use angzarr::test_utils::CapturingHandler;
 use prost_types::Any;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
@@ -82,28 +83,6 @@ fn make_test_book(domain: &str) -> EventBook {
     }
 }
 
-/// Handler that counts received events and sends to channel.
-struct CountingHandler {
-    count: Arc<AtomicUsize>,
-    tx: mpsc::Sender<EventBook>,
-}
-
-impl EventHandler for CountingHandler {
-    fn handle(
-        &self,
-        book: Arc<EventBook>,
-    ) -> futures::future::BoxFuture<'static, std::result::Result<(), BusError>> {
-        let count = self.count.clone();
-        let tx = self.tx.clone();
-        let book_clone = (*book).clone();
-        Box::pin(async move {
-            count.fetch_add(1, Ordering::SeqCst);
-            let _ = tx.send(book_clone).await;
-            Ok(())
-        })
-    }
-}
-
 #[tokio::test]
 async fn test_publish_and_consume() {
     println!("=== AMQP Publish and Consume Test ===");
@@ -126,10 +105,7 @@ async fn test_publish_and_consume() {
     let count = Arc::new(AtomicUsize::new(0));
     let (tx, mut rx) = mpsc::channel(10);
     subscriber
-        .subscribe(Box::new(CountingHandler {
-            count: count.clone(),
-            tx,
-        }))
+        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
         .await
         .expect("Failed to subscribe");
 
@@ -201,10 +177,7 @@ async fn test_consumer_receives_multiple_messages() {
     let count = Arc::new(AtomicUsize::new(0));
     let (tx, mut rx) = mpsc::channel(100);
     subscriber
-        .subscribe(Box::new(CountingHandler {
-            count: count.clone(),
-            tx,
-        }))
+        .subscribe(Box::new(CapturingHandler::with_count(tx, count.clone())))
         .await
         .unwrap();
 

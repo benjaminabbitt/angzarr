@@ -63,10 +63,7 @@ impl CommandClient {
         &self,
         command: CommandBook,
     ) -> Result<CommandResponse, Box<dyn std::error::Error + Send + Sync>> {
-        self.router
-            .execute(command)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        self.router.execute(command).await.map_err(Into::into)
     }
 
     /// Speculatively execute a command against temporal state (dry-run).
@@ -85,7 +82,7 @@ impl CommandClient {
         self.router
             .speculative(command, as_of_sequence, as_of_timestamp)
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(Into::into)
     }
 
     /// Check if a domain has a registered handler.
@@ -546,10 +543,7 @@ impl CommandBuilder {
         let router = self.router.clone();
         let command = self.build();
 
-        router
-            .execute(command)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        router.execute(command).await.map_err(Into::into)
     }
 
     /// Speculatively execute against temporal state (dry-run).
@@ -571,7 +565,7 @@ impl CommandBuilder {
         router
             .speculative(command, as_of_sequence, as_of_timestamp.as_deref())
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(Into::into)
     }
 }
 
