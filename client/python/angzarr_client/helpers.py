@@ -194,6 +194,17 @@ def next_sequence(book: EventBook) -> int:
     """Return the next sequence number from an EventBook.
 
     The framework computes this value on load.
+
+    Why use book.next_sequence instead of counting events?
+    -------------------------------------------------------
+    The framework precomputes next_sequence when loading the EventBook because:
+    1. **Snapshots**: With snapshots, the EventBook may contain only post-snapshot
+       events. Counting events would give the wrong sequence.
+    2. **Consistency**: The framework knows the true last sequence from storage.
+    3. **Performance**: Avoids iterating through events to find max sequence.
+
+    Command handlers MUST use this value when setting event sequences. Using
+    len(book.pages) would produce incorrect sequences when snapshots are involved.
     """
     if book is None:
         return 0

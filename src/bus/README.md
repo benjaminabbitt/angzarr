@@ -9,12 +9,34 @@ The EventBus decouples event producers from consumers. Aggregates don't know who
 
 ## Contract
 
-The following specification defines the EventBus contract that all transport backends must satisfy:
+The EventBus contract that all transport backends must satisfy:
 
-```gherkin file=tests/interfaces/features/event_bus.feature start=docs:start:bus_contract end=docs:end:bus_contract
+```gherkin
+Feature: EventBus
+
+  The EventBus provides publish/subscribe messaging for events.
+  All implementations must satisfy this contract.
+
+  Scenario: Publish event reaches subscriber
+    Given a subscriber listening to domain "player"
+    When an event is published to domain "player"
+    Then the subscriber receives the event
+
+  Scenario: Domain filtering isolates subscribers
+    Given a subscriber listening to domain "player"
+    When an event is published to domain "hand"
+    Then the subscriber does NOT receive the event
+
+  Scenario: Fan-out to multiple subscribers
+    Given two subscribers listening to domain "player"
+    When an event is published to domain "player"
+    Then both subscribers receive the event
+
+  Scenario: At-least-once delivery
+    Given a subscriber listening to domain "player"
+    When a subscriber fails to process an event
+    Then the event is redelivered
 ```
-
-> Source: [`event_bus.feature`](../../tests/interfaces/features/event_bus.feature)
 
 ## Why Pub/Sub
 
@@ -272,9 +294,12 @@ This is the "claim check" pattern. The bus remains fast; storage handles bulk.
 
 ## Feature Specifications
 
-See the embedded contract above, or view the full specifications:
+See the embedded contract above. Full specifications cover:
 
-- [EventBus](../../tests/interfaces/features/event_bus.feature) - Publish/subscribe, domain filtering, fan-out, payload integrity
+- Publish/subscribe semantics
+- Domain filtering
+- Fan-out to multiple subscribers
+- Payload integrity
 
 ## Running Interface Tests
 

@@ -1,9 +1,16 @@
 """Player command handlers for router pattern.
 
 Each handler follows the guard/validate/compute pattern:
-- guard: Check state preconditions
+- guard: Check state preconditions (aggregate exists, correct phase)
 - validate: Validate command inputs
 - compute: Build the resulting event
+
+Why this pattern?
+-----------------
+Each function is pure (state in, result out), enabling direct unit testing
+without mocking infrastructure. You can test guard(), validate(), and compute()
+independently by passing state structs and asserting on returned events.
+The @command_handler decorator handles proto serialization separately.
 """
 
 from angzarr_client import now
@@ -43,13 +50,18 @@ def handle_deposit_funds(
     cmd: player_proto.DepositFunds, state: PlayerState, seq: int
 ) -> player_proto.FundsDeposited:
     """Deposit funds into player's bankroll."""
+    # docs:start:deposit_guard
     # Guard
     if not state.exists:
         raise CommandRejectedError("Player does not exist")
+    # docs:end:deposit_guard
+    # docs:start:deposit_validate
     # Validate
     amount = cmd.amount.amount if cmd.amount else 0
     if amount <= 0:
         raise CommandRejectedError("amount must be positive")
+    # docs:end:deposit_validate
+    # docs:start:deposit_compute
     # Compute
     new_balance = state.bankroll + amount
     return player_proto.FundsDeposited(
@@ -57,6 +69,7 @@ def handle_deposit_funds(
         new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
         deposited_at=now(),
     )
+    # docs:end:deposit_compute
 
 
 @command_handler(player_proto.WithdrawFunds)
@@ -82,6 +95,7 @@ def handle_withdraw_funds(
     )
 
 
+# docs:start:reserve_funds_imp
 @command_handler(player_proto.ReserveFunds)
 def handle_reserve_funds(
     cmd: player_proto.ReserveFunds, state: PlayerState, seq: int
@@ -113,6 +127,9 @@ def handle_reserve_funds(
         ),
         reserved_at=now(),
     )
+
+
+# docs:end:reserve_funds_imp
 
 
 @command_handler(player_proto.ReleaseFunds)

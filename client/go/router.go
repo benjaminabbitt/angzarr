@@ -170,6 +170,15 @@ func (r *CommandRouter[S]) Dispatch(cmd *pb.ContextualCommand) (*pb.BusinessResp
 }
 
 // dispatchRejection routes a rejection Notification to the matching handler.
+//
+// # Why Route by Domain + Command Type
+//
+// Compensation handlers are registered per (domain, command) pair because:
+// 1. Different target domains may need different compensation logic
+// 2. Different command types may require different rollback strategies
+//
+// Example: An order aggregate might handle "fulfillment/CreateShipment" rejection
+// differently from "payment/ProcessPayment" rejection.
 func (r *CommandRouter[S]) dispatchRejection(notification *pb.Notification, state S) (*pb.BusinessResponse, error) {
 	// Unpack rejection details from notification payload
 	rejection := &pb.RejectionNotification{}
@@ -561,6 +570,11 @@ func (r *StateRouter[S]) WithEventBook(eventBook *pb.EventBook) S {
 }
 
 // ApplySingle applies a single event to existing state.
+//
+// Unknown event types are silently ignored for forward compatibility:
+// When a new event type is added, old code that hasn't been updated
+// can still process the EventBook without crashing. The new event
+// won't affect state until the code is updated with a handler.
 func (r *StateRouter[S]) ApplySingle(state *S, eventAny *anypb.Any) {
 	typeURL := eventAny.TypeUrl
 	for _, reg := range r.handlers {

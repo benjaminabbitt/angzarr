@@ -60,7 +60,7 @@ pub use nats::{NatsEventStore, NatsPositionStore, NatsSnapshotStore};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresPositionStore, PostgresSnapshotStore};
 #[cfg(feature = "redis")]
-pub use redis::{RedisEventStore, RedisPositionStore, RedisSnapshotStore};
+pub use redis::RedisSnapshotStore;
 #[cfg(feature = "sqlite")]
 pub use sqlite::{SqliteEventStore, SqlitePositionStore, SqliteSnapshotStore};
 
@@ -330,25 +330,15 @@ pub async fn init_storage(
             }
         }
         StorageType::Redis => {
-            #[cfg(feature = "redis")]
-            {
-                info!("Storage: redis at {}", config.redis.uri);
-
-                let event_store =
-                    Arc::new(redis::RedisEventStore::new(&config.redis.uri, None).await?);
-                let snapshot_store =
-                    Arc::new(redis::RedisSnapshotStore::new(&config.redis.uri, None).await?);
-
-                Ok((event_store, snapshot_store))
-            }
-
-            #[cfg(not(feature = "redis"))]
-            {
-                Err(
-                    "Redis support requires the 'redis' feature. Rebuild with --features redis"
-                        .into(),
-                )
-            }
+            // Redis is not suitable for event storage due to durability concerns.
+            // Events are the source of truth and require strong durability guarantees.
+            // Use postgres, sqlite, or nats for event storage instead.
+            // Redis can be used for snapshot caching via RedisSnapshotStore.
+            Err(
+                "Redis is not supported for event storage. Use postgres, sqlite, or nats instead. \
+                 Redis can be used for snapshot caching separately via RedisSnapshotStore."
+                    .into(),
+            )
         }
         StorageType::Bigtable => {
             #[cfg(feature = "bigtable")]
@@ -450,7 +440,8 @@ pub async fn init_storage(
 /// Requires the corresponding feature to be enabled:
 /// - PostgreSQL: `--features postgres` (included in default)
 /// - SQLite: `--features sqlite`
-/// - Redis: `--features redis`
+///
+/// Note: Redis is not supported for position tracking (durability concerns).
 pub async fn init_position_store(
     config: &StorageConfig,
 ) -> std::result::Result<Arc<dyn PositionStore>, Box<dyn std::error::Error>> {
@@ -497,17 +488,14 @@ pub async fn init_position_store(
             }
         }
         StorageType::Redis => {
-            #[cfg(feature = "redis")]
-            {
-                info!("PositionStore: redis at {}", config.redis.uri);
-                Ok(Arc::new(
-                    RedisPositionStore::new(&config.redis.uri, None).await?,
-                ))
-            }
-            #[cfg(not(feature = "redis"))]
-            {
-                Err("Redis position store requires the 'redis' feature".into())
-            }
+            // Redis is not suitable for position tracking due to durability concerns.
+            // Position stores must reliably track handler checkpoints.
+            // Use postgres or sqlite for position tracking instead.
+            Err(
+                "Redis is not supported for position tracking. Use postgres or sqlite instead. \
+                 Redis can be used for snapshot caching via RedisSnapshotStore."
+                    .into(),
+            )
         }
         StorageType::Bigtable => {
             #[cfg(feature = "bigtable")]

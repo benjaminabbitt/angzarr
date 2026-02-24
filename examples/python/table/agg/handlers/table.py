@@ -214,6 +214,7 @@ class Table(Aggregate[_TableState]):
 
     # --- Command handlers ---
 
+    # docs:start:oo_handlers
     @handles(table_proto.CreateTable)
     def create(self, cmd: table_proto.CreateTable) -> table_proto.TableCreated:
         """Create a new table."""
@@ -241,6 +242,8 @@ class Table(Aggregate[_TableState]):
             action_timeout_seconds=cmd.action_timeout_seconds or 30,
             created_at=now(),
         )
+
+    # docs:end:oo_handlers
 
     @handles(table_proto.JoinTable)
     def join(self, cmd: table_proto.JoinTable) -> table_proto.PlayerJoined:

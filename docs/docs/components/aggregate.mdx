@@ -36,7 +36,7 @@ Checks state preconditions before processing:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/player.py start=docs:start:deposit_guard end=docs:end:deposit_guard
+```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_guard end=docs:end:deposit_guard
 ```
 
 </TabItem>
@@ -79,7 +79,7 @@ Validates command inputs and extracts validated data:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/player.py start=docs:start:deposit_validate end=docs:end:deposit_validate
+```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_validate end=docs:end:deposit_validate
 ```
 
 </TabItem>
@@ -122,7 +122,7 @@ Builds the resulting event from validated inputs:
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/player.py start=docs:start:deposit_compute end=docs:end:deposit_compute
+```python file=examples/python/player/agg/handlers/commands.py start=docs:start:deposit_compute end=docs:end:deposit_compute
 ```
 
 </TabItem>
@@ -335,7 +335,7 @@ All languages also support an OO approach where handlers are methods on an `Aggr
 <Tabs groupId="language">
 <TabItem value="python" label="Python" default>
 
-```python file=examples/python/player/agg/handlers/player.py start=docs:start:annotation_handlers end=docs:end:annotation_handlers
+```python file=examples/python/table/agg/handlers/table.py start=docs:start:oo_handlers end=docs:end:oo_handlers
 ```
 
 </TabItem>

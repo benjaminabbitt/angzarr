@@ -34,6 +34,176 @@ const CORRELATION_ID_ATTR: &str = "correlation_id";
 /// Message attribute name for aggregate root ID.
 const ROOT_ID_ATTR: &str = "root_id";
 
+// ============================================================================
+// Consumer Helper Functions
+// ============================================================================
+
+/// Result of processing an SQS message.
+#[derive(Debug)]
+enum SqsProcessResult {
+    /// Message processed successfully - delete it.
+    Success,
+    /// Message didn't match domain filter - delete it.
+    Filtered,
+    /// Message couldn't be decoded (base64 or protobuf) - delete it.
+    DecodeError,
+    /// Handler failed - let visibility timeout retry.
+    HandlerFailed,
+}
+
+impl SqsProcessResult {
+    /// Whether to delete the message from the queue.
+    fn should_delete(&self) -> bool {
+        !matches!(self, Self::HandlerFailed)
+    }
+}
+
+/// Delete an SQS message from the queue.
+async fn delete_sqs_message(sqs: &SqsClient, queue_url: &str, receipt_handle: &str) {
+    let _ = sqs
+        .delete_message()
+        .queue_url(queue_url)
+        .receipt_handle(receipt_handle)
+        .send()
+        .await;
+}
+
+/// Process a single SQS message.
+///
+/// Handles the complete decode → filter → dispatch cycle:
+/// 1. Decode base64 body
+/// 2. Check domain filter
+/// 3. Decode EventBook protobuf
+/// 4. Dispatch to handlers
+#[allow(clippy::too_many_arguments)]
+async fn process_sqs_message(
+    message: &aws_sdk_sqs::types::Message,
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    filter_domains: &[String],
+) -> SqsProcessResult {
+    // Get message body
+    let body = match message.body() {
+        Some(b) => b,
+        None => return SqsProcessResult::DecodeError,
+    };
+
+    // Decode base64
+    let data = match BASE64_STANDARD.decode(body) {
+        Ok(d) => d,
+        Err(e) => {
+            error!(error = %e, "Failed to decode base64 message");
+            return SqsProcessResult::DecodeError;
+        }
+    };
+
+    // Get domain from message attributes
+    let msg_domain = message
+        .message_attributes()
+        .and_then(|attrs| attrs.get(DOMAIN_ATTR))
+        .and_then(|v| v.string_value())
+        .unwrap_or("unknown");
+
+    // Check domain filter
+    if !domain_matches_any(msg_domain, filter_domains) {
+        debug!(
+            domain = %msg_domain,
+            filter_domains = ?filter_domains,
+            "Skipping message - domain doesn't match filter"
+        );
+        return SqsProcessResult::Filtered;
+    }
+
+    // Decode EventBook
+    let book = match EventBook::decode(data.as_slice()) {
+        Ok(b) => Arc::new(b),
+        Err(e) => {
+            error!(error = %e, "Failed to decode EventBook");
+            return SqsProcessResult::DecodeError;
+        }
+    };
+
+    // Dispatch to handlers
+    let consume_span = tracing::info_span!("bus.consume", domain = %msg_domain);
+
+    #[cfg(feature = "otel")]
+    sqs_extract_trace_context(message, &consume_span);
+
+    let success =
+        async { crate::bus::dispatch_to_handlers_with_domain(handlers, &book, msg_domain).await }
+            .instrument(consume_span)
+            .await;
+
+    if success {
+        SqsProcessResult::Success
+    } else {
+        SqsProcessResult::HandlerFailed
+    }
+}
+
+/// Run the SQS consumer loop for a single queue.
+///
+/// Receives messages with long polling, processes them, and handles
+/// ack/nack via message deletion or visibility timeout.
+async fn consume_sqs_queue(
+    queue_url: String,
+    domain: String,
+    sqs: SqsClient,
+    handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    filter_domains: Vec<String>,
+    max_messages: i32,
+    wait_time_secs: i32,
+) {
+    info!(queue_url = %queue_url, domain = %domain, "Starting SQS consumer");
+
+    // Exponential backoff with jitter for error recovery
+    let backoff_builder = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(100))
+        .with_max_delay(Duration::from_secs(30))
+        .with_jitter();
+    let mut backoff_iter = backoff_builder.build();
+
+    loop {
+        match sqs
+            .receive_message()
+            .queue_url(&queue_url)
+            .max_number_of_messages(max_messages)
+            .wait_time_seconds(wait_time_secs)
+            .message_attribute_names("All")
+            .send()
+            .await
+        {
+            Ok(output) => {
+                // Reset backoff on successful receive
+                backoff_iter = backoff_builder.build();
+
+                for message in output.messages() {
+                    let result = process_sqs_message(message, &handlers, &filter_domains).await;
+
+                    if result.should_delete() {
+                        if let Some(receipt) = message.receipt_handle() {
+                            delete_sqs_message(&sqs, &queue_url, receipt).await;
+                        }
+                    }
+                    // HandlerFailed: let visibility timeout expire for retry
+                }
+            }
+            Err(e) => {
+                let delay = backoff_iter.next().unwrap_or(Duration::from_secs(30));
+                error!(
+                    error = %e,
+                    backoff_ms = %delay.as_millis(),
+                    "Failed to receive messages from SQS, retrying after backoff"
+                );
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
 /// Configuration for AWS SNS/SQS connection.
 #[derive(Clone, Debug)]
 pub struct SnsSqsConfig {
@@ -395,7 +565,6 @@ impl EventBus for SnsSqsEventBus {
 
         // Determine which domains to subscribe to
         let domains: Vec<String> = if self.config.domains.is_empty() {
-            // Subscribe to all - use a default "events" topic
             warn!("No domains specified. Subscribe-side filtering will be used.");
             vec!["events".to_string()]
         } else {
@@ -410,170 +579,29 @@ impl EventBus for SnsSqsEventBus {
                 .await?;
         }
 
-        let handlers = self.handlers.clone();
-        let sqs = self.sqs.clone();
-        let config = self.config.clone();
-        let queue_urls = self.queue_urls.clone();
-        let filter_domains = self.config.domains.clone();
-
         // Spawn consumer tasks for each domain's queue
         for domain in domains {
-            let handlers = handlers.clone();
-            let sqs = sqs.clone();
-            let filter_domains = filter_domains.clone();
-            let max_messages = config.max_messages;
-            let wait_time_secs = config.wait_time_secs;
-
             let queue_url = {
-                let urls = queue_urls.read().await;
-                urls.get(&config.queue_for_domain(&domain))
+                let urls = self.queue_urls.read().await;
+                urls.get(&self.config.queue_for_domain(&domain))
                     .cloned()
                     .ok_or_else(|| {
                         BusError::Subscribe(format!("Queue URL not found for domain: {}", domain))
                     })?
             };
 
-            tokio::spawn(async move {
-                info!(queue_url = %queue_url, domain = %domain, "Starting SQS consumer");
-
-                // Exponential backoff with jitter for error recovery
-                let backoff_builder = ExponentialBuilder::default()
-                    .with_min_delay(Duration::from_millis(100))
-                    .with_max_delay(Duration::from_secs(30))
-                    .with_jitter();
-                let mut backoff_iter = backoff_builder.build();
-
-                loop {
-                    match sqs
-                        .receive_message()
-                        .queue_url(&queue_url)
-                        .max_number_of_messages(max_messages)
-                        .wait_time_seconds(wait_time_secs)
-                        .message_attribute_names("All")
-                        .send()
-                        .await
-                    {
-                        Ok(output) => {
-                            // Reset backoff on successful receive
-                            backoff_iter = backoff_builder.build();
-
-                            let messages = output.messages();
-                            for message in messages {
-                                let body = match message.body() {
-                                    Some(b) => b,
-                                    None => continue,
-                                };
-
-                                // Decode base64 body
-                                let data = match BASE64_STANDARD.decode(body) {
-                                    Ok(d) => d,
-                                    Err(e) => {
-                                        error!(error = %e, "Failed to decode base64 message");
-                                        // Delete invalid message
-                                        if let Some(receipt) = message.receipt_handle() {
-                                            let _ = sqs
-                                                .delete_message()
-                                                .queue_url(&queue_url)
-                                                .receipt_handle(receipt)
-                                                .send()
-                                                .await;
-                                        }
-                                        continue;
-                                    }
-                                };
-
-                                // Get domain from message attributes for filtering
-                                let msg_domain = message
-                                    .message_attributes()
-                                    .and_then(|attrs| attrs.get(DOMAIN_ATTR))
-                                    .and_then(|v| v.string_value())
-                                    .unwrap_or("unknown");
-
-                                // Subscribe-side hierarchical filtering
-                                if !domain_matches_any(msg_domain, &filter_domains) {
-                                    debug!(
-                                        domain = %msg_domain,
-                                        filter_domains = ?filter_domains,
-                                        "Skipping message - domain doesn't match filter"
-                                    );
-                                    // Delete to remove from queue (we don't want it)
-                                    if let Some(receipt) = message.receipt_handle() {
-                                        let _ = sqs
-                                            .delete_message()
-                                            .queue_url(&queue_url)
-                                            .receipt_handle(receipt)
-                                            .send()
-                                            .await;
-                                    }
-                                    continue;
-                                }
-
-                                match EventBook::decode(data.as_slice()) {
-                                    Ok(book) => {
-                                        let consume_span = tracing::info_span!("bus.consume",
-                                            domain = %msg_domain);
-
-                                        #[cfg(feature = "otel")]
-                                        sqs_extract_trace_context(message, &consume_span);
-
-                                        let book = Arc::new(book);
-
-                                        let success = async {
-                                            crate::bus::dispatch_to_handlers_with_domain(
-                                                &handlers, &book, msg_domain,
-                                            )
-                                            .await
-                                        }
-                                        .instrument(consume_span)
-                                        .await;
-
-                                        if success {
-                                            // Delete successfully processed message
-                                            if let Some(receipt) = message.receipt_handle() {
-                                                let _ = sqs
-                                                    .delete_message()
-                                                    .queue_url(&queue_url)
-                                                    .receipt_handle(receipt)
-                                                    .send()
-                                                    .await;
-                                            }
-                                        }
-                                        // On failure, let visibility timeout expire for retry
-                                    }
-                                    Err(e) => {
-                                        error!(error = %e, "Failed to decode EventBook");
-                                        // Delete invalid message
-                                        if let Some(receipt) = message.receipt_handle() {
-                                            let _ = sqs
-                                                .delete_message()
-                                                .queue_url(&queue_url)
-                                                .receipt_handle(receipt)
-                                                .send()
-                                                .await;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            let delay = backoff_iter.next().unwrap_or(Duration::from_secs(30));
-                            error!(
-                                error = %e,
-                                backoff_ms = %delay.as_millis(),
-                                "Failed to receive messages from SQS, retrying after backoff"
-                            );
-                            tokio::time::sleep(delay).await;
-                        }
-                    }
-                }
-            });
+            tokio::spawn(consume_sqs_queue(
+                queue_url,
+                domain,
+                self.sqs.clone(),
+                self.handlers.clone(),
+                self.config.domains.clone(),
+                self.config.max_messages,
+                self.config.wait_time_secs,
+            ));
         }
 
-        info!(
-            subscription_id = %subscription_id,
-            "Started SQS consumers"
-        );
-
+        info!(subscription_id = %subscription_id, "Started SQS consumers");
         Ok(())
     }
 

@@ -1,15 +1,19 @@
-//! Redis storage integration tests using testcontainers.
+//! Redis storage contract tests using testcontainers.
 //!
 //! Run with: cargo test --test storage_redis --features redis -- --nocapture
 //!
-//! These tests spin up Redis in a container using testcontainers-rs.
+//! These tests verify that Redis storage implementations correctly fulfill
+//! their trait contracts. Uses testcontainers-rs to spin up Redis.
 //! No manual Redis setup required.
+//!
+//! Note: Redis is only tested for SnapshotStore, not EventStore.
+//! Redis is not suitable for event storage due to durability concerns.
 
 mod storage;
 
 use std::time::Duration;
 
-use angzarr::storage::redis::{RedisEventStore, RedisSnapshotStore};
+use angzarr::storage::redis::RedisSnapshotStore;
 use testcontainers::{
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
@@ -53,25 +57,6 @@ fn test_prefix() -> String {
         "test_{}",
         uuid::Uuid::new_v4().to_string().replace('-', "")[..8].to_string()
     )
-}
-
-#[tokio::test]
-async fn test_redis_event_store() {
-    println!("=== Redis EventStore Tests ===");
-    println!("Starting Redis container...");
-
-    let (_container, connection_string) = start_redis().await;
-    let prefix = test_prefix();
-    println!("Using test prefix: {}", prefix);
-
-    let store = RedisEventStore::new(&connection_string, Some(&prefix))
-        .await
-        .expect("Failed to connect to Redis");
-
-    run_event_store_tests!(&store);
-
-    println!("=== All Redis EventStore tests PASSED ===");
-    // Container is dropped here, stopping Redis
 }
 
 #[tokio::test]

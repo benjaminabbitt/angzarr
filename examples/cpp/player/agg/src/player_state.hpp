@@ -12,6 +12,10 @@
 namespace player {
 
 /// Player aggregate state.
+///
+/// Note: Events carry final state (not deltas). Events contain new_balance
+/// (the result) rather than delta (amount deposited). This provides:
+/// (1) idempotent replay, (2) auditable history, (3) simpler apply_event.
 struct PlayerState {
     std::string player_id;
     std::string display_name;

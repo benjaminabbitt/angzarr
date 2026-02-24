@@ -20,6 +20,14 @@ use crate::storage::{EventStore, Result, StorageError};
 use super::DEFAULT_PREFIX;
 
 /// Header name for angzarr sequence number.
+///
+/// # Why Custom Sequence Headers?
+///
+/// JetStream assigns global sequence numbers to all messages in a stream,
+/// but event sourcing requires per-aggregate sequences (aggregate A has seq 0,1,2
+/// while aggregate B has seq 0,1,2 — completely independent). We store the
+/// angzarr sequence in a header so we can query "what's the max sequence for
+/// aggregate X" without loading and decoding all message payloads.
 const HEADER_SEQUENCE: &str = "Angzarr-Sequence";
 
 /// Header name for correlation ID.
@@ -30,8 +38,19 @@ const HEADER_CORRELATION: &str = "Angzarr-Correlation";
 /// Events are stored in per-domain streams with subjects:
 /// `{prefix}.events.{domain}.{root}.{edition}`
 ///
-/// Sequence numbers are stored in message headers since JetStream
-/// sequences are stream-global, not per-aggregate.
+/// # Why One Stream Per Domain (Not Per Aggregate)?
+///
+/// Per-aggregate streams would explode the stream count (millions of orders =
+/// millions of streams). Per-domain streams keep count manageable while still
+/// allowing efficient per-aggregate queries via subject filtering.
+///
+/// # Why Store EventBooks (Not Individual Events)?
+///
+/// Consistency with EventBus — when events are published to the bus, they travel
+/// as EventBooks. Storing the same format in the EventStore means:
+/// 1. No format translation between storage and bus
+/// 2. Batch publishing is natural (multiple events in one message)
+/// 3. Headers like correlation_id are preserved end-to-end
 pub struct NatsEventStore {
     jetstream: Context,
     prefix: String,
@@ -71,7 +90,19 @@ impl NatsEventStore {
     }
 
     /// Build deduplication message ID for batch (EventBook format).
-    /// Format: {domain}.{root}.{edition}.{first_seq}-{last_seq}
+    ///
+    /// Format: `{domain}.{root}.{edition}.{first_seq}-{last_seq}`
+    ///
+    /// # Why This Format?
+    ///
+    /// JetStream deduplication uses `Nats-Msg-Id` to reject duplicate publishes.
+    /// The ID must be deterministic (same input → same ID) so retried publishes
+    /// resolve to the same message. We include:
+    /// - `domain.root.edition`: Identifies the aggregate (namespace)
+    /// - `first_seq-last_seq`: Identifies the exact event range being published
+    ///
+    /// This means if a publisher crashes and retries, the second publish with the
+    /// same events gets deduplicated — no duplicate events in storage.
     fn msg_id_batch(
         domain: &str,
         root: Uuid,
@@ -599,8 +630,20 @@ impl EventStore for NatsEventStore {
             return Ok(vec![]);
         }
 
-        // This requires scanning all streams - expensive but necessary without a separate index
-        // For production, consider a separate correlation index KV bucket
+        // # Why This Is Expensive (And Why We Accept It)
+        //
+        // Without a secondary index, finding events by correlation_id requires
+        // scanning every message in every stream. This is O(total events) — slow
+        // for large deployments.
+        //
+        // However:
+        // 1. get_by_correlation is rare — used mainly by PMs, not hot paths
+        // 2. A proper fix (KV index mapping correlation_id → roots) adds complexity
+        // 3. Most workflows have few events per correlation_id
+        //
+        // For production at scale: add a `{prefix}.correlations` KV bucket that maps
+        // correlation_id → [(domain, root, edition)] and update it on each publish.
+        // This makes lookup O(1) but adds write overhead and eventual consistency.
         let domains = self.list_domains().await?;
         let mut books = Vec::new();
 

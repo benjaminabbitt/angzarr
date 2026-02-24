@@ -1,7 +1,31 @@
 //! EventBook repository.
 //!
-//! Combines event store and snapshot store to provide
-//! aggregate-level event book operations.
+//! Combines event store and snapshot store to provide aggregate-level event
+//! book operations with snapshot optimization.
+//!
+//! # Why This Repository Exists
+//!
+//! Event sourcing faces a fundamental tension: events are append-only and
+//! immutable (great for audit), but rebuilding state from the beginning is
+//! O(n) in event count (bad for performance). Snapshots solve this by
+//! periodically capturing materialized state, allowing recovery from
+//! snapshot + subsequent events instead of all events.
+//!
+//! This repository encapsulates the snapshot-loading strategy:
+//!
+//! 1. Load snapshot (if enabled and exists)
+//! 2. Fetch only events AFTER the snapshot's sequence
+//! 3. Combine into an EventBook that the caller can replay
+//!
+//! The caller doesn't need to know whether state came from 3 events or
+//! 3 million events with a snapshot — the EventBook looks the same.
+//!
+//! # Snapshot Sequence Semantics
+//!
+//! A snapshot's `sequence` field is the sequence number of the LAST event
+//! that was included when creating the snapshot. When loading, we fetch
+//! events starting from `snapshot.sequence + 1` to avoid double-applying
+//! the event that's already baked into the snapshot state.
 
 use std::sync::Arc;
 use uuid::Uuid;
@@ -26,6 +50,23 @@ pub struct EventBookRepository {
     event_store: Arc<dyn EventStore>,
     snapshot_store: Arc<dyn SnapshotStore>,
     /// When false, snapshots are not loaded; all events are replayed from the beginning.
+    ///
+    /// # Why Disable Snapshot Reading?
+    ///
+    /// Several scenarios require full event replay:
+    ///
+    /// 1. **State migration**: When the snapshot format changes (new fields, renamed
+    ///    fields, structural changes), old snapshots may be incompatible. Disabling
+    ///    snapshot reads forces full replay through the new event handlers.
+    ///
+    /// 2. **Debugging/auditing**: To verify that snapshot creation is correct, compare
+    ///    state-from-snapshot vs state-from-full-replay. They should be identical.
+    ///
+    /// 3. **Snapshot regeneration**: After a bug fix in event application logic, old
+    ///    snapshots contain incorrect state. Replay from scratch to regenerate them.
+    ///
+    /// 4. **Testing**: Unit tests may want to exercise the full replay path to ensure
+    ///    event handlers are correct, independent of snapshot machinery.
     snapshot_read_enabled: bool,
 }
 
@@ -132,7 +173,17 @@ impl EventBookRepository {
     /// Load an EventBook as-of a timestamp (no snapshots).
     ///
     /// Returns events from sequence 0 with created_at <= until.
-    /// Snapshots are skipped to ensure correct historical reconstruction.
+    ///
+    /// # Why Temporal Queries Skip Snapshots
+    ///
+    /// Snapshots represent state at a SPECIFIC point in time — the moment they were
+    /// created. If we're querying "what was the state at time T", we can't use a
+    /// snapshot created at time T+5 (it would include future events) nor one at T-10
+    /// (we'd still need to replay events from T-10 to T, negating the benefit).
+    ///
+    /// The only correct approach is replaying all events from the beginning through
+    /// the requested point in time. This is O(n) but temporal queries are typically
+    /// for debugging, auditing, or occasional analytics — not hot paths.
     pub async fn get_temporal_by_time(
         &self,
         domain: &str,
@@ -168,7 +219,12 @@ impl EventBookRepository {
     /// Load an EventBook as-of a sequence number (no snapshots).
     ///
     /// Returns events from sequence 0 through `sequence` inclusive.
-    /// Snapshots are skipped to ensure correct historical reconstruction.
+    ///
+    /// # Why Sequence-Based Temporal Queries Skip Snapshots
+    ///
+    /// Same reasoning as timestamp-based queries: snapshots capture state at a
+    /// specific sequence, and using the wrong snapshot would produce incorrect
+    /// historical state. Full replay ensures correctness.
     pub async fn get_temporal_by_sequence(
         &self,
         domain: &str,

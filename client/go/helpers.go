@@ -198,7 +198,17 @@ func DivergenceFor(e *pb.Edition, domain string) int64 {
 // EventBook helpers
 
 // NextSequence returns the next sequence number from an EventBook.
-// The framework computes this value on load.
+//
+// # Why Use book.NextSequence Instead of Counting Events?
+//
+// The framework precomputes NextSequence when loading the EventBook because:
+//  1. **Snapshots**: With snapshots, the EventBook may contain only post-snapshot
+//     events. Counting events would give the wrong sequence.
+//  2. **Consistency**: The framework knows the true last sequence from storage.
+//  3. **Performance**: Avoids iterating through events to find max sequence.
+//
+// Command handlers MUST use this value when setting event sequences. Using
+// len(book.Pages) would produce incorrect sequences when snapshots are involved.
 func NextSequence(book *pb.EventBook) uint32 {
 	if book == nil {
 		return 0

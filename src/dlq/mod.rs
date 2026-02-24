@@ -716,12 +716,10 @@ impl DeadLetterPublisher for KafkaDeadLetterPublisher {
 /// Publishes dead letters to topics named `angzarr-dlq-{domain}`.
 #[cfg(feature = "pubsub")]
 pub struct PubSubDeadLetterPublisher {
-    client: google_cloud_pubsub::client::Client,
+    client: gcloud_pubsub::client::Client,
     topic_prefix: String,
     publishers: Arc<
-        tokio::sync::RwLock<
-            std::collections::HashMap<String, google_cloud_pubsub::publisher::Publisher>,
-        >,
+        tokio::sync::RwLock<std::collections::HashMap<String, gcloud_pubsub::publisher::Publisher>>,
     >,
 }
 
@@ -729,7 +727,7 @@ pub struct PubSubDeadLetterPublisher {
 impl PubSubDeadLetterPublisher {
     /// Create a new Pub/Sub DLQ publisher.
     pub async fn new() -> Result<Self, DlqError> {
-        use google_cloud_pubsub::client::{Client, ClientConfig};
+        use gcloud_pubsub::client::{Client, ClientConfig};
 
         let config = ClientConfig::default().with_auth().await.map_err(|e| {
             DlqError::Connection(format!("Failed to configure Pub/Sub auth: {}", e))
@@ -758,7 +756,7 @@ impl PubSubDeadLetterPublisher {
     async fn get_publisher(
         &self,
         domain: &str,
-    ) -> Result<google_cloud_pubsub::publisher::Publisher, DlqError> {
+    ) -> Result<gcloud_pubsub::publisher::Publisher, DlqError> {
         let topic_name = self.topic_for_domain(domain);
 
         // Check cache
@@ -796,7 +794,7 @@ impl PubSubDeadLetterPublisher {
 #[async_trait]
 impl DeadLetterPublisher for PubSubDeadLetterPublisher {
     async fn publish(&self, dead_letter: AngzarrDeadLetter) -> Result<(), DlqError> {
-        use google_cloud_googleapis::pubsub::v1::PubsubMessage;
+        use gcloud_googleapis::pubsub::v1::PubsubMessage;
         use prost::Message;
 
         #[cfg(feature = "otel")]
@@ -823,7 +821,7 @@ impl DeadLetterPublisher for PubSubDeadLetterPublisher {
         attributes.insert("correlation_id".to_string(), correlation_id.clone());
 
         let message = PubsubMessage {
-            data: payload.into(),
+            data: payload,
             ordering_key: correlation_id,
             attributes,
             ..Default::default()
@@ -1179,10 +1177,7 @@ pub async fn create_publisher_async(
         }
         #[cfg(feature = "amqp")]
         DlqBackend::Amqp => {
-            let url = config
-                .amqp_url
-                .as_ref()
-                .ok_or_else(|| DlqError::NotConfigured)?;
+            let url = config.amqp_url.as_ref().ok_or(DlqError::NotConfigured)?;
             let publisher = AmqpDeadLetterPublisher::new(url).await?;
             Ok(Arc::new(publisher))
         }

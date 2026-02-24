@@ -16,9 +16,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use backon::{BackoffBuilder, ExponentialBuilder};
-use google_cloud_pubsub::client::{Client, ClientConfig};
-use google_cloud_pubsub::publisher::Publisher;
-use google_cloud_pubsub::subscription::SubscriptionConfig;
+use gcloud_pubsub::client::{Client, ClientConfig};
+use gcloud_pubsub::publisher::Publisher;
+use gcloud_pubsub::subscription::{Subscription, SubscriptionConfig};
 use prost::Message;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn, Instrument};
@@ -35,6 +35,117 @@ const CORRELATION_ID_ATTR: &str = "correlation_id";
 
 /// Attribute name for aggregate root ID.
 const ROOT_ID_ATTR: &str = "root_id";
+
+// ============================================================================
+// Consumer Helper Functions
+// ============================================================================
+
+/// Result of processing a message.
+#[derive(Debug)]
+enum ProcessResult {
+    /// Message processed successfully - ack it.
+    Success,
+    /// Message didn't match domain filter - ack it.
+    Filtered,
+    /// Message couldn't be decoded - ack it (can't retry bad data).
+    DecodeError,
+    /// Handler failed - nack to retry.
+    HandlerFailed,
+}
+
+/// Process message payload with domain filtering and handler dispatch.
+///
+/// Returns the processing result to guide ack/nack decision.
+async fn process_message_payload(
+    data: &[u8],
+    domain: &str,
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    filter_domains: &[String],
+) -> ProcessResult {
+    // Check domain filter
+    if !domain_matches_any(domain, filter_domains) {
+        debug!(
+            domain = %domain,
+            filter_domains = ?filter_domains,
+            "Skipping message - domain doesn't match filter"
+        );
+        return ProcessResult::Filtered;
+    }
+
+    // Decode EventBook
+    let book = match EventBook::decode(data) {
+        Ok(b) => Arc::new(b),
+        Err(e) => {
+            error!(error = %e, "Failed to decode EventBook");
+            return ProcessResult::DecodeError;
+        }
+    };
+
+    // Dispatch to handlers
+    let consume_span = tracing::info_span!("bus.consume", domain = %domain);
+    let success = crate::bus::dispatch_to_handlers_with_domain(handlers, &book, domain)
+        .instrument(consume_span)
+        .await;
+
+    if success {
+        ProcessResult::Success
+    } else {
+        ProcessResult::HandlerFailed
+    }
+}
+
+/// Ensure topic and subscription exist, creating them if needed.
+async fn ensure_subscription_exists(
+    client: &Client,
+    topic_name: &str,
+    subscription_name: &str,
+) -> Result<Subscription> {
+    let subscription = client.subscription(subscription_name);
+
+    if !subscription.exists(None).await.map_err(|e| {
+        BusError::Subscribe(format!("Failed to check subscription existence: {}", e))
+    })? {
+        // Create topic if needed
+        let topic = client.topic(topic_name);
+        if !topic
+            .exists(None)
+            .await
+            .map_err(|e| BusError::Subscribe(format!("Failed to check topic existence: {}", e)))?
+        {
+            topic.create(None, None).await.map_err(|e| {
+                BusError::Subscribe(format!("Failed to create topic {}: {}", topic_name, e))
+            })?;
+            info!(topic = %topic_name, "Created Pub/Sub topic");
+        }
+
+        // Create subscription
+        subscription
+            .create(
+                topic.fully_qualified_name(),
+                SubscriptionConfig::default(),
+                None,
+            )
+            .await
+            .map_err(|e| {
+                BusError::Subscribe(format!(
+                    "Failed to create subscription {}: {}",
+                    subscription_name, e
+                ))
+            })?;
+
+        info!(
+            subscription = %subscription_name,
+            topic = %topic_name,
+            "Created Pub/Sub subscription"
+        );
+    }
+
+    Ok(subscription)
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
 
 /// Configuration for Google Pub/Sub connection.
 #[derive(Clone, Debug)]
@@ -204,7 +315,7 @@ impl EventBus for PubSubEventBus {
         let data = book.encode_to_vec();
 
         // Build message with attributes using PubsubMessage
-        use google_cloud_googleapis::pubsub::v1::PubsubMessage;
+        use gcloud_googleapis::pubsub::v1::PubsubMessage;
         let ordering_key = root_id.clone();
         let attributes: std::collections::HashMap<String, String> = [
             (DOMAIN_ATTR.to_string(), domain.to_string()),
@@ -215,7 +326,7 @@ impl EventBus for PubSubEventBus {
         .collect();
 
         let message = PubsubMessage {
-            data: data.into(),
+            data,
             ordering_key,
             attributes,
             ..Default::default()
@@ -252,68 +363,27 @@ impl EventBus for PubSubEventBus {
 
         // Determine which topics to subscribe to
         let topics: Vec<String> = if self.config.domains.is_empty() {
-            // Subscribe to all - need at least one topic
             warn!("No domains specified. Subscribe-side filtering will be used.");
             vec!["events".to_string()]
         } else {
             self.config.domains.clone()
         };
 
-        let handlers = self.handlers.clone();
-        let config = self.config.clone();
-        let client = self.client.clone();
-        let filter_domains = self.config.domains.clone();
-
         // Subscribe to each domain's topic
         for domain in &topics {
-            let topic_name = config.topic_for_domain(domain);
-            let subscription_name = config.subscription_for_domain(domain);
+            let topic_name = self.config.topic_for_domain(domain);
+            let subscription_name = self.config.subscription_for_domain(domain);
 
-            // Get or create subscription
-            let subscription = client.subscription(&subscription_name);
+            let subscription =
+                ensure_subscription_exists(&self.client, &topic_name, &subscription_name).await?;
 
-            if !subscription.exists(None).await.map_err(|e| {
-                BusError::Subscribe(format!("Failed to check subscription existence: {}", e))
-            })? {
-                // Create topic if needed before creating subscription
-                let topic = client.topic(&topic_name);
-                if !topic.exists(None).await.map_err(|e| {
-                    BusError::Subscribe(format!("Failed to check topic existence: {}", e))
-                })? {
-                    topic.create(None, None).await.map_err(|e| {
-                        BusError::Subscribe(format!("Failed to create topic {}: {}", topic_name, e))
-                    })?;
-                    info!(topic = %topic_name, "Created Pub/Sub topic");
-                }
+            let handlers = self.handlers.clone();
+            let filter_domains = self.config.domains.clone();
+            let sub_name = subscription_name.clone();
 
-                // Create subscription
-                let sub_config = SubscriptionConfig::default();
-
-                subscription
-                    .create(topic.fully_qualified_name(), sub_config, None)
-                    .await
-                    .map_err(|e| {
-                        BusError::Subscribe(format!(
-                            "Failed to create subscription {}: {}",
-                            subscription_name, e
-                        ))
-                    })?;
-
-                info!(
-                    subscription = %subscription_name,
-                    topic = %topic_name,
-                    "Created Pub/Sub subscription"
-                );
-            }
-
-            let handlers = handlers.clone();
-            let filter_domains = filter_domains.clone();
-
-            // Spawn consumer task for this subscription
             tokio::spawn(async move {
-                info!(subscription = %subscription_name, "Starting Pub/Sub consumer");
+                info!(subscription = %sub_name, "Starting Pub/Sub consumer");
 
-                // Exponential backoff with jitter for error recovery
                 let backoff_builder = ExponentialBuilder::default()
                     .with_min_delay(Duration::from_millis(100))
                     .with_max_delay(Duration::from_secs(30))
@@ -323,55 +393,32 @@ impl EventBus for PubSubEventBus {
                 loop {
                     match subscription.pull(10, None).await {
                         Ok(messages) => {
-                            // Reset backoff on successful pull
                             backoff_iter = backoff_builder.build();
 
                             for message in messages {
                                 let data = message.message.data.as_slice();
-
-                                // Get domain from attributes for filtering
-                                let domain = message
+                                let msg_domain = message
                                     .message
                                     .attributes
                                     .get(DOMAIN_ATTR)
                                     .map(|s| s.as_str())
                                     .unwrap_or("unknown");
 
-                                // Subscribe-side hierarchical filtering
-                                if !domain_matches_any(domain, &filter_domains) {
-                                    debug!(
-                                        domain = %domain,
-                                        filter_domains = ?filter_domains,
-                                        "Skipping message - domain doesn't match filter"
-                                    );
-                                    // Ack to remove from queue (we don't want it)
-                                    let _ = message.ack().await;
-                                    continue;
-                                }
-
-                                match EventBook::decode(data) {
-                                    Ok(book) => {
-                                        let consume_span = tracing::info_span!("bus.consume",
-                                            domain = %domain);
-
-                                        let book = Arc::new(book);
-
-                                        let success = crate::bus::dispatch_to_handlers_with_domain(
-                                            &handlers, &book, domain,
-                                        )
-                                        .instrument(consume_span)
-                                        .await;
-
-                                        if success {
-                                            let _ = message.ack().await;
-                                        } else {
-                                            // Nack to retry
-                                            let _ = message.nack().await;
-                                        }
+                                match process_message_payload(
+                                    data,
+                                    msg_domain,
+                                    &handlers,
+                                    &filter_domains,
+                                )
+                                .await
+                                {
+                                    ProcessResult::Success
+                                    | ProcessResult::Filtered
+                                    | ProcessResult::DecodeError => {
+                                        let _ = message.ack().await;
                                     }
-                                    Err(e) => {
-                                        error!(error = %e, "Failed to decode EventBook");
-                                        let _ = message.ack().await; // Can't retry bad data
+                                    ProcessResult::HandlerFailed => {
+                                        let _ = message.nack().await;
                                     }
                                 }
                             }

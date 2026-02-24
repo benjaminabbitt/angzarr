@@ -463,7 +463,7 @@ mod tests {
         fn make_router_empty() -> CommandRouter {
             let business = HashMap::new();
             let stores = HashMap::new();
-            let discovery = Arc::new(StaticServiceDiscovery::new("test-namespace"));
+            let discovery = Arc::new(StaticServiceDiscovery::new());
             let event_bus = Arc::new(MockEventBus::new());
             let sync_projectors = vec![];
 
@@ -508,7 +508,7 @@ mod tests {
                 );
             }
 
-            let discovery = Arc::new(StaticServiceDiscovery::new("test-namespace"));
+            let discovery = Arc::new(StaticServiceDiscovery::new());
             let event_bus = Arc::new(MockEventBus::new());
             let sync_projectors = vec![];
 
@@ -590,7 +590,7 @@ mod tests {
         fn test_router_with_edition() {
             let business = HashMap::new();
             let stores = HashMap::new();
-            let discovery = Arc::new(StaticServiceDiscovery::new("test-namespace"));
+            let discovery = Arc::new(StaticServiceDiscovery::new());
             let event_bus = Arc::new(MockEventBus::new());
             let sync_projectors = vec![];
 

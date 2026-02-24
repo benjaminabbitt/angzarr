@@ -2,11 +2,15 @@
 
 **Status: Implemented and tested**
 
-Full storage backend with integration tests via testcontainers (Redis 7).
+Storage backend for snapshot caching via [redis-rs](https://crates.io/crates/redis).
 
-## Overview
+## Why Only Snapshots?
 
-Complete `EventStore`, `SnapshotStore`, `PositionStore`, and `TopologyStore` implementations using sorted sets for event ordering and key-value storage for snapshots via [redis-rs](https://crates.io/crates/redis).
+Redis is **not** used for event storage or position tracking. Both require strong durability guarantees that Redis cannot provide by default (periodic RDB snapshots and optional AOF can lose recent writes on crash).
+
+Use Postgres, SQLite, or NATS for events and positions.
+
+Redis excels at **snapshot caching**: reconstructed aggregate state for faster reads. Snapshots are an optimization—if lost, they can be rebuilt from events.
 
 ## Feature Flag
 
@@ -18,29 +22,21 @@ cargo build --features redis
 
 ```yaml
 storage:
-  type: redis
-  path: redis://localhost:6379
+  redis:
+    uri: redis://localhost:6379
 ```
 
 ## Key Structure
 
 ```
-{prefix}:{domain}:{edition}:{root}:events     -- Sorted set of events by sequence
-{prefix}:{domain}:{edition}:{root}:snapshot   -- Latest snapshot (binary)
-{prefix}:correlation:{correlation_id}         -- Set of event references (domain:edition:root:sequence)
-{prefix}:position:{handler}:{domain}:{edition}:{root_hex}  -- Handler position checkpoint
-{prefix}:topology:nodes                       -- Hash of topology nodes
-{prefix}:topology:edges                       -- Hash of topology edges
+{prefix}:{domain}:{edition}:{root}:snapshot  -- Snapshot (binary)
 ```
 
 Default prefix: `angzarr`.
 
 ## What's Implemented
 
-- `RedisEventStore` -- append, query by domain/root, sequence-based range queries, correlation ID queries, edition support with composite reads
 - `RedisSnapshotStore` -- save/load snapshots keyed by domain + edition + root
-- `RedisPositionStore` -- handler checkpoint tracking
-- `RedisTopologyStore` -- node/edge storage for topology visualization
 - Connection pooling via `ConnectionManager`
 - Configurable key prefix
 

@@ -418,6 +418,21 @@ func (a *AggregateBase[S]) applyEvent(state *S, eventAny *anypb.Any) {
 }
 
 // rebuild reconstructs state from the event book, then clears consumed events.
+//
+// # Why Clear Events After Rebuild?
+//
+// The EventBook serves dual purposes:
+// 1. **Input**: Prior events passed in from the framework (for state reconstruction)
+// 2. **Output**: New events produced by command handlers (to persist)
+//
+// After rebuilding state from prior events, we clear the Pages slice so that
+// only NEW events produced by this request are returned. Without clearing:
+// - The response would contain both old and new events
+// - The framework would try to re-persist events that already exist
+// - Event sequences would be wrong (duplicates)
+//
+// This "consume then clear" pattern is essential for the OO aggregate model
+// where the same EventBook struct flows through input → processing → output.
 func (a *AggregateBase[S]) rebuild() {
 	state := a.factory()
 	a.state = &state

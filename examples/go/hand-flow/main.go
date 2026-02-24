@@ -54,6 +54,7 @@ func (m *HandFlowManager) Prepare(trigger, processState *pb.EventBook) []*pb.Cov
 	return destinations
 }
 
+// docs:start:pm_handler
 // Handle processes events and produces commands.
 func (m *HandFlowManager) Handle(trigger, processState *pb.EventBook, destinations []*pb.EventBook) ([]*pb.CommandBook, *pb.EventBook, error) {
 	var commands []*pb.CommandBook
@@ -127,6 +128,8 @@ func (m *HandFlowManager) Handle(trigger, processState *pb.EventBook, destinatio
 	// PM doesn't emit its own events in this implementation
 	return commands, nil, nil
 }
+
+// docs:end:pm_handler
 
 func (m *HandFlowManager) handleHandStarted(event *examples.HandStarted, tableRoot []byte, correlationID string, destMap map[string]*pb.EventBook) []*pb.CommandBook {
 	m.mu.Lock()

@@ -1,11 +1,40 @@
 //! Saga orchestration abstraction.
 //!
-//! `SagaRetryContext` defines operations for saga retry loops.
-//! `execute_with_retry` implements the retry-with-backoff protocol.
-//! `orchestrate_saga` implements the full two-phase saga flow.
+//! Sagas translate events from one domain into commands for another domain.
+//! They are stateless — each event is processed independently with no memory
+//! of previous events. This enables horizontal scaling and simple recovery.
 //!
-//! - `local/`: in-process saga handler calls
-//! - `grpc/`: remote gRPC saga client calls
+//! # Two-Phase Execution Model
+//!
+//! Saga execution follows a prepare-execute pattern:
+//!
+//! 1. **Prepare**: Saga declares which destination aggregates it needs to read.
+//!    Returns a list of Covers (domain + root identifiers).
+//!
+//! 2. **Execute**: Framework fetches destination EventBooks, passes them to the
+//!    saga along with the triggering event. Saga produces CommandBooks targeting
+//!    those destinations.
+//!
+//! This separation exists because sagas need destination state to set correct
+//! command sequences (for optimistic concurrency) and to make routing decisions.
+//!
+//! # Retry Strategy
+//!
+//! When commands fail due to sequence conflicts (another writer modified the
+//! aggregate), we retry with exponential backoff:
+//!
+//! - **Selective re-fetch**: Only re-fetch state for domains that had conflicts.
+//!   Domains that succeeded keep their cached state.
+//! - **Re-execute saga**: The saga runs again with fresh state, producing new
+//!   commands with updated sequences.
+//!
+//! This minimizes round-trips while ensuring correctness. See [`SagaOperation`]
+//! for implementation details.
+//!
+//! # Module Structure
+//!
+//! - `local/`: in-process saga handler calls (standalone mode)
+//! - `grpc/`: remote gRPC saga client calls (distributed mode)
 
 pub mod grpc;
 #[cfg(feature = "sqlite")]
@@ -77,6 +106,25 @@ pub trait SagaRetryContext: Send + Sync {
 }
 
 /// State for a retryable saga command execution operation.
+///
+/// # Destination Caching Strategy
+///
+/// Sagas may target multiple destination aggregates. On retry, we want to minimize
+/// round-trips while ensuring correctness:
+///
+/// - **failed_domains**: Tracks domains that had sequence conflicts. These MUST fetch
+///   fresh state on retry because their EventBook.next_sequence was stale.
+///
+/// - **cached_destinations**: Holds EventBooks from successful fetches. Domains NOT in
+///   failed_domains can reuse cached state since their sequences were correct.
+///
+/// This separation is critical: if domain A fails but domain B succeeds, we only
+/// re-fetch A's state. Without this, we'd either:
+/// 1. Re-fetch everything (wasteful - O(n) fetches per retry)
+/// 2. Cache everything (incorrect - stale sequences cause infinite retry loops)
+///
+/// The cache key includes both domain AND root (via `cache_key()`) because a saga
+/// might target multiple aggregates in the same domain.
 #[cfg_attr(not(feature = "otel"), allow(dead_code))]
 struct SagaOperation<'a> {
     context: &'a dyn SagaRetryContext,
@@ -85,9 +133,13 @@ struct SagaOperation<'a> {
     saga_name: &'a str,
     correlation_id: &'a str,
     commands: Vec<CommandBook>,
-    /// Domains that had sequence conflicts - need fresh fetch on retry.
+    /// Domains that had sequence conflicts on the last attempt.
+    /// Cleared at the start of each try_execute, populated during execution.
+    /// Used by prepare_for_retry to decide which destinations need fresh fetches.
     failed_domains: HashSet<String>,
-    /// Cached destination state from successful fetches, keyed by cache_key (domain:root).
+    /// Cached destination EventBooks from successful fetches.
+    /// Keyed by cache_key (domain:root_hex) to support multiple aggregates per domain.
+    /// Survives across retries; updated when we fetch fresh state for failed domains.
     cached_destinations: HashMap<String, EventBook>,
 }
 
@@ -101,6 +153,9 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
     }
 
     async fn try_execute(&mut self) -> RetryOutcome<Self::Success, Self::Failure> {
+        // Clear failed_domains at the start of each attempt. This is intentional:
+        // we only care about which domains failed THIS attempt, not previous ones.
+        // The cache persists across attempts; failed_domains is per-attempt tracking.
         self.failed_domains.clear();
 
         for command in &self.commands {
@@ -143,35 +198,48 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
             SAGA_RETRY_TOTAL.add(1, &[metrics::name_attr(self.saga_name)]);
         }
 
-        // Re-prepare: get fresh destination covers
+        // Re-prepare: get fresh destination covers from the saga.
+        // Why re-prepare? The saga might return different destinations based on its
+        // internal logic. While rare, we call prepare_destinations() to ensure the
+        // saga has a chance to adjust targets if needed.
         let covers = self
             .context
             .prepare_destinations()
             .await
             .map_err(|e| e.to_string())?;
 
-        // Fetch state for destinations:
-        // - Failed domains: always fetch fresh (had sequence conflict)
-        // - Other domains: use cached if available
+        // Selective fetching strategy: minimize round-trips while ensuring correctness.
+        //
+        // The key insight: sequence conflicts happen because our cached EventBook had
+        // a stale next_sequence. Only domains that FAILED need fresh state. Domains
+        // that succeeded had correct sequences, so their cached state is still valid.
+        //
+        // Three cases for each destination:
+        // 1. Domain in failed_domains → MUST fetch fresh (sequence was wrong)
+        // 2. Domain has cache hit → use cached (sequence was correct)
+        // 3. Domain has no cache → fetch and cache (first time seeing this domain)
         let mut destinations = Vec::with_capacity(covers.len());
         for cover in &covers {
             let domain = &cover.domain;
             let cache_key = cover.cache_key();
 
             if self.failed_domains.contains(domain) {
-                // Domain had sequence conflict - must fetch fresh
+                // Case 1: Domain had sequence conflict on last attempt.
+                // We MUST fetch fresh state to get the current next_sequence.
+                // Update cache so subsequent retries benefit if this domain succeeds.
                 if let Some(f) = self.fetcher {
                     if let Some(dest) = f.fetch(cover).await {
-                        // Update cache with fresh state
                         self.cached_destinations.insert(cache_key, dest.clone());
                         destinations.push(dest);
                     }
                 }
             } else if let Some(cached) = self.cached_destinations.get(&cache_key) {
-                // Domain didn't fail - use cached state
+                // Case 2: Domain succeeded last time, cache is valid.
+                // Reuse cached state to avoid unnecessary fetch.
                 destinations.push(cached.clone());
             } else if let Some(f) = self.fetcher {
-                // No cache hit - fetch and cache
+                // Case 3: First time seeing this domain (shouldn't happen in practice
+                // since initial orchestrate_saga populates the cache, but handle it).
                 if let Some(dest) = f.fetch(cover).await {
                     self.cached_destinations.insert(cache_key, dest.clone());
                     destinations.push(dest);
@@ -179,8 +247,10 @@ impl<'a> RetryableOperation for SagaOperation<'a> {
             }
         }
 
-        // Re-execute saga with fresh/cached state
-        // Saga handler must set correct sequences on commands from destination.next_sequence()
+        // Re-execute saga with fresh/cached destination state.
+        // The saga handler is responsible for setting command.pages[0].sequence
+        // from destination.next_sequence(). This is NOT auto-stamped by the framework
+        // to force saga authors to engage with destination state.
         self.commands = self
             .context
             .re_execute_saga(destinations)
@@ -315,7 +385,20 @@ pub async fn orchestrate_saga(
         .await
         .map_err(|e| BusError::Publish(e.to_string()))?;
 
-    // Stamp saga_origin for compensation flow on rejection
+    // Stamp saga_origin on commands for two purposes:
+    //
+    // 1. **Compensation routing**: When a command is permanently rejected, the aggregate
+    //    coordinator uses saga_origin to route the rejection back to the originating
+    //    saga for compensation handling (e.g., rollback, dead-letter queue).
+    //
+    // 2. **Traceability**: Links the command to its triggering event for debugging
+    //    and audit trails. The triggering_aggregate identifies which event book
+    //    started this saga flow.
+    //
+    // Why triggering_event_sequence = 0? Currently we don't track which specific
+    // event in the source book triggered the saga. The cover (domain + root) is
+    // sufficient for routing. Sequence tracking could enable finer-grained replay
+    // but adds complexity we don't need yet.
     let source_cover = ctx.source_cover().cloned();
     for cmd in &mut commands {
         if cmd.saga_origin.is_none() {

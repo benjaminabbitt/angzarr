@@ -15,7 +15,22 @@ const config: Config = {
   markdown: {
     mermaid: true,
   },
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: [
+    '@docusaurus/theme-mermaid',
+    'docusaurus-theme-openapi-docs',
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        hashed: true,
+        indexDocs: true,
+        indexBlog: true,
+        indexPages: false,
+        docsRouteBasePath: '/',
+        language: ['en'],
+        highlightSearchTermsOnTargetPage: true,
+      },
+    ],
+  ],
 
   // GitHub Pages deployment
   url: 'https://angzarr.io',
@@ -46,7 +61,15 @@ const config: Config = {
             }],
           ],
         },
-        blog: false, // Disable blog
+        blog: {
+          showReadingTime: true,
+          editUrl: 'https://github.com/benjaminabbitt/angzarr/tree/main/docs/',
+          blogTitle: 'Angzarr Blog',
+          blogDescription: 'Release notes, design decisions, and architecture deep-dives',
+          postsPerPage: 10,
+          blogSidebarTitle: 'Recent posts',
+          blogSidebarCount: 5,
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -55,6 +78,33 @@ const config: Config = {
   ],
 
   plugins: [
+    // Client redirects for URL stability
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [
+          // Add redirects here as docs evolve
+          // { from: '/old-path', to: '/new-path' },
+        ],
+      },
+    ],
+    // OpenAPI documentation (spec files to be added)
+    [
+      'docusaurus-plugin-openapi-docs',
+      {
+        id: 'openapi',
+        docsPluginId: 'classic',
+        config: {
+          topology: {
+            specPath: 'openapi/topology.yaml',
+            outputDir: 'docs/api/topology',
+            sidebarOptions: {
+              groupPathsBy: 'tag',
+            },
+          },
+        },
+      },
+    ],
     // SDK documentation - each client README becomes a doc root
     [
       '@docusaurus/plugin-content-docs',
@@ -168,6 +218,11 @@ const config: Config = {
           sidebarId: 'docsSidebar',
           position: 'left',
           label: 'Documentation',
+        },
+        {
+          to: '/blog',
+          label: 'Blog',
+          position: 'left',
         },
         {
           href: 'https://github.com/benjaminabbitt/angzarr',

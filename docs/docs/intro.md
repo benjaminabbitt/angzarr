@@ -182,11 +182,13 @@ import TabItem from '@theme/TabItem';
 <TabItem value="python" label="Python" default>
 
 ```python
-# examples/python/player/agg/handlers/player.py
-@handles(player_proto.DepositFunds)
-def deposit(self, cmd: player_proto.DepositFunds) -> player_proto.FundsDeposited:
+# examples/python/player/agg/handlers/commands.py
+@command_handler(player_proto.DepositFunds)
+def handle_deposit_funds(
+    cmd: player_proto.DepositFunds, state: PlayerState, seq: int
+) -> player_proto.FundsDeposited:
     # Guard
-    if not self.exists:
+    if not state.exists:
         raise CommandRejectedError("Player does not exist")
 
     # Validate
@@ -195,7 +197,7 @@ def deposit(self, cmd: player_proto.DepositFunds) -> player_proto.FundsDeposited
         raise CommandRejectedError("amount must be positive")
 
     # Compute
-    new_balance = self.bankroll + amount
+    new_balance = state.bankroll + amount
     return player_proto.FundsDeposited(
         amount=cmd.amount,
         new_balance=poker_types.Currency(amount=new_balance, currency_code="CHIPS"),
@@ -203,7 +205,7 @@ def deposit(self, cmd: player_proto.DepositFunds) -> player_proto.FundsDeposited
     )
 ```
 
-[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)
+[View full source →](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/commands.py)
 
 </TabItem>
 <TabItem value="rust" label="Rust">

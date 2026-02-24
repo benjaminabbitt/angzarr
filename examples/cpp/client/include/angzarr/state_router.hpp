@@ -13,6 +13,10 @@ namespace angzarr {
 
 /// Reusable state reconstruction from EventBook.
 /// Registers event appliers and applies them to reconstruct state.
+///
+/// Uses suffix matching for forward compatibility: new event types from
+/// updated producers are silently ignored rather than causing failures.
+/// This allows rolling deployments where producers are updated before consumers.
 template <typename State>
 class StateRouter {
    public:

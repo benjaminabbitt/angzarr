@@ -1,3 +1,16 @@
+// Package handlers implements player aggregate command handlers.
+//
+// # Handler Pattern: guard → validate → compute
+//
+// All handlers follow a three-function pattern for testability:
+//
+//   - guard(state): Check state preconditions (aggregate exists, correct phase)
+//   - validate(cmd): Validate command inputs
+//   - compute(cmd): Build the resulting event
+//
+// Each function is pure (no side effects), enabling direct unit testing
+// without mocking infrastructure. The public Handle* function orchestrates
+// these and handles proto serialization.
 package handlers
 
 import (

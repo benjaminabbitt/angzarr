@@ -6,7 +6,6 @@
 #[cfg(feature = "advice")]
 pub mod advice;
 pub mod bus;
-pub mod clients;
 pub mod config;
 pub mod descriptor;
 pub mod discovery;

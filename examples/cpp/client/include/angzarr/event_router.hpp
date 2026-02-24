@@ -16,6 +16,10 @@ namespace angzarr {
 /// Functional router for saga event handling.
 /// Two-phase pattern: prepare (get destinations) then handle (produce commands).
 /// Uses fluent .domain().on() pattern to register handlers with domain context.
+///
+/// Why two-phase? Sagas need destination state to compute correct sequences.
+/// Prepare declares which EventBooks are needed; the framework fetches them;
+/// Handle receives destinations and uses next_sequence() for commands.
 class EventRouter {
    public:
     using PrepareHandler = std::function<std::vector<Cover>(const google::protobuf::Message&)>;

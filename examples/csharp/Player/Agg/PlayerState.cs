@@ -30,6 +30,10 @@ public class PlayerState
 
     /// <summary>
     /// StateRouter for fluent state reconstruction.
+    ///
+    /// Why events carry final state (not deltas): Events contain NewBalance (the result)
+    /// rather than delta (amount deposited). This provides: (1) idempotent replay,
+    /// (2) auditable history, (3) simpler appliers that just assign values.
     /// </summary>
     // docs:start:state_router
     public static readonly StateRouter<PlayerState> Router = new StateRouter<PlayerState>()

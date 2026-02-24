@@ -354,7 +354,6 @@ impl RuntimeBuilder {
             self.sagas,
             self.process_managers,
             event_bus,
-            self.limits,
         )
         .await
     }

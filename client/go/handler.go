@@ -12,7 +12,16 @@ import (
 )
 
 // CommandRejectedError indicates a command was rejected due to business rule violation.
-// Maps to gRPC FAILED_PRECONDITION.
+//
+// # Why FAILED_PRECONDITION?
+//
+// Maps to gRPC FAILED_PRECONDITION because:
+// 1. It signals the client SHOULD retry after updating state (fetching fresh events)
+// 2. Distinguishes from INVALID_ARGUMENT (bad input, don't retry)
+// 3. Matches the framework's retry policy which retries FAILED_PRECONDITION
+//
+// Use this for business rule rejections where the aggregate's current state
+// doesn't allow the operation (e.g., "insufficient funds", "player already exists").
 type CommandRejectedError struct {
 	Message string
 }

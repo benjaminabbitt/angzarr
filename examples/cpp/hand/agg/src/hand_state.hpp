@@ -12,6 +12,12 @@
 
 namespace hand {
 
+/// Note: Where applicable, events carry final state (not deltas). Events like
+/// BlindPosted contain pot_total (the result) rather than just the blind amount.
+/// This provides: (1) idempotent replay, (2) auditable history, (3) simpler apply_event.
+/// Some fields like bet_this_round are accumulated per-round as they represent
+/// in-progress state that resets between betting rounds.
+
 struct Card {
     examples::Suit suit = examples::SUIT_UNSPECIFIED;
     int rank = 0;

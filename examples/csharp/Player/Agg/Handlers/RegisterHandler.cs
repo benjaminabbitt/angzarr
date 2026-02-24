@@ -6,6 +6,15 @@ namespace Player.Agg.Handlers;
 
 /// <summary>
 /// Handler for RegisterPlayer command.
+///
+/// Follows the guard/validate/compute pattern:
+/// - Guard: Check state preconditions (aggregate exists, correct phase)
+/// - Validate: Validate command inputs
+/// - Compute: Build the resulting event
+///
+/// Why this pattern? Each step is a pure function (state in, result out),
+/// enabling direct unit testing without mocking infrastructure. You can test
+/// each step independently by passing state objects and asserting on results.
 /// </summary>
 public static class RegisterHandler
 {

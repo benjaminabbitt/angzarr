@@ -207,11 +207,28 @@ impl PostgresOutboxEventBus {
     pub async fn recover_orphaned(&self) -> std::result::Result<u32, sqlx::Error> {
         use sqlx::Row;
 
-        // Find events older than 30 seconds (publish should be <1s normally)
+        // Find events older than 30 seconds (publish should be <1s normally).
+        //
+        // Why 30 seconds? This threshold balances two concerns:
+        // 1. **Avoid interfering with in-flight publishes**: A publish might take a few
+        //    seconds under load. We don't want recovery to grab an event that's still
+        //    being processed by its original publisher.
+        // 2. **Timely recovery**: We don't want failed events sitting for minutes. 30s
+        //    is long enough for any reasonable publish to complete, short enough to
+        //    recover quickly after transient failures.
+        //
+        // Why limit to 100 records? Prevents the recovery process from overwhelming
+        // the system during outages. If thousands of events pile up, we process them
+        // in batches. Each interval picks up the next batch.
         let select = Query::select()
             .columns([Outbox::Id, Outbox::EventData, Outbox::RetryCount])
             .from(Outbox::Table)
             .and_where(Expr::col(Outbox::CreatedAt).lt(Expr::cust("NOW() - INTERVAL '30 seconds'")))
+            // Events at or exceeding max_retries are intentionally left in the outbox.
+            // Why not delete them? They represent failed deliveries that need human
+            // attention — a dead letter queue. Deleting them silently loses data.
+            // Operators can query for events at max_retries to investigate and either
+            // manually retry (after fixing the underlying issue) or archive.
             .and_where(Expr::col(Outbox::RetryCount).lt(self.config.max_retries as i32))
             .limit(100)
             .to_string(PostgresQueryBuilder);
@@ -255,6 +272,12 @@ impl PostgresOutboxEventBus {
                     }
                 }
                 Err(e) => {
+                    // Why delete corrupt events immediately (vs keeping them)?
+                    // Corrupt data cannot be recovered by retry — it's fundamentally broken.
+                    // Keeping it wastes storage and pollutes metrics. The error log provides
+                    // an audit trail; operators can investigate from there if needed.
+                    // Unlike max-retry events (which might succeed after fixing infra),
+                    // corrupt events are definitively unrecoverable.
                     error!(id = %id, error = %e, "Failed to decode orphaned event, removing from outbox");
                     let delete = Query::delete()
                         .from_table(Outbox::Table)
@@ -424,13 +447,15 @@ impl SqliteOutboxEventBus {
     pub async fn recover_orphaned(&self) -> std::result::Result<u32, sqlx::Error> {
         use sqlx::Row;
 
-        // Find events older than 30 seconds
+        // Find events older than 30 seconds.
+        // See PostgreSQL version for detailed rationale on timing and batch size.
         let select = Query::select()
             .columns([Outbox::Id, Outbox::EventData, Outbox::RetryCount])
             .from(Outbox::Table)
             .and_where(
                 Expr::col(Outbox::CreatedAt).lt(Expr::cust("datetime('now', '-30 seconds')")),
             )
+            // Events at max_retries are kept as a dead letter queue (not deleted).
             .and_where(Expr::col(Outbox::RetryCount).lt(self.config.max_retries as i32))
             .limit(100)
             .to_string(SqliteQueryBuilder);
@@ -470,6 +495,8 @@ impl SqliteOutboxEventBus {
                     }
                 },
                 Err(e) => {
+                    // Corrupt events are deleted immediately — they can't be fixed by retry.
+                    // See PostgreSQL version for detailed rationale.
                     error!(id = %id, error = %e, "Failed to decode orphaned event");
                     let delete = Query::delete()
                         .from_table(Outbox::Table)

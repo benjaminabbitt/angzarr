@@ -27,6 +27,10 @@ std::vector<angzarr::Cover> prepare_hand_started(const examples::HandStarted& ev
 // docs:start:saga_handler
 angzarr::CommandBook handle_hand_started(const examples::HandStarted& event,
                                          const std::vector<angzarr::EventBook>& destinations) {
+    // Why sequence from destination state? Sagas MUST set command sequences from
+    // destination EventBooks. The framework provides destination state so sagas
+    // can make business decisions AND compute correct sequences. Commands with
+    // wrong sequences are rejected for optimistic concurrency.
     int dest_seq = destinations.empty() ? 0 : destinations[0].next_sequence();
 
     // Build DealCards command from HandStarted event

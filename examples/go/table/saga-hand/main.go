@@ -39,7 +39,16 @@ func handleHandStarted(source *pb.EventBook, event *anypb.Any, destinations []*p
 		return nil, err
 	}
 
-	// Get next sequence from destination state
+	// Get next sequence from destination state.
+	//
+	// # Why Set Sequence from Destination State?
+	//
+	// The framework validates command sequences for optimistic concurrency.
+	// Sagas MUST use destination.NextSequence() because:
+	// 1. The destination aggregate may have events we haven't seen
+	// 2. Using a stale sequence causes FAILED_PRECONDITION rejection
+	// 3. The framework intentionally doesn't auto-stamp sequences to force
+	//    saga authors to engage with destination state
 	var destSeq uint32
 	if len(destinations) > 0 {
 		destSeq = angzarr.NextSequence(destinations[0])

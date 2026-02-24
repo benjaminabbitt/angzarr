@@ -37,6 +37,7 @@ type PlayerState struct {
 	IsAllIn       bool
 }
 
+// docs:start:pm_state
 // HandProcess manages the orchestration state for a single hand.
 type HandProcess struct {
 	HandID      string
@@ -73,6 +74,8 @@ type HandProcess struct {
 	// Community cards (for phase tracking)
 	CommunityCardCount int
 }
+
+// docs:end:pm_state
 
 // NewHandProcess creates a new hand process from a HandStarted event.
 func NewHandProcess(event *examples.HandStarted, tableRoot []byte) *HandProcess {

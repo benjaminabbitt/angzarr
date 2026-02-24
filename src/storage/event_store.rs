@@ -19,8 +19,7 @@ use crate::proto::EventPage;
 /// Implementations:
 /// - `SqliteEventStore`: SQLite storage
 /// - `PostgresEventStore`: PostgreSQL storage
-/// - `MongoEventStore`: MongoDB storage
-/// - `RedisEventStore`: Redis storage
+/// - `NatsEventStore`: NATS JetStream storage
 /// - `MockEventStore`: In-memory mock for testing
 #[async_trait]
 pub trait EventStore: Send + Sync {

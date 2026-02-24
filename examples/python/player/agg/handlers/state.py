@@ -34,6 +34,7 @@ class PlayerState:
         return self.bankroll - self.reserved_funds
 
 
+# docs:start:state_router
 def _apply_event(state: PlayerState, event_any: AnyProto) -> None:
     """Apply a single event to state (mutates in place)."""
     if event := try_unpack(event_any, player_proto.PlayerRegistered):
@@ -46,6 +47,9 @@ def _apply_event(state: PlayerState, event_any: AnyProto) -> None:
         state.bankroll = 0
         state.reserved_funds = 0
 
+    # Why events carry final state (not deltas):
+    # Events contain new_balance (the result) rather than delta (amount deposited).
+    # This provides: (1) idempotent replay, (2) auditable history, (3) simpler appliers.
     elif event := try_unpack(event_any, player_proto.FundsDeposited):
         if event.new_balance:
             state.bankroll = event.new_balance.amount
@@ -70,6 +74,9 @@ def _apply_event(state: PlayerState, event_any: AnyProto) -> None:
     elif event := try_unpack(event_any, player_proto.FundsTransferred):
         if event.new_balance:
             state.bankroll = event.new_balance.amount
+
+
+# docs:end:state_router
 
 
 def build_state(state: PlayerState, events: list[AnyProto]) -> PlayerState:

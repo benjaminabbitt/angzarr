@@ -18,7 +18,7 @@ Real handler examples from the poker domain. All code is from the actual [exampl
 
 | Language | OO | Imperative |
 |----------|:--:|:----------:|
-| Python | ✓ | — |
+| Python | — | ✓ |
 | C# | ✓ | ✓ |
 | Rust | ✓ | ✓ |
 | Java | ✓ | ✓ |
@@ -32,11 +32,11 @@ Real handler examples from the poker domain. All code is from the actual [exampl
 The Player aggregate demonstrates the **two-phase reservation pattern**. Funds are reserved before joining a table, then released if the join fails.
 
 <Tabs groupId="language">
-<TabItem value="python-oo" label="Python OO" default>
+<TabItem value="python" label="Python" default>
 
-**[`examples/python/player/agg/handlers/player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)**
+**[`examples/python/player/agg/handlers/commands.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/commands.py)**
 
-```python file=examples/python/player/agg/handlers/player.py start=docs:start:reserve_funds_oo end=docs:end:reserve_funds_oo
+```python file=examples/python/player/agg/handlers/commands.py start=docs:start:reserve_funds_imp end=docs:end:reserve_funds_imp
 ```
 
 </TabItem>
@@ -104,11 +104,11 @@ State is rebuilt by applying events. ⍼ Angzarr provides two patterns:
 | **StateRouter** | Fluent builder with typed event handlers | Clean separation, easy testing |
 
 <Tabs groupId="language">
-<TabItem value="python-oo" label="Python OO" default>
+<TabItem value="python" label="Python" default>
 
-**[`examples/python/player/agg/handlers/player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/player.py)**
+**[`examples/python/player/agg/handlers/state.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/player/agg/handlers/state.py)**
 
-```python file=examples/python/player/agg/handlers/player.py start=docs:start:state_appliers_oo end=docs:end:state_appliers_oo
+```python file=examples/python/player/agg/handlers/state.py start=docs:start:state_router end=docs:end:state_router
 ```
 
 </TabItem>
@@ -160,92 +160,40 @@ State is rebuilt by applying events. ⍼ Angzarr provides two patterns:
 
 ⍼ Angzarr uses **Gherkin feature files as living specifications**. The same feature files run against all language implementations, guaranteeing identical business behavior.
 
-**[`examples/features/unit/player.feature`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/features/unit/player.feature)**
+Example Gherkin feature:
 
-```gherkin file=examples/features/unit/player.feature start=docs:start:feature_overview end=docs:end:feature_overview
+```gherkin
+Feature: Player fund reservation
+
+  Players must reserve funds when joining a table to ensure
+  they can cover their buy-in before sitting down.
+
+  Scenario: Reserve funds for table buy-in
+    Given a player with $500 available
+    When the player reserves $200 for a table
+    Then the player's available balance is $300
+    And the player's reserved balance is $200
+
+  Scenario: Cannot reserve more than available
+    Given a player with $500 available
+    When the player tries to reserve $600
+    Then the request fails with "insufficient funds"
+    And the player's available balance remains $500
 ```
 
-```gherkin file=examples/features/unit/player.feature start=docs:start:registration_scenarios end=docs:end:registration_scenarios
+The **guard → validate → compute** pattern makes handlers pure functions, directly testable without mocks:
+
+```python
+def test_deposit_increases_bankroll():
+    state = PlayerState(registered=True, bankroll=1000)
+    cmd = DepositFunds(amount=500)
+
+    event = compute_deposit(cmd, state)
+
+    assert event.new_bankroll == 1500
 ```
 
-```gherkin file=examples/features/unit/player.feature start=docs:start:reservation_scenario end=docs:end:reservation_scenario
-```
-
-<Tabs groupId="language">
-<TabItem value="python" label="Python" default>
-
-**[`examples/python/tests/unit/test_player.py`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/python/tests/unit/test_player.py)**
-
-```python file=examples/python/tests/unit/test_player.py start=docs:start:bdd_imports end=docs:end:bdd_imports
-```
-
-```python file=examples/python/tests/unit/test_player.py start=docs:start:scenarios_loader end=docs:end:scenarios_loader
-```
-
-```python file=examples/python/tests/unit/test_player.py start=docs:start:given_step end=docs:end:given_step
-```
-
-```python file=examples/python/tests/unit/test_player.py start=docs:start:when_step end=docs:end:when_step
-```
-
-```python file=examples/python/tests/unit/test_player.py start=docs:start:then_step end=docs:end:then_step
-```
-
-</TabItem>
-<TabItem value="rust" label="Rust">
-
-**[`examples/rust/tests/tests/player.rs`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/rust/tests/tests/player.rs)**
-
-```rust file=examples/rust/tests/tests/player.rs start=docs:start:world_struct end=docs:end:world_struct
-```
-
-```rust file=examples/rust/tests/tests/player.rs start=docs:start:given_step end=docs:end:given_step
-```
-
-```rust file=examples/rust/tests/tests/player.rs start=docs:start:when_step end=docs:end:when_step
-```
-
-```rust file=examples/rust/tests/tests/player.rs start=docs:start:then_step end=docs:end:then_step
-```
-
-```rust file=examples/rust/tests/tests/player.rs start=docs:start:main end=docs:end:main
-```
-
-</TabItem>
-<TabItem value="go" label="Go">
-
-**[`examples/go/tests/player_test.go`](https://github.com/benjaminabbitt/angzarr/blob/main/examples/go/tests/player_test.go)**
-
-```go file=examples/go/tests/player_test.go start=docs:start:world_struct end=docs:end:world_struct
-```
-
-```go file=examples/go/tests/player_test.go start=docs:start:given_step end=docs:end:given_step
-```
-
-```go file=examples/go/tests/player_test.go start=docs:start:when_step end=docs:end:when_step
-```
-
-```go file=examples/go/tests/player_test.go start=docs:start:then_step end=docs:end:then_step
-```
-
-```go file=examples/go/tests/player_test.go start=docs:start:main end=docs:end:main
-```
-
-</TabItem>
-</Tabs>
-
-**Run tests:**
-
-```bash
-# Python - pytest-bdd
-cd examples/python && pytest tests/unit/test_player.py
-
-# Rust - cucumber-rs
-cd examples/rust/tests && cargo test --test player
-
-# Go - godog
-cd examples/go && go test -v ./... --godog.tags=@player
-```
+See **[Testing](/operations/testing)** for the full three-level testing strategy.
 
 ---
 

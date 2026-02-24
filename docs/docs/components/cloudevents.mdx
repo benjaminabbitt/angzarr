@@ -50,87 +50,15 @@ Both patterns work in all supported languages. Choose based on team preference.
 
 Implement a projector class with handler methods. State lives in instance fields:
 
-<Tabs groupId="language">
-<TabItem value="python" label="Python" default>
-
-```python file=examples/python/prj-cloudevents/cloudevents_projector.py start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
-```
-
-</TabItem>
-<TabItem value="go" label="Go">
-
-```go file=examples/go/prj-cloudevents/main.go start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
-```
-
-</TabItem>
-<TabItem value="rust" label="Rust">
-
-```rust file=examples/rust/prj-cloudevents/src/main.rs start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
-
-```java file=examples/java/prj-cloudevents/src/main/java/dev/angzarr/examples/prjcloudevents/PlayerCloudEventsProjector.java start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
-```
-
-</TabItem>
-<TabItem value="csharp" label="C#">
-
-```csharp file=examples/csharp/Prj/CloudEvents/PlayerCloudEventsProjector.cs start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
-```
-
-</TabItem>
-<TabItem value="cpp" label="C++">
-
 ```cpp file=examples/cpp/prj-cloudevents/src/cloudevents_projector.cpp start=docs:start:cloudevents_oo end=docs:end:cloudevents_oo
 ```
-
-</TabItem>
-</Tabs>
 
 ### Router Pattern (Functional)
 
 Register handlers with explicit state passing. Better for complex routing or when you prefer functional composition:
 
-<Tabs groupId="language">
-<TabItem value="python" label="Python" default>
-
-```python file=examples/python/prj-cloudevents/cloudevents_projector.py start=docs:start:cloudevents_router end=docs:end:cloudevents_router
-```
-
-</TabItem>
-<TabItem value="go" label="Go">
-
-```go file=examples/go/prj-cloudevents/main.go start=docs:start:cloudevents_router end=docs:end:cloudevents_router
-```
-
-</TabItem>
-<TabItem value="rust" label="Rust">
-
-```rust file=examples/rust/prj-cloudevents/src/main.rs start=docs:start:cloudevents_router end=docs:end:cloudevents_router
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
-
-```java file=examples/java/prj-cloudevents/src/main/java/dev/angzarr/examples/prjcloudevents/PlayerCloudEventsRouter.java start=docs:start:cloudevents_router end=docs:end:cloudevents_router
-```
-
-</TabItem>
-<TabItem value="csharp" label="C#">
-
-```csharp file=examples/csharp/Prj/CloudEvents/PlayerCloudEventsProjector.cs start=docs:start:cloudevents_router end=docs:end:cloudevents_router
-```
-
-</TabItem>
-<TabItem value="cpp" label="C++">
-
 ```cpp file=examples/cpp/prj-cloudevents/src/cloudevents_projector.cpp start=docs:start:cloudevents_router end=docs:end:cloudevents_router
 ```
-
-</TabItem>
-</Tabs>
 
 ### Raw Handle (Low-Level)
 

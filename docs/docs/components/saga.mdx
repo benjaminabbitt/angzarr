@@ -156,44 +156,30 @@ When one event should trigger commands to **multiple different aggregates**, ret
 
 **Example:** When a table settles, distribute payouts to multiple players:
 
-<Tabs groupId="language">
-<TabItem value="python" label="Python" default>
+```python
+def handle_table_settled(event: TableSettled, destinations: list[EventBook]) -> list[CommandBook]:
+    """Distribute payouts to each winning player."""
+    commands = []
 
-```python file=examples/python/table/saga-hand/splitter_example.py start=docs:start:saga_splitter end=docs:end:saga_splitter
+    for payout in event.payouts:
+        # One command per player aggregate
+        cmd = ReleaseFunds(
+            player_root=payout.player_root,
+            amount=payout.amount,
+        )
+        cmd_any = Any()
+        cmd_any.Pack(cmd)
+
+        # Find destination state for this player
+        dest = next(d for d in destinations if d.cover.root.value == payout.player_root)
+
+        commands.append(CommandBook(
+            cover=Cover(domain="player", root=UUID(value=payout.player_root)),
+            pages=[CommandPage(sequence=next_sequence(dest), command=cmd_any)],
+        ))
+
+    return commands
 ```
-
-</TabItem>
-<TabItem value="go" label="Go">
-
-```go file=examples/go/table/saga-hand/splitter_example.go start=docs:start:saga_splitter end=docs:end:saga_splitter
-```
-
-</TabItem>
-<TabItem value="rust" label="Rust">
-
-```rust file=examples/rust/table/saga-hand/src/splitter_example.rs start=docs:start:saga_splitter end=docs:end:saga_splitter
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
-
-```java file=examples/java/table/saga-hand/src/main/java/dev/angzarr/examples/table/sagahand/SplitterExample.java start=docs:start:saga_splitter end=docs:end:saga_splitter
-```
-
-</TabItem>
-<TabItem value="csharp" label="C#">
-
-```csharp file=examples/csharp/Table/SagaHand/SplitterExample.cs start=docs:start:saga_splitter end=docs:end:saga_splitter
-```
-
-</TabItem>
-<TabItem value="cpp" label="C++">
-
-```cpp file=examples/cpp/table/saga-hand/src/splitter_example.cpp start=docs:start:saga_splitter end=docs:end:saga_splitter
-```
-
-</TabItem>
-</Tabs>
 
 Each `CommandBook` targets a different aggregate root. The framework dispatches them independently — if one fails, others may still succeed (handle via compensation).
 

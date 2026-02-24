@@ -41,6 +41,92 @@ use uuid::Uuid;
 use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::{Cover, EventBook};
 
+// ============================================================================
+// Consumer Helper Functions
+// ============================================================================
+
+/// Ensure the NATS JetStream stream exists for a domain.
+async fn ensure_stream_for_domain(
+    jetstream: &Context,
+    stream_name: &str,
+    subject_pattern: &str,
+) -> Result<jetstream::stream::Stream> {
+    // Try to get existing stream
+    match jetstream.get_stream(stream_name).await {
+        Ok(stream) => Ok(stream),
+        Err(_) => {
+            // Create stream if it doesn't exist
+            jetstream
+                .create_stream(StreamConfig {
+                    name: stream_name.to_string(),
+                    subjects: vec![subject_pattern.to_string()],
+                    retention: RetentionPolicy::Limits,
+                    storage: StorageType::File,
+                    ..Default::default()
+                })
+                .await
+                .map_err(|e| BusError::Subscribe(format!("Failed to create stream: {}", e)))?;
+
+            jetstream
+                .get_stream(stream_name)
+                .await
+                .map_err(|e| BusError::Subscribe(format!("Failed to get stream: {}", e)))
+        }
+    }
+}
+
+/// Process messages from a NATS consumer stream.
+///
+/// Spawns a task that continuously reads messages, decodes EventBooks,
+/// dispatches to handlers, and acks messages.
+fn spawn_message_consumer(
+    consumer: jetstream::consumer::Consumer<ConsumerConfig>,
+    handlers: Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+) {
+    tokio::spawn(async move {
+        let mut messages = match consumer.messages().await {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::error!("Failed to get message stream: {}", e);
+                return;
+            }
+        };
+
+        while let Some(msg_result) = messages.next().await {
+            let msg = match msg_result {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::error!("Failed to receive message: {}", e);
+                    continue;
+                }
+            };
+
+            // Decode EventBook
+            let book = match EventBook::decode(msg.payload.as_ref()) {
+                Ok(b) => Arc::new(b),
+                Err(e) => {
+                    tracing::error!("Failed to decode EventBook: {}", e);
+                    // Ack to prevent redelivery of bad messages
+                    let _ = msg.ack().await;
+                    continue;
+                }
+            };
+
+            // Dispatch to handlers
+            crate::bus::dispatch_to_handlers(&handlers, &book).await;
+
+            // Acknowledge message
+            if let Err(e) = msg.ack().await {
+                tracing::error!("Failed to ack message: {}", e);
+            }
+        }
+    });
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
 /// Default subject prefix for NATS streams.
 const DEFAULT_PREFIX: &str = "angzarr";
 
@@ -241,54 +327,19 @@ impl EventBus for NatsEventBus {
             .ok_or_else(|| BusError::Subscribe("Consumer name required for consuming".to_string()))?
             .clone();
 
-        // Determine subject filter based on domain_filter
-        let subject_filter = match &self.config.domain_filter {
-            Some(domain) => format!("{}.events.{}.>", self.config.prefix, domain),
-            None => format!("{}.events.>", self.config.prefix),
-        };
+        // NATS uses per-domain streams, so domain filter is required
+        let domain = self.config.domain_filter.as_ref().ok_or_else(|| {
+            BusError::Subscribe(
+                "Domain filter required for consuming (NATS uses per-domain streams)".to_string(),
+            )
+        })?;
 
-        // Get or create the stream - we need to figure out which stream to use
-        // If we have a domain filter, use that domain's stream
-        // Otherwise, we need a catch-all stream which is harder in NATS
-        let stream_name = match &self.config.domain_filter {
-            Some(domain) => self.stream_name(domain),
-            None => {
-                // Without a domain filter, we'd need to subscribe to multiple streams
-                // For now, require a domain filter for consuming
-                return Err(BusError::Subscribe(
-                    "Domain filter required for consuming (NATS uses per-domain streams)"
-                        .to_string(),
-                ));
-            }
-        };
+        let stream_name = self.stream_name(domain);
+        let subject_filter = format!("{}.events.{}.>", self.config.prefix, domain);
 
         // Ensure stream exists
-        let subject_pattern = format!(
-            "{}.events.{}.>",
-            self.config.prefix,
-            self.config.domain_filter.as_ref().unwrap()
-        );
-        match self.jetstream.get_stream(&stream_name).await {
-            Ok(_) => {}
-            Err(_) => {
-                self.jetstream
-                    .create_stream(StreamConfig {
-                        name: stream_name.clone(),
-                        subjects: vec![subject_pattern],
-                        retention: RetentionPolicy::Limits,
-                        storage: StorageType::File,
-                        ..Default::default()
-                    })
-                    .await
-                    .map_err(|e| BusError::Subscribe(format!("Failed to create stream: {}", e)))?;
-            }
-        }
-
-        let stream = self
-            .jetstream
-            .get_stream(&stream_name)
-            .await
-            .map_err(|e| BusError::Subscribe(format!("Failed to get stream: {}", e)))?;
+        let stream =
+            ensure_stream_for_domain(&self.jetstream, &stream_name, &subject_filter).await?;
 
         // Create durable consumer
         let consumer = stream
@@ -306,47 +357,8 @@ impl EventBus for NatsEventBus {
             .await
             .map_err(|e| BusError::Subscribe(format!("Failed to create consumer: {}", e)))?;
 
-        let handlers = self.handlers.clone();
-
         // Spawn consumer task
-        tokio::spawn(async move {
-            let mut messages = match consumer.messages().await {
-                Ok(m) => m,
-                Err(e) => {
-                    tracing::error!("Failed to get message stream: {}", e);
-                    return;
-                }
-            };
-
-            while let Some(msg_result) = messages.next().await {
-                let msg = match msg_result {
-                    Ok(m) => m,
-                    Err(e) => {
-                        tracing::error!("Failed to receive message: {}", e);
-                        continue;
-                    }
-                };
-
-                // Decode EventBook
-                let book = match EventBook::decode(msg.payload.as_ref()) {
-                    Ok(b) => Arc::new(b),
-                    Err(e) => {
-                        tracing::error!("Failed to decode EventBook: {}", e);
-                        // Ack to prevent redelivery of bad messages
-                        let _ = msg.ack().await;
-                        continue;
-                    }
-                };
-
-                // Dispatch to handlers
-                crate::bus::dispatch_to_handlers(&handlers, &book).await;
-
-                // Acknowledge message
-                if let Err(e) = msg.ack().await {
-                    tracing::error!("Failed to ack message: {}", e);
-                }
-            }
-        });
+        spawn_message_consumer(consumer, self.handlers.clone());
 
         debug!(
             consumer_name = %consumer_name,

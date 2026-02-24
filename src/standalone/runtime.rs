@@ -9,7 +9,6 @@ use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::bus::{EventBus, MessagingConfig};
-use crate::config::ResourceLimits;
 use crate::discovery::k8s::K8sServiceDiscovery;
 use crate::discovery::ServiceDiscovery;
 use crate::handlers::core::{ProcessManagerEventHandler, ProjectorEventHandler, SagaEventHandler};
@@ -54,9 +53,6 @@ pub struct Runtime {
     tasks: Vec<JoinHandle<()>>,
     /// gRPC servers for cleanup on shutdown.
     servers: Vec<ServerInfo>,
-    /// Resource limits for message processing.
-    #[allow(dead_code)]
-    limits: ResourceLimits,
 }
 
 /// Entry for a registered projector.
@@ -79,7 +75,6 @@ impl Runtime {
         sagas: HashMap<String, (Arc<dyn SagaHandler>, SagaConfig)>,
         process_managers: HashMap<String, (Arc<dyn ProcessManagerHandler>, ProcessManagerConfig)>,
         event_bus: Arc<dyn EventBus>,
-        limits: ResourceLimits,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Initialize per-domain storage
         let mut domain_stores = HashMap::new();
@@ -292,7 +287,6 @@ impl Runtime {
             speculative,
             tasks: Vec::new(),
             servers,
-            limits,
         })
     }
 

@@ -1,10 +1,42 @@
 //! Process manager orchestration abstraction.
 //!
-//! `ProcessManagerContext` defines PM-specific operations (prepare, handle, persist).
-//! `orchestrate_pm` implements the full PM flow with retry on sequence conflicts.
+//! Process managers (PMs) coordinate multi-domain workflows by correlating events
+//! across different aggregates. Unlike sagas, PMs are **stateful** — they maintain
+//! their own event stream to track workflow progress.
 //!
-//! - `local/`: in-process PM handler calls
-//! - `grpc/`: remote gRPC PM client calls
+//! # PM vs Saga
+//!
+//! | Aspect | Saga | Process Manager |
+//! |--------|------|-----------------|
+//! | State | Stateless (per-event) | Stateful (persists progress) |
+//! | Input | Single domain events | Multi-domain events (via correlation_id) |
+//! | Identity | None (ephemeral) | correlation_id IS the PM root |
+//! | Recovery | Replay event | Resume from persisted PM state |
+//!
+//! # Correlation ID as PM Root
+//!
+//! The correlation_id serves double duty: it identifies both the cross-domain
+//! workflow AND the PM's aggregate root. This means:
+//!
+//! - `fetcher.fetch_by_correlation(pm_domain, correlation_id)` returns the PM's own state
+//! - All PM events are stored under `(pm_domain, correlation_id)` as root
+//! - Commands rejected route back via `saga_origin.triggering_aggregate.root = correlation_id`
+//!
+//! # Execution Flow
+//!
+//! 1. **Fetch PM state**: Load existing workflow progress by correlation_id
+//! 2. **Prepare**: PM declares additional destination aggregates to fetch
+//! 3. **Handle**: PM produces commands + its own state events
+//! 4. **Persist PM events**: Store PM state changes (retries on conflict)
+//! 5. **Execute commands**: Send to target aggregates (no retry here)
+//!
+//! PM event persistence is retried but command execution is not — commands may
+//! succeed/fail independently, and the PM can observe outcomes via Notifications.
+//!
+//! # Module Structure
+//!
+//! - `local/`: in-process PM handler calls (standalone mode)
+//! - `grpc/`: remote gRPC PM client calls (distributed mode)
 
 pub mod grpc;
 #[cfg(feature = "sqlite")]
@@ -104,7 +136,36 @@ pub trait PMContextFactory: Send + Sync {
 
 /// Full process manager orchestration with retry on sequence conflicts.
 ///
-/// Flow:
+/// # Why Manual Retry Loop (Not RetryableOperation)
+///
+/// Unlike sagas, PM retry is simpler: we retry the ENTIRE flow from PM state fetch.
+/// Sagas use `RetryableOperation` with selective destination caching because they
+/// may target multiple unrelated aggregates. PMs are different:
+///
+/// - PM state is always re-fetched (it's the thing that might have conflicted)
+/// - The retry boundary is "PM events persisted" — once that succeeds, we're done
+/// - Commands are fire-and-forget with compensation (no retry needed)
+///
+/// A manual loop with `delays.next()` is clearer than shoehorning this into the
+/// saga retry pattern.
+///
+/// # Ordering Invariant: PM Events Before Commands
+///
+/// PM events MUST persist before executing commands. This ensures:
+///
+/// 1. **Crash recovery**: If we crash after persisting PM events but before
+///    commands, the PM state records what we intended to do. On restart, we
+///    can either retry commands or detect duplicates.
+///
+/// 2. **Compensation routing**: If a command fails, the PM receives a Notification.
+///    The PM state must already reflect that we attempted this command so the
+///    compensation handler has context.
+///
+/// If we reversed the order (commands first), a crash between command success
+/// and PM event persistence would leave the PM state inconsistent.
+///
+/// # Flow Summary
+///
 /// 1. Fetch PM state by correlation_id (PM root = correlation_id by design)
 /// 2. Prepare: PM declares additional destinations needed
 /// 3. Fetch destination event books
@@ -137,11 +198,18 @@ pub async fn orchestrate_pm(
         "Processing event in process manager"
     );
 
+    // Manual retry loop for PM event persistence. We retry from PM state fetch
+    // because sequence conflicts mean another instance updated the PM state
+    // concurrently — we need to re-read it before retrying.
     let mut delays = backoff.build();
     let mut attempt = 0u32;
 
     loop {
-        // Load PM state by correlation_id (PM root = correlation_id by design)
+        // Load PM state by correlation_id.
+        // Why by correlation_id? The PM's aggregate root IS the correlation_id.
+        // This is a design choice: a PM instance is identified by the workflow
+        // it coordinates, not by an arbitrary UUID. This simplifies lookups and
+        // ensures all events for a workflow flow through one PM instance.
         let pm_state = fetcher
             .fetch_by_correlation(pm_domain, correlation_id)
             .await;
@@ -181,7 +249,20 @@ pub async fn orchestrate_pm(
             "ProcessManager.Handle returned response"
         );
 
-        // Persist PM events with retry on sequence conflicts
+        // Persist PM events with retry on sequence conflicts.
+        //
+        // This is the critical persistence boundary. PM events record:
+        // - What commands we intend to send
+        // - Current workflow state (phase, accumulated data)
+        //
+        // Why retry here? Sequence conflicts mean another PM instance (or a replay)
+        // updated this workflow concurrently. We must re-fetch PM state and re-run
+        // the handle phase with fresh context.
+        //
+        // Why NOT retry command execution? Commands are idempotent at the aggregate
+        // level (sequences prevent duplicate application). If a command fails with
+        // sequence conflict, the aggregate saw a concurrent write — the PM will
+        // receive a Notification and can decide whether to retry or compensate.
         if let Some(ref process_events) = response.process_events {
             if !process_events.pages.is_empty() {
                 match ctx.persist_pm_events(process_events, correlation_id).await {
@@ -221,9 +302,21 @@ pub async fn orchestrate_pm(
             }
         }
 
-        // Execute commands produced by process manager
-        // PM handler must set correct sequences on commands from destination.next_sequence()
-        // saga_origin is stamped so compensation routes back to PM
+        // Execute commands produced by process manager.
+        //
+        // At this point, PM events are persisted (the "point of no return").
+        // Command execution is fire-and-forget:
+        // - Success: great, workflow progresses
+        // - Sequence conflict: aggregate was modified concurrently; PM receives
+        //   Notification and can retry or compensate
+        // - Rejected: aggregate refused the command; PM receives Notification
+        //   and invokes compensation handler
+        //
+        // We do NOT retry command execution here because:
+        // 1. PM events are already persisted — retrying the whole flow would
+        //    create duplicate PM events
+        // 2. The PM's job is to observe outcomes and react, not guarantee delivery
+        // 3. Compensation is the PM's mechanism for handling failures
         execute_pm_commands(
             ctx,
             executor,
@@ -234,7 +327,8 @@ pub async fn orchestrate_pm(
         )
         .await;
 
-        // Success — exit retry loop
+        // Exit retry loop. PM events are persisted, commands are dispatched.
+        // The workflow continues asynchronously via Notifications.
         break;
     }
 

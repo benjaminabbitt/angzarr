@@ -49,8 +49,6 @@ struct ProjectorEntry {
 /// Services are registered manually via `register_aggregate`/`register_projector`
 /// or loaded from environment variables via `from_env()`.
 pub struct StaticServiceDiscovery {
-    #[allow(dead_code)] // Reserved for future logging/debugging
-    namespace: String,
     aggregates: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     projectors: Arc<RwLock<HashMap<String, DiscoveredService>>>,
     aggregate_clients: Arc<RwLock<HashMap<String, AggregateCoordinatorServiceClient<Channel>>>>,
@@ -58,11 +56,16 @@ pub struct StaticServiceDiscovery {
     projector_clients: Arc<RwLock<HashMap<String, ProjectorCoordinatorServiceClient<Channel>>>>,
 }
 
+impl Default for StaticServiceDiscovery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StaticServiceDiscovery {
     /// Create a new empty static discovery instance.
-    pub fn new(namespace: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            namespace: namespace.into(),
             aggregates: empty_cache(),
             projectors: empty_cache(),
             aggregate_clients: empty_cache(),
@@ -75,7 +78,7 @@ impl StaticServiceDiscovery {
     ///
     /// Scans for `ANGZARR_AGGREGATE_*` and `ANGZARR_PROJECTORS` env vars.
     pub fn from_env() -> Self {
-        let discovery = Self::new("env");
+        let discovery = Self::new();
 
         // Parse aggregates: ANGZARR_AGGREGATE_{DOMAIN}=url
         for (key, value) in std::env::vars() {
@@ -532,7 +535,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_static_discovery_register_aggregate() {
-        let discovery = StaticServiceDiscovery::new("test");
+        let discovery = StaticServiceDiscovery::new();
         discovery
             .register_aggregate("order", "localhost", 50051)
             .await;
@@ -544,7 +547,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_static_discovery_register_projector() {
-        let discovery = StaticServiceDiscovery::new("test");
+        let discovery = StaticServiceDiscovery::new();
         discovery
             .register_projector("web", "order", "localhost", 50052)
             .await;
@@ -554,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_static_discovery_sync_registration() {
-        let discovery = StaticServiceDiscovery::new("test");
+        let discovery = StaticServiceDiscovery::new();
         discovery.register_aggregate_sync("order", "localhost", 50051);
         discovery.register_projector_sync("web", "order", "localhost", 50052);
 

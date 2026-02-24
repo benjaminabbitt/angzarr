@@ -17,6 +17,17 @@ import dev.angzarr.examples.player.state.PlayerState;
  * Builds PlayerState from an EventBook (functional style).
  *
  * <p>Used by CommandRouter for state reconstruction.
+ *
+ * <h3>Why events carry final state (not deltas)</h3>
+ *
+ * <p>Events contain newBalance (the result) rather than delta (amount deposited). This design
+ * choice provides:
+ *
+ * <ul>
+ *   <li><b>Idempotent replay</b>: Re-applying the event produces the same state
+ *   <li><b>Auditable</b>: Can verify the computation was correct at event time
+ *   <li><b>Simpler appliers</b>: Just assign the value, no arithmetic needed
+ * </ul>
  */
 // docs:start:state_builder
 public final class StateBuilder {

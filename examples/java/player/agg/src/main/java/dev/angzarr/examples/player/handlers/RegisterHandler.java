@@ -10,7 +10,19 @@ import java.time.Instant;
 /**
  * Functional handler for RegisterPlayer command.
  *
- * <p>Pure function following guard/validate/compute pattern.
+ * <p>Pure function following guard/validate/compute pattern:
+ *
+ * <ul>
+ *   <li><b>guard</b>: Check state preconditions (aggregate exists, correct phase)
+ *   <li><b>validate</b>: Validate command inputs
+ *   <li><b>compute</b>: Build the resulting event
+ * </ul>
+ *
+ * <h3>Why this pattern?</h3>
+ *
+ * <p>Each step is a pure function (state in, result out), enabling direct unit testing without
+ * mocking infrastructure. You can test guard, validate, and compute logic independently by passing
+ * state objects and asserting on results.
  */
 public final class RegisterHandler {
 

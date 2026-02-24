@@ -8,12 +8,12 @@
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
-use google_cloud_storage::client::{Client, ClientConfig};
-use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
-use google_cloud_storage::http::objects::download::Range;
-use google_cloud_storage::http::objects::get::GetObjectRequest;
-use google_cloud_storage::http::objects::list::ListObjectsRequest;
-use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
+use gcloud_storage::client::{Client, ClientConfig};
+use gcloud_storage::http::objects::delete::DeleteObjectRequest;
+use gcloud_storage::http::objects::download::Range;
+use gcloud_storage::http::objects::get::GetObjectRequest;
+use gcloud_storage::http::objects::list::ListObjectsRequest;
+use gcloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use prost_types::Timestamp;
 use tracing::{debug, warn};
 

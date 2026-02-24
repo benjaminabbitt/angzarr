@@ -25,6 +25,125 @@ use crate::bus::{BusError, EventBus, EventHandler, PublishResult, Result};
 use crate::proto::EventBook;
 use crate::proto_ext::CoverExt;
 
+// ============================================================================
+// Consumer Helper Functions
+// ============================================================================
+
+/// Result of reading a message from a pipe.
+#[derive(Debug)]
+enum ReadResult {
+    /// Message data read successfully.
+    Message(Vec<u8>),
+    /// Pipe closed (EOF) - should reopen.
+    Eof,
+    /// Message too large - should skip to next message.
+    TooLarge(usize),
+    /// Fatal error - should exit.
+    Error(std::io::Error),
+}
+
+/// Read a length-prefixed message from a file.
+///
+/// Protocol: 4-byte big-endian length, then message body.
+fn read_length_prefixed_message(file: &mut File) -> ReadResult {
+    // Read length prefix (4 bytes, big-endian)
+    let mut len_buf = [0u8; 4];
+    match file.read_exact(&mut len_buf) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+            return ReadResult::Eof;
+        }
+        Err(e) => {
+            return ReadResult::Error(e);
+        }
+    }
+
+    let len = u32::from_be_bytes(len_buf) as usize;
+    const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+    if len > MAX_MESSAGE_SIZE {
+        return ReadResult::TooLarge(len);
+    }
+
+    // Read message body
+    let mut buf = vec![0u8; len];
+    match file.read_exact(&mut buf) {
+        Ok(_) => ReadResult::Message(buf),
+        Err(e) => ReadResult::Error(e),
+    }
+}
+
+/// Process a decoded EventBook with domain filtering, checkpoint, and handler dispatch.
+///
+/// Returns true if handlers should be called, false if message was filtered/skipped.
+fn should_process_message(
+    book: &EventBook,
+    domains: &[String],
+    checkpoint: &Checkpoint,
+    rt: &tokio::runtime::Handle,
+) -> bool {
+    let routing_key = book.routing_key();
+
+    // Check domain filter using routing key
+    let matches = domains.is_empty() || domains.iter().any(|d| d == "#" || d == &routing_key);
+    if !matches {
+        return false;
+    }
+
+    // Extract root and max sequence for checkpoint
+    let root_bytes = book
+        .cover
+        .as_ref()
+        .and_then(|c| c.root.as_ref())
+        .map(|r| r.value.as_slice());
+    let max_sequence = max_page_sequence(book);
+
+    // Skip if already processed (checkpoint deduplication)
+    if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
+        let dominated =
+            rt.block_on(async { !checkpoint.should_process(&routing_key, root, seq).await });
+        if dominated {
+            debug!(routing_key = %routing_key, sequence = seq, "Skipping checkpointed event");
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Dispatch an EventBook to handlers and update checkpoint.
+fn dispatch_to_handlers(
+    book: Arc<EventBook>,
+    handlers: &Arc<RwLock<Vec<Box<dyn EventHandler>>>>,
+    checkpoint: &Checkpoint,
+    rt: &tokio::runtime::Handle,
+) {
+    let routing_key = book.routing_key();
+    let root_bytes = book
+        .cover
+        .as_ref()
+        .and_then(|c| c.root.as_ref())
+        .map(|r| r.value.clone());
+    let max_sequence = max_page_sequence(&book);
+
+    rt.block_on(async {
+        let handlers_guard = handlers.read().await;
+        for handler in handlers_guard.iter() {
+            if let Err(e) = handler.handle(book.clone()).await {
+                error!(error = %e, "Handler failed");
+            }
+        }
+
+        // Update checkpoint after successful handler dispatch
+        if let (Some(root), Some(seq)) = (&root_bytes, max_sequence) {
+            checkpoint.update(&routing_key, root, seq).await;
+        }
+    });
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
 /// Env var name for subscriber list (set by orchestrator).
 pub const SUBSCRIBERS_ENV_VAR: &str = "ANGZARR_IPC_SUBSCRIBERS";
 
@@ -246,11 +365,28 @@ impl IpcEventBus {
 
                 // Inner loop: read messages until EOF
                 loop {
-                    // Read length prefix (4 bytes, big-endian)
-                    let mut len_buf = [0u8; 4];
-                    match file.read_exact(&mut len_buf) {
-                        Ok(_) => {}
-                        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    match read_length_prefixed_message(&mut file) {
+                        ReadResult::Message(buf) => {
+                            // Decode EventBook
+                            let book = match EventBook::decode(&buf[..]) {
+                                Ok(b) => Arc::new(b),
+                                Err(e) => {
+                                    error!(error = %e, "Failed to decode EventBook");
+                                    continue;
+                                }
+                            };
+
+                            // Filter and check checkpoint
+                            if !should_process_message(&book, &domains, &checkpoint, &rt) {
+                                continue;
+                            }
+
+                            debug!(routing_key = %book.routing_key(), "Received event via pipe");
+
+                            // Dispatch to handlers
+                            dispatch_to_handlers(book, &handlers, &checkpoint, &rt);
+                        }
+                        ReadResult::Eof => {
                             // Pipe closed by writers — flush checkpoint before reopening
                             rt.block_on(async {
                                 if let Err(e) = checkpoint.flush().await {
@@ -260,82 +396,15 @@ impl IpcEventBus {
                             debug!(pipe = %pipe_path.display(), "Pipe EOF, reopening");
                             break; // Break inner loop, continue outer to reopen
                         }
-                        Err(e) => {
+                        ReadResult::TooLarge(len) => {
+                            error!(len, "Message too large");
+                            break;
+                        }
+                        ReadResult::Error(e) => {
                             error!(error = %e, "Pipe read error");
                             return; // Fatal error, exit entirely
                         }
                     }
-
-                    let len = u32::from_be_bytes(len_buf) as usize;
-                    if len > 10 * 1024 * 1024 {
-                        error!(len, "Message too large");
-                        break;
-                    }
-
-                    // Read message body
-                    let mut buf = vec![0u8; len];
-                    if let Err(e) = file.read_exact(&mut buf) {
-                        error!(error = %e, "Failed to read message body");
-                        break;
-                    }
-
-                    // Decode EventBook
-                    let book = match EventBook::decode(&buf[..]) {
-                        Ok(b) => Arc::new(b),
-                        Err(e) => {
-                            error!(error = %e, "Failed to decode EventBook");
-                            continue;
-                        }
-                    };
-
-                    let routing_key = book.routing_key();
-
-                    // Check domain filter using routing key
-                    let matches =
-                        domains.is_empty() || domains.iter().any(|d| d == "#" || d == &routing_key);
-
-                    if !matches {
-                        continue;
-                    }
-
-                    // Extract root and max sequence for checkpoint
-                    let root_bytes = book
-                        .cover
-                        .as_ref()
-                        .and_then(|c| c.root.as_ref())
-                        .map(|r| r.value.as_slice());
-                    let max_sequence = max_page_sequence(&book);
-
-                    // Skip if already processed (checkpoint deduplication)
-                    if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
-                        let dominated = rt.block_on(async {
-                            !checkpoint.should_process(&routing_key, root, seq).await
-                        });
-                        if dominated {
-                            debug!(routing_key = %routing_key, sequence = seq, "Skipping checkpointed event");
-                            continue;
-                        }
-                    }
-
-                    debug!(routing_key = %routing_key, "Received event via pipe");
-
-                    // Call handlers
-                    let handlers_clone = handlers.clone();
-                    let book_clone = book.clone();
-                    let checkpoint_clone = checkpoint.clone();
-                    rt.block_on(async {
-                        let handlers_guard = handlers_clone.read().await;
-                        for handler in handlers_guard.iter() {
-                            if let Err(e) = handler.handle(book_clone.clone()).await {
-                                error!(error = %e, "Handler failed");
-                            }
-                        }
-
-                        // Update checkpoint after successful handler dispatch
-                        if let (Some(root), Some(seq)) = (root_bytes, max_sequence) {
-                            checkpoint_clone.update(&routing_key, root, seq).await;
-                        }
-                    });
                 }
             }
         });

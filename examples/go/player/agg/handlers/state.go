@@ -62,6 +62,19 @@ func applyRegistered(state *PlayerState, event *examples.PlayerRegistered) {
 	state.ReservedFunds = 0
 }
 
+// applyDeposited applies a FundsDeposited event to state.
+//
+// # Why Events Carry Final State (Not Deltas)
+//
+// Events contain NewBalance (the result) rather than delta (amount deposited).
+// This design choice provides:
+// 1. **Idempotent replay**: Re-applying the event produces the same state
+// 2. **Auditable**: Can verify the computation was correct at event time
+// 3. **Simpler appliers**: Just assign the value, no arithmetic needed
+//
+// The trade-off: events are slightly larger, and you can't easily see the
+// delta without comparing to previous state. For most use cases, the benefits
+// of idempotent replay outweigh this.
 func applyDeposited(state *PlayerState, event *examples.FundsDeposited) {
 	if event.NewBalance != nil {
 		state.Bankroll = event.NewBalance.Amount

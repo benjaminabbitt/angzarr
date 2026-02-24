@@ -1,9 +1,26 @@
 //! Hybrid destination fetcher for process manager sidecars.
 //!
-//! Routes PM domain queries to local storage, all others to gRPC.
-//! Solves the chicken-and-egg problem: PM sidecar needs to query its own
-//! domain's state, but there's no aggregate service for the PM domain.
-//! Uses `EventBookRepository` to properly load snapshots and only subsequent events.
+//! # The Chicken-and-Egg Problem
+//!
+//! Process managers (PMs) need to fetch their own state to make decisions, but:
+//! - PMs run as sidecars, not as aggregate services
+//! - The normal destination fetcher routes to aggregate services via gRPC
+//! - There IS no aggregate service for the PM domain — the PM sidecar IS the service
+//!
+//! The hybrid fetcher solves this by routing queries for the PM's own domain to
+//! local storage, while delegating all other domain queries to the remote fetcher.
+//!
+//! # Why Not Just Use Local Storage for Everything?
+//!
+//! The PM sidecar only has storage for its own domain. Other domains (order,
+//! inventory, player, etc.) are served by their respective aggregate sidecars.
+//! Hybrid routing is the cleanest way to handle "local for self, remote for others".
+//!
+//! # Snapshot Optimization
+//!
+//! Uses `EventBookRepository` for local fetches to properly load snapshots
+//! and only fetch events AFTER the snapshot sequence. Direct EventStore queries
+//! would either miss snapshots or double-apply events.
 
 use std::sync::Arc;
 
@@ -63,7 +80,11 @@ impl DestinationFetcher for HybridDestinationFetcher {
 
             match repo.get(&self.local_domain, edition, root).await {
                 Ok(mut book) => {
-                    // Preserve the correlation_id from the input cover
+                    // Preserve the correlation_id from the input cover.
+                    // Why: EventBookRepository.get() doesn't know the correlation_id
+                    // (it queries by domain/edition/root). The caller passed us the
+                    // correlation_id in the cover; we must preserve it for downstream
+                    // PM logic that expects it.
                     if let Some(ref mut book_cover) = book.cover {
                         book_cover.correlation_id = cover.correlation_id.clone();
                     }
@@ -109,14 +130,34 @@ impl DestinationFetcher for HybridDestinationFetcher {
                 }
             };
 
-            // Find the first book matching this domain
+            // Find the first book matching this domain.
+            //
+            // Why filter by domain? get_by_correlation returns ALL event books across
+            // ALL domains that share this correlation_id. A single correlation_id ties
+            // together events from order, inventory, fulfillment, AND the PM itself.
+            // We only want the PM's own state here — other domains would be fetched
+            // via the remote fetcher if needed.
             let book = books.into_iter().find(|b| {
                 b.cover
                     .as_ref()
                     .is_some_and(|c| c.domain == self.local_domain)
             })?;
 
-            // Re-fetch using EventBookRepository to get snapshot-optimized version
+            // Re-fetch using EventBookRepository to get snapshot-optimized version.
+            //
+            // Why re-fetch instead of using the book we just found?
+            //
+            // 1. **Snapshot loading**: get_by_correlation queries the event store directly,
+            //    returning raw events without snapshot optimization. EventBookRepository
+            //    loads the latest snapshot and only fetches events AFTER that snapshot's
+            //    sequence, dramatically reducing data transfer for long-lived PMs.
+            //
+            // 2. **State consistency**: The book from get_by_correlation might have been
+            //    built from a partial event set (depending on store implementation).
+            //    EventBookRepository guarantees a complete, correctly-ordered view.
+            //
+            // The first lookup is just to find the root UUID — we need to know which
+            // aggregate instance has this correlation_id before we can do a proper fetch.
             let cover = book.cover.as_ref()?;
             let edition = cover
                 .edition

@@ -19,6 +19,17 @@ use tracing::{error, warn};
 /// - Max delay: 2s
 /// - Max attempts: 10
 /// - Jitter enabled
+///
+/// # Why These Values?
+///
+/// - **10ms min**: Sequence conflicts typically resolve quickly — another writer
+///   just beat us. A brief delay is enough to let their write complete.
+/// - **2s max**: If conflicts persist beyond 2s, something unusual is happening
+///   (high contention, slow storage). Cap the delay to avoid blocking too long.
+/// - **10 attempts**: Enough to ride out typical contention spikes. Beyond 10,
+///   the conflict is likely structural (two components fighting over the same
+///   aggregate), not transient.
+/// - **Jitter**: Prevents thundering herd when multiple retries happen simultaneously.
 pub fn saga_backoff() -> ExponentialBuilder {
     ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(10))
@@ -33,6 +44,17 @@ pub fn saga_backoff() -> ExponentialBuilder {
 /// - Max delay: 5s
 /// - Max attempts: 30
 /// - Jitter enabled
+///
+/// # Why These Values?
+///
+/// - **100ms min**: Network connections need more time than sequence retries.
+///   Services might still be starting, DNS might be propagating.
+/// - **5s max**: Connection issues can be transient (pod rescheduling, DNS
+///   propagation). 5s is long enough for most K8s operations without making
+///   startup feel stuck.
+/// - **30 attempts**: At exponential backoff from 100ms to 5s, this gives
+///   roughly 2-3 minutes of total retry time — enough for pod startup and
+///   K8s service discovery to stabilize.
 pub fn connection_backoff() -> ExponentialBuilder {
     ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(100))
@@ -43,19 +65,28 @@ pub fn connection_backoff() -> ExponentialBuilder {
 
 /// Determines if a gRPC error is retryable.
 ///
-/// Retryable codes:
-/// - `Aborted`: Storage-level sequence conflict (concurrent write race during persist).
-/// - `FailedPrecondition`: Sequence mismatch (client sent stale data). Client must
-///   fetch fresh state before retry — cached state is invalid.
+/// # Retryable Codes
 ///
-/// Non-retryable:
-/// - All other codes: Business rejections, network errors, server errors, etc.
+/// - **`FailedPrecondition`**: Sequence mismatch with STRICT or COMMUTATIVE merge
+///   strategy. The client's command had a stale sequence number. Fix: fetch fresh
+///   state, rebuild command with correct sequence, retry.
 ///
-/// Note: FAILED_PRECONDITION is retryable (sequence mismatch with STRICT/COMMUTATIVE).
-/// ABORTED is NOT retryable (used for DLQ routing with MERGE_MANUAL).
+/// # Non-Retryable Codes
 ///
-/// Retry handlers should always fetch fresh state (not use cached) since
-/// the client's view of the aggregate may be stale.
+/// - **`Aborted`**: Used for MERGE_MANUAL when sequence mismatch occurs. The
+///   framework routes these to DLQ for human review — automated retry won't help.
+/// - **Other codes**: Business rejections, validation errors, network errors, etc.
+///   These require human intervention or code fixes.
+///
+/// # Why This Distinction?
+///
+/// Sequence conflicts are often transient — two concurrent writers raced, one won.
+/// The loser should fetch fresh state and retry with the updated sequence. This is
+/// safe because event sourcing guarantees idempotency via sequence numbers.
+///
+/// MERGE_MANUAL conflicts are different: the aggregate owner explicitly chose to
+/// require human review rather than auto-retry. Respecting that decision means
+/// routing to DLQ, not retrying.
 pub fn is_retryable_status(status: &Status) -> bool {
     matches!(status.code(), Code::FailedPrecondition)
 }

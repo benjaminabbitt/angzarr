@@ -1,11 +1,36 @@
 //! Aggregate command execution pipeline abstraction.
 //!
-//! `AggregateContext` trait + `execute_command_pipeline` for the shared
-//! command execution flow (parse → load → validate → invoke → persist → publish).
+//! This module implements the core command processing flow for event-sourced
+//! aggregates. Commands flow through: parse → load → validate → invoke →
+//! persist → publish.
 //!
-//! client logic invocation is via the `ClientLogic` trait, decoupling the
-//! pipeline from transport (gRPC over TCP, UDS, or in-process calls).
-//! The `AggregateContext` trait covers storage access, post-persist behavior, and optional hooks.
+//! # Sequence Validation and Merge Strategies
+//!
+//! Commands include an `expected_sequence` indicating what aggregate state they
+//! were prepared against. When this doesn't match the current `actual_sequence`,
+//! a concurrent write occurred. How we handle this depends on the merge strategy:
+//!
+//! | Strategy | Behavior | Use Case |
+//! |----------|----------|----------|
+//! | **STRICT** | Return FAILED_PRECONDITION, retry with fresh state | Default, most operations |
+//! | **COMMUTATIVE** | Check field overlap; proceed if disjoint, else retry | High-concurrency aggregates |
+//! | **MANUAL** | Send to DLQ for human review | Conflict-sensitive operations |
+//! | **AGGREGATE_HANDLES** | Skip validation, let aggregate decide | Custom concurrency control |
+//!
+//! STRICT is the safest default: always retry on mismatch. COMMUTATIVE optimizes
+//! for throughput when concurrent writes often touch different fields (e.g.,
+//! counters, independent properties). MANUAL is for operations where automatic
+//! retry could cause business problems (e.g., financial transactions).
+//!
+//! # Architecture
+//!
+//! - `AggregateContext`: Storage access and post-persist hooks (local vs gRPC impl)
+//! - `ClientLogic`: Business logic invocation (gRPC client to aggregate handler)
+//! - `execute_command_pipeline`: The main execution flow
+//! - `try_commutative_merge`: Field-level conflict detection for COMMUTATIVE mode
+//!
+//! # Module Structure
+//!
 //! - `local/`: SQLite-backed storage with static service discovery
 //! - `grpc/`: Remote storage with K8s service discovery
 
@@ -244,8 +269,36 @@ enum CommutativeMergeResult {
 
 /// Attempt commutative merge by comparing state fields.
 ///
-/// Calls Replay RPC to get states at `expected` and `actual` sequences,
-/// then diffs the fields to detect overlap with the command's changes.
+/// # Why Commutative Merge Exists
+///
+/// Strict sequence validation rejects commands whenever `expected != actual`, even
+/// when the intervening events touched completely different fields. This is safe
+/// but wasteful — many concurrent writes are actually non-conflicting.
+///
+/// Commutative merge detects when changes are **disjoint**: if events from
+/// `expected` to `actual` only touched `field_a`, and our command only changes
+/// `field_b`, there's no conflict. We can proceed without retry.
+///
+/// # Algorithm
+///
+/// 1. Replay aggregate state at `expected` sequence (what command assumed)
+/// 2. Replay aggregate state at `actual` sequence (current reality)
+/// 3. Diff these states to find which fields changed between them
+/// 4. Extract which fields our command would modify
+/// 5. If disjoint → proceed; if overlap → retry
+///
+/// # Why Compare at Expected vs Actual (Not Actual vs Current)
+///
+/// We compare states at `expected` and `actual` because we want to know what
+/// changed SINCE the command was prepared. The command was built assuming state
+/// at `expected`. If fields changed between `expected` and `actual` don't overlap
+/// with what the command modifies, the command's assumptions are still valid.
+///
+/// # Graceful Degradation
+///
+/// If Replay RPC fails (unimplemented, timeout, etc.), we degrade to STRICT
+/// behavior. This is conservative: we'd rather retry unnecessarily than risk
+/// incorrect merges.
 ///
 /// Returns:
 /// - `Ok(Disjoint)` if changes don't overlap → command can proceed
@@ -301,8 +354,22 @@ async fn try_commutative_merge(
 
 /// Extract field names that a command would modify.
 ///
+/// # Why Wildcard "*" for Unknown Commands
+///
+/// When we can't determine which fields a command modifies, we return "*" (all fields).
+/// This is conservative: if we don't know what the command changes, we must assume
+/// it could conflict with anything. Better to trigger a retry than to allow a
+/// potentially conflicting merge.
+///
+/// # Current Implementation
+///
 /// For test commands with type_url like "test.UpdateFieldA", extracts "field_a".
-/// For unknown commands, returns "*" (assumes all fields).
+/// For real applications, this should either:
+/// 1. Use proto reflection to inspect command field semantics
+/// 2. Have aggregates declare which fields each command type modifies
+/// 3. Use naming conventions that encode field information
+///
+/// The wildcard fallback ensures correctness while field extraction is refined.
 fn extract_command_fields(command: &CommandBook) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
 
@@ -355,9 +422,28 @@ fn build_events_up_to_sequence(events: &EventBook, up_to_sequence: u32) -> Event
 
 /// Diff two Any-packed state messages to find changed field names.
 ///
-/// Returns a set of field names that differ between the two states.
-/// For now, uses a simple JSON-based comparison for test states.
-/// TODO: Use proto_reflect for proper protobuf reflection.
+/// # Fallback Strategy
+///
+/// This function uses a layered approach, trying more precise methods first:
+///
+/// 1. **Type URL check**: If types differ, return "*" (all fields). Different
+///    state types mean a schema change occurred — we can't meaningfully compare.
+///
+/// 2. **Test state parsing**: For `test.StatefulState`, parse as JSON and compare
+///    field-by-field. This supports framework testing without proto reflection.
+///
+/// 3. **Proto reflection**: If initialized, use `proto_reflect::diff_fields` for
+///    proper protobuf field comparison. This handles production aggregates.
+///
+/// 4. **Byte comparison fallback**: If all else fails, compare raw bytes. If bytes
+///    differ, assume all fields changed ("*"). This is maximally conservative.
+///
+/// # Why "*" When Types Differ
+///
+/// If `before.type_url != after.type_url`, the aggregate's state schema changed
+/// (via upcasting, migration, or bug). Field-level comparison is meaningless
+/// because field semantics may have changed. Treating this as "all fields changed"
+/// forces a retry with fresh state, which is the safe choice.
 fn diff_state_fields(
     before: &prost_types::Any,
     after: &prost_types::Any,

@@ -129,7 +129,7 @@ impl K8sServiceDiscovery {
             namespace: namespace.clone(),
             aggregates: Arc::new(RwLock::new(HashMap::new())),
             projectors: Arc::new(RwLock::new(HashMap::new())),
-            inner: StaticServiceDiscovery::new(&namespace),
+            inner: StaticServiceDiscovery::new(),
         })
     }
 
@@ -143,7 +143,7 @@ impl K8sServiceDiscovery {
             namespace: "static".to_string(),
             aggregates: Arc::new(RwLock::new(HashMap::new())),
             projectors: Arc::new(RwLock::new(HashMap::new())),
-            inner: StaticServiceDiscovery::new("static"),
+            inner: StaticServiceDiscovery::new(),
         }
     }
 

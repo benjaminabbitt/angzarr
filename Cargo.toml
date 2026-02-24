@@ -81,7 +81,7 @@ aws-k8s = ["dynamo", "sns-sqs", "s3", "otel"]
 amqp = ["dep:lapin", "dep:deadpool-lapin"]
 kafka = ["dep:rdkafka"]
 nats = ["dep:async-nats"]
-pubsub = ["dep:google-cloud-pubsub", "dep:google-cloud-auth", "dep:google-cloud-googleapis"]
+pubsub = ["dep:gcloud-pubsub", "dep:gcloud-googleapis"]
 sns-sqs = ["dep:aws-sdk-sns", "dep:aws-sdk-sqs", "dep:aws-config"]
 channel = []  # In-memory event bus, no external deps
 
@@ -98,7 +98,7 @@ dynamo = ["dep:aws-sdk-dynamodb", "dep:aws-config"]
 # =============================================================================
 # Payload Store Backends (claim check pattern)
 # =============================================================================
-gcs = ["dep:google-cloud-storage", "dep:google-cloud-auth"]
+gcs = ["dep:gcloud-storage"]
 s3 = ["dep:aws-sdk-s3", "dep:aws-config"]
 
 # =============================================================================
@@ -196,10 +196,9 @@ rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"], optiona
 async-nats = { version = "0.38", optional = true }
 
 # Google Pub/Sub (optional)
-# Using rustls-tls instead of default-tls for musl compatibility
-google-cloud-pubsub = { version = "0.32.3-preview", optional = true }
-google-cloud-auth = { version = "1", optional = true }
-google-cloud-googleapis = { version = "0.16", optional = true }
+# gcloud-pubsub is yoshidan's crate (was google-cloud-pubsub before name donation to Google)
+gcloud-pubsub = { version = "1.6", optional = true }
+gcloud-googleapis = { version = "1.3", features = ["pubsub"], optional = true }
 
 # AWS SNS/SQS (optional)
 aws-sdk-sns = { version = "1", optional = true }
@@ -213,8 +212,8 @@ aws-sdk-s3 = { version = "1", optional = true }
 aws-sdk-dynamodb = { version = "1", optional = true }
 
 # Google Cloud Storage (optional, for payload store)
-# Using rustls-tls instead of default-tls for musl compatibility
-google-cloud-storage = { version = "1", optional = true }
+# gcloud-storage is yoshidan's crate (was google-cloud-storage before name donation to Google)
+gcloud-storage = { version = "1.2", optional = true }
 
 # Google Cloud Bigtable (optional, for event store)
 bigtable_rs = { version = "0.2", optional = true }
