@@ -6,6 +6,12 @@ variable "name" {
   default     = "angzarr-mq"
 }
 
+variable "image" {
+  description = "RabbitMQ container image"
+  type        = string
+  default     = "rabbitmq:3-management"
+}
+
 variable "namespace" {
   description = "Kubernetes namespace"
   type        = string

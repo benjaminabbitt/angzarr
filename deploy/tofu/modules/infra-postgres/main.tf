@@ -1,10 +1,10 @@
 # Infrastructure Module: PostgreSQL
-# Deploys PostgreSQL via Helm and outputs connection info
+# Deploys PostgreSQL using official image
 
 terraform {
   required_providers {
-    helm = {
-      source  = "hashicorp/helm"
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0"
     }
     random = {
@@ -32,27 +32,105 @@ locals {
   service_name   = "${var.name}-postgresql"
 }
 
-resource "helm_release" "postgresql" {
-  name      = var.name
-  namespace = var.namespace
-  chart     = "${path.module}/../../../helm/angzarr-db-postgres"
+resource "kubernetes_deployment" "postgresql" {
+  metadata {
+    name      = local.service_name
+    namespace = var.namespace
+    labels = {
+      app = local.service_name
+    }
+  }
 
-  values = [yamlencode({
-    postgresql = {
-      auth = {
-        postgresPassword = local.admin_password
-        username         = var.username
-        password         = local.password
-        database         = var.database
-      }
-      primary = {
-        persistence = {
-          enabled      = var.persistence_enabled
-          size         = var.persistence_size
-          storageClass = var.storage_class
-        }
-        resources = var.resources
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = local.service_name
       }
     }
-  })]
+
+    template {
+      metadata {
+        labels = {
+          app = local.service_name
+        }
+      }
+
+      spec {
+        container {
+          name  = "postgresql"
+          image = var.image
+
+          port {
+            container_port = 5432
+            name           = "postgresql"
+          }
+
+          env {
+            name  = "POSTGRES_USER"
+            value = var.username
+          }
+
+          env {
+            name  = "POSTGRES_PASSWORD"
+            value = local.password
+          }
+
+          env {
+            name  = "POSTGRES_DB"
+            value = var.database
+          }
+
+          resources {
+            limits = {
+              cpu    = var.resources.limits.cpu
+              memory = var.resources.limits.memory
+            }
+            requests = {
+              cpu    = var.resources.requests.cpu
+              memory = var.resources.requests.memory
+            }
+          }
+
+          liveness_probe {
+            exec {
+              command = ["pg_isready", "-U", var.username, "-d", var.database]
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+            timeout_seconds       = 5
+          }
+
+          readiness_probe {
+            exec {
+              command = ["pg_isready", "-U", var.username, "-d", var.database]
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
+            timeout_seconds       = 5
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "postgresql" {
+  metadata {
+    name      = local.service_name
+    namespace = var.namespace
+  }
+
+  spec {
+    selector = {
+      app = local.service_name
+    }
+
+    port {
+      name        = "postgresql"
+      port        = 5432
+      target_port = 5432
+    }
+  }
 }

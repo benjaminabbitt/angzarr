@@ -29,7 +29,8 @@ post-commit:
         - "Cargo.lock"
         - "Containerfile"
         - "examples/rust/**"
-        - "deploy/helm/**"
+        - "deploy/k8s/**"
+        - "deploy/k3s/**"
 
 pre-commit:
   parallel: false
@@ -75,11 +76,6 @@ pre-commit:
       glob: "*.{cpp,hpp,cc,h,cxx}"
       run: just fmt-cpp
       stage_fixed: true
-
-    # Helm
-    helm-lint:
-      glob: "deploy/helm/**"
-      run: helm lint deploy/helm/angzarr
 
     # OpenTofu
     tofu-fmt:

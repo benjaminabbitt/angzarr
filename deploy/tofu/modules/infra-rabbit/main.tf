@@ -1,10 +1,10 @@
 # Infrastructure Module: RabbitMQ
-# Deploys RabbitMQ via Helm and outputs connection info
+# Deploys RabbitMQ using official image
 
 terraform {
   required_providers {
-    helm = {
-      source  = "hashicorp/helm"
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0"
     }
     random = {
@@ -32,24 +32,119 @@ locals {
   service_name  = "${var.name}-rabbitmq"
 }
 
-resource "helm_release" "rabbitmq" {
-  name      = var.name
-  namespace = var.namespace
-  chart     = "${path.module}/../../../helm/angzarr-mq-rabbitmq"
-
-  values = [yamlencode({
-    rabbitmq = {
-      auth = {
-        username     = var.username
-        password     = local.password
-        erlangCookie = local.erlang_cookie
-      }
-      persistence = {
-        enabled      = var.persistence_enabled
-        size         = var.persistence_size
-        storageClass = var.storage_class
-      }
-      resources = var.resources
+resource "kubernetes_deployment" "rabbitmq" {
+  metadata {
+    name      = local.service_name
+    namespace = var.namespace
+    labels = {
+      app = local.service_name
     }
-  })]
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = local.service_name
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = local.service_name
+        }
+      }
+
+      spec {
+        container {
+          name  = "rabbitmq"
+          image = var.image
+
+          port {
+            container_port = 5672
+            name           = "amqp"
+          }
+
+          port {
+            container_port = 15672
+            name           = "management"
+          }
+
+          env {
+            name  = "RABBITMQ_DEFAULT_USER"
+            value = var.username
+          }
+
+          env {
+            name  = "RABBITMQ_DEFAULT_PASS"
+            value = local.password
+          }
+
+          env {
+            name  = "RABBITMQ_ERLANG_COOKIE"
+            value = local.erlang_cookie
+          }
+
+          resources {
+            limits = {
+              cpu    = var.resources.limits.cpu
+              memory = var.resources.limits.memory
+            }
+            requests = {
+              cpu    = var.resources.requests.cpu
+              memory = var.resources.requests.memory
+            }
+          }
+
+          # Increased timeouts for resource-constrained environments
+          liveness_probe {
+            exec {
+              command = ["rabbitmq-diagnostics", "check_running"]
+            }
+            initial_delay_seconds = 120
+            period_seconds        = 60
+            timeout_seconds       = 30
+            failure_threshold     = 5
+          }
+
+          readiness_probe {
+            exec {
+              command = ["rabbitmq-diagnostics", "check_running"]
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 30
+            timeout_seconds       = 30
+            failure_threshold     = 5
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "rabbitmq" {
+  metadata {
+    name      = local.service_name
+    namespace = var.namespace
+  }
+
+  spec {
+    selector = {
+      app = local.service_name
+    }
+
+    port {
+      name        = "amqp"
+      port        = 5672
+      target_port = 5672
+    }
+
+    port {
+      name        = "management"
+      port        = 15672
+      target_port = 15672
+    }
+  }
 }

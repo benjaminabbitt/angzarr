@@ -71,3 +71,90 @@ run-table:
 
 run-hand:
     just _container run-hand
+
+# === k3s Deployment ===
+
+NAMESPACE := "angzarr"
+REGISTRY := "localhost:30500"
+REGISTRY_INTERNAL := "angzarr-registry.angzarr.svc.cluster.local:5000"
+export KUBECONFIG := env_var_or_default("KUBECONFIG", env_var("HOME") + "/.kube/k3s.yaml")
+
+# Build angzarr sidecar images for k3s
+build-sidecars:
+    @echo "Building angzarr sidecar images..."
+    podman build --target angzarr-aggregate-dev -t {{REGISTRY}}/angzarr-aggregate:dev -f "{{TOP}}/Containerfile" "{{TOP}}"
+    podman build --target angzarr-saga-dev -t {{REGISTRY}}/angzarr-saga:dev -f "{{TOP}}/Containerfile" "{{TOP}}"
+    podman build --target angzarr-projector-dev -t {{REGISTRY}}/angzarr-projector:dev -f "{{TOP}}/Containerfile" "{{TOP}}"
+    podman build --target angzarr-process-manager-dev -t {{REGISTRY}}/angzarr-process-manager:dev -f "{{TOP}}/Containerfile" "{{TOP}}"
+
+# Build Python poker images for k3s
+build-poker:
+    @echo "Building Python poker images..."
+    podman build --target agg-player -t {{REGISTRY}}/poker-python-player:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target agg-table -t {{REGISTRY}}/poker-python-table:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target agg-hand -t {{REGISTRY}}/poker-python-hand:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target saga-table-hand -t {{REGISTRY}}/poker-python-saga-table-hand:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target saga-hand-table -t {{REGISTRY}}/poker-python-saga-hand-table:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target saga-table-player -t {{REGISTRY}}/poker-python-saga-table-player:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target saga-hand-player -t {{REGISTRY}}/poker-python-saga-hand-player:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target pmg-hand-flow -t {{REGISTRY}}/poker-python-pmg-hand-flow:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+    podman build --target prj-output -t {{REGISTRY}}/poker-python-prj-output:dev -f "{{TOP}}/examples/python/Containerfile" "{{TOP}}"
+
+# Build all images
+build: build-sidecars build-poker
+
+# Push images to local k3s registry (no sudo required)
+push-registry:
+    @echo "Pushing images to local registry at {{REGISTRY}}..."
+    # Sidecars
+    podman push --tls-verify=false {{REGISTRY}}/angzarr-aggregate:dev
+    podman push --tls-verify=false {{REGISTRY}}/angzarr-saga:dev
+    podman push --tls-verify=false {{REGISTRY}}/angzarr-projector:dev
+    podman push --tls-verify=false {{REGISTRY}}/angzarr-process-manager:dev
+    # Poker
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-player:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-table:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-hand:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-saga-table-hand:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-saga-hand-table:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-saga-table-player:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-saga-hand-player:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-pmg-hand-flow:dev
+    podman push --tls-verify=false {{REGISTRY}}/poker-python-prj-output:dev
+    @echo "Images pushed successfully"
+
+# Deploy to k3s via Helm
+deploy-k3s:
+    @echo "Deploying Python poker to k3s..."
+    helm upgrade --install poker-python "{{TOP}}/deploy/k8s/helm/angzarr" \
+        -n {{NAMESPACE}} \
+        -f "{{TOP}}/examples/python/values-k3s.yaml"
+
+# Undeploy from k3s
+undeploy-k3s:
+    helm uninstall poker-python -n {{NAMESPACE}} || true
+
+# Full k3s deployment: build, push to registry, deploy
+k3s-up: build push-registry deploy-k3s
+    @echo ""
+    @echo "=== Python Poker Deployed ==="
+    @kubectl get pods -n {{NAMESPACE}}
+
+# Tear down k3s deployment
+k3s-down: undeploy-k3s
+
+# Show k3s deployment status
+k3s-status:
+    @echo "=== Pods ==="
+    @kubectl get pods -n {{NAMESPACE}} -o wide
+    @echo ""
+    @echo "=== Services ==="
+    @kubectl get svc -n {{NAMESPACE}}
+
+# Show logs for a component
+k3s-logs COMPONENT:
+    kubectl logs -n {{NAMESPACE}} -l angzarr.io/app={{COMPONENT}} -c {{COMPONENT}} -f
+
+# Show angzarr sidecar logs for a component
+k3s-logs-sidecar COMPONENT:
+    kubectl logs -n {{NAMESPACE}} -l angzarr.io/app={{COMPONENT}} -c angzarr -f

@@ -6,6 +6,12 @@ variable "name" {
   default     = "angzarr-db"
 }
 
+variable "image" {
+  description = "PostgreSQL container image"
+  type        = string
+  default     = "postgres:16"
+}
+
 variable "namespace" {
   description = "Kubernetes namespace"
   type        = string

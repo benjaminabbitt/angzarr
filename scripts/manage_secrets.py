@@ -269,7 +269,7 @@ def cmd_check(args: argparse.Namespace, config: Config) -> int:
 
 
 def cmd_sync(args: argparse.Namespace, config: Config) -> int:
-    """Sync secrets to target namespace in format expected by Bitnami charts."""
+    """Sync secrets to target namespace in format expected by operator-deployed services."""
     # Ensure source secrets exist
     if not secret_exists(config.secret_name, config.secrets_namespace):
         print(
@@ -287,7 +287,7 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     # Ensure target namespace exists
     create_namespace(config.namespace)
 
-    # Create RabbitMQ secret (format expected by bitnami/rabbitmq)
+    # Create RabbitMQ secret (format expected by RabbitMQ Cluster Operator)
     rabbitmq_secret = {
         "rabbitmq-password": source_data.get("rabbitmq-password", ""),
         "rabbitmq-erlang-cookie": source_data.get("rabbitmq-erlang-cookie", ""),
@@ -351,9 +351,9 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     rabbitmq_password = source_data.get("rabbitmq-password", "")
     redis_password = source_data.get("redis-password", "")
     angzarr_secret = {
-        "postgres-uri": f"postgres://angzarr:{postgres_password}@angzarr-db-postgresql:5432/angzarr",
-        "amqp-url": f"amqp://angzarr:{rabbitmq_password}@rabbitmq:5672",
-        "redis-uri": f"redis://:{redis_password}@angzarr-redis-master:6379",
+        "postgres-uri": f"postgres://angzarr:{postgres_password}@angzarr-db-rw:5432/angzarr",
+        "amqp-url": f"amqp://angzarr:{rabbitmq_password}@angzarr-mq:5672",
+        "redis-uri": f"redis://:{redis_password}@angzarr-redis:6379",
     }
     create_secret(
         "angzarr-secrets",
@@ -405,7 +405,7 @@ def main() -> int:
 
     # sync command
     sync_parser = subparsers.add_parser(
-        "sync", help="Sync secrets to target namespace for Bitnami charts"
+        "sync", help="Sync secrets to target namespace for operator-deployed services"
     )
     sync_parser.add_argument(
         "--force", action="store_true", help="Overwrite existing secrets"

@@ -1,10 +1,10 @@
 # Infrastructure Module: NATS
-# Deploys NATS via Helm and outputs connection info
+# Deploys NATS using official image with JetStream
 
 terraform {
   required_providers {
-    helm = {
-      source  = "hashicorp/helm"
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0"
     }
   }
@@ -14,34 +14,111 @@ locals {
   service_name = "${var.name}-nats"
 }
 
-resource "helm_release" "nats" {
-  name       = var.name
-  namespace  = var.namespace
-  repository = "https://nats-io.github.io/k8s/helm/charts/"
-  chart      = "nats"
-  version    = var.chart_version
+resource "kubernetes_deployment" "nats" {
+  metadata {
+    name      = local.service_name
+    namespace = var.namespace
+    labels = {
+      app = local.service_name
+    }
+  }
 
-  values = [yamlencode({
-    nats = {
-      jetstream = {
-        enabled = var.jetstream_enabled
-        memStorage = {
-          enabled = true
-          size    = var.jetstream_mem_size
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = local.service_name
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = local.service_name
         }
-        fileStorage = {
-          enabled      = var.jetstream_file_enabled
-          size         = var.jetstream_file_size
-          storageClass = var.storage_class
+      }
+
+      spec {
+        container {
+          name  = "nats"
+          image = var.image
+
+          port {
+            container_port = 4222
+            name           = "client"
+          }
+
+          port {
+            container_port = 8222
+            name           = "monitor"
+          }
+
+          port {
+            container_port = 6222
+            name           = "cluster"
+          }
+
+          # Enable JetStream with monitoring
+          args = var.jetstream_enabled ? ["-js", "-m", "8222"] : ["-m", "8222"]
+
+          resources {
+            limits = {
+              cpu    = var.resources.limits.cpu
+              memory = var.resources.limits.memory
+            }
+            requests = {
+              cpu    = var.resources.requests.cpu
+              memory = var.resources.requests.memory
+            }
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/healthz"
+              port = 8222
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
+            timeout_seconds       = 5
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/healthz"
+              port = 8222
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
+            timeout_seconds       = 5
+          }
         }
       }
     }
-    cluster = {
-      enabled  = var.cluster_enabled
-      replicas = var.replicas
+  }
+}
+
+resource "kubernetes_service" "nats" {
+  metadata {
+    name      = local.service_name
+    namespace = var.namespace
+  }
+
+  spec {
+    selector = {
+      app = local.service_name
     }
-    natsBox = {
-      enabled = var.nats_box_enabled
+
+    port {
+      name        = "client"
+      port        = 4222
+      target_port = 4222
     }
-  })]
+
+    port {
+      name        = "monitor"
+      port        = 8222
+      target_port = 8222
+    }
+  }
 }

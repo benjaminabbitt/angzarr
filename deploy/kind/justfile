@@ -45,28 +45,38 @@ namespace:
 
 # Deploy RabbitMQ
 rabbit: namespace
-    helm upgrade --install angzarr-mq-rabbitmq "{{TOP}}/deploy/helm/angzarr-mq-rabbitmq" \
+    helm upgrade --install angzarr-mq "{{TOP}}/deploy/k8s/helm/rabbitmq" \
         --namespace {{NAMESPACE}} \
         --wait --timeout 5m
 
-# Deploy Kafka
-kafka: namespace
-    helm upgrade --install angzarr-mq-kafka "{{TOP}}/deploy/helm/angzarr-mq-kafka" \
+# Deploy Kafka (requires Strimzi operator)
+kafka: namespace operators
+    helm upgrade --install angzarr-mq "{{TOP}}/deploy/k8s/helm/kafka" \
+        --namespace {{NAMESPACE}} \
+        --wait --timeout 5m
+
+# Deploy NATS
+nats: namespace
+    helm upgrade --install angzarr-mq "{{TOP}}/deploy/k8s/helm/nats" \
         --namespace {{NAMESPACE}} \
         --wait --timeout 5m
 
 # Deploy PostgreSQL
 postgres: namespace
-    helm upgrade --install angzarr-db-postgres "{{TOP}}/deploy/helm/angzarr-db-postgres" \
+    helm upgrade --install angzarr-db "{{TOP}}/deploy/k8s/helm/postgres" \
         --namespace {{NAMESPACE}} \
         --wait --timeout 5m
 
-# Deploy Redis (for snapshots)
+# Deploy Redis
 redis: namespace
-    helm upgrade --install angzarr-redis oci://registry-1.docker.io/bitnamicharts/redis \
+    helm upgrade --install angzarr-redis "{{TOP}}/deploy/k8s/helm/redis" \
         --namespace {{NAMESPACE}} \
-        --set auth.enabled=false \
-        --set architecture=standalone \
+        --wait --timeout 5m
+
+# Deploy operators (Strimzi for Kafka, CloudNative-PG)
+operators:
+    helm upgrade --install angzarr-operators "{{TOP}}/deploy/k8s/helm/operators" \
+        --namespace operators --create-namespace \
         --wait --timeout 5m
 
 # === Infra Presets ===
@@ -79,17 +89,21 @@ infra-standard: rabbit postgres redis
 infra-kafka: kafka postgres redis
     @echo "Kafka infrastructure deployed (Kafka + PostgreSQL + Redis)"
 
+# Deploy NATS infra: NATS + Postgres + Redis
+infra-nats: nats postgres redis
+    @echo "NATS infrastructure deployed (NATS + PostgreSQL + Redis)"
+
 # === Application Deployment ===
 
 # Deploy angzarr framework (sidecars)
 framework: namespace
-    helm upgrade --install angzarr "{{TOP}}/deploy/helm/angzarr" \
+    helm upgrade --install angzarr "{{TOP}}/deploy/k8s/helm/angzarr" \
         --namespace {{NAMESPACE}} \
         --wait --timeout 5m
 
 # Deploy a domain (usage: just kind deploy-domain player image=ghcr.io/angzarr-io/player-agg:latest)
 deploy-domain name image: namespace
-    helm upgrade --install {{name}} "{{TOP}}/deploy/helm/angzarr-domain" \
+    helm upgrade --install {{name}} "{{TOP}}/deploy/k8s/helm/angzarr-domain" \
         --namespace {{NAMESPACE}} \
         --set domain={{name}} \
         --set aggregate.image={{image}} \
@@ -97,7 +111,7 @@ deploy-domain name image: namespace
 
 # Deploy a process manager
 deploy-pm name image subscriptions targets: namespace
-    helm upgrade --install {{name}} "{{TOP}}/deploy/helm/angzarr-pm" \
+    helm upgrade --install {{name}} "{{TOP}}/deploy/k8s/helm/angzarr-pm" \
         --namespace {{NAMESPACE}} \
         --set name={{name}} \
         --set image={{image}} \
@@ -122,10 +136,10 @@ up-kafka: create network-check infra-kafka framework
 # Tear down everything
 down:
     helm uninstall angzarr -n {{NAMESPACE}} 2>/dev/null || true
-    helm uninstall angzarr-mq-rabbitmq -n {{NAMESPACE}} 2>/dev/null || true
-    helm uninstall angzarr-mq-kafka -n {{NAMESPACE}} 2>/dev/null || true
-    helm uninstall angzarr-db-postgres -n {{NAMESPACE}} 2>/dev/null || true
+    helm uninstall angzarr-mq -n {{NAMESPACE}} 2>/dev/null || true
+    helm uninstall angzarr-db -n {{NAMESPACE}} 2>/dev/null || true
     helm uninstall angzarr-redis -n {{NAMESPACE}} 2>/dev/null || true
+    helm uninstall angzarr-operators -n operators 2>/dev/null || true
     kubectl delete namespace {{NAMESPACE}} 2>/dev/null || true
 
 # Nuclear option: delete cluster entirely
@@ -191,4 +205,4 @@ port-forward-gateway:
 port-forward-rabbit:
     @pkill -f "kubectl.*port-forward.*rabbitmq" || true
     kubectl port-forward -n {{NAMESPACE}} svc/angzarr-mq-rabbitmq 15672:15672 &
-    @echo "RabbitMQ UI available at localhost:15672"
+    @echo "RabbitMQ UI available at localhost:15672 (user: guest, pass: guest)"

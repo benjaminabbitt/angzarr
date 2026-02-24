@@ -1,0 +1,259 @@
+# Python example applications for local development
+# Deploy with: helm upgrade --install angzarr ./deploy/helm/angzarr -f ./deploy/helm/angzarr/values-python.yaml -n angzarr --create-namespace
+#
+# =============================================================================
+# Port Scheme - Python (50200-50299, 3 ports per component)
+# =============================================================================
+# Per-component: +0 gRPC, +1 debug, +2 visualization
+#
+# agg-order:              50200-50202  (gRPC: 50200)
+# agg-inventory:          50203-50205  (gRPC: 50203)
+# agg-fulfillment:        50206-50208  (gRPC: 50206)
+# sag-order-fulfillment:  50218-50220  (gRPC: 50218)
+# sag-order-inventory:    50221-50223  (gRPC: 50221)
+# sag-fulfillment-inv:    50224-50226  (gRPC: 50224)
+# prj-inventory:          50233-50235  (gRPC: 50233)
+# pmg-fulfillment:        50239-50241  (gRPC: 50239)
+# =============================================================================
+
+# Global settings
+global:
+  security:
+    allowInsecureImages: true
+
+replicaCount: 1
+
+# Angzarr sidecar images (using local registry)
+# All images use sha256 tags - skaffold injects actual tags via setValueTemplates
+# pullPolicy: IfNotPresent works because new content = new sha256 tag = K8s pulls
+images:
+  aggregate:
+    repository: ghcr.io/angzarr-io/angzarr-aggregate
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  projector:
+    repository: ghcr.io/angzarr-io/angzarr-projector
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  saga:
+    repository: ghcr.io/angzarr-io/angzarr-saga
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  processManager:
+    repository: ghcr.io/angzarr-io/angzarr-process-manager
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  stream:
+    repository: ghcr.io/angzarr-io/angzarr-stream
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  gateway:
+    repository: ghcr.io/angzarr-io/angzarr-gateway
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  log:
+    repository: ghcr.io/angzarr-io/angzarr-log
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  topology:
+    repository: ghcr.io/angzarr-io/angzarr-topology
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+# Minimal resources for local dev
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+applicationResources:
+  requests:
+    memory: "32Mi"
+    cpu: "25m"
+  limits:
+    memory: "128Mi"
+    cpu: "100m"
+
+# Storage configuration
+# Requires: helm install angzarr-db ./deploy/k8s/helm/postgres -n angzarr
+storage:
+  type: postgres
+  postgres:
+    uri: "postgres://angzarr:angzarr-dev@angzarr-db-rw:5432/angzarr"
+
+# Messaging configuration
+# Requires: helm install angzarr-mq ./deploy/k8s/helm/rabbitmq -n angzarr
+messaging:
+  type: "amqp"
+  amqp:
+    enabled: true
+    url: "amqp://guest:guest@angzarr-mq:5672/%2F"
+
+# AMQP event bus
+amqp:
+  enabled: true
+  url: "amqp://guest:guest@angzarr-mq:5672/%2F"
+
+# External secrets disabled for local dev
+externalSecrets:
+  enabled: false
+
+# Central infrastructure services
+infrastructure:
+  stream:
+    enabled: true
+    replicas: 1
+    port: 1340
+    projectorPort: 1345
+    serviceType: NodePort
+    nodePort: 31340
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
+  gateway:
+    enabled: true
+    replicas: 1
+    port: 9084
+    serviceType: NodePort
+    nodePort: 30084
+    streamService: "angzarr-stream:1340"
+    streamTimeoutSecs: 30
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+
+  log:
+    enabled: true
+    replicas: 1
+    port: 50051
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Business applications - each gets angzarr as sidecar
+applications:
+  business:
+    # E-commerce Domain Aggregates (Python: 50200-50299)
+    - name: agg-order-py
+      image:
+        repository: ghcr.io/angzarr-io/agg-order-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "order"
+      port: 50200        # order gRPC (50200-50202)
+
+    - name: agg-inventory-py
+      image:
+        repository: ghcr.io/angzarr-io/agg-inventory-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50203        # inventory gRPC (50203-50205)
+
+    - name: agg-fulfillment-py
+      image:
+        repository: ghcr.io/angzarr-io/agg-fulfillment-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "fulfillment"
+      port: 50206        # fulfillment gRPC (50206-50208)
+
+  projectors:
+    # Inventory Projector - logs inventory stock changes
+    - name: prj-inventory-py
+      image:
+        repository: ghcr.io/angzarr-io/prj-inventory-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "inventory"
+      port: 50233        # prj-inventory gRPC (50233-50235)
+      topics:
+        - "inventory"
+
+  sagas:
+    # Order-Fulfillment Saga - creates shipments when orders complete
+    - name: sag-order-fulfillment-py
+      image:
+        repository: ghcr.io/angzarr-io/sag-order-fulfillment-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "sag-order-fulfillment"
+      port: 50218        # sag-order-fulfillment gRPC (50218-50220)
+      topics:
+        - "order.*"
+
+    # Order-Inventory Saga - reserves stock when orders are created
+    - name: sag-order-inventory-py
+      image:
+        repository: ghcr.io/angzarr-io/sag-order-inventory-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "sag-order-inventory"
+      port: 50221        # sag-order-inventory gRPC (50221-50223)
+      topics:
+        - "order.*"
+
+    # Fulfillment-Inventory Saga - commits inventory when shipments ship
+    - name: sag-fulfillment-inventory-py
+      image:
+        repository: ghcr.io/angzarr-io/sag-fulfillment-inventory-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "sag-fulfillment-inventory"
+      port: 50224        # sag-fulfillment-inventory gRPC (50224-50226)
+      topics:
+        - "fulfillment.*"
+
+  processManagers:
+    # Order Fulfillment PM - fan-in: payment + inventory + fulfillment -> Ship
+    - name: pmg-fulfillment-py
+      image:
+        repository: ghcr.io/angzarr-io/pmg-fulfillment-py
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "pmg-fulfillment"
+      port: 50239        # pmg-fulfillment gRPC (50239-50241)
+      topics:
+        - "order.*"
+        - "inventory.*"
+        - "fulfillment.*"
+
+# Service configuration
+service:
+  type: NodePort
+  aggregatePort: 1310
+  queryPort: 1315
+  nodePort:
+    enabled: true
+    aggregate: 31310
+
+debug:
+  enabled: false
+
+logging:
+  level: info
+
+autoscaling:
+  enabled: false
+
+reloader:
+  enabled: false
+
+serviceDiscovery:
+  headless: false

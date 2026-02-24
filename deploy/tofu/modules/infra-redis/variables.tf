@@ -6,40 +6,34 @@ variable "name" {
   default     = "angzarr-cache"
 }
 
+variable "image" {
+  description = "Redis container image"
+  type        = string
+  default     = "redis:7"
+}
+
 variable "namespace" {
   description = "Kubernetes namespace"
   type        = string
 }
 
-variable "chart_version" {
-  description = "Bitnami Redis chart version"
-  type        = string
-  default     = "19.0.0"
-}
-
 variable "auth_enabled" {
   description = "Enable Redis authentication"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "password" {
-  description = "Redis password (generated if empty)"
+  description = "Redis password (generated if empty and auth enabled)"
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "replica_count" {
-  description = "Number of Redis replicas"
-  type        = number
-  default     = 0
-}
-
 variable "persistence_enabled" {
-  description = "Enable persistent storage"
+  description = "Enable persistent storage (not yet implemented)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "persistence_size" {

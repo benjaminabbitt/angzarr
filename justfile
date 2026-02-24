@@ -25,6 +25,7 @@ REGISTRY := "ghcr.io/angzarr-io"
 mod client "client/justfile"
 mod examples "examples/justfile"
 mod images "build/images/justfile"
+mod k3s "deploy/k3s/justfile"
 mod kind "deploy/kind/justfile"
 mod tofu "deploy/tofu/justfile"
 
@@ -336,15 +337,94 @@ port-forward-grafana:
     @kubectl port-forward --address 127.0.0.1 -n observability svc/observability-grafana 3000:80 &
     @echo "Grafana available at localhost:3000"
 
+# === Operators ===
+
+# Install all Kubernetes operators (CloudNativePG, Strimzi, RabbitMQ)
+operators: _cluster-ready
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Installing operators ==="
+    # Helm-based operators (CloudNativePG, Strimzi)
+    helm dependency update "{{HELM_K8S}}/operators"
+    helm upgrade --install angzarr-operators "{{HELM_K8S}}/operators" \
+        -n operators --create-namespace --wait
+    # RabbitMQ operator (no official Helm chart)
+    just operators-rabbitmq
+    echo "=== Operators installed ==="
+    kubectl get pods -n operators
+    kubectl get pods -n rabbitmq-system
+
+# Install RabbitMQ Cluster Operator (no official Helm chart)
+operators-rabbitmq:
+    kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/download/v2.12.0/cluster-operator.yml
+
+# Uninstall all operators
+operators-delete:
+    kubectl delete -f https://github.com/rabbitmq/cluster-operator/releases/download/v2.12.0/cluster-operator.yml || true
+    helm uninstall angzarr-operators -n operators || true
+
 # === Infrastructure ===
 
-# Deploy local backing services (PostgreSQL, RabbitMQ)
-infra:
+HELM_K8S := TOP + "/deploy/k8s/helm"
+
+# Deploy infrastructure to angzarr namespace (requires operators installed first)
+infra: _cluster-ready
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Deploying infrastructure ==="
+    # PostgreSQL (CloudNativePG)
+    helm upgrade --install angzarr-db "{{HELM_K8S}}/postgres" \
+        -n angzarr --create-namespace \
+        --set auth.password=angzarr --wait
+    # RabbitMQ
+    helm upgrade --install angzarr-mq "{{HELM_K8S}}/rabbitmq" \
+        -n angzarr \
+        --set auth.password=angzarr --wait
+    echo "=== Infrastructure deployed ==="
+    kubectl get pods -n angzarr
+
+# Deploy infrastructure with Kafka (alternative to RabbitMQ)
+infra-kafka: _cluster-ready
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Deploying infrastructure (Kafka) ==="
+    # PostgreSQL (CloudNativePG)
+    helm upgrade --install angzarr-db "{{HELM_K8S}}/postgres" \
+        -n angzarr --create-namespace \
+        --set auth.password=angzarr --wait
+    # Kafka (Strimzi)
+    helm upgrade --install angzarr-kafka "{{HELM_K8S}}/kafka" \
+        -n angzarr --wait --timeout 5m
+    echo "=== Infrastructure deployed ==="
+    kubectl get pods -n angzarr
+
+# Deploy Redis (optional - for snapshot store)
+infra-redis:
+    helm upgrade --install angzarr-redis "{{HELM_K8S}}/redis" \
+        -n angzarr --create-namespace \
+        --set auth.password=angzarr --wait
+
+# Deploy NATS (optional - alternative event bus)
+infra-nats:
+    helm dependency update "{{HELM_K8S}}/nats"
+    helm upgrade --install angzarr-nats "{{HELM_K8S}}/nats" \
+        -n angzarr --create-namespace --wait
+
+# Destroy infrastructure
+infra-destroy:
+    helm uninstall angzarr-nats -n angzarr || true
+    helm uninstall angzarr-redis -n angzarr || true
+    helm uninstall angzarr-kafka -n angzarr || true
+    helm uninstall angzarr-mq -n angzarr || true
+    helm uninstall angzarr-db -n angzarr || true
+
+# Legacy: Deploy via Tofu (deprecated - use Helm charts instead)
+infra-tofu:
     just tofu init local
     just tofu apply-auto local
 
-# Destroy local backing services
-infra-destroy:
+# Legacy: Destroy via Tofu
+infra-tofu-destroy:
     just tofu destroy-auto local
 
 # Initialize secrets
@@ -432,6 +512,7 @@ reindex: qdrant-start
 _cluster-ready:
     just cluster-create
     just secrets-init
+    just operators
     just infra
 
 _skaffold-ready:

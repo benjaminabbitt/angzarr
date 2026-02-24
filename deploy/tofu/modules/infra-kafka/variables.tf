@@ -6,45 +6,15 @@ variable "name" {
   default     = "angzarr-mq"
 }
 
+variable "image" {
+  description = "Kafka container image"
+  type        = string
+  default     = "apache/kafka:3.7.0"
+}
+
 variable "namespace" {
   description = "Kubernetes namespace"
   type        = string
-}
-
-variable "replicas" {
-  description = "Number of Kafka brokers"
-  type        = number
-  default     = 1
-}
-
-variable "kraft_enabled" {
-  description = "Use KRaft mode (no Zookeeper)"
-  type        = bool
-  default     = true
-}
-
-variable "security_protocol" {
-  description = "Security protocol (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL)"
-  type        = string
-  default     = "PLAINTEXT"
-}
-
-variable "persistence_enabled" {
-  description = "Enable persistent storage"
-  type        = bool
-  default     = true
-}
-
-variable "persistence_size" {
-  description = "Persistent volume size"
-  type        = string
-  default     = "8Gi"
-}
-
-variable "storage_class" {
-  description = "Storage class for PVC"
-  type        = string
-  default     = ""
 }
 
 variable "resources" {

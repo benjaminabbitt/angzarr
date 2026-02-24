@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo test --test bus_kafka --features "kafka test-utils" -- --nocapture
 //!
-//! Uses Bitnami Kafka with KRaft mode (no Zookeeper) for simpler setup.
+//! Uses Apache Kafka with KRaft mode (no Zookeeper) for simpler setup.
 
 #![cfg(feature = "kafka")]
 

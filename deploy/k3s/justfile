@@ -1,0 +1,155 @@
+# k3s cluster management and deployment for angzarr
+#
+# Uses k3s (lightweight K8s) running natively on the host.
+# Deploys infrastructure via OpenTofu.
+
+set shell := ["bash", "-c"]
+
+TOP := `git rev-parse --show-toplevel`
+TF_DIR := TOP + "/deploy/tofu/environments/k3s"
+NAMESPACE := "angzarr"
+
+# k3s kubeconfig path
+export KUBECONFIG := env_var_or_default("KUBECONFIG", env_var("HOME") + "/.kube/k3s.yaml")
+
+default:
+    @just --list
+
+# === Initial Setup (requires sudo) ===
+#
+# These targets require sudo for one-time cluster configuration.
+# Once setup is complete, all deployments are rootless.
+
+# Configure k3s to use local HTTP registry (one-time setup, requires sudo)
+# After running this, you can push to localhost:30500 and k3s can pull images
+setup-registry:
+    @echo "Configuring k3s to use local HTTP registry..."
+    @echo "This requires sudo to:"
+    @echo "  1. Create /etc/rancher/k3s/registries.yaml"
+    @echo "  2. Restart k3s to pick up the configuration"
+    @echo ""
+    @printf 'mirrors:\n  "localhost:30500":\n    endpoint:\n      - "http://localhost:30500"\n' | sudo tee /etc/rancher/k3s/registries.yaml > /dev/null
+    sudo systemctl restart k3s
+    @echo ""
+    @echo "Waiting for k3s to restart..."
+    @sleep 10
+    @kubectl get nodes 2>/dev/null && echo "k3s ready with registry configured" || echo "Waiting for k3s..."
+
+# Full initial setup: configure registry + deploy infrastructure (requires sudo)
+# Run this once after installing k3s. All subsequent operations are rootless.
+setup: setup-registry init (apply-auto "rabbit")
+    @echo ""
+    @echo "=== Initial Setup Complete ==="
+    @echo "k3s is configured with:"
+    @echo "  - Local registry at localhost:30500"
+    @echo "  - RabbitMQ, PostgreSQL, Redis deployed"
+    @echo ""
+    @echo "All subsequent deployments are rootless:"
+    @echo "  just build push-registry deploy-k3s"
+    @kubectl get pods -n {{NAMESPACE}}
+
+# === Cluster Lifecycle ===
+
+# Check if k3s is running
+status:
+    @echo "=== k3s Status ==="
+    @systemctl is-active k3s && echo "k3s service: running" || echo "k3s service: stopped"
+    @echo ""
+    @echo "=== Nodes ==="
+    @kubectl get nodes -o wide 2>/dev/null || echo "Cannot connect to cluster"
+    @echo ""
+    @echo "=== Pods ==="
+    @kubectl get pods -n {{NAMESPACE}} -o wide 2>/dev/null || echo "No pods in namespace"
+
+# Start k3s service (requires sudo)
+start:
+    @echo "Starting k3s..."
+    @echo "Run: sudo systemctl start k3s"
+
+# Stop k3s service (requires sudo)
+stop:
+    @echo "Stopping k3s..."
+    @echo "Run: sudo systemctl stop k3s"
+
+# === OpenTofu Infrastructure ===
+
+# Initialize tofu
+init:
+    cd "{{TF_DIR}}" && tofu init
+
+# Plan with RabbitMQ (default)
+plan BUS="rabbit":
+    cd "{{TF_DIR}}" && tofu plan \
+        -var="kubeconfig_path=$KUBECONFIG" \
+        -var="bus_type={{BUS}}"
+
+# Apply with RabbitMQ (default)
+apply BUS="rabbit":
+    cd "{{TF_DIR}}" && tofu apply \
+        -var="kubeconfig_path=$KUBECONFIG" \
+        -var="bus_type={{BUS}}"
+
+# Apply auto-approve
+apply-auto BUS="rabbit":
+    cd "{{TF_DIR}}" && tofu apply -auto-approve \
+        -var="kubeconfig_path=$KUBECONFIG" \
+        -var="bus_type={{BUS}}"
+
+# Destroy infrastructure
+destroy:
+    cd "{{TF_DIR}}" && tofu destroy \
+        -var="kubeconfig_path=$KUBECONFIG"
+
+# Destroy auto-approve
+destroy-auto:
+    cd "{{TF_DIR}}" && tofu destroy -auto-approve \
+        -var="kubeconfig_path=$KUBECONFIG"
+
+# Show outputs
+output:
+    cd "{{TF_DIR}}" && tofu output
+
+# === Convenience Presets ===
+
+# Full setup: init + apply with RabbitMQ
+up: init (apply-auto "rabbit")
+    @echo ""
+    @echo "=== Angzarr Ready ==="
+    @kubectl get pods -n {{NAMESPACE}}
+
+# Full setup with NATS
+up-nats: init (apply-auto "nats")
+    @echo ""
+    @echo "=== Angzarr Ready (NATS) ==="
+    @kubectl get pods -n {{NAMESPACE}}
+
+# Full setup with Kafka
+up-kafka: init (apply-auto "kafka")
+    @echo ""
+    @echo "=== Angzarr Ready (Kafka) ==="
+    @kubectl get pods -n {{NAMESPACE}}
+
+# Tear down all infrastructure
+down: destroy-auto
+
+# === Debugging ===
+
+# Show all pods
+pods:
+    kubectl get pods -n {{NAMESPACE}} -o wide
+
+# Show all services
+services:
+    kubectl get svc -n {{NAMESPACE}}
+
+# Show logs for a deployment
+logs DEP:
+    kubectl logs -n {{NAMESPACE}} -l app={{DEP}} -f
+
+# Exec into a pod
+exec POD:
+    kubectl exec -it -n {{NAMESPACE}} {{POD}} -- /bin/sh
+
+# Port forward a service (usage: just k3s forward rabbitmq 15672)
+forward SVC PORT:
+    kubectl port-forward -n {{NAMESPACE}} svc/{{SVC}} {{PORT}}:{{PORT}}
