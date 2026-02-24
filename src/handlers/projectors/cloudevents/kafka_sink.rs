@@ -251,8 +251,10 @@ mod tests {
     use super::*;
 
     // Test fixtures - not real credentials
-    const TEST_USER: &str = "test-user";
-    const TEST_PASSWORD: &str = "test-password";
+    // lgtm[rust/hardcoded-credentials]
+    const TEST_USER: &str = "test-user"; // codeql[rust/hard-coded-credentials]
+                                         // lgtm[rust/hardcoded-credentials]
+    const TEST_PASSWORD: &str = "test-password"; // codeql[rust/hard-coded-credentials]
 
     #[test]
     fn test_config_defaults() {

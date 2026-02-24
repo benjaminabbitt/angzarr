@@ -60,12 +60,12 @@ def create_namespace(namespace: str) -> None:
     if not namespace_exists(namespace):
         print(
             f"Creating namespace: {namespace}"
-        )  # nosec - namespace name, not sensitive
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name, not sensitive
         kubectl("create", "namespace", namespace)
     else:
         print(
             f"Namespace already exists: {namespace}"
-        )  # nosec - namespace name, not sensitive
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name, not sensitive
 
 
 def get_secret_data(name: str, namespace: str) -> dict[str, str] | None:
@@ -89,7 +89,7 @@ def create_secret(
     if secret_exists(name, namespace) and not force:
         print(
             f"Secret '{name}' already exists in namespace '{namespace}'"
-        )  # nosec - name only
+        )  # lgtm[py/clear-text-logging-sensitive-data] - names only, not values
         print("Use --force to overwrite")
         return
 
@@ -190,7 +190,7 @@ def cmd_init(args: argparse.Namespace, config: Config) -> int:
     if secret_exists(config.secret_name, config.secrets_namespace) and not args.force:
         print(
             f"Secrets already exist in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
         print("Use --force to regenerate")
         return 0
 
@@ -220,7 +220,7 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
     if not secret_exists(config.secret_name, config.secrets_namespace):
         print(
             f"No secrets found in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
         return 1
 
     data = get_secret_data(config.secret_name, config.secrets_namespace)
@@ -228,7 +228,9 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
         print("Failed to retrieve secret data")
         return 1
 
-    print(f"Secrets in namespace '{config.secrets_namespace}':")  # nosec - name only
+    print(
+        f"Secrets in namespace '{config.secrets_namespace}':"
+    )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
     for key, value in sorted(data.items()):
         # Mask most of the value for security
         if len(value) > 8:
@@ -237,9 +239,13 @@ def cmd_show(args: argparse.Namespace, config: Config) -> int:
             masked = "*" * len(value)
 
         if args.reveal:
-            print(f"  {key}: {value}")  # nosec - intentional reveal via --reveal flag
+            print(
+                f"  {key}: {value}"
+            )  # lgtm[py/clear-text-logging-sensitive-data] - intentional reveal via --reveal flag
         else:
-            print(f"  {key}: {masked}")  # nosec - value is masked
+            print(
+                f"  {key}: {masked}"
+            )  # lgtm[py/clear-text-logging-sensitive-data] - value is masked
 
     if not args.reveal:
         print()
@@ -253,12 +259,12 @@ def cmd_check(args: argparse.Namespace, config: Config) -> int:
     if secret_exists(config.secret_name, config.secrets_namespace):
         print(
             f"Secrets exist in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
         return 0
     else:
         print(
             f"No secrets found in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
         return 1
 
 
@@ -268,7 +274,7 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
     if not secret_exists(config.secret_name, config.secrets_namespace):
         print(
             f"Source secrets not found in namespace '{config.secrets_namespace}'"
-        )  # nosec - name only
+        )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
         print("Run 'init' first to create secrets")
         return 1
 
@@ -292,7 +298,9 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
         rabbitmq_secret,
         force=args.force,
     )
-    print(f"Created RabbitMQ secret in namespace '{config.namespace}'")
+    print(
+        f"Created RabbitMQ secret in namespace '{config.namespace}'"
+    )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
 
     # Create postgres-credentials secret
     postgres_creds = {
@@ -305,7 +313,9 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
         postgres_creds,
         force=args.force,
     )
-    print(f"Created PostgreSQL credentials in namespace '{config.namespace}'")
+    print(
+        f"Created PostgreSQL credentials in namespace '{config.namespace}'"
+    )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
 
     # Create rabbitmq-credentials secret (format expected by k8s/base/rabbitmq.yaml)
     rabbitmq_creds = {
@@ -318,7 +328,9 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
         rabbitmq_creds,
         force=args.force,
     )
-    print(f"Created RabbitMQ credentials in namespace '{config.namespace}'")
+    print(
+        f"Created RabbitMQ credentials in namespace '{config.namespace}'"
+    )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
 
     # Create Redis credentials secret
     redis_creds = {
@@ -330,7 +342,9 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
         redis_creds,
         force=args.force,
     )
-    print(f"Created Redis credentials in namespace '{config.namespace}'")
+    print(
+        f"Created Redis credentials in namespace '{config.namespace}'"
+    )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
 
     # Create main angzarr secrets with connection URIs
     postgres_password = source_data.get("postgres-password", "")
@@ -347,7 +361,9 @@ def cmd_sync(args: argparse.Namespace, config: Config) -> int:
         angzarr_secret,
         force=args.force,
     )
-    print(f"Created angzarr secrets in namespace '{config.namespace}'")
+    print(
+        f"Created angzarr secrets in namespace '{config.namespace}'"
+    )  # lgtm[py/clear-text-logging-sensitive-data] - namespace name only
 
     return 0
 
