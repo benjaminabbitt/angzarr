@@ -6,6 +6,7 @@ from typing import Optional, Tuple, Union
 
 from angzarr_client import Aggregate, handles, now
 from angzarr_client.errors import CommandRejectedError
+from angzarr_client.helpers import try_unpack
 from angzarr_client.proto.examples import hand_pb2 as hand_proto
 from angzarr_client.proto.examples import poker_types_pb2 as poker_types
 
@@ -70,11 +71,7 @@ class Hand(Aggregate[_HandState]):
 
     def _apply_event(self, state: _HandState, event_any) -> None:
         """Apply a single event to state."""
-        type_url = event_any.type_url
-
-        if "CommunityCardsDealt" in type_url:
-            event = hand_proto.CommunityCardsDealt()
-            event_any.Unpack(event)
+        if event := try_unpack(event_any, hand_proto.CommunityCardsDealt):
             for card in event.cards:
                 dealt_card = (card.suit, card.rank)
                 state.community_cards.append(dealt_card)
@@ -87,9 +84,7 @@ class Hand(Aggregate[_HandState]):
                 player.has_acted = False
             state.current_bet = 0
 
-        elif "CardsDealt" in type_url:
-            event = hand_proto.CardsDealt()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, hand_proto.CardsDealt):
             state.hand_id = f"{event.table_root.hex()}_{event.hand_number}"
             state.table_root = event.table_root
             state.hand_number = event.hand_number
@@ -135,9 +130,7 @@ class Hand(Aggregate[_HandState]):
                 )
             ]
 
-        elif "BlindPosted" in type_url:
-            event = hand_proto.BlindPosted()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, hand_proto.BlindPosted):
             for player in state.players.values():
                 if player.player_root == event.player_root:
                     player.stack = event.player_stack
@@ -156,9 +149,7 @@ class Hand(Aggregate[_HandState]):
                 state.pots[0].amount = event.pot_total
             state.status = "betting"
 
-        elif "ActionTaken" in type_url:
-            event = hand_proto.ActionTaken()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, hand_proto.ActionTaken):
             for player in state.players.values():
                 if player.player_root == event.player_root:
                     player.stack = event.player_stack
@@ -190,12 +181,10 @@ class Hand(Aggregate[_HandState]):
                 state.pots[0].amount = event.pot_total
             state.action_on_position = -1
 
-        elif "ShowdownStarted" in type_url:
+        elif try_unpack(event_any, hand_proto.ShowdownStarted):
             state.status = "showdown"
 
-        elif "DrawCompleted" in type_url:
-            event = hand_proto.DrawCompleted()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, hand_proto.DrawCompleted):
             for player in state.players.values():
                 if player.player_root == event.player_root:
                     # Remove discarded cards and add new ones
@@ -210,16 +199,14 @@ class Hand(Aggregate[_HandState]):
                             state.remaining_deck.remove(card)
                     break
 
-        elif "PotAwarded" in type_url:
-            event = hand_proto.PotAwarded()
-            event_any.Unpack(event)
+        elif event := try_unpack(event_any, hand_proto.PotAwarded):
             for winner in event.winners:
                 for player in state.players.values():
                     if player.player_root == winner.player_root:
                         player.stack += winner.amount
                         break
 
-        elif "HandComplete" in type_url:
+        elif try_unpack(event_any, hand_proto.HandComplete):
             state.status = "complete"
 
     # --- State accessors ---
