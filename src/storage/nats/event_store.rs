@@ -200,7 +200,7 @@ impl NatsEventStore {
         }
 
         // Sort by sequence to ensure order
-        events.sort_by_key(|e| Self::get_sequence(e));
+        events.sort_by_key(Self::get_sequence);
 
         Ok(events)
     }
@@ -208,6 +208,113 @@ impl NatsEventStore {
     /// Extract sequence number from an EventPage.
     fn get_sequence(event: &EventPage) -> u32 {
         event.sequence
+    }
+
+    /// Extract (root UUID, edition name) from a Cover, returning None if invalid.
+    fn extract_root_edition(cover: &Cover) -> Option<(Uuid, String)> {
+        let root = cover.root.as_ref()?;
+        let uuid = Uuid::from_slice(&root.value).ok()?;
+        let edition = cover
+            .edition
+            .as_ref()
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| DEFAULT_EDITION.to_string());
+        Some((uuid, edition))
+    }
+
+    /// Build an EventBook from grouped pages.
+    fn build_correlation_book(
+        domain: &str,
+        correlation_id: &str,
+        root: Uuid,
+        edition: String,
+        mut pages: Vec<EventPage>,
+    ) -> EventBook {
+        pages.sort_by_key(Self::get_sequence);
+        let next_seq = pages.last().map(Self::get_sequence).unwrap_or(0) + 1;
+
+        EventBook {
+            cover: Some(Cover {
+                domain: domain.to_string(),
+                root: Some(ProtoUuid {
+                    value: root.as_bytes().to_vec(),
+                }),
+                correlation_id: correlation_id.to_string(),
+                edition: Some(Edition {
+                    name: edition,
+                    divergences: vec![],
+                }),
+            }),
+            pages,
+            snapshot: None,
+            next_sequence: next_seq,
+        }
+    }
+
+    /// Scan a stream for events matching a correlation ID.
+    /// Returns events grouped by (root, edition).
+    async fn scan_stream_for_correlation(
+        &self,
+        stream: &jetstream::stream::Stream,
+        correlation_id: &str,
+    ) -> std::collections::HashMap<(Uuid, String), Vec<EventPage>> {
+        use std::collections::HashMap;
+
+        let mut events_by_root: HashMap<(Uuid, String), Vec<EventPage>> = HashMap::new();
+
+        // Create temporary consumer to scan all messages
+        let consumer_name = format!("correlation-{}", Uuid::new_v4());
+        let consumer = match stream
+            .create_consumer(ConsumerConfig {
+                name: Some(consumer_name),
+                deliver_policy: jetstream::consumer::DeliverPolicy::All,
+                ack_policy: jetstream::consumer::AckPolicy::None,
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(c) => c,
+            Err(_) => return events_by_root,
+        };
+
+        let mut messages = match consumer.messages().await {
+            Ok(m) => m,
+            Err(_) => return events_by_root,
+        };
+
+        // Scan messages with timeout
+        while let Ok(Some(msg)) =
+            tokio::time::timeout(std::time::Duration::from_millis(100), messages.next()).await
+        {
+            let Ok(msg) = msg else { continue };
+            let Ok(book) = EventBook::decode(msg.payload.as_ref()) else {
+                continue;
+            };
+
+            // Check correlation from Cover
+            let book_correlation = book
+                .cover
+                .as_ref()
+                .map(|c| c.correlation_id.as_str())
+                .unwrap_or("");
+
+            if book_correlation != correlation_id {
+                continue;
+            }
+
+            // Extract root and edition, skip if invalid
+            let Some(cover) = &book.cover else { continue };
+            let Some((root, edition)) = Self::extract_root_edition(cover) else {
+                continue;
+            };
+
+            events_by_root
+                .entry((root, edition))
+                .or_default()
+                .extend(book.pages);
+        }
+
+        events_by_root
     }
 
     /// Perform composite read for editions (main timeline up to divergence + edition events).
@@ -499,108 +606,22 @@ impl EventStore for NatsEventStore {
 
         for domain in domains {
             let stream_name = self.stream_name(&domain);
-            let stream = match self.jetstream.get_stream(&stream_name).await {
-                Ok(s) => s,
-                Err(_) => continue,
+            let Ok(stream) = self.jetstream.get_stream(&stream_name).await else {
+                continue;
             };
 
-            // Create consumer to scan all messages
-            let consumer_name = format!("correlation-{}", Uuid::new_v4());
-            let consumer = match stream
-                .create_consumer(ConsumerConfig {
-                    name: Some(consumer_name),
-                    deliver_policy: jetstream::consumer::DeliverPolicy::All,
-                    ack_policy: jetstream::consumer::AckPolicy::None,
-                    ..Default::default()
-                })
-                .await
-            {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
+            let events_by_root = self
+                .scan_stream_for_correlation(&stream, correlation_id)
+                .await;
 
-            let mut messages = match consumer.messages().await {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-
-            // Group events by (root, edition) - now reading EventBooks
-            let mut events_by_root: std::collections::HashMap<(Uuid, String), Vec<EventPage>> =
-                std::collections::HashMap::new();
-
-            while let Ok(Some(msg)) =
-                tokio::time::timeout(std::time::Duration::from_millis(100), messages.next()).await
-            {
-                let msg = match msg {
-                    Ok(m) => m,
-                    Err(_) => continue,
-                };
-
-                // Decode as EventBook (unified format)
-                let book = match EventBook::decode(msg.payload.as_ref()) {
-                    Ok(b) => b,
-                    Err(_) => continue,
-                };
-
-                // Check correlation from Cover
-                let book_correlation = book
-                    .cover
-                    .as_ref()
-                    .map(|c| c.correlation_id.as_str())
-                    .unwrap_or("");
-
-                if book_correlation != correlation_id {
-                    continue;
-                }
-
-                // Extract root and edition from Cover
-                let cover = match &book.cover {
-                    Some(c) => c,
-                    None => continue,
-                };
-
-                let root = match &cover.root {
-                    Some(r) => match Uuid::from_slice(&r.value) {
-                        Ok(u) => u,
-                        Err(_) => continue,
-                    },
-                    None => continue,
-                };
-
-                let edition = cover
-                    .edition
-                    .as_ref()
-                    .map(|e| e.name.clone())
-                    .unwrap_or_else(|| DEFAULT_EDITION.to_string());
-
-                // Add pages to grouped events
-                events_by_root
-                    .entry((root, edition))
-                    .or_default()
-                    .extend(book.pages);
-            }
-
-            // Build EventBooks from grouped events
-            for ((root, edition), mut pages) in events_by_root {
-                pages.sort_by_key(Self::get_sequence);
-                let next_seq = pages.last().map(Self::get_sequence).unwrap_or(0) + 1;
-
-                books.push(EventBook {
-                    cover: Some(Cover {
-                        domain: domain.clone(),
-                        root: Some(ProtoUuid {
-                            value: root.as_bytes().to_vec(),
-                        }),
-                        correlation_id: correlation_id.to_string(),
-                        edition: Some(Edition {
-                            name: edition,
-                            divergences: vec![],
-                        }),
-                    }),
+            for ((root, edition), pages) in events_by_root {
+                books.push(Self::build_correlation_book(
+                    &domain,
+                    correlation_id,
+                    root,
+                    edition,
                     pages,
-                    snapshot: None,
-                    next_sequence: next_seq,
-                });
+                ));
             }
         }
 
