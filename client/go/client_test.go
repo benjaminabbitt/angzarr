@@ -45,6 +45,7 @@ type mockAggregateCoordinatorServiceClient struct {
 	handleFn                func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
 	handleSyncFn            func(ctx context.Context, in *pb.SyncCommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error)
 	handleSyncSpeculativeFn func(ctx context.Context, in *pb.SpeculateAggregateRequest, opts ...grpc.CallOption) (*pb.CommandResponse, error)
+	handleCompensationFn    func(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.BusinessResponse, error)
 }
 
 func (m *mockAggregateCoordinatorServiceClient) Handle(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.CommandResponse, error) {
@@ -66,6 +67,13 @@ func (m *mockAggregateCoordinatorServiceClient) HandleSyncSpeculative(ctx contex
 		return m.handleSyncSpeculativeFn(ctx, in, opts...)
 	}
 	return &pb.CommandResponse{}, nil
+}
+
+func (m *mockAggregateCoordinatorServiceClient) HandleCompensation(ctx context.Context, in *pb.CommandBook, opts ...grpc.CallOption) (*pb.BusinessResponse, error) {
+	if m.handleCompensationFn != nil {
+		return m.handleCompensationFn(ctx, in, opts...)
+	}
+	return &pb.BusinessResponse{}, nil
 }
 
 type mockSagaCoordinatorServiceClient struct {

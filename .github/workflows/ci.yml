@@ -510,7 +510,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features test-utils -- -D warnings
 
   test-unit:
     needs: [changes, build-rust]
@@ -579,7 +579,7 @@ jobs:
             features: redis
           - name: nats
             test: bus_nats
-            features: nats
+            features: nats,test-utils
     steps:
       - uses: actions/checkout@v4
 
